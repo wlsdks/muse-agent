@@ -79,7 +79,7 @@ describe("muse journey — merged timeline over real file stores", () => {
       lastReinforcedAt: "2026-02-05T00:00:00.000Z",
       text: "keep replies under 4 sentences",
       userId: "journey-user"
-    });
+    }, activeWriteGate);
 
     const { FileBeliefProvenanceStore, FileUserMemoryStore } = await import("@muse/memory");
     const provenanceStore = new FileBeliefProvenanceStore(process.env.MUSE_BELIEF_PROVENANCE_FILE);

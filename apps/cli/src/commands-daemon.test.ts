@@ -18,7 +18,7 @@ import {
 
 import { LogMessagingProvider, MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { writeDayRhythmConfig } from "@muse/autoconfigure";
-import { appendDigestItem, enqueueLearnEvent, readDigestQueue, readPendingLearnEvents, readPlaybook, readProactiveHeartbeat, readProposedActions, readReflections, setLearningPaused, writeEpisodes, writeFollowups, writeObjectives, writePlaybook, type PersistedEpisode } from "@muse/stores";
+import { appendDigestItem, enqueueLearnEvent, readDigestQueue, readPendingLearnEvents, readPlaybook, readProactiveHeartbeat, readProposedActions, readReflections, setLearningPaused, writeEpisodes, writeFollowups, writeObjectives, writePlaybook as writePlaybookImpl, type PersistedEpisode, type PlaybookEntry } from "@muse/stores";
 import { buildCheckinQuestion, writeCheckins, type PersistedCheckin } from "@muse/proactivity";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -41,6 +41,9 @@ import {
   type ResidentDaemonRepairSnapshot
 } from "./resident-daemon-repair-plan.js";
 import { openResidentDaemonTerminalStateJournal } from "./resident-daemon-terminal-state.js";
+
+const writePlaybook = (file: string, entries: readonly PlaybookEntry[]) =>
+  writePlaybookImpl(file, entries, { run: (operation) => operation() });
 
 function stableCliEntryFixture(prefix = "muse-cli-entry-"): string {
   const root = mkdtempSync(join(tmpdir(), prefix));
@@ -230,6 +233,7 @@ function tmpEnv(): NodeJS.ProcessEnv {
     MUSE_LEARN_QUEUE_FILE: join(dir, "learn-queue.jsonl"),
     MUSE_LAST_PROACTIVE_FILE: join(dir, "last-proactive-delivery.json"),
     MUSE_PLAYBOOK_FILE: join(dir, "playbook.json"),
+    MUSE_QUALIFICATION_LEARNING_HOLD_FILE: join(dir, "qualification-learning-hold.json"),
     MUSE_LEARNING_PAUSE_FILE: join(dir, "learning-paused.json"),
     MUSE_SUPPRESSED_LESSONS_FILE: join(dir, "suppressed.json")
   };

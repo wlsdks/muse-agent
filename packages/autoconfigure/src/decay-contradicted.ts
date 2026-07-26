@@ -21,7 +21,7 @@
 
 import { classifyCorrectionContradiction, isInjectableStrategy, isUserAuthoredStrategy, PLAYBOOK_AVOID_BELOW, type CorrectionPolarity } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
-import { adjustPlaybookReward, isLearningPaused, queryPlaybook } from "@muse/stores";
+import { adjustPlaybookReward, isLearningPaused, queryPlaybook, type ActivePlaybookWriteGate } from "@muse/stores";
 
 export interface CorrectionSignal {
   /** Playbook id of the probation entry this correction was distilled into (for de-dup/logging). */
@@ -31,6 +31,7 @@ export interface CorrectionSignal {
 }
 
 export interface DecayContradictedDeps {
+  readonly activeWriteGate: ActivePlaybookWriteGate;
   readonly playbookFile: string;
   readonly userId: string;
   readonly model: string;
@@ -99,7 +100,13 @@ export async function decayContradictedStrategies(deps: DecayContradictedDeps): 
       }
       // Drop to the avoid floor → no longer injected (reversible: a positive
       // reinforce lifts it back above the line). DECAY-ONLY — never graduates.
-      const newReward = await adjustPlaybookReward(deps.playbookFile, strategy.id, PLAYBOOK_AVOID_BELOW - (strategy.reward ?? 0), nowMs);
+      const newReward = await adjustPlaybookReward(
+        deps.playbookFile,
+        strategy.id,
+        PLAYBOOK_AVOID_BELOW - (strategy.reward ?? 0),
+        deps.activeWriteGate,
+        nowMs
+      );
       if (newReward !== undefined) {
         alreadyDecayed.add(strategy.id);
         decayed.push({ correction: correction.text, id: strategy.id, newReward, text: strategy.text });

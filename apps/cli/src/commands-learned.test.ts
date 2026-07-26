@@ -5,10 +5,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { recordPlaybookStrategy, recordVeto } from "@muse/stores";
+import { recordPlaybookStrategy as recordPlaybookStrategyImpl, recordVeto } from "@muse/stores";
 
 import { formatIdleLearnedNotice, idleLearnedNoticeForUser, registerLearnedCommand, renderLearnedDigest, type LearnedDigestInput } from "./commands-learned.js";
 import { registerPlaybookCommands } from "./commands-playbook.js";
+
+const recordPlaybookStrategy = (
+  file: string,
+  entry: Parameters<typeof recordPlaybookStrategyImpl>[1]
+) => recordPlaybookStrategyImpl(file, entry, { run: (operation) => operation() });
 
 describe("formatIdleLearnedNotice — session-start beat", () => {
   it("is undefined when nothing was learned while idle", () => {

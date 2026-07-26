@@ -113,7 +113,13 @@ export {
 } from "./setup-status.js";
 
 export {
-  createQualificationLearningActiveSkillWriteGate
+  createQualificationLearningActiveSkillWriteGate,
+  createQualificationLearningWriteGate,
+  QualificationLearningWriteBlockedError
+} from "./qualification-learning-active-skill-write-gate.js";
+export type {
+  QualificationLearningWriteBlockReason,
+  QualificationLearningWriteGate
 } from "./qualification-learning-active-skill-write-gate.js";
 
 export {

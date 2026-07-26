@@ -9,7 +9,7 @@
 import { randomUUID } from "node:crypto";
 
 import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, validateMergeCoverage } from "@muse/agent-core";
-import { createGateEmbedder, createMuseRuntimeAssembly, resolveLearningPauseFile, resolvePlaybookFile, resolveQualificationLearningHoldFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createMuseRuntimeAssembly, createQualificationLearningWriteGate, resolveLearningPauseFile, resolvePlaybookFile, resolveQualificationLearningHoldFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 import { activateQualificationLearningHold, adjustPlaybookReward, decryptPlaybookAtRest, encryptPlaybookAtRest, inspectQualificationLearningHold, isPlaybookEncrypted, queryPlaybook, recordPlaybookStrategy, recordSuppressedLesson, removePlaybookStrategy, setLearningPaused, type PlaybookEntry } from "@muse/stores";
 import type { Command } from "commander";
@@ -34,6 +34,10 @@ function learningPauseFile(): string {
 
 function qualificationLearningHoldFile(): string {
   return resolveQualificationLearningHoldFile(process.env as Record<string, string | undefined>);
+}
+
+function playbookWriteGate() {
+  return createQualificationLearningWriteGate(process.env);
 }
 
 /**
@@ -68,7 +72,7 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         origin: "manual",
         ...(options.tag && options.tag.trim().length > 0 ? { tag: options.tag.trim() } : {}),
         createdAt: new Date().toISOString()
-      });
+      }, playbookWriteGate());
       io.stdout(`Recorded strategy (user=${userId})\n`);
     });
 
@@ -107,7 +111,7 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         io.stdout(`(no strategy matches "${id}")\n`);
         return;
       }
-      await removePlaybookStrategy(playbookFile(), match.id);
+      await removePlaybookStrategy(playbookFile(), match.id, playbookWriteGate());
       io.stdout(`Removed strategy [${match.id.slice(0, 12)}]\n`);
     });
 
@@ -122,7 +126,7 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         io.stdout(`(no strategy matches "${id}")\n`);
         return;
       }
-      await removePlaybookStrategy(playbookFile(), match.id);
+      await removePlaybookStrategy(playbookFile(), match.id, playbookWriteGate());
       await recordSuppressedLesson(suppressedLessonsFile(), {
         createdAt: new Date().toISOString(),
         id: match.id,
@@ -198,7 +202,12 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
         io.stdout(`(no strategy matches "${id}")\n`);
         return;
       }
-      const reward = await adjustPlaybookReward(playbookFile(), match.id, options.down ? -amount : amount);
+      const reward = await adjustPlaybookReward(
+        playbookFile(),
+        match.id,
+        options.down ? -amount : amount,
+        playbookWriteGate()
+      );
       io.stdout(reward === undefined
         ? `(could not adjust [${match.id.slice(0, 12)}])\n`
         : `[${match.id.slice(0, 12)}] reward → ${reward > 0 ? "+" : ""}${reward.toString()}\n`);
@@ -242,9 +251,11 @@ export function registerPlaybookCommands(program: Command, io: ProgramIO): void 
             text,
             ...(tag ? { tag } : {}),
             createdAt: new Date().toISOString()
-          });
+          }, playbookWriteGate());
         },
-        remove: async (id) => { await removePlaybookStrategy(playbookFile(), id); },
+        remove: async (id) => {
+          await removePlaybookStrategy(playbookFile(), id, playbookWriteGate());
+        },
         // SkillOpt held-out gate: a merged strategy commits only if it still
         // semantically covers every original (local nomic embedder); a
         // coverage-losing merge is rejected and the originals are kept.

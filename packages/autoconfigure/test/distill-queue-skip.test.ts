@@ -28,6 +28,7 @@ const distilled: string[] = [];
 
 const drain = (skipCorrection?: (correction: string) => boolean) =>
   distillQueuedCorrections({
+    activeWriteGate: { run: (operation) => operation() },
     distill: async (exchange) => {
       distilled.push(exchange.correction);
       return { text: `Lead with the answer (${exchange.correction})`, origin: "distilled" } as never;

@@ -5,10 +5,38 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { activateQualificationLearningHold } from "@muse/stores";
+import { FileUserMemoryStore } from "@muse/memory";
+import {
+  activateQualificationLearningHold,
+  adjustPlaybookReward,
+  bumpPlaybookObservation,
+  decayStalePlaybookRewards,
+  enqueueLearnEvent,
+  readPendingLearnEvents,
+  recordPlaybookStrategy,
+  removePlaybookStrategy,
+  writePlaybook,
+  type ActivePlaybookWriteGate,
+  type PlaybookEntry
+} from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
-import { createQualificationLearningActiveSkillWriteGate } from "./qualification-learning-active-skill-write-gate.js";
+import {
+  createQualificationLearningActiveSkillWriteGate,
+  createQualificationLearningWriteGate
+} from "./qualification-learning-active-skill-write-gate.js";
+
+const allowActivePlaybookWrites: ActivePlaybookWriteGate = {
+  run: (operation) => operation()
+};
+const seedEntry: PlaybookEntry = {
+  createdAt: "2026-01-01T00:00:00.000Z",
+  id: "seed",
+  probation: false,
+  reward: 2,
+  text: "keep replies concise",
+  userId: "owner"
+};
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "muse-active-skill-gate-"));
@@ -172,5 +200,171 @@ describe("qualification learning active-skill write gate", () => {
       await mutation.catch(() => undefined);
       if (child && child.exitCode === null) child.kill();
     }
+  }, 10_000);
+
+  it.each([
+    "active",
+    "invalid",
+    "unavailable"
+  ] as const)("keeps exact playbook bytes unchanged for every mutation family when hold state is %s", async (state) => {
+    const root = await mkdtemp(join(tmpdir(), `muse-playbook-gate-${state}-`));
+    const playbookFile = join(root, "playbook.json");
+    let holdFile = join(root, "qualification-learning-hold.json");
+    await writePlaybook(playbookFile, [seedEntry], allowActivePlaybookWrites);
+    const before = await readFile(playbookFile);
+
+    if (state === "active") {
+      await activateQualificationLearningHold(holdFile, {
+        activatedAt: "2026-07-26T06:00:00.000Z",
+        holdId: "personal-agent-v1"
+      });
+    } else if (state === "invalid") {
+      await writeFile(holdFile, "{malformed", { mode: 0o600 });
+    } else {
+      const parentFile = join(root, "not-a-directory");
+      await writeFile(parentFile, "block", { mode: 0o600 });
+      holdFile = join(parentFile, "qualification-learning-hold.json");
+    }
+
+    const gate = createQualificationLearningWriteGate({
+      HOME: root,
+      MUSE_QUALIFICATION_LEARNING_HOLD_FILE: holdFile
+    });
+    const mutations = [
+      () => writePlaybook(playbookFile, [{ ...seedEntry, text: "replaced" }], gate),
+      () => recordPlaybookStrategy(playbookFile, { ...seedEntry, id: "new" }, gate),
+      () => removePlaybookStrategy(playbookFile, seedEntry.id, gate),
+      () => adjustPlaybookReward(playbookFile, seedEntry.id, 1, gate),
+      () => bumpPlaybookObservation(playbookFile, seedEntry.id, gate),
+      () => decayStalePlaybookRewards(playbookFile, { nowMs: Date.parse("2026-07-26T00:00:00.000Z") }, gate)
+    ];
+    for (const mutate of mutations) {
+      await expect(mutate()).rejects.toMatchObject({
+        code: "MUSE_QUALIFICATION_LEARNING_WRITE_BLOCKED",
+        reason: `qualification-hold-${state}`
+      });
+      expect(await readFile(playbookFile)).toEqual(before);
+    }
+  });
+
+  it("fails closed without a gate for every exported playbook mutation family", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-playbook-missing-gate-"));
+    const playbookFile = join(root, "playbook.json");
+    await writePlaybook(playbookFile, [seedEntry], allowActivePlaybookWrites);
+    const before = await readFile(playbookFile);
+    const noGate = undefined as never;
+    const mutations = [
+      () => writePlaybook(playbookFile, [{ ...seedEntry, text: "replaced" }], noGate),
+      () => recordPlaybookStrategy(playbookFile, { ...seedEntry, id: "new" }, noGate),
+      () => removePlaybookStrategy(playbookFile, seedEntry.id, noGate),
+      () => adjustPlaybookReward(playbookFile, seedEntry.id, 1, noGate),
+      () => bumpPlaybookObservation(playbookFile, seedEntry.id, noGate),
+      () => decayStalePlaybookRewards(playbookFile, { nowMs: Date.parse("2026-07-26T00:00:00.000Z") }, noGate)
+    ];
+    for (const mutate of mutations) {
+      await expect(mutate()).rejects.toMatchObject({
+        code: "MUSE_ACTIVE_PLAYBOOK_WRITE_BLOCKED",
+        reason: "qualification-hold-unavailable"
+      });
+      expect(await readFile(playbookFile)).toEqual(before);
+    }
+  });
+
+  it("preserves the exact operation error through both qualification gate adapters", async () => {
+    const { env } = await fixture();
+    const original = new Error("disk write failed");
+    await expect(createQualificationLearningWriteGate(env).run(async () => {
+      throw original;
+    })).rejects.toBe(original);
+    await expect(createQualificationLearningActiveSkillWriteGate(env).run(async () => {
+      throw original;
+    })).rejects.toBe(original);
+  });
+
+  it("keeps proposals and explicit user facts writable while active playbook state is held", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-playbook-hold-separation-"));
+    const holdFile = join(root, "qualification-learning-hold.json");
+    const queueFile = join(root, "learn-queue.jsonl");
+    const memoryFile = join(root, "user-memory.json");
+    await activateQualificationLearningHold(holdFile, {
+      activatedAt: "2026-07-26T06:00:00.000Z",
+      holdId: "personal-agent-v1"
+    });
+
+    await enqueueLearnEvent(queueFile, {
+      correction: "use bullet points",
+      enqueuedAtMs: 1,
+      id: "proposal-1",
+      priorAnswer: "prose",
+      userId: "owner"
+    });
+    expect((await readPendingLearnEvents(queueFile)).map((event) => event.id)).toEqual(["proposal-1"]);
+
+    const memory = new FileUserMemoryStore({ file: memoryFile });
+    await memory.upsertFact("owner", "home_city", "Seoul");
+    await expect(memory.findByUserId("owner")).resolves.toMatchObject({
+      facts: { home_city: "Seoul" }
+    });
+  });
+
+  it("blocks a restarted child process from recording a playbook strategy under the persisted hold", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-playbook-restart-gate-"));
+    const holdFile = join(root, "qualification-learning-hold.json");
+    const playbookFile = join(root, "playbook.json");
+    await writePlaybook(playbookFile, [seedEntry], allowActivePlaybookWrites);
+    const before = await readFile(playbookFile);
+    await activateQualificationLearningHold(holdFile, {
+      activatedAt: "2026-07-26T06:00:00.000Z",
+      holdId: "personal-agent-v1"
+    });
+
+    const gateModule = pathToFileURL(
+      join(import.meta.dirname, "qualification-learning-active-skill-write-gate.ts")
+    ).href;
+    const playbookModule = pathToFileURL(
+      join(import.meta.dirname, "../../stores/src/personal-playbook-store.ts")
+    ).href;
+    const childCode = `
+      import { createQualificationLearningWriteGate } from ${JSON.stringify(gateModule)};
+      import { recordPlaybookStrategy } from ${JSON.stringify(playbookModule)};
+      const gate = createQualificationLearningWriteGate({
+        HOME: process.env.MUSE_PROBE_HOME,
+        MUSE_QUALIFICATION_LEARNING_HOLD_FILE: process.env.MUSE_PROBE_HOLD_FILE
+      });
+      try {
+        await recordPlaybookStrategy(process.env.MUSE_PROBE_PLAYBOOK_FILE, {
+          createdAt: "2026-07-26T06:01:00.000Z",
+          id: "forbidden",
+          text: "must not land",
+          userId: "owner"
+        }, gate);
+        process.exitCode = 2;
+      } catch (cause) {
+        if (cause?.code !== "MUSE_QUALIFICATION_LEARNING_WRITE_BLOCKED"
+          || cause?.reason !== "qualification-hold-active") {
+          throw cause;
+        }
+      }
+    `;
+    const child = spawn(
+      process.execPath,
+      ["--import", "tsx", "--input-type=module", "-e", childCode],
+      {
+        env: {
+          ...process.env,
+          MUSE_PROBE_HOLD_FILE: holdFile,
+          MUSE_PROBE_HOME: root,
+          MUSE_PROBE_PLAYBOOK_FILE: playbookFile
+        },
+        stdio: ["ignore", "ignore", "pipe"]
+      }
+    );
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    const [code, signal] = await once(child, "exit");
+    expect({ code, signal }, stderr).toEqual({ code: 0, signal: null });
+    expect(await readFile(playbookFile)).toEqual(before);
   }, 10_000);
 });

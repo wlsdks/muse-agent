@@ -148,8 +148,29 @@ async function writePlaybookUnlocked(file: string, entries: readonly PlaybookEnt
   await writeMaybeEncrypted(file, text, encrypted, env);
 }
 
-export async function writePlaybook(file: string, entries: readonly PlaybookEntry[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  await withFileLock(file, () => writePlaybookUnlocked(file, entries, env));
+export interface ActivePlaybookWriteGate {
+  run<T>(operation: () => Promise<T>): Promise<T>;
+}
+
+export class ActivePlaybookWriteBlockedError extends Error {
+  readonly code = "MUSE_ACTIVE_PLAYBOOK_WRITE_BLOCKED";
+  readonly reason = "qualification-hold-unavailable";
+
+  constructor() {
+    super("active playbook mutation blocked: qualification-hold-unavailable");
+    this.name = "ActivePlaybookWriteBlockedError";
+  }
+}
+
+export async function writePlaybook(
+  file: string,
+  entries: readonly PlaybookEntry[],
+  activeWriteGate: ActivePlaybookWriteGate,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<void> {
+  await runActivePlaybookMutation(activeWriteGate, () =>
+    withFileLock(file, () => writePlaybookUnlocked(file, entries, env))
+  );
 }
 
 interface PlaybookMutation<Result> {
@@ -160,20 +181,36 @@ interface PlaybookMutation<Result> {
 async function mutatePlaybook<Result>(
   file: string,
   env: NodeJS.ProcessEnv,
+  activeWriteGate: ActivePlaybookWriteGate,
   mutation: (entries: readonly PlaybookEntry[]) => PlaybookMutation<Result>
 ): Promise<Result> {
-  return withFileMutationQueue(file, () => withFileLock(file, async () => {
-    const existing = await readPlaybook(file, env);
-    const { nextEntries, result } = mutation(existing);
-    if (nextEntries !== undefined) {
-      await writePlaybookUnlocked(file, nextEntries, env);
-    }
-    return result;
-  }));
+  return runActivePlaybookMutation(activeWriteGate, () =>
+    withFileMutationQueue(file, () => withFileLock(file, async () => {
+      const existing = await readPlaybook(file, env);
+      const { nextEntries, result } = mutation(existing);
+      if (nextEntries !== undefined) {
+        await writePlaybookUnlocked(file, nextEntries, env);
+      }
+      return result;
+    }))
+  );
 }
 
-export async function recordPlaybookStrategy(file: string, entry: PlaybookEntry, env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  await mutatePlaybook(file, env, (existing) => {
+async function runActivePlaybookMutation<T>(
+  activeWriteGate: ActivePlaybookWriteGate | undefined,
+  operation: () => Promise<T>
+): Promise<T> {
+  if (!activeWriteGate) throw new ActivePlaybookWriteBlockedError();
+  return activeWriteGate.run(operation);
+}
+
+export async function recordPlaybookStrategy(
+  file: string,
+  entry: PlaybookEntry,
+  activeWriteGate: ActivePlaybookWriteGate,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<void> {
+  await mutatePlaybook(file, env, activeWriteGate, (existing) => {
     const next = retainPlaybookEntries([...existing.filter((e) => e.id !== entry.id), entry], MAX_PLAYBOOK_ENTRIES);
     return { nextEntries: next, result: undefined };
   });
@@ -184,8 +221,13 @@ export async function queryPlaybook(file: string, userId?: string, env: NodeJS.P
   return userId ? all.filter((e) => e.userId === userId) : all;
 }
 
-export async function removePlaybookStrategy(file: string, id: string): Promise<boolean> {
-  return mutatePlaybook(file, process.env, (existing) => {
+export async function removePlaybookStrategy(
+  file: string,
+  id: string,
+  activeWriteGate: ActivePlaybookWriteGate,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<boolean> {
+  return mutatePlaybook(file, env, activeWriteGate, (existing) => {
     const next = existing.filter((e) => e.id !== id);
     if (next.length === existing.length) {
       return { result: false };
@@ -207,12 +249,14 @@ export async function adjustPlaybookReward(
   file: string,
   id: string,
   delta: number,
-  nowMs: number = Date.now()
+  activeWriteGate: ActivePlaybookWriteGate,
+  nowMs: number = Date.now(),
+  env: NodeJS.ProcessEnv = process.env
 ): Promise<number | undefined> {
   if (!Number.isFinite(delta)) {
     return undefined;
   }
-  return mutatePlaybook(file, process.env, (existing) => {
+  return mutatePlaybook(file, env, activeWriteGate, (existing) => {
     if (!existing.some((e) => e.id === id)) {
       return { result: undefined };
     }
@@ -253,8 +297,13 @@ export async function adjustPlaybookReward(
  * to a positive user act. Serialised read-modify-write; returns the new count,
  * or undefined when no entry matched.
  */
-export async function bumpPlaybookObservation(file: string, id: string): Promise<number | undefined> {
-  return mutatePlaybook(file, process.env, (existing) => {
+export async function bumpPlaybookObservation(
+  file: string,
+  id: string,
+  activeWriteGate: ActivePlaybookWriteGate,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<number | undefined> {
+  return mutatePlaybook(file, env, activeWriteGate, (existing) => {
     if (!existing.some((e) => e.id === id)) {
       return { result: undefined };
     }
@@ -286,7 +335,9 @@ const DAY_MS = 86_400_000;
  */
 export async function decayStalePlaybookRewards(
   file: string,
-  options: { readonly nowMs: number; readonly staleAfterDays?: number; readonly step?: number }
+  options: { readonly nowMs: number; readonly staleAfterDays?: number; readonly step?: number },
+  activeWriteGate: ActivePlaybookWriteGate,
+  env: NodeJS.ProcessEnv = process.env
 ): Promise<number> {
   const requestedStaleDays = options.staleAfterDays ?? PLAYBOOK_DECAY_STALE_DAYS;
   const staleDays = Number.isFinite(requestedStaleDays) && requestedStaleDays >= 0
@@ -294,7 +345,7 @@ export async function decayStalePlaybookRewards(
     : PLAYBOOK_DECAY_STALE_DAYS;
   const requestedStep = options.step ?? 1;
   const step = Number.isFinite(requestedStep) && requestedStep > 0 ? Math.max(1, Math.trunc(requestedStep)) : 1;
-  return mutatePlaybook(file, process.env, (existing) => {
+  return mutatePlaybook(file, env, activeWriteGate, (existing) => {
     let decayed = 0;
     const next = existing.map((e) => {
       const reward = e.reward ?? 0;

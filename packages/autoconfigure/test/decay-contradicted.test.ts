@@ -4,11 +4,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { isInjectableStrategy, PLAYBOOK_AVOID_BELOW, type CorrectionPolarity } from "@muse/agent-core";
-import { readPlaybook, recordPlaybookStrategy, setLearningPaused, type PlaybookEntry, queryPlaybook } from "@muse/stores";
+import {
+  readPlaybook,
+  recordPlaybookStrategy as recordPlaybookStrategyImpl,
+  setLearningPaused,
+  type ActivePlaybookWriteGate,
+  type PlaybookEntry,
+  queryPlaybook
+} from "@muse/stores";
 import type { ModelProvider } from "@muse/model";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { decayContradictedStrategies } from "../src/decay-contradicted.js";
+
+const allowActivePlaybookWrites: ActivePlaybookWriteGate = {
+  run: (operation) => operation()
+};
+const recordPlaybookStrategy = (file: string, entry: PlaybookEntry) =>
+  recordPlaybookStrategyImpl(file, entry, allowActivePlaybookWrites);
 
 const tmps: string[] = [];
 function freshFile(label: string): string {
@@ -29,6 +42,7 @@ const injected = (over: Partial<PlaybookEntry> = {}): PlaybookEntry => ({
 });
 
 const base = (playbookFile: string, classify: (c: string, s: string) => Promise<CorrectionPolarity>) => ({
+  activeWriteGate: allowActivePlaybookWrites,
   classify, corrections: [{ id: "pb-new", text: "Stop giving me essays — answer in one sentence." }],
   model: "qwen3:8b", modelProvider, playbookFile, userId: "u"
 });

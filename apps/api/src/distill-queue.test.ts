@@ -29,6 +29,7 @@ const fakeDistill = async (exchange: { correction: string }): Promise<{ text: st
   exchange.correction.includes("(no lesson)") ? undefined : { tag: "scheduling", text: `learned: ${exchange.correction}` };
 
 const deps = (over = {}): Parameters<typeof distillQueuedCorrections>[0] => ({
+  activeWriteGate: { run: (operation) => operation() },
   distill: fakeDistill,
   model: "test",
   modelProvider: { generate: async () => ({}) } as never,

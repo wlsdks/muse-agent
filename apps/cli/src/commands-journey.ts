@@ -18,7 +18,7 @@ import {
   recordRetraction,
   type BeliefProvenance
 } from "@muse/memory";
-import { resolveAuthoredSkillsDir, resolvePlaybookFile } from "@muse/autoconfigure";
+import { createQualificationLearningWriteGate, resolveAuthoredSkillsDir, resolvePlaybookFile } from "@muse/autoconfigure";
 import {
   AuthoredSkillStore,
   FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE
@@ -195,7 +195,11 @@ export function registerJourneyCommands(program: Command, io: ProgramIO): void {
           return;
         }
         if (target.storeKind === "strategy") {
-          await removePlaybookStrategy(resolvePlaybookFile(process.env as Record<string, string | undefined>), target.ref);
+          await removePlaybookStrategy(
+            resolvePlaybookFile(process.env as Record<string, string | undefined>),
+            target.ref,
+            createQualificationLearningWriteGate(process.env)
+          );
           io.stdout(`Removed strategy [${target.ref.slice(0, 12)}]\n`);
           return;
         }

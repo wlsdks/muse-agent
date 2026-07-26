@@ -134,8 +134,8 @@ export type { ObjectiveKind, ObjectiveStatus, StandingObjective } from "./person
 export { dismissPattern, isPatternDismissed, isPatternOnCooldown, readPatternsFired, recordPatternFired, writePatternsFired } from "./personal-patterns-fired-store.js";
 export type { PatternFiredRecord } from "./personal-patterns-fired-store.js";
 export { queryPlanCache, recordPlanTemplate } from "./personal-plan-cache-store.js";
-export { adjustPlaybookReward, bumpPlaybookObservation, decayStalePlaybookRewards, decryptPlaybookAtRest, encryptPlaybookAtRest, isPlaybookEncrypted, queryPlaybook, readPlaybook, recordPlaybookStrategy, removePlaybookStrategy, writePlaybook } from "./personal-playbook-store.js";
-export type { PlaybookEntry } from "./personal-playbook-store.js";
+export { ActivePlaybookWriteBlockedError, adjustPlaybookReward, bumpPlaybookObservation, decayStalePlaybookRewards, decryptPlaybookAtRest, encryptPlaybookAtRest, isPlaybookEncrypted, queryPlaybook, readPlaybook, recordPlaybookStrategy, removePlaybookStrategy, writePlaybook } from "./personal-playbook-store.js";
+export type { ActivePlaybookWriteGate, PlaybookEntry } from "./personal-playbook-store.js";
 export { appendProactiveHistory, readProactiveHistory } from "./personal-proactive-history-store.js";
 export type { ProactiveHistoryEntry } from "./personal-proactive-history-store.js";
 export {

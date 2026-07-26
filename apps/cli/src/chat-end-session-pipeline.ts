@@ -75,10 +75,16 @@ export async function runEndOfSessionPipeline(args: {
     // The skip is what keeps this honest: THIS session's own corrections are handled
     // above by the turn scan, and distilling them again here would bump their
     // observation count as if the user had taught the same thing twice.
-    const { distillQueuedCorrections, resolveLearningPauseFile, resolvePlaybookFile } = await import("@muse/autoconfigure");
+    const {
+      createQualificationLearningWriteGate,
+      distillQueuedCorrections,
+      resolveLearningPauseFile,
+      resolvePlaybookFile
+    } = await import("@muse/autoconfigure");
     const { resolveLearnQueueFile } = await import("@muse/stores");
     const sessionSaid = await sessionCorrectionTexts(userId).catch(() => new Set<string>());
     const drained = await distillQueuedCorrections({
+      activeWriteGate: createQualificationLearningWriteGate(process.env),
       model,
       modelProvider: modelProvider as Parameters<typeof distillQueuedCorrections>[0]["modelProvider"],
       pauseFile: resolveLearningPauseFile(process.env),

@@ -3,10 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { writeBeliefProvenance } from "@muse/memory";
-import { recordPlaybookStrategy } from "@muse/stores";
+import { recordPlaybookStrategy as recordPlaybookStrategyImpl } from "@muse/stores";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildServer } from "../src/server.js";
+
+const recordPlaybookStrategy = (
+  file: string,
+  entry: Parameters<typeof recordPlaybookStrategyImpl>[1]
+) => recordPlaybookStrategyImpl(file, entry, { run: (operation) => operation() });
 
 describe("api server: GET /api/journey", () => {
   const servers: { close: () => Promise<unknown> }[] = [];
@@ -17,7 +22,7 @@ describe("api server: GET /api/journey", () => {
       beliefProvenanceFile: join(dir, "belief-provenance.json"),
       playbookFile: join(dir, "playbook.json")
     };
-    const server = buildServer({ logger: false, ...files });
+    const server = buildServer({ env: { HOME: dir }, logger: false, ...files });
     servers.push(server);
     return { files, server };
   }

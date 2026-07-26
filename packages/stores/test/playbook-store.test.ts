@@ -6,7 +6,41 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { adjustPlaybookReward, bumpPlaybookObservation, decayStalePlaybookRewards, MAX_PLAYBOOK_ENTRIES, PLAYBOOK_DECAY_STALE_DAYS, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, type PlaybookEntry, queryPlaybook, readPlaybook, recordPlaybookStrategy, removePlaybookStrategy, retainPlaybookEntries, writePlaybook } from "../src/personal-playbook-store.js";
+import {
+  adjustPlaybookReward as adjustPlaybookRewardImpl,
+  bumpPlaybookObservation as bumpPlaybookObservationImpl,
+  decayStalePlaybookRewards as decayStalePlaybookRewardsImpl,
+  MAX_PLAYBOOK_ENTRIES,
+  PLAYBOOK_DECAY_STALE_DAYS,
+  PLAYBOOK_REWARD_MAX,
+  PLAYBOOK_REWARD_MIN,
+  type ActivePlaybookWriteGate,
+  type PlaybookEntry,
+  queryPlaybook,
+  readPlaybook,
+  recordPlaybookStrategy as recordPlaybookStrategyImpl,
+  removePlaybookStrategy as removePlaybookStrategyImpl,
+  retainPlaybookEntries,
+  writePlaybook as writePlaybookImpl
+} from "../src/personal-playbook-store.js";
+
+const allowActivePlaybookWrites: ActivePlaybookWriteGate = {
+  run: (operation) => operation()
+};
+const writePlaybook = (file: string, entries: readonly PlaybookEntry[]) =>
+  writePlaybookImpl(file, entries, allowActivePlaybookWrites);
+const recordPlaybookStrategy = (file: string, value: PlaybookEntry) =>
+  recordPlaybookStrategyImpl(file, value, allowActivePlaybookWrites);
+const removePlaybookStrategy = (file: string, id: string) =>
+  removePlaybookStrategyImpl(file, id, allowActivePlaybookWrites);
+const adjustPlaybookReward = (file: string, id: string, delta: number, nowMs?: number) =>
+  adjustPlaybookRewardImpl(file, id, delta, allowActivePlaybookWrites, nowMs);
+const bumpPlaybookObservation = (file: string, id: string) =>
+  bumpPlaybookObservationImpl(file, id, allowActivePlaybookWrites);
+const decayStalePlaybookRewards = (
+  file: string,
+  options: { readonly nowMs: number; readonly staleAfterDays?: number; readonly step?: number }
+) => decayStalePlaybookRewardsImpl(file, options, allowActivePlaybookWrites);
 
 const entry = (id: string, tag?: string): PlaybookEntry => ({
   id,

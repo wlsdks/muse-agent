@@ -15,6 +15,7 @@ beforeEach(async () => {
     MUSE_LEARN_QUEUE_FILE: join(dir, "learn-queue.jsonl"),
     MUSE_PLAYBOOK_FILE: join(dir, "playbook.json"),
     MUSE_LEARNING_PAUSE_FILE: join(dir, "learning-paused.json"),
+    MUSE_QUALIFICATION_LEARNING_HOLD_FILE: join(dir, "qualification-learning-hold.json"),
     MUSE_SUPPRESSED_LESSONS_FILE: join(dir, "suppressed.json")
   };
 });

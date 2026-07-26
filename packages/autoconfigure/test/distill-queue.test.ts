@@ -4,11 +4,33 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { CorrectionExchange, DistilledStrategy } from "@muse/agent-core";
-import { enqueueLearnEvent, readPendingLearnEvents, readPlaybook, recordPlaybookStrategy } from "@muse/stores";
+import {
+  enqueueLearnEvent,
+  readPendingLearnEvents,
+  readPlaybook,
+  recordPlaybookStrategy as recordPlaybookStrategyImpl,
+  type ActivePlaybookWriteGate,
+  type PlaybookEntry
+} from "@muse/stores";
 import type { ModelProvider } from "@muse/model";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { distillQueuedCorrections } from "../src/distill-queue.js";
+import {
+  distillQueuedCorrections as distillQueuedCorrectionsImpl,
+  type DistillQueuedDeps
+} from "../src/distill-queue.js";
+
+const allowActivePlaybookWrites: ActivePlaybookWriteGate = {
+  run: (operation) => operation()
+};
+const recordPlaybookStrategy = (file: string, entry: PlaybookEntry) =>
+  recordPlaybookStrategyImpl(file, entry, allowActivePlaybookWrites);
+const distillQueuedCorrections = (
+  deps: Omit<DistillQueuedDeps, "activeWriteGate">
+) => distillQueuedCorrectionsImpl({
+  ...deps,
+  activeWriteGate: allowActivePlaybookWrites
+});
 
 let files: string[] = [];
 const freshFile = (label: string) => {

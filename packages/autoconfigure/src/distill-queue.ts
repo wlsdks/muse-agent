@@ -24,9 +24,10 @@ import {
   type CorrectionExchange,
   type DistilledStrategy
 } from "@muse/agent-core";
-import { bumpPlaybookObservation, incrementSuppressionBlocked, isLearningPaused, markLearnEventsDone, queryPlaybook, querySuppressedLessons, readPendingLearnEvents, recordPlaybookStrategy, type LearnCorrectionEvent } from "@muse/stores";
+import { bumpPlaybookObservation, incrementSuppressionBlocked, isLearningPaused, markLearnEventsDone, queryPlaybook, querySuppressedLessons, readPendingLearnEvents, recordPlaybookStrategy, type ActivePlaybookWriteGate, type LearnCorrectionEvent } from "@muse/stores";
 
 export interface DistillQueuedDeps {
+  readonly activeWriteGate: ActivePlaybookWriteGate;
   readonly queueFile: string;
   readonly playbookFile: string;
   readonly model: string;
@@ -155,7 +156,11 @@ export async function distillQueuedCorrections(deps: DistillQueuedDeps): Promise
       }
     }
     if (bestMatch) {
-      await bumpPlaybookObservation(deps.playbookFile, bestMatch.id);
+      await bumpPlaybookObservation(
+        deps.playbookFile,
+        bestMatch.id,
+        deps.activeWriteGate
+      );
       continue; // consolidated into the existing lesson — no duplicate, no graduation
     }
     // Conflict detection at learn time — O(n), once, never in the per-turn hot
@@ -180,7 +185,7 @@ export async function distillQueuedCorrections(deps: DistillQueuedDeps): Promise
       userId: event.userId,
       ...(strategy.tag ? { tag: strategy.tag } : {}),
       ...(conflictsWith.length > 0 ? { conflictsWith } : {})
-    });
+    }, deps.activeWriteGate);
     recorded += 1;
   }
   await markLearnEventsDone(deps.queueFile, doneIds);

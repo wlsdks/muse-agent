@@ -7,7 +7,15 @@
  * difference is `maxPerTick`, set to the whole pending backlog so a user who
  * ran `muse daemon` rarely can catch the queue up in one command.
  */
-import { createGateEmbedder, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile, distillQueuedCorrections, type DistillQueuedDeps } from "@muse/autoconfigure";
+import {
+  createGateEmbedder,
+  createQualificationLearningWriteGate,
+  resolveLearningPauseFile,
+  resolvePlaybookFile,
+  resolveSuppressedLessonsFile,
+  distillQueuedCorrections,
+  type DistillQueuedDeps
+} from "@muse/autoconfigure";
 import { isLearningPaused, readPendingLearnEvents, resolveLearnQueueFile } from "@muse/stores";
 import type { ModelProvider } from "@muse/model";
 
@@ -46,6 +54,7 @@ export async function runLearnQueueDrain(deps: RunLearnQueueDrainDeps): Promise<
   }
 
   const recorded = await distillQueuedCorrections({
+    activeWriteGate: createQualificationLearningWriteGate(deps.env),
     embed: createGateEmbedder(deps.env),
     maxPerTick: pending.length,
     model: deps.model,

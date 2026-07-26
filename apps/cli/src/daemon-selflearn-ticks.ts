@@ -15,6 +15,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   createGateEmbedder,
+  createQualificationLearningWriteGate,
   decayContradictedStrategies,
   distillQueuedCorrections,
   readDayRhythmConfigSafe,
@@ -115,6 +116,7 @@ export function makeSelfLearnTick(deps: MakeSelfLearnTickDeps): GovernedDaemonTi
         (await queryPlaybook(playbookFile)).filter((p) => p.probation === true).map((p) => p.id)
       );
       const recorded = await distillQueuedCorrections({
+        activeWriteGate: createQualificationLearningWriteGate(e),
         model: followupModel.model,
         modelProvider: followupModel.modelProvider as DistillQueuedDeps["modelProvider"],
         embed: createGateEmbedder(e),
@@ -152,6 +154,7 @@ export function makeSelfLearnTick(deps: MakeSelfLearnTickDeps): GovernedDaemonTi
         // that user's injected strategies the corrections contradict.
         const userId = newProbation[0]!.userId;
         const decayed = await decayContradictedStrategies({
+          activeWriteGate: createQualificationLearningWriteGate(e),
           corrections: newProbation.filter((p) => p.userId === userId).map((p) => ({ id: p.id, text: p.source ?? p.text })),
           model: followupModel.model,
           modelProvider: followupModel.modelProvider as DecayContradictedDeps["modelProvider"],
@@ -209,7 +212,12 @@ export function makeSelfLearnDecayTick(deps: MakeSelfLearnDecayTickDeps): Govern
       if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
       lastRunMs.current = nowMs;
       const beforeReward = new Map(existing.map((s) => [s.id, s.reward ?? 0]));
-      const decayed = await decayStalePlaybookRewards(playbookFile, { nowMs });
+      const decayed = await decayStalePlaybookRewards(
+        playbookFile,
+        { nowMs },
+        createQualificationLearningWriteGate(e),
+        e
+      );
       if (decayed > 0) {
         stdout(`[${new Date(nowMs).toISOString()}] decay: ${decayed.toString()} stale strateg${decayed === 1 ? "y" : "ies"} faded toward neutral\n`);
         // FELT forgetting: when a preference you TAUGHT crosses from
@@ -301,9 +309,16 @@ export function makePlaybookConsolidateTick(deps: MakePlaybookConsolidateTickDep
             text,
             userId,
             ...(tag ? { tag } : {})
-          });
+          }, createQualificationLearningWriteGate(e), e);
         },
-        remove: async (id) => { await removePlaybookStrategy(playbookFile, id); },
+        remove: async (id) => {
+          await removePlaybookStrategy(
+            playbookFile,
+            id,
+            createQualificationLearningWriteGate(e),
+            e
+          );
+        },
         validate
       });
       if (merged > 0) stdout(`[${new Date(nowMs).toISOString()}] consolidate: merged ${cluster.length.toString()} near-duplicate pending learning(s) into 1 (still on probation; see \`muse learned\`)\n`);

@@ -6,18 +6,29 @@ import { basename, dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
-  adjustPlaybookReward,
+  adjustPlaybookReward as adjustPlaybookRewardImpl,
   decryptPlaybookAtRest,
   encryptPlaybookAtRest,
   isPlaybookEncrypted,
   queryPlaybook,
   readPlaybook,
-  recordPlaybookStrategy,
+  recordPlaybookStrategy as recordPlaybookStrategyImpl,
+  type ActivePlaybookWriteGate,
   type PlaybookEntry
 } from "../src/personal-playbook-store.js";
 
 const KEY = { MUSE_MEMORY_KEY: "playbook-test-key-A" } as NodeJS.ProcessEnv;
 const WRONG = { MUSE_MEMORY_KEY: "playbook-test-key-B" } as NodeJS.ProcessEnv;
+const allowActivePlaybookWrites: ActivePlaybookWriteGate = {
+  run: (operation) => operation()
+};
+const recordPlaybookStrategy = (
+  file: string,
+  entry: PlaybookEntry,
+  env: NodeJS.ProcessEnv
+) => recordPlaybookStrategyImpl(file, entry, allowActivePlaybookWrites, env);
+const adjustPlaybookReward = (file: string, id: string, delta: number) =>
+  adjustPlaybookRewardImpl(file, id, delta, allowActivePlaybookWrites);
 
 let dir = "";
 beforeAll(async () => { dir = await mkdtemp(join(tmpdir(), "muse-playbook-enc-")); });

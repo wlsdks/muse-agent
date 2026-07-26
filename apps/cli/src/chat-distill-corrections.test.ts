@@ -1,14 +1,41 @@
 import { randomUUID } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import type { ModelProvider } from "@muse/model";
-import { queryPlaybook, recordPlaybookStrategy, setLearningPaused } from "@muse/stores";
+import {
+  queryPlaybook,
+  recordPlaybookStrategy as recordPlaybookStrategyImpl,
+  setLearningPaused
+} from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
-import { distillSessionCorrections } from "./chat-distill-corrections.js";
+import { distillSessionCorrections as distillSessionCorrectionsImpl } from "./chat-distill-corrections.js";
 import { appendPlaybookInjection } from "./playbook-injections.js";
+
+const recordPlaybookStrategy = (
+  file: string,
+  entry: Parameters<typeof recordPlaybookStrategyImpl>[1]
+) => recordPlaybookStrategyImpl(file, entry, { run: (operation) => operation() });
+const distillSessionCorrections = (
+  options: Parameters<typeof distillSessionCorrectionsImpl>[0]
+) => {
+  const originalReadEnv = options.readEnv;
+  const holdRoot = dirname(options.playbookFile ?? join(tmpdir(), `muse-distill-${randomUUID()}`, "playbook.json"));
+  return distillSessionCorrectionsImpl({
+    ...options,
+    readEnv: () => {
+      const supplied = originalReadEnv?.() ?? {};
+      return {
+        HOME: holdRoot,
+        MUSE_LEARNING_PAUSE_FILE: join(holdRoot, "learning-paused.json"),
+        ...supplied,
+        MUSE_QUALIFICATION_LEARNING_HOLD_FILE: join(holdRoot, "qualification-learning-hold.json")
+      };
+    }
+  });
+};
 
 const stub = (output: string): ModelProvider => ({
   id: "stub",

@@ -277,8 +277,17 @@ export async function finalizeAndRenderAsk(params: {
         if (appliedStrategyId && reinforceDelta > 0) {
           try {
             const { adjustPlaybookReward } = await import("@muse/stores");
-            const { resolvePlaybookFile } = await import("@muse/autoconfigure");
-            await adjustPlaybookReward(resolvePlaybookFile(process.env as Record<string, string | undefined>), appliedStrategyId, reinforceDelta, Date.now());
+            const {
+              createQualificationLearningWriteGate,
+              resolvePlaybookFile
+            } = await import("@muse/autoconfigure");
+            await adjustPlaybookReward(
+              resolvePlaybookFile(process.env as Record<string, string | undefined>),
+              appliedStrategyId,
+              reinforceDelta,
+              createQualificationLearningWriteGate(process.env),
+              Date.now()
+            );
           } catch { /* reinforcement is best-effort — a reward write must never break the answer */ }
         }
       }

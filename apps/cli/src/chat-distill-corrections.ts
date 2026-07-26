@@ -36,7 +36,7 @@ import {
   type SessionBoundaryRef,
   type SessionTurnLine
 } from "@muse/agent-core";
-import { createGateEmbedder, resolveLearningPauseFile, resolvePlaybookFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createQualificationLearningWriteGate, resolveLearningPauseFile, resolvePlaybookFile } from "@muse/autoconfigure";
 import { errorMessage } from "@muse/shared";
 import { adjustPlaybookReward, isLearningPaused, queryPlaybook, recordPlaybookStrategy } from "@muse/stores";
 
@@ -129,6 +129,7 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
   const now = options.now ?? (() => new Date());
   const idFactory = options.idFactory ?? (() => `pb_${randomUUID()}`);
   const env = (options.readEnv ?? (() => process.env))();
+  const activeWriteGate = createQualificationLearningWriteGate(env);
   const threshold = options.dedupThreshold ?? DEFAULT_DEDUP_THRESHOLD;
 
   // The learning-pause kill switch. `muse playbook pause` promises the user
@@ -243,7 +244,12 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
     }
     adjustedIds.add(target.id);
     try {
-      const reward = await adjustPlaybookReward(playbookFile, target.id, delta);
+      const reward = await adjustPlaybookReward(
+        playbookFile,
+        target.id,
+        delta,
+        activeWriteGate
+      );
       return reward === undefined ? undefined : { reward, text: target.text };
     } catch {
       return undefined; // fail-soft — a failed reward write must not lose the rest
@@ -328,7 +334,7 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
         userId: ownerId,
         ...(distilled.tag ? { tag: distilled.tag } : {}),
         ...(conflictsWith.length > 0 ? { conflictsWith } : {})
-      });
+      }, activeWriteGate, env);
       recorded.push(distilled.tag ? { tag: distilled.tag, text: distilled.text } : { text: distilled.text });
     } catch {
       // Fail-soft per strategy — one bad write must not lose the rest.

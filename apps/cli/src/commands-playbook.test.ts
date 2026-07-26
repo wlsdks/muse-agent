@@ -175,10 +175,12 @@ describe("muse playbook undo — remove AND teach not to re-learn (B1 §5)", () 
     const suppressed = join(dir, "suppressed.json");
     const prevPb = process.env.MUSE_PLAYBOOK_FILE;
     const prevSup = process.env.MUSE_SUPPRESSED_LESSONS_FILE;
+    const prevHold = process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE;
     process.env.MUSE_PLAYBOOK_FILE = file;
     process.env.MUSE_SUPPRESSED_LESSONS_FILE = suppressed;
+    process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE = join(dir, "qualification-learning-hold.json");
     try {
-      await recordPlaybookStrategy(file, { createdAt: "2026-01-01T00:00:00Z", id: "pb_undo1", text: "always answer in bullet points", origin: "grounded", source: "no, give me bullets not prose", userId: "u" });
+      await recordPlaybookStrategy(file, { createdAt: "2026-01-01T00:00:00Z", id: "pb_undo1", text: "always answer in bullet points", origin: "grounded", source: "no, give me bullets not prose", userId: "u" }, { run: (operation) => operation() });
       const out: string[] = [];
       const io = { stderr: () => undefined, stdout: (m: string) => out.push(m) } as unknown as IO;
       const program = new Command();
@@ -192,6 +194,7 @@ describe("muse playbook undo — remove AND teach not to re-learn (B1 §5)", () 
     } finally {
       if (prevPb === undefined) delete process.env.MUSE_PLAYBOOK_FILE; else process.env.MUSE_PLAYBOOK_FILE = prevPb;
       if (prevSup === undefined) delete process.env.MUSE_SUPPRESSED_LESSONS_FILE; else process.env.MUSE_SUPPRESSED_LESSONS_FILE = prevSup;
+      if (prevHold === undefined) delete process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE; else process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE = prevHold;
     }
   });
 });
@@ -208,7 +211,7 @@ describe("muse playbook list — untrusted text is sanitized before it reaches t
     process.env.MUSE_PLAYBOOK_FILE = file;
     try {
       const hostile = "evil\x1b[2J\x1b[31mPWNED\x1b[0m\nFAKE SECTION:\n  • injected";
-      await recordPlaybookStrategy(file, { createdAt: "2026-01-01T00:00:00Z", id: "pb_hostile", tag: hostile, text: hostile, userId: "u" });
+      await recordPlaybookStrategy(file, { createdAt: "2026-01-01T00:00:00Z", id: "pb_hostile", tag: hostile, text: hostile, userId: "u" }, { run: (operation) => operation() });
       const out: string[] = [];
       const io = { stderr: () => undefined, stdout: (m: string) => out.push(m) } as unknown as IO;
       const program = new Command();
@@ -233,9 +236,11 @@ describe("muse playbook reward — manual reinforce/penalise", () => {
     const dir = await mkdtemp(join(tmpdir(), "muse-pbreward-"));
     const file = join(dir, "playbook.json");
     const prev = process.env.MUSE_PLAYBOOK_FILE;
+    const prevHold = process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE;
     process.env.MUSE_PLAYBOOK_FILE = file;
+    process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE = join(dir, "qualification-learning-hold.json");
     try {
-      await recordPlaybookStrategy(file, { createdAt: "2026-01-01T00:00:00Z", id: "pb_xyz123", text: "t", userId: "u" });
+      await recordPlaybookStrategy(file, { createdAt: "2026-01-01T00:00:00Z", id: "pb_xyz123", text: "t", userId: "u" }, { run: (operation) => operation() });
       const run = async (args: string[]): Promise<string> => {
         const out: string[] = [];
         const io = { stderr: () => undefined, stdout: (m: string) => out.push(m) } as unknown as IO;
@@ -252,6 +257,8 @@ describe("muse playbook reward — manual reinforce/penalise", () => {
     } finally {
       if (prev === undefined) delete process.env.MUSE_PLAYBOOK_FILE;
       else process.env.MUSE_PLAYBOOK_FILE = prev;
+      if (prevHold === undefined) delete process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE;
+      else process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE = prevHold;
     }
   });
 });

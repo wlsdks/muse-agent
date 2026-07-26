@@ -19,7 +19,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveAuthoredSkillsDir, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveHomeAssistantEnvironment, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, createQualificationLearningWriteGate, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveAuthoredSkillsDir, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveHomeAssistantEnvironment, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
 import { isLocalOnlyEnabled } from "@muse/model";
 import type { FastifyInstance } from "fastify";
@@ -609,11 +609,16 @@ export function startConsolidateDaemonIfConfigured(
     ...(consolidateModel ? { isModelResident: () => isModelResidentLive(consolidateModel) } : {}),
     // Idle REM phase: distill queued corrections into learned
     // strategies while idle, behind the brakes (the felt grows-with-you path).
-    ...(consolidateModel && consolidateProvider ? { distillQueued: () => distillQueuedCorrections({ model: consolidateModel, modelProvider: consolidateProvider, embed: createGateEmbedder(env), playbookFile: resolvePlaybookFile(env), queueFile: resolveLearnQueueFile(env), suppressedLessonsFile: resolveSuppressedLessonsFile(env), pauseFile: resolveLearningPauseFile(env) }) } : {}),
+    ...(consolidateModel && consolidateProvider ? { distillQueued: () => distillQueuedCorrections({ activeWriteGate: createQualificationLearningWriteGate(env), model: consolidateModel, modelProvider: consolidateProvider, embed: createGateEmbedder(env), playbookFile: resolvePlaybookFile(env), queueFile: resolveLearnQueueFile(env), suppressedLessonsFile: resolveSuppressedLessonsFile(env), pauseFile: resolveLearningPauseFile(env) }) } : {}),
     // Idle RL phase: fade positive-reward strategies the user has
     // stopped reinforcing back toward neutral, so a stale thumbs-up doesn't
     // steer the agent forever. Cheap + local (no model needed), behind the brakes.
-    decayStale: () => decayStalePlaybookRewards(resolvePlaybookFile(env), { nowMs: Date.now() }),
+    decayStale: () => decayStalePlaybookRewards(
+      resolvePlaybookFile(env),
+      { nowMs: Date.now() },
+      createQualificationLearningWriteGate(env),
+      env
+    ),
     // AC-power brake: a heavy LLM merge runs on wall power only, never on
     // battery — so background learning can't drain the laptop (fail-closed).
     isOnAcPower: () => isOnAcPower(),
