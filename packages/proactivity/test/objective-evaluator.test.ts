@@ -184,6 +184,7 @@ describe("createModelObjectiveEvaluator — propose → resolve → check", () =
 
 describe("createMessagingObjectiveActuator", () => {
   it("act + escalate deliver distinct notices over the messaging registry", async () => {
+    const effectFile = join(mkdtempSync(join(tmpdir(), "muse-obj-effects-")), "outbound-effects.json");
     const posts: string[] = [];
     const telegram = new TelegramProvider({
       baseUrl: "https://tg.test",
@@ -198,16 +199,22 @@ describe("createMessagingObjectiveActuator", () => {
     });
     const { act, escalate } = createMessagingObjectiveActuator({
       destination: "555",
+      effectFile,
       providerId: "telegram",
       registry: new MessagingProviderRegistry([telegram])
     });
     await act(objective({ spec: "ship the release" }));
-    await escalate(objective({ spec: "ship the release" }), "build red 6x");
+    await escalate(objective({
+      createdAt: "2026-05-20T08:00:00.000Z",
+      id: "obj-escalated",
+      spec: "ship the release"
+    }), "build red 6x");
     expect(posts[0]).toBe("✅ Objective met: ship the release");
     expect(posts[1]).toBe("⚠ Objective needs you: ship the release — build red 6x");
   });
 
   it("act with evidence includes a compact citation (up to 3) in the met notice", async () => {
+    const effectFile = join(mkdtempSync(join(tmpdir(), "muse-obj-effects-")), "outbound-effects.json");
     const posts: string[] = [];
     const telegram = new TelegramProvider({
       baseUrl: "https://tg.test",
@@ -222,6 +229,7 @@ describe("createMessagingObjectiveActuator", () => {
     });
     const { act } = createMessagingObjectiveActuator({
       destination: "555",
+      effectFile,
       providerId: "telegram",
       registry: new MessagingProviderRegistry([telegram])
     });
@@ -252,20 +260,26 @@ describe("createMessagingObjectiveActuator", () => {
     const { act, escalate } = createMessagingObjectiveActuator({
       actionLogFile,
       destination: "555",
+      effectFile: join(mkdtempSync(join(tmpdir(), "muse-obj-effects-")), "outbound-effects.json"),
       providerId: "telegram",
       registry: new MessagingProviderRegistry([telegram])
     });
     await act(objective({ id: "obj_ship", spec: "ship the release", userId: "stark" }), [
       { source: "actionLog:shipped", text: "shipped", whenIso: "2026-07-10T00:00:00.000Z" }
     ]);
-    await escalate(objective({ id: "obj_ship", spec: "ship the release", userId: "stark" }), "build red 6x");
+    await escalate(objective({
+      createdAt: "2026-05-20T08:00:00.000Z",
+      id: "obj_escalated",
+      spec: "ship the release",
+      userId: "stark"
+    }), "build red 6x");
 
     const log = await queryActionLog(actionLogFile, { userId: "stark" });
     expect(log.map((e) => ({ objectiveId: e.objectiveId, result: e.result, what: e.what, why: e.why }))).toEqual(
       expect.arrayContaining([
         { objectiveId: "obj_ship", result: "performed", what: "objective met — user notified", why: "ship the release" },
         {
-          objectiveId: "obj_ship",
+          objectiveId: "obj_escalated",
           result: "performed",
           what: "objective escalated — user notified",
           why: "ship the release"
@@ -277,6 +291,7 @@ describe("createMessagingObjectiveActuator", () => {
   });
 
   it("no actionLogFile ⇒ unchanged behaviour (delivery only, nothing logged)", async () => {
+    const effectFile = join(mkdtempSync(join(tmpdir(), "muse-obj-effects-")), "outbound-effects.json");
     let posted = false;
     const telegram = new TelegramProvider({
       baseUrl: "https://tg.test",
@@ -291,6 +306,7 @@ describe("createMessagingObjectiveActuator", () => {
     });
     const { act } = createMessagingObjectiveActuator({
       destination: "555",
+      effectFile,
       providerId: "telegram",
       registry: new MessagingProviderRegistry([telegram])
     });

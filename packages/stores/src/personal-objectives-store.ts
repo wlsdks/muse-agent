@@ -122,6 +122,40 @@ export async function patchObjective(
   });
 }
 
+/**
+ * Patch only the still-active occurrence selected by an objective tick.
+ * Re-registering an id creates a new occurrence (`createdAt` changes), while
+ * an owner cancellation changes `status`; neither may be overwritten by a
+ * terminal result that was computed from the tick's earlier snapshot.
+ */
+export async function patchActiveObjectiveOccurrence(
+  file: string,
+  occurrence: Pick<StandingObjective, "id" | "createdAt">,
+  patch: Partial<Omit<StandingObjective, "id" | "createdAt">>
+): Promise<StandingObjective | undefined> {
+  return withFileLock(file, async () => {
+    const existing = await readObjectives(file);
+    const target = existing.find((entry) => entry.id === occurrence.id);
+    if (
+      !target
+      || target.createdAt !== occurrence.createdAt
+      || target.status !== "active"
+    ) {
+      return undefined;
+    }
+    const patched: StandingObjective = {
+      ...target,
+      ...patch,
+      createdAt: target.createdAt,
+      id: target.id
+    };
+    await writeObjectives(file, existing.map((entry) => (
+      entry.id === occurrence.id ? patched : entry
+    )));
+    return patched;
+  });
+}
+
 export function serializeObjective(objective: StandingObjective): JsonObject {
   return {
     createdAt: objective.createdAt,

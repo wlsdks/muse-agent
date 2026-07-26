@@ -24,7 +24,14 @@ import { parseBoolean, type MessagingPollDispatchers } from "@muse/autoconfigure
 import { isLocalOnlyEnabled } from "@muse/model";
 import { selectUpcomingConflicts, type EmailProvider } from "@muse/domain-tools";
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import { runDueObjectives, type AmbientNoticeRunner, type EvidenceRecord, type ObjectiveEvaluation, type WebWatchRunner } from "@muse/proactivity";
+import {
+  runDueObjectives,
+  type AmbientNoticeRunner,
+  type EvidenceRecord,
+  type ObjectiveEvaluation,
+  type ObjectiveTerminalEffectInspector,
+  type WebWatchRunner
+} from "@muse/proactivity";
 import { BROWSING_SYNC_LIMIT, locateChromeHistoryFile, shouldAutoSyncBrowsing, syncBrowsingHistory } from "@muse/recall";
 import type { StandingObjective } from "@muse/stores";
 
@@ -103,6 +110,7 @@ export function makeHomeWatchTick(deps: MakeHomeWatchTickDeps): GovernedDaemonTi
 export interface ObjectiveActuator {
   readonly act: (objective: StandingObjective, evidence?: readonly EvidenceRecord[]) => Promise<void>;
   readonly escalate: (objective: StandingObjective, reason: string) => Promise<void>;
+  readonly inspect?: ObjectiveTerminalEffectInspector["inspect"];
 }
 
 export interface MakeObjectivesTickDeps {
@@ -125,7 +133,8 @@ export function makeObjectivesTick(deps: MakeObjectivesTickDeps): GovernedDaemon
         act: actuator.act,
         escalate: actuator.escalate,
         evaluate,
-        file
+        file,
+        ...(actuator.inspect ? { terminalEffects: { inspect: actuator.inspect } } : {})
       });
       const tag = `[${new Date().toISOString()}]`;
       stdout(`${tag} objectives: ${summary.fired.length.toString()} fired, ${summary.escalated.length.toString()} escalated of ${summary.due.toString()} due`);

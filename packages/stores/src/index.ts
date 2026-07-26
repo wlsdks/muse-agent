@@ -133,7 +133,14 @@ export { buildFollowupTriageDigest, previewFollowupTriage } from "./personal-fol
 export type { FollowupTriageAction, FollowupTriagePreview, FollowupTriagePreviewChange, PreviewFollowupTriageOptions } from "./personal-followup-triage-preview.js";
 export { cancelFollowup, cleanupFollowupTempFiles, compareFollowupsByScheduledFor, FollowupStoreUnavailableError, markFollowupFired, parseFollowupsStrict, readFollowups, readFollowupsStrict, readFollowupStatusFilter, resolveFollowupRef, serializeFollowup, snoozeFollowup, upsertFollowup, writeFollowups } from "./personal-followups-store.js";
 export type { FollowupStatusFilter, PersistedFollowup } from "./personal-followups-store.js";
-export { addObjective, patchObjective, readObjectives, serializeObjective, writeObjectives } from "./personal-objectives-store.js";
+export {
+  addObjective,
+  patchActiveObjectiveOccurrence,
+  patchObjective,
+  readObjectives,
+  serializeObjective,
+  writeObjectives
+} from "./personal-objectives-store.js";
 export type { ObjectiveKind, ObjectiveStatus, StandingObjective } from "./personal-objectives-store.js";
 export { dismissPattern, isPatternDismissed, isPatternOnCooldown, readPatternsFired, recordPatternFired, writePatternsFired } from "./personal-patterns-fired-store.js";
 export type { PatternFiredRecord } from "./personal-patterns-fired-store.js";

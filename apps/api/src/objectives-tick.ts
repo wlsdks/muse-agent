@@ -14,7 +14,11 @@ import { errorMessage } from "@muse/shared";
  */
 
 import { type StandingObjective } from "@muse/stores";
-import { runDueObjectives, type ObjectiveEvaluation } from "@muse/proactivity";
+import {
+  runDueObjectives,
+  type ObjectiveEvaluation,
+  type ObjectiveTerminalEffectInspector
+} from "@muse/proactivity";
 
 import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
 
@@ -23,6 +27,7 @@ export interface ObjectivesTickOptions {
   readonly evaluate: (objective: StandingObjective) => Promise<ObjectiveEvaluation>;
   readonly act: (objective: StandingObjective) => Promise<void>;
   readonly escalate?: (objective: StandingObjective, reason: string) => Promise<void>;
+  readonly terminalEffects?: ObjectiveTerminalEffectInspector;
   readonly intervalMs?: number;
   readonly maxPerTick?: number;
   readonly maxAttempts?: number;
@@ -64,6 +69,7 @@ export function startObjectivesTick(options: ObjectivesTickOptions): ObjectivesT
         file: options.objectivesFile,
         now,
         ...(options.escalate ? { escalate: options.escalate } : {}),
+        ...(options.terminalEffects ? { terminalEffects: options.terminalEffects } : {}),
         ...(options.maxPerTick !== undefined ? { maxPerTick: options.maxPerTick } : {}),
         ...(options.maxAttempts !== undefined ? { maxAttempts: options.maxAttempts } : {})
       });
@@ -105,4 +111,3 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
-

@@ -139,4 +139,27 @@ describe("runDueObjectives — cross-process firing lock (two daemons, same obje
     const after = await readObjectives(file);
     expect(after.every((entry) => entry.status === "active")).toBe(true); // untouched
   });
+
+  it("a BROKEN required lock fails closed with no evaluation, action, or patch", async () => {
+    const blockingParent = join(dir, "not-a-directory");
+    await writeFile(blockingParent, "file", "utf8");
+    let evaluated = 0;
+    let acted = 0;
+
+    const summary = await runDueObjectives({
+      act: async () => { acted += 1; },
+      evaluate: async () => {
+        evaluated += 1;
+        return { evidence: EVIDENCE, outcome: "met" };
+      },
+      file: join(blockingParent, "objectives.json"),
+      now: () => NOW
+    });
+
+    expect(summary.outcome).toBe("lock-error");
+    expect(summary.due).toBe(0);
+    expect(summary.errors.join("\n")).toContain("lock acquisition failed");
+    expect(evaluated).toBe(0);
+    expect(acted).toBe(0);
+  });
 });

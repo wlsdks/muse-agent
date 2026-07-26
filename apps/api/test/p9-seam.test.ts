@@ -1,6 +1,6 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
 import { addObjective, readObjectives, type StandingObjective } from "@muse/stores";
@@ -41,7 +41,12 @@ function objective(overrides: Partial<StandingObjective> = {}): StandingObjectiv
   };
 }
 
-function wire(verdict: string, posts: { text: string }[], readTasks?: () => Promise<readonly { title: string; completedAt?: string }[]>) {
+function wire(
+  verdict: string,
+  posts: { text: string }[],
+  effectFile: string,
+  readTasks?: () => Promise<readonly { title: string; completedAt?: string }[]>
+) {
   const registry = new MessagingProviderRegistry([
     new TelegramProvider({
       baseUrl: "https://tg.test",
@@ -58,12 +63,13 @@ function wire(verdict: string, posts: { text: string }[], readTasks?: () => Prom
     modelProvider: { generate: async () => ({ output: verdict }) },
     now: () => new Date("2026-05-19T12:00:00.000Z")
   });
-  const { act, escalate } = createMessagingObjectiveActuator({
+  const actuator = createMessagingObjectiveActuator({
     destination: "555",
+    effectFile,
     providerId: "telegram",
     registry
   });
-  return { act, escalate, evaluate };
+  return { actuator, evaluate };
 }
 
 describe("P9 audit — daemon-wired model evaluator → rider → real channel + durable store composes", () => {
@@ -71,17 +77,19 @@ describe("P9 audit — daemon-wired model evaluator → rider → real channel +
     const file = join(mkdtempSync(join(tmpdir(), "muse-p9-seam-")), "objectives.json");
     await addObjective(file, objective());
     const posts: { text: string }[] = [];
-    const { act, escalate, evaluate } = wire(
+    const { actuator, evaluate } = wire(
       '{"store":"tasks","keywords":["release"],"windowDays":7,"expectedCount":1}',
       posts,
+      join(dirname(file), "outbound-effects.json"),
       async () => [{ completedAt: "2026-05-19T09:00:00.000Z", title: "release was tagged" }]
     );
     const handle = startObjectivesTick({
-      act,
-      escalate,
+      act: actuator.act,
+      escalate: actuator.escalate,
       evaluate,
       now: () => new Date("2026-05-19T12:00:00.000Z"),
-      objectivesFile: file
+      objectivesFile: file,
+      terminalEffects: actuator
     });
     try {
       await handle.tickOnce();
@@ -98,13 +106,18 @@ describe("P9 audit — daemon-wired model evaluator → rider → real channel +
     const file = join(mkdtempSync(join(tmpdir(), "muse-p9-seam-unmet-")), "objectives.json");
     await addObjective(file, objective());
     const posts: { text: string }[] = [];
-    const { act, escalate, evaluate } = wire('{"store":"none"}', posts);
+    const { actuator, evaluate } = wire(
+      '{"store":"none"}',
+      posts,
+      join(dirname(file), "outbound-effects.json")
+    );
     const handle = startObjectivesTick({
-      act,
-      escalate,
+      act: actuator.act,
+      escalate: actuator.escalate,
       evaluate,
       now: () => new Date("2026-05-19T12:00:00.000Z"),
-      objectivesFile: file
+      objectivesFile: file,
+      terminalEffects: actuator
     });
     try {
       await handle.tickOnce();
@@ -122,13 +135,18 @@ describe("P9 audit — daemon-wired model evaluator → rider → real channel +
     const file = join(mkdtempSync(join(tmpdir(), "muse-p9-seam-esc-")), "objectives.json");
     await addObjective(file, objective());
     const posts: { text: string }[] = [];
-    const { act, escalate, evaluate } = wire('{"store":"none","unmeetable":true,"reason":"release was cancelled"}', posts);
+    const { actuator, evaluate } = wire(
+      '{"store":"none","unmeetable":true,"reason":"release was cancelled"}',
+      posts,
+      join(dirname(file), "outbound-effects.json")
+    );
     const handle = startObjectivesTick({
-      act,
-      escalate,
+      act: actuator.act,
+      escalate: actuator.escalate,
       evaluate,
       now: () => new Date("2026-05-19T12:00:00.000Z"),
-      objectivesFile: file
+      objectivesFile: file,
+      terminalEffects: actuator
     });
     try {
       await handle.tickOnce();

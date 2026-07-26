@@ -193,4 +193,25 @@ describe("daemon messaging provider lock", () => {
     findDirectSends(source);
     expect([...new Set(sendReceivers)]).toEqual(["messagingRegistry"]);
   });
+
+  it("wires objectives to the canonical outbound-effect ledger and forwards its inspector", () => {
+    const registerSource = parseSource("./commands-daemon-register.ts");
+    const actuatorCalls = callsNamed(registerSource, "createMessagingObjectiveActuator");
+    expect(actuatorCalls).toHaveLength(1);
+    const actuatorOptions = actuatorCalls[0]?.arguments[0];
+    expect(actuatorOptions !== undefined && ts.isObjectLiteralExpression(actuatorOptions)).toBe(true);
+    if (!actuatorOptions || !ts.isObjectLiteralExpression(actuatorOptions)) return;
+    expect(objectPropertyExpression(registerSource, actuatorOptions, "effectFile"))
+      .toBe('join(dirname(objectivesActionLogFile), "outbound-effects.json")');
+
+    const tickSource = parseSource("./daemon-watch-ticks.ts");
+    const objectiveRuns = callsNamed(tickSource, "runDueObjectives");
+    expect(objectiveRuns).toHaveLength(1);
+    const runOptions = objectiveRuns[0]?.arguments[0];
+    expect(runOptions !== undefined && ts.isObjectLiteralExpression(runOptions)).toBe(true);
+    if (!runOptions || !ts.isObjectLiteralExpression(runOptions)) return;
+    expect(runOptions.getText(tickSource)).toContain(
+      "terminalEffects: { inspect: actuator.inspect }"
+    );
+  });
 });

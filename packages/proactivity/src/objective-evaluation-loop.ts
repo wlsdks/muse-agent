@@ -16,11 +16,12 @@
  */
 
 import { errorMessage } from "@muse/shared";
+import type { OutboundEffectView } from "@muse/messaging";
 
 import {
-  patchObjective,
+  patchActiveObjectiveOccurrence,
   readObjectives,
-  withProcessLock,
+  withRequiredProcessLock,
   type StandingObjective
 } from "@muse/stores";
 import type { EvidenceRecord } from "./objective-evidence.js";
@@ -38,6 +39,21 @@ export type ObjectiveEvaluation =
   | { readonly outcome: "unmet" }
   | { readonly outcome: "unmeetable"; readonly reason: string };
 
+export type ObjectiveTerminalKind = "met" | "escalated";
+
+export interface ObjectiveTerminalEffect {
+  readonly effect: OutboundEffectView;
+  readonly terminalKind: ObjectiveTerminalKind;
+}
+
+export interface ObjectiveTerminalEffectInspector {
+  /**
+   * Inspect durable owner-channel effects for this exact objective
+   * occurrence. This must not query provider membership or dispatch.
+   */
+  readonly inspect: (objective: StandingObjective) => Promise<readonly ObjectiveTerminalEffect[]>;
+}
+
 export interface RunDueObjectivesOptions {
   readonly file: string;
   /** Decide whether the objective's condition currently holds. */
@@ -46,6 +62,8 @@ export interface RunDueObjectivesOptions {
   readonly act: (objective: StandingObjective, evidence: readonly EvidenceRecord[]) => Promise<void>;
   /** Optional escalation sink (e.g. message the user it gave up). */
   readonly escalate?: (objective: StandingObjective, reason: string) => Promise<void>;
+  /** Present only for the direct owner-channel durable messaging actuator. */
+  readonly terminalEffects?: ObjectiveTerminalEffectInspector;
   readonly now?: () => Date;
   /** Cap objectives processed per tick so a backlog can't burst. Default 5. */
   readonly maxPerTick?: number;
@@ -69,7 +87,7 @@ export interface RunDueObjectivesSummary {
   /** Set only when another daemon held the firing lock for this tick — no
    *  objective was read, evaluated, acted, or marked at all. Absent on
    *  every other path. */
-  readonly outcome?: "lock-held";
+  readonly outcome?: "lock-error" | "lock-held";
 }
 
 const DEFAULT_MAX_PER_TICK = 5;
@@ -95,7 +113,7 @@ function nextBackoffDelay(baseMs: number, capMs: number, attempt: number, nowMs:
 
 /**
  * Re-evaluate due objectives. The whole select→evaluate→act→mark section
- * runs under the cross-process `withProcessLock` (`${options.file}.firing.lock`,
+ * runs under the required cross-process lock (`${options.file}.firing.lock`,
  * the same generalized lock the reminder/checkin/followup ticks use —
  * `@muse/stores/digest-lock.ts`) because the api daemon's tick
  * (`apps/api/src/objectives-tick.ts`) and the CLI daemon's tick
@@ -108,23 +126,23 @@ function nextBackoffDelay(baseMs: number, capMs: number, attempt: number, nowMs:
  * `act`, under the same default `maxPerTick` (5) — so the existing 5-minute
  * stale window is left unchanged rather than widened for this loop
  * specifically. A LIVE held lock returns `outcome: "lock-held"` immediately
- * with nothing evaluated or sent; a broken lock (non-contention fs error)
- * fails OPEN — the tick still runs unlocked rather than silently skipping
- * objectives.
+ * with nothing evaluated or sent. A broken lock also fails CLOSED: no
+ * evaluation, effect acquisition, action, or objective patch is attempted.
  */
 export async function runDueObjectives(options: RunDueObjectivesOptions): Promise<RunDueObjectivesSummary> {
   const lockPath = `${options.file}.firing.lock`;
-  const lockOutcome = await withProcessLock(lockPath, () => runDueObjectivesUnderLock(options));
+  const lockOutcome = await withRequiredProcessLock(lockPath, () => runDueObjectivesUnderLock(options));
   if (lockOutcome.kind === "lock-held") {
     return { due: 0, errors: [], escalated: [], fired: [], outcome: "lock-held", retried: [] };
   }
-  if (lockOutcome.lockError !== undefined) {
-    // Fail-open on a BROKEN lock (not contention): the tick still ran,
-    // unlocked, so this degrades to the pre-lock duplicate-evaluation risk
-    // rather than silencing objectives.
+  if (lockOutcome.kind === "lock-error") {
     return {
-      ...lockOutcome.value,
-      errors: [`objectives-tick: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors]
+      due: 0,
+      errors: [`objectives-tick: lock acquisition failed: ${lockOutcome.error}`],
+      escalated: [],
+      fired: [],
+      outcome: "lock-error",
+      retried: []
     };
   }
   return lockOutcome.value;
@@ -172,6 +190,23 @@ async function runDueObjectivesUnderLock(options: RunDueObjectivesOptions): Prom
 
   for (const objective of due) {
     try {
+      const terminalEffects = await options.terminalEffects?.inspect(objective) ?? [];
+      if (terminalEffects.length > 1) {
+        throw new Error(`objective occurrence has conflicting terminal effects: ${objective.id}`);
+      }
+      const terminalEffect = terminalEffects[0];
+      if (
+        terminalEffect
+        && terminalEffect.effect.state !== "accepted"
+        && terminalEffect.effect.state !== "reconciled-accepted"
+        && terminalEffect.effect.state !== "reconciled-not-delivered"
+      ) {
+        throw new Error(
+          `terminal notification ${terminalEffect.effect.binding.effectId} is ${terminalEffect.effect.state}; `
+          + "reconcile it before this objective occurrence can continue"
+        );
+      }
+
       const rawEvaluation = await options.evaluate(objective);
       // Fail-close backstop (roadmap D): `met` reaches this loop ONLY
       // when it carries resolved evidence. A buggy or over-eager
@@ -185,48 +220,69 @@ async function runDueObjectivesUnderLock(options: RunDueObjectivesOptions): Prom
       const nowIso = now().toISOString();
 
       if (evaluation.outcome === "met") {
+        assertTerminalKind(terminalEffect, objective.id, "met");
         await options.act(objective, evaluation.evidence ?? []);
-        await patchObjective(options.file, objective.id, {
+        const patched = await patchActiveObjectiveOccurrence(options.file, objective, {
           lastEvaluatedAt: nowIso,
-          resolution: "condition met",
+          resolution: terminalEffect?.effect.state === "reconciled-not-delivered"
+            ? "terminal owner notification reconciled not delivered"
+            : "condition met",
           status: "done"
         });
-        fired.push(objective.id);
+        if (patched && terminalEffect?.effect.state !== "reconciled-not-delivered") {
+          fired.push(objective.id);
+        }
         continue;
       }
 
       if (evaluation.outcome === "unmeetable") {
+        assertTerminalKind(terminalEffect, objective.id, "escalated");
         await options.escalate?.(objective, evaluation.reason);
-        await patchObjective(options.file, objective.id, {
+        const patched = await patchActiveObjectiveOccurrence(options.file, objective, {
           lastEvaluatedAt: nowIso,
-          resolution: evaluation.reason,
+          resolution: terminalEffect?.effect.state === "reconciled-not-delivered"
+            ? "terminal owner notification reconciled not delivered"
+            : evaluation.reason,
           status: "escalated"
         });
-        escalated.push(objective.id);
+        if (patched && terminalEffect?.effect.state !== "reconciled-not-delivered") {
+          escalated.push(objective.id);
+        }
         continue;
       }
 
       const attempts = (objective.attempts ?? 0) + 1;
       if (attempts >= maxAttempts) {
         const reason = `unmeetable: ${maxAttempts.toString()} attempts exhausted`;
+        assertTerminalKind(terminalEffect, objective.id, "escalated");
         await options.escalate?.(objective, reason);
-        await patchObjective(options.file, objective.id, {
+        const patched = await patchActiveObjectiveOccurrence(options.file, objective, {
           attempts,
           lastEvaluatedAt: nowIso,
-          resolution: reason,
+          resolution: terminalEffect?.effect.state === "reconciled-not-delivered"
+            ? "terminal owner notification reconciled not delivered"
+            : reason,
           status: "escalated"
         });
-        escalated.push(objective.id);
+        if (patched && terminalEffect?.effect.state !== "reconciled-not-delivered") {
+          escalated.push(objective.id);
+        }
         continue;
       }
 
+      if (terminalEffect) {
+        throw new Error(
+          `objective occurrence ${objective.id} no longer resolves to its durable `
+          + `${terminalEffect.terminalKind} terminal effect; refusing terminal drift`
+        );
+      }
       const delay = nextBackoffDelay(base, cap, attempts, nowMs);
-      await patchObjective(options.file, objective.id, {
+      const patched = await patchActiveObjectiveOccurrence(options.file, objective, {
         attempts,
         lastEvaluatedAt: nowIso,
         nextEvalAt: new Date(nowMs + delay).toISOString()
       });
-      retried.push(objective.id);
+      if (patched) retried.push(objective.id);
     } catch (cause) {
       // Fail-open: an evaluator/action error leaves the objective
       // active for the next tick — it is recorded, never silently
@@ -236,4 +292,17 @@ async function runDueObjectivesUnderLock(options: RunDueObjectivesOptions): Prom
   }
 
   return { due: due.length, errors, escalated, fired, retried };
+}
+
+function assertTerminalKind(
+  existing: ObjectiveTerminalEffect | undefined,
+  objectiveId: string,
+  current: ObjectiveTerminalKind
+): void {
+  if (existing && existing.terminalKind !== current) {
+    throw new Error(
+      `objective occurrence ${objectiveId} is already bound to terminal kind `
+      + `${existing.terminalKind}; refusing terminal drift to ${current}`
+    );
+  }
 }

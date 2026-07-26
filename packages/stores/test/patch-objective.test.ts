@@ -5,7 +5,13 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { patchObjective, readObjectives, type StandingObjective, writeObjectives } from "../src/personal-objectives-store.js";
+import {
+  patchActiveObjectiveOccurrence,
+  patchObjective,
+  readObjectives,
+  type StandingObjective,
+  writeObjectives
+} from "../src/personal-objectives-store.js";
 
 const objective = (id: string): StandingObjective => ({
   id,
@@ -58,5 +64,45 @@ describe("patchObjective", () => {
   it("returns undefined on an empty / missing store", async () => {
     const file = freshFile();
     expect(await patchObjective(file, "anything", { status: "done" })).toBeUndefined();
+  });
+});
+
+describe("patchActiveObjectiveOccurrence", () => {
+  it("patches only the same active id+createdAt occurrence", async () => {
+    const file = freshFile();
+    await writeObjectives(file, [objective("a")]);
+
+    const patched = await patchActiveObjectiveOccurrence(
+      file,
+      { createdAt: "2026-01-01T00:00:00Z", id: "a" },
+      { resolution: "condition met", status: "done" }
+    );
+
+    expect(patched).toMatchObject({ id: "a", resolution: "condition met", status: "done" });
+  });
+
+  it("preserves a concurrent cancellation or replacement byte-for-byte", async () => {
+    const file = freshFile();
+    const cases: readonly StandingObjective[] = [
+      objective("cancelled"),
+      { ...objective("replacement"), createdAt: "2026-02-01T00:00:00Z", spec: "replacement occurrence" }
+    ];
+    await writeObjectives(file, [
+      { ...cases[0]!, resolution: "cancelled by owner", status: "cancelled" },
+      cases[1]!
+    ]);
+    const before = await readObjectives(file);
+
+    expect(await patchActiveObjectiveOccurrence(
+      file,
+      { createdAt: "2026-01-01T00:00:00Z", id: "cancelled" },
+      { status: "done" }
+    )).toBeUndefined();
+    expect(await patchActiveObjectiveOccurrence(
+      file,
+      { createdAt: "2026-01-01T00:00:00Z", id: "replacement" },
+      { status: "done" }
+    )).toBeUndefined();
+    expect(await readObjectives(file)).toEqual(before);
   });
 });

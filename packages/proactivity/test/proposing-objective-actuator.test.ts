@@ -40,8 +40,8 @@ describe("createProposingObjectiveActuator", () => {
     expect(proposals[0]).toMatchObject({
       kind: "message",
       status: "pending", // draft-first: proposed, not sent
-      providerId: "slack",
-      destination: "C123",
+      channel: "slack",
+      recipient: "C123",
       userId: "u1",
       summary: "Objective met: keep inbox under 10",
       text: "✅ Objective met: keep inbox under 10",

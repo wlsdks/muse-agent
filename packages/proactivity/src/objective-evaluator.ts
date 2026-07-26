@@ -16,16 +16,27 @@
  *    `unmet` (retry next tick) — never crash, never a false `met`,
  *    never a false `unmeetable`.
  *  - `createMessagingObjectiveActuator` delivers the met /
- *    escalated notice over the messaging registry (zero-LLM,
- *    reuses the proven retry-send path), citing the resolved
+ *    escalated notice over the messaging registry through one
+ *    durable provider attempt (zero-LLM), citing the resolved
  *    evidence in both the notice and the action-log entry.
  */
 
-import type { MessagingProviderRegistry } from "@muse/messaging";
-
-import { sendWithRetry } from "@muse/mcp-shared";
+import {
+  computeOutboundEffectPayloadHash,
+  dispatchDurableEffectOnce,
+  dispatchOutboundEffectOnce,
+  readOutboundEffect,
+  type MessagingProviderRegistry,
+  type OutboundEffectView
+} from "@muse/messaging";
+import { redactSecretsInText, sha256Hex } from "@muse/shared";
 import { appendActionLog } from "@muse/stores";
-import type { ObjectiveEvaluation } from "./objective-evaluation-loop.js";
+import type {
+  ObjectiveEvaluation,
+  ObjectiveTerminalEffect,
+  ObjectiveTerminalEffectInspector,
+  ObjectiveTerminalKind
+} from "./objective-evaluation-loop.js";
 import type { StandingObjective } from "@muse/stores";
 import { proposeMessageAction } from "@muse/stores";
 import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
@@ -279,6 +290,8 @@ export interface MessagingObjectiveActuatorOptions {
   readonly registry: MessagingProviderRegistry;
   readonly providerId: string;
   readonly destination: string;
+  /** Canonical durable outbound-effect ledger beside the action log. */
+  readonly effectFile: string;
   /**
    * When set, every autonomous objective action the daemon takes
    * is also appended here so it is reviewable (P6 accountability:
@@ -289,6 +302,11 @@ export interface MessagingObjectiveActuatorOptions {
    */
   readonly actionLogFile?: string;
   readonly now?: () => Date;
+}
+
+export interface MessagingObjectiveActuator extends ObjectiveTerminalEffectInspector {
+  readonly act: (objective: StandingObjective, evidence?: readonly EvidenceRecord[]) => Promise<void>;
+  readonly escalate: (objective: StandingObjective, reason: string) => Promise<void>;
 }
 
 /**
@@ -306,14 +324,10 @@ function evidenceCitation(evidence: readonly EvidenceRecord[]): string {
   return ` — evidence: ${cited}`;
 }
 
-export function createMessagingObjectiveActuator(options: MessagingObjectiveActuatorOptions): {
-  readonly act: (objective: StandingObjective, evidence?: readonly EvidenceRecord[]) => Promise<void>;
-  readonly escalate: (objective: StandingObjective, reason: string) => Promise<void>;
-} {
+export function createMessagingObjectiveActuator(
+  options: MessagingObjectiveActuatorOptions
+): MessagingObjectiveActuator {
   const now = options.now ?? (() => new Date());
-  const send = async (text: string): Promise<void> => {
-    await sendWithRetry(options.registry, options.providerId, { destination: options.destination, text });
-  };
   const record = async (
     objective: StandingObjective,
     what: string,
@@ -339,17 +353,157 @@ export function createMessagingObjectiveActuator(options: MessagingObjectiveActu
       // never crash the unattended daemon over a log write.
     }
   };
+
+  const inspect = async (objective: StandingObjective): Promise<readonly ObjectiveTerminalEffect[]> => {
+    const effects = await Promise.all(
+      (["met", "escalated"] as const).map(async (terminalKind): Promise<ObjectiveTerminalEffect | undefined> => {
+        const effectId = objectiveEvaluationEffectId(objective, terminalKind);
+        let effect = await readOutboundEffect(options.effectFile, effectId);
+        if (!effect) return undefined;
+        assertObjectiveEffectRoute(effect, options.providerId, options.destination);
+        if (effect.state === "prepared") {
+          effect = await dispatchDurableEffectOnce({
+            destination: effect.binding.destination,
+            dispatch: async () => {
+              throw new Error("prepared objective replay must never dispatch");
+            },
+            effectFile: options.effectFile,
+            effectId,
+            now,
+            payloadHash: effect.binding.payloadHash,
+            providerId: effect.binding.providerId
+          });
+        }
+        return { effect, terminalKind };
+      })
+    );
+    return effects.filter((effect): effect is ObjectiveTerminalEffect => effect !== undefined);
+  };
+
+  const sendTerminal = async (
+    objective: StandingObjective,
+    terminalKind: ObjectiveTerminalKind,
+    rawText: string
+  ): Promise<{ readonly effect: OutboundEffectView; readonly newlyAccepted: boolean }> => {
+    const providerId = options.providerId;
+    const destination = options.destination;
+    if (
+      providerId.trim().length === 0
+      || providerId !== providerId.trim()
+      || destination.trim().length === 0
+      || destination !== destination.trim()
+    ) {
+      throw new Error("objective delivery route is unavailable or invalid");
+    }
+
+    const text = redactSecretsInText(rawText);
+    const effectId = objectiveEvaluationEffectId(objective, terminalKind);
+    const oppositeKind: ObjectiveTerminalKind = terminalKind === "met" ? "escalated" : "met";
+    const [existing, opposite] = await Promise.all([
+      readOutboundEffect(options.effectFile, effectId),
+      readOutboundEffect(options.effectFile, objectiveEvaluationEffectId(objective, oppositeKind))
+    ]);
+    if (opposite) {
+      throw new Error(
+        `objective occurrence ${objective.id} is already bound to terminal kind ${oppositeKind}; `
+        + `refusing terminal drift to ${terminalKind}`
+      );
+    }
+
+    const payloadHash = computeOutboundEffectPayloadHash({ destination, providerId, text });
+    if (existing) {
+      assertObjectiveEffectBinding(existing, providerId, destination, payloadHash);
+      if (existing.state === "accepted" || existing.state === "reconciled-accepted") {
+        return { effect: existing, newlyAccepted: false };
+      }
+      if (existing.state === "reconciled-not-delivered") {
+        return { effect: existing, newlyAccepted: false };
+      }
+      throw new Error(
+        `objective terminal effect ${effectId} is ${existing.state}; reconcile it before retrying`
+      );
+    }
+
+    if (!options.registry.has(providerId)) {
+      throw new Error("objective delivery route is unavailable or invalid");
+    }
+    const effect = await dispatchOutboundEffectOnce({
+      destination,
+      effectFile: options.effectFile,
+      effectId,
+      now,
+      providerId,
+      registry: options.registry,
+      text
+    });
+    if (effect.state !== "accepted" && effect.state !== "reconciled-accepted") {
+      throw new Error(
+        `objective terminal effect ${effectId} is ${effect.state}; reconcile it before retrying`
+      );
+    }
+    return { effect, newlyAccepted: true };
+  };
+
   return {
     act: async (objective, evidence = []) => {
       const citation = evidenceCitation(evidence);
-      await send(`✅ Objective met: ${objective.spec}${citation}`);
-      await record(objective, "objective met — user notified", `messaging notice delivered${citation}`);
+      const result = await sendTerminal(objective, "met", `✅ Objective met: ${objective.spec}${citation}`);
+      if (result.newlyAccepted) {
+        await record(objective, "objective met — user notified", `messaging notice delivered${citation}`);
+      }
     },
     escalate: async (objective, reason) => {
-      await send(`⚠ Objective needs you: ${objective.spec} — ${reason}`);
-      await record(objective, "objective escalated — user notified", reason);
-    }
+      const result = await sendTerminal(
+        objective,
+        "escalated",
+        `⚠ Objective needs you: ${objective.spec} — ${reason}`
+      );
+      if (result.newlyAccepted) {
+        await record(objective, "objective escalated — user notified", reason);
+      }
+    },
+    inspect
   };
+}
+
+export function objectiveEvaluationEffectId(
+  objective: Pick<StandingObjective, "id" | "createdAt">,
+  terminalKind: ObjectiveTerminalKind
+): string {
+  return `objective-evaluation:${sha256Hex(JSON.stringify([
+    objective.id,
+    objective.createdAt,
+    terminalKind
+  ]))}`;
+}
+
+function assertObjectiveEffectRoute(
+  effect: OutboundEffectView,
+  providerId: string,
+  destination: string
+): void {
+  if (
+    effect.binding.providerId !== providerId
+    || effect.binding.destination !== destination
+  ) {
+    throw new Error(
+      `objective terminal effect ${effect.binding.effectId} conflicts with the configured delivery route`
+    );
+  }
+}
+
+function assertObjectiveEffectBinding(
+  effect: OutboundEffectView,
+  providerId: string,
+  destination: string,
+  payloadHash: string
+): void {
+  assertObjectiveEffectRoute(effect, providerId, destination);
+  if (effect.binding.payloadHash !== payloadHash) {
+    throw new Error(
+      `objective terminal effect ${effect.binding.effectId} conflicts with the neutralized wire payload`
+    );
+  }
 }
 
 /**

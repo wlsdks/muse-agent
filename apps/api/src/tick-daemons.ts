@@ -490,22 +490,24 @@ export function startObjectivesDaemonIfConfigured(
     model: options.defaultModel,
     modelProvider: objectivesModelProvider
   });
-  const { act, escalate } = createMessagingObjectiveActuator({
+  const actuator = createMessagingObjectiveActuator({
     ...(options.actionLogFile ? { actionLogFile: options.actionLogFile } : {}),
     destination: objectivesDestination,
+    effectFile: join(dirname(objectivesActionLogFile), "outbound-effects.json"),
     providerId: objectivesProvider,
     registry: objectivesRegistry
   });
   const objectivesHandle = startObjectivesTick({
-    act,
+    act: actuator.act,
     errorLogger: (message) => server.log.warn(message),
-    escalate,
+    escalate: actuator.escalate,
     evaluate,
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     logger: (message) => server.log.info(message),
     ...(maxPerTickRaw !== undefined ? { maxPerTick: maxPerTickRaw } : {}),
     objectivesFile: options.objectivesFile,
-    quietHours: objectivesQuietHours
+    quietHours: objectivesQuietHours,
+    terminalEffects: actuator
   });
   stopOnClose(server, objectivesHandle);
 }

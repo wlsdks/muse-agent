@@ -1916,7 +1916,12 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         ? undefined
         : parseBoolean(e.MUSE_OBJECTIVES_PROPOSE, false)
           ? createProposingObjectiveActuator({ destination, providerId: provider, proposedActionsFile })
-          : createMessagingObjectiveActuator({ destination, providerId: provider, registry: messagingRegistry });
+          : createMessagingObjectiveActuator({
+              destination,
+              effectFile: join(dirname(objectivesActionLogFile), "outbound-effects.json"),
+              providerId: provider,
+              registry: messagingRegistry
+            });
       const buildObjectivesEvaluate = (): ReturnType<typeof createModelObjectiveEvaluator> | undefined => followupModel
         ? createModelObjectiveEvaluator({
             evidenceDeps: {
