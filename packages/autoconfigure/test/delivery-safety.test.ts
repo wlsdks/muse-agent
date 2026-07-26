@@ -258,7 +258,8 @@ describe("collectDeliverySafety", () => {
 
   it.each([
     ["available", { result: "available", value: { excludedCount: 0, pending: [] } }, "ok"],
-    ["missing", { errorCode: "missing", result: "absent" }, "unverified"],
+    ["missing", { errorCode: "missing", result: "absent" }, "ok"],
+    ["corrupt", { errorCode: "invalid-json", result: "corrupt" }, "unverified"],
     ["unreadable", { errorCode: "io-error", result: "unreadable" }, "unverified"],
     ["excluded", { result: "available", value: { excludedCount: 1, pending: [] } }, "unverified"]
   ] as const)("reduces a %s pending source without exposing records", async (_name, pending, status) => {

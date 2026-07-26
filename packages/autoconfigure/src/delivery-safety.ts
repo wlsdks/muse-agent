@@ -285,7 +285,9 @@ export async function collectDeliverySafetyDiagnostic(
   ]);
   const pendingDrafts = pending.result === "available" && pending.value.excludedCount === 0
     ? { count: pending.value.pending.length, status: "ok" as const }
-    : { count: 0, status: "unverified" as const };
+    : pending.result === "absent"
+      ? { count: 0, status: "ok" as const }
+      : { count: 0, status: "unverified" as const };
   const localOnly = isLocalOnlyEnabled(env);
   const selfLearnRaw = env.MUSE_SELFLEARN_ENABLED;
   const selfLearnDisabled = selfLearnRaw === undefined

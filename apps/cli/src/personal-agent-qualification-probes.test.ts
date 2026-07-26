@@ -536,7 +536,27 @@ describe("qualification collector integration", () => {
     expect(exactFixtureManifest(fixture.root)).toEqual(before);
   });
 
-  it.each(["missing", "corrupt", "excluded", "unreadable"] as const)(
+  it("treats a missing canonical pending-draft source as verified empty without creating it", async () => {
+    const fixture = qualificationFixture({ pendingApprovals: "missing" });
+    const before = exactFixtureManifest(fixture.root);
+    const observation = await collectPersonalAgentQualificationObservations(
+      fixture.options,
+      fixture.dependencies
+    );
+    const report = qualifyPersonalAgent(observation);
+
+    expect(report.gates[2]).toMatchObject({
+      evidence: {
+        pendingDraftCount: 0,
+        pendingDraftObservation: "ok"
+      },
+      reasonCodes: [],
+      status: "passed"
+    });
+    expect(exactFixtureManifest(fixture.root)).toEqual(before);
+  });
+
+  it.each(["corrupt", "excluded", "unreadable"] as const)(
     "fails closed without mutating a %s pending-draft source",
     async (pendingApprovals) => {
       const fixture = qualificationFixture({ pendingApprovals });
