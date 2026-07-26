@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { registerMessagingCommands, type MessagingSendDeps } from "./commands-messaging.js";
+import {
+  registerMessagingCommands,
+  type MessagingCommandHelpers,
+  type MessagingSendDeps
+} from "./commands-messaging.js";
 import type { ProgramIO } from "./program.js";
 
 /**
@@ -14,7 +18,10 @@ import type { ProgramIO } from "./program.js";
  * (outbound-safety.md). These run the REAL CLI action over a fake registry +
  * injected gate, asserting the send never reaches the provider when refused.
  */
-function harness(deps: MessagingSendDeps) {
+function harness(
+  deps: MessagingSendDeps,
+  apiRequest: MessagingCommandHelpers["apiRequest"] = async () => ({})
+) {
   const out: string[] = [];
   const err: string[] = [];
   const io = { stderr: (m: string) => err.push(m), stdout: (m: string) => out.push(m) } as unknown as ProgramIO;
@@ -23,7 +30,7 @@ function harness(deps: MessagingSendDeps) {
   registerMessagingCommands(
     program,
     io,
-    { apiRequest: async () => ({}), writeOutput: (_io, v) => out.push(JSON.stringify(v)) },
+    { apiRequest, writeOutput: (_io, v) => out.push(JSON.stringify(v)) },
     deps
   );
   return { err, out, program };
@@ -78,5 +85,48 @@ describe("muse messaging send --local — outbound-safety gate", () => {
     expect(out.join("")).toContain("Sent discord → chan-9");
     const log = await readActionLog(actionLogFile);
     expect(log[0]).toMatchObject({ result: "performed" });
+  });
+});
+
+describe("muse messaging send remote effect identity", () => {
+  it("posts and renders the same client-stable effectId", async () => {
+    const requests: Array<{
+      body?: Record<string, unknown>;
+      method?: string;
+      path: string;
+    }> = [];
+    const { out, program } = harness({}, async (_io, _command, path, body, method) => {
+      requests.push({ ...(body ? { body } : {}), ...(method ? { method } : {}), path });
+      return {
+        destination: "chan-9",
+        effectId: "effect-remote-1",
+        messageId: "m-9",
+        providerId: "discord"
+      };
+    });
+
+    await program.parseAsync([
+      "node",
+      "muse",
+      "messaging",
+      "send",
+      "--effect-id",
+      "effect-remote-1",
+      "discord",
+      "chan-9",
+      "hello"
+    ]);
+
+    expect(requests).toEqual([{
+      body: {
+        destination: "chan-9",
+        effectId: "effect-remote-1",
+        providerId: "discord",
+        text: "hello"
+      },
+      method: "POST",
+      path: "/api/messaging/send"
+    }]);
+    expect(out.join("")).toContain("effect effect-remote-1");
   });
 });

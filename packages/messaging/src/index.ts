@@ -89,6 +89,7 @@ export {
 export {
   acquireOutboundEffectDispatch,
   computeOutboundEffectPayloadHash,
+  OutboundEffectBindingConflictError,
   OutboundEffectStoreError,
   prepareOutboundEffect,
   readOutboundEffect,

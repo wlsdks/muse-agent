@@ -11,6 +11,7 @@ import type { InboxResponse, MessagingProvidersResponse } from "../api/types.js"
 interface Draft {
   readonly providerId: string;
   readonly destination: string;
+  readonly effectId: string;
   readonly text: string;
 }
 
@@ -125,6 +126,9 @@ export function MessagingView({ client }: { client: ApiClient }) {
                 <div>
                   <span className="confirm-label">{t("msg.to")}</span> <span className="mono">{pending.destination}</span>
                 </div>
+                <div>
+                  <span className="confirm-label">Effect ID</span> <span className="mono">{pending.effectId}</span>
+                </div>
                 <div className="confirm-text">{pending.text}</div>
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
@@ -166,7 +170,16 @@ export function MessagingView({ client }: { client: ApiClient }) {
                 />
               </div>
               <div>
-                <Button variant="primary" disabled={!canReview} onClick={() => setPending({ destination: destination.trim(), providerId, text: text.trim() })}>
+                <Button
+                  variant="primary"
+                  disabled={!canReview}
+                  onClick={() => setPending({
+                    destination: destination.trim(),
+                    effectId: crypto.randomUUID(),
+                    providerId,
+                    text: text.trim()
+                  })}
+                >
                   {t("msg.review")}
                 </Button>
                 {sent && (

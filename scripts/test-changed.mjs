@@ -7,7 +7,8 @@
  * Vite module graph touches it (a changed test file runs directly). One `vitest
  * related` invocation per affected package. Browser suites are excluded from the
  * normal fork pool and, when a package has a browser config, run separately in
- * real Browser Mode. Zero changed files ⇒ exit 0 (nothing to
+ * real Browser Mode. Playwright `e2e/` specs are likewise kept out of Vitest
+ * and run through the owning package's Playwright config. Zero changed files ⇒ exit 0 (nothing to
  * prove). This OPERATIONALIZES the "run the narrowest test that proves THIS change"
  * rule (testing.md) — the per-edit gate; `pnpm check` stays the pre-merge gate.
  *
@@ -94,26 +95,43 @@ for (const [name, entry] of byPackage) {
   const { dir, files } = entry;
   const browserConfig = join(dir, "vitest.browser.config.ts");
   const hasBrowserConfig = existsSync(browserConfig);
-  console.log(`\n── ${name} ── vitest related ${files.join(" ")}`);
-  try {
-    execFileSync(
-      "pnpm",
-      ["--filter", name, "exec", "vitest", "related", ...files, "--run", ...(hasBrowserConfig ? ["--exclude", "**/*.browser.test.tsx"] : [])],
-      { cwd: ROOT, stdio: "inherit" }
-    );
-  } catch {
-    failed = true; // a non-zero exit (a failing/erroring test) — surface it, keep going across packages
+  const playwrightFiles = files.filter((file) => file.split("/").includes("e2e"));
+  const vitestFiles = files.filter((file) => !playwrightFiles.includes(file));
+  if (vitestFiles.length > 0) {
+    console.log(`\n── ${name} ── vitest related ${vitestFiles.join(" ")}`);
+    try {
+      execFileSync(
+        "pnpm",
+        ["--filter", name, "exec", "vitest", "related", ...vitestFiles, "--run", ...(hasBrowserConfig ? ["--exclude", "**/*.browser.test.tsx"] : [])],
+        { cwd: ROOT, stdio: "inherit" }
+      );
+    } catch {
+      failed = true; // a non-zero exit (a failing/erroring test) — surface it, keep going across packages
+    }
   }
-  if (!hasBrowserConfig) continue;
-  console.log(`\n── ${name} browser ── vitest Browser Mode related`);
-  try {
-    execFileSync(
-      "pnpm",
-      ["--filter", name, "exec", "vitest", "related", ...files, "--run", "--config", "vitest.browser.config.ts"],
-      { cwd: ROOT, stdio: "inherit" }
-    );
-  } catch {
-    failed = true;
+  if (hasBrowserConfig && vitestFiles.length > 0) {
+    console.log(`\n── ${name} browser ── vitest Browser Mode related`);
+    try {
+      execFileSync(
+        "pnpm",
+        ["--filter", name, "exec", "vitest", "related", ...vitestFiles, "--run", "--config", "vitest.browser.config.ts"],
+        { cwd: ROOT, stdio: "inherit" }
+      );
+    } catch {
+      failed = true;
+    }
+  }
+  if (playwrightFiles.length > 0) {
+    console.log(`\n── ${name} e2e ── Playwright ${playwrightFiles.join(" ")}`);
+    try {
+      execFileSync(
+        "pnpm",
+        ["--filter", name, "exec", "playwright", "test", ...playwrightFiles],
+        { cwd: ROOT, stdio: "inherit" }
+      );
+    } catch {
+      failed = true;
+    }
   }
 }
 process.exit(failed ? 1 : 0);

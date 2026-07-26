@@ -18,6 +18,16 @@ export class OutboundEffectStoreError extends Error {
   }
 }
 
+export class OutboundEffectBindingConflictError extends OutboundEffectStoreError {
+  readonly effectId: string;
+
+  constructor(effectId: string) {
+    super(`effect id is already bound to a different payload: ${effectId}`);
+    this.effectId = effectId;
+    this.name = "OutboundEffectBindingConflictError";
+  }
+}
+
 export interface OutboundEffectBinding {
   readonly effectId: string;
   readonly providerId: string;
@@ -144,7 +154,7 @@ export async function prepareOutboundEffect(
     const existing = deriveEffects(ledger).get(stableBinding.effectId);
     if (existing) {
       if (canonicalJson(existing.view.binding) !== canonicalJson(stableBinding)) {
-        throw new OutboundEffectStoreError(`effect id is already bound to a different payload: ${stableBinding.effectId}`);
+        throw new OutboundEffectBindingConflictError(stableBinding.effectId);
       }
       return existing.view;
     }
@@ -172,9 +182,7 @@ export async function acquireOutboundEffectDispatch(
     const existing = deriveEffects(ledger).get(stableBinding.effectId);
     if (existing) {
       if (!sameDispatchBinding(existing.view.binding, stableBinding)) {
-        throw new OutboundEffectStoreError(
-          `effect id is already bound to a different payload: ${stableBinding.effectId}`
-        );
+        throw new OutboundEffectBindingConflictError(stableBinding.effectId);
       }
       return { acquired: false, effect: existing.view };
     }

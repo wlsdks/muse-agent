@@ -36,6 +36,7 @@ import { defaultBeliefProvenanceFile } from "@muse/memory";
 import { SubAgentRunRegistry } from "@muse/multi-agent";
 import { InMemoryRuntimeSettingsStore, RuntimeSettings } from "@muse/runtime-settings";
 import Fastify, { type FastifyInstance } from "fastify";
+import { dirname, join } from "node:path";
 
 import { registerStaticWeb } from "./static-web.js";
 import { registerAdminRoutes } from "./admin-routes.js";
@@ -454,10 +455,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const ingestStarters: { telegram?: () => void; matrix?: () => void } = {};
   const replyStarters: { telegram?: () => void; matrix?: () => void } = {};
   const daemonSettingsFile = resolveDaemonSettingsFile(env);
+  const actionLogFile = options.actionLogFile ?? resolveActionLogFile(env);
 
   if (options.messaging) {
     registerMessagingRoutes(server, {
       authService,
+      effectFile: join(dirname(actionLogFile), "outbound-effects.json"),
       registry: options.messaging,
       ...(options.messagingPollNow ? { pollNow: options.messagingPollNow } : {}),
       ...(options.messagingPollAll ? { pollAll: options.messagingPollAll } : {})
@@ -633,7 +636,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // matching what the CLI reads.
   registerAccountabilityRoutes(server, {
     authService,
-    actionLogFile: options.actionLogFile ?? resolveActionLogFile(env),
+    actionLogFile,
     contactsFile: options.contactsFile ?? resolveContactsFile(env),
     objectivesFile: options.objectivesFile ?? resolveObjectivesFile(env),
     vetoesFile: options.vetoesFile ?? resolveVetoesFile(env)

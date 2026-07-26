@@ -20,15 +20,24 @@ test("messaging send is draft-first: nothing leaves until explicit confirm", asy
   await page.route("**/api/messaging/inbox**", (route) => route.fulfill(ok({ inbound: [], providerId: "log", total: 0 })));
 
   let sendCount = 0;
-  let sentBody: unknown = null;
+  const sentBodies: unknown[] = [];
   await page.route("**/api/messaging/send", async (route) => {
     sendCount += 1;
-    sentBody = route.request().postDataJSON();
-    await route.fulfill(ok({ messageId: "m1" }));
+    sentBodies.push(route.request().postDataJSON());
+    if (sendCount === 1) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { code: "OUTBOUND_EFFECT_UNKNOWN", error: "Outcome unknown; retry with the same effect ID." },
+        status: 409
+      });
+      return;
+    }
+    await route.fulfill(ok({ effectId: (sentBodies[1] as { effectId: string }).effectId, messageId: "m1" }));
   });
 
-  await page.goto("/");
-  await page.getByRole("button", { name: "Messaging" }).click();
+  // Messaging is an advanced view: it remains deep-linkable even when hidden
+  // from the normal sidebar, so exercise the supported hash route directly.
+  await page.goto("/#messaging");
 
   // The compose form's labels must be tied to their inputs (WCAG 1.3.1) — drive
   // the form via the label so a screen reader names the recipient + message.
@@ -46,9 +55,20 @@ test("messaging send is draft-first: nothing leaves until explicit confirm", asy
   await expect(page.getByRole("button", { name: "Review" })).toBeVisible();
   expect(sendCount).toBe(0);
 
-  // Only explicit confirm sends — with the exact authored content.
+  // Only explicit confirm sends — with the exact authored content. If the API
+  // cannot prove the first outcome, a deliberate retry must reuse the same
+  // effect ID so the durable server-side ledger can suppress a duplicate send.
   await page.getByRole("button", { name: "Review" }).click();
   await page.getByRole("button", { name: "Confirm & send" }).click();
-  await expect.poll(() => sentBody).toMatchObject({ destination: "#general", providerId: "log", text: "Deploying v2 now." });
+  await expect(page.getByText(/Outcome unknown/u)).toBeVisible();
   expect(sendCount).toBe(1);
+  await page.getByRole("button", { name: "Confirm & send" }).click();
+  await expect.poll(() => sentBodies[1]).toMatchObject({
+    destination: "#general",
+    effectId: expect.stringMatching(/^[0-9a-f-]{36}$/u),
+    providerId: "log",
+    text: "Deploying v2 now."
+  });
+  expect(sentBodies[1]).toEqual(sentBodies[0]);
+  expect(sendCount).toBe(2);
 });

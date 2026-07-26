@@ -2,7 +2,7 @@
  * `/api/messaging/*` routes — outbound messenger surface.
  *
  *   - GET  /api/messaging/providers
- *   - POST /api/messaging/send  { providerId, destination, text }
+ *   - POST /api/messaging/send  { providerId, destination, effectId, text }
  *
  * Phase 1 is send-only across Telegram / Discord / Slack / LINE.
  * Phase 2 will add inbound (polling / Socket Mode / webhook) — see
@@ -10,9 +10,15 @@
  */
 
 import {
+  dispatchOutboundEffectOnce,
   MAX_READ_LIMIT,
   MessagingProviderError,
   MessagingValidationError,
+  OutboundEffectBindingConflictError,
+  OutboundEffectDispatchUncertainError,
+  OutboundEffectStoreError,
+  readOutboundEffect,
+  validateOutboundMessage,
   type MessagingProviderRegistry
 } from "@muse/messaging";
 import { errorMessage } from "@muse/shared";
@@ -21,8 +27,12 @@ import type { FastifyInstance } from "fastify";
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
 
+const MAX_EFFECT_ID_BYTES = 256;
+const UNSAFE_EFFECT_ID_CHARACTERS = /\p{Cc}/u;
+
 interface MessagingRoutesGate {
   readonly authService: ServerOptions["authService"];
+  readonly effectFile: string;
   readonly registry: MessagingProviderRegistry;
   /**
    * Shared with `muse.messaging.poll_now` MCP tool. When provided,
@@ -100,6 +110,7 @@ export function registerMessagingRoutes(server: FastifyInstance, gate: Messaging
     const body = request.body as {
       readonly providerId?: unknown;
       readonly destination?: unknown;
+      readonly effectId?: unknown;
       readonly text?: unknown;
     } | null;
     if (!body || typeof body.providerId !== "string" || body.providerId.trim().length === 0) {
@@ -120,13 +131,100 @@ export function registerMessagingRoutes(server: FastifyInstance, gate: Messaging
         message: "text must be a non-empty string"
       });
     }
+    if (typeof body.effectId !== "string" || body.effectId.trim().length === 0) {
+      return reply.status(400).send({
+        code: "INVALID_MESSAGING_REQUEST",
+        message: "effectId must be a non-empty string"
+      });
+    }
+    const providerId = body.providerId.trim();
+    const destination = body.destination.trim();
+    const effectId = body.effectId.trim();
+    if (Buffer.byteLength(effectId, "utf8") > MAX_EFFECT_ID_BYTES || UNSAFE_EFFECT_ID_CHARACTERS.test(effectId)) {
+      return reply.status(400).send({
+        code: "INVALID_MESSAGING_REQUEST",
+        message: `effectId must be at most ${MAX_EFFECT_ID_BYTES.toString()} UTF-8 bytes and contain no control characters`
+      });
+    }
     try {
-      const receipt = await gate.registry.send(body.providerId, {
-        destination: body.destination,
+      validateOutboundMessage({ destination, text: body.text });
+      // Durable state owns replay semantics. A provider may be removed between
+      // restarts, but an exact accepted/unknown replay must still resolve from
+      // the ledger, and same-ID drift must still conflict. Only a genuinely new
+      // effect depends on the provider being registered now.
+      const existing = await readOutboundEffect(gate.effectFile, effectId);
+      if (!existing && !gate.registry.has(providerId)) {
+        throw new MessagingProviderError(
+          providerId,
+          "PROVIDER_NOT_FOUND",
+          `Messaging provider not registered: ${providerId}`
+        );
+      }
+      const effect = await dispatchOutboundEffectOnce({
+        destination,
+        effectFile: gate.effectFile,
+        effectId,
+        providerId,
+        registry: gate.registry,
         text: body.text
       });
-      return reply.status(200).send(receipt);
+      if (effect.state === "accepted" || effect.state === "reconciled-accepted") {
+        const receipt = effect.receipt;
+        if (!receipt) {
+          return reply.status(500).send({
+            code: "OUTBOUND_EFFECT_INVALID",
+            effectId,
+            message: "accepted outbound effect has no provider receipt"
+          });
+        }
+        return reply.status(200).send({
+          destination: receipt.destination,
+          effectId,
+          messageId: receipt.messageId,
+          providerId: receipt.providerId
+        });
+      }
+      if (effect.state === "reconciled-not-delivered") {
+        return reply.status(409).send({
+          code: "OUTBOUND_EFFECT_NOT_DELIVERED",
+          effectId,
+          message: "outbound effect was manually reconciled as not delivered"
+        });
+      }
+      return reply.status(409).send({
+        code: "OUTBOUND_EFFECT_UNKNOWN",
+        detail: effect.unknownDetail,
+        effectId,
+        message:
+          "delivery outcome is unknown; do not retry with a new effectId — " +
+          `inspect and manually reconcile ${effectId} first`
+      });
     } catch (error) {
+      if (error instanceof OutboundEffectBindingConflictError) {
+        return reply.status(409).send({
+          code: "OUTBOUND_EFFECT_ID_CONFLICT",
+          effectId,
+          message: error.message
+        });
+      }
+      if (error instanceof OutboundEffectDispatchUncertainError) {
+        return reply.status(409).send({
+          code: "OUTBOUND_EFFECT_UNKNOWN",
+          detail: error.message,
+          effectId,
+          message:
+            "delivery outcome is unknown and durable state needs repair; " +
+            `do not retry with a new effectId`
+        });
+      }
+      if (error instanceof OutboundEffectStoreError) {
+        reply.log.error({ err: error, effectId }, "outbound effect store failed");
+        return reply.status(503).send({
+          code: "OUTBOUND_EFFECT_STORE_UNAVAILABLE",
+          effectId,
+          message: "outbound effect store is unavailable; no new send was attempted"
+        });
+      }
       if (error instanceof MessagingValidationError) {
         return reply.status(400).send({ code: "INVALID_MESSAGING_REQUEST", field: error.field, message: error.message });
       }

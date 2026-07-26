@@ -214,6 +214,7 @@ export function registerMessagingCommands(
       if (text.length === 0) {
         throw new Error("text is required");
       }
+      const effectId = options.effectId?.trim() || randomUUID();
       // --local sends to a THIRD PARTY straight from this process, so it must be
       // draft-first + fail-closed + action-logged like `muse email send` — never
       // an autonomous send (outbound-safety.md). The default gate shows the exact
@@ -239,7 +240,7 @@ export function registerMessagingCommands(
           approvalGate: gate,
           destination,
           ...(deps.effectFile ? { effectFile: deps.effectFile } : {}),
-          effectId: options.effectId?.trim() || randomUUID(),
+          effectId,
           providerId: provider,
           registry,
           text,
@@ -269,13 +270,17 @@ export function registerMessagingCommands(
         io,
         command,
         "/api/messaging/send",
-        { destination, providerId: provider, text },
+        { destination, effectId, providerId: provider, text },
         "POST"
-      ) as OutboundReceipt;
+      ) as OutboundReceipt & { readonly effectId?: string };
+      const confirmedEffectId = receipt.effectId ?? effectId;
       if (options.json) {
-        helpers.writeOutput(io, receipt);
+        helpers.writeOutput(io, { ...receipt, effectId: confirmedEffectId });
         return;
       }
-      io.stdout(`Sent ${provider} → ${destination} (id ${receipt.messageId})\n`);
+      io.stdout(
+        `Sent ${provider} → ${destination} ` +
+        `(id ${receipt.messageId}, effect ${confirmedEffectId})\n`
+      );
     });
 }
