@@ -241,7 +241,13 @@ export {
 
 export {
   collectDeliverySafety,
-  type DeliverySafetyCollectorDependencies
+  collectDeliverySafetyDiagnostic,
+  inspectDeliverySafetyBacklog,
+  type DeliverySafetyCollectorDependencies,
+  type DeliverySafetyDiagnostic,
+  type DeliverySafetyProviderLockDiagnostic,
+  type DeliverySafetyProviderResolutionSource,
+  type DeliverySafetyTextInspection
 } from "./delivery-safety.js";
 
 export {

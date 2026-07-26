@@ -5,14 +5,17 @@ import { join, relative } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { createApiServerOptions } from "@muse/autoconfigure";
 import {
   beginResidentDaemonRestartState,
   beginResidentDaemonTerminalGeneration,
   decideResidentDaemonRestartAdmission,
+  inspectResidentDaemon,
   markResidentDaemonStable,
   parseResidentDaemonRestartStateReceipt,
   recordResidentDaemonRestartSuccess
 } from "@muse/runtime-state";
+import { runLocalDoctor } from "./commands-doctor.js";
 import {
   collectDeliverySafetyObservation,
   collectResidentDaemonRuntime,
@@ -397,6 +400,52 @@ describe("git source probe", () => {
 });
 
 describe("qualification collector integration", () => {
+  it("keeps API, qualification, and local Doctor on the same canonical synthetic delivery result", async () => {
+    const fixture = qualificationFixture();
+    const resident = await inspectResidentDaemon(fixture.dependencies);
+    const residentInspection = async () => resident;
+    const env = {
+      ...fixture.dependencies.env,
+      MUSE_SCHEDULER_PERSIST: "false",
+      MUSE_TASK_MEMORY_PERSIST: "false"
+    };
+    const api = createApiServerOptions({
+      deliverySafetyDependencies: { now: () => QUALIFY_NOW, residentInspection },
+      env
+    });
+    const qualification = await collectDeliverySafetyObservation({
+      ...fixture.dependencies,
+      residentInspection
+    });
+    const doctor = await runLocalDoctor({
+      env,
+      fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }),
+      homeDir: fixture.root,
+      residentDaemonInspection: residentInspection
+    });
+    const canonical = await api.deliverySafety();
+
+    expect(qualification.result).toEqual(canonical);
+    expect(doctor.deliverySafety).toEqual(canonical);
+    let qualificationInspectionCount = 0;
+    const qualificationObservations = await collectPersonalAgentQualificationObservations(fixture.options, {
+      ...fixture.dependencies,
+      residentInspection: async () => {
+        qualificationInspectionCount += 1;
+        return resident;
+      }
+    });
+    expect(qualificationInspectionCount).toBe(1);
+    expect(qualifyPersonalAgent({
+      ...qualificationObservations,
+      delivery: qualification
+    }).gates[2]).toMatchObject({
+      evidence: canonical.evidence,
+      reasonCodes: canonical.reasonCodes,
+      status: canonical.status
+    });
+  });
+
   it("binds qualification input freshness to the shared restart receipt", async () => {
     const fixture = qualificationFixture();
     const beforeObservation = await collectPersonalAgentQualificationObservations(

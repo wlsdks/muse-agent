@@ -18,6 +18,7 @@ import {
   type ResidentDaemonInspection
 } from "@muse/runtime-state";
 import {
+  DELIVERY_SAFETY_REASON,
   resolveDaemonDeliveryBrake,
   type ReadOnlySourceInspection
 } from "@muse/shared";
@@ -34,7 +35,7 @@ import {
 } from "./personal-providers.js";
 import type { MuseEnvironment } from "./runtime-assembly.js";
 
-interface TextInspection {
+export interface DeliverySafetyTextInspection {
   readonly state: "missing" | "ok" | "unreadable";
   readonly text?: string;
 }
@@ -43,11 +44,47 @@ export interface DeliverySafetyCollectorDependencies {
   readonly env?: MuseEnvironment;
   readonly now?: () => Date;
   readonly residentInspection?: () => Promise<ResidentDaemonInspection>;
-  readonly readText?: (file: string) => Promise<TextInspection>;
+  readonly readText?: (file: string) => Promise<DeliverySafetyTextInspection>;
   readonly inspectLearningHold?: (file: string) => Promise<QualificationLearningHoldInspection>;
   readonly inspectPendingApprovals?: (
     file: string
   ) => Promise<ReadOnlySourceInspection<PendingApprovalSourceSnapshot>>;
+}
+
+export type DeliverySafetyProviderResolutionSource =
+  | "live-arguments"
+  | "persisted-arguments"
+  | "effective-runtime-environment"
+  | "daemon-config"
+  | "default";
+
+export interface DeliverySafetyProviderLockDiagnostic {
+  readonly allowedProviderIds: readonly ["log"] | null;
+  readonly mismatchReason: typeof DELIVERY_SAFETY_REASON.providerLockMismatch | null;
+  readonly resolvedAdapterId: string;
+}
+
+/** Privacy-safe compatibility diagnostics; no argument, path, env, payload, or recipient is returned. */
+export interface DeliverySafetyDiagnostic {
+  readonly baseProviderLocalLog: boolean;
+  readonly brakeEngaged: boolean;
+  readonly environmentProbe: "ok" | "unverified";
+  readonly followups: DeliverySafetyCountObservation;
+  readonly localOnly: boolean;
+  readonly pendingDrafts: {
+    readonly count: number;
+    readonly status: "ok" | "unverified";
+  };
+  readonly providerLockDecision: DeliverySafetyProviderLockDiagnostic;
+  readonly providerLockLog: boolean;
+  readonly providerResolutionSource: DeliverySafetyProviderResolutionSource;
+  readonly reminders: DeliverySafetyCountObservation;
+  readonly result: DeliverySafetyResult;
+  readonly runtime: ResidentDaemonInspection["observation"] & {
+    readonly health: ResidentDaemonInspection["health"];
+  };
+  readonly selfLearnDisabled: boolean;
+  readonly selfLearningHold: QualificationLearningHoldInspection;
 }
 
 const FALSE_VALUES: ReadonlySet<string> = new Set(["0", "false", "no", "off"]);
@@ -56,7 +93,7 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function inspectText(file: string): Promise<TextInspection> {
+async function inspectText(file: string): Promise<DeliverySafetyTextInspection> {
   try {
     return { state: "ok", text: await readFile(file, "utf8") };
   } catch (cause) {
@@ -74,7 +111,7 @@ function resolveDaemonConfigFile(env: MuseEnvironment): string {
 
 async function inspectDaemonConfigProvider(
   file: string,
-  inspect: (file: string) => Promise<TextInspection>
+  inspect: (file: string) => Promise<DeliverySafetyTextInspection>
 ): Promise<{ readonly status: "ok" | "unverified"; readonly provider?: string }> {
   const source = await inspect(file);
   if (source.state === "missing") return { status: "ok" };
@@ -106,16 +143,41 @@ function providerFlag(args: readonly string[] | undefined): string | undefined {
 
 function canonicalInstant(value: unknown): number | undefined {
   if (typeof value !== "string") return undefined;
+  const fields = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{3}))?Z$/u.exec(value);
+  if (!fields) return undefined;
   const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value ? parsed : undefined;
+  if (!Number.isFinite(parsed)) return undefined;
+  const date = new Date(parsed);
+  const expected = [
+    date.getUTCFullYear(),
+    date.getUTCMonth() + 1,
+    date.getUTCDate(),
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds(),
+    date.getUTCMilliseconds()
+  ];
+  const actual = [
+    Number(fields[1]),
+    Number(fields[2]),
+    Number(fields[3]),
+    Number(fields[4]),
+    Number(fields[5]),
+    Number(fields[6]),
+    fields[7] === undefined ? 0 : Number(fields[7])
+  ];
+  return actual.every((field, index) => field === expected[index]) ? parsed : undefined;
 }
 
-async function inspectBacklog(
+export async function inspectDeliverySafetyBacklog(
   file: string,
   kind: "followups" | "reminders",
   nowMs: number,
-  inspect: (file: string) => Promise<TextInspection>
+  inspect: (file: string) => Promise<DeliverySafetyTextInspection> = inspectText
 ): Promise<DeliverySafetyCountObservation> {
+  if (!Number.isFinite(nowMs)) {
+    return { overdue: 0, scheduled: 0, status: "unverified" };
+  }
   const source = await inspect(file);
   if (source.state === "missing") return { overdue: 0, scheduled: 0, status: "ok" };
   if (source.state !== "ok" || source.text === undefined) {
@@ -181,18 +243,13 @@ function unverifiedObservation(): DeliverySafetyObservation {
  * Every dependency is an inspection: this collector never writes, starts a
  * service, calls a provider, or sends a message.
  */
-async function collectDeliverySafetyResult(
+export async function collectDeliverySafetyDiagnostic(
   dependencies: DeliverySafetyCollectorDependencies = {}
-): Promise<DeliverySafetyResult> {
+): Promise<DeliverySafetyDiagnostic> {
   const inspect = dependencies.readText ?? inspectText;
-  let resident: ResidentDaemonInspection;
-  try {
-    resident = await (dependencies.residentInspection
-      ? dependencies.residentInspection()
-      : inspectResidentDaemon({ env: dependencies.env as NodeJS.ProcessEnv | undefined }));
-  } catch {
-    return classifyDeliverySafety(unverifiedObservation());
-  }
+  const resident = await (dependencies.residentInspection
+    ? dependencies.residentInspection()
+    : inspectResidentDaemon({ env: dependencies.env as NodeJS.ProcessEnv | undefined }));
 
   const env = resident.effectiveRuntimeEnv;
   const nowMs = (dependencies.now ?? (() => new Date()))().getTime();
@@ -207,6 +264,15 @@ async function collectDeliverySafetyResult(
     ?? environmentProvider
     ?? config.provider
     ?? "log";
+  const providerResolutionSource: DeliverySafetyProviderResolutionSource = liveProvider !== undefined
+    ? "live-arguments"
+    : persistedProvider !== undefined
+      ? "persisted-arguments"
+      : environmentProvider !== undefined
+        ? "effective-runtime-environment"
+        : config.provider !== undefined
+          ? "daemon-config"
+          : "default";
   const lockRaw = env.MUSE_DAEMON_PROVIDER_LOCK;
   const providerLockLog = lockRaw?.trim() === "log";
   const providerLockAmbiguous = lockRaw !== undefined && !providerLockLog;
@@ -220,8 +286,8 @@ async function collectDeliverySafetyResult(
     : "unverified" as const;
 
   const [followups, reminders, hold, pending] = await Promise.all([
-    inspectBacklog(resolveFollowupsFile(env), "followups", nowMs, inspect),
-    inspectBacklog(resolveRemindersFile(env), "reminders", nowMs, inspect),
+    inspectDeliverySafetyBacklog(resolveFollowupsFile(env), "followups", nowMs, inspect),
+    inspectDeliverySafetyBacklog(resolveRemindersFile(env), "reminders", nowMs, inspect),
     (dependencies.inspectLearningHold ?? inspectQualificationLearningHold)(
       resolveQualificationLearningHoldFile(env)
     ).catch((): QualificationLearningHoldInspection => ({
@@ -245,9 +311,18 @@ async function collectDeliverySafetyResult(
     ? false
     : FALSE_VALUES.has(selfLearnRaw.trim().toLowerCase());
 
-  return classifyDeliverySafety({
-    baseProviderLocal: provider === "log",
-    deliveryBrake: resolveDaemonDeliveryBrake(env).engaged ? "engaged" : "released",
+  const brakeEngaged = resolveDaemonDeliveryBrake(env).engaged;
+  const baseProviderLocalLog = provider === "log";
+  const providerLockDecision: DeliverySafetyProviderLockDiagnostic = {
+    allowedProviderIds: providerLockLog ? ["log"] : null,
+    mismatchReason: providerLockLog && !baseProviderLocalLog
+      ? DELIVERY_SAFETY_REASON.providerLockMismatch
+      : null,
+    resolvedAdapterId: provider
+  };
+  const result = classifyDeliverySafety({
+    baseProviderLocal: baseProviderLocalLog,
+    deliveryBrake: brakeEngaged ? "engaged" : "released",
     environmentProbe,
     followups,
     localOnlyEffective: localOnly,
@@ -264,6 +339,22 @@ async function collectDeliverySafetyResult(
       ? "unverified"
       : hold.engaged ? "engaged" : "released"
   });
+  return {
+    baseProviderLocalLog,
+    brakeEngaged,
+    environmentProbe,
+    followups,
+    localOnly,
+    pendingDrafts,
+    providerLockDecision,
+    providerLockLog,
+    providerResolutionSource,
+    reminders,
+    result,
+    runtime: { ...resident.observation, health: resident.health },
+    selfLearnDisabled,
+    selfLearningHold: hold
+  };
 }
 
 /** Public fail-closed boundary: dependency diagnostics never escape or reveal raw owner evidence. */
@@ -271,7 +362,7 @@ export async function collectDeliverySafety(
   dependencies: DeliverySafetyCollectorDependencies = {}
 ): Promise<DeliverySafetyResult> {
   try {
-    return await collectDeliverySafetyResult(dependencies);
+    return (await collectDeliverySafetyDiagnostic(dependencies)).result;
   } catch {
     return classifyDeliverySafety(unverifiedObservation());
   }

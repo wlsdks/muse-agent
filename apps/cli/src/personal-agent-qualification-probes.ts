@@ -1,32 +1,21 @@
 /** Read-only operational probes for `muse qualify`. Raw/private values stop here. */
 
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import {
-  resolveFollowupsFile,
-  resolvePendingApprovalsFile,
-  resolveQualificationLearningHoldFile,
-  resolveRemindersFile
+  collectDeliverySafetyDiagnostic,
+  inspectDeliverySafetyBacklog
 } from "@muse/autoconfigure";
-import { inspectPendingApprovalsSource } from "@muse/messaging";
-import { isLocalOnlyEnabled } from "@muse/model";
-import { resolveDaemonDeliveryBrake } from "@muse/shared";
-import { inspectQualificationLearningHold, type QualificationLearningHoldInspection } from "@muse/stores";
 import {
-  classifyDeliverySafety,
   inspectResidentDaemon,
   inspectResidentOrphanApiProcesses,
   type ResidentDaemonInspection
 } from "@muse/runtime-state";
-import { readDaemonConfig, resolveDaemonConfigFile } from "./commands-daemon-config.js";
-import { reconcileDaemonProviderLock } from "./daemon-messaging-safety.js";
 import {
   DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_HOURS,
   type ArtifactEvidenceSnapshot,
-  type BacklogCountObservation,
   type CapabilityArtifactObservation,
   type DeliveryQualificationObservation,
   type GitEvidenceSnapshot,
@@ -80,13 +69,6 @@ export interface CollectQualificationOptions {
   readonly maxEvidenceAgeHours?: number;
 }
 
-interface TextReadResult {
-  readonly state: "missing" | "ok" | "unreadable";
-  readonly text?: string;
-}
-
-const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
-
 function defaultRun(executable: string, args: readonly string[], options: ReadOnlyCommandOptions = {}): Promise<ReadOnlyCommandResult> {
   return new Promise((resolveResult) => {
     execFile(executable, [...args], {
@@ -102,62 +84,11 @@ function defaultRun(executable: string, args: readonly string[], options: ReadOn
   });
 }
 
-async function readText(path: string): Promise<TextReadResult> {
-  try {
-    return { state: "ok", text: await readFile(path, "utf8") };
-  } catch (cause) {
-    return cause && typeof cause === "object" && "code" in cause && cause.code === "ENOENT"
-      ? { state: "missing" }
-      : { state: "unreadable" };
-  }
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export async function readStrictBacklogCounts(
-  file: string,
-  kind: "followups" | "reminders",
-  nowMs: number
-): Promise<BacklogCountObservation> {
-  const read = await readText(file);
-  if (read.state === "missing") return { overdue: 0, scheduled: 0, status: "ok" };
-  if (read.state !== "ok" || read.text === undefined) return { overdue: 0, scheduled: 0, status: "unverified" };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(read.text) as unknown;
-  } catch {
-    return { overdue: 0, scheduled: 0, status: "unverified" };
-  }
-  if (!isRecord(parsed) || !Array.isArray(parsed[kind])) return { overdue: 0, scheduled: 0, status: "unverified" };
-
-  let scheduled = 0;
-  let overdue = 0;
-  for (const row of parsed[kind] as unknown[]) {
-    if (!isRecord(row)) return { overdue: 0, scheduled: 0, status: "unverified" };
-    if (kind === "followups") {
-      if (row.status !== "scheduled" && row.status !== "fired" && row.status !== "cancelled") {
-        return { overdue: 0, scheduled: 0, status: "unverified" };
-      }
-      if (row.status !== "scheduled") continue;
-      if (typeof row.scheduledFor !== "string") return { overdue: 0, scheduled: 0, status: "unverified" };
-      const at = Date.parse(row.scheduledFor);
-      if (!Number.isFinite(at)) return { overdue: 0, scheduled: 0, status: "unverified" };
-      scheduled += 1;
-      if (at <= nowMs) overdue += 1;
-      continue;
-    }
-    if (row.status !== "pending" && row.status !== "fired") return { overdue: 0, scheduled: 0, status: "unverified" };
-    if (row.status !== "pending") continue;
-    if (typeof row.dueAt !== "string") return { overdue: 0, scheduled: 0, status: "unverified" };
-    const at = Date.parse(row.dueAt);
-    if (!Number.isFinite(at)) return { overdue: 0, scheduled: 0, status: "unverified" };
-    scheduled += 1;
-    if (at <= nowMs) overdue += 1;
-  }
-  return { overdue, scheduled, status: "ok" };
-}
+export const readStrictBacklogCounts = inspectDeliverySafetyBacklog;
 
 export async function inspectOrphanApiProcesses(
   platform: NodeJS.Platform,
@@ -264,46 +195,6 @@ async function defaultArtifactDigest(workspaceDir: string, run: ReadOnlyCommandR
   }
 }
 
-function parseProviderFlag(args: readonly string[]): string | undefined {
-  for (let index = 3; index < args.length; index += 1) {
-    const arg = args[index] ?? "";
-    if (arg === "--provider") return args[index + 1]?.trim() || undefined;
-    if (arg.startsWith("--provider=")) return arg.slice("--provider=".length).trim() || undefined;
-  }
-  return undefined;
-}
-
-function isExplicitlyDisabled(value: string | undefined): boolean {
-  return value !== undefined && FALSE_VALUES.has(value.trim().toLowerCase());
-}
-
-function strictDaemonConfigProvider(file: string): { readonly status: "ok" | "unverified"; readonly provider?: string } {
-  // `readDaemonConfig` is read-only, but it intentionally collapses malformed
-  // input to defaults. The caller performs a raw strict check first.
-  try {
-    const raw = requireReadFileSync(file);
-    if (raw === undefined) return { status: "ok" };
-    const parsed = JSON.parse(raw) as unknown;
-    if (!isRecord(parsed)) return { status: "unverified" };
-    if (parsed.provider !== undefined && typeof parsed.provider !== "string") return { status: "unverified" };
-    const config = readDaemonConfig(file);
-    return { status: "ok", ...(config.provider ? { provider: config.provider } : {}) };
-  } catch {
-    return { status: "unverified" };
-  }
-}
-
-// Sync only because the existing daemon config primitive is sync; no mutation,
-// quarantine, or path-bearing error leaves this module.
-function requireReadFileSync(file: string): string | undefined {
-  try {
-    return readFileSync(file, "utf8");
-  } catch (cause) {
-    if (cause && typeof cause === "object" && "code" in cause && cause.code === "ENOENT") return undefined;
-    throw cause;
-  }
-}
-
 function maxEvidenceAgeMs(value: number | undefined): number {
   const hours = value ?? DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_HOURS;
   if (!Number.isFinite(hours) || hours <= 0 || hours > DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_HOURS) {
@@ -346,93 +237,20 @@ export async function collectDeliverySafetyObservation(
     readonly resident?: ResidentDaemonInspection;
   } = {}
 ): Promise<DeliveryQualificationObservation> {
-  const resident = options.resident ?? await inspectResidentDaemonRuntime(dependencies);
-  const nowMs = options.nowMs ?? (dependencies.now ?? (() => new Date()))().getTime();
-  const { effectiveRuntimeEnv, diskArguments, liveArguments, liveEnvironment } = resident;
-  const configResult = strictDaemonConfigProvider(resolveDaemonConfigFile(effectiveRuntimeEnv));
-  const providerFromArguments = parseProviderFlag(liveArguments ?? diskArguments ?? []);
-  const providerFromEnvironment = effectiveRuntimeEnv.MUSE_PROACTIVE_PROVIDER?.trim();
-  const providerFromConfig = configResult.provider?.trim();
-  const provider = (
-    providerFromArguments
-    ?? providerFromEnvironment
-    ?? providerFromConfig
-    ?? "log"
-  ).trim();
-  const providerResolutionSource: DeliveryQualificationObservation["providerResolutionSource"] =
-    providerFromArguments !== undefined
-      ? liveArguments !== undefined
-        ? "live-arguments"
-        : "persisted-arguments"
-      : providerFromEnvironment !== undefined
-        ? "effective-runtime-environment"
-        : providerFromConfig !== undefined
-          ? "daemon-config"
-          : "default";
-  const providerLockLog = effectiveRuntimeEnv.MUSE_DAEMON_PROVIDER_LOCK?.trim() === "log";
-  const providerLockDecision = reconcileDaemonProviderLock(
-    providerLockLog ? "log" : undefined,
-    provider
-  );
-  const environmentProbe: DeliveryQualificationObservation["environmentProbe"] = liveEnvironment
-    && liveArguments
-    && resident.observation.liveDefinitionMatches
-    && configResult.status === "ok"
-    ? "ok"
-    : "unverified";
-  const [followups, reminders, selfLearningHold, pendingApprovals] = await Promise.all([
-    readStrictBacklogCounts(resolveFollowupsFile(effectiveRuntimeEnv), "followups", nowMs),
-    readStrictBacklogCounts(resolveRemindersFile(effectiveRuntimeEnv), "reminders", nowMs),
-    inspectQualificationLearningHold(
-      resolveQualificationLearningHoldFile(effectiveRuntimeEnv)
-    ).catch((): QualificationLearningHoldInspection => ({
-      engaged: true,
-      failure: "unreadable",
-      state: "invalid"
-    })),
-    inspectPendingApprovalsSource(resolvePendingApprovalsFile(effectiveRuntimeEnv)).catch(() => ({
-      errorCode: "io-error" as const,
-      result: "unreadable" as const
-    }))
-  ]);
-  const pendingDrafts = pendingApprovals.result === "available"
-    && pendingApprovals.value.excludedCount === 0
-    ? { count: pendingApprovals.value.pending.length, status: "ok" as const }
-    : { count: 0, status: "unverified" as const };
-  const observationWithoutResult: Omit<DeliveryQualificationObservation, "result"> = {
-    baseProviderLocalLog: provider === "log",
-    brakeEngaged: resolveDaemonDeliveryBrake(effectiveRuntimeEnv).engaged,
-    environmentProbe,
-    followups,
-    localOnly: isLocalOnlyEnabled(effectiveRuntimeEnv),
-    pendingDrafts,
-    providerLockDecision,
-    providerLockLog,
-    providerResolutionSource,
-    reminders,
-    selfLearnDisabled: isExplicitlyDisabled(effectiveRuntimeEnv.MUSE_SELFLEARN_ENABLED),
-    selfLearningHold
-  };
-  const result = classifyDeliverySafety({
-    baseProviderLocal: observationWithoutResult.baseProviderLocalLog,
-    deliveryBrake: observationWithoutResult.brakeEngaged ? "engaged" : "released",
-    environmentProbe: observationWithoutResult.environmentProbe,
-    followups: observationWithoutResult.followups,
-    localOnlyEffective: observationWithoutResult.localOnly,
-    localOnlyPersisted: observationWithoutResult.localOnly,
-    pendingDrafts: observationWithoutResult.pendingDrafts,
-    providerLock: {
-      localOnly: observationWithoutResult.providerLockLog,
-      mismatch: observationWithoutResult.providerLockDecision.mismatchReason !== null,
-      observation: observationWithoutResult.environmentProbe === "ok" ? "verified" : "unverified"
-    },
-    reminders: observationWithoutResult.reminders,
-    selfLearnDisabled: observationWithoutResult.selfLearnDisabled,
-    selfLearningHold: observationWithoutResult.selfLearningHold.state === "invalid"
-      ? "unverified"
-      : observationWithoutResult.selfLearningHold.engaged ? "engaged" : "released"
+  const residentInspection = options.resident
+    ? async () => options.resident!
+    : dependencies.residentInspection
+      ?? (() => inspectResidentDaemon(dependencies));
+  const nowMs = options.nowMs;
+  const diagnostic = await collectDeliverySafetyDiagnostic({
+    env: dependencies.env,
+    now: nowMs === undefined
+      ? dependencies.now
+      : () => new Date(nowMs),
+    residentInspection
   });
-  return { ...observationWithoutResult, result };
+  const { runtime: _runtime, ...delivery } = diagnostic;
+  return delivery;
 }
 
 /** One resident snapshot reduced to the two privacy-safe Doctor projections. */
@@ -442,11 +260,16 @@ export async function collectResidentDeliverySafety(
   readonly delivery: DeliveryQualificationObservation;
   readonly runtime: RuntimeQualificationObservation;
 }> {
-  const resident = await inspectResidentDaemonRuntime(dependencies);
-  const delivery = await collectDeliverySafetyObservation(dependencies, { resident });
+  const diagnostic = await collectDeliverySafetyDiagnostic({
+    env: dependencies.env,
+    now: dependencies.now,
+    residentInspection: dependencies.residentInspection
+      ?? (() => inspectResidentDaemon(dependencies))
+  });
+  const { runtime, ...delivery } = diagnostic;
   return {
     delivery,
-    runtime: { ...resident.observation, health: resident.health }
+    runtime
   };
 }
 
@@ -472,9 +295,11 @@ export async function collectPersonalAgentQualificationObservations(
   const artifactDigestPromise = dependencies.artifactDigest
     ? dependencies.artifactDigest(workspaceDir)
     : defaultArtifactDigest(workspaceDir, run);
-  const resident = await inspectResidentDaemonRuntime(dependencies);
-  const [delivery, initialCapabilityEvidence, currentArtifacts] = await Promise.all([
-    collectDeliverySafetyObservation(dependencies, { nowMs, resident }),
+  const [residentDelivery, initialCapabilityEvidence, currentArtifacts] = await Promise.all([
+    collectResidentDeliverySafety({
+      ...dependencies,
+      now: () => new Date(nowMs)
+    }),
     initialCapabilityEvidencePromise,
     artifactDigestPromise
   ]);
@@ -497,8 +322,8 @@ export async function collectPersonalAgentQualificationObservations(
       currentSourceStart,
       maxAgeMs: maxEvidenceAgeMs(options.maxEvidenceAgeHours)
     },
-    delivery,
+    delivery: residentDelivery.delivery,
     now: nowDate,
-    runtime: { ...resident.observation, health: resident.health }
+    runtime: residentDelivery.runtime
   };
 }

@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ResidentDaemonInspection } from "@muse/runtime-state";
-import { DELIVERY_SAFETY_REASON } from "@muse/shared";
+import { DELIVERY_SAFETY_REASON, type ReadOnlySourceInspection } from "@muse/shared";
+import type { PendingApprovalSourceSnapshot } from "@muse/messaging";
+import type { QualificationLearningHoldInspection } from "@muse/stores";
 
 import {
   collectDeliverySafety,
+  collectDeliverySafetyDiagnostic,
   createApiServerOptions,
   type DeliverySafetyCollectorDependencies,
   type MuseEnvironment
@@ -38,18 +41,20 @@ function syntheticDependencies(
     readonly followups?: string;
     readonly reminders?: string;
     readonly inspection?: ResidentDaemonInspection;
+    readonly hold?: QualificationLearningHoldInspection;
+    readonly pending?: ReadOnlySourceInspection<PendingApprovalSourceSnapshot>;
   } = {}
 ): DeliverySafetyCollectorDependencies {
   return {
     env,
-    inspectLearningHold: async () => ({ engaged: true, record: {
+    inspectLearningHold: async () => options.hold ?? ({ engaged: true, record: {
       active: true,
       activatedAt: NOW.toISOString(),
       holdId: "synthetic-hold",
       reason: "personal-agent-qualification",
       schemaVersion: 1
     }, state: "active" }),
-    inspectPendingApprovals: async () => ({
+    inspectPendingApprovals: async () => options.pending ?? ({
       result: "available",
       value: { excludedCount: 0, pending: [] }
     }),
@@ -147,6 +152,145 @@ describe("collectDeliverySafety", () => {
     expect(residentFailure.status).toBe("unverified");
     expect(sourceFailure.status).toBe("unverified");
     expect(JSON.stringify([residentFailure, sourceFailure])).not.toMatch(/raw-(?:owner|source)-secret/u);
+  });
+
+  it.each([
+    {
+      source: "live-arguments",
+      setup: (env: MuseEnvironment) => resident(env, {
+        diskArguments: ["/node", "/muse.js", "daemon", "--provider", "disk"],
+        liveArguments: ["/node", "/muse.js", "daemon", "--provider", "live"]
+      }),
+      value: "live"
+    },
+    {
+      source: "persisted-arguments",
+      setup: (env: MuseEnvironment) => ({
+        ...resident(env, { diskArguments: ["/node", "/muse.js", "daemon", "--provider", "disk"] }),
+        liveArguments: ["/node", "/muse.js", "daemon"]
+      }),
+      value: "disk"
+    },
+    {
+      source: "effective-runtime-environment",
+      setup: (env: MuseEnvironment) => ({
+        ...resident(env),
+        diskArguments: ["/node", "/muse.js", "daemon"],
+        liveArguments: ["/node", "/muse.js", "daemon"]
+      }),
+      value: "environment"
+    },
+    {
+      source: "daemon-config",
+      setup: (env: MuseEnvironment) => ({
+        ...resident(env),
+        diskArguments: ["/node", "/muse.js", "daemon"],
+        effectiveRuntimeEnv: { ...env, MUSE_PROACTIVE_PROVIDER: undefined },
+        liveArguments: ["/node", "/muse.js", "daemon"]
+      }),
+      value: "config"
+    },
+    {
+      source: "default",
+      setup: (env: MuseEnvironment) => ({
+        ...resident(env),
+        diskArguments: ["/node", "/muse.js", "daemon"],
+        effectiveRuntimeEnv: { ...env, MUSE_PROACTIVE_PROVIDER: undefined },
+        liveArguments: ["/node", "/muse.js", "daemon"]
+      }),
+      value: "log"
+    }
+  ] as const)("uses $source in strict provider precedence", async ({ setup, source, value }) => {
+    const env = { ...greenEnvironment(), MUSE_PROACTIVE_PROVIDER: "environment" };
+    const diagnostic = await collectDeliverySafetyDiagnostic(syntheticDependencies(env, {
+      daemonConfig: source === "default" ? undefined : '{"provider":"config"}',
+      inspection: setup(env) as ResidentDaemonInspection
+    }));
+
+    expect(diagnostic.providerResolutionSource).toBe(source);
+    expect(diagnostic.providerLockDecision.resolvedAdapterId).toBe(value);
+  });
+
+  it.each([" ", "telegram"])("treats a %j provider lock as ambiguous and unverified", async (lock) => {
+    const env = { ...greenEnvironment(), MUSE_DAEMON_PROVIDER_LOCK: lock };
+    const diagnostic = await collectDeliverySafetyDiagnostic(syntheticDependencies(env));
+
+    expect(diagnostic.environmentProbe).toBe("unverified");
+    expect(diagnostic.providerLockLog).toBe(false);
+    expect(diagnostic.result.reasonCodes).toContain(DELIVERY_SAFETY_REASON.providerLockUnverified);
+  });
+
+  it("counts positive backlogs and treats an occurrence exactly at now as overdue", async () => {
+    const diagnostic = await collectDeliverySafetyDiagnostic(syntheticDependencies(greenEnvironment(), {
+      followups: JSON.stringify({ followups: [
+        { scheduledFor: NOW.toISOString(), status: "scheduled" },
+        { scheduledFor: "2026-07-28T00:00:00Z", status: "scheduled" }
+      ] }),
+      reminders: JSON.stringify({ reminders: [
+        { dueAt: NOW.toISOString(), status: "pending" },
+        { dueAt: "2026-07-26T00:00:00Z", status: "pending" }
+      ] })
+    }));
+
+    expect(diagnostic.followups).toEqual({ overdue: 1, scheduled: 2, status: "ok" });
+    expect(diagnostic.reminders).toEqual({ overdue: 2, scheduled: 2, status: "ok" });
+  });
+
+  it.each([
+    ["active", { engaged: true, record: {
+      active: true, activatedAt: NOW.toISOString(), holdId: "active-hold",
+      reason: "personal-agent-qualification", schemaVersion: 1
+    }, state: "active" }, undefined],
+    ["released", { engaged: false, state: "inactive" }, DELIVERY_SAFETY_REASON.selfLearningHoldMissing],
+    ["invalid", { engaged: true, failure: "invalid-schema", state: "invalid" }, DELIVERY_SAFETY_REASON.selfLearningHoldUnverified],
+    ["missing", { engaged: false, state: "inactive" }, DELIVERY_SAFETY_REASON.selfLearningHoldMissing]
+  ] as const)("preserves %s learning-hold diagnostics", async (_name, hold, reason) => {
+    const diagnostic = await collectDeliverySafetyDiagnostic(syntheticDependencies(greenEnvironment(), {
+      hold: hold as QualificationLearningHoldInspection
+    }));
+
+    expect(diagnostic.selfLearningHold).toEqual(hold);
+    if (reason) expect(diagnostic.result.reasonCodes).toContain(reason);
+    else expect(diagnostic.result.reasonCodes).not.toContain(DELIVERY_SAFETY_REASON.selfLearningHoldMissing);
+  });
+
+  it.each([
+    ["available", { result: "available", value: { excludedCount: 0, pending: [] } }, "ok"],
+    ["missing", { errorCode: "missing", result: "absent" }, "unverified"],
+    ["unreadable", { errorCode: "io-error", result: "unreadable" }, "unverified"],
+    ["excluded", { result: "available", value: { excludedCount: 1, pending: [] } }, "unverified"]
+  ] as const)("reduces a %s pending source without exposing records", async (_name, pending, status) => {
+    const diagnostic = await collectDeliverySafetyDiagnostic(syntheticDependencies(greenEnvironment(), {
+      pending: pending as ReadOnlySourceInspection<PendingApprovalSourceSnapshot>
+    }));
+
+    expect(diagnostic.pendingDrafts.status).toBe(status);
+    expect(JSON.stringify(diagnostic)).not.toMatch(/destination|payload|recipient/iu);
+  });
+
+  it("suppresses delivery-dependent failures under the brake but never suppresses a lock mismatch", async () => {
+    const env = {
+      ...greenEnvironment(),
+      MUSE_DAEMON_DELIVERY_ENABLED: "false",
+      MUSE_LOCAL_ONLY: "false",
+      MUSE_SELFLEARN_ENABLED: "true"
+    };
+    const inspection = resident(env, {
+      liveArguments: ["/node", "/muse.js", "daemon", "--provider", "remote"]
+    });
+    const result = await collectDeliverySafety(syntheticDependencies(env, {
+      hold: { engaged: false, state: "inactive" },
+      inspection
+    }));
+
+    expect(result.status).toBe("failed");
+    expect(result.reasonCodes).toContain(DELIVERY_SAFETY_REASON.providerLockMismatch);
+    expect(result.reasonCodes).not.toEqual(expect.arrayContaining([
+      DELIVERY_SAFETY_REASON.localOnlyMissing,
+      DELIVERY_SAFETY_REASON.selfLearnEnabled,
+      DELIVERY_SAFETY_REASON.deliveryRouteNotLocal,
+      DELIVERY_SAFETY_REASON.selfLearningHoldMissing
+    ]));
   });
 });
 
