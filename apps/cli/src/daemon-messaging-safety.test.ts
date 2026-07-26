@@ -4,7 +4,12 @@ import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage
 import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 
-import { lockDaemonMessagingRegistry, resolveDaemonProviderLock } from "./daemon-messaging-safety.js";
+import {
+  DAEMON_PROVIDER_LOCK_MISMATCH_REASON,
+  lockDaemonMessagingRegistry,
+  reconcileDaemonProviderLock,
+  resolveDaemonProviderLock
+} from "./daemon-messaging-safety.js";
 
 function provider(id: string, send: (message: OutboundMessage) => Promise<OutboundReceipt>): MessagingProvider {
   return {
@@ -102,6 +107,24 @@ describe("daemon messaging provider lock", () => {
     expect(resolveDaemonProviderLock({})).toBeUndefined();
     expect(lockDaemonMessagingRegistry(registry, undefined)).toBe(registry);
     expect(() => resolveDaemonProviderLock({ MUSE_DAEMON_PROVIDER_LOCK: "telegram" })).toThrow(/only supports 'log'/iu);
+  });
+
+  it("reports the explicit allowed set, resolved adapter, and deterministic mismatch reason", () => {
+    expect(reconcileDaemonProviderLock("log", "log")).toEqual({
+      allowedProviderIds: ["log"],
+      mismatchReason: null,
+      resolvedAdapterId: "log"
+    });
+    expect(reconcileDaemonProviderLock("log", "telegram")).toEqual({
+      allowedProviderIds: ["log"],
+      mismatchReason: DAEMON_PROVIDER_LOCK_MISMATCH_REASON,
+      resolvedAdapterId: "telegram"
+    });
+    expect(reconcileDaemonProviderLock(undefined, "telegram")).toEqual({
+      allowedProviderIds: null,
+      mismatchReason: null,
+      resolvedAdapterId: "telegram"
+    });
   });
 
   it("structurally wires every registry-capable daemon tick through the one locked registry", () => {

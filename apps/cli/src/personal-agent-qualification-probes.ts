@@ -13,6 +13,7 @@ import {
   type ResidentDaemonInspection
 } from "@muse/runtime-state";
 import { readDaemonConfig, resolveDaemonConfigFile } from "./commands-daemon-config.js";
+import { reconcileDaemonProviderLock } from "./daemon-messaging-safety.js";
 import {
   DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_HOURS,
   type ArtifactEvidenceSnapshot,
@@ -347,10 +348,30 @@ export async function collectPersonalAgentQualificationObservations(
   const { effectiveRuntimeEnv, diskArguments, liveArguments, liveEnvironment } = resident;
 
   const configResult = strictDaemonConfigProvider(resolveDaemonConfigFile(effectiveRuntimeEnv));
-  const provider = parseProviderFlag(liveArguments ?? diskArguments ?? [])
-    ?? effectiveRuntimeEnv.MUSE_PROACTIVE_PROVIDER?.trim()
-    ?? configResult.provider?.trim()
-    ?? "log";
+  const providerFromArguments = parseProviderFlag(liveArguments ?? diskArguments ?? []);
+  const providerFromEnvironment = effectiveRuntimeEnv.MUSE_PROACTIVE_PROVIDER?.trim();
+  const providerFromConfig = configResult.provider?.trim();
+  const provider = (
+    providerFromArguments
+    ?? providerFromEnvironment
+    ?? providerFromConfig
+    ?? "log"
+  ).trim();
+  const providerResolutionSource: DeliveryQualificationObservation["providerResolutionSource"] =
+    providerFromArguments !== undefined
+      ? liveArguments !== undefined
+        ? "live-arguments"
+        : "persisted-arguments"
+      : providerFromEnvironment !== undefined
+        ? "effective-runtime-environment"
+        : providerFromConfig !== undefined
+          ? "daemon-config"
+          : "default";
+  const providerLockLog = effectiveRuntimeEnv.MUSE_DAEMON_PROVIDER_LOCK?.trim() === "log";
+  const providerLockDecision = reconcileDaemonProviderLock(
+    providerLockLog ? "log" : undefined,
+    provider
+  );
   const environmentProbe: DeliveryQualificationObservation["environmentProbe"] = liveEnvironment
     && liveArguments
     && resident.observation.liveDefinitionMatches
@@ -388,7 +409,9 @@ export async function collectPersonalAgentQualificationObservations(
       environmentProbe,
       followups,
       localOnly: isLocalOnlyEnabled(effectiveRuntimeEnv),
-      providerLockLog: effectiveRuntimeEnv.MUSE_DAEMON_PROVIDER_LOCK?.trim() === "log",
+      providerLockDecision,
+      providerLockLog,
+      providerResolutionSource,
       reminders,
       selfLearnDisabled: isExplicitlyDisabled(effectiveRuntimeEnv.MUSE_SELFLEARN_ENABLED)
     },

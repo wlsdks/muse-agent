@@ -133,7 +133,12 @@ import type { ProgramIO } from "./program.js";
 import { isGmailConfigured } from "./resolve-gmail-provider.js";
 import { DaemonStopSignal, DEFAULT_DAEMON_INTERVAL_MS, runDaemonLoop } from "./commands-daemon-loop.js";
 import { defaultChromeConnection, defaultFollowupModel, defaultKnowledgeEnrich, type FollowupModel } from "./commands-daemon-connections.js";
-import { lockDaemonMessagingRegistry, resolveDaemonProviderLock, type DaemonProviderLock } from "./daemon-messaging-safety.js";
+import {
+  lockDaemonMessagingRegistry,
+  reconcileDaemonProviderLock,
+  resolveDaemonProviderLock,
+  type DaemonProviderLock
+} from "./daemon-messaging-safety.js";
 import {
   acquireResidentWriterLease,
   RESIDENT_WRITER_LEASE_REASON,
@@ -1664,6 +1669,21 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           await recordDaemonStartupFailure(io, e, helpers, cause, { domain: "config" });
         }
         throw cause;
+      }
+      const providerLockDecision = reconcileDaemonProviderLock(providerLock, provider);
+      if (providerLockDecision.mismatchReason !== null) {
+        if (residentExecutionRequested) {
+          await recordDaemonStartupFailure(
+            io,
+            e,
+            helpers,
+            new Error(providerLockDecision.mismatchReason),
+            { domain: "config" }
+          );
+        }
+        io.stderr(`muse daemon refused: ${providerLockDecision.mismatchReason}\n`);
+        process.exitCode = 1;
+        return;
       }
       let baseMessagingRegistry: MessagingProviderRegistry;
       try {

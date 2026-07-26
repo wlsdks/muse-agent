@@ -14,6 +14,10 @@ import {
   type ResidentDaemonHealthResult,
   type ResidentDaemonObservation
 } from "@muse/runtime-state";
+import {
+  DAEMON_PROVIDER_LOCK_MISMATCH_REASON,
+  type DaemonProviderLockDecision
+} from "./daemon-messaging-safety.js";
 
 export const PERSONAL_AGENT_QUALIFICATION_SCHEMA_VERSION = 2 as const;
 export const AGENT_CAPABILITY_MATRIX_ID = "muse-agent-capability-v1" as const;
@@ -66,6 +70,7 @@ export const QUALIFICATION_REASON = {
   daemonResidentProcessMissing: RESIDENT_DAEMON_HEALTH_REASON.residentProcessMissing,
   deliveryBrakeEngaged: "delivery-brake-engaged",
   deliveryEnvironmentUnverified: "delivery-environment-unverified",
+  deliveryProviderLockMismatch: DAEMON_PROVIDER_LOCK_MISMATCH_REASON,
   deliveryProviderLockMissing: "delivery-provider-lock-not-log",
   deliveryRouteNotLocalLog: "delivery-route-not-local-log",
   followupBacklogUnverified: "followup-backlog-unverified",
@@ -154,12 +159,21 @@ export interface BacklogCountObservation {
   readonly overdue: number;
 }
 
+export type DaemonProviderResolutionSource =
+  | "live-arguments"
+  | "persisted-arguments"
+  | "effective-runtime-environment"
+  | "daemon-config"
+  | "default";
+
 export interface DeliveryQualificationObservation {
   readonly environmentProbe: "ok" | "unverified";
   readonly localOnly: boolean;
   readonly selfLearnDisabled: boolean;
   readonly baseProviderLocalLog: boolean;
   readonly providerLockLog: boolean;
+  readonly providerLockDecision: DaemonProviderLockDecision;
+  readonly providerResolutionSource: DaemonProviderResolutionSource;
   readonly brakeEngaged: boolean;
   readonly followups: BacklogCountObservation;
   readonly reminders: BacklogCountObservation;
@@ -198,6 +212,10 @@ export interface DeliveryGateEvidence {
   readonly selfLearnDisabled: boolean;
   readonly baseProviderLocalLog: boolean;
   readonly providerLockLog: boolean;
+  readonly providerLockAllowedProviderIds: readonly string[] | null;
+  readonly providerLockMismatchReason: DaemonProviderLockDecision["mismatchReason"];
+  readonly resolvedProviderId: string;
+  readonly resolvedProviderSource: DaemonProviderResolutionSource;
   readonly deliveryBrakeEngaged: boolean;
   readonly scheduledFollowups: number;
   readonly overdueFollowups: number;
@@ -607,6 +625,9 @@ function assessDelivery(observation: DeliveryQualificationObservation): Qualific
   if (observation.environmentProbe !== "ok") unverified.push(QUALIFICATION_REASON.deliveryEnvironmentUnverified);
   if (observation.followups.status !== "ok") unverified.push(QUALIFICATION_REASON.followupBacklogUnverified);
   if (observation.reminders.status !== "ok") unverified.push(QUALIFICATION_REASON.reminderBacklogUnverified);
+  if (observation.providerLockDecision.mismatchReason !== null) {
+    failed.push(QUALIFICATION_REASON.deliveryProviderLockMismatch);
+  }
 
   if (observation.brakeEngaged) {
     unverified.push(QUALIFICATION_REASON.deliveryBrakeEngaged);
@@ -626,7 +647,11 @@ function assessDelivery(observation: DeliveryQualificationObservation): Qualific
       localOnlyPersisted: observation.localOnly,
       overdueFollowups: observation.followups.overdue,
       overdueReminders: observation.reminders.overdue,
+      providerLockAllowedProviderIds: observation.providerLockDecision.allowedProviderIds,
       providerLockLog: observation.providerLockLog,
+      providerLockMismatchReason: observation.providerLockDecision.mismatchReason,
+      resolvedProviderId: observation.providerLockDecision.resolvedAdapterId,
+      resolvedProviderSource: observation.providerResolutionSource,
       scheduledFollowups: observation.followups.scheduled,
       scheduledReminders: observation.reminders.scheduled,
       selfLearnDisabled: observation.selfLearnDisabled

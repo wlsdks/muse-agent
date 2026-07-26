@@ -1110,6 +1110,28 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(telegramSent).toHaveLength(0);
   });
 
+  it("rejects a configured provider that mismatches the persisted lock before registry construction", async () => {
+    const env: NodeJS.ProcessEnv = {
+      ...tmpEnv(),
+      MUSE_DAEMON_PROVIDER_LOCK: "log"
+    };
+    const registry = new MessagingProviderRegistry([
+      capturingProvider([], "log"),
+      capturingProvider([], "telegram")
+    ]);
+    const buildMessagingRegistry = vi.fn(() => registry);
+
+    const result = await runDaemon(["--once", "--provider", "telegram"], {
+      buildMessagingRegistry,
+      env,
+      registry
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("delivery-provider-lock-adapter-mismatch");
+    expect(buildMessagingRegistry).not.toHaveBeenCalled();
+  });
+
   it("--once also fires a DUE followup through the same launcher + sink", async () => {
     const env = tmpEnv();
     writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");

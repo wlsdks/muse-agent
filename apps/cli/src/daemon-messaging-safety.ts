@@ -1,6 +1,14 @@
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 export type DaemonProviderLock = "log";
+export const DAEMON_PROVIDER_LOCK_MISMATCH_REASON = "delivery-provider-lock-adapter-mismatch" as const;
+const LOG_ONLY_ALLOWED_PROVIDER_IDS = Object.freeze(["log"] as const);
+
+export interface DaemonProviderLockDecision {
+  readonly allowedProviderIds: readonly string[] | null;
+  readonly mismatchReason: typeof DAEMON_PROVIDER_LOCK_MISMATCH_REASON | null;
+  readonly resolvedAdapterId: string;
+}
 
 export function resolveDaemonProviderLock(
   env: Readonly<Record<string, string | undefined>>
@@ -9,6 +17,22 @@ export function resolveDaemonProviderLock(
   if (!raw) return undefined;
   if (raw === "log") return "log";
   throw new Error("MUSE_DAEMON_PROVIDER_LOCK only supports 'log'");
+}
+
+export function reconcileDaemonProviderLock(
+  providerLock: DaemonProviderLock | undefined,
+  resolvedAdapterId: string
+): DaemonProviderLockDecision {
+  const allowedProviderIds = providerLock === "log"
+    ? LOG_ONLY_ALLOWED_PROVIDER_IDS
+    : null;
+  return {
+    allowedProviderIds,
+    mismatchReason: providerLock !== undefined && resolvedAdapterId !== providerLock
+      ? DAEMON_PROVIDER_LOCK_MISMATCH_REASON
+      : null,
+    resolvedAdapterId
+  };
 }
 
 /**
@@ -25,8 +49,9 @@ export function lockDaemonMessagingRegistry(
     get(target, property) {
       if (property === "send") {
         return async (providerId: string, message: Parameters<MessagingProviderRegistry["send"]>[1]) => {
-          if (providerId !== providerLock) {
-            throw new Error("daemon provider lock rejected a non-log provider");
+          const decision = reconcileDaemonProviderLock(providerLock, providerId);
+          if (decision.mismatchReason !== null) {
+            throw new Error(`daemon provider lock rejected: ${decision.mismatchReason}`);
           }
           return target.send(providerId, message);
         };

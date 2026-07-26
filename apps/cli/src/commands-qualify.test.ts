@@ -67,7 +67,13 @@ function observations(runtime: PersonalAgentQualificationObservations["runtime"]
       environmentProbe: "ok",
       followups: { overdue: 0, scheduled: 0, status: "ok" },
       localOnly: true,
+      providerLockDecision: {
+        allowedProviderIds: ["log"],
+        mismatchReason: null,
+        resolvedAdapterId: "log"
+      },
       providerLockLog: true,
+      providerResolutionSource: "live-arguments",
       reminders: { overdue: 0, scheduled: 0, status: "ok" },
       selfLearnDisabled: true
     },

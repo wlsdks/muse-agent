@@ -443,9 +443,16 @@ describe("qualification collector integration", () => {
     expect(mismatchReport.status).toBe("not-qualified");
     expect(mismatchReport.gates[1].reasonCodes).toContain("daemon-live-definition-mismatch");
     expect(mismatchReport.gates[2].status).toBe("failed");
+    expect(mismatchReport.gates[2].reasonCodes).toContain("delivery-provider-lock-adapter-mismatch");
     expect(mismatchReport.gates[2].reasonCodes).toContain("delivery-route-not-local-log");
     expect(mismatchReport.gates[2].reasonCodes).toContain("delivery-environment-unverified");
     expect(mismatchReport.gates[2].evidence.baseProviderLocalLog).toBe(false);
+    expect(mismatchReport.gates[2].evidence).toMatchObject({
+      providerLockAllowedProviderIds: ["log"],
+      providerLockMismatchReason: "delivery-provider-lock-adapter-mismatch",
+      resolvedProviderId: "telegram",
+      resolvedProviderSource: "live-arguments"
+    });
   });
 
   it("keeps missing capability evidence unverified instead of borrowing a documented baseline", async () => {

@@ -117,7 +117,13 @@ function passingObservations(): PersonalAgentQualificationObservations {
       environmentProbe: "ok",
       followups: { overdue: 0, scheduled: 0, status: "ok" },
       localOnly: true,
+      providerLockDecision: {
+        allowedProviderIds: ["log"],
+        mismatchReason: null,
+        resolvedAdapterId: "log"
+      },
       providerLockLog: true,
+      providerResolutionSource: "live-arguments",
       reminders: { overdue: 0, scheduled: 0, status: "ok" },
       selfLearnDisabled: true
     },
@@ -476,6 +482,37 @@ describe("personal-agent qualification scorer", () => {
       status: "unverified"
     });
     expect(report.gates[2].evidence.overdueFollowups).toBe(26);
+  });
+
+  it("fails an explicit provider-lock adapter mismatch even while the brake is engaged", () => {
+    const base = passingObservations();
+    const report = qualifyPersonalAgent({
+      ...base,
+      delivery: {
+        ...base.delivery,
+        baseProviderLocalLog: false,
+        brakeEngaged: true,
+        providerLockDecision: {
+          allowedProviderIds: ["log"],
+          mismatchReason: "delivery-provider-lock-adapter-mismatch",
+          resolvedAdapterId: "telegram"
+        }
+      }
+    });
+
+    expect(report.gates[2]).toMatchObject({
+      evidence: {
+        providerLockAllowedProviderIds: ["log"],
+        providerLockMismatchReason: "delivery-provider-lock-adapter-mismatch",
+        resolvedProviderId: "telegram",
+        resolvedProviderSource: "live-arguments"
+      },
+      reasonCodes: [
+        "delivery-provider-lock-adapter-mismatch",
+        "delivery-brake-engaged"
+      ],
+      status: "failed"
+    });
   });
 
   it("fails active delivery on every required safety boundary and exposes counts only", () => {
