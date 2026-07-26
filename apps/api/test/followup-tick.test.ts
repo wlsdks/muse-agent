@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -17,6 +17,7 @@ interface MessageSent {
 
 function fakeRegistry(sent: MessageSent[]): MessagingProviderRegistry {
   return {
+    has: (providerId: string) => providerId === "telegram",
     send: async (providerId: string, message: { destination: string; text: string }) => {
       sent.push({ destination: message.destination, providerId, text: message.text });
       return { destination: message.destination, messageId: "stub", providerId };
@@ -31,9 +32,9 @@ function staticModelProvider(text: string): ProactiveModelProviderLike {
 function seedDueFollowup(file: string): void {
   writeFileSync(file, JSON.stringify({
     followups: [{
-      createdAt: "2026-05-10T00:00:00Z",
+      createdAt: "2026-05-10T00:00:00.000Z",
       id: "fu_overdue",
-      scheduledFor: "2026-05-11T07:30:00Z",
+      scheduledFor: "2026-05-11T07:30:00.000Z",
       status: "scheduled",
       summary: "Check on the Q3 budget memo",
       userId: "stark"
@@ -45,10 +46,12 @@ describe("startFollowupTick", () => {
   it("tickOnce synthesizes, delivers, and marks fired", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-followup-tick-"));
     const file = join(dir, "followups.json");
+    const effectFile = join(dir, "outbound-effects.json");
     seedDueFollowup(file);
     const sent: MessageSent[] = [];
     const handle = startFollowupTick({
       destination: "@me",
+      effectFile,
       followupsFile: file,
       model: "gemini-2.0-flash",
       modelProvider: staticModelProvider("Quick check on the Q3 budget memo — any blockers?"),
@@ -67,6 +70,7 @@ describe("startFollowupTick", () => {
         followups: Array<{ id: string; status: string }>;
       };
       expect(after.followups[0]?.status).toBe("fired");
+      expect(existsSync(effectFile)).toBe(true);
       // Second tick is a no-op.
       await handle.tickOnce();
       expect(sent).toHaveLength(1);

@@ -33,9 +33,9 @@ const lockPath = (): string => `${followupsFile}.firing.lock`;
 
 function makeFollowup(id: string, scheduledFor: string): PersistedFollowup {
   return {
-    createdAt: "2026-01-01T00:00:00Z",
+    createdAt: "2026-01-01T00:00:00.000Z",
     id,
-    scheduledFor,
+    scheduledFor: new Date(scheduledFor).toISOString(),
     status: "scheduled",
     summary: `check on ${id}`,
     userId: "stark"
@@ -122,7 +122,7 @@ describe("runDueFollowups — cross-process firing lock (two daemons, same follo
     expect(await lockFileExists()).toBe(false);
   });
 
-  it("releases the lock after a provider-failure tick — the next tick can retry rather than being permanently blocked", async () => {
+  it("releases the lock after an unknown provider outcome without retrying it on the next tick", async () => {
     await seedFollowups("1970-01-01T00:00:00Z");
     const sent: OutboundMessage[] = [];
     const summary = await runDueFollowups({
@@ -145,7 +145,9 @@ describe("runDueFollowups — cross-process firing lock (two daemons, same follo
       providerId: "telegram",
       registry: new MessagingProviderRegistry([capturingProvider(sent)])
     });
-    expect(retry.delivered).toBe(1);
+    expect(retry.delivered).toBe(0);
+    expect(retry.errors[0]).toContain("reconcile manually");
+    expect(sent).toEqual([]);
   });
 
   it("a STALE lock left behind by a crashed daemon does not permanently block firing — the tick proceeds", async () => {
@@ -187,5 +189,30 @@ describe("runDueFollowups — cross-process firing lock (two daemons, same follo
     expect(sent).toEqual([]);
     const after = await readFollowups(followupsFile);
     expect(after.every((entry) => entry.status === "scheduled")).toBe(true); // untouched
+  });
+
+  it("a broken firing-lock path fails closed with zero synthesis or provider sends", async () => {
+    const blocker = join(dir, "not-a-directory");
+    await writeFile(blocker, "file", "utf8");
+    followupsFile = join(blocker, "followups.json");
+    const sent: OutboundMessage[] = [];
+    let synthesis = 0;
+    const summary = await runDueFollowups({
+      destination: "@me",
+      file: followupsFile,
+      model: "test-model",
+      modelProvider: {
+        generate: async () => {
+          synthesis += 1;
+          return { output: "must not synthesize" };
+        }
+      },
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)])
+    });
+    expect(summary.outcome).toBe("lock-error");
+    expect(summary.errors[0]).toContain("lock acquisition failed");
+    expect(synthesis).toBe(0);
+    expect(sent).toEqual([]);
   });
 });

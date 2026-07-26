@@ -2112,6 +2112,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
 
       const buildFollowupTick = (): ReturnType<typeof makeFollowupTick> => makeFollowupTick({
         destination,
+        effectFile: join(dirname(resolveActionLogFile(e)), "outbound-effects.json"),
         followupModel,
         followupsFile,
         interruptionBudget,

@@ -7531,6 +7531,18 @@ describe("runDueProactiveNotices", () => {
 });
 
 describe("runDueFollowups", () => {
+  function strictFollowupJson(value: unknown): string {
+    return JSON.stringify(value, (key, item: unknown) => {
+      if (
+        (key === "createdAt" || key === "scheduledFor" || key === "firedAt")
+        && typeof item === "string"
+      ) {
+        return new Date(item).toISOString();
+      }
+      return item;
+    });
+  }
+
   it("synthesizes, delivers, and marks due followups as fired", async () => {
     const { runDueFollowups } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
@@ -7539,7 +7551,7 @@ describe("runDueFollowups", () => {
 
     const dir = mkdtempSync(join(tmpdir(), "muse-followup-fire-"));
     const file = join(dir, "followups.json");
-    writeFileSync(file, JSON.stringify({
+    writeFileSync(file, strictFollowupJson({
       followups: [
         {
           createdAt: "2026-05-10T00:00:00Z",
@@ -7571,6 +7583,7 @@ describe("runDueFollowups", () => {
 
     const sent: Array<{ providerId: string; destination: string; text: string }> = [];
     const fakeRegistry = {
+      has: () => true,
       send: async (providerId: string, message: { destination: string; text: string }) => {
         sent.push({ destination: message.destination, providerId, text: message.text });
         return { destination: message.destination, messageId: "stub", providerId };
@@ -7620,7 +7633,7 @@ describe("runDueFollowups", () => {
 
     const dir = mkdtempSync(join(tmpdir(), "muse-followup-empty-"));
     const file = join(dir, "followups.json");
-    writeFileSync(file, JSON.stringify({
+    writeFileSync(file, strictFollowupJson({
       followups: [{
         createdAt: "2026-05-10T00:00:00Z",
         id: "fu_future",
@@ -7643,6 +7656,7 @@ describe("runDueFollowups", () => {
       now: () => new Date("2026-05-11T00:00:00Z"),
       providerId: "telegram",
       registry: {
+        has: () => true,
         send: async () => { throw new Error("must not be called"); }
       } as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
     });
@@ -7658,7 +7672,7 @@ describe("runDueFollowups", () => {
 
     const dir = mkdtempSync(join(tmpdir(), "muse-followup-err-"));
     const file = join(dir, "followups.json");
-    writeFileSync(file, JSON.stringify({
+    writeFileSync(file, strictFollowupJson({
       followups: [
         {
           createdAt: "2026-05-10T00:00:00Z",
@@ -7686,6 +7700,7 @@ describe("runDueFollowups", () => {
     const { MessagingProviderError } = await import("@muse/messaging");
     let sendCalls = 0;
     const fakeRegistry = {
+      has: () => true,
       send: async () => {
         sendCalls += 1;
         if (sendCalls === 1) {
@@ -7727,7 +7742,7 @@ describe("runDueFollowups", () => {
 
     const dir = mkdtempSync(join(tmpdir(), "muse-followup-empty-synth-"));
     const file = join(dir, "followups.json");
-    writeFileSync(file, JSON.stringify({
+    writeFileSync(file, strictFollowupJson({
       followups: [{
         createdAt: "2026-05-10T00:00:00Z",
         id: "fu_blank",
@@ -7747,6 +7762,7 @@ describe("runDueFollowups", () => {
       now: () => new Date("2026-05-11T08:00:00Z"),
       providerId: "telegram",
       registry: {
+        has: () => true,
         send: async () => {
           sendCalled = true;
           return { destination: "@me", messageId: "x", providerId: "telegram" };
@@ -7771,7 +7787,7 @@ describe("runDueFollowups", () => {
 
     const dir = mkdtempSync(join(tmpdir(), "muse-followup-cap-"));
     const file = join(dir, "followups.json");
-    writeFileSync(file, JSON.stringify({
+    writeFileSync(file, strictFollowupJson({
       followups: [1, 2, 3, 4, 5].map((n) => ({
         createdAt: "2026-05-10T00:00:00Z",
         id: `fu_${n.toString()}`,
@@ -7791,6 +7807,7 @@ describe("runDueFollowups", () => {
       now: () => new Date("2026-05-11T08:00:00Z"),
       providerId: "telegram",
       registry: {
+        has: () => true,
         send: async () => ({ destination: "@me", messageId: "ok", providerId: "telegram" })
       } as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
     });
@@ -7806,7 +7823,7 @@ describe("runDueFollowups", () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-followup-order-"));
     const file = join(dir, "followups.json");
     // The OLDEST-due (most overdue) entry is written LAST in file order.
-    writeFileSync(file, JSON.stringify({
+    writeFileSync(file, strictFollowupJson({
       followups: [
         { createdAt: "2026-05-10T00:00:00Z", id: "fu_recent", scheduledFor: "2026-05-11T07:30:00Z", status: "scheduled", summary: "recent", userId: "stark" },
         { createdAt: "2026-05-10T00:00:00Z", id: "fu_mid", scheduledFor: "2026-05-11T07:15:00Z", status: "scheduled", summary: "mid", userId: "stark" },
@@ -7817,7 +7834,10 @@ describe("runDueFollowups", () => {
       destination: "@me", file, maxPerTick: 1, model: "gemini-2.0-flash",
       modelProvider: { generate: async () => ({ output: "Following up." }) },
       now: () => new Date("2026-05-11T08:00:00Z"), providerId: "telegram",
-      registry: { send: async () => ({ destination: "@me", messageId: "ok", providerId: "telegram" }) } as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
+      registry: {
+        has: () => true,
+        send: async () => ({ destination: "@me", messageId: "ok", providerId: "telegram" })
+      } as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
     });
     expect(summary.delivered).toBe(1);
     expect(summary.fired[0]?.id).toBe("fu_oldest"); // the most-overdue, NOT the file-first fu_recent
@@ -7834,7 +7854,7 @@ describe("runDueFollowups", () => {
 
     const dir = mkdtempSync(join(tmpdir(), "muse-followup-nan-"));
     const file = join(dir, "followups.json");
-    writeFileSync(file, JSON.stringify({
+    writeFileSync(file, strictFollowupJson({
       followups: [1, 2, 3].map((n) => ({
         createdAt: "2026-05-10T00:00:00Z",
         id: `fu_${n.toString()}`,
@@ -7854,6 +7874,7 @@ describe("runDueFollowups", () => {
       now: () => new Date("2026-05-11T08:00:00Z"),
       providerId: "telegram",
       registry: {
+        has: () => true,
         send: async () => ({ destination: "@me", messageId: "ok", providerId: "telegram" })
       } as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
     });
@@ -7862,14 +7883,14 @@ describe("runDueFollowups", () => {
     expect(summary).toMatchObject({ delivered: 3, due: 3 });
   });
 
-  it("retries transient messaging failures with exponential backoff", async () => {
+  it("seals a transient messaging failure as unknown without automatic retry", async () => {
     const { runDueFollowups } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
     const dir = mkdtempSync(join(tmpdir(), "muse-followup-retry-"));
     const file = join(dir, "followups.json");
-    writeFileSync(file, JSON.stringify({
+    writeFileSync(file, strictFollowupJson({
       followups: [{
         createdAt: "2026-05-10T00:00:00Z",
         id: "fu_flaky",
@@ -7883,12 +7904,10 @@ describe("runDueFollowups", () => {
     let synthesizeCalls = 0;
     const attempts: number[] = [];
     const flakyRegistry = {
+      has: () => true,
       send: async () => {
         attempts.push(1);
-        if (attempts.length < 3) {
-          throw new Error("upstream 503");
-        }
-        return { destination: "@me", messageId: "ok", providerId: "telegram" };
+        throw new Error("upstream 503");
       }
     };
     const summary = await runDueFollowups({
@@ -7905,12 +7924,10 @@ describe("runDueFollowups", () => {
       providerId: "telegram",
       registry: flakyRegistry as unknown as Parameters<typeof runDueFollowups>[0]["registry"]
     });
-    expect(summary.delivered).toBe(1);
-    expect(summary.errors).toEqual([]);
-    expect(attempts.length).toBe(3);
-    // Synthesis runs exactly once even when the send retries — the
-    // retry loop wraps the send call only, not the surrounding
-    // synthesize-then-send step.
+    expect(summary.delivered).toBe(0);
+    expect(summary.errors[0]).toContain("delivery is unknown");
+    expect(summary.errors[0]).toContain("reconcile manually");
+    expect(attempts.length).toBe(1);
     expect(synthesizeCalls).toBe(1);
   });
 
@@ -7922,7 +7939,7 @@ describe("runDueFollowups", () => {
     const { join } = await import("node:path");
     const dir = mkdtempSync(join(tmpdir(), "muse-followup-non-retry-"));
     const file = join(dir, "followups.json");
-    writeFileSync(file, JSON.stringify({
+    writeFileSync(file, strictFollowupJson({
       followups: [{
         createdAt: "2026-05-10T00:00:00Z",
         id: "fu_permanent",
@@ -7942,6 +7959,7 @@ describe("runDueFollowups", () => {
       now: () => new Date("2026-05-11T08:00:00Z"),
       providerId: "telegram",
       registry: {
+        has: () => true,
         send: async () => {
           attempts += 1;
           throw new MessagingProviderError(

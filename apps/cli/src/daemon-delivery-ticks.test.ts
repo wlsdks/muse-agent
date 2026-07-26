@@ -4,10 +4,11 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { writeDayRhythmConfig } from "@muse/autoconfigure";
-import { addObjective, setSchedulerPaused } from "@muse/stores";
+import { MessagingProviderRegistry, readOutboundEffects } from "@muse/messaging";
+import { addObjective, readFollowups, setSchedulerPaused, writeFollowups } from "@muse/stores";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { makeBriefingTick, makeDailyBriefTick, makeSchedulerTick } from "./daemon-delivery-ticks.js";
+import { makeBriefingTick, makeDailyBriefTick, makeFollowupTick, makeSchedulerTick } from "./daemon-delivery-ticks.js";
 import type { MakeDailyBriefTickDeps } from "./daemon-delivery-ticks.js";
 import type { SchedulerJobOutcome } from "./scheduler-job-runner.js";
 
@@ -96,6 +97,53 @@ function fakeMessaging() {
 function tmpPauseFile(): string {
   return join(mkdtempSync(join(tmpdir(), "muse-scheduler-tick-")), "scheduler-paused.json");
 }
+
+describe("makeFollowupTick", () => {
+  it("forwards the canonical effect ledger and completes one accepted occurrence", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-cli-followup-tick-"));
+    const effectFile = join(dir, "outbound-effects.json");
+    const followupsFile = join(dir, "followups.json");
+    await writeFollowups(followupsFile, [{
+      createdAt: "2026-07-26T20:00:00.000Z",
+      id: "cli-followup-effect",
+      scheduledFor: "2026-07-26T00:00:00.000Z",
+      status: "scheduled",
+      summary: "Check deployment",
+      userId: "owner"
+    }]);
+    const registry = new MessagingProviderRegistry([{
+      describe: () => ({ description: "test", displayName: "Test", id: "telegram" }),
+      id: "telegram",
+      send: async (message) => ({
+        destination: message.destination,
+        messageId: "cli-followup-accepted",
+        providerId: "telegram"
+      })
+    }]);
+    const tick = makeFollowupTick({
+      destination: "@owner",
+      effectFile,
+      followupModel: {
+        model: "test-model",
+        modelProvider: { generate: async () => ({ output: "Did it finish?" }) }
+      },
+      followupsFile,
+      interruptionBudget: {
+        dailyCap: 5,
+        digestFile: join(dir, "digest.json"),
+        hourlyCap: 5,
+        ledgerFile: join(dir, "interruption-ledger.json")
+      },
+      messagingRegistry: registry,
+      provider: "telegram",
+      stdout: () => undefined
+    });
+
+    await tick(() => true);
+    expect(await readOutboundEffects(effectFile)).toHaveLength(1);
+    expect((await readFollowups(followupsFile))[0]!.status).toBe("fired");
+  });
+});
 
 describe("makeSchedulerTick", () => {
   const out: string[] = [];

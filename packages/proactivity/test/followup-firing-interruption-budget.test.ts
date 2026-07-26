@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
+import { MessagingProviderRegistry, readOutboundEffects, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { appendInterruptionDelivery, readDigestQueue, readFollowups, readInterruptionLedger, readLastProactiveDeliveries, recordOutcome, upsertFollowup } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -69,6 +69,7 @@ describe("runDueFollowups — interruption budget (opt-in)", () => {
     const queued = await readDigestQueue(digestFile);
     expect(queued).toHaveLength(1);
     expect(queued[0]).toMatchObject({ source: "followup", sourceId: "f1" });
+    expect(await readOutboundEffects(join(dir, "outbound-effects.json"))).toEqual([]);
   });
 
   it("cap not reached: delivers exactly as without a budget, and records the ledger", async () => {
@@ -144,6 +145,7 @@ describe("runDueFollowups — interruption budget (opt-in)", () => {
     expect(await readDigestQueue(digestFile)).toHaveLength(0);
     expect(await readInterruptionLedger(ledgerFile)).toHaveLength(0);
     expect(await readLastProactiveDeliveries(lastDeliveryFile)).toHaveLength(0);
+    expect(await readOutboundEffects(join(dir, "outbound-effects.json"))).toEqual([]);
   });
 
   it("wired lastDeliveryFile records the followup's sourceKey + committed summary as title", async () => {

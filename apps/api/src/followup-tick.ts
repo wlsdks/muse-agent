@@ -28,6 +28,7 @@ export interface FollowupTickOptions {
   readonly followupsFile: string;
   readonly providerId: string;
   readonly destination: string;
+  readonly effectFile?: string;
   readonly modelProvider: ProactiveModelProviderLike;
   readonly model: string;
   readonly intervalMs?: number;
@@ -73,6 +74,7 @@ export function startFollowupTick(options: FollowupTickOptions): FollowupTickHan
     try {
       const summary = await runDueFollowups({
         destination: options.destination,
+        ...(options.effectFile ? { effectFile: options.effectFile } : {}),
         file: options.followupsFile,
         ...(options.interruptionBudget ? { interruptionBudget: options.interruptionBudget } : {}),
         ...(options.maxPerTick !== undefined ? { maxPerTick: options.maxPerTick } : {}),
@@ -118,4 +120,3 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
-

@@ -405,6 +405,7 @@ export function makeSchedulerTick(deps: MakeSchedulerTickDeps): () => Promise<vo
 export interface MakeFollowupTickDeps {
   readonly followupModel: FollowupModel | undefined;
   readonly destination: string;
+  readonly effectFile: string;
   readonly followupsFile: string;
   readonly interruptionBudget: InterruptionBudgetWiring;
   readonly provider: string;
@@ -413,7 +414,7 @@ export interface MakeFollowupTickDeps {
 }
 
 export function makeFollowupTick(deps: MakeFollowupTickDeps): GovernedDaemonTick {
-  const { followupModel, destination, followupsFile, interruptionBudget, provider, messagingRegistry, stdout } = deps;
+  const { followupModel, destination, effectFile, followupsFile, interruptionBudget, provider, messagingRegistry, stdout } = deps;
   return async (claim): ReturnType<GovernedDaemonTick> => {
     if (!followupModel) {
       stdout(`[${new Date().toISOString()}] followup: skipped (no model resolved)\n`);
@@ -423,6 +424,7 @@ export function makeFollowupTick(deps: MakeFollowupTickDeps): GovernedDaemonTick
     try {
       const summary = await runDueFollowups({
         destination,
+        effectFile,
         file: followupsFile,
         interruptionBudget,
         model: followupModel.model,

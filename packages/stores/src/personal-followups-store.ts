@@ -236,18 +236,24 @@ export async function upsertFollowup(file: string, followup: PersistedFollowup):
 }
 
 /**
- * Mark a scheduled followup as fired. Returns the patched entry
- * or `undefined` when the id is not found (or already non-scheduled).
+ * Mark a scheduled followup as fired. When `expectedScheduledFor` is supplied,
+ * a concurrent snooze/upsert is preserved instead of being overwritten.
+ * Returns the patched entry or `undefined` when the occurrence is no longer current.
  */
 export async function markFollowupFired(
   file: string,
   id: string,
-  firedAt: string
+  firedAt: string,
+  expectedScheduledFor?: string
 ): Promise<PersistedFollowup | undefined> {
   return withFileLock(file, async () => {
     const existing = await readFollowups(file);
     const target = existing.find((entry) => entry.id === id);
-    if (!target || target.status !== "scheduled") {
+    if (
+      !target
+      || target.status !== "scheduled"
+      || (expectedScheduledFor !== undefined && target.scheduledFor !== expectedScheduledFor)
+    ) {
       return undefined;
     }
     const patched: PersistedFollowup = { ...target, firedAt, status: "fired" };

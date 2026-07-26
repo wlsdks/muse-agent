@@ -288,6 +288,7 @@ export function startFollowupDaemonIfConfigured(
   const followupQuietHours = liveQuietHours(env, server, env.MUSE_FOLLOWUP_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const followupHandle = startFollowupTick({
     destination: followupDestination,
+    effectFile: join(dirname(resolveActionLogFile(env)), "outbound-effects.json"),
     errorLogger: (message) => server.log.warn(message),
     followupsFile: options.followupsFile,
     ...(followupTickMsRaw !== undefined ? { intervalMs: followupTickMsRaw } : {}),

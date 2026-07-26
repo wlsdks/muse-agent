@@ -1140,7 +1140,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const env = tmpEnv();
     writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
     await writeFollowups(env.MUSE_FOLLOWUPS_FILE!, [
-      { createdAt: "2026-01-01T00:00:00Z", id: "fu1", scheduledFor: "2026-01-02T00:00:00Z", status: "scheduled", summary: "Check the Q3 memo", userId: "stark" }
+      { createdAt: "2026-01-01T00:00:00.000Z", id: "fu1", scheduledFor: "2026-01-02T00:00:00.000Z", status: "scheduled", summary: "Check the Q3 memo", userId: "stark" }
     ]);
     const sent: OutboundMessage[] = [];
     const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
@@ -1812,7 +1812,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     }), "utf8");
     writeFileSync(env.MUSE_AMBIENT_FILE!, JSON.stringify({ app: "Slack", window: "general" }), "utf8");
     await writeFollowups(env.MUSE_FOLLOWUPS_FILE!, [
-      { createdAt: "2026-01-01T00:00:00Z", id: "fu1", scheduledFor: "2026-01-02T00:00:00Z", status: "scheduled", summary: "Check the memo", userId: "stark" }
+      { createdAt: "2026-01-01T00:00:00.000Z", id: "fu1", scheduledFor: "2026-01-02T00:00:00.000Z", status: "scheduled", summary: "Check the memo", userId: "stark" }
     ]);
     await writeObjectives(env.MUSE_OBJECTIVES_FILE!, [
       { attempts: 0, createdAt: "2026-01-01T00:00:00Z", id: "obj1", kind: "watch", spec: "ping when the build goes green", status: "active", userId: "stark" }
