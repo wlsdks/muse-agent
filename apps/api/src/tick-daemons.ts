@@ -212,6 +212,10 @@ export function startProactiveDaemonIfConfigured(
     ...(proactiveCalendar ? { calendarRegistry: proactiveCalendar } : {}),
     ...(options.tasksFile ? { tasksFile: options.tasksFile } : {}),
     destination: proactiveDestination,
+    effectFile: join(
+      dirname(options.actionLogFile ?? resolveActionLogFile(env)),
+      "outbound-effects.json"
+    ),
     errorLogger: (message) => server.log.warn(message),
     ...(proactiveTickMsRaw !== undefined ? { intervalMs: proactiveTickMsRaw } : {}),
     ...(proactiveLeadRaw !== undefined ? { leadMinutes: proactiveLeadRaw } : {}),

@@ -18,8 +18,14 @@
 
 
 import type { CalendarProviderRegistry } from "@muse/calendar";
-import type { MessagingProviderRegistry } from "@muse/messaging";
-import { errorMessage, redactSecretsInText } from "@muse/shared";
+import {
+  dispatchDurableEffectOnce,
+  dispatchOutboundEffectOnce,
+  readOutboundEffect,
+  type MessagingProviderRegistry,
+  type OutboundEffectView
+} from "@muse/messaging";
+import { errorMessage, redactSecretsInText, sha256Hex } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
 import { isRecentProactiveActivity } from "./presence.js";
@@ -60,7 +66,7 @@ export interface AgentInitiatedNoticeBrokerLike {
   }): void;
 }
 
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import {
   appendProactiveHistory,
   appendSurfaced,
@@ -168,6 +174,8 @@ export interface RunDueProactiveNoticesOptions {
   readonly providerId: string;
   /** Messaging destination (chat id, channel id, etc). */
   readonly destination: string;
+  /** Canonical outbound-effect ledger. Production callers place it beside the action log. */
+  readonly effectFile?: string;
   /**
    * How far in advance to fire. Events / tasks within
    * `[now, now + leadMinutes]` are candidates. Default 10 min.
@@ -439,6 +447,8 @@ async function runDueProactiveNoticesUnderLock(
   const seen = new Set(fired.map((entry) => firedKey(entry)));
   let firedThisRun = 0;
   let nextFired: readonly ProactiveFiredEntry[] = fired;
+  let taskFiredPersisted: readonly ProactiveFiredEntry[] = fired;
+  let sidecarDirty = false;
 
   // Trust instrumentation: learned avoidance + daily cap.
   // Fail-open — a corrupt/unreadable ledger never gags the daemon.
@@ -485,9 +495,17 @@ async function runDueProactiveNoticesUnderLock(
       break;
     }
 
-    const { delivered } = await deliverImminentItem(item, {
+    const { delivered, firedPersisted } = await deliverImminentItem(item, {
       errors,
       ledgerForCap,
+      persistFired: async (firedAt) => {
+        const persistedCandidate = firedAt ? { ...candidate, firedAt } : candidate;
+        const updatedTaskFired = [...taskFiredPersisted, persistedCandidate];
+        await writeProactiveFired(options.sidecarFile, updatedTaskFired);
+        taskFiredPersisted = updatedTaskFired;
+        nextFired = [...nextFired, persistedCandidate];
+        seen.add(key);
+      },
       now,
       nowDate,
       options,
@@ -496,12 +514,15 @@ async function runDueProactiveNoticesUnderLock(
     });
     if (delivered) {
       firedThisRun += 1;
-      nextFired = [...nextFired, candidate];
-      seen.add(key);
+      if (!firedPersisted) {
+        nextFired = [...nextFired, candidate];
+        seen.add(key);
+        sidecarDirty = true;
+      }
     }
   }
 
-  if (firedThisRun > 0) {
+  if (sidecarDirty) {
     try {
       await writeProactiveFired(options.sidecarFile, nextFired);
     } catch (cause) {
@@ -521,21 +542,71 @@ interface DeliverImminentContext {
   readonly now: () => Date;
   readonly nowDate: Date;
   readonly options: RunDueProactiveNoticesOptions;
+  readonly persistFired: (firedAt?: string) => Promise<void>;
   readonly phaseDActive: boolean;
   readonly sinkChoice: ProactiveSinkChoice;
 }
 
 // Per-item delivery: synthesize → investigate → redact → send (terminal
 // or messaging, quiet-hours-gated) → trust-ledger + broker + history.
-// Returns whether the notice was delivered so the caller can advance
-// firedThisRun / nextFired / seen; all failure paths are caught here and
-// recorded into `ctx.errors` rather than thrown.
+// Task+messaging delivery additionally returns whether its fired occurrence
+// was persisted before post-delivery effects. All failure paths are caught
+// here and recorded into `ctx.errors` rather than thrown.
 async function deliverImminentItem(
   item: ImminentItem,
   ctx: DeliverImminentContext
-): Promise<{ readonly delivered: boolean }> {
-  const { errors, ledgerForCap, now, nowDate, options, phaseDActive, sinkChoice } = ctx;
+): Promise<{ readonly delivered: boolean; readonly firedPersisted: boolean }> {
+  const { errors, now, options, sinkChoice } = ctx;
 
+  const quietNow = options.quietHours !== undefined && isQuietHour(now().getHours(), options.quietHours);
+  if (item.kind === "task" && sinkChoice === "messaging" && !quietNow) {
+    return deliverTaskMessagingItem(item, ctx);
+  }
+
+  const noticeText = await composeNoticeText(item, ctx);
+  const firedAtIso = now().toISOString();
+  let delivered = false;
+  try {
+    if (quietNow) {
+      // suppressed — deliver nothing on either sink
+    } else if (sinkChoice === "terminal" && options.terminalSink) {
+      await options.terminalSink.deliver({ kind: item.kind, text: noticeText, title: item.title });
+    } else {
+      await sendWithRetry(
+        options.messagingRegistry,
+        options.providerId,
+        { destination: options.destination, text: noticeText }
+      );
+    }
+    delivered = true;
+    await recordDeliveredNotice(item, noticeText, firedAtIso, ctx);
+    return { delivered, firedPersisted: false };
+  } catch (cause) {
+    const message = errorMessage(cause);
+    errors.push(`${item.kind}:${item.id}: ${message}`);
+    if (options.historyFile) {
+      await appendProactiveHistory(options.historyFile, {
+        destination: options.destination,
+        error: message,
+        firedAtIso,
+        itemId: item.id,
+        kind: item.kind,
+        providerId: options.providerId,
+        startIso: item.startsAt.toISOString(),
+        status: "failed",
+        text: noticeText,
+        title: item.title
+      });
+    }
+    return { delivered, firedPersisted: false };
+  }
+}
+
+async function composeNoticeText(
+  item: ImminentItem,
+  ctx: DeliverImminentContext
+): Promise<string> {
+  const { errors, options, phaseDActive } = ctx;
   let rawNoticeText = phaseDActive
     ? await synthesizeNoticeText(item, options).catch((cause) => {
         const message = errorMessage(cause);
@@ -563,90 +634,150 @@ async function deliverImminentItem(
   }
   // Scrub before any downstream sink — the synthesised notice
   // saw persona facts + task summaries that may quote a secret.
-  const noticeText = redactSecretsInText(rawNoticeText);
+  return redactSecretsInText(rawNoticeText);
+}
 
-  const firedAtIso = now().toISOString();
-  // Quiet-hours suppression applied to BOTH sinks (the messaging sink would
-  // otherwise bypass the terminal-only `gateProactiveNoticeSink` and nag at
-  // night). Matches the terminal gate's drop semantics: the notice is skipped,
-  // not deferred — these are "nice to know" ambient notices.
-  const quietNow = options.quietHours !== undefined && isQuietHour(now().getHours(), options.quietHours);
-  // Set the instant the send resolves — BEFORE the trust-ledger / broker /
-  // history side-effects. A throw in those later steps still leaves the item
-  // counted as delivered (matching the inlined body, where firedThisRun was
-  // incremented at this exact point and a later throw fell to the catch with
-  // the increment already applied).
-  let delivered = false;
+async function deliverTaskMessagingItem(
+  item: ImminentItem,
+  ctx: DeliverImminentContext
+): Promise<{ readonly delivered: boolean; readonly firedPersisted: boolean }> {
+  const { errors, now, options } = ctx;
+  const effectFile = options.effectFile ?? join(dirname(options.sidecarFile), "outbound-effects.json");
+  const effectId = proactiveTaskOccurrenceEffectId(item.id, item.startsAt.toISOString());
   try {
-    if (quietNow) {
-      // suppressed — deliver nothing on either sink
-    } else if (sinkChoice === "terminal" && options.terminalSink) {
-      await options.terminalSink.deliver({ kind: item.kind, text: noticeText, title: item.title });
-    } else {
-      await sendWithRetry(
-        options.messagingRegistry,
-        options.providerId,
-        { destination: options.destination, text: noticeText }
-      );
+    const existing = await readOutboundEffect(effectFile, effectId);
+    if (
+      existing
+      && (
+        existing.binding.providerId !== options.providerId
+        || existing.binding.destination !== options.destination
+      )
+    ) {
+      throw new Error(`outbound effect ${effectId} route binding conflicts with the current proactive task`);
     }
-    delivered = true;
-    // Trust ledger: record the delivered surface for the
-    // precision scoreboard + count it against the daily cap. Fail-open.
-    if (options.trustLedgerFile) {
-      const surfacedAtMs = nowDate.getTime();
-      ledgerForCap.push({ kind: item.kind, sourceKey: sourceKey(item.kind, item.id), surfacedAtMs, title: item.title });
-      try {
-        await appendSurfaced(options.trustLedgerFile, { id: item.id, kind: item.kind, surfacedAtMs, title: item.title });
-      } catch (cause) {
-        const message = errorMessage(cause);
-        errors.push(`trust ledger write failed: ${message}`);
+    if (existing) {
+      let terminal = existing;
+      if (existing.state === "prepared") {
+        terminal = await dispatchDurableEffectOnce({
+          destination: existing.binding.destination,
+          dispatch: async () => {
+            throw new Error("prepared proactive-task replay must never dispatch");
+          },
+          effectFile,
+          effectId,
+          now,
+          payloadHash: existing.binding.payloadHash,
+          providerId: existing.binding.providerId
+        });
       }
+      if (terminal.state === "accepted" || terminal.state === "reconciled-accepted") {
+        if (!terminal.receipt) {
+          throw new Error(`accepted outbound effect ${effectId} has no durable receipt`);
+        }
+        await ctx.persistFired(terminal.receipt.receivedAt);
+        return { delivered: true, firedPersisted: true };
+      }
+      if (terminal.state === "reconciled-not-delivered") {
+        await ctx.persistFired(terminal.reconciliation?.recordedAt);
+        return { delivered: false, firedPersisted: true };
+      }
+      errors.push(taskEffectBlockedMessage(item.id, terminal));
+      return { delivered: false, firedPersisted: false };
     }
-    // Broker fan-out: publish the same notice so live
-    // chat-stream subscribers see it inline. Always alongside the
-    // messaging-sink delivery — not a replacement. Fail-soft per
-    // the broker contract (in-memory broker never throws).
-    if (options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
-      options.agentInitiatedNoticeBroker.publish(options.agentInitiatedNoticeUserId, {
-        generatedAt: firedAtIso,
-        kind: item.kind,
-        sourceId: item.id,
-        text: noticeText
-      });
+
+    if (
+      options.providerId.trim().length === 0
+      || options.providerId !== options.providerId.trim()
+      || options.destination.trim().length === 0
+      || options.destination !== options.destination.trim()
+      || !options.messagingRegistry.has(options.providerId)
+    ) {
+      errors.push(`${item.kind}:${item.id}: delivery route is unavailable or invalid`);
+      return { delivered: false, firedPersisted: false };
     }
-    if (options.historyFile) {
-      await appendProactiveHistory(options.historyFile, {
-        destination: options.destination,
-        firedAtIso,
-        itemId: item.id,
-        kind: item.kind,
-        providerId: sinkChoice === "terminal" ? "terminal" : options.providerId,
-        startIso: item.startsAt.toISOString(),
-        status: "delivered",
-        text: noticeText,
-        title: item.title
-      });
+
+    const noticeText = await composeNoticeText(item, ctx);
+    const effect = await dispatchOutboundEffectOnce({
+      destination: options.destination,
+      effectFile,
+      effectId,
+      now,
+      providerId: options.providerId,
+      registry: options.messagingRegistry,
+      text: noticeText
+    });
+    if (effect.state !== "accepted" && effect.state !== "reconciled-accepted") {
+      errors.push(taskEffectBlockedMessage(item.id, effect));
+      return { delivered: false, firedPersisted: false };
     }
-    return { delivered };
+    if (!effect.receipt) {
+      throw new Error(`accepted outbound effect ${effectId} has no durable receipt`);
+    }
+    await ctx.persistFired(effect.receipt.receivedAt);
+    try {
+      await recordDeliveredNotice(item, noticeText, effect.receipt.receivedAt, ctx);
+    } catch (cause) {
+      errors.push(`${item.kind}:${item.id}: ${errorMessage(cause)}`);
+    }
+    return { delivered: true, firedPersisted: true };
   } catch (cause) {
-    const message = errorMessage(cause);
-    errors.push(`${item.kind}:${item.id}: ${message}`);
-    if (options.historyFile) {
-      await appendProactiveHistory(options.historyFile, {
-        destination: options.destination,
-        error: message,
-        firedAtIso,
-        itemId: item.id,
-        kind: item.kind,
-        providerId: options.providerId,
-        startIso: item.startsAt.toISOString(),
-        status: "failed",
-        text: noticeText,
-        title: item.title
-      });
-    }
-    return { delivered };
+    errors.push(`${item.kind}:${item.id}: ${redactSecretsInText(errorMessage(cause))}`);
+    return { delivered: false, firedPersisted: false };
   }
+}
+
+async function recordDeliveredNotice(
+  item: ImminentItem,
+  noticeText: string,
+  firedAtIso: string,
+  ctx: DeliverImminentContext
+): Promise<void> {
+  const { errors, ledgerForCap, nowDate, options, sinkChoice } = ctx;
+  if (options.trustLedgerFile) {
+    const surfacedAtMs = nowDate.getTime();
+    ledgerForCap.push({ kind: item.kind, sourceKey: sourceKey(item.kind, item.id), surfacedAtMs, title: item.title });
+    try {
+      await appendSurfaced(options.trustLedgerFile, { id: item.id, kind: item.kind, surfacedAtMs, title: item.title });
+    } catch (cause) {
+      errors.push(`trust ledger write failed: ${errorMessage(cause)}`);
+    }
+  }
+  if (options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
+    options.agentInitiatedNoticeBroker.publish(options.agentInitiatedNoticeUserId, {
+      generatedAt: firedAtIso,
+      kind: item.kind,
+      sourceId: item.id,
+      text: noticeText
+    });
+  }
+  if (options.historyFile) {
+    await appendProactiveHistory(options.historyFile, {
+      destination: options.destination,
+      firedAtIso,
+      itemId: item.id,
+      kind: item.kind,
+      providerId: sinkChoice === "terminal" ? "terminal" : options.providerId,
+      startIso: item.startsAt.toISOString(),
+      status: "delivered",
+      text: noticeText,
+      title: item.title
+    });
+  }
+}
+
+export function proactiveTaskOccurrenceEffectId(taskId: string, dueAt: string): string {
+  return `proactive-imminent:${sha256Hex(JSON.stringify(["task", taskId, dueAt]))}`;
+}
+
+function taskEffectBlockedMessage(taskId: string, effect: OutboundEffectView): string {
+  const effectId = effect.binding.effectId;
+  if (effect.state === "unknown") {
+    const detail = effect.unknownDetail
+      ? ` (${redactSecretsInText(effect.unknownDetail).slice(0, 500)})`
+      : "";
+    return `task:${taskId}: delivery is unknown for effect ${effectId}${detail}; reconcile manually with muse messaging effects reconcile and do not retry this occurrence`;
+  }
+  return `task:${taskId}: outbound effect ${effectId} is safely blocked in state ${effect.state}`;
 }
 
 function isActiveSessionWindow(now: Date, options: RunDueProactiveNoticesOptions): boolean {

@@ -2057,6 +2057,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         calendarRegistry,
         dailyCap,
         destination,
+        effectFile: join(dirname(resolveActionLogFile(e)), "outbound-effects.json"),
         historyFile,
         leadMinutes,
         messagingRegistry,

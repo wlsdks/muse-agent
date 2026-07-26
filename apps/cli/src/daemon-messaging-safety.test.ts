@@ -214,4 +214,23 @@ describe("daemon messaging provider lock", () => {
       "terminalEffects: { inspect: actuator.inspect }"
     );
   });
+
+  it("wires proactive imminent tasks to the canonical outbound-effect ledger", () => {
+    const registerSource = parseSource("./commands-daemon-register.ts");
+    const proactiveCalls = callsNamed(registerSource, "makeProactiveTick");
+    expect(proactiveCalls).toHaveLength(1);
+    const proactiveOptions = proactiveCalls[0]?.arguments[0];
+    expect(proactiveOptions !== undefined && ts.isObjectLiteralExpression(proactiveOptions)).toBe(true);
+    if (!proactiveOptions || !ts.isObjectLiteralExpression(proactiveOptions)) return;
+    expect(objectPropertyExpression(registerSource, proactiveOptions, "effectFile"))
+      .toBe('join(dirname(resolveActionLogFile(e)), "outbound-effects.json")');
+
+    const tickSource = parseSource("./daemon-delivery-ticks.ts");
+    const runCalls = callsNamed(tickSource, "runDueProactiveNotices");
+    expect(runCalls).toHaveLength(1);
+    const runOptions = runCalls[0]?.arguments[0];
+    expect(runOptions !== undefined && ts.isObjectLiteralExpression(runOptions)).toBe(true);
+    if (!runOptions || !ts.isObjectLiteralExpression(runOptions)) return;
+    expect(objectPropertyExpression(tickSource, runOptions, "effectFile")).toBe("effectFile");
+  });
 });

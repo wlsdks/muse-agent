@@ -50,6 +50,7 @@ export interface ProactiveTickOptions {
   readonly messagingRegistry: MessagingProviderRegistry;
   readonly providerId: string;
   readonly destination: string;
+  readonly effectFile?: string;
   readonly sidecarFile: string;
   readonly leadMinutes?: number;
   readonly intervalMs?: number;
@@ -146,6 +147,7 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
           : {}),
         ...(options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),
         ...(options.calendarRegistry ? { calendarRegistry: options.calendarRegistry } : {}),
+        ...(options.effectFile ? { effectFile: options.effectFile } : {}),
         ...(options.investigate ? { investigate: options.investigate } : {}),
         destination: options.destination,
         ...(options.historyFile ? { historyFile: options.historyFile } : {}),

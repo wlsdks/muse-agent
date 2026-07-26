@@ -91,6 +91,7 @@ import type { TickRunState } from "./daemon-selflearn-ticks.js";
 export interface MakeProactiveTickDeps {
   readonly calendarRegistry: CalendarProviderRegistry;
   readonly destination: string;
+  readonly effectFile: string;
   readonly historyFile: string;
   readonly leadMinutes: number;
   readonly messagingRegistry: MessagingProviderRegistry;
@@ -109,13 +110,14 @@ export interface MakeProactiveTickDeps {
  * so a recurring item's identical finding isn't re-shown every tick.
  */
 export function makeProactiveTick(deps: MakeProactiveTickDeps): () => Promise<void> {
-  const { calendarRegistry, destination, historyFile, leadMinutes, messagingRegistry, provider, quietHours, sidecarFile, tasksFile, trustLedgerFile, dailyCap, stdout } = deps;
+  const { calendarRegistry, destination, effectFile, historyFile, leadMinutes, messagingRegistry, provider, quietHours, sidecarFile, tasksFile, trustLedgerFile, dailyCap, stdout } = deps;
   const proactiveInvestigator = createIndexedProactiveInvestigator();
   return async (): Promise<void> => {
     const activeQuietHours = resolveQuietHoursOption(quietHours);
     const summary = await runDueProactiveNotices({
       ...(calendarRegistry.list().length > 0 ? { calendarRegistry } : {}),
       destination,
+      effectFile,
       historyFile,
       investigate: proactiveInvestigator,
       leadMinutes,

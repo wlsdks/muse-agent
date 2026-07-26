@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { CalendarProviderRegistry, type CalendarProvider } from "@muse/calendar";
-import { MessagingProviderError, MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
+import { MessagingProviderError, MessagingProviderRegistry, readOutboundEffects, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { readProactiveFired, readProactiveHeartbeat, writeTasks } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -149,7 +149,7 @@ describe("runDueProactiveNotices — cross-process firing lock (two daemons, sam
     expect(await lockFileExists()).toBe(false);
   });
 
-  it("releases the lock after a provider-failure tick — the next tick can retry rather than being permanently blocked", async () => {
+  it("releases the lock after an uncertain provider failure but never retries the sealed effect", async () => {
     const failing = await runDueProactiveNotices({
       destination: "555",
       messagingRegistry: new MessagingProviderRegistry([alwaysFailingProvider()]),
@@ -171,8 +171,9 @@ describe("runDueProactiveNotices — cross-process firing lock (two daemons, sam
       sidecarFile,
       tasksFile
     });
-    expect(retry.fired).toBe(1);
-    expect(sent).toHaveLength(1);
+    expect(retry.fired).toBe(0);
+    expect(retry.errors.join("\n")).toContain("delivery is unknown");
+    expect(sent).toHaveLength(0);
   });
 
   it("a STALE lock left behind by a crashed daemon does not permanently block firing — the tick proceeds", async () => {
@@ -323,6 +324,7 @@ describe("runDueProactiveNotices — cross-process firing lock (two daemons, sam
     const callsFile = join(dir, "provider-calls.txt");
     const input = {
       callsFile,
+      effectFile: join(dir, "outbound-effects.json"),
       nowIso: NOW.toISOString(),
       sidecarFile,
       tasksFile
@@ -340,6 +342,7 @@ describe("runDueProactiveNotices — cross-process firing lock (two daemons, sam
 
     expect(calls).toHaveLength(1);
     expect(summaries.reduce((total, summary) => total + summary.fired, 0)).toBe(1);
+    expect(await readOutboundEffects(input.effectFile)).toHaveLength(1);
     expect(await readProactiveFired(sidecarFile)).toHaveLength(1);
   }, 20_000);
 });

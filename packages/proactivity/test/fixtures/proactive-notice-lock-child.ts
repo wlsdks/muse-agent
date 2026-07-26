@@ -10,6 +10,7 @@ import { runDueProactiveNotices } from "../../src/proactive-notice-loop.js";
 
 interface Input {
   readonly callsFile: string;
+  readonly effectFile: string;
   readonly nowIso: string;
   readonly sidecarFile: string;
   readonly tasksFile: string;
@@ -31,6 +32,7 @@ const provider: MessagingProvider = {
 };
 const result = await runDueProactiveNotices({
   destination: "@owner",
+  effectFile: input.effectFile,
   heartbeatDir: null,
   messagingRegistry: new MessagingProviderRegistry([provider]),
   now: () => new Date(input.nowIso),
