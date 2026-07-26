@@ -386,4 +386,46 @@ describe("runDueProactiveNotices — cross-process firing lock (two daemons, sam
       })
     ]);
   }, 20_000);
+
+  it("admits at most one loss-biased terminal delivery across two real OS processes", async () => {
+    const callsFile = join(dir, "calendar-terminal-calls.txt");
+    const effectFile = join(dir, "calendar-terminal-effects.json");
+    const calendarSidecar = join(dir, "calendar-terminal-fired.json");
+    const input = {
+      callsFile,
+      calendarEvent: {
+        id: "calendar-terminal-race",
+        providerEventId: "remote-terminal-race",
+        providerId: "caldav",
+        startsAtIso: "2026-05-18T09:05:00.000Z",
+        title: "Calendar terminal race"
+      },
+      effectFile,
+      nowIso: NOW.toISOString(),
+      sidecarFile: calendarSidecar,
+      terminal: true
+    };
+    const outputs = await Promise.all([
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)]),
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)])
+    ]);
+    const calls = existsSync(callsFile)
+      ? readFileSync(callsFile, "utf8").trim().split("\n").filter(Boolean)
+      : [];
+    const summaries = outputs.map(({ stdout }) => JSON.parse(stdout.trim()) as {
+      readonly fired: number;
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(summaries.reduce((total, summary) => total + summary.fired, 0)).toBe(1);
+    expect(existsSync(effectFile)).toBe(false);
+    expect(await readProactiveFired(calendarSidecar)).toEqual([
+      expect.objectContaining({
+        id: "calendar-terminal-race",
+        kind: "calendar",
+        providerEventId: "remote-terminal-race",
+        providerId: "caldav"
+      })
+    ]);
+  }, 20_000);
 });

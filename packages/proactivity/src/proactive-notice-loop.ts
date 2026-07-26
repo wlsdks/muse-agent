@@ -581,6 +581,9 @@ async function deliverImminentItem(
       ? deliverTaskMessagingItem(item, ctx)
       : deliverCalendarMessagingItem(item, ctx);
   }
+  if (sinkChoice === "terminal" && !quietNow && options.terminalSink) {
+    return deliverTerminalItem(item, ctx);
+  }
 
   const noticeText = await composeNoticeText(item, ctx);
   const firedAtIso = now().toISOString();
@@ -619,6 +622,60 @@ async function deliverImminentItem(
     }
     return { delivered, firedPersisted: false };
   }
+}
+
+async function deliverTerminalItem(
+  item: ImminentItem,
+  ctx: DeliverImminentContext
+): Promise<{ readonly delivered: boolean; readonly firedPersisted: boolean }> {
+  const { errors, now, options } = ctx;
+  try {
+    await ctx.persistFired();
+  } catch (cause) {
+    errors.push(
+      `${item.kind}:${item.id}: terminal pre-delivery state persistence failed: `
+      + redactSecretsInText(errorMessage(cause))
+    );
+    return { delivered: false, firedPersisted: false };
+  }
+
+  const noticeText = await composeNoticeText(item, ctx);
+  const firedAtIso = now().toISOString();
+  try {
+    await options.terminalSink!.deliver({ kind: item.kind, text: noticeText, title: item.title });
+  } catch (cause) {
+    const message = errorMessage(cause);
+    errors.push(`${item.kind}:${item.id}: ${message}`);
+    if (options.historyFile) {
+      try {
+        await appendProactiveHistory(options.historyFile, {
+          destination: options.destination,
+          error: message,
+          firedAtIso,
+          itemId: item.id,
+          kind: item.kind,
+          providerId: options.providerId,
+          startIso: item.startsAt.toISOString(),
+          status: "failed",
+          text: noticeText,
+          title: item.title
+        });
+      } catch (historyCause) {
+        errors.push(`terminal failure history write failed: ${redactSecretsInText(errorMessage(historyCause))}`);
+      }
+    }
+    return { delivered: false, firedPersisted: true };
+  }
+
+  try {
+    await recordDeliveredNotice(item, noticeText, firedAtIso, ctx);
+  } catch (cause) {
+    errors.push(
+      `${item.kind}:${item.id}: terminal post-delivery effects failed: `
+      + redactSecretsInText(errorMessage(cause))
+    );
+  }
+  return { delivered: true, firedPersisted: true };
 }
 
 async function composeNoticeText(

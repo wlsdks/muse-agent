@@ -25,6 +25,7 @@ interface Input {
   readonly nowIso: string;
   readonly sidecarFile: string;
   readonly tasksFile?: string;
+  readonly terminal?: boolean;
 }
 
 const input = JSON.parse(process.argv[2] ?? "") as Input;
@@ -32,6 +33,9 @@ const provider: MessagingProvider = {
   describe: () => ({ description: "test", displayName: "Test", id: "telegram" }),
   id: "telegram",
   send: async (message) => {
+    if (input.terminal) {
+      throw new Error("terminal fixture must not use messaging");
+    }
     await appendFile(input.callsFile, `${process.pid.toString()}\n`);
     await sleep(75);
     return {
@@ -69,6 +73,7 @@ const calendarRegistry = input.calendarEvent
   : undefined;
 const result = await runDueProactiveNotices({
   ...(calendarRegistry ? { calendarRegistry } : {}),
+  ...(input.terminal ? { activitySource: { lastActivityMs: () => new Date(input.nowIso).getTime() } } : {}),
   destination: "@owner",
   effectFile: input.effectFile,
   heartbeatDir: null,
@@ -76,6 +81,16 @@ const result = await runDueProactiveNotices({
   now: () => new Date(input.nowIso),
   providerId: "telegram",
   sidecarFile: input.sidecarFile,
-  ...(input.tasksFile ? { tasksFile: input.tasksFile } : {})
+  ...(input.tasksFile ? { tasksFile: input.tasksFile } : {}),
+  ...(input.terminal
+    ? {
+        terminalSink: {
+          deliver: async () => {
+            await appendFile(input.callsFile, `${process.pid.toString()}\n`);
+            await sleep(75);
+          }
+        }
+      }
+    : {})
 });
 process.stdout.write(`${JSON.stringify(result)}\n`);
