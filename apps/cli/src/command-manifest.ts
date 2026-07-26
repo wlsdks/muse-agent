@@ -404,7 +404,8 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "cancel",
       "list",
       "show",
-      "snooze"
+      "snooze",
+      "triage"
     ]
   },
   {

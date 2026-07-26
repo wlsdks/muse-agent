@@ -19,7 +19,20 @@ import { isErrorLike } from "@muse/shared";
  */
 
 import { resolveFollowupsFile } from "@muse/autoconfigure";
-import { cancelFollowup, compareFollowupsByScheduledFor, parseReminderDueAt, readFollowups, readFollowupStatusFilter, serializeFollowup, snoozeFollowup, type FollowupStatusFilter, type PersistedFollowup } from "@muse/stores";
+import {
+  cancelFollowup,
+  compareFollowupsByScheduledFor,
+  parseReminderDueAt,
+  previewFollowupTriage,
+  readFollowups,
+  readFollowupStatusFilter,
+  serializeFollowup,
+  snoozeFollowup,
+  type FollowupStatusFilter,
+  type FollowupTriageAction,
+  type FollowupTriagePreview,
+  type PersistedFollowup
+} from "@muse/stores";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -101,6 +114,37 @@ export function registerFollowupCommands(program: Command, io: ProgramIO): void 
       io.stdout(formatFollowupDetail(record));
     });
 
+  const triage = followup
+    .command("triage")
+    .description("Exact local, non-mutating preview for due follow-up backlog triage");
+
+  triage
+    .command("preview")
+    .description("Preview retain, dismiss, explicit snooze, or a local digest draft")
+    .argument("<action>", "dismiss | snooze | retain | draft-digest")
+    .argument("<ids...>", "1 to 20 exact follow-up ids")
+    .requiredOption("--local", "Required: inspect only the local owner store")
+    .option("--snooze-at <iso>", "Required for snooze: exact future ISO-8601 instant")
+    .option("--json", "Print the versioned preview object")
+    .action(async (
+      actionRaw: string,
+      ids: readonly string[],
+      options: { readonly json?: boolean; readonly local: boolean; readonly snoozeAt?: string }
+    ) => {
+      if (!options.local) throw new Error("follow-up triage is local-only; pass --local");
+      if (actionRaw !== "dismiss" && actionRaw !== "snooze" && actionRaw !== "retain" && actionRaw !== "draft-digest") {
+        throw new Error("triage action must be dismiss, snooze, retain, or draft-digest");
+      }
+      const preview = await previewFollowupTriage({
+        action: actionRaw as FollowupTriageAction,
+        followupsFile: localFollowupsFile(),
+        ids,
+        ...(options.snoozeAt ? { snoozeAt: options.snoozeAt } : {})
+      });
+      if (options.json) io.stdout(`${JSON.stringify(preview, null, 2)}\n`);
+      else io.stdout(formatFollowupTriagePreview(preview));
+    });
+
   followup
     .command("snooze")
     .description("Push a scheduled followup's scheduledFor forward. <when> accepts ISO-8601 or relative ('in 30 min', 'tomorrow at 9am', '2시간 뒤')")
@@ -160,6 +204,19 @@ export function registerFollowupCommands(program: Command, io: ProgramIO): void 
       }
       io.stdout(`Cancelled [${patched.id.slice(0, 12)}] ${patched.summary} (reason: ${options.reason})\n`);
     });
+}
+
+export function formatFollowupTriagePreview(preview: FollowupTriagePreview): string {
+  const lines = [`Preview ${preview.action} for ${preview.items.length.toString()} follow-up(s):`];
+  for (const change of preview.changes) {
+    lines.push(
+      `  - before: ${JSON.stringify(change.before)}`,
+      `    after: ${JSON.stringify(change.after)}`
+    );
+  }
+  if (preview.digestDraft) lines.push("", preview.digestDraft.trimEnd());
+  lines.push(`Source digest: ${preview.sourceDigest}`);
+  return `${lines.join("\n")}\n`;
 }
 
 function filterByStatus(

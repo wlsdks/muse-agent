@@ -66,6 +66,12 @@ export interface PersistedFollowup {
   readonly cancelReason?: string;
 }
 
+export class FollowupStoreUnavailableError extends Error {
+  constructor() {
+    super("follow-up store cannot be read or validated");
+    this.name = "FollowupStoreUnavailableError";
+  }
+}
 
 export async function readFollowups(file: string): Promise<readonly PersistedFollowup[]> {
   let raw: string;
@@ -88,6 +94,41 @@ export async function readFollowups(file: string): Promise<readonly PersistedFol
   return (parsed as { followups: unknown[] }).followups.flatMap((entry): readonly PersistedFollowup[] =>
     isPersistedFollowup(entry) ? [entry] : []
   );
+}
+
+/** Strict, byte-preserving reader for preview, audit, and mutation receipts.
+ * It never quarantines malformed state or silently drops invalid records. */
+export async function readFollowupsStrict(file: string): Promise<readonly PersistedFollowup[]> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch {
+    throw new FollowupStoreUnavailableError();
+  }
+  return parseFollowupsStrict(raw);
+}
+
+export function parseFollowupsStrict(raw: string): readonly PersistedFollowup[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new FollowupStoreUnavailableError();
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || Object.keys(parsed).join("\0") !== "followups"
+    || !Array.isArray((parsed as { followups?: unknown }).followups)) {
+    throw new FollowupStoreUnavailableError();
+  }
+  const entries = (parsed as { followups: unknown[] }).followups;
+  if (entries.some((entry) => !isPersistedFollowupStrict(entry))) {
+    throw new FollowupStoreUnavailableError();
+  }
+  const followups = entries as readonly PersistedFollowup[];
+  if (new Set(followups.map((followup) => followup.id)).size !== followups.length) {
+    throw new FollowupStoreUnavailableError();
+  }
+  return followups;
 }
 
 export async function writeFollowups(file: string, followups: readonly PersistedFollowup[]): Promise<void> {
@@ -295,6 +336,36 @@ function isPersistedFollowup(value: unknown): value is PersistedFollowup {
     (candidate.firedAt === undefined || typeof candidate.firedAt === "string") &&
     (candidate.cancelReason === undefined || typeof candidate.cancelReason === "string")
   );
+}
+
+function isPersistedFollowupStrict(value: unknown): value is PersistedFollowup {
+  if (!isPersistedFollowup(value) || Array.isArray(value)) return false;
+  const candidate = value as PersistedFollowup;
+  const allowed = [
+    "cancelReason",
+    "createdAt",
+    "firedAt",
+    "id",
+    "kind",
+    "originRunId",
+    "originTurnHash",
+    "scheduledFor",
+    "status",
+    "summary",
+    "userId"
+  ];
+  if (Object.keys(value).some((key) => !allowed.includes(key))) return false;
+  if (!isCanonicalIso(candidate.createdAt) || !isCanonicalIso(candidate.scheduledFor)) return false;
+  if (candidate.firedAt !== undefined && !isCanonicalIso(candidate.firedAt)) return false;
+  if (candidate.status === "scheduled" && (candidate.firedAt !== undefined || candidate.cancelReason !== undefined)) return false;
+  if (candidate.status === "fired" && (candidate.firedAt === undefined || candidate.cancelReason !== undefined)) return false;
+  if (candidate.status === "cancelled" && (candidate.cancelReason === undefined || candidate.firedAt !== undefined)) return false;
+  return true;
+}
+
+function isCanonicalIso(value: string): boolean {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 
 export type FollowupRefResolution =

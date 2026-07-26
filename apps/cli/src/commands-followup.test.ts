@@ -149,3 +149,66 @@ describe("muse followup list --search — filter by summary (sibling parity with
   });
 });
 
+describe("muse followup triage preview — exact local and non-mutating", () => {
+  const prevEnv = process.env.MUSE_FOLLOWUPS_FILE;
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.MUSE_FOLLOWUPS_FILE;
+    else process.env.MUSE_FOLLOWUPS_FILE = prevEnv;
+  });
+
+  it("requires --local and exposes exact canonical before/after JSON without changing the store", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "muse-followup-triage-cli-")), "followups.json");
+    process.env.MUSE_FOLLOWUPS_FILE = file;
+    const item: PersistedFollowup = {
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: "fu_exact",
+      scheduledFor: "2026-02-01T00:00:00.000Z",
+      status: "scheduled",
+      summary: "private follow-up",
+      userId: "owner"
+    };
+    await writeFollowups(file, [item]);
+    const before = await (await import("node:fs/promises")).readFile(file, "utf8");
+
+    const rejected = await runFollowup(["triage", "preview", "dismiss", "fu_exact"]);
+    expect(rejected.error).toContain("required option '--local'");
+
+    const result = await runFollowup(["triage", "preview", "dismiss", "fu_exact", "--local", "--json"]);
+    expect(result.error).toBeUndefined();
+    const preview = JSON.parse(result.stdout) as {
+      changes: readonly { before: PersistedFollowup; after: PersistedFollowup }[];
+      schemaVersion: string;
+      sourceDigest: string;
+    };
+    expect(preview.schemaVersion).toBe("muse.followup-triage-preview/v1");
+    expect(preview.sourceDigest).toMatch(/^[0-9a-f]{64}$/u);
+    expect(preview.changes).toEqual([{
+      after: { ...item, cancelReason: "backlog-triage-dismissed", status: "cancelled" },
+      before: item
+    }]);
+    expect(await (await import("node:fs/promises")).readFile(file, "utf8")).toBe(before);
+  });
+
+  it("renders owner-visible exact snooze state and keeps draft-digest local", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "muse-followup-triage-text-")), "followups.json");
+    process.env.MUSE_FOLLOWUPS_FILE = file;
+    await writeFollowups(file, [{
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: "fu_text",
+      scheduledFor: "2026-02-01T00:00:00.000Z",
+      status: "scheduled",
+      summary: "line one\nline two",
+      userId: "owner"
+    }]);
+
+    const snooze = await runFollowup([
+      "triage", "preview", "snooze", "fu_text", "--local", "--snooze-at", "2099-01-01T09:00:00+09:00"
+    ]);
+    expect(snooze.error).toBeUndefined();
+    expect(snooze.stdout).toContain('"scheduledFor":"2099-01-01T00:00:00.000Z"');
+
+    const draft = await runFollowup(["triage", "preview", "draft-digest", "fu_text", "--local", "--json"]);
+    expect(draft.error).toBeUndefined();
+    expect((JSON.parse(draft.stdout) as { digestDraft: string }).digestDraft).toContain("line one line two");
+  });
+});
