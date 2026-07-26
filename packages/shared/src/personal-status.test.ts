@@ -9,6 +9,10 @@ import {
   type PersonalStatusResponse,
   type PersonalStatusSource
 } from "./personal-status.js";
+import {
+  DELIVERY_SAFETY_SCHEMA_VERSION,
+  type DeliverySafetyResult
+} from "./delivery-safety-contract.js";
 
 const NOW = "2026-07-22T12:00:00.000Z";
 const SOURCE: PersonalStatusSource = {
@@ -31,6 +35,33 @@ const RUNTIME: PersonalStatusCard = {
   title: "Resident runtime verified"
 };
 
+function deliverySafety(): DeliverySafetyResult {
+  return {
+    evidence: {
+      baseProviderLocal: true,
+      deliveryBrake: "released",
+      environmentProbe: "ok",
+      localOnlyEffective: true,
+      localOnlyPersisted: true,
+      overdueFollowups: 0,
+      overdueReminders: 0,
+      pendingDraftCount: 0,
+      pendingDraftObservation: "ok",
+      providerLockLocalOnly: true,
+      providerLockMismatch: false,
+      providerLockObservation: "verified",
+      scheduledFollowups: 0,
+      scheduledReminders: 0,
+      schemaVersion: DELIVERY_SAFETY_SCHEMA_VERSION,
+      selfLearnDisabled: true,
+      selfLearningHold: "engaged"
+    },
+    reasonCodes: [],
+    schemaVersion: DELIVERY_SAFETY_SCHEMA_VERSION,
+    status: "passed"
+  };
+}
+
 function response(overrides: Partial<PersonalStatusResponse> = {}): PersonalStatusResponse {
   const sources = PERSONAL_STATUS_SOURCE_IDS.map((id): PersonalStatusSource => id === "resident-runtime"
     ? SOURCE
@@ -48,6 +79,46 @@ function response(overrides: Partial<PersonalStatusResponse> = {}): PersonalStat
 describe("personal-status v1 contract", () => {
   it("admits the exact top-level schema and coherent runtime card", () => {
     expect(admitPersonalStatus(response())).toEqual({ kind: "admitted", status: response() });
+  });
+
+  it("keeps legacy build keys unchanged when delivery safety is absent", () => {
+    const legacy = response();
+    const built = buildPersonalStatus({
+      cards: legacy.cards,
+      generatedAt: legacy.generatedAt,
+      sources: legacy.sources
+    });
+
+    expect(built).toEqual(legacy);
+    expect(Object.keys(built)).toEqual(["cards", "generatedAt", "overall", "schemaVersion", "sources"]);
+  });
+
+  it("admits and preserves the exact optional canonical delivery-safety result", () => {
+    const canonical = deliverySafety();
+    const projected = response({ deliverySafety: canonical });
+    expect(admitPersonalStatus(projected)).toEqual({ kind: "admitted", status: projected });
+
+    const built = buildPersonalStatus({
+      cards: projected.cards,
+      deliverySafety: canonical,
+      generatedAt: projected.generatedAt,
+      sources: projected.sources
+    });
+    expect(built.deliverySafety).toBe(canonical);
+    expect(admitPersonalStatus(built)).toEqual({ kind: "admitted", status: built });
+  });
+
+  it("rejects raw or extra fields inside the optional delivery projection", () => {
+    expect(admitPersonalStatus({
+      ...response(),
+      deliverySafety: {
+        ...deliverySafety(),
+        evidence: {
+          ...deliverySafety().evidence,
+          draft: "PRIVATE"
+        }
+      }
+    })).toEqual({ kind: "excluded", reason: "invalid-shape" });
   });
 
   it("rejects the original contradictory top-level variants", () => {

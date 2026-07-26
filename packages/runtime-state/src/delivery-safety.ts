@@ -6,93 +6,33 @@
  * identifier, path, or raw process detail belongs in this contract.
  */
 
-export const DELIVERY_SAFETY_SCHEMA_VERSION = 1 as const;
+import {
+  DELIVERY_SAFETY_REASON,
+  DELIVERY_SAFETY_SCHEMA_VERSION,
+  type DeliverySafetyBooleanObservation,
+  type DeliverySafetyCountObservation,
+  type DeliverySafetyObservation,
+  type DeliverySafetyReasonCode,
+  type DeliverySafetyResult
+} from "@muse/shared";
 
-export const DELIVERY_SAFETY_REASON = {
-  providerLockMismatch: "delivery-provider-lock-adapter-mismatch",
-  localOnlyMissing: "daemon-local-only-not-persisted",
-  localOnlyMismatch: "daemon-local-only-state-mismatch",
-  selfLearnEnabled: "daemon-self-learn-not-disabled",
-  deliveryRouteNotLocal: "delivery-route-not-local-log",
-  providerLockMissing: "delivery-provider-lock-not-log",
-  selfLearningHoldMissing: "self-learning-hold-not-engaged",
-  overdueFollowups: "overdue-followups-detected",
-  overdueReminders: "overdue-reminders-detected",
-  environmentUnverified: "delivery-environment-unverified",
-  localOnlyUnverified: "daemon-local-only-state-unverified",
-  providerLockUnverified: "delivery-provider-lock-unverified",
-  deliveryBrakeEngaged: "delivery-brake-engaged",
-  deliveryBrakeUnverified: "delivery-brake-unverified",
-  selfLearnUnverified: "daemon-self-learn-state-unverified",
-  deliveryRouteUnverified: "delivery-route-unverified",
-  selfLearningHoldUnverified: "self-learning-hold-unverified",
-  followupBacklogUnverified: "followup-backlog-unverified",
-  reminderBacklogUnverified: "reminder-backlog-unverified",
-  pendingDraftsUnverified: "pending-drafts-unverified"
-} as const;
-
-export type DeliverySafetyReasonCode =
-  (typeof DELIVERY_SAFETY_REASON)[keyof typeof DELIVERY_SAFETY_REASON];
-export type DeliverySafetyStatus = "passed" | "failed" | "unverified";
-export type DeliverySafetyBooleanObservation = boolean | "unverified";
-export type DeliverySafetyBrakeObservation = "engaged" | "released" | "unverified";
-export type DeliverySafetyHoldObservation = "engaged" | "released" | "unverified";
-
-export interface DeliverySafetyCountObservation {
-  readonly status: "ok" | "unverified";
-  readonly scheduled: number;
-  readonly overdue: number;
-}
-
-export interface PendingDraftCountObservation {
-  readonly status: "ok" | "unverified";
-  readonly count: number;
-}
-
-export interface DeliverySafetyObservation {
-  readonly environmentProbe: "ok" | "unverified";
-  readonly localOnlyPersisted: DeliverySafetyBooleanObservation;
-  readonly localOnlyEffective: DeliverySafetyBooleanObservation;
-  readonly selfLearnDisabled: DeliverySafetyBooleanObservation;
-  readonly baseProviderLocal: DeliverySafetyBooleanObservation;
-  readonly providerLock: {
-    readonly observation: "verified" | "unverified";
-    readonly localOnly: boolean;
-    readonly mismatch: boolean;
-  };
-  readonly deliveryBrake: DeliverySafetyBrakeObservation;
-  readonly selfLearningHold: DeliverySafetyHoldObservation;
-  readonly followups: DeliverySafetyCountObservation;
-  readonly reminders: DeliverySafetyCountObservation;
-  readonly pendingDrafts?: PendingDraftCountObservation;
-}
-
-export interface DeliverySafetyEvidence {
-  readonly schemaVersion: typeof DELIVERY_SAFETY_SCHEMA_VERSION;
-  readonly environmentProbe: "ok" | "unverified";
-  readonly localOnlyPersisted: DeliverySafetyBooleanObservation;
-  readonly localOnlyEffective: DeliverySafetyBooleanObservation;
-  readonly selfLearnDisabled: DeliverySafetyBooleanObservation;
-  readonly baseProviderLocal: DeliverySafetyBooleanObservation;
-  readonly providerLockObservation: "verified" | "unverified";
-  readonly providerLockLocalOnly: boolean;
-  readonly providerLockMismatch: boolean;
-  readonly deliveryBrake: DeliverySafetyBrakeObservation;
-  readonly selfLearningHold: DeliverySafetyHoldObservation;
-  readonly scheduledFollowups: number;
-  readonly overdueFollowups: number;
-  readonly scheduledReminders: number;
-  readonly overdueReminders: number;
-  readonly pendingDraftCount: number;
-  readonly pendingDraftObservation: "ok" | "unverified";
-}
-
-export interface DeliverySafetyResult {
-  readonly schemaVersion: typeof DELIVERY_SAFETY_SCHEMA_VERSION;
-  readonly status: DeliverySafetyStatus;
-  readonly reasonCodes: readonly DeliverySafetyReasonCode[];
-  readonly evidence: DeliverySafetyEvidence;
-}
+export {
+  DELIVERY_SAFETY_FAILED_REASON_CODES,
+  DELIVERY_SAFETY_REASON,
+  DELIVERY_SAFETY_REASON_CODES,
+  DELIVERY_SAFETY_SCHEMA_VERSION,
+  isDeliverySafetyResult,
+  type DeliverySafetyBooleanObservation,
+  type DeliverySafetyBrakeObservation,
+  type DeliverySafetyCountObservation,
+  type DeliverySafetyEvidence,
+  type DeliverySafetyHoldObservation,
+  type DeliverySafetyObservation,
+  type DeliverySafetyReasonCode,
+  type DeliverySafetyResult,
+  type DeliverySafetyStatus,
+  type PendingDraftCountObservation
+} from "@muse/shared";
 
 function validCount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;

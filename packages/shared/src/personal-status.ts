@@ -1,4 +1,8 @@
 import { isRecord } from "./json-utils.js";
+import {
+  isDeliverySafetyResult,
+  type DeliverySafetyResult
+} from "./delivery-safety-contract.js";
 
 export const PERSONAL_STATUS_SCHEMA_VERSION = "muse.personal-status/v1" as const;
 export const PERSONAL_STATUS_MAX_CARDS = 24;
@@ -86,6 +90,7 @@ export interface PersonalStatusResponse {
   readonly overall: PersonalStatusOverall;
   readonly cards: readonly PersonalStatusCard[];
   readonly sources: readonly PersonalStatusSource[];
+  readonly deliverySafety?: DeliverySafetyResult;
 }
 
 export type PersonalStatusAdmission =
@@ -93,6 +98,7 @@ export type PersonalStatusAdmission =
   | { readonly kind: "excluded"; readonly reason: "invalid-shape" | "invalid-source" | "invalid-card" | "invalid-order" | "invalid-overall" };
 
 const TOP_KEYS = ["cards", "generatedAt", "overall", "schemaVersion", "sources"] as const;
+const OPTIONAL_TOP_KEYS = ["deliverySafety"] as const;
 const CARD_KEYS = ["action", "deadline", "detail", "id", "kind", "observedAt", "priority", "sourceId", "status", "title", "unavailableReason"] as const;
 export const PERSONAL_STATUS_SOURCE_IDS = ["resident-runtime", "pending-approvals", "proposed-actions", "attunement", "user-memory", "belief-provenance", "reconfirmation", "vetoes"] as const;
 const RESULTS = ["available", "absent", "corrupt", "unreadable", "unsupported"] as const;
@@ -245,9 +251,13 @@ function expectedOverall(cards: readonly PersonalStatusCard[], sources: readonly
 }
 
 export function admitPersonalStatus(input: unknown): PersonalStatusAdmission {
-  if (!isRecord(input) || !exactKeys(input, TOP_KEYS) || input.schemaVersion !== PERSONAL_STATUS_SCHEMA_VERSION
+  if (!isRecord(input) || !exactKeysWithOptional(input, TOP_KEYS, OPTIONAL_TOP_KEYS)
+    || input.schemaVersion !== PERSONAL_STATUS_SCHEMA_VERSION
     || !canonicalInstant(input.generatedAt) || !Array.isArray(input.cards) || !Array.isArray(input.sources)
     || !["attention", "held", "clear", "unavailable"].includes(String(input.overall))) return { kind: "excluded", reason: "invalid-shape" };
+  if ("deliverySafety" in input && !isDeliverySafetyResult(input.deliverySafety)) {
+    return { kind: "excluded", reason: "invalid-shape" };
+  }
   const generatedAt = input.generatedAt;
   if (!input.sources.every((row) => sourceRow(row, generatedAt))) return { kind: "excluded", reason: "invalid-source" };
   const sources = input.sources as PersonalStatusSource[];
@@ -278,6 +288,7 @@ export function buildPersonalStatus(input: {
   readonly generatedAt: string;
   readonly cards: readonly PersonalStatusCard[];
   readonly sources: readonly PersonalStatusSource[];
+  readonly deliverySafety?: DeliverySafetyResult;
 }): PersonalStatusResponse {
   const deduped = [...new Map(input.cards.map((card) => [card.id, card])).values()]
     .sort(comparePersonalStatusCards);
@@ -299,6 +310,7 @@ export function buildPersonalStatus(input: {
   });
   const status: PersonalStatusResponse = {
     cards,
+    ...(input.deliverySafety === undefined ? {} : { deliverySafety: input.deliverySafety }),
     generatedAt: input.generatedAt,
     overall: expectedOverall(cards, sources),
     schemaVersion: PERSONAL_STATUS_SCHEMA_VERSION,

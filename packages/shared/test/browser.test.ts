@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { errorMessage, isRecord, parseJson, parseJsonWith } from "../src/browser.js";
+import {
+  DELIVERY_SAFETY_SCHEMA_VERSION,
+  errorMessage,
+  isDeliverySafetyResult,
+  isRecord,
+  parseJson,
+  parseJsonWith
+} from "../src/browser.js";
 
 describe("browser shared entry point", () => {
   it("exports the JSON parsing and record guards used by browser streams", () => {
@@ -9,6 +16,11 @@ describe("browser shared entry point", () => {
     expect(parseJson("not json")).toBeUndefined();
     expect(parseJsonWith('{"answer":"ready"}', isRecord)).toEqual({ answer: "ready" });
     expect(parseJsonWith("[]", isRecord)).toBeUndefined();
+  });
+
+  it("exports the delivery-safety contract without a Node-only entrypoint", () => {
+    expect(DELIVERY_SAFETY_SCHEMA_VERSION).toBe(1);
+    expect(typeof isDeliverySafetyResult).toBe("function");
   });
 
   it("normalizes Error, error-like, and fallback messages without Node APIs", () => {

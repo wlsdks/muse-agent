@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { isDeliverySafetyResult } from "@muse/shared";
 
 import {
   DELIVERY_SAFETY_REASON,
@@ -38,6 +39,7 @@ describe("classifyDeliverySafety", () => {
       reasonCodes: [],
       status: "passed"
     });
+    expect(isDeliverySafetyResult(classifyDeliverySafety(input))).toBe(true);
   });
 
   it("orders and deduplicates active delivery failures", () => {
