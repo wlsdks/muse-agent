@@ -13,12 +13,17 @@
 
 import { confirm, isCancel } from "@clack/prompts";
 import { randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
 import { buildMessagingRegistry, resolveActionLogFile } from "@muse/autoconfigure";
-import type {
-  InboundMessage,
-  MessagingProviderInfo,
-  MessagingProviderRegistry,
-  OutboundReceipt
+import {
+  readOutboundEffect,
+  readOutboundEffects,
+  reconcileOutboundEffect,
+  type OutboundEffectView,
+  type InboundMessage,
+  type MessagingProviderInfo,
+  type MessagingProviderRegistry,
+  type OutboundReceipt
 } from "@muse/messaging";
 import { sendMessageWithApproval, type MessageApprovalGate } from "@muse/domain-tools";
 import { stripUntrustedTerminalChars } from "@muse/shared";
@@ -72,6 +77,9 @@ interface SharedOptions {
   readonly json?: boolean;
 }
 
+const EFFECT_LIST_DEFAULT = 50;
+const EFFECT_LIST_MAX = 100;
+
 export function registerMessagingCommands(
   program: Command,
   io: ProgramIO,
@@ -79,6 +87,120 @@ export function registerMessagingCommands(
   deps: MessagingSendDeps = {}
 ): void {
   const messaging = program.command("messaging").description("Outbound messengers (Telegram / Discord / Slack / LINE)");
+  const effects = messaging
+    .command("effects")
+    .description("Inspect and manually reconcile durable outbound effects (local only)");
+
+  effects
+    .command("list")
+    .description("List durable outbound effects without revealing message payloads")
+    .option("--limit <n>", `Maximum effects to print (default ${EFFECT_LIST_DEFAULT.toString()}, max ${EFFECT_LIST_MAX.toString()})`)
+    .action(async (options: { readonly limit?: string }) => {
+      await runEffectCommand(io, async () => {
+        const entries = await readOutboundEffects(resolveEffectFile(deps));
+        const limit = parseEffectLimit(options.limit);
+        io.stdout(`${JSON.stringify({
+          effects: entries.slice(-limit).map(safeEffectView),
+          total: entries.length
+        })}\n`);
+      });
+    });
+
+  effects
+    .command("show")
+    .description("Show one durable outbound effect without revealing its payload")
+    .argument("<effectId>", "Durable outbound effect id")
+    .action(async (effectId: string) => {
+      await runEffectCommand(io, async () => {
+        const effect = await readOutboundEffect(resolveEffectFile(deps), effectId);
+        if (!effect) throw new Error("outbound effect not found");
+        io.stdout(`${JSON.stringify(safeEffectView(effect))}\n`);
+      });
+    });
+
+  effects
+    .command("reconcile")
+    .description("Preview or apply a manual terminal decision for an unknown outbound effect")
+    .argument("<effectId>", "Durable outbound effect id")
+    .requiredOption("--decision <decision>", "accepted | not-delivered")
+    .requiredOption("--actor <actor>", "Operator recording this decision")
+    .requiredOption("--reason <reason>", "Reason and supporting evidence for the decision")
+    .option("--message-id <id>", "Exact provider message id (required only for accepted)")
+    .option("--received-at <iso>", "Canonical provider receipt timestamp (required only for accepted)")
+    .option("--apply", "Apply the previewed transition; without this flag no bytes change")
+    .action(async (
+      effectId: string,
+      options: {
+        readonly actor: string;
+        readonly apply?: boolean;
+        readonly decision: string;
+        readonly messageId?: string;
+        readonly reason: string;
+        readonly receivedAt?: string;
+      }
+    ) => {
+      await runEffectCommand(io, async () => {
+        validateReconciliationText(effectId, "effectId", 512);
+        validateReconciliationText(options.actor, "actor", 256);
+        validateReconciliationText(options.reason, "reason", 1_000);
+        if (options.decision !== "accepted" && options.decision !== "not-delivered") {
+          throw new Error("decision must be accepted or not-delivered");
+        }
+        const effectFile = resolveEffectFile(deps);
+        // This read is deliberately adjacent to apply. If another process wins
+        // after it, the store's lock and unknown-only transition fail closed.
+        const current = await readOutboundEffect(effectFile, effectId);
+        if (!current) throw new Error("outbound effect not found");
+        if (current.state !== "unknown") {
+          throw new Error(`outbound effect is terminal in state ${safeText(current.state, 64)}`);
+        }
+        const recordedAt = new Date().toISOString();
+        let receipt:
+          | {
+              readonly destination: string;
+              readonly messageId: string;
+              readonly providerId: string;
+              readonly receivedAt: string;
+            }
+          | undefined;
+        if (options.decision === "accepted") {
+          if (options.messageId === undefined || options.receivedAt === undefined) {
+            throw new Error("accepted requires --message-id and --received-at");
+          }
+          validateReconciliationText(options.messageId, "messageId", 512);
+          assertCanonicalTimestamp(options.receivedAt, "receivedAt");
+          if (Date.parse(options.receivedAt) < Date.parse(current.binding.createdAt)) {
+            throw new Error("receivedAt must not precede the effect creation time");
+          }
+          if (Date.parse(options.receivedAt) > Date.parse(recordedAt)) {
+            throw new Error("receivedAt must not be in the future");
+          }
+          receipt = {
+            destination: current.binding.destination,
+            messageId: options.messageId,
+            providerId: current.binding.providerId,
+            receivedAt: options.receivedAt
+          };
+        } else if (options.messageId !== undefined || options.receivedAt !== undefined) {
+          throw new Error("not-delivered forbids --message-id and --received-at");
+        }
+        const transition = {
+          actor: options.actor,
+          decision: options.decision,
+          effectId,
+          reason: options.reason,
+          recordedAt,
+          ...(receipt ? { receipt } : {})
+        } as const;
+        io.stdout(`${JSON.stringify({
+          status: options.apply ? "applying" : "preview",
+          transition: safeReconciliationTransition(transition)
+        })}\n`);
+        if (!options.apply) return;
+        const applied = await reconcileOutboundEffect(effectFile, transition);
+        io.stdout(`${JSON.stringify({ effect: safeEffectView(applied), status: "applied" })}\n`);
+      });
+    });
 
   messaging
     .command("providers")
@@ -283,4 +405,113 @@ export function registerMessagingCommands(
         `(id ${receipt.messageId}, effect ${confirmedEffectId})\n`
       );
     });
+}
+
+function resolveEffectFile(deps: MessagingSendDeps): string {
+  if (deps.effectFile) return deps.effectFile;
+  const actionLogFile = deps.actionLogFile
+    ?? resolveActionLogFile(process.env as Record<string, string | undefined>);
+  return join(dirname(actionLogFile), "outbound-effects.json");
+}
+
+function parseEffectLimit(raw: string | undefined): number {
+  if (raw === undefined) return EFFECT_LIST_DEFAULT;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > EFFECT_LIST_MAX) {
+    throw new Error(`limit must be an integer from 1 to ${EFFECT_LIST_MAX.toString()}`);
+  }
+  return parsed;
+}
+
+async function runEffectCommand(io: ProgramIO, operation: () => Promise<void>): Promise<void> {
+  try {
+    await operation();
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : "outbound effect operation failed";
+    io.stderr(`Outbound effect operation failed: ${safeText(message, 1_000)}\n`);
+    process.exitCode = 1;
+  }
+}
+
+function validateReconciliationText(value: string, field: string, maxBytes: number): void {
+  if (
+    value.trim().length === 0
+    || value !== value.trim()
+    || Buffer.byteLength(value, "utf8") > maxBytes
+    || /\p{Cc}/u.test(value)
+  ) {
+    throw new Error(`${field} must be a non-empty exact value of at most ${maxBytes.toString()} UTF-8 bytes with no control characters`);
+  }
+}
+
+function assertCanonicalTimestamp(value: string, field: string): void {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
+    throw new Error(`${field} must be a canonical ISO timestamp`);
+  }
+}
+
+function safeText(value: string, maxLength: number): string {
+  return stripUntrustedTerminalChars(value).slice(0, maxLength);
+}
+
+function safeEffectView(effect: OutboundEffectView): Record<string, unknown> {
+  return {
+    binding: {
+      createdAt: safeText(effect.binding.createdAt, 64),
+      destination: safeText(effect.binding.destination, 512),
+      effectId: safeText(effect.binding.effectId, 512),
+      payloadHash: safeText(effect.binding.payloadHash, 64),
+      providerId: safeText(effect.binding.providerId, 128)
+    },
+    state: safeText(effect.state, 64),
+    ...(effect.unknownDetail !== undefined
+      ? { unknownDetail: safeText(effect.unknownDetail, 1_000) }
+      : {}),
+    ...(effect.receipt
+      ? {
+          receipt: {
+            destination: safeText(effect.receipt.destination, 512),
+            messageId: safeText(effect.receipt.messageId, 512),
+            providerId: safeText(effect.receipt.providerId, 128),
+            receivedAt: safeText(effect.receipt.receivedAt, 64),
+            ...(effect.receipt.providerReceiptDigest
+              ? { providerReceiptDigest: safeText(effect.receipt.providerReceiptDigest, 64) }
+              : {})
+          }
+        }
+      : {}),
+  };
+}
+
+function safeReconciliationTransition(transition: {
+  readonly actor: string;
+  readonly decision: "accepted" | "not-delivered";
+  readonly effectId: string;
+  readonly reason: string;
+  readonly recordedAt: string;
+  readonly receipt?: {
+    readonly destination: string;
+    readonly messageId: string;
+    readonly providerId: string;
+    readonly receivedAt: string;
+  };
+}): Record<string, unknown> {
+  return {
+    actor: safeText(transition.actor, 256),
+    decision: transition.decision,
+    effectId: safeText(transition.effectId, 512),
+    reason: safeText(transition.reason, 1_000),
+    recordedAt: safeText(transition.recordedAt, 64),
+    ...(transition.receipt
+      ? {
+          receipt: {
+            destination: safeText(transition.receipt.destination, 512),
+            messageId: safeText(transition.receipt.messageId, 512),
+            providerId: safeText(transition.receipt.providerId, 128),
+            receivedAt: safeText(transition.receipt.receivedAt, 64)
+          }
+        }
+      : {})
+  };
 }

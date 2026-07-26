@@ -564,6 +564,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "argsTerm": "",
     "hasOptions": false,
     "subcommands": [
+      "effects",
       "inbox",
       "pairing-code",
       "providers",

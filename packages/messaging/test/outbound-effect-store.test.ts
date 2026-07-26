@@ -273,6 +273,33 @@ describe("outbound effect ledger", () => {
     expect(["accepted", "unknown"]).toContain((await readOutboundEffect(file, "effect-1"))?.state);
   });
 
+  it("allows only one reconciliation winner under concurrent stale operator views", async () => {
+    await prepareOutboundEffect(file, binding());
+    await recordOutboundEffectUnknown(file, "effect-1", "timeout after dispatch", RECORDED_AT);
+    const results = await Promise.allSettled([
+      reconcileOutboundEffect(file, {
+        actor: "operator-a",
+        decision: "accepted",
+        effectId: "effect-1",
+        reason: "found the provider receipt",
+        receipt: receipt(),
+        recordedAt: "2026-07-26T12:05:00.000Z"
+      }),
+      reconcileOutboundEffect(file, {
+        actor: "operator-b",
+        decision: "not-delivered",
+        effectId: "effect-1",
+        reason: "provider search found no message",
+        recordedAt: "2026-07-26T12:05:01.000Z"
+      })
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(["reconciled-accepted", "reconciled-not-delivered"])
+      .toContain((await readOutboundEffect(file, "effect-1"))?.state);
+  });
+
   it("rejects malformed hashes, timestamps, and unknown schema keys", async () => {
     await expect(prepareOutboundEffect(file, binding("bad-hash", { payloadHash: "nope" })))
       .rejects.toBeInstanceOf(OutboundEffectStoreError);

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { registerMessagingCommands } from "./commands-messaging.js";
 
-const KEYS = ["MUSE_LOCAL_ONLY", "MUSE_MESSAGING_CREDENTIALS_FILE", "MUSE_TELEGRAM_BOT_TOKEN"] as const;
+const KEYS = ["HOME", "MUSE_LOCAL_ONLY", "MUSE_MESSAGING_CREDENTIALS_FILE", "MUSE_TELEGRAM_BOT_TOKEN"] as const;
 const original = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
 
 afterEach(() => {
@@ -24,6 +24,7 @@ describe("muse messaging --local — T2-B1", () => {
     const printed: unknown[] = [];
     try {
       process.env.MUSE_LOCAL_ONLY = "true";
+      process.env.HOME = root;
       process.env.MUSE_MESSAGING_CREDENTIALS_FILE = join(root, "messaging.json");
       process.env.MUSE_TELEGRAM_BOT_TOKEN = "telegram-token";
       await writeFile(process.env.MUSE_MESSAGING_CREDENTIALS_FILE, JSON.stringify({ providers: { telegram: { token: "file-token" } } }));
