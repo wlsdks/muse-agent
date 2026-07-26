@@ -5,6 +5,10 @@ import { atomicWriteFile, isCanonicalContactId, isCanonicalConversationId, isCan
 import { decodeLocalCheckpointReference, decodeLocalRunReference, isRecord, parseJson } from "@muse/shared";
 
 import { baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
+import {
+  runActiveAttunementPolicyMutation,
+  type ActiveAttunementPolicyWriteGate
+} from "./active-policy-write-gate.js";
 import { fingerprintContinuityTaskState } from "./interaction-evidence.js";
 import { mutateFileState, type FileStateMutation } from "./file-state-mutation.js";
 import {
@@ -738,40 +742,43 @@ export async function recordContinuityOutcome(
   file: string,
   deliveryId: string,
   outcome: ContinuityOutcome,
+  activePolicyWriteGate: ActiveAttunementPolicyWriteGate,
   options: AttunementStoreOptions = {}
 ): Promise<{ readonly applied: boolean; readonly delivery: ContinuityDelivery; readonly policy: PersonalThread["policy"] }> {
   if (!OUTCOMES.includes(outcome)) throw new AttunementStoreError("outcome must be used, adjusted, ignored, or rejected");
-  return mutate<{ readonly applied: boolean; readonly delivery: ContinuityDelivery; readonly policy: PersonalThread["policy"] }>(file, (state) => {
-    const deliveryIndex = state.deliveries.findIndex((candidate) => candidate.id === deliveryId);
-    if (deliveryIndex < 0) throw new AttunementStoreError(`no continuity delivery with id '${deliveryId}'`);
-    const delivery = state.deliveries[deliveryIndex]!;
-    const thread = requireThread(state, delivery.threadId);
-    if (delivery.outcome) {
-      if (delivery.outcome.outcome !== outcome) {
-        throw new AttunementStoreError(`delivery '${deliveryId}' already recorded outcome '${delivery.outcome.outcome}'; outcomes cannot be overwritten`);
+  return runActiveAttunementPolicyMutation(activePolicyWriteGate, () =>
+    mutate<{ readonly applied: boolean; readonly delivery: ContinuityDelivery; readonly policy: PersonalThread["policy"] }>(file, (state) => {
+      const deliveryIndex = state.deliveries.findIndex((candidate) => candidate.id === deliveryId);
+      if (deliveryIndex < 0) throw new AttunementStoreError(`no continuity delivery with id '${deliveryId}'`);
+      const delivery = state.deliveries[deliveryIndex]!;
+      const thread = requireThread(state, delivery.threadId);
+      if (delivery.outcome) {
+        if (delivery.outcome.outcome !== outcome) {
+          throw new AttunementStoreError(`delivery '${deliveryId}' already recorded outcome '${delivery.outcome.outcome}'; outcomes cannot be overwritten`);
+        }
+        return { changed: false, result: { applied: false, delivery, policy: thread.policy }, state };
       }
-      return { changed: false, result: { applied: false, delivery, policy: thread.policy }, state };
-    }
-    const version = state.nextPolicyVersion;
-    const policy = policyForOutcome(outcome, version);
-    const updatedDelivery: ContinuityDelivery = {
-      ...delivery,
-      outcome: {
-        evidenceClass: resolveContinuityEvidenceClass(options),
-        outcome,
-        policyVersion: version,
-        recordedAt: nowIso(options)
-      }
-    };
-    const deliveries = [...state.deliveries];
-    deliveries[deliveryIndex] = updatedDelivery;
-    const nextThread: PersonalThread = { ...thread, policy };
-    return {
-      changed: true,
-      result: { applied: true, delivery: updatedDelivery, policy },
-      state: { ...replaceThread(state, nextThread), deliveries, nextPolicyVersion: version + 1 }
-    };
-  });
+      const version = state.nextPolicyVersion;
+      const policy = policyForOutcome(outcome, version);
+      const updatedDelivery: ContinuityDelivery = {
+        ...delivery,
+        outcome: {
+          evidenceClass: resolveContinuityEvidenceClass(options),
+          outcome,
+          policyVersion: version,
+          recordedAt: nowIso(options)
+        }
+      };
+      const deliveries = [...state.deliveries];
+      deliveries[deliveryIndex] = updatedDelivery;
+      const nextThread: PersonalThread = { ...thread, policy };
+      return {
+        changed: true,
+        result: { applied: true, delivery: updatedDelivery, policy },
+        state: { ...replaceThread(state, nextThread), deliveries, nextPolicyVersion: version + 1 }
+      };
+    })
+  );
 }
 
 /** Exact production operation: authority is consumed by this one outcome write. */
@@ -779,9 +786,10 @@ export function recordProductionAuthorizedContinuityOutcome(
   file: string,
   deliveryId: string,
   outcome: ContinuityOutcome,
+  activePolicyWriteGate: ActiveAttunementPolicyWriteGate,
   options: Omit<AttunementStoreOptions, "evidenceAuthority" | "evidenceClass"> = {}
 ): ReturnType<typeof recordContinuityOutcome> {
-  return recordContinuityOutcome(file, deliveryId, outcome, {
+  return recordContinuityOutcome(file, deliveryId, outcome, activePolicyWriteGate, {
     ...options,
     evidenceAuthority: createOrganicContinuityWriteAuthority()
   });
@@ -877,65 +885,71 @@ export async function recordContinuityTaskCompletionInteraction(
 export async function resetThreadPolicy(
   file: string,
   threadId: string,
+  activePolicyWriteGate: ActiveAttunementPolicyWriteGate,
   options: AttunementStoreOptions = {}
 ): Promise<{ readonly alreadyBaseline: boolean; readonly receipt?: PolicyResetReceipt; readonly thread: PersonalThread }> {
-  return mutate<{ readonly alreadyBaseline: boolean; readonly receipt?: PolicyResetReceipt; readonly thread: PersonalThread }>(file, (state) => {
-    const thread = requireThread(state, threadId);
-    if (isBaselinePolicy(thread.policy)) return { changed: false, result: { alreadyBaseline: true, thread }, state };
-    const resetPolicyVersion = state.nextPolicyVersion;
-    const receipt: PolicyResetReceipt = {
-      basePolicyVersion: thread.policy.version,
-      beforePolicy: thread.policy,
-      id: newId("reset", options),
-      resetPolicyVersion,
-      threadId: thread.id
-    };
-    const nextThread: PersonalThread = { ...thread, policy: baselinePolicy(resetPolicyVersion) };
-    const nextState = replaceThread(state, nextThread);
-    return {
-      changed: true,
-      result: { alreadyBaseline: false, receipt, thread: nextThread },
-      state: { ...nextState, nextPolicyVersion: resetPolicyVersion + 1, resetReceipts: [...state.resetReceipts, receipt] }
-    };
-  });
+  return runActiveAttunementPolicyMutation(activePolicyWriteGate, () =>
+    mutate<{ readonly alreadyBaseline: boolean; readonly receipt?: PolicyResetReceipt; readonly thread: PersonalThread }>(file, (state) => {
+      const thread = requireThread(state, threadId);
+      if (isBaselinePolicy(thread.policy)) return { changed: false, result: { alreadyBaseline: true, thread }, state };
+      const resetPolicyVersion = state.nextPolicyVersion;
+      const receipt: PolicyResetReceipt = {
+        basePolicyVersion: thread.policy.version,
+        beforePolicy: thread.policy,
+        id: newId("reset", options),
+        resetPolicyVersion,
+        threadId: thread.id
+      };
+      const nextThread: PersonalThread = { ...thread, policy: baselinePolicy(resetPolicyVersion) };
+      const nextState = replaceThread(state, nextThread);
+      return {
+        changed: true,
+        result: { alreadyBaseline: false, receipt, thread: nextThread },
+        state: { ...nextState, nextPolicyVersion: resetPolicyVersion + 1, resetReceipts: [...state.resetReceipts, receipt] }
+      };
+    })
+  );
 }
 
 export async function undoThreadReset(
   file: string,
   threadId: string,
   resetId: string,
+  activePolicyWriteGate: ActiveAttunementPolicyWriteGate,
   options: AttunementStoreOptions = {}
 ): Promise<{ readonly applied: boolean; readonly receipt: UndoResetReceipt; readonly thread: PersonalThread }> {
-  return mutate<{ readonly applied: boolean; readonly receipt: UndoResetReceipt; readonly thread: PersonalThread }>(file, (state) => {
-    const existing = state.undoResetReceipts.find((receipt) => receipt.threadId === threadId && receipt.resetId === resetId);
-    const thread = requireThread(state, threadId);
-    // Replay lookup intentionally precedes CAS: a completed undo is a no-op,
-    // even if later policy mutations make the old reset stale.
-    if (existing) return { changed: false, result: { applied: false, receipt: existing, thread }, state };
-    const reset = state.resetReceipts.find((receipt) => receipt.id === resetId && receipt.threadId === threadId);
-    if (!reset) throw new AttunementStoreError(`no reset '${resetId}' belongs to thread '${threadId}'`);
-    if (thread.policy.version !== reset.resetPolicyVersion) {
-      throw new AttunementStoreError("cannot undo a stale reset after another policy change");
-    }
-    const undoPolicyVersion = state.nextPolicyVersion;
-    const restoredPolicy = { ...reset.beforePolicy, version: undoPolicyVersion };
-    const receipt: UndoResetReceipt = {
-      id: newId("undo", options),
-      previousPolicyVersion: reset.resetPolicyVersion,
-      resetId: reset.id,
-      restoredPolicy,
-      threadId,
-      undoneAt: nowIso(options),
-      undoPolicyVersion
-    };
-    const nextThread: PersonalThread = { ...thread, policy: restoredPolicy };
-    const nextState = replaceThread(state, nextThread);
-    return {
-      changed: true,
-      result: { applied: true, receipt, thread: nextThread },
-      state: { ...nextState, nextPolicyVersion: undoPolicyVersion + 1, undoResetReceipts: [...state.undoResetReceipts, receipt] }
-    };
-  });
+  return runActiveAttunementPolicyMutation(activePolicyWriteGate, () =>
+    mutate<{ readonly applied: boolean; readonly receipt: UndoResetReceipt; readonly thread: PersonalThread }>(file, (state) => {
+      const existing = state.undoResetReceipts.find((receipt) => receipt.threadId === threadId && receipt.resetId === resetId);
+      const thread = requireThread(state, threadId);
+      // Replay lookup intentionally precedes CAS: a completed undo is a no-op,
+      // even if later policy mutations make the old reset stale.
+      if (existing) return { changed: false, result: { applied: false, receipt: existing, thread }, state };
+      const reset = state.resetReceipts.find((receipt) => receipt.id === resetId && receipt.threadId === threadId);
+      if (!reset) throw new AttunementStoreError(`no reset '${resetId}' belongs to thread '${threadId}'`);
+      if (thread.policy.version !== reset.resetPolicyVersion) {
+        throw new AttunementStoreError("cannot undo a stale reset after another policy change");
+      }
+      const undoPolicyVersion = state.nextPolicyVersion;
+      const restoredPolicy = { ...reset.beforePolicy, version: undoPolicyVersion };
+      const receipt: UndoResetReceipt = {
+        id: newId("undo", options),
+        previousPolicyVersion: reset.resetPolicyVersion,
+        resetId: reset.id,
+        restoredPolicy,
+        threadId,
+        undoneAt: nowIso(options),
+        undoPolicyVersion
+      };
+      const nextThread: PersonalThread = { ...thread, policy: restoredPolicy };
+      const nextState = replaceThread(state, nextThread);
+      return {
+        changed: true,
+        result: { applied: true, receipt, thread: nextThread },
+        state: { ...nextState, nextPolicyVersion: undoPolicyVersion + 1, undoResetReceipts: [...state.undoResetReceipts, receipt] }
+      };
+    })
+  );
 }
 
 export function inspectThread(state: AttunementState, threadId: string): ThreadInspection {

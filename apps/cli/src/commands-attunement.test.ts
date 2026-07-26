@@ -53,6 +53,7 @@ async function run(fixture: Fixture, args: string[], deps?: AttunementCommandDep
     MUSE_CONTACTS_FILE: process.env.MUSE_CONTACTS_FILE,
     MUSE_CONVERSATIONS_FILE: process.env.MUSE_CONVERSATIONS_FILE,
     MUSE_NOTES_DIR: process.env.MUSE_NOTES_DIR,
+    MUSE_QUALIFICATION_LEARNING_HOLD_FILE: process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE,
     MUSE_REMINDERS_FILE: process.env.MUSE_REMINDERS_FILE,
     MUSE_TASKS_FILE: process.env.MUSE_TASKS_FILE
   };
@@ -64,6 +65,7 @@ async function run(fixture: Fixture, args: string[], deps?: AttunementCommandDep
   process.env.MUSE_CONTACTS_FILE = fixture.contactsFile;
   process.env.MUSE_CONVERSATIONS_FILE = fixture.conversationsFile;
   process.env.MUSE_NOTES_DIR = fixture.notesDir;
+  process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE = join(fixture.root, "qualification-learning-hold.json");
   process.env.MUSE_REMINDERS_FILE = fixture.remindersFile;
   process.env.MUSE_TASKS_FILE = fixture.taskFile;
   let exitCode: number | undefined;

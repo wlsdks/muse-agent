@@ -11,10 +11,23 @@ import {
   forgetTimingSession,
   pauseTimingSession,
   readTimingState,
-  recordTimingFeedback,
+  recordTimingFeedback as recordTimingFeedbackImpl,
   recordTimingObservation,
   startTimingSession
 } from "./timing-store.js";
+
+const recordTimingFeedback = (
+  file: string,
+  candidateId: string,
+  outcome: Parameters<typeof recordTimingFeedbackImpl>[2],
+  options: Parameters<typeof recordTimingFeedbackImpl>[4] = {}
+) => recordTimingFeedbackImpl(
+  file,
+  candidateId,
+  outcome,
+  { run: (operation) => operation() },
+  options
+);
 
 function fixture(): { readonly file: string; readonly options: { readonly idFactory: () => string; readonly now: () => Date } } {
   let sequence = 0;

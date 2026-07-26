@@ -13,6 +13,10 @@ import { readFile } from "node:fs/promises";
 import { atomicWriteFile } from "@muse/stores";
 
 import { AttunementStoreError } from "./attunement-store.js";
+import {
+  runActiveAttunementPolicyMutation,
+  type ActiveAttunementPolicyWriteGate
+} from "./active-policy-write-gate.js";
 import { mutateFileState, type FileStateMutation } from "./file-state-mutation.js";
 import type { ContinuityOutcome } from "./types.js";
 
@@ -246,40 +250,43 @@ export async function recordTimingFeedback(
   file: string,
   candidateId: string,
   outcome: ContinuityOutcome,
+  activePolicyWriteGate: ActiveAttunementPolicyWriteGate,
   options: TimingStoreOptions = {}
 ): Promise<{ readonly applied: boolean; readonly feedback: TimingFeedback; readonly session: ThreadTimingSession }> {
   if (!["used", "adjusted", "ignored", "rejected"].includes(outcome)) {
     throw new AttunementStoreError("timing feedback must be used, adjusted, ignored, or rejected");
   }
-  return mutateTimingState<{ readonly applied: boolean; readonly feedback: TimingFeedback; readonly session: ThreadTimingSession }>(file, options, (state) => {
-    const candidate = state.candidates.find((entry) => entry.id === candidateId);
-    if (!candidate) throw new AttunementStoreError(`no timing candidate with id '${candidateId}'`);
-    const session = requireSession(state, candidate.sessionId);
-    const existing = state.feedback.find((entry) => entry.candidateId === candidate.id);
-    if (existing) {
-      if (existing.outcome !== outcome) throw new AttunementStoreError(`timing candidate '${candidateId}' already has immutable feedback '${existing.outcome}'`);
-      return { changed: false, result: { applied: false, feedback: existing, session }, state };
-    }
-    const nextPolicy = policyForTimingOutcome(session.policy, outcome);
-    const updatedSession: ThreadTimingSession = { ...session, policy: nextPolicy, updatedAt: nowIso(options) };
-    const feedback: TimingFeedback = {
-      candidateId: candidate.id,
-      outcome,
-      recordedAt: updatedSession.updatedAt,
-      resultingCooldownMs: nextPolicy.offerCooldownMs,
-      resultingPolicyVersion: nextPolicy.version,
-      sessionId: session.id,
-      threadId: session.threadId
-    };
-    return {
-      changed: true,
-      result: { applied: true, feedback, session: updatedSession },
-      state: {
-        ...replaceSession(state, updatedSession),
-        feedback: trim([...state.feedback, feedback], MAX_FEEDBACK)
+  return runActiveAttunementPolicyMutation(activePolicyWriteGate, () =>
+    mutateTimingState<{ readonly applied: boolean; readonly feedback: TimingFeedback; readonly session: ThreadTimingSession }>(file, options, (state) => {
+      const candidate = state.candidates.find((entry) => entry.id === candidateId);
+      if (!candidate) throw new AttunementStoreError(`no timing candidate with id '${candidateId}'`);
+      const session = requireSession(state, candidate.sessionId);
+      const existing = state.feedback.find((entry) => entry.candidateId === candidate.id);
+      if (existing) {
+        if (existing.outcome !== outcome) throw new AttunementStoreError(`timing candidate '${candidateId}' already has immutable feedback '${existing.outcome}'`);
+        return { changed: false, result: { applied: false, feedback: existing, session }, state };
       }
-    };
-  });
+      const nextPolicy = policyForTimingOutcome(session.policy, outcome);
+      const updatedSession: ThreadTimingSession = { ...session, policy: nextPolicy, updatedAt: nowIso(options) };
+      const feedback: TimingFeedback = {
+        candidateId: candidate.id,
+        outcome,
+        recordedAt: updatedSession.updatedAt,
+        resultingCooldownMs: nextPolicy.offerCooldownMs,
+        resultingPolicyVersion: nextPolicy.version,
+        sessionId: session.id,
+        threadId: session.threadId
+      };
+      return {
+        changed: true,
+        result: { applied: true, feedback, session: updatedSession },
+        state: {
+          ...replaceSession(state, updatedSession),
+          feedback: trim([...state.feedback, feedback], MAX_FEEDBACK)
+        }
+      };
+    })
+  );
 }
 
 export function inspectTimingSession(state: TimingState, sessionId: string): {

@@ -18,7 +18,7 @@ import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEv
 import { FileCheckpointStore } from "@muse/runtime-state";
 import { writeBrowsingStore } from "@muse/recall";
 import { encodeLocalCheckpointReference, encodeLocalRunReference } from "@muse/shared";
-import { addWorkOutcome, createWork, writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
+import { activateQualificationLearningHold, addWorkOutcome, createWork, writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -127,6 +127,10 @@ function server(overrides: Partial<AttunementRoutesGate> = {}) {
     contactsFile,
     conversationsFile,
     checkpointsDir,
+    env: {
+      HOME: root,
+      MUSE_QUALIFICATION_LEARNING_HOLD_FILE: join(root, "qualification-learning-hold.json")
+    },
     notesDir,
     now: () => Date.parse("2026-07-17T00:00:00.000Z"),
     remindersFile,
@@ -445,6 +449,84 @@ describe("POST /api/attunement/threads/:threadId/continue", () => {
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ errorMessage: "thread policy changed while building this pack; rebuild before opening it" });
     expect((await readAttunementState(attunementFile)).deliveries).toHaveLength(0);
+  });
+});
+
+describe("qualification hold policy-write composition", () => {
+  it("blocks outcome, reset, undo, and timing feedback at the real API boundary without changing bytes", async () => {
+    const app = server();
+    const opened = await Promise.all([
+      app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` }),
+      app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/continue` })
+    ]);
+    const [firstDeliveryId, secondDeliveryId] = opened.map((response) => response.json().delivery.id as string);
+    expect((await app.inject({
+      method: "POST",
+      payload: { outcome: "used" },
+      url: `/api/attunement/deliveries/${firstDeliveryId}/outcome`
+    })).statusCode).toBe(200);
+    const reset = await app.inject({
+      method: "POST",
+      url: `/api/attunement/threads/${threadId}/reset`
+    });
+    expect(reset.statusCode).toBe(200);
+    const resetId = reset.json().receipt.id as string;
+
+    const started = await app.inject({
+      method: "POST",
+      payload: { consentVersion: 1, threadId },
+      url: "/api/attunement/timing/sessions"
+    });
+    const sessionId = started.json().id as string;
+    for (const observation of [
+      { appCategory: "building", endedAt: "2026-07-17T09:25:00.000Z", startedAt: "2026-07-17T09:00:00.000Z" },
+      { appCategory: "planning", endedAt: "2026-07-17T09:50:00.000Z", startedAt: "2026-07-17T09:25:00.000Z" }
+    ]) {
+      expect((await app.inject({
+        method: "POST",
+        payload: { ...observation, durationMs: 25 * 60_000 },
+        url: `/api/attunement/timing/sessions/${sessionId}/observations`
+      })).statusCode).toBe(200);
+    }
+    const evaluated = await app.inject({
+      method: "POST",
+      url: `/api/attunement/timing/sessions/${sessionId}/evaluate`
+    });
+    expect(evaluated.statusCode).toBe(200);
+    const candidateId = evaluated.json().candidate.id as string;
+
+    await activateQualificationLearningHold(join(root, "qualification-learning-hold.json"), {
+      activatedAt: "2026-07-26T06:00:00.000Z",
+      holdId: "personal-agent-v1"
+    });
+    const timingFile = `${attunementFile}.timing.json`;
+    const attunementBefore = await readFile(attunementFile);
+    const timingBefore = await readFile(timingFile);
+    const blocked = await Promise.all([
+      app.inject({
+        method: "POST",
+        payload: { outcome: "adjusted" },
+        url: `/api/attunement/deliveries/${secondDeliveryId}/outcome`
+      }),
+      app.inject({
+        method: "POST",
+        url: `/api/attunement/threads/${threadId}/reset`
+      }),
+      app.inject({
+        method: "POST",
+        url: `/api/attunement/threads/${threadId}/resets/${resetId}/undo`
+      }),
+      app.inject({
+        method: "POST",
+        payload: { outcome: "used" },
+        url: `/api/attunement/timing/candidates/${candidateId}/feedback`
+      })
+    ]);
+
+    expect(blocked.map((response) => response.statusCode)).toEqual([500, 500, 500, 500]);
+    expect(await readFile(attunementFile)).toEqual(attunementBefore);
+    expect(await readFile(timingFile)).toEqual(timingBefore);
+    await app.close();
   });
 });
 

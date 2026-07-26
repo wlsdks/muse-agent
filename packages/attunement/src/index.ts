@@ -68,6 +68,8 @@ export {
   type ContinuityTechnicalEvidenceSlice
 } from "./evaluation.js";
 export { BASELINE_POLICY, baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
+export { ActiveAttunementPolicyWriteBlockedError } from "./active-policy-write-gate.js";
+export type { ActiveAttunementPolicyWriteGate } from "./active-policy-write-gate.js";
 export {
   OBSERVE_APP_CATEGORIES,
   OBSERVE_CONSENT_TERMS,

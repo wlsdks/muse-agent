@@ -188,7 +188,12 @@ describe("openPreparedContinuityPack", () => {
     });
 
     await expect(openPreparedContinuityPack(file, "thread_life", async (link) => {
-      await resetThreadPolicy(file, "thread_life", { idFactory: () => "race", now: () => new Date("2026-07-18T08:59:00.000Z") });
+      await resetThreadPolicy(
+        file,
+        "thread_life",
+        { run: (operation) => operation() },
+        { idFactory: () => "race", now: () => new Date("2026-07-18T08:59:00.000Z") }
+      );
       return { ...link, taskStatus: "open", title: "Choose flowers" };
     }, { now: () => Date.parse("2026-07-18T09:00:00.000Z") })).rejects.toThrow("thread policy changed while building this pack");
     expect((await readAttunementState(file)).deliveries).toHaveLength(1);

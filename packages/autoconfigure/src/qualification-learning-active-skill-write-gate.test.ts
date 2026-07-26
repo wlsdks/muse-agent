@@ -7,6 +7,18 @@ import { pathToFileURL } from "node:url";
 
 import { FileUserMemoryStore } from "@muse/memory";
 import {
+  createPersonalThread,
+  evaluateTimingSession,
+  openContinuityDelivery,
+  recordContinuityOutcome,
+  recordTimingFeedback,
+  recordTimingObservation,
+  resetThreadPolicy,
+  startTimingSession,
+  undoThreadReset,
+  type ActiveAttunementPolicyWriteGate
+} from "@muse/attunement";
+import {
   activateQualificationLearningHold,
   adjustPlaybookReward,
   bumpPlaybookObservation,
@@ -37,6 +49,112 @@ const seedEntry: PlaybookEntry = {
   text: "keep replies concise",
   userId: "owner"
 };
+const allowActiveAttunementPolicyWrites: ActiveAttunementPolicyWriteGate = {
+  run: (operation) => operation()
+};
+
+async function activeAttunementPolicyMutationFixtures(root: string): Promise<readonly {
+  readonly file: string;
+  readonly mutate: (gate: ActiveAttunementPolicyWriteGate) => Promise<unknown>;
+}[]> {
+  const outcomeFile = join(root, "outcome.json");
+  const outcomeThread = await createPersonalThread(
+    outcomeFile,
+    { kind: "life", title: "Outcome fixture" },
+    { idFactory: () => "thread_outcome" }
+  );
+  const outcomeDelivery = await openContinuityDelivery(outcomeFile, {
+    evidenceRefs: [],
+    expectedPolicyVersion: 0,
+    threadId: outcomeThread.id
+  }, { idFactory: () => "delivery_outcome" });
+
+  const resetFile = join(root, "reset.json");
+  const resetThread = await createPersonalThread(
+    resetFile,
+    { kind: "work", title: "Reset fixture" },
+    { idFactory: () => "thread_reset" }
+  );
+  const resetDelivery = await openContinuityDelivery(resetFile, {
+    evidenceRefs: [],
+    expectedPolicyVersion: 0,
+    threadId: resetThread.id
+  }, { idFactory: () => "delivery_reset" });
+  await recordContinuityOutcome(
+    resetFile,
+    resetDelivery.id,
+    "ignored",
+    allowActiveAttunementPolicyWrites
+  );
+
+  const undoFile = join(root, "undo.json");
+  const undoThread = await createPersonalThread(
+    undoFile,
+    { kind: "work", title: "Undo fixture" },
+    { idFactory: () => "thread_undo" }
+  );
+  const undoDelivery = await openContinuityDelivery(undoFile, {
+    evidenceRefs: [],
+    expectedPolicyVersion: 0,
+    threadId: undoThread.id
+  }, { idFactory: () => "delivery_undo" });
+  await recordContinuityOutcome(
+    undoFile,
+    undoDelivery.id,
+    "ignored",
+    allowActiveAttunementPolicyWrites
+  );
+  const reset = await resetThreadPolicy(
+    undoFile,
+    undoThread.id,
+    allowActiveAttunementPolicyWrites,
+    { idFactory: () => "reset_undo" }
+  );
+
+  const timingFile = join(root, "timing.json");
+  const timingSession = await startTimingSession(
+    timingFile,
+    { consentVersion: 1, threadId: "thread_timing" },
+    async () => undefined,
+    { idFactory: () => "timing_session", now: () => new Date("2026-07-26T00:00:00.000Z") }
+  );
+  await recordTimingObservation(timingFile, timingSession.id, {
+    appCategory: "writing",
+    durationMs: 30 * 60_000,
+    endedAt: "2026-07-26T00:30:00.000Z",
+    startedAt: "2026-07-26T00:00:00.000Z"
+  }, { idFactory: () => "observation_1" });
+  await recordTimingObservation(timingFile, timingSession.id, {
+    appCategory: "research",
+    durationMs: 30 * 60_000,
+    endedAt: "2026-07-26T01:00:00.000Z",
+    startedAt: "2026-07-26T00:30:00.000Z"
+  }, { idFactory: () => "observation_2" });
+  const candidate = await evaluateTimingSession(
+    timingFile,
+    timingSession.id,
+    { idFactory: () => "candidate_1", now: () => new Date("2026-07-26T01:00:00.000Z") }
+  );
+
+  return [
+    {
+      file: outcomeFile,
+      mutate: (gate) => recordContinuityOutcome(outcomeFile, outcomeDelivery.id, "used", gate)
+    },
+    {
+      file: resetFile,
+      mutate: (gate) => resetThreadPolicy(resetFile, resetThread.id, gate)
+    },
+    {
+      file: undoFile,
+      mutate: (gate) => undoThreadReset(undoFile, undoThread.id, reset.receipt!.id, gate)
+    },
+    {
+      file: timingFile,
+      mutate: (gate) => recordTimingFeedback(timingFile, candidate.id, "used", gate)
+    }
+  ];
+}
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "muse-active-skill-gate-"));
@@ -270,6 +388,82 @@ describe("qualification learning active-skill write gate", () => {
     }
   });
 
+  it.each([
+    "active",
+    "invalid",
+    "unavailable"
+  ] as const)("keeps exact Attunement policy bytes unchanged for every policy mutation family when hold state is %s", async (state) => {
+    const root = await mkdtemp(join(tmpdir(), `muse-attunement-policy-gate-${state}-`));
+    const fixtures = await activeAttunementPolicyMutationFixtures(root);
+    const before = new Map(await Promise.all(fixtures.map(async ({ file }) => [file, await readFile(file)] as const)));
+    let holdFile = join(root, "qualification-learning-hold.json");
+    if (state === "active") {
+      await activateQualificationLearningHold(holdFile, {
+        activatedAt: "2026-07-26T06:00:00.000Z",
+        holdId: "personal-agent-v1"
+      });
+    } else if (state === "invalid") {
+      await writeFile(holdFile, "{malformed", { mode: 0o600 });
+    } else {
+      const parentFile = join(root, "not-a-directory");
+      await writeFile(parentFile, "block", { mode: 0o600 });
+      holdFile = join(parentFile, "qualification-learning-hold.json");
+    }
+    const gate = createQualificationLearningWriteGate({
+      HOME: root,
+      MUSE_QUALIFICATION_LEARNING_HOLD_FILE: holdFile
+    });
+    for (const fixture of fixtures) {
+      await expect(fixture.mutate(gate)).rejects.toMatchObject({
+        code: "MUSE_QUALIFICATION_LEARNING_WRITE_BLOCKED",
+        reason: `qualification-hold-${state}`
+      });
+      expect(await readFile(fixture.file)).toEqual(before.get(fixture.file));
+    }
+  });
+
+  it("fails closed without a gate for every Attunement policy mutation family", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-attunement-policy-missing-gate-"));
+    const fixtures = await activeAttunementPolicyMutationFixtures(root);
+    const before = new Map(await Promise.all(fixtures.map(async ({ file }) => [file, await readFile(file)] as const)));
+    const noGate = undefined as never;
+    for (const fixture of fixtures) {
+      await expect(fixture.mutate(noGate)).rejects.toMatchObject({
+        code: "MUSE_ACTIVE_ATTUNEMENT_POLICY_WRITE_BLOCKED",
+        reason: "qualification-hold-unavailable"
+      });
+      expect(await readFile(fixture.file)).toEqual(before.get(fixture.file));
+    }
+  });
+
+  it("keeps every Attunement policy mutation family working while the hold is absent", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-attunement-policy-gate-inactive-"));
+    const fixtures = await activeAttunementPolicyMutationFixtures(root);
+    const before = new Map(await Promise.all(fixtures.map(async ({ file }) => [file, await readFile(file)] as const)));
+    const gate = createQualificationLearningWriteGate({
+      HOME: root,
+      MUSE_QUALIFICATION_LEARNING_HOLD_FILE: join(root, "qualification-learning-hold.json")
+    });
+
+    for (const fixture of fixtures) {
+      await expect(fixture.mutate(gate)).resolves.toBeDefined();
+      expect(await readFile(fixture.file)).not.toEqual(before.get(fixture.file));
+    }
+  });
+
+  it("preserves the exact operation error through an Attunement policy writer", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-attunement-policy-error-"));
+    const [fixture] = await activeAttunementPolicyMutationFixtures(root);
+    const original = new Error("policy store write failed");
+    const gate: ActiveAttunementPolicyWriteGate = {
+      run: async () => {
+        throw original;
+      }
+    };
+
+    await expect(fixture!.mutate(gate)).rejects.toBe(original);
+  });
+
   it("preserves the exact operation error through both qualification gate adapters", async () => {
     const { env } = await fixture();
     const original = new Error("disk write failed");
@@ -305,6 +499,48 @@ describe("qualification learning active-skill write gate", () => {
     await expect(memory.findByUserId("owner")).resolves.toMatchObject({
       facts: { home_city: "Seoul" }
     });
+  });
+
+  it("keeps timing observations and candidate proposals writable without changing policy under hold", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-timing-proposal-hold-"));
+    const holdFile = join(root, "qualification-learning-hold.json");
+    const timingFile = join(root, "timing.json");
+    const session = await startTimingSession(
+      timingFile,
+      { consentVersion: 1, threadId: "thread_timing" },
+      async () => undefined,
+      { idFactory: () => "timing_session", now: () => new Date("2026-07-26T00:00:00.000Z") }
+    );
+    await activateQualificationLearningHold(holdFile, {
+      activatedAt: "2026-07-26T06:00:00.000Z",
+      holdId: "personal-agent-v1"
+    });
+    await recordTimingObservation(timingFile, session.id, {
+      appCategory: "writing",
+      durationMs: 30 * 60_000,
+      endedAt: "2026-07-26T00:30:00.000Z",
+      startedAt: "2026-07-26T00:00:00.000Z"
+    }, { idFactory: () => "observation_1" });
+    await recordTimingObservation(timingFile, session.id, {
+      appCategory: "research",
+      durationMs: 30 * 60_000,
+      endedAt: "2026-07-26T01:00:00.000Z",
+      startedAt: "2026-07-26T00:30:00.000Z"
+    }, { idFactory: () => "observation_2" });
+    const candidate = await evaluateTimingSession(
+      timingFile,
+      session.id,
+      { idFactory: () => "candidate_1", now: () => new Date("2026-07-26T01:00:00.000Z") }
+    );
+    expect(candidate.decision).toBe("offer");
+    const state = JSON.parse(await readFile(timingFile, "utf8")) as {
+      feedback: unknown[];
+      observations: unknown[];
+      sessions: { policy: { version: number } }[];
+    };
+    expect(state.observations).toHaveLength(2);
+    expect(state.feedback).toEqual([]);
+    expect(state.sessions[0]?.policy.version).toBe(0);
   });
 
   it("blocks a restarted child process from recording a playbook strategy under the persisted hold", async () => {
@@ -366,5 +602,75 @@ describe("qualification learning active-skill write gate", () => {
     const [code, signal] = await once(child, "exit");
     expect({ code, signal }, stderr).toEqual({ code: 0, signal: null });
     expect(await readFile(playbookFile)).toEqual(before);
+  }, 10_000);
+
+  it("blocks a restarted child process from recording an Attunement outcome under the persisted hold", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-attunement-restart-gate-"));
+    const holdFile = join(root, "qualification-learning-hold.json");
+    const attunementFile = join(root, "attunement.json");
+    const thread = await createPersonalThread(
+      attunementFile,
+      { kind: "life", title: "Restart fixture" },
+      { idFactory: () => "thread_restart" }
+    );
+    const delivery = await openContinuityDelivery(attunementFile, {
+      evidenceRefs: [],
+      expectedPolicyVersion: 0,
+      threadId: thread.id
+    }, { idFactory: () => "delivery_restart" });
+    const before = await readFile(attunementFile);
+    await activateQualificationLearningHold(holdFile, {
+      activatedAt: "2026-07-26T06:00:00.000Z",
+      holdId: "personal-agent-v1"
+    });
+
+    const gateModule = pathToFileURL(
+      join(import.meta.dirname, "qualification-learning-active-skill-write-gate.ts")
+    ).href;
+    const attunementModule = pathToFileURL(
+      join(import.meta.dirname, "../../attunement/src/attunement-store.ts")
+    ).href;
+    const childCode = `
+      import { createQualificationLearningWriteGate } from ${JSON.stringify(gateModule)};
+      import { recordContinuityOutcome } from ${JSON.stringify(attunementModule)};
+      const gate = createQualificationLearningWriteGate({
+        HOME: process.env.MUSE_PROBE_HOME,
+        MUSE_QUALIFICATION_LEARNING_HOLD_FILE: process.env.MUSE_PROBE_HOLD_FILE
+      });
+      try {
+        await recordContinuityOutcome(
+          process.env.MUSE_PROBE_ATTUNEMENT_FILE,
+          ${JSON.stringify(delivery.id)},
+          "used",
+          gate
+        );
+        process.exitCode = 2;
+      } catch (cause) {
+        if (cause?.code !== "MUSE_QUALIFICATION_LEARNING_WRITE_BLOCKED"
+          || cause?.reason !== "qualification-hold-active") {
+          throw cause;
+        }
+      }
+    `;
+    const child = spawn(
+      process.execPath,
+      ["--import", "tsx", "--input-type=module", "-e", childCode],
+      {
+        env: {
+          ...process.env,
+          MUSE_PROBE_ATTUNEMENT_FILE: attunementFile,
+          MUSE_PROBE_HOLD_FILE: holdFile,
+          MUSE_PROBE_HOME: root
+        },
+        stdio: ["ignore", "ignore", "pipe"]
+      }
+    );
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    const [code, signal] = await once(child, "exit");
+    expect({ code, signal }, stderr).toEqual({ code: 0, signal: null });
+    expect(await readFile(attunementFile)).toEqual(before);
   }, 10_000);
 });

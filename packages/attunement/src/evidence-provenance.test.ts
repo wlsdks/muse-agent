@@ -9,10 +9,23 @@ import {
   linkArtifact,
   openPreparedContinuityPack,
   readAttunementState,
-  recordContinuityOutcome
+  recordContinuityOutcome as recordContinuityOutcomeImpl
 } from "./index.js";
 import type { ArtifactLink } from "./index.js";
 import { createOrganicContinuityWriteAuthority } from "./evidence-provenance.js";
+
+const recordContinuityOutcome = (
+  file: string,
+  deliveryId: string,
+  outcome: Parameters<typeof recordContinuityOutcomeImpl>[2],
+  options: Parameters<typeof recordContinuityOutcomeImpl>[4] = {}
+) => recordContinuityOutcomeImpl(
+  file,
+  deliveryId,
+  outcome,
+  { run: (operation) => operation() },
+  options
+);
 
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), "muse-continuity-provenance-"));

@@ -3,6 +3,7 @@ import { realpath } from "node:fs/promises";
 import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, type ArtifactLinkValidator, type ExactArtifactResolver } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
 import type { ContinuityOutcome, OpenPreparedContinuityPack } from "@muse/attunement";
+import { createQualificationLearningWriteGate } from "@muse/autoconfigure";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { readExactBrowsingVisit } from "@muse/recall";
 import { isCanonicalWorkspaceRealpath } from "@muse/shared";
@@ -231,7 +232,12 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     if (typeof outcome !== "string" || !OUTCOMES.includes(outcome as ContinuityOutcome)) {
       return reply.code(400).send({ errorMessage: "timing feedback outcome must be used, adjusted, ignored, or rejected" });
     }
-    return recordTimingFeedback(timingFile, request.params.candidateId, outcome as ContinuityOutcome);
+    return recordTimingFeedback(
+      timingFile,
+      request.params.candidateId,
+      outcome as ContinuityOutcome,
+      createQualificationLearningWriteGate(gate.env ?? process.env)
+    );
   });
 
   server.get("/api/attunement/evaluation", async (request, reply) => {
@@ -414,7 +420,11 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
 
   server.post<{ Params: { readonly threadId: string } }>("/api/attunement/threads/:threadId/reset", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    return resetThreadPolicy(gate.attunementFile, request.params.threadId);
+    return resetThreadPolicy(
+      gate.attunementFile,
+      request.params.threadId,
+      createQualificationLearningWriteGate(gate.env ?? process.env)
+    );
   });
 
   server.post<{ Params: { readonly threadId: string } }>("/api/attunement/threads/:threadId/delete", async (request, reply) => {
@@ -430,7 +440,12 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
 
   server.post<{ Params: { readonly resetId: string; readonly threadId: string } }>("/api/attunement/threads/:threadId/resets/:resetId/undo", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    return undoThreadReset(gate.attunementFile, request.params.threadId, request.params.resetId);
+    return undoThreadReset(
+      gate.attunementFile,
+      request.params.threadId,
+      request.params.resetId,
+      createQualificationLearningWriteGate(gate.env ?? process.env)
+    );
   });
 
   server.post<{ Params: { readonly deliveryId: string }; Body: { readonly outcome?: unknown } }>("/api/attunement/deliveries/:deliveryId/outcome", async (request, reply) => {
@@ -443,6 +458,7 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
       gate.attunementFile,
       request.params.deliveryId,
       outcome as ContinuityOutcome,
+      createQualificationLearningWriteGate(gate.env ?? process.env),
       { ...(gate.now ? { now: () => new Date(gate.now!()) } : {}) }
     );
     return { applied: result.applied, delivery: result.delivery, policy: result.policy };

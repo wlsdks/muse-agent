@@ -1,6 +1,6 @@
 /** Explicit controls for the thread-scoped continuity timing loop. */
 
-import { resolveAttunementFile } from "@muse/autoconfigure";
+import { createQualificationLearningWriteGate, resolveAttunementFile } from "@muse/autoconfigure";
 import {
   evaluateTimingSession,
   forgetTimingSession,
@@ -110,6 +110,13 @@ export function registerTimingCommands(program: Command, io: ProgramIO): void {
   });
 
   timing.command("feedback <candidateId> <outcome>").action(async (candidateId: string, outcome: string) => {
-    try { write(io, await recordTimingFeedback(timingFile(), candidateId, assertOutcome(outcome))); } catch (cause) { fail(io, cause); }
+    try {
+      write(io, await recordTimingFeedback(
+        timingFile(),
+        candidateId,
+        assertOutcome(outcome),
+        createQualificationLearningWriteGate(process.env)
+      ));
+    } catch (cause) { fail(io, cause); }
   });
 }

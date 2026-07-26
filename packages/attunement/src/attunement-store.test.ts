@@ -10,12 +10,36 @@ import {
   linkArtifact,
   openContinuityDelivery,
   readAttunementState,
-  recordContinuityOutcome,
-  resetThreadPolicy,
-  undoThreadReset,
+  recordContinuityOutcome as recordContinuityOutcomeImpl,
+  resetThreadPolicy as resetThreadPolicyImpl,
+  undoThreadReset as undoThreadResetImpl,
   unlinkArtifact
 } from "./index.js";
 import type { AttunementState, LinkArtifactOptions } from "./index.js";
+
+const recordContinuityOutcome = (
+  file: string,
+  deliveryId: string,
+  outcome: Parameters<typeof recordContinuityOutcomeImpl>[2],
+  options: Parameters<typeof recordContinuityOutcomeImpl>[4] = {}
+) => recordContinuityOutcomeImpl(
+  file,
+  deliveryId,
+  outcome,
+  { run: (operation) => operation() },
+  options
+);
+const resetThreadPolicy = (
+  file: string,
+  threadId: string,
+  options: Parameters<typeof resetThreadPolicyImpl>[3] = {}
+) => resetThreadPolicyImpl(file, threadId, { run: (operation) => operation() }, options);
+const undoThreadReset = (
+  file: string,
+  threadId: string,
+  resetId: string,
+  options: Parameters<typeof undoThreadResetImpl>[4] = {}
+) => undoThreadResetImpl(file, threadId, resetId, { run: (operation) => operation() }, options);
 
 function stateFile(): string {
   return join(mkdtempSync(join(tmpdir(), "muse-attunement-")), "attunement.json");

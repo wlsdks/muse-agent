@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { mutateTasks, writeTasks } from "@muse/stores";
+import { activateQualificationLearningHold, mutateTasks, writeTasks } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -317,7 +317,7 @@ describe("Continuity interaction evidence", () => {
     }])).toThrow(/chronology/iu);
   });
 
-  it("records one immutable factual receipt for an anchored task completion", async () => {
+  it("records one immutable factual receipt for an anchored task completion even while qualification learning is held", async () => {
     const dir = await mkdtemp(join(tmpdir(), "muse-continuity-interaction-"));
     const attunementFile = join(dir, "attunement.json");
     const notesDir = join(dir, "notes");
@@ -361,6 +361,10 @@ describe("Continuity interaction evidence", () => {
     });
     expect(opened.delivery.runId).toBe("continuity_run_opened");
 
+    await activateQualificationLearningHold(join(dir, "qualification-learning-hold.json"), {
+      activatedAt: "2026-07-18T01:30:00.000Z",
+      holdId: "personal-agent-v1"
+    });
     await mutateTasks(tasksFile, (tasks) => tasks.map((task) => task.id === "task_exact"
       ? { ...task, completedAt: "2026-07-18T02:00:00.000Z", status: "done" as const }
       : task));

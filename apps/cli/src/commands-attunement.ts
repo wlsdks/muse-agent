@@ -61,7 +61,7 @@ import {
   type PersonalThreadKind,
 } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
-import { buildCalendarRegistry, resolveAttunementFile, resolveCheckpointsDir, resolveContactsFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, resolveWorksFile } from "@muse/autoconfigure";
+import { buildCalendarRegistry, createQualificationLearningWriteGate, resolveAttunementFile, resolveCheckpointsDir, resolveContactsFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, resolveWorksFile } from "@muse/autoconfigure";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { defaultBrowsingFile, readExactBrowsingVisit } from "@muse/recall";
 import { defaultConversationsFile, readExactConversation, readExactWork } from "@muse/stores";
@@ -784,6 +784,7 @@ Examples:
           attunementFile(),
           deliveryId.trim(),
           canonicalOutcome as (typeof OUTCOMES)[number],
+          createQualificationLearningWriteGate(process.env),
           { now: () => new Date(now()) }
         );
         io.stdout(`${recorded.applied ? "Recorded" : "Already recorded"} ${canonicalOutcome} for ${deliveryId}; policy v${recorded.policy.version.toString()}\n`);
@@ -795,7 +796,11 @@ Examples:
     .description("Reset this thread's display policy without deleting its links or feedback history")
     .action(async (threadId: string, _options: unknown, command: Command) => {
       await commandAction(command, io, "thread reset", async () => {
-        const reset = await resetThreadPolicy(attunementFile(), threadId.trim());
+        const reset = await resetThreadPolicy(
+          attunementFile(),
+          threadId.trim(),
+          createQualificationLearningWriteGate(process.env)
+        );
         if (reset.alreadyBaseline) {
           io.stdout(`Thread ${threadId} already uses the baseline policy.\n`);
           return;
@@ -809,7 +814,12 @@ Examples:
     .description("Undo the latest unchanged policy reset using its receipt")
     .action(async (threadId: string, resetId: string, _options: unknown, command: Command) => {
       await commandAction(command, io, "thread undo-reset", async () => {
-        const undone = await undoThreadReset(attunementFile(), threadId.trim(), resetId.trim());
+        const undone = await undoThreadReset(
+          attunementFile(),
+          threadId.trim(),
+          resetId.trim(),
+          createQualificationLearningWriteGate(process.env)
+        );
         io.stdout(`${undone.applied ? "Undid" : "Already undid"} reset ${resetId}; policy v${undone.thread.policy.version.toString()}\n`);
       });
     });
