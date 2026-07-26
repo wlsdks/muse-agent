@@ -8,11 +8,10 @@ import { runDueProactiveNotices } from "@muse/proactivity";
 import { firedKey } from "@muse/proactivity";
 
 describe("firedKey — collision-free dedup key for the {kind,id,startIso} tuple", () => {
-  it("two DISTINCT tuples that space-joined to the same string get DISTINCT keys (no separator-injection collision)", () => {
-    // Old impl `${kind} ${id} ${startIso}`: these both produced "calendar a b X".
-    const a = firedKey({ id: "a b", kind: "calendar", startIso: "X" });
-    const b = firedKey({ id: "a", kind: "calendar", startIso: "b X" });
-    expect(a).not.toBe(b); // the bug suppressed one of two legitimate notices
+  it("two DISTINCT valid tuples get DISTINCT keys", () => {
+    const a = firedKey({ id: "a b", kind: "calendar", startIso: "2026-06-15T10:00:00.000Z" });
+    const b = firedKey({ id: "a", kind: "calendar", startIso: "2026-06-15T10:00:01.000Z" });
+    expect(a).not.toBe(b);
   });
 
   it("the same tuple still maps to the same key (dedup still works)", () => {
@@ -21,8 +20,8 @@ describe("firedKey — collision-free dedup key for the {kind,id,startIso} tuple
   });
 });
 
-describe("runDueProactiveNotices — a fire is NOT suppressed by a separator-injection key collision", () => {
-  it("a new event whose id collides under the old space-join with a stored fired entry still fires", async () => {
+describe("runDueProactiveNotices — persisted dedupe keys fail closed", () => {
+  it("rejects the malformed timestamp needed for a persisted separator-injection collision", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-proactive-firedkey-"));
     const sidecarFile = join(dir, "proactive-fired.json");
     const startIso = "2026-05-12T15:00:00.000Z";
@@ -37,15 +36,14 @@ describe("runDueProactiveNotices — a fire is NOT suppressed by a separator-inj
     };
     const sent: string[] = [];
     const messaging = { send: async (_p: string, m: { destination: string; text: string }) => { sent.push(m.text); return { destination: m.destination, messageId: "ok", providerId: "telegram" }; } };
-    const summary = await runDueProactiveNotices({
+    await expect(runDueProactiveNotices({
       calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
       destination: "@me",
       messagingRegistry: messaging as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
       now: () => new Date("2026-05-12T14:55:00Z"),
       providerId: "telegram",
       sidecarFile
-    });
-    expect(summary.fired).toBe(1); // the bug suppressed it (seen.has the collided key) — fix lets it fire
-    expect(sent).toHaveLength(1);
+    })).rejects.toThrow(/invalid startIso/iu);
+    expect(sent).toHaveLength(0);
   });
 });

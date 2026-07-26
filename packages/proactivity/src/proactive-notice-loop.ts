@@ -72,6 +72,7 @@ import {
   appendSurfaced,
   avoidedSourceKeys,
   firedKey,
+  legacyCalendarWildcardKey,
   readProactiveFired,
   readSessionLock,
   readTrustLedger,
@@ -83,7 +84,7 @@ import {
   type ProactiveFiredEntry,
   type TrustLedgerEntry
 } from "@muse/stores";
-export { firedKey, readProactiveFired, readSessionLock, writeProactiveFired, writeSessionLock, type ProactiveFiredEntry, type ProactiveFiredKind, type SessionLockPayload } from "@muse/stores";
+export { firedKey, legacyCalendarWildcardKey, readProactiveFired, readSessionLock, writeProactiveFired, writeSessionLock, type ProactiveFiredEntry, type ProactiveFiredKind, type SessionLockPayload } from "@muse/stores";
 
 /**
  * Track when the user was last seen on a Muse surface
@@ -445,6 +446,28 @@ async function runDueProactiveNoticesUnderLock(
 
   const fired = await readProactiveFired(options.sidecarFile);
   const seen = new Set(fired.map((entry) => firedKey(entry)));
+  const prepared = sortImminentByStart(imminent).map((item) => {
+    const candidate: ProactiveFiredEntry = item.kind === "calendar"
+      ? {
+          firedAt: now().toISOString(),
+          id: item.id,
+          kind: "calendar",
+          ...(item.providerEventId !== undefined ? { providerEventId: item.providerEventId } : {}),
+          providerId: item.providerId,
+          startIso: item.startsAt.toISOString()
+        }
+      : {
+          firedAt: now().toISOString(),
+          id: item.id,
+          kind: "task",
+          startIso: item.startsAt.toISOString()
+        };
+    const key = firedKey(candidate);
+    const legacyWildcard = item.kind === "calendar"
+      ? legacyCalendarWildcardKey({ id: item.id, startIso: item.startsAt.toISOString() })
+      : undefined;
+    return { candidate, item, key, legacyWildcard };
+  });
   let firedThisRun = 0;
   let nextFired: readonly ProactiveFiredEntry[] = fired;
   let taskFiredPersisted: readonly ProactiveFiredEntry[] = fired;
@@ -474,15 +497,8 @@ async function runDueProactiveNoticesUnderLock(
     { maxAgeMs: options.activeSessionWindowMs, nowMs: nowDate.getTime() }
   );
 
-  for (const item of sortImminentByStart(imminent)) {
-    const candidate: ProactiveFiredEntry = {
-      firedAt: now().toISOString(),
-      id: item.id,
-      kind: item.kind,
-      startIso: item.startsAt.toISOString()
-    };
-    const key = firedKey(candidate);
-    if (seen.has(key)) {
+  for (const { candidate, item, key, legacyWildcard } of prepared) {
+    if (seen.has(key) || (legacyWildcard !== undefined && seen.has(legacyWildcard))) {
       continue;
     }
     // Learned avoidance — the user vetoed this source; never re-surface it.

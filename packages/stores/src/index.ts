@@ -187,8 +187,8 @@ export {
   writeRejectedProposals
 } from "./automation-rejected-proposals-store.js";
 export type { RejectedProposal } from "./automation-rejected-proposals-store.js";
-export { firedKey, readProactiveFired, readSessionLock, writeProactiveFired, writeSessionLock } from "./proactive-notice-store.js";
-export type { ProactiveFiredEntry, ProactiveFiredKind, SessionLockPayload } from "./proactive-notice-store.js";
+export { firedKey, legacyCalendarWildcardKey, ProactiveFiredStoreError, readProactiveFired, readSessionLock, writeProactiveFired, writeSessionLock } from "./proactive-notice-store.js";
+export type { LegacyCalendarProactiveFiredEntry, ProactiveFiredEntry, ProactiveFiredKind, QualifiedCalendarProactiveFiredEntry, SessionLockPayload, TaskProactiveFiredEntry } from "./proactive-notice-store.js";
 export { appendSurfaced, avoidedSourceKeys, computeTrustScore, isSourceAvoided, readTrustLedger, recordOutcome, sourceKey, withinDailyCap } from "./proactive-trust-ledger.js";
 export type { ProactiveOutcome, TrustLedgerEntry } from "./proactive-trust-ledger.js";
 export { addReflections, listReflections, readReflections, selectReflectionsForRecall } from "./reflections-store.js";

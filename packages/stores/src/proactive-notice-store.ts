@@ -12,9 +12,7 @@ import { atomicWriteFile } from "./atomic-file-store.js";
 
 export type ProactiveFiredKind = "calendar" | "task";
 
-export interface ProactiveFiredEntry {
-  /** Signal source. `calendar` = Phase A, `task` = Phase B. */
-  readonly kind: ProactiveFiredKind;
+interface ProactiveFiredEntryBase {
   /** Provider-reported event id, or task id. */
   readonly id: string;
   /**
@@ -27,7 +25,39 @@ export interface ProactiveFiredEntry {
   readonly firedAt: string;
 }
 
+export interface TaskProactiveFiredEntry extends ProactiveFiredEntryBase {
+  readonly kind: "task";
+}
+
+/**
+ * Calendar occurrence written before provider provenance was available.
+ * It remains a conservative wildcard for this exact legacy id/start pair
+ * and is never assigned a provider during read or write.
+ */
+export interface LegacyCalendarProactiveFiredEntry extends ProactiveFiredEntryBase {
+  readonly kind: "calendar";
+}
+
+export interface QualifiedCalendarProactiveFiredEntry extends ProactiveFiredEntryBase {
+  readonly kind: "calendar";
+  readonly providerId: string;
+  readonly providerEventId?: string;
+}
+
+export type ProactiveFiredEntry =
+  | TaskProactiveFiredEntry
+  | LegacyCalendarProactiveFiredEntry
+  | QualifiedCalendarProactiveFiredEntry;
+
+export class ProactiveFiredStoreError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProactiveFiredStoreError";
+  }
+}
+
 const MAX_FIRED_ENTRIES = 1_000;
+const FIRED_LEDGER_VERSION = 2;
 
 /**
  * Payload of `~/.muse/session-lock.json`. Written by
@@ -84,50 +114,182 @@ export async function readProactiveFired(file: string): Promise<readonly Proacti
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
-  } catch {
-    return [];
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw new ProactiveFiredStoreError("proactive fired ledger could not be read");
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
-    return [];
+    throw new ProactiveFiredStoreError("proactive fired ledger contains malformed JSON");
   }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { fired?: unknown }).fired)) {
-    return [];
+  if (hasExactKeys(parsed, ["fired"])) {
+    const legacy = parsed as Record<string, unknown>;
+    if (!Array.isArray(legacy.fired)) {
+      throw new ProactiveFiredStoreError("legacy proactive fired ledger has an invalid fired collection");
+    }
+    return legacy.fired.map((entry) => parseLegacyEntry(entry));
   }
-  return (parsed as { fired: unknown[] }).fired.flatMap((entry): readonly ProactiveFiredEntry[] =>
-    isProactiveFiredEntry(entry) ? [entry] : []
-  );
+  if (!hasExactKeys(parsed, ["fired", "version"])) {
+    throw new ProactiveFiredStoreError("proactive fired ledger has an unsupported top-level schema");
+  }
+  const current = parsed as Record<string, unknown>;
+  if (current.version !== FIRED_LEDGER_VERSION) {
+    throw new ProactiveFiredStoreError("proactive fired ledger version is unsupported");
+  }
+  if (!Array.isArray(current.fired)) {
+    throw new ProactiveFiredStoreError("proactive fired ledger has an invalid fired collection");
+  }
+  return current.fired.map((entry) => parseV2Entry(entry));
 }
 
 export async function writeProactiveFired(file: string, entries: readonly ProactiveFiredEntry[]): Promise<void> {
+  const validated = entries.map((entry) => parseV2Entry(entry));
   // FIFO trim — keep the most recent N. A year of daily meetings
   // + tasks is ~700 entries so 1k is generous; the trim mainly
   // guards a pathological clock drift.
-  const trimmed = entries.length > MAX_FIRED_ENTRIES
-    ? entries.slice(entries.length - MAX_FIRED_ENTRIES)
-    : entries;
+  const trimmed = validated.length > MAX_FIRED_ENTRIES
+    ? validated.slice(validated.length - MAX_FIRED_ENTRIES)
+    : validated;
   // 0o600 (atomicWriteFile default): entries reveal which calendar meetings +
   // tasks fired when — a sensitive user-data sidecar, same posture as the
   // sibling personal stores (calendar / tasks / episodes / credentials).
-  const payload = `${JSON.stringify({ fired: trimmed }, null, 2)}\n`;
+  const payload = `${JSON.stringify({ version: FIRED_LEDGER_VERSION, fired: trimmed }, null, 2)}\n`;
   await atomicWriteFile(file, payload);
 }
 
-function isProactiveFiredEntry(value: unknown): value is ProactiveFiredEntry {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<ProactiveFiredEntry>;
-  return (candidate.kind === "calendar" || candidate.kind === "task")
-    && typeof candidate.id === "string"
-    && typeof candidate.startIso === "string"
-    && typeof candidate.firedAt === "string";
+function parseLegacyEntry(value: unknown): ProactiveFiredEntry {
+  if (!hasExactKeys(value, ["firedAt", "id", "kind", "startIso"])) {
+    throw new ProactiveFiredStoreError("legacy proactive fired ledger contains an invalid entry");
+  }
+  const candidate = value as Record<string, unknown>;
+  const base = parseBaseEntry(candidate);
+  if (candidate.kind !== "calendar" && candidate.kind !== "task") {
+    throw new ProactiveFiredStoreError("legacy proactive fired ledger contains an unsupported entry kind");
+  }
+  return candidate.kind === "calendar"
+    ? { ...base, kind: "calendar" }
+    : { ...base, kind: "task" };
 }
 
-export function firedKey(entry: { readonly kind: string; readonly id: string; readonly startIso: string }): string {
-  // Encode the tuple UNAMBIGUOUSLY (not a space-join): `id` is free-form (a provider
-  // event / task id, can contain spaces), so `${kind} ${id} ${startIso}` lets two
-  // distinct {kind,id,startIso} tuples collide on one key — the dedup would then
-  // silently SUPPRESS a legitimate second notice. JSON escapes the field boundaries.
-  return JSON.stringify([entry.kind, entry.id, entry.startIso]);
+function parseV2Entry(value: unknown): ProactiveFiredEntry {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ProactiveFiredStoreError("proactive fired ledger contains an invalid entry");
+  }
+  const candidate = value as Record<string, unknown>;
+  if (candidate.kind === "task") {
+    if (!hasExactKeys(candidate, ["firedAt", "id", "kind", "startIso"])) {
+      throw new ProactiveFiredStoreError("proactive fired ledger contains an invalid task entry");
+    }
+    const base = parseBaseEntry(candidate);
+    return {
+      ...base,
+      kind: "task",
+    };
+  }
+  if (candidate.kind !== "calendar") {
+    throw new ProactiveFiredStoreError("proactive fired ledger contains an unsupported entry kind");
+  }
+  const legacy = hasExactKeys(candidate, ["firedAt", "id", "kind", "startIso"]);
+  const qualified = hasExactKeys(candidate, ["firedAt", "id", "kind", "providerId", "startIso"]);
+  const qualifiedExact = hasExactKeys(
+    candidate,
+    ["firedAt", "id", "kind", "providerEventId", "providerId", "startIso"]
+  );
+  if (!legacy && !qualified && !qualifiedExact) {
+    throw new ProactiveFiredStoreError("proactive fired ledger contains invalid calendar provenance");
+  }
+  const base = parseBaseEntry(candidate);
+  if (legacy) {
+    return {
+      ...base,
+      kind: "calendar",
+    };
+  }
+  const providerId = parseExactText(candidate.providerId, "calendar providerId");
+  const providerEventId = qualifiedExact
+    ? parseExactText(candidate.providerEventId, "calendar providerEventId")
+    : undefined;
+  return {
+    ...base,
+    kind: "calendar",
+    ...(providerEventId !== undefined ? { providerEventId } : {}),
+    providerId
+  };
+}
+
+function parseBaseEntry(value: Record<string, unknown>): ProactiveFiredEntryBase {
+  return {
+    firedAt: parseTimestamp(value.firedAt, "firedAt"),
+    id: parseNonEmptyText(value.id, "id"),
+    startIso: parseTimestamp(value.startIso, "startIso")
+  };
+}
+
+function parseNonEmptyText(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new ProactiveFiredStoreError(`proactive fired entry has an invalid ${field}`);
+  }
+  return value;
+}
+
+function parseExactText(value: unknown, field: string): string {
+  const text = parseNonEmptyText(value, field);
+  if (text !== text.trim()) {
+    throw new ProactiveFiredStoreError(`proactive fired entry has an invalid ${field}`);
+  }
+  return text;
+}
+
+function parseTimestamp(value: unknown, field: string): string {
+  const text = parseNonEmptyText(value, field);
+  const parsed = new Date(text);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== text) {
+    throw new ProactiveFiredStoreError(`proactive fired entry has an invalid ${field}`);
+  }
+  return text;
+}
+
+function hasExactKeys(value: unknown, keys: readonly string[]): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+type ProactiveFiredKeyInput =
+  | Pick<TaskProactiveFiredEntry, "id" | "kind" | "startIso">
+  | Pick<LegacyCalendarProactiveFiredEntry, "id" | "kind" | "startIso">
+  | Pick<QualifiedCalendarProactiveFiredEntry, "id" | "kind" | "providerEventId" | "providerId" | "startIso">;
+
+export function firedKey(entry: ProactiveFiredKeyInput): string {
+  const id = parseNonEmptyText(entry.id, "id");
+  const startIso = parseTimestamp(entry.startIso, "startIso");
+  if (entry.kind === "task") {
+    return JSON.stringify(["task", id, startIso]);
+  }
+  if ("providerId" in entry) {
+    const providerId = parseExactText(entry.providerId, "calendar providerId");
+    const providerEventId = entry.providerEventId === undefined
+      ? id
+      : parseExactText(entry.providerEventId, "calendar providerEventId");
+    return JSON.stringify([
+      "calendar",
+      providerId,
+      providerEventId,
+      startIso
+    ]);
+  }
+  return legacyCalendarWildcardKey({ id, startIso });
+}
+
+export function legacyCalendarWildcardKey(
+  entry: { readonly id: string; readonly startIso: string }
+): string {
+  return JSON.stringify([
+    "calendar-legacy-wildcard",
+    parseNonEmptyText(entry.id, "id"),
+    parseTimestamp(entry.startIso, "startIso")
+  ]);
 }
