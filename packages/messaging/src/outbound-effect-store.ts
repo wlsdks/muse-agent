@@ -26,6 +26,13 @@ export interface OutboundEffectBinding {
   readonly createdAt: string;
 }
 
+export type OutboundEffectDispatchBinding = Omit<OutboundEffectBinding, "createdAt">;
+
+export interface OutboundEffectAcquisition {
+  readonly acquired: boolean;
+  readonly effect: OutboundEffectView;
+}
+
 export interface OutboundEffectReceipt {
   readonly providerId: string;
   readonly destination: string;
@@ -144,6 +151,43 @@ export async function prepareOutboundEffect(
     const event = createEvent<PreparedEvent>(ledger.events, { binding: stableBinding, type: "prepared" });
     await writeLedger(file, append(ledger, event));
     return { binding: stableBinding, state: "prepared" };
+  });
+}
+
+/**
+ * Atomically grants exactly one caller permission to make the first provider
+ * call for an effect. Replays compare the immutable route/payload binding but
+ * keep the original createdAt, so a restart cannot manufacture binding drift.
+ */
+export async function acquireOutboundEffectDispatch(
+  file: string,
+  binding: OutboundEffectDispatchBinding,
+  createdAt: string
+): Promise<OutboundEffectAcquisition> {
+  assertDispatchBinding(binding);
+  assertTimestamp(createdAt, "createdAt");
+  const stableBinding = snapshotDispatchBinding(binding);
+  return withMessagingFileMutation(file, async () => {
+    const ledger = await readLedgerStrict(file);
+    const existing = deriveEffects(ledger).get(stableBinding.effectId);
+    if (existing) {
+      if (!sameDispatchBinding(existing.view.binding, stableBinding)) {
+        throw new OutboundEffectStoreError(
+          `effect id is already bound to a different payload: ${stableBinding.effectId}`
+        );
+      }
+      return { acquired: false, effect: existing.view };
+    }
+    const preparedBinding = { ...stableBinding, createdAt };
+    const event = createEvent<PreparedEvent>(ledger.events, {
+      binding: preparedBinding,
+      type: "prepared"
+    });
+    await writeLedger(file, append(ledger, event));
+    return {
+      acquired: true,
+      effect: { binding: preparedBinding, state: "prepared" }
+    };
   });
 }
 
@@ -475,6 +519,16 @@ function assertBinding(value: OutboundEffectBinding): void {
   assertTimestamp(value.createdAt, "createdAt");
 }
 
+function assertDispatchBinding(value: OutboundEffectDispatchBinding): void {
+  if (!isExactObject(value, ["destination", "effectId", "payloadHash", "providerId"])) {
+    throw new OutboundEffectStoreError("outbound effect dispatch binding contains unsupported fields");
+  }
+  assertExactText(value.effectId, "effectId");
+  assertExactText(value.providerId, "providerId");
+  assertExactText(value.destination, "destination");
+  if (!SHA256_RE.test(value.payloadHash)) throw new OutboundEffectStoreError("payloadHash must be lowercase SHA-256");
+}
+
 function snapshotBinding(value: OutboundEffectBinding): OutboundEffectBinding {
   return {
     createdAt: value.createdAt,
@@ -483,6 +537,25 @@ function snapshotBinding(value: OutboundEffectBinding): OutboundEffectBinding {
     payloadHash: value.payloadHash,
     providerId: value.providerId
   };
+}
+
+function snapshotDispatchBinding(value: OutboundEffectDispatchBinding): OutboundEffectDispatchBinding {
+  return {
+    destination: value.destination,
+    effectId: value.effectId,
+    payloadHash: value.payloadHash,
+    providerId: value.providerId
+  };
+}
+
+function sameDispatchBinding(
+  existing: OutboundEffectBinding,
+  requested: OutboundEffectDispatchBinding
+): boolean {
+  return existing.effectId === requested.effectId
+    && existing.providerId === requested.providerId
+    && existing.destination === requested.destination
+    && existing.payloadHash === requested.payloadHash;
 }
 
 function assertReceipt(value: OutboundEffectReceipt): void {

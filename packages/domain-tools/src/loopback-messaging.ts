@@ -277,6 +277,7 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
           const requested = readString(args, "providerId")?.trim();
           const destination = readString(args, "destination")?.trim();
           const text = readString(args, "text");
+          const effectId = readString(args, "effectId")?.trim();
           if (!destination) {
             return { error: "destination is required" };
           }
@@ -307,6 +308,13 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
             const ids = registered.map((provider) => provider.describe().id).join(", ");
             return { error: `providerId must be one of your configured messengers: ${ids}` };
           }
+          if (!effectId) {
+            return {
+              error:
+                "effectId is required — use one new stable opaque id for this intended send, " +
+                "and reuse it only when recovering that same send"
+            };
+          }
           // Outbound-safety: when wired with an action log, record every
           // send (and honour an optional draft-first gate) instead of
           // transmitting silently — the gap this tool had vs email_send.
@@ -315,15 +323,26 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
               actionLogFile,
               approvalGate: approvalGate ?? DENY_WITHOUT_CONFIRMATION,
               destination,
+              effectId,
               providerId,
               registry,
               text,
               userId
             });
             if (outcome.sent) {
-              return { destination: outcome.destination, messageId: outcome.messageId, providerId };
+              return {
+                destination: outcome.destination,
+                effectId: outcome.effectId,
+                messageId: outcome.messageId,
+                providerId
+              };
             }
-            return { error: outcome.detail, ...(outcome.reason === "denied" ? { refused: true } : {}) };
+            return {
+              effectId: outcome.effectId,
+              error: outcome.detail,
+              ...(outcome.reason === "denied" ? { refused: true } : {}),
+              ...(outcome.reason === "send-unknown" ? { outcomeUnknown: true } : {})
+            };
           }
           // Fail-closed (outbound-safety.md): a third-party send is only allowed
           // through the approval gate + action log. When the server was built
@@ -343,13 +362,19 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
                 "Platform-native chat / channel / user id. See tool description for per-provider examples.",
               type: "string"
             },
+            effectId: {
+              description:
+                "Stable opaque id for exactly one intended send. Generate a new id for a new message; " +
+                "reuse the same id only to recover/replay that exact approved send.",
+              type: "string"
+            },
             providerId: {
               description: "Optional — OMIT to use your single configured messenger (resolved automatically). Set it (telegram | discord | slack | line) only with multiple messengers configured.",
               type: "string"
             },
             text: { description: "Plain-text message body (≤4096 chars).", type: "string" }
           },
-          required: ["destination", "text"],
+          required: ["destination", "effectId", "text"],
           type: "object"
         },
         domain: "messaging",

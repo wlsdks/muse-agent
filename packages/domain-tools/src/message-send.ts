@@ -1,4 +1,5 @@
-import { errorMessage } from "@muse/shared";
+import { errorMessage, redactSecretsInText } from "@muse/shared";
+import { dirname, join } from "node:path";
 /**
  * Draft-first, fail-closed outbound chat message — the messaging-tool
  * analogue of `sendEmailWithApproval`, governed by
@@ -20,9 +21,12 @@ import { errorMessage } from "@muse/shared";
  * surface that wires no runtime gate.
  */
 
-import type { MessagingProviderRegistry } from "@muse/messaging";
+import {
+  dispatchOutboundEffectOnce,
+  OutboundEffectDispatchUncertainError,
+  type MessagingProviderRegistry
+} from "@muse/messaging";
 
-import { sendWithRetry } from "@muse/mcp-shared";
 import { appendActionLog, type ActionResult } from "@muse/stores";
 
 interface ApprovalDecision {
@@ -44,68 +48,118 @@ export interface SendMessageWithApprovalOptions {
   readonly providerId: string;
   readonly destination: string;
   readonly text: string;
+  /** Stable identity for exactly one intended external message. */
+  readonly effectId: string;
+  /** Defaults beside the action log (`outbound-effects.json`). */
+  readonly effectFile?: string;
   readonly actionLogFile: string;
   readonly userId: string;
   readonly approvalGate?: MessageApprovalGate;
   readonly now?: () => Date;
   readonly idFactory?: () => string;
-  /** Injected so tests assert the transient-retry backoff without real waits. */
-  readonly sleep?: (ms: number) => Promise<void>;
 }
 
 export type SendMessageOutcome =
-  | { readonly sent: true; readonly destination: string; readonly messageId: string }
-  | { readonly sent: false; readonly reason: "denied" | "send-failed"; readonly detail: string };
+  | { readonly sent: true; readonly effectId: string; readonly destination: string; readonly messageId: string }
+  | {
+      readonly sent: false;
+      readonly effectId: string;
+      readonly reason: "denied" | "send-failed" | "send-unknown" | "not-delivered";
+      readonly detail: string;
+    };
 
 export async function sendMessageWithApproval(options: SendMessageWithApprovalOptions): Promise<SendMessageOutcome> {
   const now = options.now ?? (() => new Date());
   const idFactory = options.idFactory ?? (() => `act_${Date.now().toString()}_${Math.random().toString(36).slice(2, 8)}`);
-  const what = `message via ${options.providerId} to ${options.destination}`;
+  const wireText = redactSecretsInText(options.text);
+  const stable = {
+    actionLogFile: options.actionLogFile,
+    approvalGate: options.approvalGate,
+    destination: options.destination,
+    effectFile: options.effectFile ?? join(dirname(options.actionLogFile), "outbound-effects.json"),
+    effectId: options.effectId,
+    providerId: options.providerId,
+    registry: { send: options.registry.send.bind(options.registry) },
+    userId: options.userId
+  } as const;
+  const what = `message via ${stable.providerId} to ${stable.destination}`;
   const log = (result: ActionResult, why: string, detail: string): Promise<void> =>
-    appendActionLog(options.actionLogFile, {
+    appendActionLog(stable.actionLogFile, {
       detail,
       gateClass: "muse.messaging.send",
       id: idFactory(),
       result,
-      userId: options.userId,
+      userId: stable.userId,
       what,
       when: now().toISOString(),
       why
     });
 
-  const draft: MessageDraft = { destination: options.destination, providerId: options.providerId, text: options.text };
+  const draft: MessageDraft = {
+    destination: stable.destination,
+    providerId: stable.providerId,
+    text: wireText
+  };
 
   // Rules 1 + 2: draft-first, fail-closed gate (deny OR throw ⇒ no send).
   let decision: ApprovalDecision = { approved: true };
-  if (options.approvalGate) {
+  if (stable.approvalGate) {
     try {
-      decision = await options.approvalGate(draft);
+      decision = await stable.approvalGate(draft);
     } catch (cause) {
       decision = { approved: false, reason: `approval gate error: ${errorMessage(cause)}` };
     }
   }
   if (!decision.approved) {
     await log("refused", "outbound message refused", decision.reason ?? "not approved");
-    return { detail: decision.reason ?? "not approved", reason: "denied", sent: false };
+    return {
+      detail: decision.reason ?? "not approved",
+      effectId: stable.effectId,
+      reason: "denied",
+      sent: false
+    };
   }
 
+  let effect: Awaited<ReturnType<typeof dispatchOutboundEffectOnce>>;
   try {
-    // A user-CONFIRMED message must survive a transient rate-limit (429 +
-    // Retry-After) / 5xx the same way every proactive notice does — dropping
-    // a message the user explicitly approved on a one-off blip is a worse
-    // failure than a background notice missing. Reuses the same retry ladder
-    // (permanent 401/404/INVALID short-circuit on attempt 1 via .retryable).
-    const receipt = await sendWithRetry(
-      options.registry,
-      options.providerId,
-      { destination: options.destination, text: options.text },
-      { sleep: options.sleep }
-    );
-    await log("performed", "user-approved outbound message", `sent: ${options.text.slice(0, 200)}`);
-    return { destination: receipt.destination, messageId: receipt.messageId, sent: true };
+    effect = await dispatchOutboundEffectOnce({
+      destination: stable.destination,
+      effectFile: stable.effectFile,
+      effectId: stable.effectId,
+      now,
+      providerId: stable.providerId,
+      registry: stable.registry,
+      text: wireText
+    });
   } catch (cause) {
     const detail = errorMessage(cause);
     await log("failed", "user-approved outbound message", detail);
-    return { detail, reason: "send-failed", sent: false };
+    return {
+      detail,
+      effectId: stable.effectId,
+      reason: cause instanceof OutboundEffectDispatchUncertainError ? "send-unknown" : "send-failed",
+      sent: false
+    };
   }
+  if (effect.state === "accepted" || effect.state === "reconciled-accepted") {
+    const receipt = effect.receipt;
+    if (!receipt) throw new Error(`accepted outbound effect ${stable.effectId} has no provider receipt`);
+    await log("performed", "user-approved outbound message", `accepted effect ${stable.effectId}: ${wireText.slice(0, 200)}`);
+    return {
+      destination: receipt.destination,
+      effectId: stable.effectId,
+      messageId: receipt.messageId,
+      sent: true
+    };
+  }
+  if (effect.state === "reconciled-not-delivered") {
+    const detail = `effect ${stable.effectId} was manually reconciled as not delivered`;
+    await log("failed", "user-approved outbound message not delivered", detail);
+    return { detail, effectId: stable.effectId, reason: "not-delivered", sent: false };
+  }
+  const detail =
+    `${effect.unknownDetail ?? `effect ${stable.effectId} delivery is unknown`}; ` +
+    `do not retry with a new effectId — inspect and manually reconcile effect ${stable.effectId} first`;
+  await log("failed", "user-approved outbound message delivery unknown", detail);
+  return { detail, effectId: stable.effectId, reason: "send-unknown", sent: false };
 }

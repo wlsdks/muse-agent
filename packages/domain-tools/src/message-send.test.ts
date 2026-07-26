@@ -56,12 +56,18 @@ describe("sendMessageWithApproval — outbound-safety contract", () => {
     const outcome = await sendMessageWithApproval({
       actionLogFile: file,
       destination: "@stark",
+      effectId: "effect-confirm",
       providerId: "telegram",
       registry,
       text: "deploy finished",
       userId: "stark"
     });
-    expect(outcome).toEqual({ destination: "@stark", messageId: "msg_1", sent: true });
+    expect(outcome).toEqual({
+      destination: "@stark",
+      effectId: "effect-confirm",
+      messageId: "msg_1",
+      sent: true
+    });
     expect(sends).toEqual([{ destination: "@stark", providerId: "telegram", text: "deploy finished" }]);
     const log = await readActionLog(file);
     expect(log[0]).toMatchObject({ result: "performed", userId: "stark" });
@@ -75,6 +81,7 @@ describe("sendMessageWithApproval — outbound-safety contract", () => {
       actionLogFile: file,
       approvalGate: deny,
       destination: "@stark",
+      effectId: "effect-deny",
       providerId: "telegram",
       registry,
       text: "deploy finished",
@@ -93,6 +100,7 @@ describe("sendMessageWithApproval — outbound-safety contract", () => {
       actionLogFile: file,
       approvalGate: throwingGate,
       destination: "@stark",
+      effectId: "effect-gate-timeout",
       providerId: "telegram",
       registry,
       text: "deploy finished",
@@ -110,18 +118,17 @@ describe("sendMessageWithApproval — outbound-safety contract", () => {
     const outcome = await sendMessageWithApproval({
       actionLogFile: file,
       destination: "@stark",
+      effectId: "effect-provider-failure",
       providerId: "telegram",
       registry,
-      sleep: async () => {},
       text: "deploy finished",
       userId: "stark"
     });
-    expect(outcome).toMatchObject({ reason: "send-failed", sent: false });
+    expect(outcome).toMatchObject({ reason: "send-unknown", sent: false });
     expect(sends).toHaveLength(0);
-    // A user-confirmed send now rides the same transient-retry ladder as a
-    // proactive notice: a generic transport error is retried the full 3 attempts
-    // before the honest `failed` outcome — not dropped on the first blip.
-    expect(attempts()).toBe(3);
+    // No provider advertises a native idempotency key, so an ambiguous error is
+    // never retried automatically.
+    expect(attempts()).toBe(1);
     const log = await readActionLog(file);
     expect(log[0]).toMatchObject({ result: "failed" });
   });
@@ -140,7 +147,7 @@ describe("sendMessageWithApproval — transient-resilience (contract-faithful re
     };
   }
 
-  it("a user-confirmed send survives a 429 (Retry-After) and is delivered on retry, logged `performed`", async () => {
+  it("a 429 is ambiguous without provider-native dedupe and is not retried", async () => {
     const { fetch, calls } = fakeFetchSequence([
       () => new Response(JSON.stringify({ description: "Too Many Requests", ok: false, parameters: { retry_after: 0 } }), { status: 429 }),
       () => new Response(JSON.stringify({ ok: true, result: { message_id: 42 } }), { status: 200 })
@@ -152,16 +159,16 @@ describe("sendMessageWithApproval — transient-resilience (contract-faithful re
     const outcome = await sendMessageWithApproval({
       actionLogFile: file,
       destination: "12345",
+      effectId: "effect-429",
       providerId: "telegram",
       registry,
-      sleep: async () => {},
       text: "ship it",
       userId: "stark"
     });
-    expect(outcome).toEqual({ destination: "12345", messageId: "42", sent: true });
-    expect(calls()).toBe(2); // first 429 retried, second delivered
+    expect(outcome).toMatchObject({ effectId: "effect-429", reason: "send-unknown", sent: false });
+    expect(calls()).toBe(1);
     const log = await readActionLog(file);
-    expect(log[0]).toMatchObject({ result: "performed" });
+    expect(log[0]).toMatchObject({ result: "failed" });
   });
 
   it("a permanent 401 (bad token) is NOT retried — fails fast, logged `failed`", async () => {
@@ -175,13 +182,13 @@ describe("sendMessageWithApproval — transient-resilience (contract-faithful re
     const outcome = await sendMessageWithApproval({
       actionLogFile: file,
       destination: "12345",
+      effectId: "effect-401",
       providerId: "telegram",
       registry,
-      sleep: async () => {},
       text: "ship it",
       userId: "stark"
     });
-    expect(outcome).toMatchObject({ reason: "send-failed", sent: false });
+    expect(outcome).toMatchObject({ reason: "send-unknown", sent: false });
     expect(calls()).toBe(1); // a 401 is permanent — no wasted retries
     const log = await readActionLog(file);
     expect(log[0]).toMatchObject({ result: "failed" });

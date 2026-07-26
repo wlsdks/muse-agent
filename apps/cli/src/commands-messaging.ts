@@ -12,6 +12,7 @@
  */
 
 import { confirm, isCancel } from "@clack/prompts";
+import { randomUUID } from "node:crypto";
 import { buildMessagingRegistry, resolveActionLogFile } from "@muse/autoconfigure";
 import type {
   InboundMessage,
@@ -36,6 +37,7 @@ import type { ProgramIO } from "./program.js";
 export interface MessagingSendDeps {
   readonly approvalGate?: MessageApprovalGate;
   readonly actionLogFile?: string;
+  readonly effectFile?: string;
   readonly registry?: Pick<MessagingProviderRegistry, "send">;
 }
 
@@ -199,12 +201,13 @@ export function registerMessagingCommands(
     .argument("<text...>", "Message text (joined by spaces)")
     .option("--local", "Build the registry from process.env directly instead of POSTing to the API")
     .option("--user <id>", "User identity for the action log", "stark")
+    .option("--effect-id <id>", "Stable recovery id; reuse only for the same intended send")
     .option("--json", "Print the raw receipt instead of a short confirmation")
     .action(async (
       provider: string,
       destination: string,
       textParts: readonly string[],
-      options: SharedOptions & { readonly user?: string },
+      options: SharedOptions & { readonly effectId?: string; readonly user?: string },
       command
     ) => {
       const text = textParts.join(" ").trim();
@@ -235,21 +238,30 @@ export function registerMessagingCommands(
           actionLogFile: deps.actionLogFile ?? resolveActionLogFile(process.env as Record<string, string | undefined>),
           approvalGate: gate,
           destination,
+          ...(deps.effectFile ? { effectFile: deps.effectFile } : {}),
+          effectId: options.effectId?.trim() || randomUUID(),
           providerId: provider,
           registry,
           text,
           userId: options.user ?? "stark"
         });
         if (!outcome.sent) {
-          io.stderr(`Not sent (${outcome.reason}): ${outcome.detail}\n`);
+          io.stderr(`Not sent (${outcome.reason}): ${outcome.detail} (effect ${outcome.effectId})\n`);
           process.exitCode = 1;
           return;
         }
         if (options.json) {
-          helpers.writeOutput(io, { destination: outcome.destination, messageId: outcome.messageId });
+          helpers.writeOutput(io, {
+            destination: outcome.destination,
+            effectId: outcome.effectId,
+            messageId: outcome.messageId
+          });
           return;
         }
-        io.stdout(`Sent ${provider} → ${outcome.destination} (id ${outcome.messageId})\n`);
+        io.stdout(
+          `Sent ${provider} → ${outcome.destination} ` +
+          `(id ${outcome.messageId}, effect ${outcome.effectId})\n`
+        );
         return;
       }
 

@@ -36,8 +36,13 @@ describe("muse.messaging.send — outbound-safety recording (F-1)", () => {
     });
     const connection = createLoopbackMcpConnection(server);
 
-    const sent = await connection.callTool!("send", { destination: "@me", providerId: "telegram", text: "hi" });
-    expect(sent).toMatchObject({ destination: "@me", messageId: "42" });
+    const sent = await connection.callTool!("send", {
+      destination: "@me",
+      effectId: "effect-performed",
+      providerId: "telegram",
+      text: "hi"
+    });
+    expect(sent).toMatchObject({ destination: "@me", effectId: "effect-performed", messageId: "42" });
 
     const log = await readActionLog(file);
     expect(log).toHaveLength(1);
@@ -50,7 +55,12 @@ describe("muse.messaging.send — outbound-safety recording (F-1)", () => {
     // Production wiring is actionLogFile + userId but NO approvalGate (the agent's
     // loopback path). It must NOT auto-send to a third party.
     const server = createMessagingMcpServer({ actionLogFile: file, registry: new MessagingProviderRegistry([fakeTelegram()]), userId: "stark" });
-    const out = await createLoopbackMcpConnection(server).callTool!("send", { destination: "@me", providerId: "telegram", text: "hi" }) as { error?: string; refused?: boolean };
+    const out = await createLoopbackMcpConnection(server).callTool!("send", {
+      destination: "@me",
+      effectId: "effect-refused",
+      providerId: "telegram",
+      text: "hi"
+    }) as { error?: string; refused?: boolean };
     expect(out.refused).toBe(true); // not sent
     const log = await readActionLog(file);
     expect(log.some((entry) => entry.result === "refused")).toBe(true);
@@ -73,7 +83,11 @@ describe("muse.messaging.send — resolve an omitted channel from config and rej
   it("uses the SINGLE configured provider even when providerId is omitted (with an approving gate)", async () => {
     const sent: OutboundMessage[] = [];
     const server = createMessagingMcpServer({ actionLogFile: logFile(), approvalGate: () => ({ approved: true }), registry: new MessagingProviderRegistry([fakeProvider("slack", sent)]), userId: "stark" });
-    const out = await createLoopbackMcpConnection(server).callTool!("send", { destination: "C123", text: "hi" });
+    const out = await createLoopbackMcpConnection(server).callTool!("send", {
+      destination: "C123",
+      effectId: "effect-sole-provider",
+      text: "hi"
+    });
     expect(out).toMatchObject({ providerId: "slack" });
     expect(sent).toHaveLength(1);
   });
@@ -112,7 +126,11 @@ describe("muse.messaging.send — resolve an omitted channel from config and rej
       registry: new MessagingProviderRegistry([fakeProvider("slack", sent)]),
       userId: "stark"
     });
-    const out = await createLoopbackMcpConnection(server).callTool!("send", { destination: "C123", text: "hi" }) as { refused?: boolean };
+    const out = await createLoopbackMcpConnection(server).callTool!("send", {
+      destination: "C123",
+      effectId: "effect-denied",
+      text: "hi"
+    }) as { refused?: boolean };
     expect(sent).toHaveLength(0); // resolution succeeded, but the gate blocked the send
     expect(out.refused).toBe(true);
     const log = await readActionLog(file);

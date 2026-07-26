@@ -87,6 +87,7 @@ export {
 } from "./pending-approval-coordinator.js";
 
 export {
+  acquireOutboundEffectDispatch,
   computeOutboundEffectPayloadHash,
   OutboundEffectStoreError,
   prepareOutboundEffect,
@@ -96,10 +97,18 @@ export {
   recordOutboundEffectAccepted,
   recordOutboundEffectUnknown,
   type OutboundEffectBinding,
+  type OutboundEffectAcquisition,
+  type OutboundEffectDispatchBinding,
   type OutboundEffectReceipt,
   type OutboundEffectState,
   type OutboundEffectView
 } from "./outbound-effect-store.js";
+
+export {
+  dispatchOutboundEffectOnce,
+  OutboundEffectDispatchUncertainError,
+  type DispatchOutboundEffectOnceOptions
+} from "./outbound-effect-dispatch.js";
 
 export { isApprovalReply } from "./is-approval-reply.js";
 
