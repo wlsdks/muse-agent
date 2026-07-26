@@ -438,8 +438,10 @@ preflight로 재현된다.
 
 **진입 조건:** G0 green.
 
-**Exit gate G1:** 안정된 entrypoint에서 정확히 한 resident writer가 실행되고, artifact·PID·heartbeat·
-process identity가 pass^3와 재부팅 경계를 거쳐 일치한다.
+**Exit gate G1:** 실제 owner macOS profile의 안정된 entrypoint에서 정확히 한 resident writer가 실행되고,
+artifact·PID·heartbeat·process identity가 서로 다른 writer generation의 pass^3에서 일치한다.
+자연스러운 OS/session restart가 발생하면 같은 관찰을 운영 evidence로 추가하지만 강제 재부팅이나 별도
+macOS 사용자 계정은 G1 또는 owner-scoped personal-agent release의 선행조건이 아니다.
 
 - [ ] **013. macOS resident artifact와 모든 Muse process를 read-only inventory한다.** — `P0`
   - **이유:** 오래된 checkout과 임시 test runner가 실제 daemon처럼 남아 있을 수 있다.
@@ -501,16 +503,20 @@ process identity가 pass^3와 재부팅 경계를 거쳐 일치한다.
   - **검증:** uninstall fixture에서 notes/tasks/memory/Attunement bytes가 바뀌지 않는다.
   - **선행:** 020–021.
 
-- [ ] **023. clean macOS profile에서 controlled activation을 수행한다.** — `P0`
-  - **이유:** 개발 checkout에서만 성공하는 resident는 제품 경로가 아니다.
-  - **산출물:** 안정된 entrypoint, local-only, log provider, delivery brake 상태의 설치·기동 evidence.
-  - **검증:** fresh profile에서 install→start→heartbeat→status→stop→start를 실행하고 외부 전송 0을 확인한다.
+- [ ] **023. 실제 owner macOS profile에서 contained activation을 수행한다.** — `P0`
+  - **이유:** fixture나 개발 foreground process에서만 성공하고 실제 owner LaunchAgent domain에서 실패하는
+    resident는 일상 runtime의 기준선이 아니다.
+  - **산출물:** 안정된 entrypoint, local-only, log provider, delivery brake, self-learning hold 상태의
+    설치·기동 evidence와 개인 store 보존 digest.
+  - **검증:** 현재 owner profile에서 install→start→heartbeat→status→stop→start를 실행하고 외부 전송 0,
+    정확히 한 writer, store bytes 불변을 확인한다. 별도 macOS 사용자/VM profile은 요구하지 않는다.
   - **선행:** 013–022.
 
-- [ ] **024. resident health를 재부팅 포함 pass^3로 qualification한다.** — `P0`
+- [ ] **024. resident health를 서로 다른 writer generation의 pass^3로 qualification한다.** — `P0`
   - **이유:** 한 번의 green은 launchd timing과 PID 재사용 경계를 증명하지 못한다.
-  - **산출물:** 세 번의 독립 실행과 한 번의 OS/session restart 경계가 포함된 fresh G1 report.
+  - **산출물:** 세 번의 독립 writer generation이 포함된 fresh G1 report.
   - **검증:** 매 실행에서 artifact, PID, executable, generation, heartbeat, single writer가 모두 일치한다.
+    OS/session restart는 자연스럽게 발생할 때 추가 수집하는 non-blocking 운영 evidence다.
   - **선행:** 023.
 
 ---
@@ -869,7 +875,7 @@ store corruption fault에서 권한 확대나 민감정보 유출이 없다는 �
 - [ ] **076. backup·restore가 encryption과 version을 보존하는지 증명한다.** — `P0`
   - **이유:** 복구할 수 없는 암호화는 개인 에이전트의 장기 continuity에 맞지 않는다.
   - **산출물:** versioned manifest, encrypted backup, verify-only, explicit restore preview.
-  - **검증:** clean profile restore 후 canonical digests가 같고 newer/unknown version은 fail-close한다.
+  - **검증:** 격리된 빈 restore target에서 canonical digests가 같고 newer/unknown version은 fail-close한다.
   - **선행:** 075.
 
 - [ ] **077. 현재 tree와 release artifact의 secret·personal-remnant scan을 자동화한다.** — `P0`
@@ -1007,8 +1013,8 @@ budget 안에서 동작하며, 24시간 soak 동안 crash-loop, starvation, unbo
 
 **진입 조건:** G7 green.
 
-**Exit gate G8:** clean Mac의 새 사용자가 provider와 local/cloud 경계를 이해하고, 10분 안에 첫
-source-backed answer와 첫 user-invoked Continuity Pack을 완료하며 실패 시 스스로 repair할 수 있다.
+**Exit gate G8:** 실제 owner가 격리된 빈 Muse state에서 provider와 local/cloud 경계를 이해하고, 10분
+안에 첫 source-backed answer와 첫 user-invoked Continuity Pack을 완료하며 실패 시 스스로 repair할 수 있다.
 
 - [ ] **097. Muse의 golden owner journey와 성공 시간을 정의한다.** — `P1`
   - **이유:** 기능별 wizard를 연결해도 사용자가 어떤 가치를 언제 얻는지 모르면 onboarding이 끝나지 않는다.
@@ -1016,10 +1022,11 @@ source-backed answer와 첫 user-invoked Continuity Pack을 완료하며 실패 
   - **검증:** 각 단계의 terminal state, 최대 시간, 실패 복구, forbidden hidden action이 측정 가능하다.
   - **선행:** 096.
 
-- [ ] **098. clean macOS installer 경로를 하나로 통합한다.** — `P1`
+- [ ] **098. owner-scoped macOS installer 경로를 하나로 통합한다.** — `P1`
   - **이유:** source checkout과 여러 setup 명령은 개인용 제품의 진입 장벽이 높다.
   - **산출물:** signed 또는 개발단계의 clearly labeled package, stable CLI/app path, version receipt.
-  - **검증:** 새 profile에서 Node/pnpm 지식 없이 설치가 끝나고 임시 checkout 경로가 남지 않는다.
+  - **검증:** 현재 owner의 격리된 빈 Muse state에서 Node/pnpm 지식 없이 설치가 끝나고 임시 checkout
+    경로가 남지 않는다.
   - **선행:** 021–024, 097.
 
 - [ ] **099. 첫 실행에서 local-only와 cloud egress를 명시적으로 선택하게 한다.** — `P0`
@@ -1076,9 +1083,9 @@ source-backed answer와 첫 user-invoked Continuity Pack을 완료하며 실패 
   - **검증:** 두 locale에서 같은 action/permission semantics와 terminal state가 표시된다.
   - **선행:** 104–106.
 
-- [ ] **108. 새 사용자 onboarding을 독립 pass^3로 검증해 G8을 닫는다.** — `P1`
+- [ ] **108. owner onboarding을 격리된 빈 state의 독립 pass^3로 검증해 G8을 닫는다.** — `P1`
   - **이유:** 개발자 기억에 의존한 한 번의 성공은 설치 경험 증거가 아니다.
-  - **산출물:** clean profiles 세 개의 completion time, blockers, recovery actions, final state.
+  - **산출물:** 서로 격리된 owner-state 실행 세 개의 completion time, blockers, recovery actions, final state.
   - **검증:** 세 번 모두 10분 내 first cited answer와 Pack, unapproved egress/send 0, evaluator PASS.
   - **선행:** 097–107.
 
@@ -1276,7 +1283,7 @@ evidence와 release-readiness가 독립 PASS를 받는다. 공개 배포는 현�
 - [ ] **136. install·upgrade·repair·backup·uninstall 문서를 golden path로 통합한다.** — `P1`
   - **이유:** 운영 경로가 여러 문서에 흩어지면 실제 장애에서 위험한 명령을 추측하게 된다.
   - **산출물:** platform별 commands, expected state, rollback, preserve-data 경계.
-  - **검증:** fresh reader가 문서만으로 clean profile journey를 완료하고 destructive ambiguity가 없다.
+  - **검증:** fresh reader가 문서만으로 격리된 owner-state journey를 완료하고 destructive ambiguity가 없다.
   - **선행:** 021–024, 075–076, 098, 133.
 
 - [ ] **137. version·CHANGELOG·migration contract를 release artifact에 묶는다.** — `P1`
@@ -1287,8 +1294,11 @@ evidence와 release-readiness가 독립 PASS를 받는다. 공개 배포는 현�
 
 - [ ] **138. macOS signed artifact와 Gatekeeper path를 검증한다.** — `P1`
   - **이유:** source checkout이 아닌 일상 제품은 설치 출처와 변조 여부를 증명해야 한다.
-  - **산출물:** signed app/CLI/installer, entitlements inventory, notarization 또는 명시적 pre-release boundary.
-  - **검증:** clean Mac에서 signature, quarantine, first launch, resident install이 기대대로 동작한다.
+  - **산출물:** signed app/CLI/installer, entitlements inventory, notarization 또는 명시적 pre-release
+    boundary와 현재 owner의 installed-candidate lifecycle receipt.
+  - **검증:** 현재 owner profile에서 signature, quarantine, first launch가 유효하고 격리된 candidate
+    install→start→heartbeat→status→stop→start에서 single writer, artifact·PID·generation·heartbeat
+    일치와 외부 전송 0을 확인한다.
   - **선행:** 098, 137.
 
 - [ ] **139. release provenance, SBOM, secret scan, dependency audit를 생성한다.** — `P0`
@@ -1318,15 +1328,17 @@ evidence와 release-readiness가 독립 PASS를 받는다. 공개 배포는 현�
 
 - [ ] **143. immutable release-readiness gate를 독립 실행한다.** — `P0`
   - **이유:** green local tests만으로 stale artifact나 organic blocker를 덮고 release하면 안 된다.
-  - **산출물:** HEAD/time/input-hash-bound runtime, delivery, recall, security, resource, onboarding, organic, packaging report.
-  - **검증:** required 축 하나라도 failed/unverified/stale이면 aggregate는 FAILED이며 tag/release를 막는다.
+  - **산출물:** HEAD/time/input-hash-bound runtime, delivery, recall, security, resource, onboarding, organic,
+    packaging report와 138의 owner-scoped installed-candidate lifecycle receipt.
+  - **검증:** required 축 하나라도 failed/unverified/stale이거나 138의 lifecycle receipt가 current
+    signed candidate와 일치하지 않으면 aggregate는 FAILED이며 tag/release를 막는다.
   - **선행:** 133–142.
 
 - [ ] **144. 첫 evidence-backed personal-agent release와 회고를 완료한다.** — `P1`
   - **이유:** release는 코드 업로드가 아니라 설치 가능한 artifact와 정직한 claim의 운영 사건이다.
   - **산출물:** approved version, immutable tag, published artifact, install verification, rollback plan,
     post-release incident/value review.
-  - **검증:** tag가 정확한 approved commit을 가리키고 clean install·upgrade·rollback이 통과하며,
+  - **검증:** tag가 정확한 approved commit을 가리키고 격리된 owner-state install·upgrade·rollback이 통과하며,
     organic value는 142가 증명한 범위로만 서술된다.
   - **선행:** 143 PASS와 owner의 release 범위 결정.
 
