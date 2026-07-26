@@ -47,6 +47,8 @@ export {
   CLAIM_RECOVERY_LEASE_MS,
   claimPendingApproval,
   clearPendingApproval,
+  computePendingApprovalPayloadHash,
+  createThirdPartySendDraftBinding,
   declinePendingApprovalClaim,
   denyPendingApproval,
   filterUnexpired,
@@ -68,7 +70,8 @@ export {
   type PendingApprovalRecoveryResult,
   type PendingApprovalStatus,
   type PendingApprovalStatusResult,
-  type PendingApprovalTransitionResult
+  type PendingApprovalTransitionResult,
+  type ThirdPartySendDraftBinding
 } from "./pending-approval-store.js";
 
 export {

@@ -8,6 +8,7 @@ import {
   beginPendingApprovalExecution,
   claimPendingApproval,
   clearPendingApproval,
+  createThirdPartySendDraftBinding,
   declinePendingApprovalClaim,
   denyPendingApproval,
   filterUnexpired,
@@ -41,6 +42,21 @@ const entry = (id: string, over: Partial<PendingApproval> = {}): PendingApproval
   tool: "email_send",
   ...over
 });
+
+const boundEntry = (id: string, over: Partial<PendingApproval> = {}): PendingApproval => {
+  const approval = entry(id, over);
+  return {
+    ...approval,
+    thirdPartySend: createThirdPartySendDraftBinding({
+      arguments: approval.arguments,
+      channel: "email",
+      draft: approval.draft,
+      expiresAt: approval.expiresAt,
+      recipient: String(approval.arguments["to"]),
+      tool: approval.tool
+    })
+  };
+};
 
 describe("claimPendingApproval — durable v1 migration and replay guard", () => {
   it("moves a v1 pending entry to a v2 claimed tombstone and grants only one caller execution authority", async () => {
@@ -441,6 +457,63 @@ describe("recordPendingApproval — append with a most-recent cap", () => {
       expect(await fs.readFile(file, "utf8")).toBe(before);
       expect((await claimPendingApproval(file, `existing-${candidate.id}`, { surface: "cli" })).claimedByThisCall).toBe(true);
     }
+  });
+
+  it("round-trips an exact third-party binding into the immutable claim snapshot", async () => {
+    const file = freshFile();
+    const approval = boundEntry("bound", {
+      arguments: { body: "Exact body", subject: "Q3", to: "sam@example.com" },
+      draft: "Email Sam: Exact body"
+    });
+    await recordPendingApproval(file, approval);
+    await expect(readPendingApprovals(file)).resolves.toEqual([approval]);
+
+    const claim = await claimPendingApproval(
+      file,
+      approval.id,
+      { surface: "cli" },
+      () => new Date("2026-06-01T00:00:00Z")
+    );
+    expect(claim).toMatchObject({ approvalSnapshot: approval, claimedByThisCall: true });
+  });
+
+  it("rejects every drifted third-party envelope without changing persisted state", async () => {
+    const original = boundEntry("bound-original", {
+      arguments: { body: "Exact body", to: "sam@example.com" },
+      draft: "Email Sam: Exact body"
+    });
+    const invalid = [
+      { ...original, id: "drift-channel", thirdPartySend: { ...original.thirdPartySend!, channel: "slack" } },
+      { ...original, id: "drift-recipient", thirdPartySend: { ...original.thirdPartySend!, recipient: "eve@example.com" } },
+      { ...original, id: "drift-draft", draft: "Email Eve: changed body" },
+      { ...original, id: "drift-arguments", arguments: { body: "changed", to: "sam@example.com" } },
+      { ...original, id: "drift-expiry", expiresAt: "2031-01-01T00:00:00Z" }
+    ];
+    for (const candidate of invalid) {
+      const file = freshFile();
+      await recordPendingApproval(file, entry(`existing-${candidate.id}`));
+      const before = await fs.readFile(file, "utf8");
+      await expect(recordPendingApproval(file, candidate)).rejects.toThrow("invalid pending approval entry");
+      expect(await fs.readFile(file, "utf8")).toBe(before);
+    }
+  });
+
+  it("keeps local approvals valid without a third-party binding and rejects non-JSON binding payloads", async () => {
+    const file = freshFile();
+    const local = entry("local", { arguments: { id: "task-1" }, tool: "muse.tasks.complete" });
+    await recordPendingApproval(file, local);
+    await expect(readPendingApprovals(file)).resolves.toEqual([local]);
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic["self"] = cyclic;
+    expect(() => createThirdPartySendDraftBinding({
+      arguments: cyclic,
+      channel: "email",
+      draft: "Email Sam",
+      expiresAt: "2030-01-01T00:00:00Z",
+      recipient: "sam@example.com",
+      tool: "email_send"
+    })).toThrow("acyclic");
   });
 });
 

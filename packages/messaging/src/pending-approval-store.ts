@@ -15,7 +15,7 @@
  * tolerant display reads, strict fail-closed mutations, atomic writes.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 
 import { inspectReadOnlyJsonSource, type ReadOnlySourceInspection } from "@muse/shared";
@@ -37,6 +37,15 @@ export interface PendingApproval {
   readonly createdAt: string;
   /** ISO timestamp after which this pending approval is stale. */
   readonly expiresAt: string;
+  /** Present only for a third-party-bound effect; local approvals omit it. */
+  readonly thirdPartySend?: ThirdPartySendDraftBinding;
+}
+
+export interface ThirdPartySendDraftBinding {
+  readonly channel: string;
+  readonly recipient: string;
+  /** SHA-256 of tool + channel + recipient + exact draft/arguments + expiry. */
+  readonly payloadHash: string;
 }
 
 export type PendingApprovalExecutionState = "claimed" | "executing" | "succeeded" | "unknown" | "denied";
@@ -64,6 +73,43 @@ export const CLAIM_RECOVERY_LEASE_MS = 15 * 60 * 1000;
 
 const RECOVERABLE_PENDING_APPROVAL_TOOLS = new Set(["muse.tasks.add", "muse.tasks.complete"]);
 const PENDING_APPROVAL_STATUS_DRAFT_MAX_LENGTH = 240;
+const SHA256_RE = /^[0-9a-f]{64}$/u;
+
+export function computePendingApprovalPayloadHash(input: {
+  readonly arguments: Record<string, unknown>;
+  readonly channel: string;
+  readonly draft: string;
+  readonly expiresAt: string;
+  readonly recipient: string;
+  readonly tool: string;
+}): string {
+  return createHash("sha256").update(canonicalJson(input), "utf8").digest("hex");
+}
+
+export function createThirdPartySendDraftBinding(input: {
+  readonly arguments: Record<string, unknown>;
+  readonly channel: string;
+  readonly draft: string;
+  readonly expiresAt: string;
+  readonly recipient: string;
+  readonly tool: string;
+}): ThirdPartySendDraftBinding {
+  if (input.channel.trim().length === 0
+    || input.channel !== input.channel.trim()
+    || input.recipient.trim().length === 0
+    || input.recipient !== input.recipient.trim()
+    || input.tool.trim().length === 0
+    || input.tool !== input.tool.trim()
+    || input.draft.trim().length === 0
+    || !Number.isFinite(Date.parse(input.expiresAt))) {
+    throw new Error("third-party send draft requires an exact channel, recipient, and expiry");
+  }
+  return {
+    channel: input.channel,
+    payloadHash: computePendingApprovalPayloadHash(input),
+    recipient: input.recipient
+  };
+}
 
 export interface PendingApprovalStatus {
   readonly id: string;
@@ -142,8 +188,47 @@ function isPendingApproval(value: unknown): value is PendingApproval {
     && typeof e["source"] === "string"
     && typeof e["createdAt"] === "string"
     && typeof e["expiresAt"] === "string"
+    && (e["thirdPartySend"] === undefined || isThirdPartySendDraftBinding(e))
     && (e["userId"] === undefined || typeof e["userId"] === "string")
   );
+}
+
+function isThirdPartySendDraftBinding(entry: Record<string, unknown>): boolean {
+  const value = entry["thirdPartySend"];
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const binding = value as Record<string, unknown>;
+  if (Object.keys(binding).sort().join("\0") !== ["channel", "payloadHash", "recipient"].sort().join("\0")
+    || typeof binding["channel"] !== "string"
+    || binding["channel"].trim().length === 0
+    || binding["channel"] !== binding["channel"].trim()
+    || typeof binding["recipient"] !== "string"
+    || binding["recipient"].trim().length === 0
+    || binding["recipient"] !== binding["recipient"].trim()
+    || typeof binding["payloadHash"] !== "string"
+    || !SHA256_RE.test(binding["payloadHash"])
+    || typeof entry["tool"] !== "string"
+    || entry["tool"].trim().length === 0
+    || entry["tool"] !== entry["tool"].trim()
+    || typeof entry["draft"] !== "string"
+    || entry["draft"].trim().length === 0
+    || typeof entry["expiresAt"] !== "string"
+    || !entry["arguments"]
+    || typeof entry["arguments"] !== "object"
+    || Array.isArray(entry["arguments"])) {
+    return false;
+  }
+  try {
+    return binding["payloadHash"] === computePendingApprovalPayloadHash({
+      arguments: entry["arguments"] as Record<string, unknown>,
+      channel: binding["channel"],
+      draft: entry["draft"],
+      expiresAt: entry["expiresAt"],
+      recipient: binding["recipient"],
+      tool: entry["tool"]
+    });
+  } catch {
+    return false;
+  }
 }
 
 function isStrictPendingApproval(value: unknown): value is PendingApproval {
@@ -155,7 +240,7 @@ function isStrictPendingApproval(value: unknown): value is PendingApproval {
 function isExactNewPendingApproval(value: unknown): value is PendingApproval {
   return isStrictPendingApproval(value)
     && Date.parse(value.createdAt) < Date.parse(value.expiresAt)
-    && Object.keys(value).every((key) => key === "id" || key === "tool" || key === "risk" || key === "draft" || key === "arguments" || key === "providerId" || key === "source" || key === "userId" || key === "createdAt" || key === "expiresAt");
+    && Object.keys(value).every((key) => key === "id" || key === "tool" || key === "risk" || key === "draft" || key === "arguments" || key === "providerId" || key === "source" || key === "userId" || key === "createdAt" || key === "expiresAt" || key === "thirdPartySend");
 }
 
 function isIsoTimestamp(value: unknown): value is string {
@@ -612,6 +697,42 @@ export async function observePendingApprovalState(
     return "not-found";
   }
   return Date.parse(pending.expiresAt) <= now().getTime() ? "expired" : "pending";
+}
+
+function canonicalJson(value: unknown): string {
+  const seen = new Set<object>();
+  const normalize = (input: unknown): unknown => {
+    if (input === null || typeof input === "string" || typeof input === "boolean") return input;
+    if (typeof input === "number") {
+      if (!Number.isFinite(input)) throw new Error("pending approval payload must contain finite JSON numbers");
+      return input;
+    }
+    if (Array.isArray(input)) {
+      if (seen.has(input)) throw new Error("pending approval payload must be acyclic");
+      seen.add(input);
+      const output = input.map(normalize);
+      seen.delete(input);
+      return output;
+    }
+    if (input && typeof input === "object") {
+      const prototype = Object.getPrototypeOf(input);
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new Error("pending approval payload must contain plain JSON objects");
+      }
+      if (seen.has(input)) throw new Error("pending approval payload must be acyclic");
+      seen.add(input);
+      const output = Object.fromEntries(
+        Object.keys(input as Record<string, unknown>).sort().map((key) => [
+          key,
+          normalize((input as Record<string, unknown>)[key])
+        ])
+      );
+      seen.delete(input);
+      return output;
+    }
+    throw new Error("pending approval payload must be exact JSON");
+  };
+  return JSON.stringify(normalize(value));
 }
 
 // Per-file mutation queue: record/clear are read-modify-write, so two
