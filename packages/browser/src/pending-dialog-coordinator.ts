@@ -147,7 +147,9 @@ export class PendingDialogCoordinator {
     if (type === "prompt" && promptDefaultValue === undefined) {
       throw new TypeError("prompt dialog requires exact promptDefaultValue");
     }
-    const message = exactText(input.message, "message");
+    // Browser dialog messages are exact untrusted page data and may legally be
+    // empty or whitespace-only (`confirm("")`). Preserve them byte-for-byte.
+    const message = exactString(input.message, "message");
     const pageTargetId = exactText(input.pageTargetId, "pageTargetId");
     const pageUrl = exactText(input.pageUrl, "pageUrl");
     const validatedPromptDefaultValue = promptDefaultValue === undefined

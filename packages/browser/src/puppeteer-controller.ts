@@ -12,6 +12,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -23,7 +24,15 @@ import {
   ChromeReleaseChannel,
   computeSystemExecutablePath
 } from "@puppeteer/browsers";
-import puppeteer, { type Browser, type ElementHandle, type Frame, type HTTPResponse, type Page } from "puppeteer-core";
+import puppeteer, {
+  type Browser,
+  type Dialog,
+  type ElementHandle,
+  type Frame,
+  type HTTPResponse,
+  type Page,
+  type Target
+} from "puppeteer-core";
 
 import {
   BROWSER_ELEMENT_CEILING,
@@ -39,6 +48,13 @@ import {
 } from "./controller.js";
 import { planDialogResponse, settleDialog } from "./dialog-policy.js";
 import { looksUnsettled, matchOption } from "./matcher.js";
+import {
+  PendingDialogCoordinator,
+  type ClaimPendingDialogInput,
+  type PendingDialogDecisionReceipt,
+  type PendingDialogIdentity,
+  type PendingDialogRejectionReason
+} from "./pending-dialog-coordinator.js";
 
 export interface PuppeteerBrowserControllerOptions {
   /** Explicit Chrome path; defaults to puppeteer-core's `channel: 'chrome'` lookup. */
@@ -57,6 +73,39 @@ export interface PuppeteerBrowserControllerOptions {
   readonly protocolTimeoutMs?: number;
   /** Run without a visible window (default false — Muse shows the browser). */
   readonly headless?: boolean;
+}
+
+export type PendingPuppeteerClickResult =
+  | { readonly status: "completed"; readonly snapshot: PageSnapshot }
+  | { readonly status: "pending"; readonly dialog: PendingDialogIdentity };
+
+export type PendingPuppeteerDialogDecisionResult =
+  | {
+      readonly ok: true;
+      readonly receipt: PendingDialogDecisionReceipt;
+      readonly snapshot: PageSnapshot;
+    }
+  | {
+      readonly ok: false;
+      readonly reason:
+        | PendingDialogRejectionReason
+        | "continuation-failed"
+        | "decision-executor-rejected";
+      readonly receipt?: PendingDialogDecisionReceipt;
+    };
+
+interface PendingDialogCapture {
+  readonly dialog: Dialog;
+  readonly identity: PendingDialogIdentity;
+  readonly page: Page;
+}
+
+interface PendingDialogContinuation extends PendingDialogCapture {
+  action?: Promise<void>;
+}
+
+interface DialogListenerIntrospection {
+  listeners(event: "dialog"): readonly ((dialog: Dialog) => void)[];
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -99,6 +148,20 @@ export class PuppeteerBrowserController implements BrowserController {
   private lastUrl = "";
   private lastDialog: { readonly type: string; readonly message: string; readonly response?: string } | undefined;
   private lastHttpStatus: number | undefined;
+  private readonly sessionIncarnation = `browser_${randomUUID()}`;
+  private readonly pendingDialogCoordinator = new PendingDialogCoordinator({
+    sessionIncarnation: this.sessionIncarnation
+  });
+  private readonly pageTargetIds = new WeakMap<Page, string>();
+  private readonly ownedDialogHandlers = new WeakMap<Page, (dialog: Dialog) => void>();
+  private readonly registeredBrowsers = new WeakSet<Browser>();
+  private pendingDialogCapture:
+    | {
+        readonly pages: Set<Page>;
+        readonly resolve: (capture: PendingDialogContinuation) => void;
+      }
+    | undefined;
+  private pendingDialogContinuation: PendingDialogContinuation | undefined;
 
   constructor(options: PuppeteerBrowserControllerOptions = {}) {
     this.options = options;
@@ -189,12 +252,14 @@ export class PuppeteerBrowserController implements BrowserController {
    */
   async hasOpenPage(): Promise<boolean> {
     if (this.page && !this.page.isClosed()) {
+      this.registerDialogHandler(this.page);
       return this.page.url() !== "about:blank";
     }
     if (!this.browser || !this.browser.connected) {
       this.browser = await this.connectToExisting();
     }
     if (!this.browser) return false;
+    this.registerBrowserLifecycle(this.browser);
     const pages = await this.browser.pages();
     const real = pages.find((page) => page.url() !== "about:blank");
     if (!real) return false;
@@ -204,10 +269,14 @@ export class PuppeteerBrowserController implements BrowserController {
   }
 
   private async ensurePage(): Promise<Page> {
-    if (this.page && !this.page.isClosed()) return this.page;
+    if (this.page && !this.page.isClosed()) {
+      this.registerDialogHandler(this.page);
+      return this.page;
+    }
     if (!this.browser || !this.browser.connected) {
       this.browser = (await this.connectToExisting()) ?? (await this.launchDetached());
     }
+    this.registerBrowserLifecycle(this.browser);
     const pages = await this.browser.pages();
     this.page = pages[0] ?? (await this.browser.newPage());
     this.registerDialogHandler(this.page);
@@ -226,13 +295,87 @@ export class PuppeteerBrowserController implements BrowserController {
    * it to the live `Dialog`. RECORDED either way so the result stays
    * transparent. Registered once per page.
    */
-  private registerDialogHandler(page: Page): void {
-    if (page.listenerCount("dialog") > 0) return;
-    page.on("dialog", (dialog) => {
+  private registerDialogHandler(page: Page): boolean {
+    const owned = this.ownedDialogHandlers.get(page);
+    if (owned) return this.hasExclusiveDialogOwnership(page, owned);
+    // An unknown listener may accept a page-owned confirm before Muse obtains
+    // separate authority. Preserve the old non-invasive ownership rule and let
+    // the pending click path refuse before it performs the click.
+    if (page.listenerCount("dialog") > 0) return false;
+    page.on("close", () => {
+      this.abandonPendingDialog("page-closed", page);
+    });
+    const handler = (dialog: Dialog): void => {
+      const type = dialog.type();
+      const capture = this.pendingDialogCapture;
+      if (
+        capture?.pages.has(page)
+        && this.pendingDialogContinuation === undefined
+        && (type === "confirm" || type === "prompt")
+      ) {
+        try {
+          const opened = this.pendingDialogCoordinator.open({
+            message: dialog.message(),
+            pageTargetId: this.pageTargetId(page),
+            pageUrl: page.url(),
+            ...(type === "prompt" ? { promptDefaultValue: dialog.defaultValue() } : {}),
+            type
+          });
+          if (opened.ok) {
+            const pending: PendingDialogContinuation = {
+              dialog,
+              identity: opened.identity,
+              page
+            };
+            this.pendingDialogContinuation = pending;
+            capture.resolve(pending);
+            return;
+          }
+        } catch {
+          // Invalid/unrepresentable dialog metadata fails closed through the
+          // legacy policy below; never leave a page-owned modal unanswered.
+        }
+      }
       const plan = planDialogResponse(dialog.type(), dialog.message(), dialog.defaultValue());
       this.lastDialog = plan.record;
       settleDialog(dialog, plan).catch(() => { /* already handled / page gone */ });
+    };
+    this.ownedDialogHandlers.set(page, handler);
+    page.on("dialog", handler);
+    return true;
+  }
+
+  private hasExclusiveDialogOwnership(
+    page: Page,
+    owned = this.ownedDialogHandlers.get(page)
+  ): boolean {
+    if (!owned) return false;
+    const listeners = (page as unknown as DialogListenerIntrospection).listeners("dialog");
+    return listeners.length === 1 && listeners[0] === owned;
+  }
+
+  private pageTargetId(page: Page): string {
+    const existing = this.pageTargetIds.get(page);
+    if (existing) return existing;
+    const created = `page_${randomUUID()}`;
+    this.pageTargetIds.set(page, created);
+    return created;
+  }
+
+  private registerBrowserLifecycle(browser: Browser): void {
+    if (this.registeredBrowsers.has(browser)) return;
+    this.registeredBrowsers.add(browser);
+    browser.on("disconnected", () => {
+      this.abandonPendingDialog("browser-disconnected");
     });
+  }
+
+  private abandonPendingDialog(reason: string, page?: Page): void {
+    const pending = this.pendingDialogContinuation;
+    if (!pending || (page && pending.page !== page)) return;
+    this.pendingDialogCoordinator.abandon(pending.identity, reason);
+    this.pendingDialogContinuation = undefined;
+    this.pendingDialogCapture = undefined;
   }
 
   /**
@@ -246,20 +389,57 @@ export class PuppeteerBrowserController implements BrowserController {
     const browser = this.browser;
     if (!browser) { await action(); return; }
     const knownTargets = new Set(browser.targets());
+    let rejectOwnership!: (cause: Error) => void;
+    const ownershipFailure = new Promise<never>((_resolve, reject) => {
+      rejectOwnership = reject;
+    });
+    const prepared = new Map<Target, Promise<Page | null>>();
+    const prepare = (target: Target): Promise<Page | null> => {
+      const existing = prepared.get(target);
+      if (existing) return existing;
+      const preparation = (async (): Promise<Page | null> => {
+        let page: Page | null;
+        try {
+          page = await target.page();
+        } catch {
+          return null;
+        }
+        if (page && !page.isClosed()) {
+          if (!this.registerDialogHandler(page)) {
+            await page.close({ runBeforeUnload: false }).catch(() => {
+              /* best-effort containment of the unowned action-created page */
+            });
+            throw new Error("browser dialog handler ownership is unavailable for an action-created page");
+          }
+          this.pendingDialogCapture?.pages.add(page);
+        }
+        return page;
+      })();
+      prepared.set(target, preparation);
+      return preparation;
+    };
+    const onTarget = (target: Target): void => {
+      void prepare(target).catch((cause: unknown) => {
+        rejectOwnership(cause instanceof Error ? cause : new Error(String(cause)));
+      });
+    };
+    browser.on("targetcreated", onTarget);
+    try {
+      await Promise.race([action(), ownershipFailure]);
+      // A new tab fires `targetcreated` essentially at click time, so a short
+      // window catches it; a normal click (no new tab) isn't taxed beyond it.
+      const newestTarget = await browser
+        .waitForTarget((candidate) => !knownTargets.has(candidate), { timeout: NEW_TAB_WINDOW_MS })
+        .catch(() => null);
+      const newest = newestTarget ? await prepare(newestTarget) : null;
 
-    await action();
-    // A new tab fires `targetcreated` essentially at click time, so a short
-    // window catches it; a normal click (no new tab) isn't taxed beyond it.
-    const newestTarget = await browser
-      .waitForTarget((candidate) => !knownTargets.has(candidate), { timeout: NEW_TAB_WINDOW_MS })
-      .catch(() => null);
-    const newest = newestTarget ? await newestTarget.page().catch(() => null) : null;
-
-    if (newest && !newest.isClosed()) {
-      this.page = newest;
-      this.registerDialogHandler(newest);
-      await newest.bringToFront().catch(() => { /* best-effort */ });
-      await newest.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* static popup */ });
+      if (newest && !newest.isClosed()) {
+        this.page = newest;
+        await newest.bringToFront().catch(() => { /* best-effort */ });
+        await newest.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* static popup */ });
+      }
+    } finally {
+      browser.off("targetcreated", onTarget);
     }
   }
 
@@ -543,6 +723,117 @@ export class PuppeteerBrowserController implements BrowserController {
     return this.snapshot();
   }
 
+  /**
+   * Distinct permission-aware click path. Unlike `click()`, confirm/prompt is
+   * held pending and returned before post-action settling or observation.
+   * The legacy BrowserController contract remains fail-close and unchanged.
+   */
+  async clickWithPendingDialog(ref: number): Promise<PendingPuppeteerClickResult> {
+    if (this.pendingDialogContinuation || this.pendingDialogCapture) {
+      throw new Error("a browser dialog decision is already pending");
+    }
+    const page = await this.ensurePage();
+    const { frame, selector } = await this.resolveRef(ref);
+    if (!this.hasExclusiveDialogOwnership(page)) {
+      throw new Error("browser dialog handler ownership is unavailable for this page");
+    }
+    if (this.browser && this.browser.listenerCount("targetcreated") > 0) {
+      throw new Error("browser target handler ownership is unavailable");
+    }
+    let resolveCapture!: (capture: PendingDialogContinuation) => void;
+    const captured = new Promise<PendingDialogContinuation>((resolve) => {
+      resolveCapture = resolve;
+    });
+    this.pendingDialogCapture = { pages: new Set([page]), resolve: resolveCapture };
+    const action = this.withNavStatus(() =>
+      this.withNewTabFollow(() => frame.locator(selector).setTimeout(this.timeout).click())
+    );
+    // A pending dialog intentionally leaves this promise unresolved until a
+    // later decision. Attach a rejection observer now so page-close/disconnect
+    // cannot create an unhandled rejection while authority is pending.
+    void action.catch(() => undefined);
+
+    try {
+      const outcome = await Promise.race([
+        action.then(() => ({ kind: "completed" as const })),
+        captured.then((dialog) => ({ dialog, kind: "pending" as const }))
+      ]);
+      this.pendingDialogCapture = undefined;
+      if (outcome.kind === "pending") {
+        outcome.dialog.action = action;
+        const state = this.pendingDialogCoordinator.inspect(outcome.dialog.identity);
+        if (state?.status !== "pending") {
+          throw new Error("browser dialog was abandoned before authority could be returned");
+        }
+        return { dialog: outcome.dialog.identity, status: "pending" };
+      }
+      const active = await this.ensurePage();
+      await active.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => {
+        /* page may not navigate */
+      });
+      await this.settleDom(active);
+      return { snapshot: await this.snapshot(), status: "completed" };
+    } catch (cause) {
+      this.pendingDialogCapture = undefined;
+      throw cause;
+    }
+  }
+
+  /**
+   * Consume one exact dialog decision and resume the retained click only after
+   * the live Puppeteer dialog acknowledges it. Tool/approval binding is added
+   * separately in Task 038-C.
+   */
+  async decidePendingDialog(
+    input: ClaimPendingDialogInput
+  ): Promise<PendingPuppeteerDialogDecisionResult> {
+    const claimed = this.pendingDialogCoordinator.claim(input);
+    if (!claimed.ok) return claimed;
+    const pending = this.pendingDialogContinuation;
+    if (!pending || pending.identity.dialogId !== input.identity.dialogId) {
+      this.pendingDialogCoordinator.abandon(input.identity, "live-dialog-not-found");
+      return { ok: false, reason: "dialog-not-found" };
+    }
+    const execution = await this.pendingDialogCoordinator.execute(claimed.claim, async (decision) => {
+      if (decision.kind === "accept") {
+        await pending.dialog.accept(decision.promptResponse);
+      } else {
+        await pending.dialog.dismiss();
+      }
+    });
+    if (!execution.ok) {
+      void pending.action?.catch(() => undefined);
+      this.pendingDialogContinuation = undefined;
+      return execution;
+    }
+
+    const receipt = execution.receipt;
+    this.lastDialog = {
+      message: pending.identity.message,
+      type: pending.identity.type,
+      ...(input.decision.kind === "accept" && input.decision.promptResponse !== undefined
+        ? { response: input.decision.promptResponse }
+        : {})
+    };
+    try {
+      await pending.action;
+      const active = this.page;
+      if (!active || active.isClosed() || !this.browser?.connected) {
+        return { ok: false, reason: "continuation-failed", receipt };
+      }
+      await active.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => {
+        /* page may not navigate */
+      });
+      await this.settleDom(active);
+      return { ok: true, receipt, snapshot: await this.snapshot() };
+    } catch {
+      return { ok: false, reason: "continuation-failed", receipt };
+    } finally {
+      this.pendingDialogContinuation = undefined;
+      this.pendingDialogCapture = undefined;
+    }
+  }
+
   async hover(ref: number): Promise<PageSnapshot> {
     const page = await this.ensurePage();
     const { frame, selector } = await this.resolveRef(ref);
@@ -716,6 +1007,7 @@ export class PuppeteerBrowserController implements BrowserController {
   }
 
   async disconnect(): Promise<void> {
+    this.abandonPendingDialog("controller-disconnected");
     try {
       await this.browser?.disconnect();
     } catch { /* best-effort */ }
@@ -724,6 +1016,7 @@ export class PuppeteerBrowserController implements BrowserController {
   }
 
   async close(): Promise<void> {
+    this.abandonPendingDialog("controller-closed");
     await this.browser?.close().catch(() => { /* best-effort */ });
     this.browser = undefined;
     this.page = undefined;

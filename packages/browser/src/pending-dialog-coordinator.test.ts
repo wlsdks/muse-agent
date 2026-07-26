@@ -74,6 +74,21 @@ describe("PendingDialogCoordinator", () => {
     })).toEqual({ ok: false, reason: "dialog-already-active" });
   });
 
+  it("preserves an empty browser-dialog message exactly", () => {
+    const subject = coordinator();
+    const opened = subject.open({
+      message: "",
+      pageTargetId: "target-1",
+      pageUrl: "about:blank",
+      type: "confirm"
+    });
+
+    expect(opened).toMatchObject({
+      identity: { message: "" },
+      ok: true
+    });
+  });
+
   it("fails closed when identity allocation reenters open", () => {
     let nested: ReturnType<PendingDialogCoordinator["open"]> | undefined;
     const subject = new PendingDialogCoordinator({
@@ -415,11 +430,11 @@ describe("PendingDialogCoordinator", () => {
       type: "alert" as unknown as "confirm"
     })).toThrow("unsupported dialog type");
     expect(() => subject.open({
-      message: " ",
-      pageTargetId: "target-1",
+      message: "Valid dialog",
+      pageTargetId: "",
       pageUrl: "https://example.test/form",
       type: "confirm"
-    })).toThrow("message must be non-empty exact text");
+    })).toThrow("pageTargetId must be non-empty exact text");
     expect(openConfirm(subject).identity).toMatchObject({
       dialogId: "dlg_dialog",
       generation: 1
