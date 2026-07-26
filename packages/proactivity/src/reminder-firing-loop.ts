@@ -145,7 +145,6 @@ async function runDueRemindersUnderLock(options: RunDueRemindersOptions): Promis
         || providerId !== providerId.trim()
         || destination.trim().length === 0
         || destination !== destination.trim()
-        || !options.registry.has(providerId)
       ) {
         errors.push(`${reminder.id}: delivery route is unavailable or invalid`);
         continue;
@@ -164,6 +163,10 @@ async function runDueRemindersUnderLock(options: RunDueRemindersOptions): Promis
         let deliveredText: string | undefined;
         let effect: OutboundEffectView;
         if (!existing) {
+          if (!options.registry.has(providerId)) {
+            errors.push(`${reminder.id}: delivery route is unavailable or invalid`);
+            continue;
+          }
           deliveredText = phaseDActive
             ? await synthesizeReminderText(reminder, options).catch((cause) => {
                 const message = errorMessage(cause);

@@ -179,7 +179,10 @@ describe("runDueReminders durable occurrence effect", () => {
     expect(incompleteHistory.delivered).toBe(0);
     expect((await readReminders(historyFailure.remindersFile))[0]!.status).toBe("pending");
     rmSync(historyFailure.historyFile, { force: true, recursive: true });
-    const repairedHistory = await runDueReminders(options(historyFailure, historyRegistry));
+    const repairedHistory = await runDueReminders(options(
+      historyFailure,
+      new MessagingProviderRegistry([])
+    ));
     expect(repairedHistory.delivered).toBe(1);
     expect(historyCalls).toBe(1);
     expect(await readReminderHistory(historyFailure.historyFile)).toHaveLength(1);
@@ -209,7 +212,10 @@ describe("runDueReminders durable occurrence effect", () => {
     await expect(runDueReminders(activeOptions)).rejects.toThrow();
     rmSync(writeFailure.remindersFile, { force: true, recursive: true });
     writeFileSync(writeFailure.remindersFile, originalBytes);
-    const repairedWrite = await runDueReminders(activeOptions);
+    const repairedWrite = await runDueReminders({
+      ...activeOptions,
+      registry: new MessagingProviderRegistry([])
+    });
     expect(repairedWrite.delivered).toBe(1);
     expect(sends).toBe(1);
     expect(synthesis).toBe(1);
@@ -282,12 +288,16 @@ describe("runDueReminders durable occurrence effect", () => {
       },
       recordedAt: "2026-07-27T00:00:01.000Z"
     });
-    const acceptedResult = await runDueReminders(options(accepted, registry(async () => {
-      acceptedCalls += 1;
-      throw new Error("must not resend accepted");
-    })));
+    const acceptedResult = await runDueReminders(options(
+      accepted,
+      new MessagingProviderRegistry([])
+    ));
     expect(acceptedResult.delivered).toBe(1);
     expect(acceptedCalls).toBe(1);
+    expect((await readReminders(accepted.remindersFile))[0]).toMatchObject({
+      firedAt: "2026-07-27T00:00:01.000Z",
+      status: "fired"
+    });
 
     const rejected = paths();
     await writeReminders(rejected.remindersFile, [reminder()]);
@@ -360,13 +370,21 @@ describe("runDueReminders durable occurrence effect", () => {
     const p = paths();
     await writeReminders(p.remindersFile, [reminder()]);
     let calls = 0;
-    const missingRoute = await runDueReminders(options(
-      p,
-      new MessagingProviderRegistry([]),
-      () => new Date(NOW)
-    ));
+    let synthesis = 0;
+    const missingRoute = await runDueReminders({
+      ...options(p, new MessagingProviderRegistry([]), () => new Date(NOW)),
+      activitySource: { lastActivityMs: () => Date.parse(NOW) },
+      agentModel: "test-model",
+      agentRuntime: {
+        run: async () => {
+          synthesis += 1;
+          return { response: { output: "must not synthesize" } };
+        }
+      }
+    });
     expect(missingRoute.errors[0]).toContain("route is unavailable");
     expect(calls).toBe(0);
+    expect(synthesis).toBe(0);
     expect(existsSync(p.effectFile)).toBe(false);
 
     writeFileSync(p.historyFile, "{corrupt", { mode: 0o600 });
