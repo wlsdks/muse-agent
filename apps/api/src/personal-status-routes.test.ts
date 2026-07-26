@@ -210,6 +210,20 @@ describe("GET /api/personal-status", () => {
     }));
   });
 
+  it("projects a malformed resident delivery setting through the shared fail-close decision", async () => {
+    const state = await fixture();
+    const status = await collectPersonalStatus({
+      ...state.routeOptions,
+      residentInspector: async () => resident("malformed")
+    });
+
+    expect(status.cards).toContainEqual(expect.objectContaining({
+      detail: expect.stringContaining("delivery=engaged"),
+      id: "runtime:resident",
+      status: "held"
+    }));
+  });
+
   it("projects the redacted terminal diagnostic without private failure text", async () => {
     const state = await fixture();
     const status = await collectPersonalStatus({

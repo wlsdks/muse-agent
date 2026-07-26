@@ -84,6 +84,7 @@ function exactFixtureManifest(root: string): readonly string[] {
 }
 
 function qualificationFixture(options: {
+  readonly deliveryEnabledValue?: string;
   readonly overdueFollowup?: boolean;
   readonly report?: "present" | "missing";
   readonly liveArgumentMismatch?: boolean;
@@ -171,7 +172,7 @@ function qualificationFixture(options: {
   const env: NodeJS.ProcessEnv = {
     HOME: root,
     MUSE_DAEMON_CONFIG_FILE: daemonConfigFile,
-    MUSE_DAEMON_DELIVERY_ENABLED: "true",
+    MUSE_DAEMON_DELIVERY_ENABLED: options.deliveryEnabledValue ?? "true",
     MUSE_DAEMON_PLIST_FILE: plistFile,
     MUSE_DAEMON_PROVIDER_LOCK: "log",
     MUSE_FOLLOWUPS_FILE: followupsFile,
@@ -396,6 +397,20 @@ describe("qualification collector integration", () => {
     expect(report.status, JSON.stringify(report)).toBe("qualified");
     expect(report.gates[1].evidence.heartbeatState).toBe("fresh");
     expect(report.gates[1].evidence.processIdentityMatch).toBe(true);
+  });
+
+  it("uses the shared fail-close brake decision for malformed resident delivery state", async () => {
+    const fixture = qualificationFixture({ deliveryEnabledValue: "sometimes" });
+    const report = qualifyPersonalAgent(
+      await collectPersonalAgentQualificationObservations(fixture.options, fixture.dependencies)
+    );
+
+    expect(report.status).toBe("unverified");
+    expect(report.gates[2]).toMatchObject({
+      evidence: { deliveryBrakeEngaged: true },
+      reasonCodes: ["delivery-brake-engaged"],
+      status: "unverified"
+    });
   });
 
   it("re-reads evidence after source/artifact probes and rejects a concurrent new attempt", async () => {

@@ -1,4 +1,8 @@
-import { errorMessage } from "@muse/shared";
+import {
+  errorMessage,
+  formatDaemonDeliveryBrakeAuditReceipt,
+  resolveDaemonDeliveryBrake
+} from "@muse/shared";
 /**
  * `muse daemon` — run Muse's background daemons in one foreground
  * process the user can launch directly, instead of needing the full
@@ -930,7 +934,7 @@ function resolveDaemonStatusSafetyGates(
       if (variables !== undefined) {
         const providerLock = variables.MUSE_DAEMON_PROVIDER_LOCK?.trim();
         return {
-          deliveryBrakeEngaged: !parseBoolean(variables.MUSE_DAEMON_DELIVERY_ENABLED, true),
+          deliveryBrakeEngaged: resolveDaemonDeliveryBrake(variables).engaged,
           providerLock: providerLock === "log" ? "log" : undefined,
           selfLearningEnabled: parseBoolean(variables.MUSE_SELFLEARN_ENABLED, true),
           source: "resident LaunchAgent"
@@ -942,7 +946,7 @@ function resolveDaemonStatusSafetyGates(
     }
   }
   return {
-    deliveryBrakeEngaged: !parseBoolean(shellEnv.MUSE_DAEMON_DELIVERY_ENABLED, true),
+    deliveryBrakeEngaged: resolveDaemonDeliveryBrake(shellEnv).engaged,
     providerLock: resolveDaemonProviderLock(shellEnv),
     selfLearningEnabled: parseBoolean(shellEnv.MUSE_SELFLEARN_ENABLED, true),
     source: "current shell/default"
@@ -993,6 +997,11 @@ export async function installDaemonAutostart(
   const plat = helpers.platform ?? process.platform;
   if (plat !== "darwin" && plat !== "win32") {
     io.stderr(`muse daemon --install is only wired for macOS (launchd) and Windows (schtasks) — this platform reports '${plat}'. Run \`muse daemon\` directly in the foreground, or use your OS's own service manager to keep it resident.\n`);
+    return { ok: false };
+  }
+  const deliveryBrakeDecision = resolveDaemonDeliveryBrake(e);
+  if (deliveryBrakeDecision.settingState === "invalid") {
+    io.stderr("refusing to install daemon autostart: MUSE_DAEMON_DELIVERY_ENABLED must be unset or an explicit true/false value.\n");
     return { ok: false };
   }
 
@@ -1055,7 +1064,7 @@ export async function installDaemonAutostart(
   if (!parseBoolean(e.MUSE_SELFLEARN_ENABLED, true)) {
     safetyEnvironment.MUSE_SELFLEARN_ENABLED = "false";
   }
-  if (!parseBoolean(e.MUSE_DAEMON_DELIVERY_ENABLED, true)) {
+  if (deliveryBrakeDecision.engaged) {
     safetyEnvironment.MUSE_DAEMON_DELIVERY_ENABLED = "false";
   }
   if (providerLock === "log") {
@@ -1349,7 +1358,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         }
         return;
       }
-      const deliveryBrakeEngaged = !parseBoolean(e.MUSE_DAEMON_DELIVERY_ENABLED, true);
+      const deliveryBrakeDecision = resolveDaemonDeliveryBrake(e);
+      const deliveryBrakeEngaged = deliveryBrakeDecision.engaged;
       const suppliedLocalOnlySetting = inspectLocalOnlyEnvironmentSetting(e);
       const ambientLocalOnlySetting = e === process.env
         ? suppliedLocalOnlySetting
@@ -1425,6 +1435,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
               signal
             );
           };
+          io.stdout(formatDaemonDeliveryBrakeAuditReceipt(deliveryBrakeDecision));
           io.stdout("muse daemon — delivery brake engaged (heartbeat-only)\n");
           if (options.once) {
             await heartbeatOnlyTick();

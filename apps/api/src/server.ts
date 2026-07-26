@@ -3,7 +3,7 @@ import {
   RuleBasedAgentSpecResolver
 } from "@muse/agent-specs";
 import { extractBearerToken } from "@muse/auth";
-import { errorMessage } from "@muse/shared";
+import { errorMessage, resolveDaemonDeliveryBrake } from "@muse/shared";
 import {
   ConfigurationError,
   createGateEmbedder,
@@ -174,6 +174,7 @@ function resolveTaglineModel(
 
 export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const env = options.env ?? process.env;
+  const deliveryBrakeDecision = resolveDaemonDeliveryBrake(env);
   const integrationEnv = options.integrationEnv
     ?? resolveIntegrationEnvironment(env, { localOnlyOverride: options.localOnly });
   if (
@@ -718,10 +719,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // text via their respective MUSE_*_AGENT_TURN flag; when either is
   // active AND an agent runtime is wired, one tracker records
   // /api/chat* presence and feeds both downstream consumers.
-  const phaseDReminderOn = parseBoolean(env.MUSE_REMINDER_AGENT_TURN, false)
+  const phaseDReminderOn = !deliveryBrakeDecision.engaged
+    && parseBoolean(env.MUSE_REMINDER_AGENT_TURN, false)
     && Boolean(options.agentRuntime)
     && Boolean(options.defaultModel);
-  const phaseDProactiveOn = parseBoolean(env.MUSE_PROACTIVE_AGENT_TURN, false)
+  const phaseDProactiveOn = !deliveryBrakeDecision.engaged
+    && parseBoolean(env.MUSE_PROACTIVE_AGENT_TURN, false)
     && Boolean(options.agentRuntime)
     && Boolean(options.defaultModel);
   const presenceFile = env.MUSE_PROACTIVE_PRESENCE_FILE?.trim();
@@ -745,17 +748,19 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // lines of inline env-parsing scaffolding that all five blocks
   // shared the same shape of.
   const phaseDWiring = { phaseDProactiveOn, phaseDReminderOn, sharedActivityTracker };
-  startReminderDaemonIfConfigured(env, server, options, phaseDWiring);
-  startProactiveDaemonIfConfigured(env, server, options, phaseDWiring);
-  startFollowupDaemonIfConfigured(env, server, options);
-  startPatternDaemonIfConfigured(env, server, options);
+  if (!deliveryBrakeDecision.engaged) {
+    startReminderDaemonIfConfigured(env, server, options, phaseDWiring);
+    startProactiveDaemonIfConfigured(env, server, options, phaseDWiring);
+    startFollowupDaemonIfConfigured(env, server, options);
+    startPatternDaemonIfConfigured(env, server, options);
+    startSituationalBriefingDaemonIfConfigured(env, server, options, integrationEnv.localOnly);
+    startObjectivesDaemonIfConfigured(env, server, options);
+    startAmbientDaemonIfConfigured(env, server, options);
+    startWebWatchDaemonIfConfigured(env, server, options);
+    startHomeWatchDaemonIfConfigured(env, server, options, integrationEnv.localOnly);
+    startDigestDaemonIfConfigured(env, server, options);
+  }
   startConsolidateDaemonIfConfigured(env, server, options, phaseDWiring);
-  startSituationalBriefingDaemonIfConfigured(env, server, options, integrationEnv.localOnly);
-  startObjectivesDaemonIfConfigured(env, server, options);
-  startAmbientDaemonIfConfigured(env, server, options);
-  startWebWatchDaemonIfConfigured(env, server, options);
-  startHomeWatchDaemonIfConfigured(env, server, options, integrationEnv.localOnly);
-  startDigestDaemonIfConfigured(env, server, options);
   startObserveDaemonIfConfigured(env, server, resolveAttunementFile(env));
   warmUpModelIfConfigured(env, options);
 
@@ -840,7 +845,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // Off unless MUSE_INBOUND_REPLY_ENABLED=1.
   const inboundReplyEnabled = bootDaemonSettings.MUSE_INBOUND_REPLY_ENABLED
     ?? isMuseDaemonEnabled(env.MUSE_INBOUND_REPLY_ENABLED);
-  if (options.telegramInboxFile && options.messaging && options.agentRuntime) {
+  if (!deliveryBrakeDecision.engaged && options.telegramInboxFile && options.messaging && options.agentRuntime) {
     const telegramInboxFile = options.telegramInboxFile;
     const messaging = options.messaging;
     const agentRuntime = options.agentRuntime;
@@ -942,7 +947,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // MUSE_INBOUND_REPLY_ENABLED flag and the same createInboundAgentRun
   // runner factory as the Telegram one; only the inbox/cursor/thread
   // files differ, so a Matrix room message IS a Muse session too.
-  if (options.matrixInboxFile && options.messaging && options.agentRuntime) {
+  if (!deliveryBrakeDecision.engaged && options.matrixInboxFile && options.messaging && options.agentRuntime) {
     const matrixInboxFile = options.matrixInboxFile;
     const messaging = options.messaging;
     const agentRuntime = options.agentRuntime;

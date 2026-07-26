@@ -1990,6 +1990,27 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(runLaunchctl).not.toHaveBeenCalled();
   });
 
+  it("--install rejects an invalid delivery-brake value before artifact or launchctl mutation", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-install-invalid-delivery-brake-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const runLaunchctl = vi.fn(async () => ({ code: 0, stderr: "", stdout: "" }));
+    const result = await runDaemon(["--install"], {
+      env: {
+        ...tmpEnv(),
+        MUSE_DAEMON_DELIVERY_ENABLED: "sometimes",
+        MUSE_DAEMON_PLIST_FILE: plistFile
+      },
+      platform: "darwin",
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      runLaunchctl
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("MUSE_DAEMON_DELIVERY_ENABLED must be unset or an explicit true/false value");
+    expect(existsSync(plistFile)).toBe(false);
+    expect(runLaunchctl).not.toHaveBeenCalled();
+  });
+
   it("rejects --safe without --install", async () => {
     const result = await runDaemon(["--safe"], {
       env: tmpEnv(),
@@ -2453,6 +2474,23 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(calls[0]![6]).toBe("/TR");
     expect(calls[0]![7]).toContain("daemon");
     expect(existsSync(plistFile)).toBe(false);
+  });
+
+  it("--install on win32 rejects an invalid delivery-brake value before schtasks mutation", async () => {
+    const schtasksRun = vi.fn(async () => ({ exitCode: 0, stderr: "", stdout: "SUCCESS" }));
+    const result = await runDaemon(["--install"], {
+      env: {
+        ...tmpEnv(),
+        MUSE_DAEMON_DELIVERY_ENABLED: "sometimes"
+      },
+      platform: "win32",
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      schtasksRun
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("MUSE_DAEMON_DELIVERY_ENABLED must be unset or an explicit true/false value");
+    expect(schtasksRun).not.toHaveBeenCalled();
   });
 
   it("--install on win32 with a failing schtasks exits 1 and writes NOTHING", async () => {
@@ -3116,11 +3154,124 @@ describe("muse daemon — daemon-loop heartbeat (R2-1)", () => {
 
     expect(result.exitCode).toBeUndefined();
     expect(result.stdout).toContain("delivery brake engaged");
+    expect(result.stdout).toContain("muse.daemon.delivery-brake ");
+    expect(result.stdout).toContain("\"outboundAllowed\":false");
+    expect(result.stdout).toContain("\"reason\":\"delivery-disabled\"");
     expect(buildMessagingRegistry).not.toHaveBeenCalled();
     expect(buildCalendarRegistry).not.toHaveBeenCalled();
     expect(readDaemonConfig).not.toHaveBeenCalled();
     expect(resolveFollowupModel).not.toHaveBeenCalled();
     expect(readdirSync(sidecarDir).sort()).toEqual(["proactive-heartbeat-daemon-loop.json"]);
+  });
+
+  it("holds a fully seeded outbound cycle behind one brake decision with zero sends", async () => {
+    const env: NodeJS.ProcessEnv = {
+      ...tmpEnv(),
+      MUSE_AMBIENT_RULES: JSON.stringify([{
+        id: "ambient",
+        match: { app: "Slack" },
+        message: "ambient",
+        title: "ambient"
+      }]),
+      MUSE_DAEMON_DELIVERY_ENABLED: "false",
+      MUSE_WEB_WATCH_CONFIG: JSON.stringify([{
+        id: "web",
+        message: "web",
+        rule: { appears: "changed" },
+        title: "web",
+        url: "https://example.invalid"
+      }])
+    };
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
+      tasks: [{
+        createdAt: "2026-01-01T00:00:00Z",
+        dueAt: "1970-01-01T00:00:00Z",
+        id: "task",
+        status: "open",
+        title: "proactive"
+      }]
+    }), "utf8");
+    writeFileSync(env.MUSE_REMINDERS_FILE!, JSON.stringify({
+      reminders: [{
+        createdAt: "2026-01-01T00:00:00Z",
+        dueAt: "1970-01-01T00:00:00Z",
+        id: "reminder",
+        message: "reminder",
+        providerId: "telegram",
+        status: "scheduled"
+      }]
+    }), "utf8");
+    await writeFollowups(env.MUSE_FOLLOWUPS_FILE!, [{
+      createdAt: "2026-01-01T00:00:00Z",
+      id: "followup",
+      scheduledFor: "1970-01-01T00:00:00Z",
+      status: "scheduled",
+      summary: "followup",
+      userId: "owner"
+    }]);
+    await writeObjectives(env.MUSE_OBJECTIVES_FILE!, [{
+      attempts: 0,
+      createdAt: "2026-01-01T00:00:00Z",
+      id: "objective",
+      kind: "watch",
+      spec: "objective",
+      status: "active",
+      userId: "owner"
+    }]);
+    writeFileSync(env.MUSE_AMBIENT_FILE!, JSON.stringify({ app: "Slack", window: "general" }), "utf8");
+    const before = [
+      env.MUSE_TASKS_FILE!,
+      env.MUSE_REMINDERS_FILE!,
+      env.MUSE_FOLLOWUPS_FILE!,
+      env.MUSE_OBJECTIVES_FILE!
+    ].map((file) => readFileSync(file, "utf8"));
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([
+      capturingProvider(sent, "log"),
+      capturingProvider(sent, "telegram")
+    ]);
+    const buildMessagingRegistry = vi.fn(() => registry);
+    const resolveFollowupModel = vi.fn(async () => fakeFollowupModel());
+    const fetchImpl = vi.fn(async () => new Response("changed")) as unknown as typeof globalThis.fetch;
+
+    const result = await runDaemon(["--once", "--provider", "telegram"], {
+      buildMessagingRegistry,
+      env,
+      fetchImpl,
+      registry,
+      resolveFollowupModel
+    });
+
+    expect(result.exitCode).toBeUndefined();
+    expect(result.stdout).toContain("\"mode\":\"heartbeat-only\"");
+    expect(sent).toHaveLength(0);
+    expect(buildMessagingRegistry).not.toHaveBeenCalled();
+    expect(resolveFollowupModel).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect([
+      env.MUSE_TASKS_FILE!,
+      env.MUSE_REMINDERS_FILE!,
+      env.MUSE_FOLLOWUPS_FILE!,
+      env.MUSE_OBJECTIVES_FILE!
+    ].map((file) => readFileSync(file, "utf8"))).toEqual(before);
+  });
+
+  it("treats an invalid delivery setting as a braked heartbeat-only cycle", async () => {
+    const env: NodeJS.ProcessEnv = {
+      ...tmpEnv(),
+      MUSE_DAEMON_DELIVERY_ENABLED: "sometimes"
+    };
+    const buildMessagingRegistry = vi.fn(() => new MessagingProviderRegistry());
+    const result = await runDaemon(["--once"], {
+      buildMessagingRegistry,
+      env,
+      registry: new MessagingProviderRegistry()
+    });
+
+    expect(result.exitCode).toBeUndefined();
+    expect(result.stdout).toContain("\"reason\":\"delivery-setting-invalid\"");
+    expect(result.stdout).toContain("\"outboundAllowed\":false");
+    expect(buildMessagingRegistry).not.toHaveBeenCalled();
   });
 
   it("delivery brake resident mode gives runDaemonLoop a heartbeat-only tick and restores signal listeners", async () => {

@@ -15,6 +15,7 @@ import { inspectPendingApprovalsSource } from "@muse/messaging";
 import { inspectResidentDaemon, type ResidentDaemonInspection } from "@muse/runtime-state";
 import {
   buildPersonalStatus,
+  resolveDaemonDeliveryBrake,
   type PersonalStatusCard,
   type PersonalStatusResponse,
   type PersonalStatusSource,
@@ -392,9 +393,9 @@ function projectRuntime(
   }
   const observation = inspected.observation;
   const verified = inspected.health.status === "healthy";
-  const delivery = inspected.effectiveRuntimeEnv.MUSE_DAEMON_DELIVERY_ENABLED?.trim().toLowerCase();
-  const brakeEngaged = delivery !== undefined && ["0", "false", "no", "off"].includes(delivery);
-  const brakeReleased = delivery !== undefined && ["1", "true", "yes", "on"].includes(delivery);
+  const deliveryDecision = resolveDaemonDeliveryBrake(inspected.effectiveRuntimeEnv);
+  const brakeEngaged = deliveryDecision.engaged;
+  const brakeReleased = !deliveryDecision.engaged && deliveryDecision.settingState === "enabled";
   const held = !verified || brakeEngaged || !brakeReleased;
   const terminal = inspected.health.terminalFailure;
   const card: PersonalStatusCard = {

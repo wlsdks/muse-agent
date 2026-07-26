@@ -7,6 +7,7 @@ import { dirname, join, resolve } from "node:path";
 
 import { resolveFollowupsFile, resolveRemindersFile } from "@muse/autoconfigure";
 import { isLocalOnlyEnabled } from "@muse/model";
+import { resolveDaemonDeliveryBrake } from "@muse/shared";
 import {
   inspectResidentDaemon,
   inspectResidentOrphanApiProcesses,
@@ -405,7 +406,7 @@ export async function collectPersonalAgentQualificationObservations(
     },
     delivery: {
       baseProviderLocalLog: provider === "log",
-      brakeEngaged: isExplicitlyDisabled(effectiveRuntimeEnv.MUSE_DAEMON_DELIVERY_ENABLED),
+      brakeEngaged: resolveDaemonDeliveryBrake(effectiveRuntimeEnv).engaged,
       environmentProbe,
       followups,
       localOnly: isLocalOnlyEnabled(effectiveRuntimeEnv),

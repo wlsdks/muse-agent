@@ -31,6 +31,17 @@ export {
 } from "./platform-capabilities.js";
 
 export {
+  DAEMON_DELIVERY_BRAKE_RECEIPT_PREFIX,
+  DAEMON_DELIVERY_BRAKE_RECEIPT_VERSION,
+  formatDaemonDeliveryBrakeAuditReceipt,
+  resolveDaemonDeliveryBrake,
+  type DaemonDeliveryBrakeAuditReceipt,
+  type DaemonDeliveryBrakeDecision,
+  type DaemonDeliveryBrakeReason,
+  type DaemonDeliverySettingState
+} from "./daemon-delivery-brake.js";
+
+export {
   backupPlaintextCredentialsFile,
   credentialEncryptionEnabled,
   credentialEncryptionSecret,
