@@ -16,6 +16,7 @@ import {
   parseCapabilityReport,
   qualifyPersonalAgent,
   type ArtifactEvidenceSnapshot,
+  type DeliveryQualificationObservation,
   type GitEvidenceSnapshot,
   type PersonalAgentQualificationObservations,
   type RuntimeQualificationObservation
@@ -102,6 +103,33 @@ function runtimeObservation(
   return { ...observation, health: suppliedHealth ?? classifyResidentDaemonHealth(observation, inventory) };
 }
 
+function withDeliveryResult(
+  observation: Omit<DeliveryQualificationObservation, "result">
+): DeliveryQualificationObservation {
+  return {
+    ...observation,
+    result: classifyDeliverySafety({
+      baseProviderLocal: observation.baseProviderLocalLog,
+      deliveryBrake: observation.brakeEngaged ? "engaged" : "released",
+      environmentProbe: observation.environmentProbe,
+      followups: observation.followups,
+      localOnlyEffective: observation.localOnly,
+      localOnlyPersisted: observation.localOnly,
+      pendingDrafts: observation.pendingDrafts,
+      providerLock: {
+        localOnly: observation.providerLockLog,
+        mismatch: observation.providerLockDecision.mismatchReason !== null,
+        observation: observation.environmentProbe === "ok" ? "verified" : "unverified"
+      },
+      reminders: observation.reminders,
+      selfLearnDisabled: observation.selfLearnDisabled,
+      selfLearningHold: observation.selfLearningHold.state === "invalid"
+        ? "unverified"
+        : observation.selfLearningHold.engaged ? "engaged" : "released"
+    })
+  };
+}
+
 function passingObservations(): PersonalAgentQualificationObservations {
   return {
     capability: {
@@ -112,7 +140,7 @@ function passingObservations(): PersonalAgentQualificationObservations {
       currentSourceStart: SOURCE,
       maxAgeMs: 24 * 60 * 60_000
     },
-    delivery: {
+    delivery: withDeliveryResult({
       baseProviderLocalLog: true,
       brakeEngaged: false,
       environmentProbe: "ok",
@@ -139,7 +167,7 @@ function passingObservations(): PersonalAgentQualificationObservations {
         },
         state: "active"
       }
-    },
+    }),
     now: NOW,
     runtime: runtimeObservation()
   };
@@ -496,11 +524,11 @@ describe("personal-agent qualification scorer", () => {
     const base = passingObservations();
     const report = qualifyPersonalAgent({
       ...base,
-      delivery: {
+      delivery: withDeliveryResult({
         ...base.delivery,
         brakeEngaged: true,
         followups: { overdue: 26, scheduled: 26, status: "ok" }
-      }
+      })
     });
     expect(report.status).toBe("unverified");
     expect(report.gates[2]).toMatchObject({
@@ -533,7 +561,8 @@ describe("personal-agent qualification scorer", () => {
         baseProviderLocalLog: canonicalObservation.baseProviderLocal,
         followups: canonicalObservation.followups,
         pendingDrafts: canonicalObservation.pendingDrafts,
-        reminders: canonicalObservation.reminders
+        reminders: canonicalObservation.reminders,
+        result: canonical
       }
     }).gates[2];
 
@@ -550,7 +579,7 @@ describe("personal-agent qualification scorer", () => {
     const base = passingObservations();
     const report = qualifyPersonalAgent({
       ...base,
-      delivery: {
+      delivery: withDeliveryResult({
         ...base.delivery,
         baseProviderLocalLog: false,
         brakeEngaged: true,
@@ -559,7 +588,7 @@ describe("personal-agent qualification scorer", () => {
           mismatchReason: "delivery-provider-lock-adapter-mismatch",
           resolvedAdapterId: "telegram"
         }
-      }
+      })
     });
 
     expect(report.gates[2]).toMatchObject({
@@ -581,7 +610,7 @@ describe("personal-agent qualification scorer", () => {
     const base = passingObservations();
     const report = qualifyPersonalAgent({
       ...base,
-      delivery: {
+      delivery: withDeliveryResult({
         ...base.delivery,
         baseProviderLocalLog: false,
         followups: { overdue: 26, scheduled: 26, status: "ok" },
@@ -589,7 +618,7 @@ describe("personal-agent qualification scorer", () => {
         providerLockLog: false,
         reminders: { overdue: 2, scheduled: 3, status: "ok" },
         selfLearnDisabled: false
-      }
+      })
     });
     expect(report.gates[2].status).toBe("failed");
     expect(report.gates[2].reasonCodes).toEqual(expect.arrayContaining([

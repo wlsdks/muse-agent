@@ -11,9 +11,9 @@ import { createHash } from "node:crypto";
 import {
   DELIVERY_SAFETY_REASON,
   RESIDENT_DAEMON_HEALTH_REASON,
-  classifyDeliverySafety,
   type DeliverySafetyEvidence,
   type DeliverySafetyReasonCode,
+  type DeliverySafetyResult,
   type ResidentDaemonHealthReasonCode,
   type ResidentDaemonHealthResult,
   type ResidentDaemonObservation
@@ -175,6 +175,7 @@ export type DaemonProviderResolutionSource =
   | "default";
 
 export interface DeliveryQualificationObservation {
+  readonly result: DeliverySafetyResult;
   readonly environmentProbe: "ok" | "unverified";
   readonly localOnly: boolean;
   readonly selfLearnDisabled: boolean;
@@ -632,30 +633,12 @@ function assessRuntime(observation: RuntimeQualificationObservation): Qualificat
   };
 }
 
-function assessDelivery(observation: DeliveryQualificationObservation): QualificationGate<"delivery-safety", DeliveryGateEvidence> {
-  const result = classifyDeliverySafety({
-    baseProviderLocal: observation.baseProviderLocalLog,
-    deliveryBrake: observation.brakeEngaged ? "engaged" : "released",
-    environmentProbe: observation.environmentProbe,
-    followups: observation.followups,
-    localOnlyEffective: observation.localOnly,
-    localOnlyPersisted: observation.localOnly,
-    pendingDrafts: observation.pendingDrafts,
-    providerLock: {
-      localOnly: observation.providerLockLog,
-      mismatch: observation.providerLockDecision.mismatchReason !== null,
-      observation: observation.environmentProbe === "ok" ? "verified" : "unverified"
-    },
-    reminders: observation.reminders,
-    selfLearnDisabled: observation.selfLearnDisabled,
-    selfLearningHold: observation.selfLearningHold.state === "invalid"
-      ? "unverified"
-      : observation.selfLearningHold.engaged ? "engaged" : "released"
-  });
-
+export function assessDelivery(
+  observation: DeliveryQualificationObservation
+): QualificationGate<"delivery-safety", DeliveryGateEvidence> {
   return {
     evidence: {
-      ...result.evidence,
+      ...observation.result.evidence,
       baseProviderLocalLog: observation.baseProviderLocalLog,
       deliveryBrakeEngaged: observation.brakeEngaged,
       providerLockAllowedProviderIds: observation.providerLockDecision.allowedProviderIds,
@@ -676,9 +659,9 @@ function assessDelivery(observation: DeliveryQualificationObservation): Qualific
       selfLearningHoldState: observation.selfLearningHold.state
     },
     id: "delivery-safety",
-    reasonCodes: result.reasonCodes,
+    reasonCodes: observation.result.reasonCodes,
     required: true,
-    status: result.status
+    status: observation.result.status
   };
 }
 

@@ -6,7 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
 import { analyzeRunOutcomes } from "@muse/proactivity";
 import {
+  classifyDeliverySafety,
   classifyResidentDaemonHealth,
+  type ResidentDaemonInspection,
   type ResidentDaemonObservation,
   type ResidentMuseProcessInventory
 } from "@muse/runtime-state";
@@ -44,7 +46,11 @@ import {
   webEgressCheck,
   type OllamaTagsEntry
 } from "./commands-doctor.js";
-import type { RuntimeQualificationObservation } from "./personal-agent-qualification.js";
+import {
+  assessDelivery,
+  type DeliveryQualificationObservation,
+  type RuntimeQualificationObservation
+} from "./personal-agent-qualification.js";
 import type { WeaknessEntry } from "@muse/stores";
 import { buildLaunchAgentPlist } from "./commands-daemon.js";
 
@@ -491,6 +497,71 @@ describe("resident daemon truth", () => {
     }));
   });
 
+  it("inspects the resident once and derives both local Doctor projections from that snapshot", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-shared-snapshot-"));
+    const pendingApprovalsFile = join(homeDir, "pending-approvals.json");
+    writeFileSync(pendingApprovalsFile, JSON.stringify({ pending: [] }), { mode: 0o600 });
+    const runtime = residentRuntime({ heartbeat: "stale" });
+    const { health, ...observation } = runtime;
+    const effectiveRuntimeEnv: NodeJS.ProcessEnv = {
+      HOME: homeDir,
+      MUSE_DAEMON_DELIVERY_ENABLED: "false",
+      MUSE_DAEMON_PROVIDER_LOCK: "log",
+      MUSE_LOCAL_ONLY: "true",
+      MUSE_PENDING_APPROVALS_FILE: pendingApprovalsFile,
+      MUSE_SELFLEARN_ENABLED: "false"
+    };
+    const inspection: ResidentDaemonInspection = {
+      diskArguments: [process.execPath, "/stable/muse", "daemon"],
+      effectiveRuntimeEnv,
+      health,
+      liveArguments: [process.execPath, "/stable/muse", "daemon"],
+      liveEnvironment: effectiveRuntimeEnv as Readonly<Record<string, string>>,
+      observation,
+      processInventory: {
+        conditions: ["degraded"],
+        duplicateResidentProcessCount: 0,
+        museProcessCount: 1,
+        probe: "ok",
+        processes: [],
+        residentProcessCount: 1
+      }
+    };
+    let inspectionCount = 0;
+
+    const report = await runLocalDoctor({
+      daemonAutostartStatus: {
+        artifact: { state: "missing" },
+        kind: "darwin",
+        plistFile: join(homeDir, "Library", "LaunchAgents", "com.muse.daemon.plist"),
+        runtime: { state: "not-registered" }
+      },
+      env: effectiveRuntimeEnv,
+      fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }),
+      homeDir,
+      residentDaemonInspection: async () => {
+        inspectionCount += 1;
+        return inspection;
+      }
+    });
+
+    expect(inspectionCount).toBe(1);
+    expect(report.deliverySafety).toMatchObject({
+      evidence: {
+        deliveryBrake: "engaged",
+        localOnlyEffective: true,
+        pendingDraftObservation: "ok"
+      },
+      reasonCodes: ["delivery-brake-engaged"],
+      status: "unverified"
+    });
+    expect(report.checks).toContainEqual(expect.objectContaining({
+      detail: expect.stringContaining("heartbeat stale"),
+      name: "resident daemon",
+      status: "fail"
+    }));
+  });
+
   it("adds resident failure evidence to API doctor JSON instead of preserving a false allHealthy", async () => {
     const program = new Command();
     const emitted: unknown[] = [];
@@ -515,6 +586,75 @@ describe("resident daemon truth", () => {
     } finally {
       process.exitCode = priorExitCode;
     }
+  });
+
+  it("emits the injected canonical delivery-safety result unchanged in local JSON", async () => {
+    const deliverySafety = classifyDeliverySafety({
+      baseProviderLocal: true,
+      deliveryBrake: "released",
+      environmentProbe: "ok",
+      followups: { overdue: 0, scheduled: 0, status: "ok" },
+      localOnlyEffective: true,
+      localOnlyPersisted: true,
+      pendingDrafts: { count: 2, status: "ok" },
+      providerLock: { localOnly: true, mismatch: false, observation: "verified" },
+      reminders: { overdue: 0, scheduled: 0, status: "ok" },
+      selfLearnDisabled: true,
+      selfLearningHold: "engaged"
+    });
+    const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-delivery-"));
+    const qualificationObservation: DeliveryQualificationObservation = {
+      baseProviderLocalLog: true,
+      brakeEngaged: false,
+      environmentProbe: "ok",
+      followups: { overdue: 0, scheduled: 0, status: "ok" },
+      localOnly: true,
+      pendingDrafts: { count: 2, status: "ok" },
+      providerLockDecision: {
+        allowedProviderIds: ["log"],
+        mismatchReason: null,
+        resolvedAdapterId: "log"
+      },
+      providerLockLog: true,
+      providerResolutionSource: "live-arguments",
+      reminders: { overdue: 0, scheduled: 0, status: "ok" },
+      result: deliverySafety,
+      selfLearnDisabled: true,
+      selfLearningHold: { engaged: false, state: "inactive" }
+    };
+    const emitted: unknown[] = [];
+    const program = new Command();
+    registerDoctorCommand(program, { stderr: () => undefined, stdout: () => undefined }, {
+      apiRequest: async () => {
+        throw new Error("local Doctor must not call the API");
+      },
+      localRuntime: {
+        daemonAutostartStatus: {
+          artifact: { state: "missing" },
+          kind: "darwin",
+          plistFile: join(homeDir, "Library", "LaunchAgents", "com.muse.daemon.plist"),
+          runtime: { state: "not-registered" }
+        },
+        deliverySafetyResult: deliverySafety,
+        env: { HOME: homeDir, MUSE_LOCAL_ONLY: "true" },
+        fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }),
+        homeDir,
+        residentDaemonRuntime: residentRuntime()
+      },
+      writeOutput: (_io, value) => { emitted.push(value); }
+    });
+
+    await program.parseAsync(["node", "muse", "doctor", "--local", "--json"], { from: "node" });
+
+    expect(emitted).toEqual([expect.objectContaining({ deliverySafety })]);
+    expect({
+      reasonCodes: assessDelivery(qualificationObservation).reasonCodes,
+      status: assessDelivery(qualificationObservation).status
+    }).toEqual({
+      reasonCodes: deliverySafety.reasonCodes,
+      status: deliverySafety.status
+    });
+    expect(JSON.stringify(emitted)).not.toMatch(/recipient|arguments|userId|PRIVATE/iu);
   });
 });
 

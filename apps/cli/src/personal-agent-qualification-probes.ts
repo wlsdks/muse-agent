@@ -5,11 +5,18 @@ import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-import { resolveFollowupsFile, resolveQualificationLearningHoldFile, resolveRemindersFile } from "@muse/autoconfigure";
+import {
+  resolveFollowupsFile,
+  resolvePendingApprovalsFile,
+  resolveQualificationLearningHoldFile,
+  resolveRemindersFile
+} from "@muse/autoconfigure";
+import { inspectPendingApprovalsSource } from "@muse/messaging";
 import { isLocalOnlyEnabled } from "@muse/model";
 import { resolveDaemonDeliveryBrake } from "@muse/shared";
 import { inspectQualificationLearningHold, type QualificationLearningHoldInspection } from "@muse/stores";
 import {
+  classifyDeliverySafety,
   inspectResidentDaemon,
   inspectResidentOrphanApiProcesses,
   type ResidentDaemonInspection
@@ -51,6 +58,7 @@ export interface QualificationProbeDependencies {
   readonly run?: ReadOnlyCommandRunner;
   readonly uid?: number;
   readonly daemonTemporaryRoots?: readonly string[];
+  readonly residentInspection?: () => Promise<ResidentDaemonInspection>;
   readonly artifactDigest?: (workspaceDir: string) => Promise<ArtifactEvidenceSnapshot>;
   readonly capabilityEvidence?: (
     reportFile: string,
@@ -313,7 +321,9 @@ function maxEvidenceAgeMs(value: number | undefined): number {
 async function inspectResidentDaemonRuntime(
   dependencies: QualificationProbeDependencies = {}
 ): Promise<ResidentDaemonInspection> {
-  return inspectResidentDaemon(dependencies);
+  return dependencies.residentInspection
+    ? dependencies.residentInspection()
+    : inspectResidentDaemon(dependencies);
 }
 
 /** Public, privacy-safe resident daemon observation for local diagnostics. */
@@ -324,31 +334,21 @@ export async function collectResidentDaemonRuntime(
   return { ...resident.observation, health: resident.health };
 }
 
-export async function collectPersonalAgentQualificationObservations(
-  options: CollectQualificationOptions,
-  dependencies: QualificationProbeDependencies = {}
-): Promise<PersonalAgentQualificationObservations> {
-  const run = dependencies.run ?? defaultRun;
-  const workspaceDir = resolve(options.workspaceDir);
-  const reportFile = options.capabilityReportFile ?? join(workspaceDir, ".muse-dev", "evals", "agent-capability", "latest.json");
-  const now = dependencies.now ?? (() => new Date());
-  const nowDate = now();
-  const nowMs = nowDate.getTime();
-  const currentSourceStart = await inspectGitSnapshot(workspaceDir, run);
-  const allowedEvidenceRoot = options.capabilityReportFile === undefined ? workspaceDir : dirname(reportFile);
-  const capabilityEvidence = dependencies.capabilityEvidence
-    ?? ((file: string, root: string, workspace: string) => inspectCapabilityEvidence(file, root, workspace, run));
-  const initialCapabilityEvidencePromise = capabilityEvidence(
-    reportFile,
-    allowedEvidenceRoot,
-    workspaceDir
-  );
-  const artifactDigestPromise = dependencies.artifactDigest
-    ? dependencies.artifactDigest(workspaceDir)
-    : defaultArtifactDigest(workspaceDir, run);
-  const resident = await inspectResidentDaemonRuntime(dependencies);
+/**
+ * Collect the one canonical, privacy-safe delivery-safety result used by
+ * qualification and CLI Doctor. The optional resident inspection prevents
+ * qualification from probing the service manager twice.
+ */
+export async function collectDeliverySafetyObservation(
+  dependencies: QualificationProbeDependencies = {},
+  options: {
+    readonly nowMs?: number;
+    readonly resident?: ResidentDaemonInspection;
+  } = {}
+): Promise<DeliveryQualificationObservation> {
+  const resident = options.resident ?? await inspectResidentDaemonRuntime(dependencies);
+  const nowMs = options.nowMs ?? (dependencies.now ?? (() => new Date()))().getTime();
   const { effectiveRuntimeEnv, diskArguments, liveArguments, liveEnvironment } = resident;
-
   const configResult = strictDaemonConfigProvider(resolveDaemonConfigFile(effectiveRuntimeEnv));
   const providerFromArguments = parseProviderFlag(liveArguments ?? diskArguments ?? []);
   const providerFromEnvironment = effectiveRuntimeEnv.MUSE_PROACTIVE_PROVIDER?.trim();
@@ -380,7 +380,7 @@ export async function collectPersonalAgentQualificationObservations(
     && configResult.status === "ok"
     ? "ok"
     : "unverified";
-  const [followups, reminders, selfLearningHold, initialCapabilityEvidence, currentArtifacts] = await Promise.all([
+  const [followups, reminders, selfLearningHold, pendingApprovals] = await Promise.all([
     readStrictBacklogCounts(resolveFollowupsFile(effectiveRuntimeEnv), "followups", nowMs),
     readStrictBacklogCounts(resolveRemindersFile(effectiveRuntimeEnv), "reminders", nowMs),
     inspectQualificationLearningHold(
@@ -390,6 +390,91 @@ export async function collectPersonalAgentQualificationObservations(
       failure: "unreadable",
       state: "invalid"
     })),
+    inspectPendingApprovalsSource(resolvePendingApprovalsFile(effectiveRuntimeEnv)).catch(() => ({
+      errorCode: "io-error" as const,
+      result: "unreadable" as const
+    }))
+  ]);
+  const pendingDrafts = pendingApprovals.result === "available"
+    && pendingApprovals.value.excludedCount === 0
+    ? { count: pendingApprovals.value.pending.length, status: "ok" as const }
+    : { count: 0, status: "unverified" as const };
+  const observationWithoutResult: Omit<DeliveryQualificationObservation, "result"> = {
+    baseProviderLocalLog: provider === "log",
+    brakeEngaged: resolveDaemonDeliveryBrake(effectiveRuntimeEnv).engaged,
+    environmentProbe,
+    followups,
+    localOnly: isLocalOnlyEnabled(effectiveRuntimeEnv),
+    pendingDrafts,
+    providerLockDecision,
+    providerLockLog,
+    providerResolutionSource,
+    reminders,
+    selfLearnDisabled: isExplicitlyDisabled(effectiveRuntimeEnv.MUSE_SELFLEARN_ENABLED),
+    selfLearningHold
+  };
+  const result = classifyDeliverySafety({
+    baseProviderLocal: observationWithoutResult.baseProviderLocalLog,
+    deliveryBrake: observationWithoutResult.brakeEngaged ? "engaged" : "released",
+    environmentProbe: observationWithoutResult.environmentProbe,
+    followups: observationWithoutResult.followups,
+    localOnlyEffective: observationWithoutResult.localOnly,
+    localOnlyPersisted: observationWithoutResult.localOnly,
+    pendingDrafts: observationWithoutResult.pendingDrafts,
+    providerLock: {
+      localOnly: observationWithoutResult.providerLockLog,
+      mismatch: observationWithoutResult.providerLockDecision.mismatchReason !== null,
+      observation: observationWithoutResult.environmentProbe === "ok" ? "verified" : "unverified"
+    },
+    reminders: observationWithoutResult.reminders,
+    selfLearnDisabled: observationWithoutResult.selfLearnDisabled,
+    selfLearningHold: observationWithoutResult.selfLearningHold.state === "invalid"
+      ? "unverified"
+      : observationWithoutResult.selfLearningHold.engaged ? "engaged" : "released"
+  });
+  return { ...observationWithoutResult, result };
+}
+
+/** One resident snapshot reduced to the two privacy-safe Doctor projections. */
+export async function collectResidentDeliverySafety(
+  dependencies: QualificationProbeDependencies = {}
+): Promise<{
+  readonly delivery: DeliveryQualificationObservation;
+  readonly runtime: RuntimeQualificationObservation;
+}> {
+  const resident = await inspectResidentDaemonRuntime(dependencies);
+  const delivery = await collectDeliverySafetyObservation(dependencies, { resident });
+  return {
+    delivery,
+    runtime: { ...resident.observation, health: resident.health }
+  };
+}
+
+export async function collectPersonalAgentQualificationObservations(
+  options: CollectQualificationOptions,
+  dependencies: QualificationProbeDependencies = {}
+): Promise<PersonalAgentQualificationObservations> {
+  const run = dependencies.run ?? defaultRun;
+  const workspaceDir = resolve(options.workspaceDir);
+  const reportFile = options.capabilityReportFile ?? join(workspaceDir, ".muse-dev", "evals", "agent-capability", "latest.json");
+  const now = dependencies.now ?? (() => new Date());
+  const nowDate = now();
+  const nowMs = nowDate.getTime();
+  const currentSourceStart = await inspectGitSnapshot(workspaceDir, run);
+  const allowedEvidenceRoot = options.capabilityReportFile === undefined ? workspaceDir : dirname(reportFile);
+  const capabilityEvidence = dependencies.capabilityEvidence
+    ?? ((file: string, root: string, workspace: string) => inspectCapabilityEvidence(file, root, workspace, run));
+  const initialCapabilityEvidencePromise = capabilityEvidence(
+    reportFile,
+    allowedEvidenceRoot,
+    workspaceDir
+  );
+  const artifactDigestPromise = dependencies.artifactDigest
+    ? dependencies.artifactDigest(workspaceDir)
+    : defaultArtifactDigest(workspaceDir, run);
+  const resident = await inspectResidentDaemonRuntime(dependencies);
+  const [delivery, initialCapabilityEvidence, currentArtifacts] = await Promise.all([
+    collectDeliverySafetyObservation(dependencies, { nowMs, resident }),
     initialCapabilityEvidencePromise,
     artifactDigestPromise
   ]);
@@ -412,20 +497,7 @@ export async function collectPersonalAgentQualificationObservations(
       currentSourceStart,
       maxAgeMs: maxEvidenceAgeMs(options.maxEvidenceAgeHours)
     },
-    delivery: {
-      baseProviderLocalLog: provider === "log",
-      brakeEngaged: resolveDaemonDeliveryBrake(effectiveRuntimeEnv).engaged,
-      environmentProbe,
-      followups,
-      localOnly: isLocalOnlyEnabled(effectiveRuntimeEnv),
-      pendingDrafts: { count: 0, status: "unverified" },
-      providerLockDecision,
-      providerLockLog,
-      providerResolutionSource,
-      reminders,
-      selfLearnDisabled: isExplicitlyDisabled(effectiveRuntimeEnv.MUSE_SELFLEARN_ENABLED),
-      selfLearningHold
-    },
+    delivery,
     now: nowDate,
     runtime: { ...resident.observation, health: resident.health }
   };

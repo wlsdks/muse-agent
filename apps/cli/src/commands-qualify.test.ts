@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  classifyDeliverySafety,
   classifyResidentDaemonHealth,
   type ResidentDaemonObservation,
   type ResidentMuseProcessInventory
@@ -87,7 +88,20 @@ function observations(runtime: PersonalAgentQualificationObservations["runtime"]
           schemaVersion: 1
         },
         state: "active"
-      }
+      },
+      result: classifyDeliverySafety({
+        baseProviderLocal: true,
+        deliveryBrake: "released",
+        environmentProbe: "ok",
+        followups: { overdue: 0, scheduled: 0, status: "ok" },
+        localOnlyEffective: true,
+        localOnlyPersisted: true,
+        pendingDrafts: { count: 0, status: "ok" },
+        providerLock: { localOnly: true, mismatch: false, observation: "verified" },
+        reminders: { overdue: 0, scheduled: 0, status: "ok" },
+        selfLearnDisabled: true,
+        selfLearningHold: "engaged"
+      })
     },
     now: NOW,
     runtime: {

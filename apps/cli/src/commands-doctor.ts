@@ -62,7 +62,12 @@ import { resolveOllamaUrl } from "./ollama-url.js";
 import { isApiUnreachable } from "./program-helpers.js";
 import { atRestDoctorCheck, collectPrivacyPosture } from "./commands-privacy.js";
 import { sleep, waitForShutdownSignal } from "./async-promises.js";
-import { collectResidentDaemonRuntime } from "./personal-agent-qualification-probes.js";
+import {
+  collectDeliverySafetyObservation,
+  collectResidentDaemonRuntime,
+  collectResidentDeliverySafety,
+  type QualificationProbeDependencies
+} from "./personal-agent-qualification-probes.js";
 import type { RuntimeQualificationObservation } from "./personal-agent-qualification.js";
 import type { ProgramIO } from "./program.js";
 import { readDaemonResourceSnapshot, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
@@ -71,6 +76,7 @@ import { buildDaemonResourceDoctorCheck, buildLocalModelMemoryDoctorCheck, readR
 export { readResidentDaemonProcessSnapshot } from "./commands-doctor-runtime-resources.js";
 import {
   RESIDENT_DAEMON_HEALTH_REASON,
+  type DeliverySafetyResult,
   type ResidentDaemonHealthReasonCode
 } from "@muse/runtime-state";
 
@@ -117,10 +123,14 @@ export interface DoctorLocalRuntimeOptions {
   readonly daemonAutostartStatus?: DaemonAutostartStatus;
   /** Deterministic test/embedding seam for the shared resident-runtime probe. */
   readonly residentDaemonRuntime?: RuntimeQualificationObservation;
+  /** Deterministic call-count seam for the production-equivalent shared snapshot path. */
+  readonly residentDaemonInspection?: QualificationProbeDependencies["residentInspection"];
   /** Deterministic test/embedding seam; production reads OS counters only. */
   readonly daemonResourceSnapshot?: DaemonResourceSnapshot;
   /** Deterministic seam for the separately observed resident LaunchAgent process. */
   readonly residentDaemonProcessSnapshot?: ResidentDaemonProcessSnapshot;
+  /** Canonical delivery-safety result seam shared with qualification tests. */
+  readonly deliverySafetyResult?: DeliverySafetyResult;
 }
 
 function doctorPath(env: MuseEnvironment, museHome: string, envKey: string, filename: string): string {
@@ -451,6 +461,7 @@ export function officialMcpChecks(env: Record<string, string | undefined>): Loca
 export interface LocalDoctorReport {
   readonly generatedAt: string;
   readonly checks: readonly LocalCheck[];
+  readonly deliverySafety: DeliverySafetyResult;
   readonly worst: "ok" | "warn" | "fail";
 }
 
@@ -541,7 +552,10 @@ async function collectDoctorResidentRuntime(
   }
   const runtime = resolveDoctorLocalRuntime(runtimeOptions);
   const env = createDoctorEnvironmentView(mergeModelKeysFromFile(runtime.env), runtime);
-  return residentDaemonRuntimeCheck(await collectResidentDaemonRuntime({ env }));
+  return residentDaemonRuntimeCheck(await collectResidentDaemonRuntime({
+    env,
+    residentInspection: runtimeOptions.residentDaemonInspection
+  }));
 }
 
 /**
@@ -659,8 +673,24 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
   // key — chat/ask/brief will fail" — even though chat/ask/brief
   // actually work because the runtime does its own merge at boot.
   const env = createDoctorEnvironmentView(mergeModelKeysFromFile(runtime.env), runtime);
+  const sharedSnapshot = runtimeOptions.deliverySafetyResult === undefined
+    && runtimeOptions.residentDaemonRuntime === undefined
+    ? await collectResidentDeliverySafety({
+        env,
+        residentInspection: runtimeOptions.residentDaemonInspection
+      })
+    : undefined;
+  const deliverySafety = runtimeOptions.deliverySafetyResult
+    ?? sharedSnapshot?.delivery.result
+    ?? (await collectDeliverySafetyObservation({
+      env,
+      residentInspection: runtimeOptions.residentDaemonInspection
+    })).result;
+  const residentRuntime = sharedSnapshot
+    ? residentDaemonRuntimeCheck(sharedSnapshot.runtime)
+    : await collectDoctorResidentRuntime(runtimeOptions);
 
-  checks.push(await collectDoctorResidentRuntime(runtimeOptions));
+  checks.push(residentRuntime);
 
   const daemonAutostart = await resolveDoctorDaemonAutostart(env, runtime, runtimeOptions);
   checks.push(await buildDaemonResourceDoctorCheck({
@@ -1080,7 +1110,7 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
     if (c.status === "warn" || acc === "warn") return "warn";
     return "ok";
   }, "ok");
-  return { checks, generatedAt: new Date().toISOString(), worst };
+  return { checks, deliverySafety, generatedAt: new Date().toISOString(), worst };
 }
 
 /**

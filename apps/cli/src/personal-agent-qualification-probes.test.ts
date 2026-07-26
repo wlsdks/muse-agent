@@ -14,6 +14,7 @@ import {
   recordResidentDaemonRestartSuccess
 } from "@muse/runtime-state";
 import {
+  collectDeliverySafetyObservation,
   collectResidentDaemonRuntime,
   collectPersonalAgentQualificationObservations,
   inspectGitSnapshot,
@@ -86,6 +87,7 @@ function exactFixtureManifest(root: string): readonly string[] {
 function qualificationFixture(options: {
   readonly deliveryEnabledValue?: string;
   readonly overdueFollowup?: boolean;
+  readonly pendingApprovals?: "corrupt" | "excluded" | "missing" | "one" | "unreadable" | "valid";
   readonly qualificationHold?: "active" | "invalid" | "missing";
   readonly report?: "present" | "missing";
   readonly liveArgumentMismatch?: boolean;
@@ -101,6 +103,7 @@ function qualificationFixture(options: {
   const heartbeatFile = join(root, "state", "proactive-heartbeat-daemon-loop.json");
   const followupsFile = join(root, "followups.json");
   const remindersFile = join(root, "reminders.json");
+  const pendingApprovalsFile = join(root, "pending-approvals.json");
   const qualificationHoldFile = join(root, "qualification-learning-hold.json");
   const daemonConfigFile = join(root, "daemon.json");
   mkdirSync(join(cliPackageRoot, "dist"), { recursive: true });
@@ -165,6 +168,33 @@ function qualificationFixture(options: {
     ? [{ scheduledFor: "2026-07-20T00:00:00.000Z", status: "scheduled" }]
     : [] }));
   writeFileSync(remindersFile, JSON.stringify({ reminders: [] }));
+  if (options.pendingApprovals === "unreadable") {
+    mkdirSync(pendingApprovalsFile);
+  } else if (options.pendingApprovals !== "missing") {
+    const approval = {
+      arguments: { text: "PRIVATE ARGUMENT" },
+      createdAt: "2026-07-21T10:00:00.000Z",
+      draft: "PRIVATE DRAFT",
+      expiresAt: "2026-07-21T14:00:00.000Z",
+      id: "approval-1",
+      providerId: "slack",
+      risk: "execute",
+      source: "PRIVATE SOURCE",
+      tool: "send_message",
+      userId: "PRIVATE OWNER"
+    };
+    writeFileSync(
+      pendingApprovalsFile,
+      options.pendingApprovals === "corrupt"
+        ? "{PRIVATE malformed"
+        : JSON.stringify({
+            pending: options.pendingApprovals === "excluded"
+              ? [{ private: "PRIVATE malformed entry" }]
+              : options.pendingApprovals === "one" ? [approval] : []
+          }),
+      { mode: 0o600 }
+    );
+  }
   if (options.qualificationHold !== "missing") {
     writeFileSync(
       qualificationHoldFile,
@@ -194,6 +224,7 @@ function qualificationFixture(options: {
     MUSE_DAEMON_PROVIDER_LOCK: "log",
     MUSE_FOLLOWUPS_FILE: followupsFile,
     MUSE_LOCAL_ONLY: "true",
+    MUSE_PENDING_APPROVALS_FILE: pendingApprovalsFile,
     MUSE_PROACTIVE_PROVIDER: "log",
     MUSE_PROACTIVE_SIDECAR_FILE: sidecarFile,
     MUSE_QUALIFICATION_LEARNING_HOLD_FILE: qualificationHoldFile,
@@ -372,13 +403,7 @@ describe("qualification collector integration", () => {
       fixture.options,
       fixture.dependencies
     );
-    const before = qualifyPersonalAgent({
-      ...beforeObservation,
-      delivery: {
-        ...beforeObservation.delivery,
-        pendingDrafts: { count: 0, status: "ok" }
-      }
-    });
+    const before = qualifyPersonalAgent(beforeObservation);
     const restartFile = join(fixture.root, ".muse", "resident-daemon-restart-state.json");
     const receipt = parseResidentDaemonRestartStateReceipt(readFileSync(restartFile, "utf8"));
     expect(receipt).toBeDefined();
@@ -391,13 +416,7 @@ describe("qualification collector integration", () => {
       fixture.options,
       fixture.dependencies
     );
-    const after = qualifyPersonalAgent({
-      ...afterObservation,
-      delivery: {
-        ...afterObservation.delivery,
-        pendingDrafts: { count: 0, status: "ok" }
-      }
-    });
+    const after = qualifyPersonalAgent(afterObservation);
 
     expect(after.status).toBe("qualified");
     expect(after.provenance.inputHash).not.toBe(before.provenance.inputHash);
@@ -415,13 +434,7 @@ describe("qualification collector integration", () => {
     const fixture = qualificationFixture();
     const before = exactFixtureManifest(fixture.root);
     const observations = await collectPersonalAgentQualificationObservations(fixture.options, fixture.dependencies);
-    const report = qualifyPersonalAgent({
-      ...observations,
-      delivery: {
-        ...observations.delivery,
-        pendingDrafts: { count: 0, status: "ok" }
-      }
-    });
+    const report = qualifyPersonalAgent(observations);
     expect(report.status, JSON.stringify(report)).toBe("qualified");
     expect(report.gates.map((gate) => gate.status)).toEqual(["passed", "passed", "passed"]);
     expect(JSON.stringify(report)).not.toMatch(/stable-muse-entry|PRIVATE|4321|muse-qualify-fixture/iu);
@@ -434,13 +447,7 @@ describe("qualification collector integration", () => {
       fixture.options,
       fixture.dependencies
     );
-    const report = qualifyPersonalAgent({
-      ...observation,
-      delivery: {
-        ...observation.delivery,
-        pendingDrafts: { count: 0, status: "ok" }
-      }
-    });
+    const report = qualifyPersonalAgent(observation);
 
     expect(report.status, JSON.stringify(report)).toBe("qualified");
     expect(report.gates[1].evidence.heartbeatState).toBe("fresh");
@@ -453,13 +460,7 @@ describe("qualification collector integration", () => {
       fixture.options,
       fixture.dependencies
     );
-    const report = qualifyPersonalAgent({
-      ...observation,
-      delivery: {
-        ...observation.delivery,
-        pendingDrafts: { count: 0, status: "ok" }
-      }
-    });
+    const report = qualifyPersonalAgent(observation);
 
     expect(report.status).toBe("unverified");
     expect(report.gates[2]).toMatchObject({
@@ -469,23 +470,45 @@ describe("qualification collector integration", () => {
     });
   });
 
-  it("fails closed when pending-draft evidence has not been collected", async () => {
-    const fixture = qualificationFixture();
-    const observation = await collectPersonalAgentQualificationObservations(
-      fixture.options,
-      fixture.dependencies
-    );
-    const report = qualifyPersonalAgent(observation);
+  it("projects a valid pending source by count only without changing canonical policy", async () => {
+    const fixture = qualificationFixture({ pendingApprovals: "one" });
+    const before = exactFixtureManifest(fixture.root);
+    const delivery = await collectDeliverySafetyObservation(fixture.dependencies);
 
-    expect(report.gates[2]).toMatchObject({
+    expect(delivery.result).toMatchObject({
       evidence: {
-        pendingDraftCount: 0,
-        pendingDraftObservation: "unverified"
+        pendingDraftCount: 1,
+        pendingDraftObservation: "ok"
       },
-      reasonCodes: ["pending-drafts-unverified"],
-      status: "unverified"
+      reasonCodes: [],
+      status: "passed"
     });
+    expect(JSON.stringify(delivery.result)).not.toMatch(/PRIVATE|slack|send_message|approval-1/iu);
+    expect(exactFixtureManifest(fixture.root)).toEqual(before);
   });
+
+  it.each(["missing", "corrupt", "excluded", "unreadable"] as const)(
+    "fails closed without mutating a %s pending-draft source",
+    async (pendingApprovals) => {
+      const fixture = qualificationFixture({ pendingApprovals });
+      const before = exactFixtureManifest(fixture.root);
+      const observation = await collectPersonalAgentQualificationObservations(
+        fixture.options,
+        fixture.dependencies
+      );
+      const report = qualifyPersonalAgent(observation);
+
+      expect(report.gates[2]).toMatchObject({
+        evidence: {
+          pendingDraftCount: 0,
+          pendingDraftObservation: "unverified"
+        },
+        reasonCodes: ["pending-drafts-unverified"],
+        status: "unverified"
+      });
+      expect(exactFixtureManifest(fixture.root)).toEqual(before);
+    }
+  );
 
   it("projects missing and malformed qualification holds without mutating either source", async () => {
     const missing = qualificationFixture({ qualificationHold: "missing" });
