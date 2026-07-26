@@ -789,12 +789,43 @@ function descendants(rows: readonly ProcessRow[], roots: ReadonlySet<number>): S
 
 const MAX_RESIDENT_INVENTORY_PROCESSES = 32;
 
+const RESIDENT_DAEMON_VALUE_OPTIONS = new Set([
+  "--destination",
+  "--interval",
+  "--lead-minutes",
+  "--provider"
+]);
+
+function validResidentDaemonOptionValue(option: string, value: string): boolean {
+  if (option !== "--interval" && option !== "--lead-minutes") return value.length > 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= (option === "--interval" ? 5 : 1);
+}
+
 function residentCommand(command: string, definitions: readonly (readonly string[])[]): boolean {
   const normalized = command.trim();
   if (definitions.some((definition) => definition.length === 3
     && definition[2] === "daemon"
     && normalized === definition.join(" "))) return true;
-  return /^(?:(?:\S*\/)?muse\s+daemon|(?:\S*\/)?node\s+\S*\/(?:apps|packages)\/cli\/\S+\s+daemon)(?:\s|$)/u.test(normalized);
+  const match = /^(?:(?:\S*\/)?muse|(?:\S*\/)?node\s+\S*\/(?:apps|packages)\/cli\/\S+)\s+daemon(?:\s+([\s\S]+))?$/u.exec(normalized);
+  if (!match) return false;
+  const options = match[1]?.trim();
+  if (!options) return true;
+  const tokens = options.split(/\s+/u);
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    if (token === "--print") continue;
+    const equals = /^(--(?:destination|interval|lead-minutes|provider))=(.+)$/u.exec(token);
+    if (equals) {
+      if (!validResidentDaemonOptionValue(equals[1]!, equals[2]!)) return false;
+      continue;
+    }
+    if (!RESIDENT_DAEMON_VALUE_OPTIONS.has(token)) return false;
+    const value = tokens[index + 1];
+    if (!value || value.startsWith("--") || !validResidentDaemonOptionValue(token, value)) return false;
+    index += 1;
+  }
+  return true;
 }
 
 function orphanApiCommand(row: ProcessRow): boolean {
@@ -804,7 +835,7 @@ function orphanApiCommand(row: ProcessRow): boolean {
 
 async function inspectProcessPath(
   pid: number,
-  descriptor: "cwd" | "txt",
+  descriptor: "cwd",
   run: ReadOnlyProcessRunner
 ): Promise<string | undefined> {
   const result = await run("lsof", ["-a", "-p", pid.toString(), "-d", descriptor, "-Fn"]);
@@ -816,6 +847,43 @@ async function inspectProcessPath(
   } catch {
     return undefined;
   }
+}
+
+function expectedProcessExecutable(
+  row: ProcessRow,
+  definitions: readonly (readonly string[])[]
+): string | undefined {
+  const command = row.command.trim();
+  const exactDefinition = definitions.find((definition) => command === definition.join(" "));
+  const candidate = exactDefinition?.[0] ?? /^(\S+)/u.exec(command)?.[1];
+  if (!candidate || !isAbsolute(candidate)) return undefined;
+  try {
+    return realpathSync(candidate);
+  } catch {
+    return undefined;
+  }
+}
+
+async function inspectProcessExecutable(
+  pid: number,
+  expectedRealpath: string,
+  run: ReadOnlyProcessRunner
+): Promise<string | undefined> {
+  const result = await run("lsof", ["-a", "-p", pid.toString(), "-d", "txt", "-Fn"]);
+  const lines = result.stdout.split(/\r?\n/u);
+  if (result.code !== 0 || !lines.includes(`p${pid.toString()}`)) return undefined;
+  const matches = lines
+    .filter((line) => line.startsWith("n"))
+    .map((line) => line.slice(1))
+    .filter(Boolean)
+    .filter((path) => {
+      try {
+        return realpathSync(path) === expectedRealpath;
+      } catch {
+        return false;
+      }
+    });
+  return matches.length === 1 ? expectedRealpath : undefined;
 }
 
 async function inspectResidentMuseProcesses(
@@ -853,9 +921,11 @@ async function inspectResidentMuseProcesses(
 
   const processes: ResidentMuseProcess[] = [];
   for (const row of rows.filter((candidate) => candidatePids.has(candidate.pid))) {
+    const expectedExecutable = expectedProcessExecutable(row, definitions);
+    if (expectedExecutable === undefined) return unverified();
     const [cwd, executableRealpath, startedAtMs] = await Promise.all([
       inspectProcessPath(row.pid, "cwd", run),
-      inspectProcessPath(row.pid, "txt", run),
+      inspectProcessExecutable(row.pid, expectedExecutable, run),
       processStart(row.pid, run)
     ]);
     if (cwd === undefined || executableRealpath === undefined || startedAtMs === undefined) {

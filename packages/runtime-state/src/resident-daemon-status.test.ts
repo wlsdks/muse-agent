@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -991,6 +991,109 @@ describe("resident daemon read-only authority", () => {
     });
   });
 
+  it("accepts a normal macOS process with one expected executable among multiple txt mappings", async () => {
+    const state = inventoryFixture();
+    const auxiliaryMapping = join(state.root, "dyld");
+    writeFileSync(auxiliaryMapping, "");
+    const run: ReadOnlyProcessRunner = async (executable, args, options) => {
+      if (executable === "lsof" && args.includes("txt")) {
+        return {
+          code: 0,
+          stderr: "",
+          stdout: `p4321\nftxt\nn${process.execPath}\nftxt\nn${auxiliaryMapping}\n`
+        };
+      }
+      return state.run(executable, args, options);
+    };
+    const result = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: state.root, MUSE_DAEMON_PLIST_FILE: state.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run,
+      uid: 501
+    });
+
+    expect(result.processInventory).toMatchObject({
+      conditions: ["healthy"],
+      museProcessCount: 1,
+      probe: "ok",
+      residentProcessCount: 1
+    });
+    expect(result.processInventory.processes[0]?.executableRealpath).toBe(realpathSync(process.execPath));
+  });
+
+  it.each([
+    {
+      name: "missing expected executable",
+      txtPaths: (state: ReturnType<typeof inventoryFixture>) => [join(state.root, "other-runtime")]
+    },
+    {
+      name: "duplicate expected executable",
+      txtPaths: () => [process.execPath, process.execPath]
+    }
+  ])("fails closed for $name in txt mappings", async ({ txtPaths }) => {
+    const state = inventoryFixture();
+    const paths = txtPaths(state);
+    for (const path of paths) {
+      if (path !== process.execPath) writeFileSync(path, "");
+    }
+    const run: ReadOnlyProcessRunner = async (executable, args, options) => {
+      if (executable === "lsof" && args.includes("txt")) {
+        return {
+          code: 0,
+          stderr: "",
+          stdout: `p4321\n${paths.map((path) => `ftxt\nn${path}`).join("\n")}\n`
+        };
+      }
+      return state.run(executable, args, options);
+    };
+    const result = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: state.root, MUSE_DAEMON_PLIST_FILE: state.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run,
+      uid: 501
+    });
+
+    expect(result.processInventory).toMatchObject({
+      conditions: ["unverified"],
+      museProcessCount: 0,
+      probe: "unverified",
+      residentProcessCount: 0
+    });
+  });
+
+  it("keeps cwd ambiguity fail-closed", async () => {
+    const state = inventoryFixture();
+    const run: ReadOnlyProcessRunner = async (executable, args, options) => {
+      if (executable === "lsof" && args.includes("cwd")) {
+        return {
+          code: 0,
+          stderr: "",
+          stdout: `p4321\nfcwd\nn${state.root}\nfcwd\nn${dirname(state.root)}\n`
+        };
+      }
+      return state.run(executable, args, options);
+    };
+    const result = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: state.root, MUSE_DAEMON_PLIST_FILE: state.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run,
+      uid: 501
+    });
+
+    expect(result.processInventory).toMatchObject({
+      conditions: ["unverified"],
+      museProcessCount: 0,
+      probe: "unverified",
+      residentProcessCount: 0
+    });
+  });
+
   it("fails closed instead of probing an unbounded resident candidate set", async () => {
     const state = inventoryFixture({ residentPids: Array.from({ length: 33 }, (_, index) => 6000 + index) });
     const result = await inspectResidentDaemon({
@@ -1133,6 +1236,81 @@ describe("resident daemon read-only authority", () => {
       conditions: ["artifact-only"],
       museProcessCount: 0,
       residentProcessCount: 0
+    });
+  });
+
+  it.each([
+    "--status",
+    "--install",
+    "--uninstall",
+    "--repair-plan",
+    "--once",
+    "--interval abc",
+    "--interval=0",
+    "--lead-minutes 0",
+    "--provider",
+    "--unknown value"
+  ])(
+    "does not classify a non-resident daemon invocation using %s",
+    async (nonResidentOptions) => {
+      const state = inventoryFixture();
+      const run: ReadOnlyProcessRunner = async (executable, args, options) => {
+        if (executable === "ps" && args[0] === "-axo") {
+          return {
+            code: 0,
+            stderr: "",
+            stdout: [
+              `4321 1 ${process.execPath} ${state.cliEntry} daemon`,
+              `4999 42 node ${state.cliEntry} daemon ${nonResidentOptions}`
+            ].join("\n")
+          };
+        }
+        return state.run(executable, args, options);
+      };
+      const result = await inspectResidentDaemon({
+        daemonTemporaryRoots: [],
+        env: { HOME: state.root, MUSE_DAEMON_PLIST_FILE: state.plistFile },
+        now: () => NOW,
+        platform: "darwin",
+        run,
+        uid: 501
+      });
+
+      expect(result.processInventory).toMatchObject({
+        conditions: ["healthy"],
+        museProcessCount: 1,
+        probe: "ok",
+        residentProcessCount: 1
+      });
+    }
+  );
+
+  it("keeps process-only foreground daemon options in the resident inventory", async () => {
+    const state = inventoryFixture({ artifact: "missing", launchdRunning: false, residentPids: [] });
+    const run: ReadOnlyProcessRunner = async (executable, args, options) => {
+      if (executable === "ps" && args[0] === "-axo") {
+        return {
+          code: 0,
+          stderr: "",
+          stdout: `4330 42 ${process.execPath} ${state.cliEntry} daemon --interval 60 --provider log --print\n`
+        };
+      }
+      return state.run(executable, args, options);
+    };
+    const result = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: state.root, MUSE_DAEMON_PLIST_FILE: state.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run,
+      uid: 501
+    });
+
+    expect(result.processInventory).toMatchObject({
+      conditions: ["process-only"],
+      museProcessCount: 1,
+      probe: "ok",
+      residentProcessCount: 1
     });
   });
 
