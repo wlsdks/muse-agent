@@ -86,6 +86,21 @@ export {
   type PendingApprovalPreparation
 } from "./pending-approval-coordinator.js";
 
+export {
+  computeOutboundEffectPayloadHash,
+  OutboundEffectStoreError,
+  prepareOutboundEffect,
+  readOutboundEffect,
+  readOutboundEffects,
+  reconcileOutboundEffect,
+  recordOutboundEffectAccepted,
+  recordOutboundEffectUnknown,
+  type OutboundEffectBinding,
+  type OutboundEffectReceipt,
+  type OutboundEffectState,
+  type OutboundEffectView
+} from "./outbound-effect-store.js";
+
 export { isApprovalReply } from "./is-approval-reply.js";
 
 export {
