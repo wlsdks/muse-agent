@@ -41,6 +41,7 @@ export {
   resolveEpisodesFile,
   resolveNoteProvenanceFile,
   resolveFadedMemoriesFile,
+  resolveFollowupTriageFile,
   resolveFollowupsFile,
   resolveInterruptionLedgerFile,
   resolveDigestQueueFile,

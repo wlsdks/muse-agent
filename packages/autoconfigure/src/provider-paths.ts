@@ -155,6 +155,10 @@ export function resolveFollowupsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_FOLLOWUPS_FILE", "followups.json");
 }
 
+export function resolveFollowupTriageFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_FOLLOWUP_TRIAGE_FILE", "followup-triage.json");
+}
+
 export function resolveFeedsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_FEEDS_FILE", "feeds.json");
 }
