@@ -27,8 +27,18 @@ import {
 
 import { createMuseRuntimeAssembly, type ApiServerAssemblyOptions, type MuseEnvironment } from "./index.js";
 import { resolveIntegrationEnvironment } from "./integration-environment.js";
+import {
+  collectDeliverySafety,
+  type DeliverySafetyCollectorDependencies
+} from "./delivery-safety.js";
 
-export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
+export interface CreateApiServerOptionsOptions extends ApiServerAssemblyOptions {
+  /** Narrow inspection seam for deterministic delivery-safety assembly tests. */
+  readonly deliverySafetyDependencies?: Omit<DeliverySafetyCollectorDependencies, "env">;
+}
+
+export function createApiServerOptions(options: CreateApiServerOptionsOptions = {}) {
+  const { deliverySafetyDependencies, ...assemblyOptions } = options;
   const source: MuseEnvironment = options.env ?? process.env;
   // Calculate the process-backed HA/model strictness before any model-key
   // merge can take its raw `{ ...env }` branch. Feed that same posture into
@@ -46,7 +56,7 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
   // integration snapshot. Reusing raw options.env here would let setup routes
   // disagree with the registry the runtime actually assembled.
   const assembly = createMuseRuntimeAssembly({
-    ...options,
+    ...assemblyOptions,
     env,
     ...(modelAndHomeLocalOnlyOverride === undefined ? {} : { localOnlyOverride: modelAndHomeLocalOnlyOverride })
   });
@@ -60,6 +70,10 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
       observability: assembly.observability,
       resilience: assembly.resilience
     },
+    deliverySafety: () => collectDeliverySafety({
+      ...deliverySafetyDependencies,
+      env
+    }),
     agentRuntime: assembly.agentRuntime,
     ...(assembly.backgroundModelProvider ? { backgroundModelProvider: assembly.backgroundModelProvider } : {}),
     ...((options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE)

@@ -234,7 +234,15 @@ export {
   type PairedChannel
 } from "./paired-channel.js";
 
-export { createApiServerOptions } from "./api-server-options.js";
+export {
+  createApiServerOptions,
+  type CreateApiServerOptionsOptions
+} from "./api-server-options.js";
+
+export {
+  collectDeliverySafety,
+  type DeliverySafetyCollectorDependencies
+} from "./delivery-safety.js";
 
 export {
   resolveIntegrationEnvironment,
