@@ -1,9 +1,17 @@
-import type { MessagingProviderRegistry } from "@muse/messaging";
-import { composeIdentityPrompt } from "@muse/prompts";
-import { errorMessage } from "@muse/shared";
+import { dirname, join } from "node:path";
 
-import { sendWithRetry } from "@muse/mcp-shared";
-import { appendReminderHistory, withRequiredProcessLock } from "@muse/stores";
+import {
+  computeOutboundEffectPayloadHash,
+  dispatchDurableEffectOnce,
+  dispatchOutboundEffectOnce,
+  readOutboundEffect,
+  type MessagingProviderRegistry,
+  type OutboundEffectView
+} from "@muse/messaging";
+import { composeIdentityPrompt } from "@muse/prompts";
+import { errorMessage, redactSecretsInText, sha256Hex } from "@muse/shared";
+
+import { appendReminderHistoryStrictOnce, readReminderHistoryStrict, withRequiredProcessLock } from "@muse/stores";
 import {
   filterReminders,
   fireReminder,
@@ -15,6 +23,8 @@ import type {
   ProactiveAgentRuntimeLike
 } from "./proactive-notice-loop.js";
 import { isRecentProactiveActivity } from "./presence.js";
+
+const MAX_HISTORY_GAP_WARNING_LENGTH = 500;
 
 /**
  * Phase B firing engine — see `docs/design/reminder-firing.md`.
@@ -43,9 +53,11 @@ import { isRecentProactiveActivity } from "./presence.js";
 
 export interface RunDueRemindersOptions {
   readonly file: string;
-  readonly registry: MessagingProviderRegistry;
+  readonly registry: Pick<MessagingProviderRegistry, "has" | "send">;
   readonly providerId: string;
   readonly destination: string;
+  /** Canonical outbound-effect ledger. Production callers place it beside the action log. */
+  readonly effectFile?: string;
   readonly now?: () => Date;
   /**
    * When set, every delivery attempt (success or failure) is
@@ -84,8 +96,24 @@ export interface RunDueRemindersSummary {
 }
 
 export async function runDueReminders(options: RunDueRemindersOptions): Promise<RunDueRemindersSummary> {
-  const lockPath = `${options.file}.firing.lock`;
-  const lockOutcome = await withRequiredProcessLock(lockPath, () => runDueRemindersUnderLock(options));
+  const has = options.registry.has;
+  const send = options.registry.send;
+  const stable = {
+    ...options,
+    destination: options.destination,
+    effectFile: options.effectFile ?? join(dirname(options.file), "outbound-effects.json"),
+    file: options.file,
+    now: options.now ?? (() => new Date()),
+    providerId: options.providerId,
+    registry: {
+      has: typeof has === "function" ? has.bind(options.registry) : () => false,
+      send: typeof send === "function"
+        ? send.bind(options.registry)
+        : async () => { throw new Error("messaging registry send is unavailable"); }
+    }
+  } as const;
+  const lockPath = `${stable.file}.firing.lock`;
+  const lockOutcome = await withRequiredProcessLock(lockPath, () => runDueRemindersUnderLock(stable));
   if (lockOutcome.kind === "lock-held") {
     return { delivered: 0, due: 0, errors: [], fired: [], outcome: "lock-held" };
   }
@@ -111,51 +139,167 @@ async function runDueRemindersUnderLock(options: RunDueRemindersOptions): Promis
     for (const reminder of due) {
       const providerId = reminder.via?.providerId ?? options.providerId;
       const destination = reminder.via?.destination ?? options.destination;
-      const deliveredText = phaseDActive
-        ? await synthesizeReminderText(reminder, options).catch((cause) => {
-            const message = errorMessage(cause);
-            errors.push(`${reminder.id} synthesis: ${message}`);
-            return reminder.text;
-          })
-        : reminder.text;
+      const effectId = reminderOccurrenceEffectId(reminder.id, reminder.dueAt);
+      if (
+        providerId.trim().length === 0
+        || providerId !== providerId.trim()
+        || destination.trim().length === 0
+        || destination !== destination.trim()
+        || !options.registry.has(providerId)
+      ) {
+        errors.push(`${reminder.id}: delivery route is unavailable or invalid`);
+        continue;
+      }
       try {
-        await sendWithRetry(options.registry, providerId, { destination, text: deliveredText });
-        const firedAtIso = now().toISOString();
+        if (options.historyFile) {
+          await readReminderHistoryStrict(options.historyFile, 500);
+        }
+        const existing = await readOutboundEffect(options.effectFile!, effectId);
+        if (
+          existing
+          && (existing.binding.providerId !== providerId || existing.binding.destination !== destination)
+        ) {
+          throw new Error(`outbound effect ${effectId} route binding conflicts with the current reminder`);
+        }
+        let deliveredText: string | undefined;
+        let effect: OutboundEffectView;
+        if (!existing) {
+          deliveredText = phaseDActive
+            ? await synthesizeReminderText(reminder, options).catch((cause) => {
+                const message = errorMessage(cause);
+                errors.push(`${reminder.id} synthesis: ${message}`);
+                return reminder.text;
+              })
+            : reminder.text;
+          effect = await dispatchOutboundEffectOnce({
+            destination,
+            effectFile: options.effectFile!,
+            effectId,
+            now,
+            providerId,
+            registry: options.registry,
+            text: deliveredText
+          });
+        } else if (existing.state === "prepared") {
+          effect = await dispatchDurableEffectOnce({
+            destination: existing.binding.destination,
+            dispatch: async () => {
+              throw new Error("prepared reminder replay must never dispatch");
+            },
+            effectFile: options.effectFile!,
+            effectId,
+            now,
+            payloadHash: existing.binding.payloadHash,
+            providerId: existing.binding.providerId
+          });
+        } else {
+          effect = existing;
+        }
+        if (effect.state === "unknown") {
+          const detail = effect.unknownDetail
+            ? ` (${redactSecretsInText(effect.unknownDetail)})`
+            : "";
+          errors.push(
+            `${reminder.id}: delivery is unknown for effect ${effectId}${detail}; reconcile manually with muse messaging effects reconcile and do not retry with a new effect ID`
+          );
+          continue;
+        }
+        if (effect.state === "reconciled-not-delivered") {
+          errors.push(
+            `${reminder.id}: effect ${effectId} was reconciled as not delivered; create or reschedule a new reminder instead of reusing this effect ID`
+          );
+          continue;
+        }
+        if (effect.state !== "accepted" && effect.state !== "reconciled-accepted") {
+          throw new Error(`outbound effect ${effectId} is safely blocked in state ${effect.state}`);
+        }
+        const receipt = effect.receipt;
+        if (!receipt) throw new Error(`accepted outbound effect ${effectId} has no durable receipt`);
+        if (options.historyFile) {
+          const historyRecorded = await ensureDeliveredHistory(
+            options.historyFile,
+            reminder,
+            effect,
+            deliveredText
+          );
+          if (!historyRecorded) {
+            errors.push(acceptedHistoryGapWarning(effect.binding.effectId));
+          }
+        }
+        const firedAtIso = receipt.receivedAt;
         const updated = fireReminder(next, reminder.id, firedAtIso);
         const justFired = updated?.find((entry) => entry.id === reminder.id);
         if (updated) next = updated;
         if (justFired) fired.push(justFired);
         delivered += 1;
-        if (options.historyFile) {
-          await appendReminderHistory(options.historyFile, {
-            destination,
-            firedAtIso,
-            providerId,
-            reminderId: reminder.id,
-            status: "delivered",
-            text: deliveredText
-          });
-        }
       } catch (cause) {
-        const message = errorMessage(cause);
+        const message = redactSecretsInText(errorMessage(cause));
         errors.push(`${reminder.id}: ${message}`);
-        if (options.historyFile) {
-          await appendReminderHistory(options.historyFile, {
-            destination,
-            error: message,
-            firedAtIso: now().toISOString(),
-            providerId,
-            reminderId: reminder.id,
-            status: "failed",
-            text: deliveredText
-          });
-        }
       }
     }
     summary = { delivered, due: due.length, errors, fired };
     return next;
   });
   return summary;
+}
+
+export function reminderOccurrenceEffectId(reminderId: string, dueAt: string): string {
+  return `reminder:${sha256Hex(JSON.stringify([reminderId, dueAt]))}`;
+}
+
+async function ensureDeliveredHistory(
+  historyFile: string,
+  reminder: PersistedReminder,
+  effect: OutboundEffectView,
+  deliveredText: string | undefined
+): Promise<boolean> {
+  const receipt = effect.receipt;
+  if (!receipt) return false;
+  const existing = (await readReminderHistoryStrict(historyFile, 500)).find(
+    (entry) => entry.effectId === effect.binding.effectId
+  );
+  if (existing) {
+    if (
+      existing.destination !== effect.binding.destination
+      || existing.firedAtIso !== receipt.receivedAt
+      || existing.providerId !== effect.binding.providerId
+      || existing.reminderId !== reminder.id
+      || existing.status !== "delivered"
+      || historyPayloadHash(existing.text, effect) !== effect.binding.payloadHash
+    ) {
+      throw new Error(`reminder history conflicts with outbound effect ${effect.binding.effectId}`);
+    }
+    return true;
+  }
+  const candidate = deliveredText ?? reminder.text;
+  if (historyPayloadHash(candidate, effect) !== effect.binding.payloadHash) {
+    return false;
+  }
+  await appendReminderHistoryStrictOnce(historyFile, {
+    destination: effect.binding.destination,
+    effectId: effect.binding.effectId,
+    firedAtIso: receipt.receivedAt,
+    providerId: effect.binding.providerId,
+    reminderId: reminder.id,
+    status: "delivered",
+    text: candidate
+  });
+  return true;
+}
+
+function historyPayloadHash(text: string, effect: OutboundEffectView): string {
+  return computeOutboundEffectPayloadHash({
+    destination: effect.binding.destination,
+    providerId: effect.binding.providerId,
+    text: redactSecretsInText(text)
+  });
+}
+
+function acceptedHistoryGapWarning(effectId: string): string {
+  return redactSecretsInText(
+    `accepted effect ${effectId}: provider receipt is authoritative, but exact delivered text is unavailable; ` +
+    "factual reminder history remains absent and was not fabricated"
+  ).slice(0, MAX_HISTORY_GAP_WARNING_LENGTH);
 }
 
 function isActiveSessionWindow(now: Date, options: RunDueRemindersOptions): boolean {

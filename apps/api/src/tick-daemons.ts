@@ -17,7 +17,7 @@
  */
 
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, createQualificationLearningWriteGate, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveAuthoredSkillsDir, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveHomeAssistantEnvironment, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
@@ -139,6 +139,10 @@ export function startReminderDaemonIfConfigured(
     ...(phaseD.phaseDReminderOn && options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),
     ...(reminderPhaseDWindowRaw !== undefined ? { activeSessionWindowMs: reminderPhaseDWindowRaw } : {}),
     destination: tickDestination,
+    effectFile: join(
+      dirname(options.actionLogFile ?? resolveActionLogFile(env)),
+      "outbound-effects.json"
+    ),
     errorLogger: (message) => server.log.warn(message),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     ...(options.reminderHistoryFile ? { historyFile: options.reminderHistoryFile } : {}),

@@ -16,6 +16,7 @@ interface MessageSent {
 
 function fakeRegistry(sent: MessageSent[]): MessagingProviderRegistry {
   return {
+    has: (providerId: string) => providerId === "telegram",
     send: async (providerId: string, message: { destination: string; text: string }) => {
       sent.push({ destination: message.destination, providerId, text: message.text });
       return { destination: message.destination, messageId: "stub", providerId };
@@ -117,6 +118,7 @@ describe("startReminderTick", () => {
     let peakInflight = 0;
     let sent = 0;
     const slowRegistry: MessagingProviderRegistry = {
+      has: (providerId: string) => providerId === "telegram",
       send: async () => {
         inflight += 1;
         peakInflight = Math.max(peakInflight, inflight);
@@ -152,6 +154,7 @@ describe("startReminderTick", () => {
     seedReminders(file, "1970-01-01T00:00:00Z");
     const errors: string[] = [];
     const failingRegistry: MessagingProviderRegistry = {
+      has: (providerId: string) => providerId === "telegram",
       send: async () => {
         throw new Error("upstream 503");
       }
@@ -165,8 +168,11 @@ describe("startReminderTick", () => {
     });
     try {
       await handle.tickOnce();
-      expect(errors.some((entry) => entry.includes("upstream 503"))).toBe(true);
-      // Reminder remains pending so the next tick can retry.
+      expect(errors.some((entry) =>
+        entry.includes("delivery is unknown")
+        && entry.includes("reconcile manually")
+      )).toBe(true);
+      // Reminder remains pending for explicit reconciliation; automatic retry is blocked.
       const after = JSON.parse(readFileSync(file, "utf8")) as {
         reminders: Array<{ status: string }>;
       };
@@ -223,7 +229,10 @@ describe("startReminderTick", () => {
       // Asks for 1ms; should clamp to 5_000.
       intervalMs: 1,
       providerId: "telegram",
-      registry: { send: async () => { ticks += 1; return { destination: "x", messageId: "y", providerId: "z" }; } } as unknown as MessagingProviderRegistry,
+      registry: {
+        has: (providerId: string) => providerId === "telegram",
+        send: async () => { ticks += 1; return { destination: "x", messageId: "y", providerId: "z" }; }
+      } as unknown as MessagingProviderRegistry,
       remindersFile: file
     });
     try {

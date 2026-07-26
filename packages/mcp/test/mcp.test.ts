@@ -4708,7 +4708,13 @@ describe("muse.context loopback server", () => {
 
 describe("muse.messaging loopback server", () => {
   it("exposes providers + send tools backed by the registry", async () => {
-    const { MessagingProviderRegistry, TelegramProvider } = await import("@muse/messaging");
+    const { MessagingProviderRegistry, TelegramProvider, readOutboundEffect } = await import("@muse/messaging");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-messaging-loopback-"));
+    const actionLogFile = join(dir, "action-log.json");
+    const effectId = "mcp-test-send-accepted";
     let seenUrl = "";
     let seenBody = "";
     const tg = new TelegramProvider({
@@ -4721,7 +4727,12 @@ describe("muse.messaging loopback server", () => {
       token: "FAKE-TOKEN"
     });
     const registry = new MessagingProviderRegistry([tg]);
-    const server = createMessagingMcpServer({ registry });
+    const server = createMessagingMcpServer({
+      actionLogFile,
+      approvalGate: () => ({ approved: true }),
+      registry,
+      userId: "test-user"
+    });
     const connection = createLoopbackMcpConnection(server);
 
     const tools = await connection.listTools();
@@ -4730,19 +4741,22 @@ describe("muse.messaging loopback server", () => {
     const list = await connection.callTool!("providers", {});
     expect(list).toMatchObject({ providers: [{ id: "telegram", displayName: "Telegram" }] });
 
-    // Outbound-safety: a messaging server built WITHOUT approval-gate + action-log
-    // wiring must REFUSE to send (fail-closed) — never transmit unguarded to a
-    // third party. The contract-faithful HTTP fake proves NO external effect: the
-    // Telegram endpoint is never hit.
     const sent = await connection.callTool!("send", {
       destination: "@me",
+      effectId,
       providerId: "telegram",
       text: "hi"
     });
-    expect(sent).toMatchObject({ refused: true });
-    expect(String(sent.error)).toMatch(/refusing to send unguarded/);
-    expect(seenUrl).toBe(""); // no HTTP call was made — fail-closed, no external effect
-    expect(seenBody).toBe("");
+    expect(sent).toMatchObject({
+      destination: "@me",
+      effectId,
+      messageId: "42",
+      providerId: "telegram"
+    });
+    expect(seenUrl).toContain("/sendMessage");
+    expect(seenBody).toContain("\"text\":\"hi\"");
+    expect(await readOutboundEffect(join(dir, "outbound-effects.json"), effectId))
+      .toMatchObject({ binding: { effectId }, state: "accepted" });
   });
 
   it("errors (no send) when NO messaging provider is configured", async () => {
@@ -5350,6 +5364,7 @@ describe("runDueReminders", () => {
 
     const sent: Array<{ providerId: string; destination: string; text: string }> = [];
     const fakeRegistry = {
+      has: () => true,
       send: async (providerId: string, message: { destination: string; text: string }) => {
         sent.push({ destination: message.destination, providerId, text: message.text });
         return { destination: message.destination, messageId: "stub", providerId };
@@ -5409,7 +5424,10 @@ describe("runDueReminders", () => {
       destination: "@me",
       file,
       providerId: "telegram",
-      registry: { send: async () => { throw new Error("must not be called"); } } as unknown as Parameters<typeof runDueReminders>[0]["registry"]
+      registry: {
+        has: () => true,
+        send: async () => { throw new Error("must not be called"); }
+      } as unknown as Parameters<typeof runDueReminders>[0]["registry"]
     });
     expect(summary).toMatchObject({ delivered: 0, due: 0, errors: [] });
     // mtime unchanged → no write happened.
@@ -5436,6 +5454,7 @@ describe("runDueReminders", () => {
     const { MessagingProviderError } = await import("@muse/messaging");
     let calls = 0;
     const fakeRegistry = {
+      has: () => true,
       send: async () => {
         calls += 1;
         if (calls === 1) {
@@ -5457,7 +5476,7 @@ describe("runDueReminders", () => {
     expect(summary.errors[0]).toContain("upstream 401");
   });
 
-  it("persists the status flip after EACH delivery so a crash mid-tick doesn't re-fire", async () => {
+  it("persists success and does not automatically replay an unknown second delivery", async () => {
     const { readReminders } = await import("@muse/stores");
     const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
@@ -5487,6 +5506,7 @@ describe("runDueReminders", () => {
     const { MessagingProviderError } = await import("@muse/messaging");
     const sentDuringFirstTick: Array<{ destination: string; text: string }> = [];
     const flakyRegistry = {
+      has: () => true,
       send: async (_providerId: string, msg: { destination: string; text: string }) => {
         sentDuringFirstTick.push({ destination: msg.destination, text: msg.text });
         if (sentDuringFirstTick.length === 2) {
@@ -5494,6 +5514,7 @@ describe("runDueReminders", () => {
             "telegram", "UPSTREAM_FAILED", "simulated upstream failure mid-tick", 401
           );
         }
+        return { destination: msg.destination, messageId: "first-ok", providerId: "telegram" };
       }
     };
 
@@ -5511,11 +5532,14 @@ describe("runDueReminders", () => {
     expect(midTickState.find((e) => e.id === "rem_first")?.status).toBe("fired");
     expect(midTickState.find((e) => e.id === "rem_second")?.status).toBe("pending");
 
-    // Restart: only the still-pending reminder fires.
+    // Restart: the second reminder is still pending, but its durable effect is
+    // unknown, so Muse must not risk a duplicate provider call.
     const sentAfterRestart: Array<{ destination: string }> = [];
     const fineRegistry = {
+      has: () => true,
       send: async (_providerId: string, msg: { destination: string; text: string }) => {
         sentAfterRestart.push({ destination: msg.destination });
+        return { destination: msg.destination, messageId: "restart-ok", providerId: "telegram" };
       }
     };
     const secondSummary = await runDueReminders({
@@ -5524,12 +5548,15 @@ describe("runDueReminders", () => {
       providerId: "telegram",
       registry: fineRegistry as unknown as Parameters<typeof runDueReminders>[0]["registry"]
     });
-    expect(secondSummary.delivered).toBe(1);
-    expect(sentAfterRestart.length).toBe(1);
-    // After both ticks, both reminders are fired exactly once.
+    expect(secondSummary.delivered).toBe(0);
+    expect(secondSummary.errors[0]).toContain("reconcile manually");
+    expect(sentAfterRestart.length).toBe(0);
+    // The proven first receipt remains fired; the ambiguous second occurrence
+    // stays pending until an explicit reconciliation decision.
     const finalState = await readReminders(file);
     const firedIds = finalState.filter((e) => e.status === "fired").map((e) => e.id).sort();
-    expect(firedIds).toEqual(["rem_first", "rem_second"]);
+    expect(firedIds).toEqual(["rem_first"]);
+    expect(finalState.find((e) => e.id === "rem_second")?.status).toBe("pending");
   });
 
   it("respects per-reminder via override (Phase C); falls back to defaults when via is absent", async () => {
@@ -5563,6 +5590,7 @@ describe("runDueReminders", () => {
 
     const sent: Array<{ providerId: string; destination: string; text: string }> = [];
     const fakeRegistry = {
+      has: () => true,
       send: async (providerId: string, message: { destination: string; text: string }) => {
         sent.push({ destination: message.destination, providerId, text: message.text });
         return { destination: message.destination, messageId: "stub", providerId };
@@ -5581,7 +5609,7 @@ describe("runDueReminders", () => {
     ]));
   });
 
-  it("retries transient messaging failures with exponential backoff", async () => {
+  it("seals a transient messaging failure as unknown without an automatic retry", async () => {
     const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
@@ -5600,12 +5628,10 @@ describe("runDueReminders", () => {
     // the next attempt would have landed.
     const attempts: string[] = [];
     const flakyRegistry = {
+      has: () => true,
       send: async (providerId: string, msg: { destination: string; text: string }) => {
         attempts.push(`${providerId}:${msg.destination}`);
-        if (attempts.length < 3) {
-          throw new Error("upstream 503");
-        }
-        return { destination: msg.destination, messageId: "ok", providerId };
+        throw new Error("upstream 503");
       }
     };
 
@@ -5615,9 +5641,10 @@ describe("runDueReminders", () => {
       providerId: "telegram",
       registry: flakyRegistry as unknown as Parameters<typeof runDueReminders>[0]["registry"]
     });
-    expect(summary.delivered).toBe(1);
-    expect(summary.errors).toEqual([]);
-    expect(attempts.length).toBe(3);
+    expect(summary.delivered).toBe(0);
+    expect(summary.errors[0]).toContain("delivery is unknown");
+    expect(summary.errors[0]).toContain("reconcile manually");
+    expect(attempts.length).toBe(1);
   });
 
   it("breaks out of the retry loop early on non-retryable messaging errors", async () => {
@@ -5636,6 +5663,7 @@ describe("runDueReminders", () => {
 
     let attempts = 0;
     const alwaysFailing = {
+      has: () => true,
       send: async (_pid: string, _msg: { destination: string; text: string }) => {
         attempts += 1;
         throw new MessagingProviderError(
@@ -5875,6 +5903,7 @@ describe("runDueReminders Phase D (agent synthesis)", () => {
     const sent: Array<{ providerId: string; destination: string; text: string }> = [];
     return {
       registry: {
+        has: () => true,
         send: async (providerId: string, message: { destination: string; text: string }) => {
           sent.push({ destination: message.destination, providerId, text: message.text });
           return { destination: message.destination, messageId: "stub", providerId };
@@ -6023,7 +6052,7 @@ describe("runDueReminders Phase D (agent synthesis)", () => {
 });
 
 describe("runDueReminders historyFile", () => {
-  it("appends a 'delivered' entry on success and a 'failed' entry with error on failure", async () => {
+  it("appends only factual delivered history while an unknown delivery stays pending", async () => {
     const { readReminderHistory } = await import("@muse/stores");
     const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
@@ -6045,6 +6074,7 @@ describe("runDueReminders historyFile", () => {
     const { MessagingProviderError } = await import("@muse/messaging");
     let calls = 0;
     const fakeRegistry = {
+      has: () => true,
       send: async (_pid: string, message: { destination: string; text: string }) => {
         calls += 1;
         if (message.text === "FAIL") {
@@ -6065,16 +6095,13 @@ describe("runDueReminders historyFile", () => {
     });
     expect(calls).toBe(2);
     const history = await readReminderHistory(historyFile);
-    expect(history).toHaveLength(2);
+    expect(history).toHaveLength(1);
     expect(history.find((e) => e.reminderId === "rem_ok")).toMatchObject({
       destination: "@me",
       providerId: "telegram",
       status: "delivered"
     });
-    expect(history.find((e) => e.reminderId === "rem_fail")).toMatchObject({
-      error: "upstream 401",
-      status: "failed"
-    });
+    expect(history.find((e) => e.reminderId === "rem_fail")).toBeUndefined();
   });
 });
 

@@ -82,7 +82,7 @@ import {
 import { buildSchtasksCreateArgs, buildSchtasksDeleteArgs, buildSchtasksQueryArgs, SCHTASKS_TASK_NAME } from "./commands-daemon-schtasks.js";
 import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./commands-daemon-config.js";
 import { resolvePrivacyStorePaths } from "./commands-privacy.js";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { MUSE_CLI_VERSION } from "./muse-version.js";
 import {
   applyResidentDaemonRepairPlan,
@@ -2073,6 +2073,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
 
       const remindersTick = makeRemindersTick({
         destination,
+        effectFile: join(dirname(resolveActionLogFile(e)), "outbound-effects.json"),
         messagingRegistry,
         provider,
         remindersFile,

@@ -102,7 +102,7 @@ describe("runDueReminders — cross-process firing lock (two daemons, same remin
     expect(await lockFileExists()).toBe(false);
   });
 
-  it("releases the lock after a provider-failure tick — the next tick can retry rather than being permanently blocked", async () => {
+  it("releases the lock after an unknown provider outcome without retrying it on the next tick", async () => {
     await seedReminders("1970-01-01T00:00:00Z");
     const sent: OutboundMessage[] = [];
     const summary = await runDueReminders({
@@ -121,7 +121,9 @@ describe("runDueReminders — cross-process firing lock (two daemons, same remin
       providerId: "telegram",
       registry: new MessagingProviderRegistry([capturingProvider(sent)])
     });
-    expect(retry.delivered).toBe(1);
+    expect(retry.delivered).toBe(0);
+    expect(retry.errors[0]).toContain("reconcile manually");
+    expect(sent).toHaveLength(0);
   });
 
   it("a STALE lock left behind by a crashed daemon does not permanently block firing — the tick proceeds", async () => {

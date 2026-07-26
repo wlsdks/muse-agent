@@ -153,7 +153,7 @@ export {
 } from "./personal-proposed-action-store.js";
 export { readFadedMemoryKeys, readRecallHits, recordRecallHits, writeFadedMemoryKeys } from "./personal-recall-hits-store.js";
 export type { RecallHitRecord } from "./personal-recall-hits-store.js";
-export { appendReminderHistory, readReminderHistory } from "./personal-reminder-history-store.js";
+export { appendReminderHistory, appendReminderHistoryStrictOnce, readReminderHistory, readReminderHistoryStrict } from "./personal-reminder-history-store.js";
 export type { ReminderHistoryEntry } from "./personal-reminder-history-store.js";
 export { buildReminderTriageDigest, confirmReminderTriage, previewReminderTriage, readReminderTriageLedgerStrict, ReminderTriageLockError, ReminderTriageStoreError } from "./personal-reminder-triage-store.js";
 export type { ConfirmReminderTriageOptions, PreviewReminderTriageOptions, ReminderTriageAction, ReminderTriageItemResult, ReminderTriageOutcome, ReminderTriagePreview, ReminderTriagePreviewChange, ReminderTriageResult } from "./personal-reminder-triage-store.js";

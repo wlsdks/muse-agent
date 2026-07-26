@@ -174,6 +174,7 @@ export function makeBackgroundExitNoticeTick(deps: MakeBackgroundExitNoticeTickD
 
 export interface MakeRemindersTickDeps {
   readonly destination: string;
+  readonly effectFile: string;
   readonly remindersFile: string;
   readonly provider: string;
   readonly messagingRegistry: MessagingProviderRegistry;
@@ -181,10 +182,11 @@ export interface MakeRemindersTickDeps {
 }
 
 export function makeRemindersTick(deps: MakeRemindersTickDeps): () => Promise<void> {
-  const { destination, remindersFile, provider, messagingRegistry, stdout } = deps;
+  const { destination, effectFile, remindersFile, provider, messagingRegistry, stdout } = deps;
   return async (): Promise<void> => {
     const summary = await runDueReminders({
       destination,
+      effectFile,
       file: remindersFile,
       providerId: provider,
       registry: messagingRegistry

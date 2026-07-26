@@ -34,9 +34,10 @@ afterEach(() => {
 
 function fakeRegistry(sent: string[]): MessagingProviderRegistry {
   return {
-    send: async (_providerId: string, message: { readonly destination: string; readonly text: string }) => {
+    has: (providerId: string) => providerId === "log",
+    send: async (providerId: string, message: { readonly destination: string; readonly text: string }) => {
       sent.push(message.text);
-      return { ok: true };
+      return { destination: message.destination, messageId: "stub", providerId };
     }
   } as unknown as MessagingProviderRegistry;
 }

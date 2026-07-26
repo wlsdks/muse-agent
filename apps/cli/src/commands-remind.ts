@@ -18,8 +18,9 @@ import { isErrorLike } from "@muse/shared";
 
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 
-import { buildMessagingRegistry, resolveReminderHistoryFile, resolveRemindersFile } from "@muse/autoconfigure";
+import { buildMessagingRegistry, resolveActionLogFile, resolveReminderHistoryFile, resolveRemindersFile } from "@muse/autoconfigure";
 import { classifyDaemonLoopHeartbeat, compareRemindersByDueAt, defaultProactiveHeartbeatDir, filterReminders, fireReminder, mutateReminders, parseReminderDueAt, readProactiveHeartbeat, readReminderHistory, readReminders, readRemindersStrict, readReminderStatusFilter, resolveReminderRef, serializeReminder, type PersistedReminder, type ReminderHistoryEntry, type ReminderRecurrence } from "@muse/stores";
 import { mirrorReminderToApple } from "@muse/macos";
 import { runDueReminders } from "@muse/proactivity";
@@ -532,7 +533,13 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
           }
           firing = true;
           try {
-            const summary = await runDueReminders({ destination, file, providerId: provider, registry });
+            const summary = await runDueReminders({
+              destination,
+              effectFile: localReminderEffectFile(),
+              file,
+              providerId: provider,
+              registry
+            });
             if (summary.due > 0) {
               io.stdout(
                 `[${new Date().toISOString()}] fired ${summary.delivered.toString()} of ${summary.due.toString()} reminder(s) via ${provider}\n`
@@ -591,6 +598,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       );
       const summary = await runDueReminders({
         destination,
+        effectFile: localReminderEffectFile(),
         file,
         providerId: provider,
         registry
@@ -660,6 +668,11 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       const cleared = await remindLocalFallback(io, Boolean(options.local), clearLocal, clearApi);
       io.stdout(`Cleared reminder ${cleared}\n`);
     });
+}
+
+function localReminderEffectFile(): string {
+  const actionLogFile = resolveActionLogFile(process.env as Record<string, string | undefined>);
+  return join(dirname(actionLogFile), "outbound-effects.json");
 }
 
 export function formatReminderList(

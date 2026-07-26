@@ -25,6 +25,7 @@ export interface ReminderTickOptions {
   readonly remindersFile: string;
   readonly providerId: string;
   readonly destination: string;
+  readonly effectFile?: string;
   readonly intervalMs?: number;
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
@@ -97,6 +98,7 @@ export function startReminderTick(options: ReminderTickOptions): ReminderTickHan
         ...(options.agentModel ? { agentModel: options.agentModel } : {}),
         ...(options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),
         destination: options.destination,
+        ...(options.effectFile ? { effectFile: options.effectFile } : {}),
         file: options.remindersFile,
         providerId: options.providerId,
         registry: options.registry,
@@ -141,4 +143,3 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
-
