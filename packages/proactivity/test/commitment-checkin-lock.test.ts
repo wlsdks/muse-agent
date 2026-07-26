@@ -10,10 +10,11 @@ import { readCheckins, writeCheckins, runDueCheckins, type CheckinSendRegistry, 
 
 function capturingRegistry(sent: { destination: string; text: string }[], options: { readonly failWith?: Error } = {}): CheckinSendRegistry {
   return {
-    async send(_providerId: string, message: { readonly destination: string; readonly text: string }): Promise<unknown> {
+    has: () => true,
+    async send(providerId, message) {
       if (options.failWith) throw options.failWith;
       sent.push({ destination: message.destination, text: message.text });
-      return { ok: true };
+      return { destination: message.destination, messageId: "accepted", providerId };
     }
   };
 }
@@ -63,14 +64,15 @@ describe("runDueCheckins — cross-process firing lock (two daemons, same checki
     let concurrentSends = 0;
     let maxConcurrentSends = 0;
     const registry: CheckinSendRegistry = {
-      async send(_providerId: string, message: { readonly destination: string; readonly text: string }): Promise<unknown> {
+      has: () => true,
+      async send(providerId, message) {
         concurrentSends += 1;
         maxConcurrentSends = Math.max(maxConcurrentSends, concurrentSends);
         // Slow provider — widens the race window a real double-send bug needs.
         await sleep(40);
         concurrentSends -= 1;
         sent.push({ destination: message.destination, text: message.text });
-        return { ok: true };
+        return { destination: message.destination, messageId: "accepted", providerId };
       }
     };
     const runTick = () => runDueCheckins({ destination: "@me", file: checkinsFile, providerId: "telegram", registry });
@@ -100,7 +102,7 @@ describe("runDueCheckins — cross-process firing lock (two daemons, same checki
     expect(await lockFileExists()).toBe(false);
   });
 
-  it("releases the lock after a provider-failure tick — the next tick can retry rather than being permanently blocked", async () => {
+  it("releases the lock after an uncertain provider attempt but never retries the same durable effect", async () => {
     await seedCheckins("1970-01-01T00:00:00Z");
     const sent: { destination: string; text: string }[] = [];
     const summary = await runDueCheckins({
@@ -119,7 +121,27 @@ describe("runDueCheckins — cross-process firing lock (two daemons, same checki
       providerId: "telegram",
       registry: capturingRegistry(sent)
     });
-    expect(retry.delivered).toBe(1);
+    expect(retry.delivered).toBe(0);
+    expect(retry.errors.join("\n")).toContain("delivery is unknown");
+    expect(sent).toEqual([]);
+  });
+
+  it("fails closed when the required lock cannot be created", async () => {
+    const blockingParent = join(dir, "not-a-directory");
+    await writeFile(blockingParent, "file", "utf8");
+    checkinsFile = join(blockingParent, "checkins.json");
+    const sent: { destination: string; text: string }[] = [];
+
+    const summary = await runDueCheckins({
+      destination: "@me",
+      file: checkinsFile,
+      providerId: "telegram",
+      registry: capturingRegistry(sent)
+    });
+
+    expect(summary.outcome).toBe("lock-error");
+    expect(summary.due).toBe(0);
+    expect(sent).toEqual([]);
   });
 
   it("a STALE lock left behind by a crashed daemon does not permanently block firing — the tick proceeds", async () => {

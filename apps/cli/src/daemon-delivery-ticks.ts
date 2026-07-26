@@ -449,6 +449,7 @@ export function makeFollowupTick(deps: MakeFollowupTickDeps): GovernedDaemonTick
 export interface MakeCheckinsTickDeps {
   readonly env: NodeJS.ProcessEnv;
   readonly destination: string;
+  readonly effectFile: string;
   readonly interruptionBudget: InterruptionBudgetWiring;
   readonly provider: string;
   readonly messagingRegistry: MessagingProviderRegistry;
@@ -457,11 +458,12 @@ export interface MakeCheckinsTickDeps {
 }
 
 export function makeCheckinsTick(deps: MakeCheckinsTickDeps): () => Promise<void> {
-  const { env: e, destination, interruptionBudget, provider, messagingRegistry, quietHours, stdout } = deps;
+  const { env: e, destination, effectFile, interruptionBudget, provider, messagingRegistry, quietHours, stdout } = deps;
   return async (): Promise<void> => {
     const activeQuietHours = resolveQuietHoursOption(quietHours);
     const summary = await runDueCheckins({
       destination,
+      effectFile,
       file: checkinsFile(e),
       interruptionBudget,
       providerId: provider,

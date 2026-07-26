@@ -2124,6 +2124,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
 
       const checkinsTick = makeCheckinsTick({
         destination,
+        effectFile: join(dirname(resolveActionLogFile(e)), "outbound-effects.json"),
         env: e,
         interruptionBudget,
         messagingRegistry,

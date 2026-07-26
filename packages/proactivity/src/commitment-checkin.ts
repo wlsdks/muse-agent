@@ -16,7 +16,17 @@
  */
 
 import { promises as fs } from "node:fs";
-import { errorMessage } from "@muse/shared";
+import { dirname, join } from "node:path";
+
+import {
+  computeOutboundEffectPayloadHash,
+  dispatchDurableEffectOnce,
+  dispatchOutboundEffectOnce,
+  readOutboundEffect,
+  type MessagingProviderRegistry,
+  type OutboundEffectView
+} from "@muse/messaging";
+import { errorMessage, redactSecretsInText, sha256Hex } from "@muse/shared";
 
 import {
   atomicWriteFile,
@@ -24,7 +34,7 @@ import {
   readTrustLedger,
   withFileLock,
   withFileMutationQueue,
-  withProcessLock
+  withRequiredProcessLock
 } from "@muse/stores";
 import { neutralizeProactivityDeliveryText } from "./delivery-text.js";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
@@ -331,15 +341,15 @@ export async function appendCheckins(file: string, fresh: readonly PersistedChec
   await mutateCheckins(file, (existing) => [...existing, ...fresh]);
 }
 
-export interface CheckinSendRegistry {
-  send(providerId: string, message: { readonly destination: string; readonly text: string }): Promise<unknown>;
-}
+export type CheckinSendRegistry = Pick<MessagingProviderRegistry, "has" | "send">;
 
 export interface RunDueCheckinsOptions {
   readonly file: string;
   readonly registry: CheckinSendRegistry;
   readonly providerId: string;
   readonly destination: string;
+  /** Canonical outbound-effect ledger. Production callers place it beside the action log. */
+  readonly effectFile?: string;
   readonly now?: () => Date;
   readonly maxPerTick?: number;
   /** When set and the current hour is within it, hold ALL check-ins (DND). */
@@ -361,7 +371,7 @@ export interface RunDueCheckinsSummary {
   readonly fired: readonly PersistedCheckin[];
   /** Set only when another daemon held the firing lock for this tick — no
    *  read, send, or mark was attempted at all. Absent on every other path. */
-  readonly outcome?: "lock-held";
+  readonly outcome?: "lock-held" | "lock-error";
 }
 
 /**
@@ -381,28 +391,45 @@ export function selectDueCheckins(checkins: readonly PersistedCheckin[], nowMs: 
 
 /**
  * Deliver due check-ins to the user's channel. The whole select→send→mark
- * section runs under the cross-process `withProcessLock`
+ * section runs under the cross-process `withRequiredProcessLock`
  * (`${options.file}.firing.lock`, the same generalized lock reminder firing
  * uses — `@muse/stores/digest-lock.ts`) because the api daemon's tick and the
  * CLI daemon's tick can read the SAME checkins file: without a real lock both
  * can read a check-in as due and both deliver it before either marks it
  * fired. A LIVE held lock returns `outcome: "lock-held"` immediately with no
- * send attempted; a broken lock (non-contention fs error) fails OPEN — the
- * tick still runs unlocked rather than silently skipping check-ins.
+ * send attempted; a broken lock (non-contention fs error) fails CLOSED because
+ * an unlocked external send could duplicate delivery.
  */
 export async function runDueCheckins(options: RunDueCheckinsOptions): Promise<RunDueCheckinsSummary> {
-  const lockPath = `${options.file}.firing.lock`;
-  const lockOutcome = await withProcessLock(lockPath, () => runDueCheckinsUnderLock(options));
+  const has = options.registry.has;
+  const send = options.registry.send;
+  const stable = {
+    ...options,
+    destination: options.destination,
+    effectFile: options.effectFile ?? join(dirname(options.file), "outbound-effects.json"),
+    file: options.file,
+    ...(options.interruptionBudget ? { interruptionBudget: { ...options.interruptionBudget } } : {}),
+    now: options.now ?? (() => new Date()),
+    providerId: options.providerId,
+    registry: {
+      has: typeof has === "function" ? has.bind(options.registry) : () => false,
+      send: typeof send === "function"
+        ? send.bind(options.registry)
+        : async () => { throw new Error("messaging registry send is unavailable"); }
+    }
+  } as const;
+  const lockPath = `${stable.file}.firing.lock`;
+  const lockOutcome = await withRequiredProcessLock(lockPath, () => runDueCheckinsUnderLock(stable));
   if (lockOutcome.kind === "lock-held") {
     return { delivered: 0, due: 0, errors: [], fired: [], outcome: "lock-held" };
   }
-  if (lockOutcome.lockError !== undefined) {
-    // Fail-open on a BROKEN lock (not contention): the tick still ran,
-    // unlocked, so this degrades to the pre-lock duplicate-delivery risk
-    // rather than silencing check-ins.
+  if (lockOutcome.kind === "lock-error") {
     return {
-      ...lockOutcome.value,
-      errors: [`checkin-tick: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors]
+      delivered: 0,
+      due: 0,
+      errors: [`checkin-tick: lock acquisition failed: ${lockOutcome.error}`],
+      fired: [],
+      outcome: "lock-error"
     };
   }
   return lockOutcome.value;
@@ -420,7 +447,6 @@ async function runDueCheckinsUnderLock(options: RunDueCheckinsOptions): Promise<
   if (due.length === 0) {
     return { delivered: 0, due: 0, errors: [], fired: [] };
   }
-  const firedIds = new Set<string>();
   const fired: PersistedCheckin[] = [];
   const errors: string[] = [];
   let delivered = 0;
@@ -430,58 +456,192 @@ async function runDueCheckinsUnderLock(options: RunDueCheckinsOptions): Promise<
     : undefined;
 
   for (const checkin of due) {
+    const effectId = checkinOccurrenceEffectId(checkin.id);
+    if (
+      options.providerId.trim().length === 0
+      || options.providerId !== options.providerId.trim()
+      || options.destination.trim().length === 0
+      || options.destination !== options.destination.trim()
+    ) {
+      errors.push(`${checkin.id}: delivery route is unavailable or invalid`);
+      continue;
+    }
     try {
-      const deliveryText = neutralizeProactivityDeliveryText(checkin.question);
-      const deliver = (): Promise<void> =>
-        options.registry.send(options.providerId, { destination: options.destination, text: deliveryText }).then(() => undefined);
-      let digested = false;
-      if (options.interruptionBudget) {
-        const budget = options.interruptionBudget;
-        const result = await applyInterruptionBudget({
-          avoidedSources,
-          caps: resolveInterruptionBudgetCaps(budget),
-          deliver,
-          digestFile: budget.digestFile,
-          errorLogger: (message) => errors.push(`${checkin.id}: ${message}`),
-          ...(budget.lastDeliveryFile ? { lastDeliveryFile: budget.lastDeliveryFile } : {}),
-          ledgerFile: budget.ledgerFile,
-          now: at,
-          source: "commitment-checkin",
-          sourceId: checkin.id,
-          // `checkin.sourceKey` (the normalised-commitment DEDUPE key the
-          // scheduler uses to avoid re-scheduling the same open loop) — NOT
-          // `checkin.id` (unique per check-in OCCURRENCE, a different
-          // concern): the ledger sourceKey must be STABLE across
-          // re-detections of the same commitment so a channel-veto survives
-          // — a fresh check-in scheduled later for the same open loop gets a
-          // new `id` but the SAME `sourceKey`, so the earlier veto still matches.
-          sourceKey: `commitment-checkin:${checkin.sourceKey}`,
-          text: checkin.question,
-          title: checkin.commitment
-        });
-        digested = result.outcome !== "delivered";
-      } else {
-        await deliver();
+      const current = await assertCurrentDueCheckin(options.file, checkin.id, now());
+      const deliveryText = redactSecretsInText(
+        neutralizeProactivityDeliveryText(current.question)
+      );
+      const payloadHash = computeOutboundEffectPayloadHash({
+        destination: options.destination,
+        providerId: options.providerId,
+        text: deliveryText
+      });
+      const existing = await readOutboundEffect(options.effectFile!, effectId);
+      if (
+        existing
+        && (
+          existing.binding.providerId !== options.providerId
+          || existing.binding.destination !== options.destination
+          || existing.binding.payloadHash !== payloadHash
+        )
+      ) {
+        throw new Error(`outbound effect ${effectId} binding conflicts with the current check-in`);
       }
-      // Marked fired either way: a suppressed check-in must not re-ask the
-      // same question next tick just because the budget held it back.
-      firedIds.add(checkin.id);
-      fired.push({ ...checkin, firedAt: at.toISOString(), status: "fired" });
+      let effect: OutboundEffectView | undefined;
+      let digested = false;
+      let expectedDueAt = current.dueAtIso;
+      if (!existing) {
+        const deliver = async (): Promise<void> => {
+          const latest = await assertCurrentDueCheckin(options.file, checkin.id, now());
+          const latestDeliveryText = redactSecretsInText(
+            neutralizeProactivityDeliveryText(latest.question)
+          );
+          if (latestDeliveryText !== deliveryText) {
+            throw new Error(`${checkin.id}: occurrence payload changed before effect acquisition; delivery was skipped`);
+          }
+          expectedDueAt = latest.dueAtIso;
+          if (!options.registry.has(options.providerId)) {
+            throw new Error("delivery route is unavailable or invalid");
+          }
+          effect = await dispatchOutboundEffectOnce({
+            destination: options.destination,
+            effectFile: options.effectFile!,
+            effectId,
+            now,
+            providerId: options.providerId,
+            registry: options.registry,
+            text: deliveryText
+          });
+          if (effect.state !== "accepted" && effect.state !== "reconciled-accepted") {
+            throw new Error(checkinEffectBlockedMessage(checkin.id, effect));
+          }
+        };
+        if (options.interruptionBudget) {
+          const budget = options.interruptionBudget;
+          const result = await applyInterruptionBudget({
+            avoidedSources,
+            caps: resolveInterruptionBudgetCaps(budget),
+            deliver,
+            digestFile: budget.digestFile,
+            errorLogger: (message) => errors.push(`${checkin.id}: ${message}`),
+            ...(budget.lastDeliveryFile ? { lastDeliveryFile: budget.lastDeliveryFile } : {}),
+            ledgerFile: budget.ledgerFile,
+            now: at,
+            source: "commitment-checkin",
+            sourceId: checkin.id,
+            // `checkin.sourceKey` (the normalised-commitment DEDUPE key the
+            // scheduler uses to avoid re-scheduling the same open loop) — NOT
+            // `checkin.id` (unique per check-in OCCURRENCE, a different
+            // concern): the ledger sourceKey must be STABLE across
+            // re-detections of the same commitment so a channel-veto survives
+            // — a fresh check-in scheduled later for the same open loop gets a
+            // new `id` but the SAME `sourceKey`, so the earlier veto still matches.
+            sourceKey: `commitment-checkin:${current.sourceKey}`,
+            text: current.question,
+            title: current.commitment
+          });
+          digested = result.outcome !== "delivered";
+        } else {
+          await deliver();
+        }
+      } else if (existing.state === "prepared") {
+        effect = await dispatchDurableEffectOnce({
+          destination: existing.binding.destination,
+          dispatch: async () => {
+            throw new Error("prepared check-in replay must never dispatch");
+          },
+          effectFile: options.effectFile!,
+          effectId,
+          now,
+          payloadHash: existing.binding.payloadHash,
+          providerId: existing.binding.providerId
+        });
+      } else {
+        effect = existing;
+      }
+      if (effect && effect.state !== "accepted" && effect.state !== "reconciled-accepted") {
+        errors.push(checkinEffectBlockedMessage(checkin.id, effect));
+        continue;
+      }
+      const receipt = effect?.receipt;
+      if (effect && !receipt) {
+        throw new Error(`accepted outbound effect ${effectId} has no durable receipt`);
+      }
+      const patched = await markCheckinFiredIfCurrent(
+        options.file,
+        checkin.id,
+        expectedDueAt,
+        receipt?.receivedAt ?? at.toISOString()
+      );
+      if (!patched) {
+        errors.push(`${checkin.id}: occurrence changed before final mark; current check-in was preserved`);
+        continue;
+      }
+      fired.push(patched);
       if (!digested) {
         delivered += 1;
       }
     } catch (cause) {
-      errors.push(`${checkin.id}: ${errorMessage(cause)}`);
+      const message = redactSecretsInText(errorMessage(cause));
+      errors.push(message.startsWith(`${checkin.id}: `) ? message : `${checkin.id}: ${message}`);
     }
   }
-  if (firedIds.size > 0) {
-    // Re-read the FRESH store inside the queue and patch only the fired ids — NOT
-    // write the stale pre-send `all`. During the multi-second send window a check-in
-    // can be appended (chat hook) or cancelled; the stale write would drop the new one
-    // and RESURRECT a cancelled nudge. Patch-by-id preserves every concurrent change.
-    await mutateCheckins(options.file, (fresh) =>
-      fresh.map((c) => (firedIds.has(c.id) ? { ...c, firedAt: at.toISOString(), status: "fired" as const } : c))
-    );
-  }
   return { delivered, due: due.length, errors, fired };
+}
+
+/** Snoozing keeps the same id and therefore the same durable effect identity. */
+export function checkinOccurrenceEffectId(checkinId: string): string {
+  return `commitment-checkin:${sha256Hex(JSON.stringify([checkinId]))}`;
+}
+
+async function assertCurrentDueCheckin(
+  file: string,
+  checkinId: string,
+  now: Date
+): Promise<PersistedCheckin> {
+  const current = (await readCheckins(file)).find((entry) => entry.id === checkinId);
+  if (
+    !current
+    || current.status !== "scheduled"
+    || !Number.isFinite(Date.parse(current.dueAtIso))
+    || Date.parse(current.dueAtIso) > now.getTime()
+  ) {
+    throw new Error(`${checkinId}: occurrence changed before effect acquisition; delivery was skipped`);
+  }
+  return current;
+}
+
+async function markCheckinFiredIfCurrent(
+  file: string,
+  checkinId: string,
+  expectedDueAt: string,
+  firedAt: string
+): Promise<PersistedCheckin | undefined> {
+  let patched: PersistedCheckin | undefined;
+  await mutateCheckins(file, (fresh) =>
+    fresh.map((checkin) => {
+      if (
+        checkin.id !== checkinId
+        || checkin.status !== "scheduled"
+        || checkin.dueAtIso !== expectedDueAt
+      ) {
+        return checkin;
+      }
+      patched = { ...checkin, firedAt, status: "fired" };
+      return patched;
+    })
+  );
+  return patched;
+}
+
+function checkinEffectBlockedMessage(checkinId: string, effect: OutboundEffectView): string {
+  const effectId = effect.binding.effectId;
+  if (effect.state === "unknown") {
+    const detail = effect.unknownDetail ? ` (${redactSecretsInText(effect.unknownDetail).slice(0, 500)})` : "";
+    return `${checkinId}: delivery is unknown for effect ${effectId}${detail}; reconcile manually with muse messaging effects reconcile and do not retry with a new effect ID`;
+  }
+  if (effect.state === "reconciled-not-delivered") {
+    return `${checkinId}: effect ${effectId} was reconciled as not delivered; cancel and replace it with a fresh check-in ID because snoozing retains this effect ID`;
+  }
+  return `${checkinId}: outbound effect ${effectId} is safely blocked in state ${effect.state}`;
 }

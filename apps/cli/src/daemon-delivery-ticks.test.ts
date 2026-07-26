@@ -5,10 +5,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { writeDayRhythmConfig } from "@muse/autoconfigure";
 import { MessagingProviderRegistry, readOutboundEffects } from "@muse/messaging";
+import { readCheckins, writeCheckins } from "@muse/proactivity";
 import { addObjective, readFollowups, setSchedulerPaused, writeFollowups } from "@muse/stores";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { makeBriefingTick, makeDailyBriefTick, makeFollowupTick, makeSchedulerTick } from "./daemon-delivery-ticks.js";
+import { makeBriefingTick, makeCheckinsTick, makeDailyBriefTick, makeFollowupTick, makeSchedulerTick } from "./daemon-delivery-ticks.js";
 import type { MakeDailyBriefTickDeps } from "./daemon-delivery-ticks.js";
 import type { SchedulerJobOutcome } from "./scheduler-job-runner.js";
 
@@ -142,6 +143,52 @@ describe("makeFollowupTick", () => {
     await tick(() => true);
     expect(await readOutboundEffects(effectFile)).toHaveLength(1);
     expect((await readFollowups(followupsFile))[0]!.status).toBe("fired");
+  });
+});
+
+describe("makeCheckinsTick", () => {
+  it("forwards the canonical effect ledger and completes one accepted check-in", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-cli-checkin-tick-"));
+    const checkinsFile = join(dir, "checkins.json");
+    const effectFile = join(dir, "outbound-effects.json");
+    await writeCheckins(checkinsFile, [{
+      commitment: "Check deployment",
+      createdAt: "2026-07-26T20:00:00.000Z",
+      dueAtIso: "1970-01-01T00:00:00.000Z",
+      id: "cli-checkin-effect",
+      question: "Did deployment finish?",
+      sourceKey: "check deployment",
+      status: "scheduled",
+      userId: "owner"
+    }]);
+    const registry = new MessagingProviderRegistry([{
+      describe: () => ({ description: "test", displayName: "Test", id: "telegram" }),
+      id: "telegram",
+      send: async (message) => ({
+        destination: message.destination,
+        messageId: "cli-checkin-accepted",
+        providerId: "telegram"
+      })
+    }]);
+    const tick = makeCheckinsTick({
+      destination: "@owner",
+      effectFile,
+      env: { MUSE_CHECKINS_FILE: checkinsFile },
+      interruptionBudget: {
+        dailyCap: 5,
+        digestFile: join(dir, "digest.json"),
+        hourlyCap: 5,
+        ledgerFile: join(dir, "interruption-ledger.json")
+      },
+      messagingRegistry: registry,
+      provider: "telegram",
+      quietHours: undefined,
+      stdout: () => undefined
+    });
+
+    await tick();
+    expect(await readOutboundEffects(effectFile)).toHaveLength(1);
+    expect((await readCheckins(checkinsFile))[0]!.status).toBe("fired");
   });
 });
 

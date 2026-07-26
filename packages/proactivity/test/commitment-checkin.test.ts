@@ -226,7 +226,16 @@ describe("scheduleCheckins", () => {
 describe("runDueCheckins", () => {
   function recordingRegistry(): { registry: CheckinSendRegistry; sent: string[] } {
     const sent: string[] = [];
-    return { registry: { send: async (_p, m) => { sent.push(m.text); } }, sent };
+    return {
+      registry: {
+        has: () => true,
+        send: async (providerId, message) => {
+          sent.push(message.text);
+          return { destination: message.destination, messageId: `msg-${sent.length.toString()}`, providerId };
+        }
+      },
+      sent
+    };
   }
 
   it("delivers a due check-in and marks it fired", async () => {
@@ -511,7 +520,13 @@ describe("commitment check-ins — concurrent mutations don't lose updates", () 
     await writeCheckins(file, [mk("a", new Date("2026-05-02T10:00:00Z").toISOString())]);
     const extra = mk("b", new Date("2026-05-09T10:00:00Z").toISOString()); // appended during the send window, not yet due
     // The send hook appends a NEW check-in mid-send (the multi-second delivery window).
-    const registry: CheckinSendRegistry = { send: async () => { await appendCheckins(file, [extra]); } };
+    const registry: CheckinSendRegistry = {
+      has: () => true,
+      send: async (providerId, message) => {
+        await appendCheckins(file, [extra]);
+        return { destination: message.destination, messageId: "accepted", providerId };
+      }
+    };
     const res = await runDueCheckins({ destination: "me", file, now: () => new Date("2026-05-02T10:05:00Z"), providerId: "log", registry });
     expect(res.delivered).toBe(1);
     const persisted = await readCheckins(file);
