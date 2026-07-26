@@ -9,7 +9,11 @@
 import { createHash } from "node:crypto";
 
 import {
+  DELIVERY_SAFETY_REASON,
   RESIDENT_DAEMON_HEALTH_REASON,
+  classifyDeliverySafety,
+  type DeliverySafetyEvidence,
+  type DeliverySafetyReasonCode,
   type ResidentDaemonHealthReasonCode,
   type ResidentDaemonHealthResult,
   type ResidentDaemonObservation
@@ -19,7 +23,6 @@ import type {
   QualificationLearningHoldInspection
 } from "@muse/stores";
 import {
-  DAEMON_PROVIDER_LOCK_MISMATCH_REASON,
   type DaemonProviderLockDecision
 } from "./daemon-messaging-safety.js";
 
@@ -72,31 +75,32 @@ export const QUALIFICATION_REASON = {
   daemonPidMismatch: RESIDENT_DAEMON_HEALTH_REASON.pidMismatch,
   daemonProbeUnverified: RESIDENT_DAEMON_HEALTH_REASON.autostartProbeUnverified,
   daemonResidentProcessMissing: RESIDENT_DAEMON_HEALTH_REASON.residentProcessMissing,
-  deliveryBrakeEngaged: "delivery-brake-engaged",
-  deliveryEnvironmentUnverified: "delivery-environment-unverified",
-  deliveryProviderLockMismatch: DAEMON_PROVIDER_LOCK_MISMATCH_REASON,
-  deliveryProviderLockMissing: "delivery-provider-lock-not-log",
-  deliveryRouteNotLocalLog: "delivery-route-not-local-log",
-  followupBacklogUnverified: "followup-backlog-unverified",
+  deliveryBrakeEngaged: DELIVERY_SAFETY_REASON.deliveryBrakeEngaged,
+  deliveryEnvironmentUnverified: DELIVERY_SAFETY_REASON.environmentUnverified,
+  deliveryProviderLockMismatch: DELIVERY_SAFETY_REASON.providerLockMismatch,
+  deliveryProviderLockMissing: DELIVERY_SAFETY_REASON.providerLockMissing,
+  deliveryRouteNotLocalLog: DELIVERY_SAFETY_REASON.deliveryRouteNotLocal,
+  followupBacklogUnverified: DELIVERY_SAFETY_REASON.followupBacklogUnverified,
   heartbeatBeforeProcess: RESIDENT_DAEMON_HEALTH_REASON.heartbeatBeforeProcess,
   heartbeatFuture: RESIDENT_DAEMON_HEALTH_REASON.heartbeatFuture,
   heartbeatInvalid: RESIDENT_DAEMON_HEALTH_REASON.heartbeatInvalid,
   heartbeatMissing: RESIDENT_DAEMON_HEALTH_REASON.heartbeatMissing,
   heartbeatStale: RESIDENT_DAEMON_HEALTH_REASON.heartbeatStale,
-  localOnlyMissing: "daemon-local-only-not-persisted",
+  localOnlyMissing: DELIVERY_SAFETY_REASON.localOnlyMissing,
   organicEvidenceNotProven: "organic-personal-effectiveness-not-proven",
   orphanApiProcesses: RESIDENT_DAEMON_HEALTH_REASON.orphanProcesses,
   orphanProcessProbeUnverified: RESIDENT_DAEMON_HEALTH_REASON.processProbeUnverified,
-  overdueFollowups: "overdue-followups-detected",
-  overdueReminders: "overdue-reminders-detected",
+  overdueFollowups: DELIVERY_SAFETY_REASON.overdueFollowups,
+  overdueReminders: DELIVERY_SAFETY_REASON.overdueReminders,
   platformUnsupported: RESIDENT_DAEMON_HEALTH_REASON.platformUnverified,
-  reminderBacklogUnverified: "reminder-backlog-unverified",
-  selfLearnEnabled: "daemon-self-learn-not-disabled",
+  reminderBacklogUnverified: DELIVERY_SAFETY_REASON.reminderBacklogUnverified,
+  selfLearnEnabled: DELIVERY_SAFETY_REASON.selfLearnEnabled,
   sourceProvenanceInvalid: "capability-source-provenance-invalid"
 } as const;
 
 export type QualificationReasonCode =
   | (typeof QUALIFICATION_REASON)[keyof typeof QUALIFICATION_REASON]
+  | DeliverySafetyReasonCode
   | ResidentDaemonHealthReasonCode;
 export type QualificationGateStatus = "passed" | "failed" | "unverified";
 export type PersonalAgentQualificationStatus = "qualified" | "not-qualified" | "unverified";
@@ -182,6 +186,10 @@ export interface DeliveryQualificationObservation {
   readonly followups: BacklogCountObservation;
   readonly reminders: BacklogCountObservation;
   readonly selfLearningHold: QualificationLearningHoldInspection;
+  readonly pendingDrafts?: {
+    readonly status: "ok" | "unverified";
+    readonly count: number;
+  };
 }
 
 export interface PersonalAgentQualificationObservations {
@@ -212,9 +220,8 @@ export interface RuntimeGateEvidence {
   readonly orphanProcessCount: number;
 }
 
-export interface DeliveryGateEvidence {
-  readonly localOnlyPersisted: boolean;
-  readonly selfLearnDisabled: boolean;
+export interface DeliveryGateEvidence extends DeliverySafetyEvidence {
+  /** Compatibility diagnostics; classification never consumes these fields. */
   readonly baseProviderLocalLog: boolean;
   readonly providerLockLog: boolean;
   readonly providerLockAllowedProviderIds: readonly string[] | null;
@@ -222,10 +229,6 @@ export interface DeliveryGateEvidence {
   readonly resolvedProviderId: string;
   readonly resolvedProviderSource: DaemonProviderResolutionSource;
   readonly deliveryBrakeEngaged: boolean;
-  readonly scheduledFollowups: number;
-  readonly overdueFollowups: number;
-  readonly scheduledReminders: number;
-  readonly overdueReminders: number;
   readonly selfLearningHoldEngaged: boolean;
   readonly selfLearningHoldActivatedAt?: string;
   readonly selfLearningHoldFailure?: QualificationLearningHoldFailure;
@@ -630,41 +633,36 @@ function assessRuntime(observation: RuntimeQualificationObservation): Qualificat
 }
 
 function assessDelivery(observation: DeliveryQualificationObservation): QualificationGate<"delivery-safety", DeliveryGateEvidence> {
-  const failed: QualificationReasonCode[] = [];
-  const unverified: QualificationReasonCode[] = [];
-  if (observation.environmentProbe !== "ok") unverified.push(QUALIFICATION_REASON.deliveryEnvironmentUnverified);
-  if (observation.followups.status !== "ok") unverified.push(QUALIFICATION_REASON.followupBacklogUnverified);
-  if (observation.reminders.status !== "ok") unverified.push(QUALIFICATION_REASON.reminderBacklogUnverified);
-  if (observation.providerLockDecision.mismatchReason !== null) {
-    failed.push(QUALIFICATION_REASON.deliveryProviderLockMismatch);
-  }
-
-  if (observation.brakeEngaged) {
-    unverified.push(QUALIFICATION_REASON.deliveryBrakeEngaged);
-  } else {
-    if (!observation.localOnly) failed.push(QUALIFICATION_REASON.localOnlyMissing);
-    if (!observation.selfLearnDisabled) failed.push(QUALIFICATION_REASON.selfLearnEnabled);
-    if (!observation.baseProviderLocalLog) failed.push(QUALIFICATION_REASON.deliveryRouteNotLocalLog);
-    if (!observation.providerLockLog) failed.push(QUALIFICATION_REASON.deliveryProviderLockMissing);
-    if (observation.followups.overdue > 0) failed.push(QUALIFICATION_REASON.overdueFollowups);
-    if (observation.reminders.overdue > 0) failed.push(QUALIFICATION_REASON.overdueReminders);
-  }
+  const result = classifyDeliverySafety({
+    baseProviderLocal: observation.baseProviderLocalLog,
+    deliveryBrake: observation.brakeEngaged ? "engaged" : "released",
+    environmentProbe: observation.environmentProbe,
+    followups: observation.followups,
+    localOnlyEffective: observation.localOnly,
+    localOnlyPersisted: observation.localOnly,
+    pendingDrafts: observation.pendingDrafts,
+    providerLock: {
+      localOnly: observation.providerLockLog,
+      mismatch: observation.providerLockDecision.mismatchReason !== null,
+      observation: observation.environmentProbe === "ok" ? "verified" : "unverified"
+    },
+    reminders: observation.reminders,
+    selfLearnDisabled: observation.selfLearnDisabled,
+    selfLearningHold: observation.selfLearningHold.state === "invalid"
+      ? "unverified"
+      : observation.selfLearningHold.engaged ? "engaged" : "released"
+  });
 
   return {
     evidence: {
+      ...result.evidence,
       baseProviderLocalLog: observation.baseProviderLocalLog,
       deliveryBrakeEngaged: observation.brakeEngaged,
-      localOnlyPersisted: observation.localOnly,
-      overdueFollowups: observation.followups.overdue,
-      overdueReminders: observation.reminders.overdue,
       providerLockAllowedProviderIds: observation.providerLockDecision.allowedProviderIds,
       providerLockLog: observation.providerLockLog,
       providerLockMismatchReason: observation.providerLockDecision.mismatchReason,
       resolvedProviderId: observation.providerLockDecision.resolvedAdapterId,
       resolvedProviderSource: observation.providerResolutionSource,
-      scheduledFollowups: observation.followups.scheduled,
-      scheduledReminders: observation.reminders.scheduled,
-      selfLearnDisabled: observation.selfLearnDisabled,
       selfLearningHoldEngaged: observation.selfLearningHold.engaged,
       ...(observation.selfLearningHold.state === "active"
         ? {
@@ -678,9 +676,9 @@ function assessDelivery(observation: DeliveryQualificationObservation): Qualific
       selfLearningHoldState: observation.selfLearningHold.state
     },
     id: "delivery-safety",
-    reasonCodes: [...new Set([...failed, ...unverified])],
+    reasonCodes: result.reasonCodes,
     required: true,
-    status: gateStatus(failed, unverified)
+    status: result.status
   };
 }
 

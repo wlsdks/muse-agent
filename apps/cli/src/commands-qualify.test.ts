@@ -67,6 +67,7 @@ function observations(runtime: PersonalAgentQualificationObservations["runtime"]
       environmentProbe: "ok",
       followups: { overdue: 0, scheduled: 0, status: "ok" },
       localOnly: true,
+      pendingDrafts: { count: 0, status: "ok" },
       providerLockDecision: {
         allowedProviderIds: ["log"],
         mismatchReason: null,

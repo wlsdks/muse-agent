@@ -9,6 +9,7 @@ export { createCheckpointContinuityEvidence } from "./checkpoint-v3.js";
 export * from "./resident-daemon-status.js";
 export * from "./resident-daemon-terminal-state.js";
 export * from "./resident-daemon-restart-state.js";
+export * from "./delivery-safety.js";
 
 export type Awaitable<T> = T | Promise<T>;
 

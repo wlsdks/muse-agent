@@ -418,6 +418,7 @@ export async function collectPersonalAgentQualificationObservations(
       environmentProbe,
       followups,
       localOnly: isLocalOnlyEnabled(effectiveRuntimeEnv),
+      pendingDrafts: { count: 0, status: "unverified" },
       providerLockDecision,
       providerLockLog,
       providerResolutionSource,

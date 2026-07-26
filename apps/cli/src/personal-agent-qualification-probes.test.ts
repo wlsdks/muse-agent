@@ -368,9 +368,17 @@ describe("git source probe", () => {
 describe("qualification collector integration", () => {
   it("binds qualification input freshness to the shared restart receipt", async () => {
     const fixture = qualificationFixture();
-    const before = qualifyPersonalAgent(
-      await collectPersonalAgentQualificationObservations(fixture.options, fixture.dependencies)
+    const beforeObservation = await collectPersonalAgentQualificationObservations(
+      fixture.options,
+      fixture.dependencies
     );
+    const before = qualifyPersonalAgent({
+      ...beforeObservation,
+      delivery: {
+        ...beforeObservation.delivery,
+        pendingDrafts: { count: 0, status: "ok" }
+      }
+    });
     const restartFile = join(fixture.root, ".muse", "resident-daemon-restart-state.json");
     const receipt = parseResidentDaemonRestartStateReceipt(readFileSync(restartFile, "utf8"));
     expect(receipt).toBeDefined();
@@ -379,9 +387,17 @@ describe("qualification collector integration", () => {
       now: new Date("2026-07-21T11:59:30.000Z")
     });
     writeFileSync(restartFile, JSON.stringify(refreshed), { mode: 0o600 });
-    const after = qualifyPersonalAgent(
-      await collectPersonalAgentQualificationObservations(fixture.options, fixture.dependencies)
+    const afterObservation = await collectPersonalAgentQualificationObservations(
+      fixture.options,
+      fixture.dependencies
     );
+    const after = qualifyPersonalAgent({
+      ...afterObservation,
+      delivery: {
+        ...afterObservation.delivery,
+        pendingDrafts: { count: 0, status: "ok" }
+      }
+    });
 
     expect(after.status).toBe("qualified");
     expect(after.provenance.inputHash).not.toBe(before.provenance.inputHash);
@@ -399,7 +415,13 @@ describe("qualification collector integration", () => {
     const fixture = qualificationFixture();
     const before = exactFixtureManifest(fixture.root);
     const observations = await collectPersonalAgentQualificationObservations(fixture.options, fixture.dependencies);
-    const report = qualifyPersonalAgent(observations);
+    const report = qualifyPersonalAgent({
+      ...observations,
+      delivery: {
+        ...observations.delivery,
+        pendingDrafts: { count: 0, status: "ok" }
+      }
+    });
     expect(report.status, JSON.stringify(report)).toBe("qualified");
     expect(report.gates.map((gate) => gate.status)).toEqual(["passed", "passed", "passed"]);
     expect(JSON.stringify(report)).not.toMatch(/stable-muse-entry|PRIVATE|4321|muse-qualify-fixture/iu);
@@ -408,9 +430,17 @@ describe("qualification collector integration", () => {
 
   it("keeps the host home only as a heartbeat-path fallback when launchctl omits it", async () => {
     const fixture = qualificationFixture({ omitLiveHome: true });
-    const report = qualifyPersonalAgent(
-      await collectPersonalAgentQualificationObservations(fixture.options, fixture.dependencies)
+    const observation = await collectPersonalAgentQualificationObservations(
+      fixture.options,
+      fixture.dependencies
     );
+    const report = qualifyPersonalAgent({
+      ...observation,
+      delivery: {
+        ...observation.delivery,
+        pendingDrafts: { count: 0, status: "ok" }
+      }
+    });
 
     expect(report.status, JSON.stringify(report)).toBe("qualified");
     expect(report.gates[1].evidence.heartbeatState).toBe("fresh");
@@ -419,14 +449,40 @@ describe("qualification collector integration", () => {
 
   it("uses the shared fail-close brake decision for malformed resident delivery state", async () => {
     const fixture = qualificationFixture({ deliveryEnabledValue: "sometimes" });
-    const report = qualifyPersonalAgent(
-      await collectPersonalAgentQualificationObservations(fixture.options, fixture.dependencies)
+    const observation = await collectPersonalAgentQualificationObservations(
+      fixture.options,
+      fixture.dependencies
     );
+    const report = qualifyPersonalAgent({
+      ...observation,
+      delivery: {
+        ...observation.delivery,
+        pendingDrafts: { count: 0, status: "ok" }
+      }
+    });
 
     expect(report.status).toBe("unverified");
     expect(report.gates[2]).toMatchObject({
       evidence: { deliveryBrakeEngaged: true },
       reasonCodes: ["delivery-brake-engaged"],
+      status: "unverified"
+    });
+  });
+
+  it("fails closed when pending-draft evidence has not been collected", async () => {
+    const fixture = qualificationFixture();
+    const observation = await collectPersonalAgentQualificationObservations(
+      fixture.options,
+      fixture.dependencies
+    );
+    const report = qualifyPersonalAgent(observation);
+
+    expect(report.gates[2]).toMatchObject({
+      evidence: {
+        pendingDraftCount: 0,
+        pendingDraftObservation: "unverified"
+      },
+      reasonCodes: ["pending-drafts-unverified"],
       status: "unverified"
     });
   });

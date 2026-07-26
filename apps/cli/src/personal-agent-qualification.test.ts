@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { baselinePolicy, computeContinuityEvaluation, type AttunementState, type ContinuityEvidenceClass } from "@muse/attunement";
 import {
+  classifyDeliverySafety,
   classifyResidentDaemonHealth,
   type ResidentDaemonObservation,
   type ResidentDaemonHealthResult,
@@ -117,6 +118,7 @@ function passingObservations(): PersonalAgentQualificationObservations {
       environmentProbe: "ok",
       followups: { overdue: 0, scheduled: 0, status: "ok" },
       localOnly: true,
+      pendingDrafts: { count: 0, status: "ok" },
       providerLockDecision: {
         allowedProviderIds: ["log"],
         mismatchReason: null,
@@ -506,6 +508,42 @@ describe("personal-agent qualification scorer", () => {
       status: "unverified"
     });
     expect(report.gates[2].evidence.overdueFollowups).toBe(26);
+  });
+
+  it("uses the canonical delivery classifier status and reasons without a second decision layer", () => {
+    const base = passingObservations();
+    const canonicalObservation = {
+      baseProviderLocal: false,
+      deliveryBrake: "released",
+      environmentProbe: "ok",
+      followups: { overdue: 2, scheduled: 2, status: "ok" },
+      localOnlyEffective: true,
+      localOnlyPersisted: true,
+      pendingDrafts: { count: 3, status: "ok" },
+      providerLock: { localOnly: true, mismatch: false, observation: "verified" },
+      reminders: { overdue: 0, scheduled: 1, status: "ok" },
+      selfLearnDisabled: true,
+      selfLearningHold: "engaged"
+    } as const;
+    const canonical = classifyDeliverySafety(canonicalObservation);
+    const gate = qualifyPersonalAgent({
+      ...base,
+      delivery: {
+        ...base.delivery,
+        baseProviderLocalLog: canonicalObservation.baseProviderLocal,
+        followups: canonicalObservation.followups,
+        pendingDrafts: canonicalObservation.pendingDrafts,
+        reminders: canonicalObservation.reminders
+      }
+    }).gates[2];
+
+    expect({
+      reasonCodes: gate.reasonCodes,
+      status: gate.status
+    }).toEqual({
+      reasonCodes: canonical.reasonCodes,
+      status: canonical.status
+    });
   });
 
   it("fails an explicit provider-lock adapter mismatch even while the brake is engaged", () => {
