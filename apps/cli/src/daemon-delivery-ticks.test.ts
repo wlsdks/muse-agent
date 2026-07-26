@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -9,7 +9,7 @@ import { readCheckins, writeCheckins } from "@muse/proactivity";
 import { addObjective, readFollowups, setSchedulerPaused, writeFollowups } from "@muse/stores";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { makeBriefingTick, makeCheckinsTick, makeDailyBriefTick, makeFollowupTick, makeSchedulerTick } from "./daemon-delivery-ticks.js";
+import { makeBriefingTick, makeCheckinsTick, makeDailyBriefTick, makeFollowupTick, makePatternTick, makeSchedulerTick } from "./daemon-delivery-ticks.js";
 import type { MakeDailyBriefTickDeps } from "./daemon-delivery-ticks.js";
 import type { SchedulerJobOutcome } from "./scheduler-job-runner.js";
 
@@ -189,6 +189,55 @@ describe("makeCheckinsTick", () => {
     await tick();
     expect(await readOutboundEffects(effectFile)).toHaveLength(1);
     expect((await readCheckins(checkinsFile))[0]!.status).toBe("fired");
+  });
+});
+
+describe("makePatternTick", () => {
+  it("forwards the canonical effect ledger for one accepted natural slot", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-cli-pattern-tick-"));
+    const notesDir = join(dir, "notes");
+    const patternsFiredFile = join(dir, "patterns-fired.json");
+    const effectFile = join(dir, "outbound-effects.json");
+    const now = new Date();
+    mkdirSync(join(notesDir, "journal"), { recursive: true });
+    for (let k = 1; k <= 5; k += 1) {
+      const file = join(notesDir, "journal", `entry-${k.toString()}.md`);
+      writeFileSync(file, `journal ${k.toString()}`, "utf8");
+      const when = new Date(now.getTime() - k * 7 * 86_400_000);
+      utimesSync(file, when, when);
+    }
+    const registry = new MessagingProviderRegistry([{
+      describe: () => ({ description: "test", displayName: "Test", id: "telegram" }),
+      id: "telegram",
+      send: async (message) => ({
+        destination: message.destination,
+        messageId: "cli-pattern-accepted",
+        providerId: "telegram"
+      })
+    }]);
+    const tick = makePatternTick({
+      destination: "@owner",
+      effectFile,
+      env: {
+        MUSE_NOTES_DIR: notesDir,
+        MUSE_PATTERNS_FIRED_FILE: patternsFiredFile
+      },
+      followupModel: undefined,
+      interruptionBudget: {
+        dailyCap: 5,
+        digestFile: join(dir, "digest.json"),
+        hourlyCap: 5,
+        ledgerFile: join(dir, "interruption-ledger.json")
+      },
+      messagingRegistry: registry,
+      provider: "telegram",
+      quietHours: undefined,
+      signals: { notesDir },
+      stdout: () => undefined
+    });
+
+    await tick(() => true);
+    expect(await readOutboundEffects(effectFile)).toHaveLength(1);
   });
 });
 

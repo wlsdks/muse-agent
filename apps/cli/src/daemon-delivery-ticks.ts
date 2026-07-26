@@ -35,7 +35,7 @@ import {
 } from "@muse/autoconfigure";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { runDueSituationalBriefing } from "@muse/domain-tools";
-import { buildReconfirmCard, FileUserMemoryStore, reviveUserModelSlotDates, selectReconfirmableSlots, type PatternMatch, type UserMemoryStore } from "@muse/memory";
+import { buildReconfirmCard, FileUserMemoryStore, reviveUserModelSlotDates, selectReconfirmableSlots, type AggregateActivitySignalsOptions, type PatternMatch, type UserMemoryStore } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import {
   deriveBriefingImminent,
@@ -490,15 +490,18 @@ export interface MakePatternTickDeps {
   readonly env: NodeJS.ProcessEnv;
   readonly quietHours: QuietHoursOption | undefined;
   readonly destination: string;
+  readonly effectFile: string;
   readonly interruptionBudget: InterruptionBudgetWiring;
   readonly messagingRegistry: MessagingProviderRegistry;
   readonly provider: string;
   readonly followupModel: FollowupModel | undefined;
+  /** Test seam for deterministic local activity inventory. */
+  readonly signals?: AggregateActivitySignalsOptions;
   readonly stdout: (message: string) => void;
 }
 
 export function makePatternTick(deps: MakePatternTickDeps): GovernedDaemonTick {
-  const { env: e, quietHours, destination, interruptionBudget, messagingRegistry, provider, followupModel, stdout } = deps;
+  const { env: e, quietHours, destination, effectFile, interruptionBudget, messagingRegistry, provider, followupModel, signals, stdout } = deps;
   return async (claim): ReturnType<GovernedDaemonTick> => {
     const activeQuietHours = resolveQuietHoursOption(quietHours);
     if (activeQuietHours && isQuietHour(new Date().getHours(), activeQuietHours)) {
@@ -521,11 +524,13 @@ export function makePatternTick(deps: MakePatternTickDeps): GovernedDaemonTick {
     try {
       const summary = await runDuePatternNotices({
         destination,
+        effectFile,
         interruptionBudget,
         patternsFiredFile: resolvePatternsFiredFile(e),
         ...(minConfidence !== undefined ? { select: { minConfidence } } : {}),
         providerId: provider,
         registry: messagingRegistry,
+        ...(signals ? { signals } : {}),
         ...(followupModel
           ? {
               composeSuggestion: (match: PatternMatch): Promise<string | undefined> =>

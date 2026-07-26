@@ -26,6 +26,8 @@ import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./r
 export interface PatternTickOptions {
   readonly registry: MessagingProviderRegistry;
   readonly patternsFiredFile: string;
+  /** Canonical outbound-effect ledger. Production wiring always supplies it. */
+  readonly effectFile?: string;
   readonly providerId: string;
   readonly destination: string;
   /** Forwarded to `aggregateActivitySignals` — overrides the three source paths. */
@@ -72,6 +74,7 @@ export function startPatternTick(options: PatternTickOptions): PatternTickHandle
     try {
       const summary = await runDuePatternNotices({
         destination: options.destination,
+        effectFile: options.effectFile,
         now,
         patternsFiredFile: options.patternsFiredFile,
         providerId: options.providerId,
@@ -124,4 +127,3 @@ function clampInterval(raw: number): number {
   if (!Number.isFinite(raw)) return DEFAULT_INTERVAL_MS;
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
-

@@ -2135,6 +2135,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
 
       const buildPatternTick = (): ReturnType<typeof makePatternTick> => makePatternTick({
         destination,
+        effectFile: join(dirname(resolveActionLogFile(e)), "outbound-effects.json"),
         env: e,
         followupModel,
         interruptionBudget,

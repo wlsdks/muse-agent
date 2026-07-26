@@ -3,21 +3,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderError, MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
+import { readPatternsFired } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runDuePatternNotices } from "../src/pattern-firing-loop.js";
 
-// Fails transiently (retryable 503) on its first N sends, then succeeds —
-// proving the pattern notice retries inline instead of waiting a whole
-// daemon tick (or being dropped).
-function flakyProvider(failures: number, sent: OutboundMessage[]): MessagingProvider {
-  let calls = 0;
+// A transient-looking provider failure is still delivery-ambiguous. Durable
+// slot dispatch therefore makes one call and seals unknown instead of risking
+// an inline duplicate.
+function flakyProvider(failures: number, sent: OutboundMessage[], counts: { calls: number }): MessagingProvider {
   return {
     describe: () => ({ description: "t", displayName: "T", id: "telegram" }),
     id: "telegram",
     async send(message: OutboundMessage): Promise<OutboundReceipt> {
-      calls += 1;
-      if (calls <= failures) {
+      counts.calls += 1;
+      if (counts.calls <= failures) {
         throw new MessagingProviderError("telegram", "UPSTREAM_FAILED", "transient 503", 503);
       }
       sent.push(message);
@@ -49,20 +49,23 @@ afterEach(async () => {
   await rm(dir, { force: true, recursive: true });
 });
 
-describe("runDuePatternNotices — proactive pattern notice survives a transient messaging blip (P19)", () => {
-  it("a fireable pattern whose send 503s once is still delivered and recorded fired", async () => {
+describe("runDuePatternNotices — transient messaging failures are delivery-ambiguous", () => {
+  it("a fireable pattern whose send 503s is attempted once, sealed unknown, and not cooled down", async () => {
     const sent: OutboundMessage[] = [];
+    const counts = { calls: 0 };
     const summary = await runDuePatternNotices({
       destination: "555",
       now: () => NOW,
       patternsFiredFile,
       providerId: "telegram",
-      registry: new MessagingProviderRegistry([flakyProvider(1, sent)]), // first send 503s, retry succeeds
+      registry: new MessagingProviderRegistry([flakyProvider(1, sent, counts)]),
       signals: { notesDir, now: () => NOW.getTime() }
     });
     expect(summary.fireable).toBeGreaterThan(0);
-    expect(summary.delivered).toBe(1);
-    expect(summary.errors).toEqual([]);
-    expect(sent).toHaveLength(1);
+    expect(summary.delivered).toBe(0);
+    expect(summary.errors.join("\n")).toContain("delivery is unknown");
+    expect(counts.calls).toBe(1);
+    expect(sent).toHaveLength(0);
+    expect(await readPatternsFired(patternsFiredFile)).toEqual([]);
   });
 });

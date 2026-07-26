@@ -25,6 +25,8 @@
  * dogfooded.
  */
 
+import { dirname, join } from "node:path";
+
 import {
   aggregateActivitySignals,
   selectFireablePatterns,
@@ -32,11 +34,16 @@ import {
   type PatternMatch,
   type SelectFireablePatternsOptions
 } from "@muse/memory";
-import type { MessagingProviderRegistry } from "@muse/messaging";
-import { errorMessage } from "@muse/shared";
+import {
+  dispatchDurableEffectOnce,
+  dispatchOutboundEffectOnce,
+  readOutboundEffect,
+  type MessagingProviderRegistry,
+  type OutboundEffectView
+} from "@muse/messaging";
+import { errorMessage, redactSecretsInText, sha256Hex } from "@muse/shared";
 
-import { sendWithRetry } from "@muse/mcp-shared";
-import { avoidedSourceKeys, isPatternDismissed, isPatternOnCooldown, readPatternsFired, readTrustLedger, recordPatternFired, withProcessLock } from "@muse/stores";
+import { avoidedSourceKeys, isPatternDismissed, isPatternOnCooldown, readPatternsFired, readTrustLedger, recordPatternFired, withRequiredProcessLock } from "@muse/stores";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import { neutralizeProactivityDeliveryText } from "./delivery-text.js";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
@@ -44,9 +51,11 @@ import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js"
 export interface RunDuePatternNoticesOptions {
   /** Where to read the cooldown sidecar from. Required. */
   readonly patternsFiredFile: string;
-  readonly registry: MessagingProviderRegistry;
+  readonly registry: Pick<MessagingProviderRegistry, "has" | "send">;
   readonly providerId: string;
   readonly destination: string;
+  /** Canonical outbound-effect ledger. Production callers place it beside the action log. */
+  readonly effectFile?: string;
   /** Forwarded to `aggregateActivitySignals`. Defaults documented there. */
   readonly signals?: AggregateActivitySignalsOptions;
   /** Forwarded to `selectFireablePatterns`. Default cooldown 24h, min-confidence 0.7. */
@@ -83,12 +92,12 @@ export interface RunDuePatternNoticesSummary {
   readonly fired: readonly PatternMatch[];
   /** Set only when another daemon held the firing lock for this tick — no
    *  read, send, or mark was attempted at all. Absent on every other path. */
-  readonly outcome?: "lock-held";
+  readonly outcome?: "lock-held" | "lock-error";
 }
 
 /**
  * Fire due pattern notices. The whole select→send→mark section runs under
- * the cross-process `withProcessLock` (`${options.patternsFiredFile}.firing.lock`,
+ * the cross-process `withRequiredProcessLock` (`${options.patternsFiredFile}.firing.lock`,
  * the same generalized lock the reminder/followup/checkin/objective ticks use —
  * `@muse/stores/digest-lock.ts`) because the api daemon's tick
  * (`apps/api/src/pattern-tick.ts`) and the CLI daemon's tick
@@ -97,22 +106,43 @@ export interface RunDuePatternNoticesSummary {
  * without a real lock both daemons can read the same match as un-fired and both
  * deliver it before either records the cooldown. A LIVE held lock returns
  * `outcome: "lock-held"` immediately with no send attempted; a broken lock
- * (non-contention fs error) fails OPEN — the tick still runs unlocked rather
- * than silently skipping pattern notices.
+ * fails CLOSED because an unlocked external send could duplicate delivery.
  */
 export async function runDuePatternNotices(options: RunDuePatternNoticesOptions): Promise<RunDuePatternNoticesSummary> {
-  const lockPath = `${options.patternsFiredFile}.firing.lock`;
-  const lockOutcome = await withProcessLock(lockPath, () => runDuePatternNoticesUnderLock(options));
+  const has = options.registry.has;
+  const send = options.registry.send;
+  const publish = options.agentInitiatedNoticeBroker?.publish;
+  const stable = {
+    ...options,
+    destination: options.destination,
+    effectFile: options.effectFile ?? join(dirname(options.patternsFiredFile), "outbound-effects.json"),
+    now: options.now ?? (() => new Date()),
+    patternsFiredFile: options.patternsFiredFile,
+    providerId: options.providerId,
+    registry: {
+      has: typeof has === "function" ? has.bind(options.registry) : () => false,
+      send: typeof send === "function"
+        ? send.bind(options.registry)
+        : async () => { throw new Error("messaging registry send is unavailable"); }
+    },
+    ...(options.select ? { select: { ...options.select } } : {}),
+    ...(options.signals ? { signals: { ...options.signals } } : {}),
+    ...(publish
+      ? { agentInitiatedNoticeBroker: { publish: publish.bind(options.agentInitiatedNoticeBroker) } }
+      : {})
+  } as const;
+  const lockPath = `${stable.patternsFiredFile}.firing.lock`;
+  const lockOutcome = await withRequiredProcessLock(lockPath, () => runDuePatternNoticesUnderLock(stable));
   if (lockOutcome.kind === "lock-held") {
     return { delivered: 0, errors: [], fireable: 0, fired: [], outcome: "lock-held" };
   }
-  if (lockOutcome.lockError !== undefined) {
-    // Fail-open on a BROKEN lock (not contention): the tick still ran,
-    // unlocked, so this degrades to the pre-lock duplicate-delivery risk
-    // rather than silencing pattern notices.
+  if (lockOutcome.kind === "lock-error") {
     return {
-      ...lockOutcome.value,
-      errors: [`pattern-tick: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors]
+      delivered: 0,
+      errors: [`pattern-tick: lock acquisition failed: ${lockOutcome.error}`],
+      fireable: 0,
+      fired: [],
+      outcome: "lock-error"
     };
   }
   return lockOutcome.value;
@@ -120,12 +150,13 @@ export async function runDuePatternNotices(options: RunDuePatternNoticesOptions)
 
 async function runDuePatternNoticesUnderLock(options: RunDuePatternNoticesOptions): Promise<RunDuePatternNoticesSummary> {
   const now = options.now ?? (() => new Date());
+  const at = now();
   const signals = await aggregateActivitySignals({
-    now: () => now().getTime(),
-    ...(options.signals ?? {})
+    ...(options.signals ?? {}),
+    now: () => at.getTime()
   });
   const firedRecords = await readPatternsFired(options.patternsFiredFile);
-  const fireable = selectFireablePatterns(now(), signals, firedRecords, options.select ?? {});
+  const fireable = selectFireablePatterns(at, signals, firedRecords, options.select ?? {});
 
   if (fireable.length === 0) {
     return { delivered: 0, errors: [], fireable: 0, fired: [] };
@@ -154,51 +185,118 @@ async function runDuePatternNoticesUnderLock(options: RunDuePatternNoticesOption
     if (isPatternDismissed(firedRecords, match.id)) {
       continue;
     }
-    if (isPatternOnCooldown(firedRecords, match.id, now().getTime(), cooldownMs)) {
+    if (isPatternOnCooldown(firedRecords, match.id, at.getTime(), cooldownMs)) {
+      continue;
+    }
+    const effectId = patternNaturalSlotEffectId(match, at);
+    if (
+      options.providerId.trim().length === 0
+      || options.providerId !== options.providerId.trim()
+      || options.destination.trim().length === 0
+      || options.destination !== options.destination.trim()
+    ) {
+      errors.push(`${match.id}: delivery route is unavailable or invalid`);
       continue;
     }
     try {
-      // Composed (LLM) suggestion when a composer is supplied; else the
-      // detector's verbatim text. Composition is fail-soft (undefined →
-      // fallback) so a model glitch never drops the suggestion.
-      let text = match.suggestion;
-      if (options.composeSuggestion) {
-        const composed = await options.composeSuggestion(match).catch(() => undefined);
-        if (composed && composed.trim().length > 0) text = composed.trim();
+      const existing = await readOutboundEffect(options.effectFile!, effectId);
+      if (
+        existing
+        && (
+          existing.binding.providerId !== options.providerId
+          || existing.binding.destination !== options.destination
+        )
+      ) {
+        throw new Error(`outbound effect ${effectId} route binding conflicts with the current pattern slot`);
       }
-      const deliveryText = neutralizeProactivityDeliveryText(text);
-      const deliver = (): Promise<void> => sendWithRetry(options.registry, options.providerId, {
-        destination: options.destination,
-        text: deliveryText
-      }).then(() => undefined);
+      let effect: OutboundEffectView | undefined;
+      let deliveryText: string | undefined;
+      let text: string | undefined;
       let outcome: "delivered" | "digested" | "skipped" = "delivered";
-      if (options.interruptionBudget) {
-        const budget = options.interruptionBudget;
-        const result = await applyInterruptionBudget({
-          avoidedSources,
-          caps: resolveInterruptionBudgetCaps(budget),
-          deliver,
-          digestFile: budget.digestFile,
-          errorLogger: (message) => errors.push(`${match.id}: ${message}`),
-          ...(budget.lastDeliveryFile ? { lastDeliveryFile: budget.lastDeliveryFile } : {}),
-          ledgerFile: budget.ledgerFile,
-          now: now(),
-          source: "pattern-firing",
-          sourceId: match.id,
-          sourceKey: `pattern-firing:${match.id}`,
-          text,
-          title: text
+      let newSlot = false;
+      if (!existing) {
+        text = match.suggestion;
+        if (options.composeSuggestion) {
+          const composed = await options.composeSuggestion(match).catch(() => undefined);
+          if (composed && composed.trim().length > 0) text = composed.trim();
+        }
+        deliveryText = neutralizeProactivityDeliveryText(text);
+        const deliver = async (): Promise<void> => {
+          if (!options.registry.has(options.providerId)) {
+            throw new Error("delivery route is unavailable or invalid");
+          }
+          effect = await dispatchOutboundEffectOnce({
+            destination: options.destination,
+            effectFile: options.effectFile!,
+            effectId,
+            now,
+            providerId: options.providerId,
+            registry: options.registry,
+            text: deliveryText!
+          });
+          if (effect.state !== "accepted" && effect.state !== "reconciled-accepted") {
+            throw new Error(patternEffectBlockedMessage(match.id, effect));
+          }
+        };
+        if (options.interruptionBudget) {
+          const budget = options.interruptionBudget;
+          const result = await applyInterruptionBudget({
+            avoidedSources,
+            caps: resolveInterruptionBudgetCaps(budget),
+            deliver,
+            digestFile: budget.digestFile,
+            errorLogger: (message) => errors.push(`${match.id}: ${message}`),
+            ...(budget.lastDeliveryFile ? { lastDeliveryFile: budget.lastDeliveryFile } : {}),
+            ledgerFile: budget.ledgerFile,
+            now: at,
+            source: "pattern-firing",
+            sourceId: match.id,
+            sourceKey: `pattern-firing:${match.id}`,
+            text,
+            title: text
+          });
+          outcome = result.outcome;
+        } else {
+          await deliver();
+        }
+        newSlot = true;
+      } else if (existing.state === "prepared") {
+        effect = await dispatchDurableEffectOnce({
+          destination: existing.binding.destination,
+          dispatch: async () => {
+            throw new Error("prepared pattern replay must never dispatch");
+          },
+          effectFile: options.effectFile!,
+          effectId,
+          now,
+          payloadHash: existing.binding.payloadHash,
+          providerId: existing.binding.providerId
         });
-        outcome = result.outcome;
       } else {
-        await deliver();
+        effect = existing;
+      }
+      if (effect && effect.state !== "accepted" && effect.state !== "reconciled-accepted") {
+        if (effect.state !== "reconciled-not-delivered") {
+          errors.push(patternEffectBlockedMessage(match.id, effect));
+          continue;
+        }
+        outcome = "skipped";
       }
       // The cooldown sidecar advances whether the suggestion was sent or
       // suppressed to the digest — a suppressed match must not re-offer
       // itself next tick just because it never actually reached the user.
-      await recordPatternFired(options.patternsFiredFile, match.id, now().getTime());
+      const receipt = effect?.receipt;
+      if (
+        effect
+        && (effect.state === "accepted" || effect.state === "reconciled-accepted")
+        && !receipt
+      ) {
+        throw new Error(`accepted outbound effect ${effectId} has no durable receipt`);
+      }
+      const firedAtMs = receipt ? Date.parse(receipt.receivedAt) : at.getTime();
+      await recordPatternFired(options.patternsFiredFile, match.id, firedAtMs);
       fired.push(match);
-      if (outcome === "delivered") {
+      if (outcome === "delivered" && effect?.state !== "reconciled-not-delivered") {
         delivered += 1;
       }
       // The broker feeds an already-open live stream (an engaged user watching
@@ -207,10 +305,16 @@ async function runDuePatternNoticesUnderLock(options: RunDuePatternNoticesOption
       // visibility too would defeat the point of the live feed). A VETO is
       // different: the user explicitly said "stop these", a stronger signal
       // than the frequency budget, so it silences the live stream too.
-      if (outcome !== "skipped" && options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
+      if (
+        newSlot
+        && outcome !== "skipped"
+        && deliveryText
+        && options.agentInitiatedNoticeBroker
+        && options.agentInitiatedNoticeUserId
+      ) {
         try {
           options.agentInitiatedNoticeBroker.publish(options.agentInitiatedNoticeUserId, {
-            generatedAt: now().toISOString(),
+            generatedAt: at.toISOString(),
             kind: "pattern",
             sourceId: match.id,
             text: deliveryText
@@ -220,9 +324,47 @@ async function runDuePatternNoticesUnderLock(options: RunDuePatternNoticesOption
         }
       }
     } catch (cause) {
-      errors.push(`${match.id}: ${errorMessage(cause)}`);
+      const message = redactSecretsInText(errorMessage(cause));
+      errors.push(message.startsWith(`${match.id}: `) ? message : `${match.id}: ${message}`);
     }
   }
 
   return { delivered, errors, fireable: fireable.length, fired };
+}
+
+export function patternNaturalSlotEffectId(match: PatternMatch, now: Date): string {
+  const slot = match.category === "time-of-day-action"
+    ? [match.id, match.category, localDateKey(now), match.bucket.hourBand]
+    : [match.id, match.category, isoWeekKey(now)];
+  return `pattern:${sha256Hex(JSON.stringify(slot))}`;
+}
+
+function localDateKey(date: Date): string {
+  return [
+    date.getFullYear().toString().padStart(4, "0"),
+    (date.getMonth() + 1).toString().padStart(2, "0"),
+    date.getDate().toString().padStart(2, "0")
+  ].join("-");
+}
+
+function isoWeekKey(date: Date): string {
+  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const isoDay = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - isoDay);
+  const isoYear = target.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const week = Math.ceil((((target.getTime() - yearStart.getTime()) / 86_400_000) + 1) / 7);
+  return `${isoYear.toString().padStart(4, "0")}-W${week.toString().padStart(2, "0")}`;
+}
+
+function patternEffectBlockedMessage(patternId: string, effect: OutboundEffectView): string {
+  const effectId = effect.binding.effectId;
+  if (effect.state === "unknown") {
+    const detail = effect.unknownDetail ? ` (${redactSecretsInText(effect.unknownDetail).slice(0, 500)})` : "";
+    return `${patternId}: delivery is unknown for effect ${effectId}${detail}; reconcile manually with muse messaging effects reconcile and do not retry this slot`;
+  }
+  if (effect.state === "reconciled-not-delivered") {
+    return `${patternId}: effect ${effectId} was reconciled as not delivered; the current natural slot is sealed`;
+  }
+  return `${patternId}: outbound effect ${effectId} is safely blocked in state ${effect.state}`;
 }

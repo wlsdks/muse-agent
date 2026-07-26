@@ -139,6 +139,7 @@ describe("runDuePatternNotices — interruption budget (opt-in)", () => {
     const discoverySent: OutboundMessage[] = [];
     const discovery = await runDuePatternNotices({
       destination: "555",
+      effectFile: join(dir, "discovery2-effects.json"),
       now: () => NOW,
       patternsFiredFile: join(dir, "discovery2-patterns-fired.json"),
       providerId: "telegram",
@@ -194,6 +195,7 @@ describe("runDuePatternNotices — interruption budget (opt-in)", () => {
     const discoverySent: OutboundMessage[] = [];
     const discovery = await runDuePatternNotices({
       destination: "555",
+      effectFile: join(dir, "discovery-effects.json"),
       now: () => NOW,
       patternsFiredFile: join(dir, "discovery-patterns-fired.json"),
       providerId: "telegram",

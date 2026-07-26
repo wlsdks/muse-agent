@@ -528,6 +528,10 @@ export function startPatternDaemonIfConfigured(
   const patternQuietHours = liveQuietHours(env, server, env.MUSE_PROACTIVE_PATTERN_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const patternHandle = startPatternTick({
     destination: patternDestination,
+    effectFile: join(
+      dirname(options.actionLogFile ?? resolveActionLogFile(env)),
+      "outbound-effects.json"
+    ),
     errorLogger: (message) => server.log.warn(message),
     interruptionBudget: resolveInterruptionBudgetWiring(env),
     logger: (message) => server.log.info(message),

@@ -11,6 +11,7 @@ interface MessageSent { readonly providerId: string; readonly destination: strin
 
 function fakeRegistry(sent: MessageSent[]): MessagingProviderRegistry {
   return {
+    has: (providerId: string) => providerId === "telegram",
     send: async (providerId: string, message: { destination: string; text: string }) => {
       sent.push({ destination: message.destination, providerId, text: message.text });
       return { destination: message.destination, messageId: "stub", providerId };

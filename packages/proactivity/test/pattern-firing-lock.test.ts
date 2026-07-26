@@ -124,7 +124,7 @@ describe("runDuePatternNotices — cross-process firing lock (two daemons, same 
     expect(await lockFileExists()).toBe(false);
   });
 
-  it("releases the lock after a provider-failure tick — the next tick can retry rather than being permanently blocked", async () => {
+  it("releases the lock after an uncertain provider attempt but never retries the same natural-slot effect", async () => {
     const failing = await runDuePatternNotices({
       destination: "555",
       now: () => NOW,
@@ -146,8 +146,29 @@ describe("runDuePatternNotices — cross-process firing lock (two daemons, same 
       registry: new MessagingProviderRegistry([capturingProvider(sent)]),
       signals: { notesDir, now: () => NOW.getTime() }
     });
-    expect(retry.delivered).toBe(1);
-    expect(sent).toHaveLength(1);
+    expect(retry.delivered).toBe(0);
+    expect(retry.errors.join("\n")).toContain("delivery is unknown");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("fails closed when the required firing lock cannot be created", async () => {
+    const blockingParent = join(dir, "not-a-directory");
+    await writeFile(blockingParent, "file", "utf8");
+    patternsFiredFile = join(blockingParent, "patterns-fired.json");
+    const sent: OutboundMessage[] = [];
+
+    const summary = await runDuePatternNotices({
+      destination: "555",
+      now: () => NOW,
+      patternsFiredFile,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      signals: { notesDir, now: () => NOW.getTime() }
+    });
+
+    expect(summary.outcome).toBe("lock-error");
+    expect(summary.fireable).toBe(0);
+    expect(sent).toEqual([]);
   });
 
   it("a STALE lock left behind by a crashed daemon does not permanently block firing — the tick proceeds", async () => {
