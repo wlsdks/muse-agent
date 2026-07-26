@@ -65,6 +65,9 @@ describe("muse propose — review + confirm proposed actions (draft-first)", () 
 
     expect(res.stdout).toContain(proposal.id);
     expect(res.stdout).toContain("Tell Sam standup moves to 10am");
+    expect(res.stdout).toContain("exact payload: Heads up — standup moves to 10am tomorrow.");
+    expect(res.stdout).toContain(`payload hash: ${proposal.payloadHash}`);
+    expect(res.stdout).toContain(`expires: ${proposal.expiresAt}`);
     expect(sent).toHaveLength(0);
   });
 
@@ -74,7 +77,7 @@ describe("muse propose — review + confirm proposed actions (draft-first)", () 
     const sent: OutboundMessage[] = [];
     const registry = new MessagingProviderRegistry([capturing(sent)]);
 
-    const res = await run(["approve", proposal.id], { env: e, registry });
+    const res = await run(["approve", proposal.id, "--payload-hash", proposal.payloadHash], { env: e, registry });
 
     expect(res.exitCode).toBeUndefined();
     expect(res.stdout).toContain("Sent.");
@@ -83,9 +86,31 @@ describe("muse propose — review + confirm proposed actions (draft-first)", () 
     expect((await readProposedActions(e.MUSE_PROPOSED_ACTIONS_FILE!))[0]!.status).toBe("executed");
 
     // re-approve is a no-op (replay guard)
-    const again = await run(["approve", proposal.id], { env: e, registry });
+    const again = await run(
+      ["approve", proposal.id, "--payload-hash", proposal.payloadHash],
+      { env: e, registry }
+    );
     expect(again.exitCode).toBe(1);
     expect(sent).toHaveLength(1);
+  });
+
+  it("approve requires the exact listed payload hash and otherwise sends nothing", async () => {
+    const e = env();
+    const proposal = await proposeMessageAction(e.MUSE_PROPOSED_ACTIONS_FILE!, draft);
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturing(sent)]);
+
+    const absent = await run(["approve", proposal.id], { env: e, registry });
+    expect(absent.exitCode).toBe(1);
+    expect(sent).toHaveLength(0);
+
+    const mismatched = await run(
+      ["approve", proposal.id, "--payload-hash", "0".repeat(64)],
+      { env: e, registry }
+    );
+    expect(mismatched.exitCode).toBe(1);
+    expect(mismatched.stderr).toContain("payload hash mismatch");
+    expect(sent).toHaveLength(0);
   });
 
   it("decline refuses without sending", async () => {

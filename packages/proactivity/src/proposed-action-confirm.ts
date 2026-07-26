@@ -6,7 +6,7 @@
  * appended to the reviewable action log.
  */
 
-import { appendActionLog } from "@muse/stores";
+import { appendActionLog, computeProposedActionPayloadHash } from "@muse/stores";
 import { isProposalActionable, patchProposedActionStatus, readProposedActions, withFileMutationQueue } from "@muse/stores";
 import { errorMessage } from "@muse/shared";
 
@@ -15,6 +15,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 export interface ConfirmProposedActionOptions {
   readonly file: string;
   readonly id: string;
+  readonly payloadHash: string;
   readonly registry: Pick<MessagingProviderRegistry, "send">;
   readonly actionLogFile: string;
   readonly now?: () => Date;
@@ -43,24 +44,34 @@ export async function confirmProposedAction(options: ConfirmProposedActionOption
     if (proposal.status !== "pending") {
       return { executed: false, reason: `already ${proposal.status}` };
     }
-    if (!isProposalActionable(proposal, now())) {
+    const expectedPayloadHash = computeProposedActionPayloadHash(
+      proposal.channel,
+      proposal.recipient,
+      proposal.text,
+      proposal.expiresAt
+    );
+    if (options.payloadHash !== proposal.payloadHash || proposal.payloadHash !== expectedPayloadHash) {
+      return { executed: false, reason: "payload hash mismatch" };
+    }
+    const at = now();
+    if (!isProposalActionable(proposal, at)) {
       // Past its expiry — outbound-safety: a timed-out approval never sends.
       return { executed: false, reason: "expired" };
     }
-    const whenIso = now().toISOString();
+    const whenIso = at.toISOString();
     try {
-      const receipt = await options.registry.send(proposal.providerId, {
-        destination: proposal.destination,
+      const receipt = await options.registry.send(proposal.channel, {
+        destination: proposal.recipient,
         text: proposal.text
       });
       await patchProposedActionStatus(options.file, proposal.id, "executed", whenIso);
       await appendActionLog(options.actionLogFile, {
-        detail: `confirmed proposal ${proposal.id} → ${proposal.providerId}:${proposal.destination}`,
+        detail: `confirmed proposal ${proposal.id} → ${proposal.channel}:${proposal.recipient} (${proposal.payloadHash})`,
         gateClass: "proposed_action",
         id: `act_${proposal.id}_${Date.parse(whenIso).toString(36)}`,
         result: "performed",
         userId: proposal.userId,
-        what: proposal.summary,
+        what: proposal.text,
         when: whenIso,
         why: proposal.reason
       });
@@ -69,12 +80,12 @@ export async function confirmProposedAction(options: ConfirmProposedActionOption
       const message = errorMessage(cause);
       // Leave it `pending` so the user can retry; record the failure.
       await appendActionLog(options.actionLogFile, {
-        detail: `send failed: ${message}`,
+        detail: `send failed for ${proposal.channel}:${proposal.recipient} (${proposal.payloadHash}): ${message}`,
         gateClass: "proposed_action",
         id: `act_${proposal.id}_${Date.parse(whenIso).toString(36)}`,
         result: "failed",
         userId: proposal.userId,
-        what: proposal.summary,
+        what: proposal.text,
         when: whenIso,
         why: proposal.reason
       });
@@ -112,7 +123,7 @@ export async function declineProposedAction(options: DeclineProposedActionOption
     id: `act_${proposal.id}_${Date.parse(whenIso).toString(36)}`,
     result: "refused",
     userId: proposal.userId,
-    what: proposal.summary,
+    what: proposal.text,
     when: whenIso,
     why: proposal.reason
   });

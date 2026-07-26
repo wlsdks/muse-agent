@@ -12,7 +12,7 @@
  * (tmp + fsync + rename), tolerant read, corrupt store quarantined.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
@@ -34,23 +34,38 @@ export interface ProposedAction {
   readonly summary: string;
   /** WHY this was proposed (the trigger) — carried into the action log. */
   readonly reason: string;
+  /** Provider-neutral route and exact recipient shown to the owner. */
+  readonly channel: string;
+  readonly recipient: string;
   /** The exact message draft (kind === "message"). */
-  readonly providerId: string;
-  readonly destination: string;
   readonly text: string;
+  /** Binds channel + recipient + exact text + expiry to the explicit approval step. */
+  readonly payloadHash: string;
   readonly status: ProposedActionStatus;
   /**
    * ISO timestamp after which the proposal may no longer be confirmed
    * — outbound-safety's "approval times out → the action does not
-   * happen". Absent = no expiry (back-compatible with older entries).
+   * happen". Missing expiry is invalid and therefore never actionable.
    */
-  readonly expiresAt?: string;
+  readonly expiresAt: string;
   /** ISO timestamp the proposal was executed / declined. */
   readonly resolvedAt?: string;
 }
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_DATE_MS = 8_640_000_000_000_000;
+const SHA256_RE = /^[0-9a-f]{64}$/u;
+
+export function computeProposedActionPayloadHash(
+  channel: string,
+  recipient: string,
+  text: string,
+  expiresAt: string
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ channel, expiresAt, recipient, text }), "utf8")
+    .digest("hex");
+}
 
 /**
  * A proposal is actionable only while it is still `pending` AND not yet
@@ -59,9 +74,16 @@ const MAX_DATE_MS = 8_640_000_000_000_000;
  */
 export function isProposalActionable(proposal: ProposedAction, now: Date): boolean {
   if (proposal.status !== "pending") return false;
-  if (proposal.expiresAt === undefined) return true;
   const expiry = Date.parse(proposal.expiresAt);
-  return Number.isFinite(expiry) && now.getTime() <= expiry;
+  return Number.isFinite(now.getTime())
+    && Number.isFinite(expiry)
+    && now.getTime() <= expiry
+    && proposal.payloadHash === computeProposedActionPayloadHash(
+      proposal.channel,
+      proposal.recipient,
+      proposal.text,
+      proposal.expiresAt
+    );
 }
 
 function resolveProposalTtlMs(value: number | undefined, nowMs: number): number {
@@ -84,14 +106,43 @@ function isProposedAction(value: unknown): value is ProposedAction {
     && c.kind === "message"
     && typeof c.summary === "string"
     && typeof c.reason === "string"
-    && typeof c.providerId === "string"
-    && c.providerId.trim().length > 0
-    && typeof c.destination === "string"
-    && c.destination.trim().length > 0
+    && typeof c.channel === "string"
+    && c.channel.trim().length > 0
+    && c.channel === c.channel.trim()
+    && typeof c.recipient === "string"
+    && c.recipient.trim().length > 0
+    && c.recipient === c.recipient.trim()
     && typeof c.text === "string"
+    && c.text.trim().length > 0
+    && typeof c.payloadHash === "string"
+    && SHA256_RE.test(c.payloadHash)
+    && c.payloadHash === computeProposedActionPayloadHash(c.channel, c.recipient, c.text, c.expiresAt)
     && (c.status === "pending" || c.status === "executed" || c.status === "declined")
-    && (c.expiresAt === undefined || (typeof c.expiresAt === "string" && Number.isFinite(Date.parse(c.expiresAt))))
+    && typeof c.expiresAt === "string"
+    && Number.isFinite(Date.parse(c.expiresAt))
     && (c.resolvedAt === undefined || (typeof c.resolvedAt === "string" && Number.isFinite(Date.parse(c.resolvedAt))));
+}
+
+function normalizeProposedAction(value: unknown): ProposedAction | undefined {
+  if (isProposedAction(value)) return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const legacy = value as Record<string, unknown>;
+  if (typeof legacy.providerId !== "string"
+    || typeof legacy.destination !== "string"
+    || typeof legacy.expiresAt !== "string") {
+    return undefined;
+  }
+  const normalized: Record<string, unknown> = {
+    ...legacy,
+    channel: legacy.providerId,
+    payloadHash: typeof legacy.text === "string"
+      ? computeProposedActionPayloadHash(legacy.providerId, legacy.destination, legacy.text, legacy.expiresAt)
+      : "",
+    recipient: legacy.destination
+  };
+  delete normalized.providerId;
+  delete normalized.destination;
+  return isProposedAction(normalized) ? normalized : undefined;
 }
 
 export interface ProposedActionSourceSnapshot {
@@ -105,7 +156,10 @@ export function inspectProposedActionsSource(file: string): Promise<ReadOnlySour
     if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
     const record = value as Record<string, unknown>;
     if (Object.keys(record).some((key) => key !== "proposals") || !Array.isArray(record.proposals)) return undefined;
-    const proposals = record.proposals.filter(isProposedAction);
+    const proposals = record.proposals.flatMap((entry) => {
+      const proposal = normalizeProposedAction(entry);
+      return proposal ? [proposal] : [];
+    });
     return { excludedCount: record.proposals.length - proposals.length, proposals };
   });
 }
@@ -128,12 +182,16 @@ export async function readProposedActions(file: string): Promise<ProposedAction[
     await quarantineCorruptStore(file);
     return [];
   }
-  return (parsed as { proposals: unknown[] }).proposals.flatMap((entry) =>
-    isProposedAction(entry) ? [entry] : []
-  );
+  return (parsed as { proposals: unknown[] }).proposals.flatMap((entry) => {
+    const proposal = normalizeProposedAction(entry);
+    return proposal ? [proposal] : [];
+  });
 }
 
 export async function writeProposedActions(file: string, proposals: readonly ProposedAction[]): Promise<void> {
+  if (!proposals.every(isProposedAction)) {
+    throw new Error("proposed action store contains an invalid draft");
+  }
   const payload = `${JSON.stringify({ proposals }, null, 2)}\n`;
   // random-uuid tmp: a `${pid}-${Date.now()}` name collides between two same-ms
   // concurrent writers → ENOENT rename. The cross-process lock below serialises
@@ -170,16 +228,28 @@ export async function proposeMessageAction(
 ): Promise<ProposedAction> {
   const now = input.now ?? (() => new Date());
   const at = now();
+  if (!Number.isFinite(at.getTime())
+    || input.providerId.trim().length === 0
+    || input.providerId !== input.providerId.trim()
+    || input.destination.trim().length === 0
+    || input.destination !== input.destination.trim()
+    || input.text.trim().length === 0) {
+    throw new Error("proposed message action requires a valid time, channel, recipient, and payload");
+  }
   const createdAt = at.toISOString();
   const ttlMs = resolveProposalTtlMs(input.ttlMs, at.getTime());
+  const channel = input.providerId;
+  const expiresAt = new Date(at.getTime() + ttlMs).toISOString();
+  const recipient = input.destination;
   const proposal: ProposedAction = {
+    channel,
     createdAt,
-    destination: input.destination,
-    expiresAt: new Date(at.getTime() + ttlMs).toISOString(),
-    id: `prop_${Date.parse(createdAt).toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    expiresAt,
+    id: `prop_${randomUUID()}`,
     kind: "message",
-    providerId: input.providerId,
+    payloadHash: computeProposedActionPayloadHash(channel, recipient, input.text, expiresAt),
     reason: input.reason,
+    recipient,
     status: "pending",
     summary: input.summary,
     text: input.text,

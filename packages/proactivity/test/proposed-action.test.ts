@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
 
 
-import { queryActionLog } from "@muse/stores";
+import { computeProposedActionPayloadHash, queryActionLog } from "@muse/stores";
 import { isProposalActionable, proposeMessageAction, readProposedActions } from "@muse/stores";
 import { confirmProposedAction, declineProposedAction } from "../src/proposed-action-confirm.js";
 
@@ -47,6 +47,12 @@ describe("proposed actions — draft-first, confirm-to-execute (outbound-safety)
     expect(stored).toHaveLength(1);
     expect(stored[0]!.status).toBe("pending");
     expect(stored[0]!.text).toContain("standup moves to 10am");
+    expect(stored[0]).toMatchObject({
+      channel: "telegram",
+      expiresAt: expect.any(String),
+      payloadHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      recipient: "555"
+    });
   });
 
   it("confirm executes exactly once: sends, flips to executed, logs performed", async () => {
@@ -55,16 +61,32 @@ describe("proposed actions — draft-first, confirm-to-execute (outbound-safety)
     const sent: OutboundMessage[] = [];
     const registry = new MessagingProviderRegistry([capturing(sent)]);
 
-    const first = await confirmProposedAction({ actionLogFile, file, id: proposal.id, registry });
+    const first = await confirmProposedAction({
+      actionLogFile,
+      file,
+      id: proposal.id,
+      payloadHash: proposal.payloadHash,
+      registry
+    });
     expect(first).toMatchObject({ executed: true });
     expect(sent).toHaveLength(1);
     expect(sent[0]!.destination).toBe("555");
     expect((await readProposedActions(file))[0]!.status).toBe("executed");
     const log = await queryActionLog(actionLogFile, {});
-    expect(log[0]).toMatchObject({ result: "performed", userId: "stark" });
+    expect(log[0]).toMatchObject({
+      result: "performed",
+      userId: "stark",
+      what: "Heads up — standup moves to 10am tomorrow."
+    });
 
     // replay guard: a second approve does NOT send again
-    const second = await confirmProposedAction({ actionLogFile, file, id: proposal.id, registry });
+    const second = await confirmProposedAction({
+      actionLogFile,
+      file,
+      id: proposal.id,
+      payloadHash: proposal.payloadHash,
+      registry
+    });
     expect(second).toMatchObject({ executed: false });
     expect(sent).toHaveLength(1);
   });
@@ -81,7 +103,13 @@ describe("proposed actions — draft-first, confirm-to-execute (outbound-safety)
     expect((await queryActionLog(actionLogFile, {}))[0]).toMatchObject({ result: "refused" });
 
     // a declined proposal can't then be confirmed (no send)
-    const after = await confirmProposedAction({ actionLogFile, file, id: proposal.id, registry });
+    const after = await confirmProposedAction({
+      actionLogFile,
+      file,
+      id: proposal.id,
+      payloadHash: proposal.payloadHash,
+      registry
+    });
     expect(after).toMatchObject({ executed: false });
     expect(sent).toHaveLength(0);
   });
@@ -94,7 +122,13 @@ describe("proposed actions — draft-first, confirm-to-execute (outbound-safety)
     const sent: OutboundMessage[] = [];
     const registry = new MessagingProviderRegistry([capturing(sent)]);
 
-    const res = await confirmProposedAction({ actionLogFile, file, id: proposal.id, registry });
+    const res = await confirmProposedAction({
+      actionLogFile,
+      file,
+      id: proposal.id,
+      payloadHash: proposal.payloadHash,
+      registry
+    });
     expect(res).toMatchObject({ executed: false, reason: "expired" });
     expect(sent).toHaveLength(0);
     expect((await readProposedActions(file))[0]!.status).toBe("pending"); // unchanged, just inert
@@ -105,6 +139,67 @@ describe("proposed actions — draft-first, confirm-to-execute (outbound-safety)
     const proposal = await proposeMessageAction(file, draft);
     expect(typeof proposal.expiresAt).toBe("string");
     expect(isProposalActionable(proposal, new Date())).toBe(true);
+  });
+
+  it("refuses a mismatched or drifted payload hash without sending", async () => {
+    const { actionLogFile, file } = paths();
+    const proposal = await proposeMessageAction(file, draft);
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturing(sent)]);
+
+    await expect(confirmProposedAction({
+      actionLogFile,
+      file,
+      id: proposal.id,
+      payloadHash: "0".repeat(64),
+      registry
+    })).resolves.toMatchObject({ executed: false, reason: "payload hash mismatch" });
+    expect(sent).toHaveLength(0);
+
+    const stored = JSON.parse(readFileSync(file, "utf8")) as {
+      proposals: Array<Record<string, unknown>>;
+    };
+    const changedText = "attacker changed the exact payload";
+    stored.proposals[0]!.text = changedText;
+    stored.proposals[0]!.payloadHash = computeProposedActionPayloadHash(
+      proposal.channel,
+      proposal.recipient,
+      changedText,
+      proposal.expiresAt
+    );
+    writeFileSync(file, `${JSON.stringify(stored, null, 2)}\n`, "utf8");
+
+    await expect(confirmProposedAction({
+      actionLogFile,
+      file,
+      id: proposal.id,
+      payloadHash: proposal.payloadHash,
+      registry
+    })).resolves.toMatchObject({ executed: false, reason: "payload hash mismatch" });
+    expect(sent).toHaveLength(0);
+
+    const expiry = paths();
+    const expiryProposal = await proposeMessageAction(expiry.file, draft);
+    const expiryStored = JSON.parse(readFileSync(expiry.file, "utf8")) as {
+      proposals: Array<Record<string, unknown>>;
+    };
+    const extendedExpiry = new Date(Date.parse(expiryProposal.expiresAt) + 86_400_000).toISOString();
+    expiryStored.proposals[0]!.expiresAt = extendedExpiry;
+    expiryStored.proposals[0]!.payloadHash = computeProposedActionPayloadHash(
+      expiryProposal.channel,
+      expiryProposal.recipient,
+      expiryProposal.text,
+      extendedExpiry
+    );
+    writeFileSync(expiry.file, `${JSON.stringify(expiryStored, null, 2)}\n`, "utf8");
+    await expect(confirmProposedAction({
+      actionLogFile: expiry.actionLogFile,
+      file: expiry.file,
+      id: expiryProposal.id,
+      payloadHash: expiryProposal.payloadHash,
+      registry
+    })).resolves.toMatchObject({ executed: false, reason: "payload hash mismatch" });
+    expect(sent).toHaveLength(0);
   });
 
   it("fails closed when an in-memory proposal has an unparseable expiry", async () => {
@@ -132,7 +227,13 @@ describe("proposed actions — draft-first, confirm-to-execute (outbound-safety)
     };
     const registry = new MessagingProviderRegistry([throwing]);
 
-    const res = await confirmProposedAction({ actionLogFile, file, id: proposal.id, registry });
+    const res = await confirmProposedAction({
+      actionLogFile,
+      file,
+      id: proposal.id,
+      payloadHash: proposal.payloadHash,
+      registry
+    });
     expect(res).toMatchObject({ executed: false });
     expect((await readProposedActions(file))[0]!.status).toBe("pending");
     expect((await queryActionLog(actionLogFile, {}))[0]).toMatchObject({ result: "failed" });
@@ -156,8 +257,20 @@ describe("proposed actions — draft-first, confirm-to-execute (outbound-safety)
     const registry = new MessagingProviderRegistry([slow]);
 
     const [first, second] = await Promise.all([
-      confirmProposedAction({ actionLogFile, file, id: proposal.id, registry }),
-      confirmProposedAction({ actionLogFile, file, id: proposal.id, registry })
+      confirmProposedAction({
+        actionLogFile,
+        file,
+        id: proposal.id,
+        payloadHash: proposal.payloadHash,
+        registry
+      }),
+      confirmProposedAction({
+        actionLogFile,
+        file,
+        id: proposal.id,
+        payloadHash: proposal.payloadHash,
+        registry
+      })
     ]);
 
     expect(sent).toHaveLength(1);

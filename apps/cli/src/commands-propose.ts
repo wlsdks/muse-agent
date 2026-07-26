@@ -5,7 +5,7 @@
  * executes it exactly once) or `decline` it. See `outbound-safety.md`.
  *
  *   muse propose list           — pending proposals
- *   muse propose approve <id>   — confirm + execute the draft
+ *   muse propose approve <id> --payload-hash <sha256> — confirm + execute the exact draft
  *   muse propose decline <id>   — refuse it (no send)
  */
 
@@ -51,19 +51,28 @@ export function registerProposeCommands(program: Command, io: ProgramIO, helpers
         return;
       }
       for (const p of pending) {
-        io.stdout(`${p.id}  [${p.kind} → ${p.providerId}:${p.destination}]\n  ${p.summary}\n  why: ${p.reason}\n`);
+        io.stdout(
+          `${p.id}  [${p.kind} → ${p.channel}:${p.recipient}]\n`
+          + `  ${p.summary}\n`
+          + `  exact payload: ${p.text}\n`
+          + `  payload hash: ${p.payloadHash}\n`
+          + `  expires: ${p.expiresAt}\n`
+          + `  why: ${p.reason}\n`
+        );
       }
     });
 
   propose
     .command("approve <id>")
+    .requiredOption("--payload-hash <sha256>", "Exact payload hash shown by `muse propose list`")
     .description("Confirm a proposed action — executes the draft exactly once")
-    .action(async (id: string) => {
+    .action(async (id: string, options: { readonly payloadHash: string }) => {
       const e = env();
       const outcome = await confirmProposedAction({
         actionLogFile: resolveActionLogFile(e),
         file: resolveProposedActionsFile(e),
         id,
+        payloadHash: options.payloadHash,
         registry: makeMessaging(e)
       });
       if (outcome.executed) {

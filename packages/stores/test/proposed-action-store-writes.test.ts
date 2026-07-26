@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  computeProposedActionPayloadHash,
   patchProposedActionStatus,
   type ProposedAction,
   readProposedActions,
@@ -13,13 +14,14 @@ import {
 } from "../src/personal-proposed-action-store.js";
 
 const proposal = (id: string): ProposedAction => ({
+  channel: "slack",
   id,
   kind: "message",
   status: "pending",
   createdAt: "2026-01-01T00:00:00Z",
   expiresAt: "2026-01-02T00:00:00Z",
-  providerId: "slack",
-  destination: "C1",
+  payloadHash: computeProposedActionPayloadHash("slack", "C1", "hi", "2026-01-02T00:00:00Z"),
+  recipient: "C1",
   text: "hi",
   summary: "summary",
   reason: "reason",
@@ -56,10 +58,27 @@ describe("writeProposedActions / readProposedActions", () => {
       proposals: [
         proposal("valid"),
         { ...proposal("invalid-expiry"), expiresAt: "not-a-date" },
-        { ...proposal("invalid-route"), destination: " " }
+        { ...proposal("invalid-route"), recipient: " " },
+        { ...proposal("invalid-hash"), payloadHash: "0".repeat(64) }
       ]
     }));
     expect((await readProposedActions(file)).map((item) => item.id)).toEqual(["valid"]);
+  });
+
+  it("normalizes an expiring legacy route into the canonical hash-bound draft", async () => {
+    const file = freshFile();
+    const canonical = proposal("legacy");
+    const legacy: Record<string, unknown> = {
+      ...canonical,
+      destination: canonical.recipient,
+      providerId: canonical.channel
+    };
+    delete legacy.channel;
+    delete legacy.recipient;
+    delete legacy.payloadHash;
+    await writeFile(file, JSON.stringify({ proposals: [legacy] }));
+
+    await expect(readProposedActions(file)).resolves.toEqual([canonical]);
   });
 });
 

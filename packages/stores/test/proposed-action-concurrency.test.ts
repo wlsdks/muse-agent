@@ -8,6 +8,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 
 import {
+  computeProposedActionPayloadHash,
   patchProposedActionStatus,
   type ProposedAction,
   proposeMessageAction,
@@ -20,19 +21,19 @@ beforeEach(async () => { dir = await fs.mkdtemp(join(tmpdir(), "proposed-action-
 afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
 
 const seed = (i: number): ProposedAction => ({
-  arguments: {},
+  channel: "slack",
   createdAt: "2026-01-01T00:00:00Z",
-  destination: "C1",
   expiresAt: "2030-01-01T00:00:00Z",
   id: `x${i}`,
   kind: "message",
-  providerId: "slack",
+  payloadHash: computeProposedActionPayloadHash("slack", "C1", "hi", "2030-01-01T00:00:00Z"),
   reason: "r",
+  recipient: "C1",
   status: "pending",
   summary: "s",
   text: "hi",
   userId: "u",
-} as unknown as ProposedAction);
+});
 
 describe("proposed-action store under concurrency — draft-first proposals must not be lost", () => {
   it("blocks its write while an externally-held (cross-process) lock is present", async () => {

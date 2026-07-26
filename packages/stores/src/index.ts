@@ -143,6 +143,7 @@ export type { ActivePlaybookWriteGate, PlaybookEntry } from "./personal-playbook
 export { appendProactiveHistory, readProactiveHistory } from "./personal-proactive-history-store.js";
 export type { ProactiveHistoryEntry } from "./personal-proactive-history-store.js";
 export {
+  computeProposedActionPayloadHash,
   inspectProposedActionsSource,
   isProposalActionable,
   patchProposedActionStatus,
