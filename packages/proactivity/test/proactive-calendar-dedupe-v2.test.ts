@@ -9,6 +9,7 @@ import {
 } from "@muse/calendar";
 import {
   MessagingProviderRegistry,
+  readOutboundEffects,
   type MessagingProvider,
   type OutboundMessage
 } from "@muse/messaging";
@@ -99,6 +100,7 @@ describe("proactive calendar v2 occurrence dedupe", () => {
     const first = await runDueProactiveNotices(options);
     expect(first).toMatchObject({ errors: [], fired: 2, imminent: 2 });
     expect(sent).toHaveLength(2);
+    expect(await readOutboundEffects(join(sidecarFile, "..", "outbound-effects.json"))).toHaveLength(2);
     expect(await readProactiveFired(sidecarFile)).toEqual([
       expect.objectContaining({
         id: "shared-event",
@@ -127,6 +129,7 @@ describe("proactive calendar v2 occurrence dedupe", () => {
     const rescheduled = await runDueProactiveNotices(options);
     expect(rescheduled).toMatchObject({ errors: [], fired: 1, imminent: 2 });
     expect(sent).toHaveLength(3);
+    expect(await readOutboundEffects(join(sidecarFile, "..", "outbound-effects.json"))).toHaveLength(3);
     expect(await readProactiveFired(sidecarFile)).toContainEqual(expect.objectContaining({
       id: "shared-event",
       providerEventId: "caldav-raw",

@@ -34,6 +34,7 @@ import {
   collectImminentCalendar,
   collectImminentTasks,
   sortImminentByStart,
+  type CalendarImminentItem,
   type ImminentItem
 } from "./notice-imminent.js";
 import {
@@ -565,7 +566,7 @@ interface DeliverImminentContext {
 
 // Per-item delivery: synthesize → investigate → redact → send (terminal
 // or messaging, quiet-hours-gated) → trust-ledger + broker + history.
-// Task+messaging delivery additionally returns whether its fired occurrence
+// Durable messaging delivery additionally returns whether its fired occurrence
 // was persisted before post-delivery effects. All failure paths are caught
 // here and recorded into `ctx.errors` rather than thrown.
 async function deliverImminentItem(
@@ -575,8 +576,10 @@ async function deliverImminentItem(
   const { errors, now, options, sinkChoice } = ctx;
 
   const quietNow = options.quietHours !== undefined && isQuietHour(now().getHours(), options.quietHours);
-  if (item.kind === "task" && sinkChoice === "messaging" && !quietNow) {
-    return deliverTaskMessagingItem(item, ctx);
+  if (sinkChoice === "messaging" && !quietNow) {
+    return item.kind === "task"
+      ? deliverTaskMessagingItem(item, ctx)
+      : deliverCalendarMessagingItem(item, ctx);
   }
 
   const noticeText = await composeNoticeText(item, ctx);
@@ -657,9 +660,31 @@ async function deliverTaskMessagingItem(
   item: ImminentItem,
   ctx: DeliverImminentContext
 ): Promise<{ readonly delivered: boolean; readonly firedPersisted: boolean }> {
+  return deliverDurableMessagingItem(
+    item,
+    proactiveTaskOccurrenceEffectId(item.id, item.startsAt.toISOString()),
+    ctx
+  );
+}
+
+async function deliverCalendarMessagingItem(
+  item: CalendarImminentItem,
+  ctx: DeliverImminentContext
+): Promise<{ readonly delivered: boolean; readonly firedPersisted: boolean }> {
+  return deliverDurableMessagingItem(
+    item,
+    proactiveCalendarOccurrenceEffectId(item),
+    ctx
+  );
+}
+
+async function deliverDurableMessagingItem(
+  item: ImminentItem,
+  effectId: string,
+  ctx: DeliverImminentContext
+): Promise<{ readonly delivered: boolean; readonly firedPersisted: boolean }> {
   const { errors, now, options } = ctx;
   const effectFile = options.effectFile ?? join(dirname(options.sidecarFile), "outbound-effects.json");
-  const effectId = proactiveTaskOccurrenceEffectId(item.id, item.startsAt.toISOString());
   try {
     const existing = await readOutboundEffect(effectFile, effectId);
     if (
@@ -669,7 +694,7 @@ async function deliverTaskMessagingItem(
         || existing.binding.destination !== options.destination
       )
     ) {
-      throw new Error(`outbound effect ${effectId} route binding conflicts with the current proactive task`);
+      throw new Error(`outbound effect ${effectId} route binding conflicts with the current proactive ${item.kind}`);
     }
     if (existing) {
       let terminal = existing;
@@ -677,7 +702,7 @@ async function deliverTaskMessagingItem(
         terminal = await dispatchDurableEffectOnce({
           destination: existing.binding.destination,
           dispatch: async () => {
-            throw new Error("prepared proactive-task replay must never dispatch");
+            throw new Error(`prepared proactive-${item.kind} replay must never dispatch`);
           },
           effectFile,
           effectId,
@@ -697,7 +722,7 @@ async function deliverTaskMessagingItem(
         await ctx.persistFired(terminal.reconciliation?.recordedAt);
         return { delivered: false, firedPersisted: true };
       }
-      errors.push(taskEffectBlockedMessage(item.id, terminal));
+      errors.push(proactiveEffectBlockedMessage(item.kind, item.id, terminal));
       return { delivered: false, firedPersisted: false };
     }
 
@@ -723,7 +748,7 @@ async function deliverTaskMessagingItem(
       text: noticeText
     });
     if (effect.state !== "accepted" && effect.state !== "reconciled-accepted") {
-      errors.push(taskEffectBlockedMessage(item.id, effect));
+      errors.push(proactiveEffectBlockedMessage(item.kind, item.id, effect));
       return { delivered: false, firedPersisted: false };
     }
     if (!effect.receipt) {
@@ -785,15 +810,30 @@ export function proactiveTaskOccurrenceEffectId(taskId: string, dueAt: string): 
   return `proactive-imminent:${sha256Hex(JSON.stringify(["task", taskId, dueAt]))}`;
 }
 
-function taskEffectBlockedMessage(taskId: string, effect: OutboundEffectView): string {
+export function proactiveCalendarOccurrenceEffectId(
+  item: Pick<CalendarImminentItem, "id" | "providerEventId" | "providerId" | "startsAt">
+): string {
+  return `proactive-imminent:${sha256Hex(JSON.stringify([
+    "calendar",
+    item.providerId,
+    item.providerEventId ?? item.id,
+    item.startsAt.toISOString()
+  ]))}`;
+}
+
+function proactiveEffectBlockedMessage(
+  kind: ImminentItem["kind"],
+  itemId: string,
+  effect: OutboundEffectView
+): string {
   const effectId = effect.binding.effectId;
   if (effect.state === "unknown") {
     const detail = effect.unknownDetail
       ? ` (${redactSecretsInText(effect.unknownDetail).slice(0, 500)})`
       : "";
-    return `task:${taskId}: delivery is unknown for effect ${effectId}${detail}; reconcile manually with muse messaging effects reconcile and do not retry this occurrence`;
+    return `${kind}:${itemId}: delivery is unknown for effect ${effectId}${detail}; reconcile manually with muse messaging effects reconcile and do not retry this occurrence`;
   }
-  return `task:${taskId}: outbound effect ${effectId} is safely blocked in state ${effect.state}`;
+  return `${kind}:${itemId}: outbound effect ${effectId} is safely blocked in state ${effect.state}`;
 }
 
 function isActiveSessionWindow(now: Date, options: RunDueProactiveNoticesOptions): boolean {

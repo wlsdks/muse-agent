@@ -294,7 +294,7 @@ describe("proactive imminent-task durable messaging effect", () => {
     expect(existsSync(quiet.effectFile)).toBe(false);
   });
 
-  it("persists task acceptance immediately while retaining calendar's end-of-tick batch semantics", async () => {
+  it("persists each accepted calendar and task occurrence before later delivery work", async () => {
     const p = paths();
     await seedTask(p, "task-after-calendar");
     const calendar: CalendarProvider = {
@@ -323,7 +323,13 @@ describe("proactive imminent-task durable messaging effect", () => {
       ...options(p, registry(async (message) => {
         providerCalls += 1;
         if (providerCalls === 2) {
-          expect(await readProactiveFired(p.sidecarFile)).toEqual([]);
+          expect(await readProactiveFired(p.sidecarFile)).toEqual([
+            expect.objectContaining({
+              id: "calendar-first",
+              kind: "calendar",
+              providerId: "calendar"
+            })
+          ]);
         }
         return {
           destination: message.destination,
@@ -336,7 +342,7 @@ describe("proactive imminent-task durable messaging effect", () => {
 
     expect(summary).toMatchObject({ errors: [], fired: 2, imminent: 2 });
     expect(providerCalls).toBe(2);
-    expect(await readOutboundEffects(p.effectFile)).toHaveLength(1);
+    expect(await readOutboundEffects(p.effectFile)).toHaveLength(2);
     expect(await readProactiveFired(p.sidecarFile)).toEqual([
       expect.objectContaining({ id: "calendar-first", kind: "calendar" }),
       expect.objectContaining({ id: "task-after-calendar", kind: "task" })

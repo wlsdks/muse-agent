@@ -345,4 +345,45 @@ describe("runDueProactiveNotices — cross-process firing lock (two daemons, sam
     expect(await readOutboundEffects(input.effectFile)).toHaveLength(1);
     expect(await readProactiveFired(sidecarFile)).toHaveLength(1);
   }, 20_000);
+
+  it("admits one qualified calendar effect and fired mark across two real OS processes", async () => {
+    const callsFile = join(dir, "calendar-provider-calls.txt");
+    const effectFile = join(dir, "calendar-outbound-effects.json");
+    const calendarSidecar = join(dir, "calendar-proactive-fired.json");
+    const input = {
+      callsFile,
+      calendarEvent: {
+        id: "calendar-race",
+        providerEventId: "remote-calendar-race",
+        providerId: "caldav",
+        startsAtIso: "2026-05-18T09:05:00.000Z",
+        title: "Calendar race"
+      },
+      effectFile,
+      nowIso: NOW.toISOString(),
+      sidecarFile: calendarSidecar
+    };
+    const outputs = await Promise.all([
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)]),
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)])
+    ]);
+    const calls = existsSync(callsFile)
+      ? readFileSync(callsFile, "utf8").trim().split("\n").filter(Boolean)
+      : [];
+    const summaries = outputs.map(({ stdout }) => JSON.parse(stdout.trim()) as {
+      readonly fired: number;
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(summaries.reduce((total, summary) => total + summary.fired, 0)).toBe(1);
+    expect(await readOutboundEffects(effectFile)).toHaveLength(1);
+    expect(await readProactiveFired(calendarSidecar)).toEqual([
+      expect.objectContaining({
+        id: "calendar-race",
+        kind: "calendar",
+        providerEventId: "remote-calendar-race",
+        providerId: "caldav"
+      })
+    ]);
+  }, 20_000);
 });
