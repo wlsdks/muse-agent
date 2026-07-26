@@ -2,7 +2,7 @@
 // common `ImminentItem` shape the notice loop iterates and delivers.
 
 import type { CalendarEvent, CalendarProviderRegistry } from "@muse/calendar";
-import { readTasks, type PersistedTask, type ProactiveFiredKind } from "@muse/stores";
+import { readTasks, type PersistedTask } from "@muse/stores";
 import { errorMessage } from "@muse/shared";
 
 import { minutesUntil } from "./quiet-hours.js";
@@ -28,8 +28,7 @@ export function sortImminentByStart<T extends { readonly startsAt: Date }>(items
   });
 }
 
-export interface ImminentItem {
-  readonly kind: ProactiveFiredKind;
+interface ImminentItemBase {
   readonly id: string;
   readonly title: string;
   readonly startsAt: Date;
@@ -41,6 +40,20 @@ export interface ImminentItem {
    */
   readonly factSheet: string;
 }
+
+export interface CalendarImminentItem extends ImminentItemBase {
+  readonly kind: "calendar";
+  /** Exact calendar adapter that produced this event. */
+  readonly providerId: string;
+  /** Provider mutation identity when it differs from the surfaced occurrence id. */
+  readonly providerEventId?: string;
+}
+
+export interface TaskImminentItem extends ImminentItemBase {
+  readonly kind: "task";
+}
+
+export type ImminentItem = CalendarImminentItem | TaskImminentItem;
 
 export interface CollectedImminent {
   readonly items: readonly ImminentItem[];
@@ -72,6 +85,8 @@ export async function collectImminentCalendar(
         factSheet: calendarFactSheet(event, nowDate),
         id: event.id,
         kind: "calendar",
+        ...(event.providerEventId !== undefined ? { providerEventId: event.providerEventId } : {}),
+        providerId: event.providerId,
         startsAt: event.startsAt,
         text: calendarNoticeText(event, nowDate),
         title: event.title
