@@ -147,11 +147,21 @@ describe("muse remind triage — exact local preview/confirm", () => {
     const rejected = await runRemind(["triage", "preview", "dismiss", "rem_exact"]);
     expect(rejected.error).toContain("required option '--local'");
 
+    const textPreview = await runRemind(["triage", "preview", "dismiss", "rem_exact", "--local"]);
+    expect(textPreview.error).toBeUndefined();
+    expect(textPreview.stdout).toContain('before: {"createdAt":"2026-01-01T00:00:00.000Z","dueAt":"2026-02-01T00:00:00.000Z","id":"rem_exact","status":"pending","text":"private backlog"}');
+    expect(textPreview.stdout).toContain("after: null (dismissed)");
+
     const previewRun = await runRemind(["triage", "preview", "dismiss", "rem_exact", "--local", "--json"]);
     expect(previewRun.error).toBeUndefined();
     expect(previewRun.apiCalls).toHaveLength(0);
-    const preview = JSON.parse(previewRun.stdout) as { confirmToken: string; schemaVersion: string };
+    const preview = JSON.parse(previewRun.stdout) as {
+      changes: readonly { before: { id: string }; after: null }[];
+      confirmToken: string;
+      schemaVersion: string;
+    };
     expect(preview.schemaVersion).toBe("muse.reminder-triage-preview/v1");
+    expect(preview.changes).toEqual([{ after: null, before: expect.objectContaining({ id: "rem_exact" }) }]);
 
     const confirmRun = await runRemind(["triage", "confirm", preview.confirmToken, "--local", "--json"]);
     expect(confirmRun.error).toBeUndefined();
@@ -169,8 +179,16 @@ describe("muse remind triage — exact local preview/confirm", () => {
     expect(prefix.error).toContain("exact id");
 
     const draft = await runRemind(["triage", "preview", "draft-digest", "rem_exact_long", "--local", "--json"]);
-    const preview = JSON.parse(draft.stdout) as { confirmToken: string; digestDraft: string };
+    const preview = JSON.parse(draft.stdout) as {
+      changes: readonly { before: { id: string }; after: { id: string } }[];
+      confirmToken: string;
+      digestDraft: string;
+    };
     expect(preview.digestDraft).toContain("line one line two");
+    expect(preview.changes).toEqual([{
+      after: expect.objectContaining({ id: "rem_exact_long" }),
+      before: expect.objectContaining({ id: "rem_exact_long" })
+    }]);
     const before = JSON.stringify(await readReminders(remindersFile));
     const confirmed = await runRemind(["triage", "confirm", preview.confirmToken, "--local", "--json"]);
     expect(JSON.parse(confirmed.stdout)).toMatchObject({ action: "draft-digest", status: "applied" });

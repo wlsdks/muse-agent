@@ -32,10 +32,16 @@ export interface ReminderTriageResult {
   readonly digestDraft?: string;
 }
 
+export interface ReminderTriagePreviewChange {
+  readonly before: PersistedReminder;
+  readonly after: PersistedReminder | null;
+}
+
 export interface ReminderTriagePreview {
   readonly schemaVersion: "muse.reminder-triage-preview/v1";
   readonly operationId: string;
   readonly action: ReminderTriageAction;
+  readonly changes: readonly ReminderTriagePreviewChange[];
   readonly createdAt: string;
   readonly expiresAt: string;
   readonly items: readonly PersistedReminder[];
@@ -137,6 +143,11 @@ export async function previewReminderTriage(options: PreviewReminderTriageOption
       const expiresAt = new Date(at.getTime() + TOKEN_TTL_MS).toISOString();
       const digestDraft = options.action === "draft-digest" ? buildReminderTriageDigest(selected, createdAt) : undefined;
       const post = applyAction(current, selected, options.action, options.snoozeAt);
+      const postById = new Map(post.map((item) => [item.id, item]));
+      const changes = selected.map((before) => ({
+        after: postById.get(before.id) ?? null,
+        before
+      }));
       let ledger = await readReminderTriageLedgerStrict(options.ledgerFile);
       const preview = createEvent<PreviewedEvent>(ledger.events, {
         action: options.action,
@@ -157,6 +168,7 @@ export async function previewReminderTriage(options: PreviewReminderTriageOption
       await options.failpoint?.("after-preview");
       return {
         action: options.action,
+        changes,
         confirmToken: `rt1_${operationId}_${secret}`,
         createdAt,
         ...(digestDraft ? { digestDraft } : {}),

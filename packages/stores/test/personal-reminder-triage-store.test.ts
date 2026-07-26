@@ -73,6 +73,7 @@ describe("reminder backlog triage transaction", () => {
     });
 
     expect(preview.items.map((item) => item.id)).toEqual(["rem_a", "rem_b"]);
+    expect(preview.changes).toEqual(preview.items.map((before) => ({ after: null, before })));
     expect(await readFile(f.remindersFile, "utf8")).toBe(before);
     const ledgerRaw = await readFile(f.ledgerFile, "utf8");
     expect(ledgerRaw).not.toContain(preview.confirmToken);
@@ -169,12 +170,18 @@ describe("reminder backlog triage transaction", () => {
       action: "snooze", ids: ["rem_b", "rem_a"], ledgerFile: f.ledgerFile, remindersFile: f.remindersFile,
       now: () => BASE, snoozeAt: "2026-07-23T09:30:00+09:00"
     });
+    expect(snooze.changes.map((change) => change.before.id)).toEqual(["rem_a", "rem_b"]);
+    expect(snooze.changes.map((change) => change.after?.dueAt)).toEqual([
+      "2026-07-23T00:30:00.000Z",
+      "2026-07-23T00:30:00.000Z"
+    ]);
     const snoozed = await confirmReminderTriage({ ledgerFile: f.ledgerFile, remindersFile: f.remindersFile, token: snooze.confirmToken, now: () => BASE });
     expect(snoozed).toMatchObject({ action: "snooze", outcome: "applied", status: "applied" });
     expect((await readRemindersStrict(f.remindersFile)).map((item) => item.dueAt)).toEqual(["2026-07-23T00:30:00.000Z", "2026-07-23T00:30:00.000Z"]);
 
     const retainBefore = await readFile(f.remindersFile, "utf8");
     const retain = await previewReminderTriage({ action: "retain", ids: ["rem_a"], ledgerFile: f.ledgerFile, remindersFile: f.remindersFile, now: () => new Date("2026-07-24T00:00:00Z") });
+    expect(retain.changes).toEqual(retain.items.map((before) => ({ after: before, before })));
     const retained = await confirmReminderTriage({ ledgerFile: f.ledgerFile, remindersFile: f.remindersFile, token: retain.confirmToken, now: () => new Date("2026-07-24T00:00:00Z") });
     expect(retained).toMatchObject({ action: "retain", outcome: "applied" });
     expect(await readFile(f.remindersFile, "utf8")).toBe(retainBefore);
@@ -281,6 +288,7 @@ describe("reminder backlog triage transaction", () => {
     ]);
     await expect(previewReminderTriage({ action: "dismiss", ids: ["rem_linked", "rem_plain"], ledgerFile: f.ledgerFile, remindersFile: f.remindersFile, now: () => BASE })).rejects.toThrow("single-item");
     await expect(previewReminderTriage({ action: "retain", ids: ["rem_future"], ledgerFile: f.ledgerFile, remindersFile: f.remindersFile, now: () => BASE })).rejects.toThrow("not pending and due");
+    await expect(previewReminderTriage({ action: "retain", ids: ["rem_fired"], ledgerFile: f.ledgerFile, remindersFile: f.remindersFile, now: () => BASE })).rejects.toThrow("not pending and due");
     await expect(previewReminderTriage({ action: "retain", ids: Array.from({ length: 21 }, (_, i) => `rem_${i.toString()}`), ledgerFile: f.ledgerFile, remindersFile: f.remindersFile, now: () => BASE })).rejects.toThrow("1 to 20");
     await expect(readFile(f.ledgerFile, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -297,5 +305,6 @@ describe("reminder backlog triage transaction", () => {
     });
     expect(preview.items).toHaveLength(20);
     expect(preview.items.map((item) => item.id)).toEqual(items.map((item) => item.id));
+    expect(preview.changes).toEqual(preview.items.map((before) => ({ after: before, before })));
   });
 });

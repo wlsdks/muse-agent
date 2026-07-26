@@ -16,10 +16,11 @@ interface TriageCommandHelpers {
 
 export function formatReminderTriagePreview(preview: ReminderTriagePreview): string {
   const lines = [`Preview ${preview.action} for ${preview.items.length.toString()} reminder(s):`];
-  for (const item of preview.items) {
-    const recurrence = item.recurrence ? ` (recurring=${item.recurrence})` : "";
-    const event = item.eventId ? ` (event=${item.eventId})` : "";
-    lines.push(`  - [${item.id}] ${item.text.replace(/[\r\n\t]/gu, " ")} — due ${new Date(item.dueAt).toISOString()}${recurrence}${event}`);
+  for (const change of preview.changes) {
+    lines.push(
+      `  - before: ${JSON.stringify(change.before)}`,
+      `    after: ${change.after === null ? "null (dismissed)" : JSON.stringify(change.after)}`
+    );
   }
   lines.push(`Expires: ${preview.expiresAt}`, `Confirm token: ${preview.confirmToken}`);
   return `${lines.join("\n")}\n`;
