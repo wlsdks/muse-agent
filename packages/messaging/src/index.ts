@@ -106,8 +106,10 @@ export {
 } from "./outbound-effect-store.js";
 
 export {
+  dispatchDurableEffectOnce,
   dispatchOutboundEffectOnce,
   OutboundEffectDispatchUncertainError,
+  type DispatchDurableEffectOnceOptions,
   type DispatchOutboundEffectOnceOptions
 } from "./outbound-effect-dispatch.js";
 

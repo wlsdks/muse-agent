@@ -20,7 +20,7 @@ const approve: EmailApprovalGate = () => ({ approved: true });
 
 function recordingSender(): { sender: EmailSender; sends: { to: string }[] } {
   const sends: { to: string }[] = [];
-  return { sender: { sendEmail: async (to) => { sends.push({ to }); } }, sends };
+  return { sender: { sendEmail: async (to) => { sends.push({ to }); return `message-${sends.length.toString()}`; } }, sends };
 }
 
 let saved: { contacts?: string; log?: string };

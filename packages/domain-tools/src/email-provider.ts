@@ -163,8 +163,8 @@ export class GmailEmailProvider implements EmailProvider, EmailSender, EmailRead
       }
       if (response.ok) {
         // Capture Gmail's message id for proof-of-send (action-log + confirmation).
-        // A successful 2xx with an odd/non-JSON body must NEVER fail the send —
-        // return undefined and let the caller record the send without an id.
+        // A successful 2xx with a missing/malformed provider id is not proof of
+        // acceptance. Return undefined so durable callers classify it unknown.
         try {
           const parsed = JSON.parse(await response.text()) as Record<string, unknown>;
           return typeof parsed.id === "string" ? parsed.id : undefined;

@@ -52,7 +52,8 @@ function baseOpts(over: Partial<Parameters<typeof sendEmailWithApproval>[0]> = {
     sender,
     subject: "Q3 plan",
     userId: "stark",
-    ...over
+    ...over,
+    effectId: over.effectId ?? "effect-email-send"
   };
 }
 
@@ -62,7 +63,7 @@ describe("sendEmailWithApproval — outbound-safety contract", () => {
     const opts = baseOpts({ approvalGate: approve, sender });
     const outcome = await sendEmailWithApproval(opts);
     // Proof-of-send: Gmail's message id (from the 2xx body) is captured + returned.
-    expect(outcome).toEqual({ messageId: "sent1", sent: true, to: "alice@example.com" });
+    expect(outcome).toEqual({ effectId: "effect-email-send", messageId: "sent1", sent: true, to: "alice@example.com" });
     expect(sends).toHaveLength(1);
     expect(sends[0]!.url).toContain("/messages/send");
     expect(sends[0]!.bearer).toBe(true);
@@ -71,17 +72,17 @@ describe("sendEmailWithApproval — outbound-safety contract", () => {
     const log = await readActionLog(opts.actionLogFile);
     expect(log[0]).toMatchObject({ result: "performed", what: "email to alice@example.com: Q3 plan" });
     // ...and the action log records the id as proof-of-send (post-action verification).
-    expect(log[0]!.detail).toContain("(id: sent1)");
+    expect(log[0]!.detail).toContain("sent1");
   });
 
-  it("a successful send with a non-JSON 2xx body still SENDS (no id), never failing the send", async () => {
+  it("a successful send with a non-JSON 2xx body is UNKNOWN because no provider id proves acceptance", async () => {
     const sends: unknown[] = [];
     const fetchImpl = (async () => { sends.push(1); return new Response("OK", { status: 200 }); }) as unknown as typeof globalThis.fetch;
     const sender = new GmailEmailProvider("tok", fetchImpl);
     const opts = baseOpts({ approvalGate: approve, sender });
     const outcome = await sendEmailWithApproval(opts);
-    expect(outcome).toEqual({ sent: true, to: "alice@example.com" }); // sent, just no messageId
-    expect((await readActionLog(opts.actionLogFile))[0]).toMatchObject({ result: "performed" });
+    expect(outcome).toMatchObject({ effectId: "effect-email-send", reason: "send-unknown", sent: false });
+    expect((await readActionLog(opts.actionLogFile))[0]).toMatchObject({ result: "failed" });
   });
 
   it("DENY: no send fires and the refusal is logged", async () => {
@@ -139,7 +140,7 @@ describe("sendEmailWithApproval — outbound-safety contract", () => {
     const sender = new GmailEmailProvider("tok", fetchImpl);
     const opts = baseOpts({ approvalGate: approve, recipientQuery: "Alice", sender });
     const outcome = await sendEmailWithApproval(opts);
-    expect(outcome).toMatchObject({ reason: "send-failed", sent: false });
+    expect(outcome).toMatchObject({ reason: "send-unknown", sent: false });
     expect(attempts).toBe(1);
     expect((await readActionLog(opts.actionLogFile))[0]).toMatchObject({ result: "failed" });
   });
@@ -166,7 +167,8 @@ describe("replyEmailWithApproval — outbound-safety contract (reply to a receiv
       subject: replySubject("Q3 budget"),
       to: "jane@globex.com",
       userId: "stark",
-      ...over
+      ...over,
+      effectId: over.effectId ?? "effect-email-reply"
     };
   }
 
@@ -174,7 +176,7 @@ describe("replyEmailWithApproval — outbound-safety contract (reply to a receiv
     const { sender, sends } = gmailSender();
     const opts = replyOpts({ sender });
     const outcome = await replyEmailWithApproval(opts);
-    expect(outcome).toEqual({ messageId: "sent1", sent: true, to: "jane@globex.com" }); // reply also captures the id
+    expect(outcome).toEqual({ effectId: "effect-email-reply", messageId: "sent1", sent: true, to: "jane@globex.com" });
     expect(sends).toHaveLength(1);
     const mime = Buffer.from(sends[0]!.raw, "base64url").toString("utf8");
     expect(mime).toContain("jane@globex.com");
@@ -232,7 +234,7 @@ describe("sendEmailWithApproval — the SAME draft-first gate governs the App Pa
   it("CONFIRM: the SMTP send fires exactly once with the drafted content", async () => {
     const { sender, sends } = fakeSmtpProvider();
     const outcome = await sendEmailWithApproval(baseOpts({ approvalGate: approve, sender }));
-    expect(outcome).toEqual({ messageId: "imap-sent-1", sent: true, to: "alice@example.com" });
+    expect(outcome).toEqual({ effectId: "effect-email-send", messageId: "imap-sent-1", sent: true, to: "alice@example.com" });
     expect(sends).toEqual([{ subject: "Q3 plan", to: "alice@example.com" }]);
   });
 

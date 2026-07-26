@@ -440,7 +440,7 @@ describe("add_contact — phone arg-grounding drops a fabricated number (anti-fa
 
 describe("web/email/home approval gates — fail-closed in non-TTY (outbound-safety rule 2 parity)", () => {
   const webAction = { request: { method: "POST", url: "https://example.com/x" }, summary: "post a comment" };
-  const emailDraft = { body: "hi", recipientName: "Sam", subject: "hello", to: "sam@example.com" };
+  const emailDraft = { body: "hi", effectId: "effect-email-gate", recipientName: "Sam", subject: "hello", to: "sam@example.com" };
 
   it("web gate DENIES when non-interactive even if confirmAction would return true", async () => {
     const gate = buildWebApprovalGate({ confirmAction: async () => true, io: { stderr: () => {}, stdout: () => {} }, isInteractive: () => false, prompt: "Perform this web action?" });

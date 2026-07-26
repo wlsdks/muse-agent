@@ -32,6 +32,24 @@ export interface DispatchOutboundEffectOnceOptions {
   readonly now?: () => Date;
 }
 
+export interface DispatchDurableEffectOnceOptions {
+  readonly effectFile: string;
+  readonly effectId: string;
+  readonly providerId: string;
+  readonly destination: string;
+  readonly payloadHash: string;
+  /**
+   * One provider attempt for the already-snapshotted payload. A non-empty,
+   * exact provider message id is the only proof that the effect was accepted.
+   */
+  readonly dispatch: () => Promise<{
+    readonly messageId: string | undefined;
+    readonly providerId?: string;
+    readonly destination?: string;
+  }>;
+  readonly now?: () => Date;
+}
+
 /**
  * Make at most one provider call for one durable effect identity.
  *
@@ -53,17 +71,51 @@ export async function dispatchOutboundEffectOnce(
     send: options.registry.send.bind(options.registry),
     text: wireText
   } as const;
-  const acquiredAt = canonicalNow(now);
+  return dispatchDurableEffectOnce({
+    destination: stable.destination,
+    dispatch: () =>
+      stable.send(stable.providerId, {
+        destination: stable.destination,
+        idempotencyKey: stable.effectId,
+        text: stable.text
+      }),
+    effectFile: stable.effectFile,
+    effectId: stable.effectId,
+    now: stable.now,
+    payloadHash: computeOutboundEffectPayloadHash({
+      destination: stable.destination,
+      providerId: stable.providerId,
+      text: stable.text
+    }),
+    providerId: stable.providerId
+  });
+}
+
+/**
+ * Provider-neutral durable at-most-once primitive. It deliberately knows
+ * nothing about the payload: the caller snapshots and hashes the exact bytes
+ * approved for its domain, then supplies one provider attempt.
+ */
+export async function dispatchDurableEffectOnce(
+  options: DispatchDurableEffectOnceOptions
+): Promise<OutboundEffectView> {
+  const now = options.now ?? (() => new Date());
+  const stable = {
+    destination: options.destination,
+    dispatch: options.dispatch,
+    effectFile: options.effectFile,
+    effectId: options.effectId,
+    now,
+    payloadHash: options.payloadHash,
+    providerId: options.providerId
+  } as const;
+  const acquiredAt = canonicalNow(stable.now);
   const acquisition = await acquireOutboundEffectDispatch(
     stable.effectFile,
     {
       destination: stable.destination,
       effectId: stable.effectId,
-      payloadHash: computeOutboundEffectPayloadHash({
-        destination: stable.destination,
-        providerId: stable.providerId,
-        text: stable.text
-      }),
+      payloadHash: stable.payloadHash,
       providerId: stable.providerId
     },
     acquiredAt
@@ -79,18 +131,26 @@ export async function dispatchOutboundEffectOnce(
     );
   }
 
-  let receipt: Awaited<ReturnType<DispatchOutboundEffectOnceOptions["registry"]["send"]>>;
+  let receipt: Awaited<ReturnType<DispatchDurableEffectOnceOptions["dispatch"]>>;
   try {
-    receipt = await stable.send(stable.providerId, {
-      destination: stable.destination,
-      idempotencyKey: stable.effectId,
-      text: stable.text
-    });
+    receipt = await stable.dispatch();
   } catch (cause) {
     return sealUnknown(
       stable.effectFile,
       stable.effectId,
       `provider dispatch did not return a receipt: ${safeDetail(cause)}`,
+      monotonicNow(stable.now, acquisition.effect.binding.createdAt)
+    );
+  }
+  if (
+    typeof receipt.messageId !== "string"
+    || receipt.messageId.length === 0
+    || receipt.messageId !== receipt.messageId.trim()
+  ) {
+    return sealUnknown(
+      stable.effectFile,
+      stable.effectId,
+      "provider dispatch returned without a non-empty exact message id",
       monotonicNow(stable.now, acquisition.effect.binding.createdAt)
     );
   }
@@ -101,9 +161,9 @@ export async function dispatchOutboundEffectOnce(
       stable.effectFile,
       stable.effectId,
       {
-        destination: receipt.destination,
+        destination: receipt.destination ?? stable.destination,
         messageId: receipt.messageId,
-        providerId: receipt.providerId,
+        providerId: receipt.providerId ?? stable.providerId,
         receivedAt: recordedAt
       },
       recordedAt

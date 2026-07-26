@@ -65,7 +65,7 @@ describe("P17 seam — the agent invokes the gated email_send tool", () => {
   it("CONFIRM: an agent run calls email_send and the real Gmail send fires once", async () => {
     const { sender, sends } = gmail();
     const tool = createEmailSendTool({ actionLogFile: logFile(), approvalGate: approve, contacts: () => SOLO, sender, userId: "stark" });
-    await runtimeWith(tool, { body: "the Q3 summary", subject: "Q3", to: "Bob" })
+    await runtimeWith(tool, { body: "the Q3 summary", effectId: "effect-agent-confirm", subject: "Q3", to: "Bob" })
       .run({ messages: [{ content: "email Bob the Q3 summary", role: "user" }], metadata: { localMode: true }, model: "provider/model", toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["email_send"], localMode: true }) });
     expect(sends).toHaveLength(1);
     expect(sends[0]).toMatchObject({ bearer: true });
@@ -75,7 +75,7 @@ describe("P17 seam — the agent invokes the gated email_send tool", () => {
   it("DENY: the agent calls email_send but the fail-closed gate blocks it — NO send", async () => {
     const { sender, sends } = gmail();
     const tool = createEmailSendTool({ actionLogFile: logFile(), approvalGate: deny, contacts: () => SOLO, sender, userId: "stark" });
-    await runtimeWith(tool, { body: "hi", subject: "Q3", to: "Bob" })
+    await runtimeWith(tool, { body: "hi", effectId: "effect-agent-deny", subject: "Q3", to: "Bob" })
       .run({ messages: [{ content: "email Bob", role: "user" }], metadata: { localMode: true }, model: "provider/model", toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["email_send"], localMode: true }) });
     expect(sends).toHaveLength(0);
   });
@@ -83,7 +83,7 @@ describe("P17 seam — the agent invokes the gated email_send tool", () => {
   it("AMBIGUOUS recipient: NO send even with an approving gate (never-guess via the agent path)", async () => {
     const { sender, sends } = gmail();
     const tool = createEmailSendTool({ actionLogFile: logFile(), approvalGate: approve, contacts: () => TWO_BOBS, sender, userId: "stark" });
-    await runtimeWith(tool, { body: "hi", subject: "Q3", to: "Bob" })
+    await runtimeWith(tool, { body: "hi", effectId: "effect-agent-ambiguous", subject: "Q3", to: "Bob" })
       .run({ messages: [{ content: "email Bob", role: "user" }], metadata: { localMode: true }, model: "provider/model", toolExposureAuthority: createToolExposureAuthority({ allowedToolNames: ["email_send"], localMode: true }) });
     expect(sends).toHaveLength(0);
   });

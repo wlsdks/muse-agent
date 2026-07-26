@@ -22,12 +22,16 @@ function fixtures(contacts: Array<{ id: string; name: string; email?: string }>)
 
 function recordingSender(): { sender: EmailSender; sends: { to: string; subject: string; body: string }[] } {
   const sends: { to: string; subject: string; body: string }[] = [];
-  return { sender: { sendEmail: async (to, subject, body) => { sends.push({ body, subject, to }); } }, sends };
+  return { sender: { sendEmail: async (to, subject, body) => { sends.push({ body, subject, to }); return `message-${sends.length.toString()}`; } }, sends };
 }
 
 async function run(args: string[], deps: EmailCommandDeps): Promise<{ output: string; exitCode: number | undefined }> {
   const output: string[] = [];
-  const io = { stderr: (m: string) => output.push(m), stdout: (m: string) => output.push(m) };
+  const io = {
+    configDir: mkdtempSync(join(tmpdir(), "muse-cli-email-config-")),
+    stderr: (m: string) => output.push(m),
+    stdout: (m: string) => output.push(m)
+  };
   const prevExit = process.exitCode;
   process.exitCode = 0;
   const program = new Command();
@@ -50,8 +54,20 @@ describe("muse email send — surface", () => {
     const { sender, sends } = recordingSender();
     const r = await run(["send", "--to", "Alice", "--subject", "Hi", "--body", "hello"], { ...fix, approvalGate: approve, sender });
     expect(r.output).toContain("Sent to alice@example.com");
+    expect(r.output).toMatch(/effect: [0-9a-f-]{36}/u);
     expect(sends).toEqual([{ body: "hello", subject: "Hi", to: "alice@example.com" }]);
     expect(r.exitCode).toBeUndefined();
+  });
+
+  it("reuses an explicit --effect-id for a deliberate exact-payload retry and makes zero second provider calls", async () => {
+    const fix = fixtures([{ email: "alice@example.com", id: "c_a", name: "Alice" }]);
+    const { sender, sends } = recordingSender();
+    const args = ["send", "--to", "Alice", "--subject", "Hi", "--body", "hello", "--effect-id", "email-cli-retry-1"];
+    const first = await run(args, { ...fix, approvalGate: approve, sender });
+    const replay = await run(args, { ...fix, approvalGate: approve, sender });
+    expect(first.output).toContain("effect: email-cli-retry-1");
+    expect(replay.output).toContain("effect: email-cli-retry-1");
+    expect(sends).toHaveLength(1);
   });
 
   it("closes every Gmail subcommand before injected sender/reader/source callbacks under local-only", async () => {
@@ -221,6 +237,22 @@ describe("muse email reply — surface (draft-first reply to a received email)",
     expect(r.exitCode).toBeUndefined();
   });
 
+  it("reuses an explicit --effect-id for an exact reply replay with one provider send", async () => {
+    const fix = fixtures([]);
+    const { sender, sends } = recordingSender();
+    const args = [
+      "reply",
+      "--id", "m1",
+      "--body", "Friday works.",
+      "--effect-id", "email-cli-reply-retry-1"
+    ];
+    const first = await run(args, { ...fix, approvalGate: approve, reader: reader(MSG), sender });
+    const replay = await run(args, { ...fix, approvalGate: approve, reader: reader(MSG), sender });
+    expect(first.output).toContain("effect: email-cli-reply-retry-1");
+    expect(replay.output).toContain("effect: email-cli-reply-retry-1");
+    expect(sends).toHaveLength(1);
+  });
+
   it("DENY: nothing is sent", async () => {
     const fix = fixtures([]);
     const { sender, sends } = recordingSender();
@@ -265,6 +297,23 @@ describe("muse email forward — surface (draft-first forward to a contact)", ()
     expect(sends[0]!.body).toContain("--- Forwarded message ---");
     expect(sends[0]!.body).toContain("Can you confirm Friday?");
     expect(r.exitCode).toBeUndefined();
+  });
+
+  it("reuses an explicit --effect-id for an exact forward replay with one provider send", async () => {
+    const fix = fixtures([{ email: "alice@example.com", id: "c_a", name: "Alice" }]);
+    const { sender, sends } = recordingSender();
+    const args = [
+      "forward",
+      "--id", "m1",
+      "--to", "Alice",
+      "--note", "FYI Alice",
+      "--effect-id", "email-cli-forward-retry-1"
+    ];
+    const first = await run(args, { ...fix, approvalGate: approve, reader: reader(MSG), sender });
+    const replay = await run(args, { ...fix, approvalGate: approve, reader: reader(MSG), sender });
+    expect(first.output).toContain("effect: email-cli-forward-retry-1");
+    expect(replay.output).toContain("effect: email-cli-forward-retry-1");
+    expect(sends).toHaveLength(1);
   });
 
   it("AMBIGUOUS contact: no send, lists candidates", async () => {

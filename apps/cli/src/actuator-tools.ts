@@ -286,7 +286,7 @@ export function buildEmailApprovalGate(deps: {
     if (!interactive()) {
       return { approved: false, reason: "non-interactive — review and send interactively" };
     }
-    deps.io.stdout(`\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
+    deps.io.stdout(`\nEffect ID: ${draft.effectId}\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
     return (await deps.confirmAction("Send this email?"))
       ? { approved: true }
       : { approved: false, reason: "user did not confirm" };

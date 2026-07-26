@@ -36,10 +36,11 @@ export function createEmailSendTool(deps: EmailSendToolDeps): MuseTool {
         additionalProperties: false,
         properties: {
           body: { description: "Email body.", type: "string" },
+          effectId: { description: "Stable UUID/effect identity for this exact email. Reuse this same value only when deliberately retrying the exact same to/subject/body.", type: "string" },
           subject: { description: "Email subject line.", type: "string" },
           to: { description: "Recipient contact name (resolved via the contacts graph).", type: "string" }
         },
-        required: ["to", "subject", "body"],
+        required: ["effectId", "to", "subject", "body"],
         type: "object"
       },
       keywords: ["email", "send", "reply", "mail", "메일", "이메일", "보내", "발송"],
@@ -50,6 +51,7 @@ export function createEmailSendTool(deps: EmailSendToolDeps): MuseTool {
       const to = typeof args["to"] === "string" ? args["to"].trim() : "";
       const subject = typeof args["subject"] === "string" ? args["subject"] : "";
       const body = typeof args["body"] === "string" ? args["body"] : "";
+      const effectId = typeof args["effectId"] === "string" ? args["effectId"] : "";
       if (to.length === 0) {
         return { error: "email_send requires a non-empty 'to' contact name", sent: false };
       }
@@ -58,13 +60,14 @@ export function createEmailSendTool(deps: EmailSendToolDeps): MuseTool {
         approvalGate: deps.approvalGate,
         body,
         contacts: await deps.contacts(),
+        effectId,
         recipientQuery: to,
         sender: deps.sender,
         subject,
         userId: deps.userId
       });
       if (outcome.sent) {
-        return { sent: true, to: outcome.to };
+        return { effectId: outcome.effectId, messageId: outcome.messageId, sent: true, to: outcome.to };
       }
       return {
         detail: outcome.detail,
@@ -96,9 +99,10 @@ export function createEmailReplyTool(deps: EmailReplyToolDeps): MuseTool {
         additionalProperties: false,
         properties: {
           body: { description: "The reply text to send back to the original sender, e.g. 'Thanks — Friday at 3pm works for me.'", type: "string" },
+          effectId: { description: "Stable UUID/effect identity for this exact reply. Reuse it only to retry the same resolved to/subject/body.", type: "string" },
           id: { description: "Id of the message to reply to, from a prior email_recent / search_email / read_email result, e.g. '18f2a1c3d4e5'.", type: "string" }
         },
-        required: ["id", "body"],
+        required: ["effectId", "id", "body"],
         type: "object"
       },
       keywords: ["reply", "respond", "answer", "reply to", "email", "write back", "메일", "이메일", "답장", "회신"],
@@ -108,6 +112,7 @@ export function createEmailReplyTool(deps: EmailReplyToolDeps): MuseTool {
     execute: async (args): Promise<JsonObject> => {
       const id = typeof args["id"] === "string" ? args["id"].trim() : "";
       const body = typeof args["body"] === "string" ? args["body"] : "";
+      const effectId = typeof args["effectId"] === "string" ? args["effectId"] : "";
       if (id.length === 0) {
         return { error: "email_reply requires the 'id' of the message to reply to (look it up with email_recent or search_email)", sent: false };
       }
@@ -124,6 +129,7 @@ export function createEmailReplyTool(deps: EmailReplyToolDeps): MuseTool {
         actionLogFile: deps.actionLogFile,
         approvalGate: deps.approvalGate,
         body,
+        effectId,
         recipientName: message.from,
         sender: deps.sender,
         subject,
@@ -131,7 +137,7 @@ export function createEmailReplyTool(deps: EmailReplyToolDeps): MuseTool {
         userId: deps.userId
       });
       if (outcome.sent) {
-        return { repliedTo: to, sent: true, subject };
+        return { effectId: outcome.effectId, messageId: outcome.messageId, repliedTo: to, sent: true, subject };
       }
       return { detail: outcome.detail, reason: outcome.reason, sent: false };
     }
@@ -156,11 +162,12 @@ export function createEmailForwardTool(deps: EmailForwardToolDeps): MuseTool {
       inputSchema: {
         additionalProperties: false,
         properties: {
+          effectId: { description: "Stable UUID/effect identity for this exact forward. Reuse it only to retry the same resolved to/subject/body.", type: "string" },
           id: { description: "Id of the message to forward, from a prior email_recent / search_email result, e.g. '18f2a1c3d4e5'.", type: "string" },
           note: { description: "Optional note to prepend above the forwarded message, e.g. 'FYI — see below.'", type: "string" },
           to: { description: "Recipient CONTACT NAME (resolved via the contacts graph), e.g. 'Bob'.", type: "string" }
         },
-        required: ["id", "to"],
+        required: ["effectId", "id", "to"],
         type: "object"
       },
       keywords: ["forward", "fwd", "email", "send on", "pass along", "메일", "이메일", "전달", "포워드", "포워딩", "넘겨"],
@@ -171,6 +178,7 @@ export function createEmailForwardTool(deps: EmailForwardToolDeps): MuseTool {
       const id = typeof args["id"] === "string" ? args["id"].trim() : "";
       const to = typeof args["to"] === "string" ? args["to"].trim() : "";
       const note = typeof args["note"] === "string" ? args["note"] : undefined;
+      const effectId = typeof args["effectId"] === "string" ? args["effectId"] : "";
       if (id.length === 0 || to.length === 0) {
         return { error: "email_forward requires 'id' (the message to forward) and 'to' (a contact name)", sent: false };
       }
@@ -184,6 +192,7 @@ export function createEmailForwardTool(deps: EmailForwardToolDeps): MuseTool {
         approvalGate: deps.approvalGate,
         body,
         contacts: await deps.contacts(),
+        effectId,
         gateClass: "email_forward",
         recipientQuery: to,
         sender: deps.sender,
@@ -191,7 +200,7 @@ export function createEmailForwardTool(deps: EmailForwardToolDeps): MuseTool {
         userId: deps.userId
       });
       if (outcome.sent) {
-        return { forwardedTo: outcome.to, sent: true, subject };
+        return { effectId: outcome.effectId, forwardedTo: outcome.to, messageId: outcome.messageId, sent: true, subject };
       }
       return {
         detail: outcome.detail,

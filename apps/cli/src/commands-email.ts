@@ -6,6 +6,7 @@
  * `sendEmailWithApproval` (@muse/mcp); this is the CLI surface.
  */
 
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import { resolveActionLogFile, resolveContactsFile, resolveNotesDir, type MuseEnvironment } from "@muse/autoconfigure";
@@ -26,6 +27,7 @@ interface SendOptions {
   readonly to?: string;
   readonly subject?: string;
   readonly body?: string;
+  readonly effectId?: string;
   readonly user?: string;
 }
 
@@ -64,8 +66,10 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
     .requiredOption("--to <name>", "Recipient name (resolved via your contacts)")
     .requiredOption("--subject <text>", "Subject line")
     .requiredOption("--body <text>", "Message body")
+    .option("--effect-id <id>", "Stable effect identity for a deliberate exact-payload retry")
     .option("--user <id>", "User identity for the action log", "stark")
     .action(async (options: SendOptions) => {
+      const effectId = options.effectId ?? randomUUID();
       if (rejectWhenLocalOnly("send")) return;
       const sender = deps.sender ?? buildGmailSender(io, env);
       if (!sender) {
@@ -75,7 +79,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
       }
       const contactsFile = deps.contactsFile ?? resolveContactsFile(env);
       const gate: EmailApprovalGate = deps.approvalGate ?? ((draft) => {
-        io.stdout(`\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
+        io.stdout(`\nEffect ID: ${draft.effectId}\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
         return confirm({ message: "Send this email?" }).then((answer) =>
           isCancel(answer) || answer !== true
             ? { approved: false, reason: "user did not confirm" }
@@ -87,6 +91,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
         approvalGate: gate,
         body: options.body ?? "",
         contacts: await queryContacts(contactsFile),
+        effectId,
         recipientQuery: options.to ?? "",
         sender,
         subject: options.subject ?? "",
@@ -94,7 +99,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
       });
 
       if (outcome.sent) {
-        io.stdout(`Sent to ${outcome.to}.${outcome.messageId ? ` (id: ${outcome.messageId})` : ""}\n`);
+        io.stdout(`Sent to ${outcome.to}. (id: ${outcome.messageId}, effect: ${outcome.effectId})\n`);
         return;
       }
       if (outcome.reason === "ambiguous-recipient") {
@@ -113,8 +118,10 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
     .description("Reply to a received email by its id — drafts the reply to the original sender (Re:) and sends only after you confirm")
     .requiredOption("--id <id>", "Id of the message to reply to (from your mail client / `muse email sync`)")
     .requiredOption("--body <text>", "The reply text to send back to the sender")
+    .option("--effect-id <id>", "Stable effect identity for a deliberate exact-payload retry")
     .option("--user <id>", "User identity for the action log", "stark")
-    .action(async (options: { readonly id?: string; readonly body?: string; readonly user?: string }) => {
+    .action(async (options: { readonly id?: string; readonly body?: string; readonly effectId?: string; readonly user?: string }) => {
+      const effectId = options.effectId ?? randomUUID();
       if (rejectWhenLocalOnly("reply")) return;
       const provider = buildGmailProvider(io, env);
       const reader = deps.reader ?? provider;
@@ -138,7 +145,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
       }
       const subject = replySubject(message.subject);
       const gate: EmailApprovalGate = deps.approvalGate ?? ((draft) => {
-        io.stdout(`\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
+        io.stdout(`\nEffect ID: ${draft.effectId}\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
         return confirm({ message: "Send this reply?" }).then((answer) =>
           isCancel(answer) || answer !== true
             ? { approved: false, reason: "user did not confirm" }
@@ -148,6 +155,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
         actionLogFile: deps.actionLogFile ?? resolveActionLogFile(env),
         approvalGate: gate,
         body: options.body ?? "",
+        effectId,
         recipientName: message.from,
         sender,
         subject,
@@ -155,7 +163,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
         userId: options.user ?? "stark"
       });
       if (outcome.sent) {
-        io.stdout(`Replied to ${outcome.to}.${outcome.messageId ? ` (id: ${outcome.messageId})` : ""}\n`);
+        io.stdout(`Replied to ${outcome.to}. (id: ${outcome.messageId}, effect: ${outcome.effectId})\n`);
         return;
       }
       io.stderr(`Not sent (${outcome.reason}): ${outcome.detail}\n`);
@@ -168,8 +176,10 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
     .requiredOption("--id <id>", "Id of the message to forward (from your mail client / `muse email sync`)")
     .requiredOption("--to <name>", "Recipient contact name (resolved via your contacts)")
     .option("--note <text>", "Optional note to prepend above the forwarded message")
+    .option("--effect-id <id>", "Stable effect identity for a deliberate exact-payload retry")
     .option("--user <id>", "User identity for the action log", "stark")
-    .action(async (options: { readonly id?: string; readonly to?: string; readonly note?: string; readonly user?: string }) => {
+    .action(async (options: { readonly id?: string; readonly to?: string; readonly note?: string; readonly effectId?: string; readonly user?: string }) => {
+      const effectId = options.effectId ?? randomUUID();
       if (rejectWhenLocalOnly("forward")) return;
       const provider = buildGmailProvider(io, env);
       const reader = deps.reader ?? provider;
@@ -188,7 +198,7 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
       const { body, subject } = composeForward(message, options.note);
       const contactsFile = deps.contactsFile ?? resolveContactsFile(env);
       const gate: EmailApprovalGate = deps.approvalGate ?? ((draft) => {
-        io.stdout(`\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
+        io.stdout(`\nEffect ID: ${draft.effectId}\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
         return confirm({ message: "Forward this email?" }).then((answer) =>
           isCancel(answer) || answer !== true
             ? { approved: false, reason: "user did not confirm" }
@@ -199,13 +209,14 @@ export function registerEmailCommands(program: Command, io: ProgramIO, deps: Ema
         approvalGate: gate,
         body,
         contacts: await queryContacts(contactsFile),
+        effectId,
         recipientQuery: options.to ?? "",
         sender,
         subject,
         userId: options.user ?? "stark"
       });
       if (outcome.sent) {
-        io.stdout(`Forwarded to ${outcome.to}.${outcome.messageId ? ` (id: ${outcome.messageId})` : ""}\n`);
+        io.stdout(`Forwarded to ${outcome.to}. (id: ${outcome.messageId}, effect: ${outcome.effectId})\n`);
         return;
       }
       if (outcome.reason === "ambiguous-recipient") {

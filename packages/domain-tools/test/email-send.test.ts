@@ -19,7 +19,7 @@ const CONTACTS: readonly Contact[] = [
 
 function recordingSender(): { sender: EmailSender; sent: Array<{ to: string; subject: string; body: string }> } {
   const sent: Array<{ to: string; subject: string; body: string }> = [];
-  return { sender: { sendEmail: async (to, subject, body) => { sent.push({ body, subject, to }); } }, sent };
+  return { sender: { sendEmail: async (to, subject, body) => { sent.push({ body, subject, to }); return "message-1"; } }, sent };
 }
 
 let dir: string;
@@ -38,11 +38,13 @@ const opts = (over: Partial<Parameters<typeof sendEmailWithApproval>[0]> = {}) =
   approvalGate: () => ({ approved: true }),
   body: "the body",
   contacts: CONTACTS,
+  effectId: "effect-domain-email",
   recipientQuery: "Bob",
   sender: recordingSender().sender,
   subject: "Hi",
   userId: "u1",
-  ...over
+  ...over,
+  effectId: over.effectId ?? "effect-domain-email"
 });
 
 describe("sendEmailWithApproval — draft-first, fail-closed outbound (outbound-safety.md)", () => {
@@ -53,10 +55,10 @@ describe("sendEmailWithApproval — draft-first, fail-closed outbound (outbound-
       approvalGate: (draft) => { presentedDraft = draft; return { approved: true }; },
       sender
     }));
-    expect(out).toEqual({ sent: true, to: "bob@example.com" });
+    expect(out).toEqual({ effectId: "effect-domain-email", messageId: "message-1", sent: true, to: "bob@example.com" });
     expect(sent).toEqual([{ body: "the body", subject: "Hi", to: "bob@example.com" }]); // exactly once
     // draft-first: the gate saw the EXACT content before anything left
-    expect(presentedDraft).toEqual({ body: "the body", recipientName: "Bob", subject: "Hi", to: "bob@example.com" });
+    expect(presentedDraft).toEqual({ body: "the body", effectId: "effect-domain-email", recipientName: "Bob", subject: "Hi", to: "bob@example.com" });
     const log = await readActionLog(logFile);
     expect(log.at(-1)).toMatchObject({ result: "performed" });
   });
@@ -103,10 +105,10 @@ describe("sendEmailWithApproval — draft-first, fail-closed outbound (outbound-
     expect(sent).toHaveLength(0);
   });
 
-  it("SEND FAILS at the transport: outcome send-failed, logged 'failed'", async () => {
+  it("SEND FAILS at the transport: outcome send-unknown, logged 'failed'", async () => {
     const sender: EmailSender = { sendEmail: async () => { throw new Error("smtp 554"); } };
     const out = await sendEmailWithApproval(opts({ sender }));
-    expect(out).toMatchObject({ reason: "send-failed", sent: false });
+    expect(out).toMatchObject({ reason: "send-unknown", sent: false });
     expect((out as { detail: string }).detail).toContain("smtp 554");
     expect((await readActionLog(logFile)).at(-1)).toMatchObject({ result: "failed" });
   });

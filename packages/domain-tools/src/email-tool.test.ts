@@ -40,15 +40,15 @@ describe("createEmailSendTool", () => {
     const tool = createEmailSendTool({ actionLogFile: logFile(), approvalGate: approve, contacts: () => CONTACTS, sender, userId: "stark" });
     expect(tool.definition.name).toBe("email_send");
     expect(tool.definition.risk).toBe("execute");
-    expect(tool.definition.inputSchema.required).toEqual(["to", "subject", "body"]);
+    expect(tool.definition.inputSchema.required).toEqual(["effectId", "to", "subject", "body"]);
   });
 
   it("CONFIRM: resolves the contact, sends, and reports sent", async () => {
     const { sender, sends } = gmail();
     const actionLogFile = logFile();
     const tool = createEmailSendTool({ actionLogFile, approvalGate: approve, contacts: () => CONTACTS, sender, userId: "stark" });
-    const out = await tool.execute({ body: "hello", subject: "Hi", to: "Alice" }, ctx);
-    expect(out).toEqual({ sent: true, to: "alice@example.com" });
+    const out = await tool.execute({ body: "hello", effectId: "effect-tool-send", subject: "Hi", to: "Alice" }, ctx);
+    expect(out).toEqual({ effectId: "effect-tool-send", messageId: "x", sent: true, to: "alice@example.com" });
     expect(sends).toHaveLength(1);
     expect((await readActionLog(actionLogFile))[0]).toMatchObject({ result: "performed" });
   });
@@ -56,7 +56,7 @@ describe("createEmailSendTool", () => {
   it("DENY: no send, reports the refusal", async () => {
     const { sender, sends } = gmail();
     const tool = createEmailSendTool({ actionLogFile: logFile(), approvalGate: deny, contacts: () => CONTACTS, sender, userId: "stark" });
-    const out = await tool.execute({ body: "hello", subject: "Hi", to: "Alice" }, ctx);
+    const out = await tool.execute({ body: "hello", effectId: "effect-tool-deny", subject: "Hi", to: "Alice" }, ctx);
     expect(out).toMatchObject({ reason: "denied", sent: false });
     expect(sends).toHaveLength(0);
   });
@@ -64,7 +64,7 @@ describe("createEmailSendTool", () => {
   it("AMBIGUOUS recipient: no send, returns candidate names to clarify (even with an approving gate)", async () => {
     const { sender, sends } = gmail();
     const tool = createEmailSendTool({ actionLogFile: logFile(), approvalGate: approve, contacts: () => CONTACTS, sender, userId: "stark" });
-    const out = await tool.execute({ body: "hello", subject: "Hi", to: "Bob" }, ctx) as Record<string, unknown>;
+    const out = await tool.execute({ body: "hello", effectId: "effect-tool-ambiguous", subject: "Hi", to: "Bob" }, ctx) as Record<string, unknown>;
     expect(out.sent).toBe(false);
     expect(out.reason).toBe("ambiguous-recipient");
     expect(out.candidates).toEqual(["Bob", "Bob"]);
@@ -81,14 +81,14 @@ describe("createEmailReplyTool — reply to a received email, draft-first", () =
     const tool = createEmailReplyTool({ actionLogFile: logFile(), approvalGate: approve, reader: reader(message), sender, userId: "stark" });
     expect(tool.definition.name).toBe("email_reply");
     expect(tool.definition.risk).toBe("execute");
-    expect(tool.definition.inputSchema.required).toEqual(["id", "body"]);
+    expect(tool.definition.inputSchema.required).toEqual(["effectId", "id", "body"]);
   });
 
   it("CONFIRM: reads the message, replies to the SENDER's address with a Re: subject, reports sent", async () => {
     const { sender, sends } = gmail();
     const actionLogFile = logFile();
     const tool = createEmailReplyTool({ actionLogFile, approvalGate: approve, reader: reader(message), sender, userId: "stark" });
-    const out = await tool.execute({ body: "Friday at 3pm works.", id: "m1" }, ctx);
+    const out = await tool.execute({ body: "Friday at 3pm works.", effectId: "effect-tool-reply", id: "m1" }, ctx);
     expect(out).toMatchObject({ repliedTo: "jane@globex.com", sent: true, subject: "Re: Q3 budget" });
     expect(sends).toHaveLength(1);
     expect((await readActionLog(actionLogFile))[0]).toMatchObject({ result: "performed" });
@@ -97,7 +97,7 @@ describe("createEmailReplyTool — reply to a received email, draft-first", () =
   it("UNKNOWN message id: nothing is sent, points the model to look it up first", async () => {
     const { sender, sends } = gmail();
     const tool = createEmailReplyTool({ actionLogFile: logFile(), approvalGate: approve, reader: reader(message), sender, userId: "stark" });
-    const out = await tool.execute({ body: "hi", id: "does-not-exist" }, ctx);
+    const out = await tool.execute({ body: "hi", effectId: "effect-tool-missing", id: "does-not-exist" }, ctx);
     expect(out).toMatchObject({ reason: "unknown-message", sent: false });
     expect(sends).toHaveLength(0);
   });
@@ -105,7 +105,7 @@ describe("createEmailReplyTool — reply to a received email, draft-first", () =
   it("DENY: drafted but NOT sent", async () => {
     const { sender, sends } = gmail();
     const tool = createEmailReplyTool({ actionLogFile: logFile(), approvalGate: deny, reader: reader(message), sender, userId: "stark" });
-    const out = await tool.execute({ body: "hi", id: "m1" }, ctx);
+    const out = await tool.execute({ body: "hi", effectId: "effect-tool-reply-deny", id: "m1" }, ctx);
     expect(out).toMatchObject({ reason: "denied", sent: false });
     expect(sends).toHaveLength(0);
   });
@@ -113,7 +113,7 @@ describe("createEmailReplyTool — reply to a received email, draft-first", () =
   it("sender with no parseable address: no send (fails closed)", async () => {
     const { sender, sends } = gmail();
     const tool = createEmailReplyTool({ actionLogFile: logFile(), approvalGate: approve, reader: reader({ ...message, from: "Anonymous Sender" }), sender, userId: "stark" });
-    const out = await tool.execute({ body: "hi", id: "m1" }, ctx);
+    const out = await tool.execute({ body: "hi", effectId: "effect-tool-reply-invalid", id: "m1" }, ctx);
     expect(out).toMatchObject({ reason: "no-identifier", sent: false });
     expect(sends).toHaveLength(0);
   });
@@ -128,14 +128,14 @@ describe("createEmailForwardTool — forward a received email to a contact, draf
     const tool = createEmailForwardTool({ actionLogFile: logFile(), approvalGate: approve, contacts: () => CONTACTS, reader: reader(message), sender, userId: "stark" });
     expect(tool.definition.name).toBe("email_forward");
     expect(tool.definition.risk).toBe("execute");
-    expect(tool.definition.inputSchema.required).toEqual(["id", "to"]);
+    expect(tool.definition.inputSchema.required).toEqual(["effectId", "id", "to"]);
   });
 
   it("CONFIRM: reads the message, forwards to the resolved CONTACT with a Fwd: subject + quoted body", async () => {
     const { sender, sends } = gmail();
     const actionLogFile = logFile();
     const tool = createEmailForwardTool({ actionLogFile, approvalGate: approve, contacts: () => CONTACTS, reader: reader(message), sender, userId: "stark" });
-    const out = await tool.execute({ id: "m1", note: "FYI", to: "Alice" }, ctx);
+    const out = await tool.execute({ effectId: "effect-tool-forward", id: "m1", note: "FYI", to: "Alice" }, ctx);
     expect(out).toMatchObject({ forwardedTo: "alice@example.com", sent: true, subject: "Fwd: Q3 budget" });
     expect(sends).toHaveLength(1);
     expect((await readActionLog(actionLogFile))[0]).toMatchObject({ result: "performed" });
@@ -144,7 +144,7 @@ describe("createEmailForwardTool — forward a received email to a contact, draf
   it("UNKNOWN message id: nothing is sent", async () => {
     const { sender, sends } = gmail();
     const tool = createEmailForwardTool({ actionLogFile: logFile(), approvalGate: approve, contacts: () => CONTACTS, reader: reader(message), sender, userId: "stark" });
-    const out = await tool.execute({ id: "nope", to: "Alice" }, ctx);
+    const out = await tool.execute({ effectId: "effect-tool-forward-missing", id: "nope", to: "Alice" }, ctx);
     expect(out).toMatchObject({ reason: "unknown-message", sent: false });
     expect(sends).toHaveLength(0);
   });
@@ -152,7 +152,7 @@ describe("createEmailForwardTool — forward a received email to a contact, draf
   it("AMBIGUOUS contact: no send, returns candidates to clarify", async () => {
     const { sender, sends } = gmail();
     const tool = createEmailForwardTool({ actionLogFile: logFile(), approvalGate: approve, contacts: () => CONTACTS, reader: reader(message), sender, userId: "stark" });
-    const out = await tool.execute({ id: "m1", to: "Bob" }, ctx) as Record<string, unknown>;
+    const out = await tool.execute({ effectId: "effect-tool-forward-ambiguous", id: "m1", to: "Bob" }, ctx) as Record<string, unknown>;
     expect(out.sent).toBe(false);
     expect(out.reason).toBe("ambiguous-recipient");
     expect(out.candidates).toEqual(["Bob", "Bob"]);
@@ -162,7 +162,7 @@ describe("createEmailForwardTool — forward a received email to a contact, draf
   it("DENY: drafted but NOT sent", async () => {
     const { sender, sends } = gmail();
     const tool = createEmailForwardTool({ actionLogFile: logFile(), approvalGate: deny, contacts: () => CONTACTS, reader: reader(message), sender, userId: "stark" });
-    const out = await tool.execute({ id: "m1", to: "Alice" }, ctx);
+    const out = await tool.execute({ effectId: "effect-tool-forward-deny", id: "m1", to: "Alice" }, ctx);
     expect(out).toMatchObject({ reason: "denied", sent: false });
     expect(sends).toHaveLength(0);
   });
