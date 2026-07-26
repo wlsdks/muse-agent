@@ -353,6 +353,7 @@ export function decideResidentDaemonRestartAdmission(
       ...receipt,
       admittedGeneration: input.generation,
       sequence: receipt.sequence + 1,
+      successfulGeneration: null,
       updatedAt: observedAt
     });
     return { admission: { state: "admit" }, receipt: admitted };

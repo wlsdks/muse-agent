@@ -39,13 +39,20 @@ describe("resident daemon restart state journal", () => {
       .toEqual({ state: "half-open-probe" });
     expect(await journal.decideAdmission("generation_0002")).toMatchObject({ state: "open" });
     await journal.recordSuccess("generation_0001");
+    expect(await journal.decideAdmission("generation_0003")).toEqual({ state: "admit" });
 
     const persisted = parseResidentDaemonRestartStateReceipt(await readFile(journal.file, "utf8"));
     expect(persisted).toMatchObject({
+      admittedGeneration: "generation_0003",
       failureCount: 0,
       lastFailureSequence: 10,
-      state: "closed"
+      state: "closed",
+      successfulGeneration: null
     });
+    expect(await openResidentDaemonRestartStateJournal({
+      env: { HOME: home },
+      now: () => now
+    })).toBeDefined();
     if (process.platform !== "win32") {
       expect((await stat(journal.file)).mode & 0o777).toBe(0o600);
     }

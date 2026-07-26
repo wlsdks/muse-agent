@@ -199,6 +199,23 @@ describe("resident daemon restart state machine", () => {
       updatedAt: new Date(START.getTime() + 60_000).toISOString()
     });
     expect(refreshed.sequence).toBe(first.sequence + 1);
+
+    const nextGeneration = decideResidentDaemonRestartAdmission(refreshed, {
+      generation: "healthy_generation_02",
+      now: new Date(START.getTime() + 120_000)
+    });
+    expect(nextGeneration.admission).toEqual({ state: "admit" });
+    expect(nextGeneration.receipt).toMatchObject({
+      admittedGeneration: "healthy_generation_02",
+      state: "closed",
+      successfulGeneration: null
+    });
+    expect(parseResidentDaemonRestartStateReceipt(JSON.stringify(nextGeneration.receipt)))
+      .toEqual(nextGeneration.receipt);
+    expect(decideResidentDaemonRestartAdmission(nextGeneration.receipt, {
+      generation: "healthy_generation_02",
+      now: new Date(START.getTime() + 120_000)
+    }).receipt).toBe(nextGeneration.receipt);
   });
 
   it("rejects partial, unknown, contradictory, and unsafe policy evidence", () => {
