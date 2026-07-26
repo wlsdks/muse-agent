@@ -57,7 +57,9 @@ export {
   EXECUTE_SINK_ARG_NAMES,
   OUTBOUND_SEND_SINK_ARG_NAMES,
   OUTBOUND_SEND_TOOL_NAMES,
-  type ActuatorProvenanceResult
+  resolveThirdPartySendRoute,
+  type ActuatorProvenanceResult,
+  type ThirdPartySendRouteResolution
 } from "./actuator-provenance-gate.js";
 export { contentTokens, contentTokenSet } from "./provenance-tokens.js";
 export {

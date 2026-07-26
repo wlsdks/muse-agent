@@ -124,6 +124,7 @@ export interface PendingApprovalStatus {
   readonly recoverableAt?: string;
   readonly effectMayHaveOccurred: boolean;
   readonly draft?: string;
+  readonly thirdPartySend?: ThirdPartySendDraftBinding;
 }
 
 export type PendingApprovalStatusResult =
@@ -225,6 +226,29 @@ function isThirdPartySendDraftBinding(entry: Record<string, unknown>): boolean {
       expiresAt: entry["expiresAt"],
       recipient: binding["recipient"],
       tool: entry["tool"]
+    });
+  } catch {
+    return false;
+  }
+}
+
+/** Re-validate a classified send immediately before an approval can execute. */
+export function hasExactThirdPartySendDraftBinding(
+  entry: PendingApproval,
+  route: { readonly channel: string; readonly recipient: string }
+): boolean {
+  const binding = entry.thirdPartySend;
+  if (!binding || binding.channel !== route.channel || binding.recipient !== route.recipient) {
+    return false;
+  }
+  try {
+    return binding.payloadHash === computePendingApprovalPayloadHash({
+      arguments: entry.arguments,
+      channel: route.channel,
+      draft: entry.draft,
+      expiresAt: entry.expiresAt,
+      recipient: route.recipient,
+      tool: entry.tool
     });
   } catch {
     return false;
@@ -407,6 +431,7 @@ function publicApprovalStatus(
     risk: approval.risk,
     state,
     tool: approval.tool,
+    ...(approval.thirdPartySend === undefined ? {} : { thirdPartySend: approval.thirdPartySend }),
     ...(execution === undefined ? {} : { claimedAt: execution.claimedAt, updatedAt: execution.updatedAt }),
     ...(recoverableAtMs === undefined ? {} : { recoverableAt: new Date(recoverableAtMs).toISOString() })
   };

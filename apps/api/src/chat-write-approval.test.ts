@@ -7,6 +7,7 @@ import {
   CLAIM_RECOVERY_LEASE_MS,
   claimPendingApproval,
   completePendingApproval,
+  createThirdPartySendDraftBinding,
   declinePendingApprovalClaim,
   listPendingApprovals,
   recordPendingApproval,
@@ -177,6 +178,46 @@ describe("executeChatApproval confirm-execute", () => {
     expect(out.body).toMatchObject({ ran: true, tool: "muse.tasks.add" });
     expect(calls).toEqual([{ title: "Buy milk" }]);
     expect(await listPendingApprovals(pendingFile)).toHaveLength(0);
+  });
+
+  it("executes a route-bound third-party send and rejects a legacy unbound copy with zero effects", async () => {
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const arguments_ = { summary: "Book", url: "https://example.com/book" };
+    const draft = "POST https://example.com/book";
+    const bound = pendingEntry({
+      arguments: arguments_,
+      draft,
+      expiresAt,
+      id: "bound-web",
+      risk: "execute",
+      thirdPartySend: createThirdPartySendDraftBinding({
+        arguments: arguments_,
+        channel: "web",
+        draft,
+        expiresAt,
+        recipient: "https://example.com/book",
+        tool: "web_action"
+      }),
+      tool: "web_action"
+    });
+    const legacy = pendingEntry({
+      arguments: arguments_,
+      draft,
+      expiresAt,
+      id: "legacy-web",
+      risk: "execute",
+      tool: "web_action"
+    });
+    await recordPendingApproval(pendingFile, bound);
+    await recordPendingApproval(pendingFile, legacy);
+    const { tool, calls } = recordingTool("web_action", { performed: true });
+
+    const approved = await executeChatApproval({ id: "bound-web", pendingFile, resolveTool: () => tool });
+    const refused = await executeChatApproval({ id: "legacy-web", pendingFile, resolveTool: () => tool });
+
+    expect(approved.body).toMatchObject({ ran: true, state: "succeeded" });
+    expect(refused.body).toMatchObject({ state: "denied" });
+    expect(calls).toEqual([arguments_]);
   });
 
   it("explicit recovery re-enters the coordinator for a stale allowlisted pre-effect claim", async () => {

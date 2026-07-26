@@ -1,8 +1,10 @@
 import {
   completePendingApproval,
+  hasExactThirdPartySendDraftBinding,
   type CompletePendingApprovalResult,
   type PendingApprovalAcquisition
 } from "@muse/messaging";
+import { resolveThirdPartySendRoute } from "@muse/agent-core";
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 import { normalizeLocalTaskMutationOutcome } from "@muse/domain-tools";
@@ -110,6 +112,13 @@ export async function executeChatApproval(opts: {
     id,
     now: opts.now,
     prepare: async (snapshot) => {
+      const route = resolveThirdPartySendRoute(snapshot.tool, snapshot.arguments);
+      if (route.kind === "unbound") {
+        return { detail: route.reason, kind: "decline" };
+      }
+      if (route.kind === "bound" && !hasExactThirdPartySendDraftBinding(snapshot, route)) {
+        return { detail: "third-party send approval is missing or has a stale route/payload binding", kind: "decline" };
+      }
       const tool = opts.resolveTool?.(snapshot.tool);
       if (!tool) {
         return { detail: "tool no longer available", kind: "unknown" };

@@ -510,6 +510,33 @@ describe("buildMcpServeTools", () => {
       });
     });
 
+    it("binds an exact web destination and refuses unresolved third-party sends before staging", async () => {
+      const captured: PendingApproval[] = [];
+      const tools = buildMcpServeTools(baseDeps({
+        stagePendingApproval: async (entry) => {
+          captured.push(entry);
+        }
+      }, notesDir));
+      const proposeAction = tools.find((tool) => tool.definition.name === "propose_action")!;
+
+      await proposeAction.execute({
+        action: "web_action",
+        arguments: { summary: "Book", url: "https://example.com/book" },
+        draft: "POST https://example.com/book"
+      }, context);
+
+      expect(captured[0]?.thirdPartySend).toMatchObject({
+        channel: "web",
+        recipient: "https://example.com/book"
+      });
+      await expect(proposeAction.execute({
+        action: "email_reply",
+        arguments: { body: "Yes", id: "mail-1" },
+        draft: "Reply yes"
+      }, context)).rejects.toThrow(/unbound third-party send/iu);
+      expect(captured).toHaveLength(1);
+    });
+
     it("fails closed on blank action/draft — never stages anything", async () => {
       let staged = false;
       const tools = buildMcpServeTools(baseDeps({

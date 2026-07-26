@@ -283,19 +283,21 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
           if (text === undefined || text.length === 0) {
             return { error: "text is required" };
           }
-          // Resolve the channel from config instead of failing on the model's
-          // guess: a single-user box usually has ONE messenger and the model
-          // needn't know its id (it was observed guessing "telegram", which a
-          // Slack/Discord/LINE user doesn't have). An explicit REGISTERED id is
-          // honoured; a single configured provider is used; multiple + a
-          // missing/unknown id → ASK (never guess among several). This RESOLVES
-          // the provider from config rather than guessing (outbound-safety); the
-          // draft-first gate below still shows the user the exact {provider,
-          // destination, text}, so any provider/destination mismatch is caught
-          // at confirm.
+          // Infer the sole configured channel only when providerId is omitted.
+          // An explicit unknown id must fail closed: substituting the sole
+          // provider after a draft/approval bound another id would send on a
+          // different channel than the user reviewed.
           const registered = registry.list();
           let providerId: string;
-          if (requested && registry.has(requested)) {
+          if (requested) {
+            if (!registry.has(requested)) {
+              const ids = registered.map((provider) => provider.describe().id).join(", ");
+              return {
+                error: ids.length > 0
+                  ? `providerId must be one of your configured messengers: ${ids} (got "${requested}")`
+                  : "no messaging provider is configured — set one up first"
+              };
+            }
             providerId = requested;
           } else if (registered.length === 1) {
             providerId = registered[0]!.describe().id;
@@ -303,7 +305,7 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
             return { error: "no messaging provider is configured — set one up first" };
           } else {
             const ids = registered.map((provider) => provider.describe().id).join(", ");
-            return { error: `providerId must be one of your configured messengers: ${ids}${requested ? ` (got "${requested}")` : ""}` };
+            return { error: `providerId must be one of your configured messengers: ${ids}` };
           }
           // Outbound-safety: when wired with an action log, record every
           // send (and honour an optional draft-first gate) instead of

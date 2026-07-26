@@ -15,6 +15,7 @@ import {
   clearPendingApproval,
   completePendingApproval,
   inspectPendingApprovalStatus,
+  hasExactThirdPartySendDraftBinding,
   listPendingApprovals,
   type CompletePendingApprovalResult,
   type PendingApprovalAcquisition,
@@ -23,6 +24,7 @@ import {
   type PendingApprovalCoordinatorPhase,
   type PendingApprovalCoordinatorState
 } from "@muse/messaging";
+import { resolveThirdPartySendRoute } from "@muse/agent-core";
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool, ToolExecutionValue } from "@muse/tools";
 import { confirm, isCancel } from "@clack/prompts";
@@ -112,6 +114,13 @@ export async function approvePendingApproval(opts: ApprovePendingApprovalOptions
     now: opts.now,
     operations: opts.coordinatorOperations,
     prepare: async (snapshot) => {
+      const route = resolveThirdPartySendRoute(snapshot.tool, snapshot.arguments);
+      if (route.kind === "unbound") {
+        return { detail: route.reason, kind: "decline" };
+      }
+      if (route.kind === "bound" && !hasExactThirdPartySendDraftBinding(snapshot, route)) {
+        return { detail: "third-party send approval is missing or has a stale route/payload binding", kind: "decline" };
+      }
       const tool = opts.resolveTool?.(snapshot.tool) ?? (opts.resolveTool === undefined
         ? buildActuatorTools({
             env: opts.env,
@@ -170,7 +179,11 @@ function pendingFile(): string {
 
 function formatPending(entry: PendingApproval): string {
   const who = entry.userId ?? `${entry.providerId}:${entry.source}`;
-  return `${entry.id}  ${who}  ${entry.tool} — ${entry.draft} (expires ${entry.expiresAt})`;
+  const binding = entry.thirdPartySend;
+  const route = binding
+    ? ` [channel=${binding.channel} recipient=${binding.recipient} hash=${binding.payloadHash}]`
+    : "";
+  return `${entry.id}  ${who}  ${entry.tool}${route} — ${entry.draft} (expires ${entry.expiresAt})`;
 }
 
 export function registerApprovalsCommands(
@@ -227,6 +240,9 @@ export function registerApprovalsCommands(
       const status = result.status;
       io.stdout(`${status.id}  ${status.tool}  state=${status.state}  recoverable=${String(status.recoverable)}  effectMayHaveOccurred=${String(status.effectMayHaveOccurred)}\n`);
       if (status.recoverableAt) io.stdout(`recoverableAt=${status.recoverableAt}\n`);
+      if (status.thirdPartySend) {
+        io.stdout(`channel=${status.thirdPartySend.channel}\nrecipient=${status.thirdPartySend.recipient}\npayloadHash=${status.thirdPartySend.payloadHash}\nexpiresAt=${status.expiresAt}\n`);
+      }
       if (status.draft) io.stdout(`draft=${status.draft}\n`);
     });
 

@@ -29,10 +29,80 @@ export interface ActuatorProvenanceResult {
  */
 export const OUTBOUND_SEND_TOOL_NAMES: readonly string[] = [
   "email_send",
+  "email_reply",
+  "email_forward",
   "web_action",
+  "mac_message_send",
   "muse.messaging.send",
   "objective.act"
 ];
+
+const OUTBOUND_SEND_TOOL_NAME_SET = new Set(OUTBOUND_SEND_TOOL_NAMES);
+
+export type ThirdPartySendRouteResolution =
+  | { readonly kind: "not-third-party" }
+  | { readonly kind: "bound"; readonly channel: string; readonly recipient: string }
+  | { readonly kind: "unbound"; readonly reason: string };
+
+function exactString(args: Record<string, unknown>, name: string): string | undefined {
+  const value = args[name];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/**
+ * Resolve the route that a pending third-party send must bind before it can be
+ * staged or approved. This is intentionally stricter than each actuator's live
+ * resolver: contact names and message ids are not final destinations, so an
+ * approval captured before those lookups complete must fail closed.
+ */
+export function resolveThirdPartySendRoute(
+  tool: string,
+  args: Record<string, unknown>
+): ThirdPartySendRouteResolution {
+  if (!OUTBOUND_SEND_TOOL_NAME_SET.has(tool)) {
+    return { kind: "not-third-party" };
+  }
+  switch (tool) {
+    case "web_action": {
+      const url = exactString(args, "url");
+      return url
+        ? { channel: "web", kind: "bound", recipient: url }
+        : { kind: "unbound", reason: "web_action requires an exact URL before approval staging" };
+    }
+    case "muse.messaging.send": {
+      const channel = exactString(args, "providerId");
+      const recipient = exactString(args, "destination");
+      return channel && recipient
+        ? { channel, kind: "bound", recipient }
+        : { kind: "unbound", reason: "messaging send requires an exact providerId and destination before approval staging" };
+    }
+    case "mac_message_send": {
+      const recipient = exactString(args, "to");
+      return recipient
+        ? { channel: "macos-messages", kind: "bound", recipient }
+        : { kind: "unbound", reason: "mac_message_send requires an explicit phone number or iMessage address before approval staging" };
+    }
+    case "email_send":
+    case "email_forward":
+      return {
+        kind: "unbound",
+        reason: `${tool} resolves a contact name to an address only inside the actuator; stage it only after that address is resolved`
+      };
+    case "email_reply":
+      return {
+        kind: "unbound",
+        reason: "email_reply resolves its recipient from the original message only inside the actuator; stage it only after that address is resolved"
+      };
+    case "objective.act":
+      return {
+        kind: "unbound",
+        reason: "objective.act has no production route schema and cannot be staged as a third-party send"
+      };
+  }
+  return { kind: "unbound", reason: "third-party send route is not resolvable" };
+}
 
 /**
  * The argument keys on an outbound-send tool that carry content to the third
@@ -42,7 +112,9 @@ export const OUTBOUND_SEND_TOOL_NAMES: readonly string[] = [
  */
 export const OUTBOUND_SEND_SINK_ARG_NAMES: readonly string[] = [
   "to",
+  "destination",
   "recipient",
+  "recipientName",
   "cc",
   "bcc",
   "subject",

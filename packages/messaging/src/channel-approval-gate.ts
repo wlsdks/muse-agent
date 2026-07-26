@@ -124,9 +124,12 @@ export function createChannelApprovalGate(options: {
       return { allowed: true };
     }
     const draft = summarizeToolDraft(toolCall.name, toolCall.arguments);
+    let refusalRecorded: boolean | undefined;
     if (options.recordRefusal) {
+      refusalRecorded = false;
       try {
         await options.recordRefusal({ arguments: toolCall.arguments ?? {}, draft, risk, tool: toolCall.name, ...(userId ? { userId } : {}) });
+        refusalRecorded = true;
       } catch {
         // Recording the refusal must never change the fail-closed
         // decision — a wedged disk can't let a risky tool through.
@@ -139,7 +142,12 @@ export function createChannelApprovalGate(options: {
         + ". Write/execute actions are not available in group chats — this was NOT executed. Ask Muse directly in your 1:1 chat if you want this done."
       : `🔒 Muse wanted to run "${toolCall.name}" (${risk})`
         + (draft ? ` — ${draft}` : "")
-        + ". It was NOT executed — Muse won't run a state-changing action from a chat message on its own. It needs your explicit approval and has been logged for your review.";
+        + ". It was NOT executed — Muse won't run a state-changing action from a chat message on its own."
+        + (refusalRecorded === true
+          ? " It needs your explicit approval and has been logged for your review."
+          : refusalRecorded === false
+            ? " It could not be added to the approval worklist safely; use a direct/local confirmation surface for this action, or review local storage health."
+            : " It needs your explicit approval.");
     try {
       await options.registry.send(options.providerId, { destination: options.source, text });
     } catch {

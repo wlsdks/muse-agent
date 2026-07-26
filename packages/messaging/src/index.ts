@@ -53,6 +53,7 @@ export {
   denyPendingApproval,
   filterUnexpired,
   finalizePendingApprovalExecution,
+  hasExactThirdPartySendDraftBinding,
   inspectPendingApprovalStatus,
   listPendingApprovals,
   inspectPendingApprovalsSource,

@@ -33,7 +33,11 @@ import {
   resolveTasksFile,
   type MuseEnvironment
 } from "@muse/autoconfigure";
-import { recordPendingApproval, type PendingApproval } from "@muse/messaging";
+import {
+  createThirdPartySendDraftBinding,
+  recordPendingApproval,
+  type PendingApproval
+} from "@muse/messaging";
 import {
   allUserMemoryFacts,
   isNotesIndexStale,
@@ -45,6 +49,7 @@ import {
 import {
   edgeLoadByRelevance,
   rankKnowledgeChunksWithHop,
+  resolveThirdPartySendRoute,
   renderKnowledgeMatches
 } from "@muse/agent-core";
 import type { JsonObject, JsonValue } from "@muse/shared";
@@ -589,16 +594,33 @@ function buildProposeActionTool(deps: McpServeDependencies): MuseTool {
         : {};
 
       const createdAt = deps.now();
+      const expiresAt = new Date(createdAt.getTime() + PROPOSE_ACTION_TTL_MS).toISOString();
+      const route = resolveThirdPartySendRoute(rawAction, argumentsPayload);
+      if (route.kind === "unbound") {
+        throw new Error(`propose_action: cannot stage an unbound third-party send — ${route.reason}`);
+      }
       const entry: PendingApproval = {
         arguments: argumentsPayload,
         createdAt: createdAt.toISOString(),
         draft: rawDraft,
-        expiresAt: new Date(createdAt.getTime() + PROPOSE_ACTION_TTL_MS).toISOString(),
+        expiresAt,
         id: deps.newId(),
         providerId: "mcp",
         risk: "write",
         source: "mcp-serve",
         tool: rawAction,
+        ...(route.kind === "bound"
+          ? {
+              thirdPartySend: createThirdPartySendDraftBinding({
+                arguments: argumentsPayload,
+                channel: route.channel,
+                draft: rawDraft,
+                expiresAt,
+                recipient: route.recipient,
+                tool: rawAction
+              })
+            }
+          : {}),
         userId: deps.userId
       };
 

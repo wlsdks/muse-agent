@@ -98,6 +98,7 @@ describe("createChannelApprovalGate", () => {
       tool: "email_send",
       userId: "tg:42"
     });
+    expect((registry.send.mock.calls[0]![1] as { text: string }).text).toContain("logged for your review");
   });
 
   it("stays fail-closed when the refusal recorder throws (a wedged disk can't let a risky tool through)", async () => {
@@ -110,6 +111,10 @@ describe("createChannelApprovalGate", () => {
     expect(decision.allowed).toBe(false);
     expect(recordRefusal).toHaveBeenCalledTimes(1);
     expect(registry.send).toHaveBeenCalledTimes(1); // still posts the prompt
+    const posted = registry.send.mock.calls[0]![1] as { text: string };
+    expect(posted.text).toContain("use a direct/local confirmation surface");
+    expect(posted.text).not.toContain("ask again with an exact route");
+    expect(posted.text).not.toContain("logged for your review");
   });
 });
 

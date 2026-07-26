@@ -69,7 +69,7 @@ function fakeProvider(id: string, sent?: OutboundMessage[]): MessagingProvider {
   } as unknown as MessagingProvider;
 }
 
-describe("muse.messaging.send — resolve the channel from config, never fail on the model's guess (gate proven, not just the happy path)", () => {
+describe("muse.messaging.send — resolve an omitted channel from config and reject explicit route drift", () => {
   it("uses the SINGLE configured provider even when providerId is omitted (with an approving gate)", async () => {
     const sent: OutboundMessage[] = [];
     const server = createMessagingMcpServer({ actionLogFile: logFile(), approvalGate: () => ({ approved: true }), registry: new MessagingProviderRegistry([fakeProvider("slack", sent)]), userId: "stark" });
@@ -78,12 +78,13 @@ describe("muse.messaging.send — resolve the channel from config, never fail on
     expect(sent).toHaveLength(1);
   });
 
-  it("uses the single provider even when the model GUESSES a wrong/unregistered providerId (the defect)", async () => {
+  it("refuses a wrong explicit providerId even when a different sole provider is configured", async () => {
     const sent: OutboundMessage[] = [];
     const server = createMessagingMcpServer({ actionLogFile: logFile(), approvalGate: () => ({ approved: true }), registry: new MessagingProviderRegistry([fakeProvider("slack", sent)]), userId: "stark" });
-    const out = await createLoopbackMcpConnection(server).callTool!("send", { destination: "C123", providerId: "telegram", text: "hi" });
-    expect(out).toMatchObject({ providerId: "slack" }); // resolved to the configured one, not the guess
-    expect(sent).toHaveLength(1);
+    const out = await createLoopbackMcpConnection(server).callTool!("send", { destination: "C123", providerId: "telegram", text: "hi" }) as { error?: string };
+    expect(out.error).toContain('got "telegram"');
+    expect(out.error).toContain("slack");
+    expect(sent).toHaveLength(0);
   });
 
   it("MULTIPLE providers + missing/unknown providerId → ASK (error lists them), sends NOTHING", async () => {

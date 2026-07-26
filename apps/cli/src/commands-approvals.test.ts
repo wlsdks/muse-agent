@@ -2,7 +2,17 @@ import { mkdtempSync, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { CLAIM_RECOVERY_LEASE_MS, beginPendingApprovalExecution, claimPendingApproval, declinePendingApprovalClaim, listPendingApprovals, recordPendingApproval, type PendingApproval } from "@muse/messaging";
+import {
+  CLAIM_RECOVERY_LEASE_MS,
+  beginPendingApprovalExecution,
+  claimPendingApproval,
+  createThirdPartySendDraftBinding,
+  declinePendingApprovalClaim,
+  hasExactThirdPartySendDraftBinding,
+  listPendingApprovals,
+  recordPendingApproval,
+  type PendingApproval
+} from "@muse/messaging";
 import { readActionLog, readTasks } from "@muse/stores";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
@@ -24,7 +34,7 @@ function recordingFetch(): { fetchImpl: typeof fetch; calls: string[] } {
 }
 
 function webEntry(overrides: Partial<PendingApproval> = {}): PendingApproval {
-  return {
+  const entry: PendingApproval = {
     arguments: { summary: "Book a table", url: "http://x.test/book" },
     createdAt: new Date().toISOString(),
     draft: "POST http://x.test/book",
@@ -35,6 +45,20 @@ function webEntry(overrides: Partial<PendingApproval> = {}): PendingApproval {
     source: "42",
     tool: "web_action",
     ...overrides
+  };
+  if (entry.tool !== "web_action") return { ...entry, thirdPartySend: undefined };
+  const recipient = entry.arguments["url"];
+  if (typeof recipient !== "string" || recipient.trim().length === 0) return entry;
+  return {
+    ...entry,
+    thirdPartySend: createThirdPartySendDraftBinding({
+      arguments: entry.arguments,
+      channel: "web",
+      draft: entry.draft,
+      expiresAt: entry.expiresAt,
+      recipient: recipient.trim(),
+      tool: entry.tool
+    })
   };
 }
 
@@ -191,6 +215,28 @@ describe("muse approvals", () => {
     expect(result.stderr).toBe("");
   });
 
+  it("list and status show the exact third-party route, payload hash, and expiry", async () => {
+    const f = file();
+    const approval = webEntry({ id: "bound-status" });
+    expect(hasExactThirdPartySendDraftBinding(approval, {
+      channel: "web",
+      recipient: "http://x.test/book"
+    })).toBe(true);
+    await recordPendingApproval(f, approval);
+
+    const listed = await run(f, ["list"]);
+    expect(listed.stdout).toContain("channel=web");
+    expect(listed.stdout).toContain("recipient=http://x.test/book");
+    expect(listed.stdout).toContain(`hash=${approval.thirdPartySend!.payloadHash}`);
+    expect(listed.stdout).toContain(`expires ${approval.expiresAt}`);
+
+    const status = await run(f, ["status", "bound-status"]);
+    expect(status.stdout).toContain("channel=web");
+    expect(status.stdout).toContain("recipient=http://x.test/book");
+    expect(status.stdout).toContain(`payloadHash=${approval.thirdPartySend!.payloadHash}`);
+    expect(status.stdout).toContain(`expiresAt=${approval.expiresAt}`);
+  });
+
   it("recover --json exposes the coordinator result without reconstructing lifecycle state", async () => {
     const result = await run(file(), ["recover", "recover-json", "--json"], undefined, {
       recoverPendingApproval: async () => ({ state: "succeeded", status: "ran", tool: "muse.tasks.add" })
@@ -202,7 +248,11 @@ describe("muse approvals", () => {
 });
 
 describe("approvePendingApproval — re-run completion", () => {
-  const env = {} as Record<string, string | undefined>;
+  const approvalHome = mkdtempSync(join(tmpdir(), "muse-approvals-home-"));
+  const env = {
+    HOME: approvalHome,
+    MUSE_ACTION_LOG_FILE: join(approvalHome, "actions.json")
+  } as Record<string, string | undefined>;
 
   it("CONFIRM: re-runs the gated tool (one request fires) and clears it (replay-guard)", async () => {
     const f = file();
@@ -217,13 +267,42 @@ describe("approvePendingApproval — re-run completion", () => {
       lookup: async () => [{ address: "93.184.216.34", family: 4 }],
       pendingFile: f
     });
-    expect(result.status).toBe("ran");
+    expect(result).toMatchObject({ status: "ran" });
     expect(calls).toEqual(["http://x.test/book"]);
     // Cleared → a second approve can't re-fire.
     expect(await listPendingApprovals(f)).toHaveLength(0);
     const replay = await approvePendingApproval({ isInteractive: () => true, confirmAction: async () => true, env, fetchImpl, id: "go", io: fakeIo(), pendingFile: f });
     expect(replay).toMatchObject({ state: "succeeded", status: "conflict" });
     expect(calls).toHaveLength(1); // no second request
+  });
+
+  it("durably denies a legacy unbound third-party approval before confirmation or execution", async () => {
+    const f = file();
+    const approval = webEntry({ id: "legacy-unbound" });
+    const { thirdPartySend: _binding, ...legacy } = approval;
+    await recordPendingApproval(f, legacy);
+    let confirms = 0;
+    let effects = 0;
+
+    const result = await approvePendingApproval({
+      confirmAction: async () => {
+        confirms += 1;
+        return true;
+      },
+      env,
+      executeTool: async () => {
+        effects += 1;
+        return { performed: true };
+      },
+      id: "legacy-unbound",
+      io: fakeIo(),
+      isInteractive: () => true,
+      pendingFile: f
+    });
+
+    expect(result).toMatchObject({ state: "denied", status: "declined" });
+    expect(confirms).toBe(0);
+    expect(effects).toBe(0);
   });
 
   it("reports the actual executing conflict and keeps replay blocked when success cannot be durably finalized", async () => {
@@ -268,7 +347,7 @@ describe("approvePendingApproval — re-run completion", () => {
         }
       },
       confirmAction: async () => true,
-      env: { MUSE_ACTION_LOG_FILE: actionLogFile },
+      env: { ...env, MUSE_ACTION_LOG_FILE: actionLogFile },
       fetchImpl,
       id: "swap",
       io: fakeIo(),
@@ -586,7 +665,7 @@ describe("approvePendingApproval — re-run completion", () => {
     const f = file();
     await recordPendingApproval(f, entry({ id: "gmail-local" }));
     let gmailReads = 0;
-    const localEnv: Record<string, string | undefined> = { MUSE_LOCAL_ONLY: "true" };
+    const localEnv: Record<string, string | undefined> = { ...env, MUSE_LOCAL_ONLY: "true" };
     Object.defineProperty(localEnv, "MUSE_GMAIL_TOKEN", {
       configurable: true,
       enumerable: true,
@@ -607,7 +686,7 @@ describe("approvePendingApproval — re-run completion", () => {
       pendingFile: f
     });
 
-    expect(result).toMatchObject({ state: "denied", status: "no-tool", tool: "email_send" });
+    expect(result).toMatchObject({ state: "denied", status: "declined", tool: "email_send" });
     expect(gmailReads).toBe(0);
     expect(calls).toEqual([]);
     expect(await listPendingApprovals(f)).toEqual([]);
@@ -622,6 +701,7 @@ describe("approvePendingApproval — re-run completion", () => {
     }));
     let tokenReads = 0;
     const localEnv: Record<string, string | undefined> = {
+      ...env,
       MUSE_HOMEASSISTANT_URL: "http://ha.local:8123",
       MUSE_LOCAL_ONLY: "true"
     };

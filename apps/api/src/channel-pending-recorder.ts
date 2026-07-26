@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
+import { resolveThirdPartySendRoute } from "@muse/agent-core";
 import {
+  createThirdPartySendDraftBinding,
   recordPendingApproval as defaultRecordPendingApproval,
   type ChannelApprovalRefusal,
   type PendingApproval
@@ -31,16 +33,33 @@ export function createChannelPendingRecorder(deps: {
     : DEFAULT_PENDING_TTL_MS;
   return async (refusal) => {
     const at = now();
+    const expiresAt = new Date(at.getTime() + ttlMs).toISOString();
+    const route = resolveThirdPartySendRoute(refusal.tool, refusal.arguments);
+    if (route.kind === "unbound") {
+      throw new Error(`cannot stage unbound third-party send: ${route.reason}`);
+    }
     const entry: PendingApproval = {
       arguments: refusal.arguments,
       createdAt: at.toISOString(),
       draft: refusal.draft,
-      expiresAt: new Date(at.getTime() + ttlMs).toISOString(),
+      expiresAt,
       id: randomUUID(),
       providerId: deps.providerId,
       risk: refusal.risk,
       source: deps.source,
       tool: refusal.tool,
+      ...(route.kind === "bound"
+        ? {
+            thirdPartySend: createThirdPartySendDraftBinding({
+              arguments: refusal.arguments,
+              channel: route.channel,
+              draft: refusal.draft,
+              expiresAt,
+              recipient: route.recipient,
+              tool: refusal.tool
+            })
+          }
+        : {}),
       ...(refusal.userId ? { userId: refusal.userId } : {})
     };
     await record(deps.pendingFile, entry);

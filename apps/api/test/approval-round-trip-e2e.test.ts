@@ -47,7 +47,13 @@ describe("approval round-trip e2e (gate refuses+records → inbound yes → CLI-
     expect(decision.allowed).toBe(false); // never runs on the gate's own judgement
     const pending = await listPendingApprovals(pendingFile, NOW);
     expect(pending).toHaveLength(1);
-    expect(pending[0]).toMatchObject({ providerId: PROVIDER, source: SOURCE, tool: "web_action", arguments: { url } });
+    expect(pending[0]).toMatchObject({
+      providerId: PROVIDER,
+      source: SOURCE,
+      thirdPartySend: { channel: "web", recipient: url },
+      tool: "web_action",
+      arguments: { url }
+    });
     expect(await readFile(noticeFile, "utf8")).toContain("web_action"); // user was told
 
     // 2. ACK leg: inbound "yes" identifies the same pending entry but cannot
