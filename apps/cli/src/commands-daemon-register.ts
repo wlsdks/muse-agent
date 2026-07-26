@@ -46,7 +46,7 @@ import {
 import { readAttunementState } from "@muse/attunement";
 import { createObserveRunnerFromEnvironment } from "@muse/attunement/host";
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import { isLocalOnlyEnabled } from "@muse/model";
+import { inspectLocalOnlyEnvironmentSetting } from "@muse/model";
 import { defaultScheduledJobsFile } from "@muse/scheduler";
 import {
   inspectResidentDaemon,
@@ -1041,7 +1041,12 @@ export async function installDaemonAutostart(
     io.stderr("refusing to install daemon autostart: MUSE_DAEMON_PROVIDER_LOCK must be unset or 'log'.\n");
     return { ok: false };
   }
-  if (isLocalOnlyEnabled(e)) safetyEnvironment.MUSE_LOCAL_ONLY = "true";
+  const localOnlySetting = inspectLocalOnlyEnvironmentSetting(e);
+  if (localOnlySetting === "invalid") {
+    io.stderr("refusing to install daemon autostart: MUSE_LOCAL_ONLY must be unset or an explicit true/false value.\n");
+    return { ok: false };
+  }
+  if (localOnlySetting === "enabled") safetyEnvironment.MUSE_LOCAL_ONLY = "true";
   if (!parseBoolean(e.MUSE_SELFLEARN_ENABLED, true)) {
     safetyEnvironment.MUSE_SELFLEARN_ENABLED = "false";
   }
@@ -1340,9 +1345,21 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         return;
       }
       const deliveryBrakeEngaged = !parseBoolean(e.MUSE_DAEMON_DELIVERY_ENABLED, true);
+      const suppliedLocalOnlySetting = inspectLocalOnlyEnvironmentSetting(e);
+      const ambientLocalOnlySetting = e === process.env
+        ? suppliedLocalOnlySetting
+        : inspectLocalOnlyEnvironmentSetting(process.env);
+      if (
+        residentExecutionRequested
+        && (ambientLocalOnlySetting === "invalid" || suppliedLocalOnlySetting === "invalid")
+      ) {
+        io.stderr("muse daemon refused: MUSE_LOCAL_ONLY must be unset or an explicit true/false value.\n");
+        process.exitCode = 1;
+        return;
+      }
       // `helpers.env` is a test/composition seam, not an escape hatch. A
       // supplied false cannot downgrade the ambient local-only posture.
-      const localOnly = isLocalOnlyEnabled(process.env) || isLocalOnlyEnabled(e);
+      const localOnly = ambientLocalOnlySetting === "enabled" || suppliedLocalOnlySetting === "enabled";
       let interval: number;
       let leadMinutes: number;
       try {

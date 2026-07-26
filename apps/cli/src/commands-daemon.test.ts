@@ -1924,7 +1924,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
       MUSE_DAEMON_DELIVERY_ENABLED: "true",
       MUSE_DAEMON_PLIST_FILE: plistFile,
       MUSE_DAEMON_PROVIDER_LOCK: "",
-      MUSE_LOCAL_ONLY: "false",
+      MUSE_LOCAL_ONLY: "sometimes",
       MUSE_SELFLEARN_ENABLED: "true"
     };
     const result = await runDaemon(["--install", "--safe"], {
@@ -1942,9 +1942,30 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(plist).toContain("<key>MUSE_DAEMON_PROVIDER_LOCK</key>\n    <string>log</string>");
     expect(plist).toContain("<key>MUSE_DAEMON_DELIVERY_ENABLED</key>\n    <string>false</string>");
     expect(plist).toContain("<key>MUSE_SELFLEARN_ENABLED</key>\n    <string>false</string>");
-    expect(env.MUSE_LOCAL_ONLY).toBe("false");
+    expect(env.MUSE_LOCAL_ONLY).toBe("sometimes");
     expect(env.MUSE_DAEMON_DELIVERY_ENABLED).toBe("true");
     expect(env.MUSE_SELFLEARN_ENABLED).toBe("true");
+  });
+
+  it("--install rejects an invalid local-only value before artifact or launchctl mutation", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-install-invalid-local-only-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const runLaunchctl = vi.fn(async () => ({ code: 0, stderr: "", stdout: "" }));
+    const result = await runDaemon(["--install"], {
+      env: {
+        ...tmpEnv(),
+        MUSE_DAEMON_PLIST_FILE: plistFile,
+        MUSE_LOCAL_ONLY: "sometimes"
+      },
+      platform: "darwin",
+      registry: new MessagingProviderRegistry([capturingProvider([])]),
+      runLaunchctl
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("MUSE_LOCAL_ONLY must be unset or an explicit true/false value");
+    expect(existsSync(plistFile)).toBe(false);
+    expect(runLaunchctl).not.toHaveBeenCalled();
   });
 
   it("rejects --safe without --install", async () => {
@@ -4489,6 +4510,77 @@ describe("muse daemon — continuous email-sync tick (always-on email→recall)"
 
     expect(res.exitCode).toBeUndefined();
     expect(makeEmailSyncTick).not.toHaveBeenCalled();
+  });
+
+  it("refuses invalid local-only resident execution before writer or provider construction", async () => {
+    const previous = process.env.MUSE_LOCAL_ONLY;
+    delete process.env.MUSE_LOCAL_ONLY;
+    try {
+      const env = tmpEnv();
+      env.MUSE_LOCAL_ONLY = "sometimes";
+      Object.defineProperty(env, "GEMINI_API_KEY", {
+        configurable: true,
+        enumerable: true,
+        get: () => {
+          throw new Error("credential must not be read");
+        }
+      });
+      const registry = new MessagingProviderRegistry([capturingProvider([])]);
+      const buildMessagingRegistry = vi.fn(() => registry);
+      const acquireResidentWriterLease = vi.fn(async () => ({
+        ...testResidentLeaseIdentity(),
+        release: async () => undefined,
+        validate: async () => true,
+        waitMs: 0
+      }));
+
+      const result = await runDaemon(["--once"], {
+        acquireResidentWriterLease,
+        buildMessagingRegistry,
+        env,
+        registry
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("MUSE_LOCAL_ONLY must be unset or an explicit true/false value");
+      expect(acquireResidentWriterLease).not.toHaveBeenCalled();
+      expect(buildMessagingRegistry).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.MUSE_LOCAL_ONLY;
+      else process.env.MUSE_LOCAL_ONLY = previous;
+    }
+  });
+
+  it("does not let an injected false mask an invalid ambient local-only value", async () => {
+    const previous = process.env.MUSE_LOCAL_ONLY;
+    process.env.MUSE_LOCAL_ONLY = "sometimes";
+    try {
+      const env = tmpEnv();
+      env.MUSE_LOCAL_ONLY = "false";
+      const registry = new MessagingProviderRegistry([capturingProvider([])]);
+      const buildMessagingRegistry = vi.fn(() => registry);
+      const acquireResidentWriterLease = vi.fn(async () => ({
+        ...testResidentLeaseIdentity(),
+        release: async () => undefined,
+        validate: async () => true,
+        waitMs: 0
+      }));
+
+      const result = await runDaemon(["--once"], {
+        acquireResidentWriterLease,
+        buildMessagingRegistry,
+        env,
+        registry
+      });
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("MUSE_LOCAL_ONLY must be unset or an explicit true/false value");
+      expect(acquireResidentWriterLease).not.toHaveBeenCalled();
+      expect(buildMessagingRegistry).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.MUSE_LOCAL_ONLY;
+      else process.env.MUSE_LOCAL_ONLY = previous;
+    }
   });
 
   it("does not let an injected false downgrade ambient local-only before the Gmail factory", async () => {

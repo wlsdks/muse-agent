@@ -10,7 +10,10 @@
 export type ProviderLocality = "local" | "cloud";
 
 const LOCAL_ONLY_TRUE_VALUES: ReadonlySet<string> = new Set(["true", "1", "yes", "on"]);
+const LOCAL_ONLY_FALSE_VALUES: ReadonlySet<string> = new Set(["false", "0", "no", "off"]);
 const LOCAL_ONLY_OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1";
+
+export type LocalOnlyEnvironmentSetting = "enabled" | "disabled" | "unset" | "invalid";
 
 /**
  * Provider ids whose traffic stays on the user's own machine — local
@@ -54,10 +57,21 @@ export function isLoopbackUrl(raw: string | undefined): boolean {
     || isIpv4Loopback(hostname);
 }
 
+/** Inspect the explicit posture without turning a malformed safety value into cloud-open `false`. */
+export function inspectLocalOnlyEnvironmentSetting(
+  env: Readonly<Record<string, string | undefined>>
+): LocalOnlyEnvironmentSetting {
+  const raw = env["MUSE_LOCAL_ONLY"];
+  if (raw === undefined) return "unset";
+  const normalized = raw.trim().toLowerCase();
+  if (LOCAL_ONLY_TRUE_VALUES.has(normalized)) return "enabled";
+  if (LOCAL_ONLY_FALSE_VALUES.has(normalized)) return "disabled";
+  return "invalid";
+}
+
 /** `MUSE_LOCAL_ONLY` is enabled only by its established explicit truthy spellings. */
 export function isLocalOnlyEnabled(env: Readonly<Record<string, string | undefined>>): boolean {
-  const raw = env["MUSE_LOCAL_ONLY"];
-  return raw !== undefined && LOCAL_ONLY_TRUE_VALUES.has(raw.trim().toLowerCase());
+  return inspectLocalOnlyEnvironmentSetting(env) === "enabled";
 }
 
 /**

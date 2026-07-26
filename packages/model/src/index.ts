@@ -539,10 +539,12 @@ export {
   canonicalizeLocalOnlyRootLoopbackHttpBaseUrl,
   canonicalizeLocalOnlyModelBaseUrl,
   classifyProviderLocality,
+  inspectLocalOnlyEnvironmentSetting,
   isLocalOnlyEnabled,
   isLoopbackUrl,
   LocalOnlyHttpBaseUrlViolationError,
   LocalOnlyViolationError,
+  type LocalOnlyEnvironmentSetting,
   type ProviderLocality
 } from "./local-only-policy.js";
 

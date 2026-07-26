@@ -1,6 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import { canonicalizeLocalOnlyModelBaseUrl, canonicalizeLocalOnlyRootLoopbackHttpBaseUrl, classifyProviderLocality, isLoopbackUrl, LocalOnlyHttpBaseUrlViolationError, LocalOnlyViolationError } from "./local-only-policy.js";
+import { canonicalizeLocalOnlyModelBaseUrl, canonicalizeLocalOnlyRootLoopbackHttpBaseUrl, classifyProviderLocality, inspectLocalOnlyEnvironmentSetting, isLoopbackUrl, LocalOnlyHttpBaseUrlViolationError, LocalOnlyViolationError } from "./local-only-policy.js";
+
+describe("inspectLocalOnlyEnvironmentSetting", () => {
+  it("distinguishes explicit enabled, disabled, unset, and invalid values", () => {
+    for (const value of ["true", "1", "yes", "on", " TRUE "]) {
+      expect(inspectLocalOnlyEnvironmentSetting({ MUSE_LOCAL_ONLY: value }), value).toBe("enabled");
+    }
+    for (const value of ["false", "0", "no", "off", " FALSE "]) {
+      expect(inspectLocalOnlyEnvironmentSetting({ MUSE_LOCAL_ONLY: value }), value).toBe("disabled");
+    }
+    expect(inspectLocalOnlyEnvironmentSetting({})).toBe("unset");
+    for (const value of ["", " ", "sometimes", "2", "enabled"]) {
+      expect(inspectLocalOnlyEnvironmentSetting({ MUSE_LOCAL_ONLY: value }), value).toBe("invalid");
+    }
+  });
+});
 
 describe("isLoopbackUrl", () => {
   it("treats localhost / 127.x / ::1 / .localhost as loopback but rejects the wildcard bind address", () => {
