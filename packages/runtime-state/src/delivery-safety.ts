@@ -98,7 +98,9 @@ export function classifyDeliverySafety(
     }
     if (selfLearnDisabled === false) failed.push(DELIVERY_SAFETY_REASON.selfLearnEnabled);
     if (baseProviderLocal === false) failed.push(DELIVERY_SAFETY_REASON.deliveryRouteNotLocal);
-    if (!providerLockLocalOnly) failed.push(DELIVERY_SAFETY_REASON.providerLockMissing);
+    if (providerLockObservation === "verified" && !providerLockLocalOnly) {
+      failed.push(DELIVERY_SAFETY_REASON.providerLockMissing);
+    }
     if (selfLearningHold === "released") {
       failed.push(DELIVERY_SAFETY_REASON.selfLearningHoldMissing);
     }
@@ -162,4 +164,25 @@ export function classifyDeliverySafety(
     schemaVersion: DELIVERY_SAFETY_SCHEMA_VERSION,
     status: failed.length > 0 ? "failed" : unverified.length > 0 ? "unverified" : "passed"
   };
+}
+
+/**
+ * Canonical fail-closed projection for an unavailable delivery-safety
+ * supplier. It asserts no operational fact: every observable fact remains
+ * unverified, including the delivery brake.
+ */
+export function createUnverifiedDeliverySafetyResult(): DeliverySafetyResult {
+  return classifyDeliverySafety({
+    baseProviderLocal: "unverified",
+    deliveryBrake: "unverified",
+    environmentProbe: "unverified",
+    followups: { overdue: 0, scheduled: 0, status: "unverified" },
+    localOnlyEffective: "unverified",
+    localOnlyPersisted: "unverified",
+    pendingDrafts: { count: 0, status: "unverified" },
+    providerLock: { localOnly: false, mismatch: false, observation: "unverified" },
+    reminders: { overdue: 0, scheduled: 0, status: "unverified" },
+    selfLearnDisabled: "unverified",
+    selfLearningHold: "unverified"
+  });
 }

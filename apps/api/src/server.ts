@@ -384,6 +384,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authService,
     beliefProvenanceFile: options.beliefProvenanceFile ?? defaultBeliefProvenanceFile(env),
     defaultUserId: resolveDefaultUserId(env),
+    deliverySafety: options.deliverySafety,
     env,
     pendingApprovalsFile: options.pendingApprovalsFile ?? resolvePendingApprovalsFile(env),
     proposedActionsFile: options.proposedActionsFile ?? resolveProposedActionsStatusFile(env),
@@ -708,6 +709,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authService,
     daemonSettingsFile,
     daemonStatus: () => channelDaemons.status(),
+    deliverySafety: options.deliverySafety,
     ...(options.messaging ? { messaging: options.messaging } : {}),
     ...(options.telegramInboxFile ? { telegramInboxFile: options.telegramInboxFile } : {})
   });

@@ -4,6 +4,7 @@ import { isDeliverySafetyResult } from "@muse/shared";
 import {
   DELIVERY_SAFETY_REASON,
   classifyDeliverySafety,
+  createUnverifiedDeliverySafetyResult,
   type DeliverySafetyObservation
 } from "./delivery-safety.js";
 
@@ -27,6 +28,46 @@ function safeObservation(
 }
 
 describe("classifyDeliverySafety", () => {
+  it("creates one exact all-unverified fallback without fabricating an engaged brake", () => {
+    const result = createUnverifiedDeliverySafetyResult();
+
+    expect(result.status).toBe("unverified");
+    expect(result.reasonCodes).toEqual([
+      DELIVERY_SAFETY_REASON.environmentUnverified,
+      DELIVERY_SAFETY_REASON.localOnlyUnverified,
+      DELIVERY_SAFETY_REASON.providerLockUnverified,
+      DELIVERY_SAFETY_REASON.deliveryBrakeUnverified,
+      DELIVERY_SAFETY_REASON.selfLearnUnverified,
+      DELIVERY_SAFETY_REASON.deliveryRouteUnverified,
+      DELIVERY_SAFETY_REASON.selfLearningHoldUnverified,
+      DELIVERY_SAFETY_REASON.followupBacklogUnverified,
+      DELIVERY_SAFETY_REASON.reminderBacklogUnverified,
+      DELIVERY_SAFETY_REASON.pendingDraftsUnverified
+    ]);
+    expect(Object.keys(result)).toEqual(["evidence", "reasonCodes", "schemaVersion", "status"]);
+    expect(Object.keys(result.evidence)).toEqual([
+      "baseProviderLocal",
+      "deliveryBrake",
+      "environmentProbe",
+      "localOnlyEffective",
+      "localOnlyPersisted",
+      "overdueFollowups",
+      "overdueReminders",
+      "pendingDraftCount",
+      "pendingDraftObservation",
+      "providerLockLocalOnly",
+      "providerLockMismatch",
+      "providerLockObservation",
+      "scheduledFollowups",
+      "scheduledReminders",
+      "schemaVersion",
+      "selfLearnDisabled",
+      "selfLearningHold"
+    ]);
+    expect(result.evidence.deliveryBrake).toBe("unverified");
+    expect(isDeliverySafetyResult(result)).toBe(true);
+  });
+
   it("returns a deterministic privacy-safe passed projection", () => {
     const input = safeObservation({ pendingDrafts: { count: 2, status: "ok" } });
     expect(classifyDeliverySafety(input)).toEqual(classifyDeliverySafety(input));

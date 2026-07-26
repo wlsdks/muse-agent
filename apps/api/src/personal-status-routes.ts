@@ -26,6 +26,7 @@ import { inspectProposedActionsSource, inspectVetoesSource, localDateKey } from 
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
+import { resolveDeliverySafety, type DeliverySafetySupplier } from "./delivery-safety-resolver.js";
 import type { ServerOptions } from "./server-options.js";
 
 type Environment = Readonly<Record<string, string | undefined>>;
@@ -35,6 +36,7 @@ export interface PersonalStatusRoutesOptions {
   readonly attunementFile: string;
   readonly beliefProvenanceFile: string;
   readonly defaultUserId: string;
+  readonly deliverySafety?: DeliverySafetySupplier;
   readonly env: Environment;
   readonly now?: () => Date;
   readonly pendingApprovalsFile: string;
@@ -453,7 +455,10 @@ async function inspectReconfirmation(file: string): Promise<ReadOnlySourceInspec
   return { result: "available", value: parsed as { readonly lastAnsweredDate: string } };
 }
 
-export async function collectPersonalStatus(options: PersonalStatusRoutesOptions): Promise<PersonalStatusResponse> {
+export async function collectPersonalStatus(
+  options: PersonalStatusRoutesOptions,
+  deliverySafety?: PersonalStatusResponse["deliverySafety"]
+): Promise<PersonalStatusResponse> {
   const now = options.now?.() ?? new Date();
   const context: ProjectionContext = { generatedAt: now.toISOString(), now, userId: options.defaultUserId };
   const [runtime, approvals, proposals, attunement, provenance, memoryResult, reconfirmation, vetoes] = await Promise.all([
@@ -492,6 +497,7 @@ export async function collectPersonalStatus(options: PersonalStatusRoutesOptions
       ...projectedReconfirmation.cards,
       ...projectedVetoes.cards
     ],
+    ...(deliverySafety === undefined ? {} : { deliverySafety }),
     generatedAt: context.generatedAt,
     sources: rows
   });
@@ -503,7 +509,8 @@ export function registerPersonalStatusRoutes(server: FastifyInstance, options: P
     if (request.query && typeof request.query === "object" && Object.keys(request.query).length > 0) {
       return reply.status(400).send({ error: "personal status does not accept query identity or filters" });
     }
-    return collectPersonalStatus(options);
+    const deliverySafety = await resolveDeliverySafety(options.deliverySafety);
+    return collectPersonalStatus(options, deliverySafety);
   });
 }
 

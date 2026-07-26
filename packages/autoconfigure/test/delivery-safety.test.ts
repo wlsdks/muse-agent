@@ -151,6 +151,8 @@ describe("collectDeliverySafety", () => {
 
     expect(residentFailure.status).toBe("unverified");
     expect(sourceFailure.status).toBe("unverified");
+    expect(residentFailure.reasonCodes).toContain(DELIVERY_SAFETY_REASON.deliveryBrakeUnverified);
+    expect(residentFailure.reasonCodes).not.toContain(DELIVERY_SAFETY_REASON.deliveryBrakeEngaged);
     expect(JSON.stringify([residentFailure, sourceFailure])).not.toMatch(/raw-(?:owner|source)-secret/u);
   });
 

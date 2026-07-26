@@ -4,10 +4,12 @@ import { computeDoctorChecks, DOCTOR_FIXES, type DoctorCheck } from "./doctor-ch
 import { readDaemonSettingsSync, writeDaemonSetting } from "./daemon-settings-store.js";
 import { serverBuildId, serverStartedAtIso } from "./build-info.js";
 import { requireAuthenticated } from "./server-helpers.js";
+import { resolveDeliverySafety, type DeliverySafetySupplier } from "./delivery-safety-resolver.js";
 import { shapeDaemonFlags, type DaemonStatusSource } from "./settings-routes.js";
 
 import type { FastifyInstance } from "fastify";
 import type { ServerOptions } from "./server.js";
+import type { DeliverySafetyResult } from "@muse/runtime-state";
 
 /**
  * `/api/doctor` — the web console's one-click "진단 & 수리" surface.
@@ -25,6 +27,7 @@ export interface DoctorRoutesGate {
   readonly authService: ServerOptions["authService"];
   readonly daemonStatus?: DaemonStatusSource;
   readonly daemonSettingsFile?: string;
+  readonly deliverySafety?: DeliverySafetySupplier;
   readonly applyDaemonToggle?: (key: string, enabled: boolean) => boolean;
   readonly messaging?: { readonly has: (id: string) => boolean };
   readonly telegramInboxFile?: string;
@@ -35,6 +38,7 @@ export interface DoctorResponse {
   readonly pid: number;
   readonly startedAtIso: string;
   readonly checks: readonly DoctorCheck[];
+  readonly deliverySafety: DeliverySafetyResult;
 }
 
 async function probeOllama(env: NodeJS.ProcessEnv): Promise<boolean> {
@@ -72,6 +76,7 @@ export function registerDoctorRoutes(server: FastifyInstance, gate: DoctorRoutes
     if (!authed(request, reply)) {
       return reply;
     }
+    const deliverySafety = await resolveDeliverySafety(gate.deliverySafety);
     const flagsResponse = shapeDaemonFlags(
       process.env,
       gate.daemonStatus,
@@ -90,6 +95,7 @@ export function registerDoctorRoutes(server: FastifyInstance, gate: DoctorRoutes
         ollamaReachable,
         unrepliedCount
       }),
+      deliverySafety,
       pid: process.pid,
       startedAtIso: serverStartedAtIso(),
       version: serverBuildId()

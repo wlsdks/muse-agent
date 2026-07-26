@@ -6,16 +6,42 @@ import { join } from "node:path";
 import { createPersonalThread, linkArtifact, prepareContinuityReview, type AttunementState } from "@muse/attunement";
 import type { UserMemory } from "@muse/memory";
 import { MessagingProviderRegistry, type MessagingProvider } from "@muse/messaging";
-import type { ResidentDaemonHealthResult, ResidentDaemonInspection } from "@muse/runtime-state";
+import {
+  classifyDeliverySafety,
+  createUnverifiedDeliverySafetyResult,
+  type ResidentDaemonHealthResult,
+  type ResidentDaemonInspection
+} from "@muse/runtime-state";
 import Fastify from "fastify";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { registerDoctorRoutes } from "./doctor-routes.js";
 import { collectPersonalStatus, registerPersonalStatusRoutes, type PersonalStatusRoutesOptions } from "./personal-status-routes.js";
 import { buildServer } from "./server.js";
 import type { ServerOptions } from "./server-options.js";
 
 const NOW = new Date("2026-07-22T12:00:00.000Z");
 const USER_ID = "owner";
+
+function canonicalDeliverySafety() {
+  return classifyDeliverySafety({
+    baseProviderLocal: true,
+    deliveryBrake: "released",
+    environmentProbe: "ok",
+    followups: { overdue: 0, scheduled: 0, status: "ok" },
+    localOnlyEffective: true,
+    localOnlyPersisted: true,
+    pendingDrafts: { count: 1, status: "ok" },
+    providerLock: { localOnly: true, mismatch: false, observation: "verified" },
+    reminders: { overdue: 0, scheduled: 0, status: "ok" },
+    selfLearnDisabled: true,
+    selfLearningHold: "engaged"
+  });
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function resident(
   delivery = "false",
@@ -165,7 +191,7 @@ describe("GET /api/personal-status", () => {
 
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(Object.keys(body).sort()).toEqual(["cards", "generatedAt", "overall", "schemaVersion", "sources"]);
+    expect(Object.keys(body).sort()).toEqual(["cards", "deliverySafety", "generatedAt", "overall", "schemaVersion", "sources"]);
     expect(body).toMatchObject({ generatedAt: NOW.toISOString(), overall: "held", schemaVersion: "muse.personal-status/v1" });
     expect(body.cards.map((card: { readonly id: string }) => card.id)).toEqual(expect.arrayContaining([
       "runtime:resident", "approval:approval_owner", "proposal:proposal_owner", "feedback:delivery_1",
@@ -345,15 +371,73 @@ describe("GET /api/personal-status", () => {
 
   it("rejects identity-bearing query input", async () => {
     const state = await fixture();
+    const deliverySafety = vi.fn(async () => canonicalDeliverySafety());
     const server = Fastify();
-    registerPersonalStatusRoutes(server, state.routeOptions);
+    registerPersonalStatusRoutes(server, { ...state.routeOptions, deliverySafety });
     const response = await server.inject({ method: "GET", url: "/api/personal-status?userId=other" });
     expect(response.statusCode).toBe(400);
     expect(state.findByUserId).not.toHaveBeenCalled();
+    expect(deliverySafety).not.toHaveBeenCalled();
+  });
+
+  it("does not resolve delivery safety before authentication succeeds", async () => {
+    const state = await fixture();
+    const deliverySafety = vi.fn(async () => canonicalDeliverySafety());
+    const server = Fastify();
+    registerPersonalStatusRoutes(server, {
+      ...state.routeOptions,
+      authService: {} as never,
+      deliverySafety
+    });
+
+    const response = await server.inject({ method: "GET", url: "/api/personal-status" });
+
+    expect(response.statusCode).toBe(401);
+    expect(deliverySafety).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["absent", undefined],
+    ["throwing", vi.fn(async () => {
+      throw new Error("PRIVATE /owner/path provider=secret payload=secret");
+    })]
+  ] as const)("fails closed for an %s supplier without changing cards, sources, or overall", async (_name, deliverySafety) => {
+    const state = await fixture();
+    const server = Fastify();
+    registerPersonalStatusRoutes(server, { ...state.routeOptions, deliverySafety });
+
+    const response = await server.inject({ method: "GET", url: "/api/personal-status" });
+    const body = response.json();
+
+    expect(response.statusCode).toBe(200);
+    expect(body.deliverySafety).toEqual(createUnverifiedDeliverySafetyResult());
+    expect(body).toMatchObject({ overall: "held", schemaVersion: "muse.personal-status/v1" });
+    expect(body.cards).toBeInstanceOf(Array);
+    expect(body.sources).toBeInstanceOf(Array);
+    expect(response.body).not.toMatch(/PRIVATE|owner\/path|provider=|payload=|secret/iu);
+  });
+
+  it("returns the same canonical result on Doctor and personal status from the same supplier reference", async () => {
+    vi.stubEnv("OLLAMA_BASE_URL", "http://127.0.0.1:1");
+    const state = await fixture();
+    const expected = canonicalDeliverySafety();
+    const deliverySafety = vi.fn(async () => expected);
+    const server = Fastify();
+    registerPersonalStatusRoutes(server, { ...state.routeOptions, deliverySafety });
+    registerDoctorRoutes(server, { authService: undefined, deliverySafety });
+
+    const personal = await server.inject({ method: "GET", url: "/api/personal-status" });
+    const doctor = await server.inject({ method: "GET", url: "/api/doctor" });
+
+    expect(personal.json().deliverySafety).toEqual(expected);
+    expect(doctor.json().deliverySafety).toEqual(expected);
+    expect(deliverySafety).toHaveBeenCalledTimes(2);
   });
 
   it("does not cross approval resolution, messaging send, or POST handler boundaries on the production server GET", async () => {
     const state = await fixture();
+    const expectedDeliverySafety = canonicalDeliverySafety();
+    const deliverySafety = vi.fn(async () => expectedDeliverySafety);
     const approvalToolResolver = vi.fn(() => undefined);
     const send = vi.fn(async (message: { readonly destination: string }) => ({
       destination: message.destination,
@@ -369,6 +453,7 @@ describe("GET /api/personal-status", () => {
       approvalToolResolver,
       attunementFile: state.files.attunement,
       beliefProvenanceFile: state.files.provenance,
+      deliverySafety,
       env: { HOME: state.root, MUSE_DEFAULT_USER_ID: USER_ID, MUSE_LOCAL_ONLY: "true" },
       localOnly: true,
       logger: false,
@@ -386,6 +471,8 @@ describe("GET /api/personal-status", () => {
 
     const response = await server.inject({ method: "GET", url: "/api/personal-status" });
     expect(response.statusCode).toBe(200);
+    expect(response.json().deliverySafety).toEqual(expectedDeliverySafety);
+    expect(deliverySafety).toHaveBeenCalledTimes(1);
     expect(approvalToolResolver).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
     expect(postHandler).not.toHaveBeenCalled();

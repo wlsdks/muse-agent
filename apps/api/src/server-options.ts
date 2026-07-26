@@ -29,8 +29,11 @@ import type { InjectionDetectionCounter } from "@muse/policy";
 import type { AdminRouteState } from "./admin-routes.js";
 import type { McpRouteMcp } from "./mcp-routes.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
+import type { DeliverySafetySupplier } from "./delivery-safety-resolver.js";
 
 export interface ServerOptions {
+  /** Lazy canonical projection shared by authenticated delivery-safety surfaces. */
+  readonly deliverySafety?: DeliverySafetySupplier;
   /** Owner-only Personal Continuity ledger used by the read-only evaluation route. */
   readonly attunementFile?: string;
   /** Opt-in local browsing archive used only for exact Continuity visit resolution. */

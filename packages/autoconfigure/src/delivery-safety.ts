@@ -11,9 +11,9 @@ import {
 import { isLocalOnlyEnabled } from "@muse/model";
 import {
   classifyDeliverySafety,
+  createUnverifiedDeliverySafetyResult,
   inspectResidentDaemon,
   type DeliverySafetyCountObservation,
-  type DeliverySafetyObservation,
   type DeliverySafetyResult,
   type ResidentDaemonInspection
 } from "@muse/runtime-state";
@@ -219,25 +219,6 @@ export async function inspectDeliverySafetyBacklog(
   return { overdue, scheduled, status: "ok" };
 }
 
-function unverifiedObservation(): DeliverySafetyObservation {
-  return {
-    baseProviderLocal: "unverified",
-    // A collector failure must not let a missing observation imply delivery
-    // eligibility. Treat the brake as engaged while preserving unverified
-    // evidence for every underlying fact.
-    deliveryBrake: "engaged",
-    environmentProbe: "unverified",
-    followups: { overdue: 0, scheduled: 0, status: "unverified" },
-    localOnlyEffective: "unverified",
-    localOnlyPersisted: "unverified",
-    pendingDrafts: { count: 0, status: "unverified" },
-    providerLock: { localOnly: false, mismatch: false, observation: "unverified" },
-    reminders: { overdue: 0, scheduled: 0, status: "unverified" },
-    selfLearnDisabled: "unverified",
-    selfLearningHold: "unverified"
-  };
-}
-
 /**
  * Reduce persisted/live runtime evidence to the sole canonical classifier.
  * Every dependency is an inspection: this collector never writes, starts a
@@ -364,6 +345,6 @@ export async function collectDeliverySafety(
   try {
     return (await collectDeliverySafetyDiagnostic(dependencies)).result;
   } catch {
-    return classifyDeliverySafety(unverifiedObservation());
+    return createUnverifiedDeliverySafetyResult();
   }
 }
