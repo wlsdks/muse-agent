@@ -18,17 +18,19 @@ import { isErrorLike } from "@muse/shared";
  * are tmp+rename atomic so concurrent reads here are safe.
  */
 
-import { resolveFollowupsFile } from "@muse/autoconfigure";
+import { resolveFollowupTriageFile, resolveFollowupsFile } from "@muse/autoconfigure";
 import {
+  authorizeFollowupTriage,
   cancelFollowup,
   compareFollowupsByScheduledFor,
+  confirmFollowupTriage,
   parseReminderDueAt,
-  previewFollowupTriage,
   readFollowups,
   readFollowupStatusFilter,
   serializeFollowup,
   snoozeFollowup,
   type FollowupStatusFilter,
+  type FollowupTriageAuthorization,
   type FollowupTriageAction,
   type FollowupTriagePreview,
   type PersistedFollowup
@@ -135,14 +137,45 @@ export function registerFollowupCommands(program: Command, io: ProgramIO): void 
       if (actionRaw !== "dismiss" && actionRaw !== "snooze" && actionRaw !== "retain" && actionRaw !== "draft-digest") {
         throw new Error("triage action must be dismiss, snooze, retain, or draft-digest");
       }
-      const preview = await previewFollowupTriage({
+      const environment = process.env as Record<string, string | undefined>;
+      const authorization = await authorizeFollowupTriage({
         action: actionRaw as FollowupTriageAction,
         followupsFile: localFollowupsFile(),
         ids,
-        ...(options.snoozeAt ? { snoozeAt: options.snoozeAt } : {})
+        ledgerFile: resolveFollowupTriageFile(environment),
+        ...(options.snoozeAt !== undefined ? { snoozeAt: options.snoozeAt } : {})
       });
-      if (options.json) io.stdout(`${JSON.stringify(preview, null, 2)}\n`);
-      else io.stdout(formatFollowupTriagePreview(preview));
+      if (options.json) {
+        io.stdout(`${JSON.stringify({
+          ...authorization.preview,
+          confirmToken: authorization.confirmToken,
+          expiresAt: authorization.expiresAt,
+          operationId: authorization.operationId
+        }, null, 2)}\n`);
+      } else {
+        io.stdout(formatFollowupTriageAuthorization(authorization));
+      }
+    });
+
+  triage
+    .command("confirm")
+    .description("Apply or recover one exact persisted follow-up triage authorization")
+    .argument("<token>", "Opaque token printed by triage preview")
+    .requiredOption("--local", "Required: mutate only the local owner store")
+    .option("--json", "Print the immutable result receipt")
+    .action(async (
+      token: string,
+      options: { readonly json?: boolean; readonly local: boolean }
+    ) => {
+      if (!options.local) throw new Error("follow-up triage is local-only; pass --local");
+      const environment = process.env as Record<string, string | undefined>;
+      const result = await confirmFollowupTriage({
+        followupsFile: localFollowupsFile(),
+        ledgerFile: resolveFollowupTriageFile(environment),
+        token
+      });
+      if (options.json) io.stdout(`${JSON.stringify(result, null, 2)}\n`);
+      else io.stdout(`Follow-up triage ${result.status}: ${result.action} (${result.outcome})\nReceipt: ${result.resultDigest}\n`);
     });
 
   followup
@@ -217,6 +250,10 @@ export function formatFollowupTriagePreview(preview: FollowupTriagePreview): str
   if (preview.digestDraft) lines.push("", preview.digestDraft.trimEnd());
   lines.push(`Source digest: ${preview.sourceDigest}`);
   return `${lines.join("\n")}\n`;
+}
+
+export function formatFollowupTriageAuthorization(authorization: FollowupTriageAuthorization): string {
+  return `${formatFollowupTriagePreview(authorization.preview).trimEnd()}\nExpires: ${authorization.expiresAt}\nOperation ID: ${authorization.operationId}\nConfirm token: ${authorization.confirmToken}\n`;
 }
 
 function filterByStatus(
