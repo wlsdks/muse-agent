@@ -114,6 +114,7 @@ try {
   const apiProcess = await resources.acquire(createApiResource(env));
   if (qualificationMode) {
     console.log(`smoke:cli lifecycle-owned ${JSON.stringify({
+      apiPort: port,
       apiReceipt: apiProcess.receipt,
       rootPid: process.pid,
       schedulerRoot: smokeRoot

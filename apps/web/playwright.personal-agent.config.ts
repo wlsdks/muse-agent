@@ -7,6 +7,7 @@ const embedUrl = requiredLoopbackUrl("MUSE_PERSONAL_AGENT_EMBED_URL");
 const webUrl = requiredLoopbackUrl("MUSE_PERSONAL_AGENT_WEB_URL");
 const browserExecutable = requiredEnvironment("MUSE_PERSONAL_AGENT_BROWSER_EXECUTABLE");
 const artifactDir = requiredEnvironment("MUSE_PERSONAL_AGENT_ARTIFACT_DIR");
+const qualificationReport = process.env.MUSE_PERSONAL_AGENT_E2E_JSON_REPORT?.trim();
 const embedTrafficFile = requiredEnvironment("MUSE_PERSONAL_AGENT_EMBED_TRAFFIC_FILE");
 const embeddingStub = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -25,7 +26,9 @@ export default defineConfig({
       }
     }
   ],
-  reporter: [["list"]],
+  reporter: qualificationReport
+    ? [["json", { outputFile: qualificationReport }]]
+    : [["list"]],
   testDir: "./e2e/personal-agent",
   use: {
     baseURL: webUrl,

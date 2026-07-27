@@ -91,6 +91,7 @@
     "test:e2e": "pnpm build && pnpm --filter @muse/web test:e2e",
     "test:e2e:live": "pnpm build && pnpm --filter @muse/web test:e2e -- live-api.spec.ts",
     "test:e2e:personal-agent": "node scripts/run-personal-agent-e2e.mjs",
+    "qualify:surface-smoke": "node scripts/qualify-surface-smoke.mjs",
     "test": "node --test scripts/install-source.test.mjs && pnpm -r --sort --if-present test",
     "test:changed": "node scripts/test-changed.mjs",
     "typecheck": "pnpm -r --sort --if-present typecheck",

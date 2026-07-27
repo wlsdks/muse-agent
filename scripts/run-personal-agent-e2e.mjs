@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -77,6 +77,7 @@ async function main() {
   const diagnosticsEnabled = process.env.MUSE_PERSONAL_AGENT_E2E_LIFECYCLE_DIAGNOSTICS === "1";
   const forceFailure = process.env.MUSE_PERSONAL_AGENT_E2E_FORCE_FAILURE === "1";
   let owned;
+  let qualification;
   let cleanupPromise;
   const cleanup = () => {
     cleanupPromise ??= (async () => {
@@ -109,6 +110,11 @@ async function main() {
       webPort
     });
     ensureDisposableApiDirectories(env);
+    const qualificationReportPath = join(stateRoot, "playwright-report.json");
+    const qualificationRunId = process.env.MUSE_PERSONAL_AGENT_E2E_RUN_ID?.trim();
+    if (qualificationRunId) {
+      env.MUSE_PERSONAL_AGENT_E2E_JSON_REPORT = qualificationReportPath;
+    }
     await mkdir(artifactDir, { recursive: true });
     const playwrightArgs = [
       "--filter",
@@ -131,6 +137,7 @@ async function main() {
       process.stdout.write(`${JSON.stringify({
         apiUrl: env.MUSE_PERSONAL_AGENT_API_URL,
         embedUrl: env.MUSE_PERSONAL_AGENT_EMBED_URL,
+        playwrightReceipt: owned.receipt,
         stateRoot,
         type: "personal-agent-e2e-owned-state",
         webUrl: env.MUSE_PERSONAL_AGENT_WEB_URL
@@ -146,6 +153,20 @@ async function main() {
         `personal-agent Playwright exited code=${String(terminal.code)} signal=${String(terminal.signal)}`
       );
     }
+    if (qualificationRunId) {
+      const report = JSON.parse(await readFile(qualificationReportPath, "utf8"));
+      qualification = {
+        playwright: {
+          durationMs: report.stats?.duration,
+          expected: report.stats?.expected,
+          flaky: report.stats?.flaky,
+          skipped: report.stats?.skipped,
+          unexpected: report.stats?.unexpected
+        },
+        runId: qualificationRunId,
+        type: "personal-agent-e2e-qualification"
+      };
+    }
   } catch (error) {
     primaryError = error;
   } finally {
@@ -159,6 +180,9 @@ async function main() {
     }
   }
   if (primaryError !== undefined) throw primaryError;
+  if (qualification !== undefined) {
+    process.stdout.write(`${JSON.stringify(qualification)}\n`);
+  }
   process.stdout.write("personal-agent E2E fixture PASS (local-only, persisted, residue 0)\n");
 }
 

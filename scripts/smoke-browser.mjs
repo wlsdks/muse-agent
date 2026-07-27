@@ -792,6 +792,15 @@ async function runSmoke() {
   await second.close();
   assert(!await second.hasOpenPage(), "the already-owned second connection closes the exact disposable browser");
 
+  if (process.env.MUSE_BROWSER_SMOKE_QUALIFICATION === "1") {
+    console.log(`smoke:browser qualification ${JSON.stringify({
+      browserReceipts: launchReceipts,
+      ports: [{ name: "status-http", port: statusPort }],
+      profiles: launchReceipts.map((receipt) => receipt.userDataDir),
+      tempRoot: dir,
+      type: "browser-smoke-owned-state"
+    })}`);
+  }
   console.log("\nsmoke:browser PASS");
 }
 
