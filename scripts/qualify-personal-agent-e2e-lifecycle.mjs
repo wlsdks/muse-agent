@@ -24,13 +24,14 @@ const artifactPath = join(
   ".muse-dev",
   "evals",
   "personal-agent-roadmap",
-  "task-046-a.json"
+  "task-046-b.json"
 );
 const inputFiles = [
   "apps/web/e2e/personal-agent/fixture-isolation.spec.ts",
   "apps/web/playwright.personal-agent.config.ts",
   "package.json",
   "scripts/qualify-personal-agent-e2e-lifecycle.mjs",
+  "scripts/fixtures/personal-agent-embedding-stub.mjs",
   "scripts/run-personal-agent-e2e.mjs",
   "scripts/run-personal-agent-e2e.test.mjs",
   "scripts/test-changed.mjs"
@@ -59,6 +60,7 @@ const result = primaryError === undefined
   && trials.length === 3
   && trials.every((trial) =>
     trial.apiPortClosed
+    && trial.embedPortClosed
     && trial.ownedGroupResidue === 0
     && trial.stateRootResidue === 0
     && trial.webPortClosed
@@ -75,13 +77,13 @@ await writeFile(artifactPath, `${JSON.stringify({
   inputHashStart,
   result,
   source: { endHead, startHead },
-  taskId: "046-A",
+  taskId: "046-B",
   trials,
   ...(primaryError === undefined ? {} : { error: errorMessage(primaryError) })
 }, null, 2)}\n`, "utf8");
 
-if (result !== "pass") throw primaryError ?? new Error("Task046-A lifecycle qualification failed");
-console.log("qualify:personal-agent-e2e-lifecycle PASS (normal/failure/SIGTERM; ports/temp/process residue 0)");
+if (result !== "pass") throw primaryError ?? new Error("Task046-B lifecycle qualification failed");
+console.log("qualify:personal-agent-e2e-lifecycle PASS (normal/failure/SIGTERM; API/web/embed ports and temp/process residue 0)");
 
 async function runTrial(name, envOverrides, contract) {
   const child = spawn(process.execPath, [runner], {
@@ -114,8 +116,9 @@ async function runTrial(name, envOverrides, contract) {
   assert(ended.signal === null, `${name}: runner ended by ${String(ended.signal)}`);
   assert(ended.code === contract.expectedCode, `${name}: exit ${String(ended.code)} != ${contract.expectedCode.toString()}`);
   await waitForOwnedProcessGroupExit(receipt, { timeoutMs: 10_000 });
-  const [apiPortClosed, webPortClosed] = await Promise.all([
+  const [apiPortClosed, embedPortClosed, webPortClosed] = await Promise.all([
     waitForPortClosed(new URL(diagnostic.apiUrl)),
+    waitForPortClosed(new URL(diagnostic.embedUrl)),
     waitForPortClosed(new URL(diagnostic.webUrl))
   ]);
   const stateRootResidue = await pathExists(diagnostic.stateRoot) ? 1 : 0;
@@ -124,6 +127,7 @@ async function runTrial(name, envOverrides, contract) {
   return {
     apiPortClosed,
     code: ended.code,
+    embedPortClosed,
     name,
     ownedGroupResidue,
     stateRootResidue,
@@ -138,6 +142,7 @@ async function waitForDiagnostic(readStdout) {
       if (!line.includes('"type":"personal-agent-e2e-owned-state"')) continue;
       const parsed = JSON.parse(line);
       assert(typeof parsed.apiUrl === "string", "diagnostic missing apiUrl");
+      assert(typeof parsed.embedUrl === "string", "diagnostic missing embedUrl");
       assert(typeof parsed.webUrl === "string", "diagnostic missing webUrl");
       assert(typeof parsed.stateRoot === "string", "diagnostic missing stateRoot");
       return parsed;

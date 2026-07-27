@@ -27,20 +27,24 @@ const artifactDir = join(
   ".muse-dev",
   "evals",
   "personal-agent-roadmap",
-  "task-046-a",
+  "task-046-b",
   "playwright"
 );
 
 export function createPersonalAgentE2eEnvironment({
   apiPort,
   browserExecutable,
+  embedPort,
   sourceEnv,
   stateRoot,
   webPort
 }) {
   requirePort(apiPort, "apiPort");
+  requirePort(embedPort, "embedPort");
   requirePort(webPort, "webPort");
-  if (apiPort === webPort) throw new RangeError("API and web ports must differ");
+  if (new Set([apiPort, embedPort, webPort]).size !== 3) {
+    throw new RangeError("API, embedding, and web ports must differ");
+  }
   const root = resolveNonEmptyPath(stateRoot, "stateRoot");
   const executable = resolveNonEmptyPath(browserExecutable, "browserExecutable");
   const env = createDisposableApiEnvironment({
@@ -49,14 +53,20 @@ export function createPersonalAgentE2eEnvironment({
     sourceEnv
   });
   const webUrl = `http://127.0.0.1:${webPort.toString()}`;
+  const embedUrl = `http://127.0.0.1:${embedPort.toString()}`;
   Object.assign(env, {
     CI: "1",
     MUSE_CORS_ALLOWED_ORIGINS: webUrl,
+    MUSE_EMBED_MODEL: "personal-agent-fixture-embed",
     MUSE_PERSONAL_AGENT_API_URL: `http://127.0.0.1:${apiPort.toString()}`,
     MUSE_PERSONAL_AGENT_ARTIFACT_DIR: artifactDir,
     MUSE_PERSONAL_AGENT_BROWSER_EXECUTABLE: executable,
+    MUSE_PERSONAL_AGENT_EMBED_TRAFFIC_FILE: join(root, "embedding-traffic.jsonl"),
+    MUSE_PERSONAL_AGENT_EMBED_URL: embedUrl,
     MUSE_PERSONAL_AGENT_STATE_ROOT: root,
-    MUSE_PERSONAL_AGENT_WEB_URL: webUrl
+    MUSE_PERSONAL_AGENT_WEB_URL: webUrl,
+    MUSE_NOTES_INDEX_FILE: join(root, "stores", "notes-index.json"),
+    OLLAMA_BASE_URL: embedUrl
   });
   return env;
 }
@@ -83,7 +93,8 @@ async function main() {
 
   let primaryError;
   try {
-    const [apiPort, webPort, browserExecutable] = await Promise.all([
+    const [apiPort, embedPort, webPort, browserExecutable] = await Promise.all([
+      reserveLoopbackPort(),
       reserveLoopbackPort(),
       reserveLoopbackPort(),
       resolveChromiumExecutable()
@@ -91,6 +102,7 @@ async function main() {
     const env = createPersonalAgentE2eEnvironment({
       apiPort,
       browserExecutable,
+      embedPort,
       sourceEnv: process.env,
       stateRoot,
       webPort
@@ -117,6 +129,7 @@ async function main() {
     if (diagnosticsEnabled) {
       process.stdout.write(`${JSON.stringify({
         apiUrl: env.MUSE_PERSONAL_AGENT_API_URL,
+        embedUrl: env.MUSE_PERSONAL_AGENT_EMBED_URL,
         stateRoot,
         type: "personal-agent-e2e-owned-state",
         webUrl: env.MUSE_PERSONAL_AGENT_WEB_URL

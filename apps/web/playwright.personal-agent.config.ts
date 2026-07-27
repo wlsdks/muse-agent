@@ -1,9 +1,17 @@
 import { defineConfig, devices } from "@playwright/test";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const apiUrl = requiredLoopbackUrl("MUSE_PERSONAL_AGENT_API_URL");
+const embedUrl = requiredLoopbackUrl("MUSE_PERSONAL_AGENT_EMBED_URL");
 const webUrl = requiredLoopbackUrl("MUSE_PERSONAL_AGENT_WEB_URL");
 const browserExecutable = requiredEnvironment("MUSE_PERSONAL_AGENT_BROWSER_EXECUTABLE");
 const artifactDir = requiredEnvironment("MUSE_PERSONAL_AGENT_ARTIFACT_DIR");
+const embedTrafficFile = requiredEnvironment("MUSE_PERSONAL_AGENT_EMBED_TRAFFIC_FILE");
+const embeddingStub = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../scripts/fixtures/personal-agent-embedding-stub.mjs"
+);
 
 export default defineConfig({
   fullyParallel: false,
@@ -24,6 +32,18 @@ export default defineConfig({
     trace: "retain-on-failure"
   },
   webServer: [
+    {
+      command: `node ${embeddingStub}`,
+      env: {
+        ...process.env,
+        MUSE_PERSONAL_AGENT_EMBED_TRAFFIC_FILE: embedTrafficFile,
+        MUSE_PERSONAL_AGENT_EMBED_URL: embedUrl,
+        PORT: new URL(embedUrl).port
+      },
+      reuseExistingServer: false,
+      timeout: 30_000,
+      url: `${embedUrl}/health`
+    },
     {
       command: "pnpm --filter @muse/api dev",
       env: {
