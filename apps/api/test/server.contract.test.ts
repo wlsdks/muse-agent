@@ -18,6 +18,12 @@ describe("api server: web contract + manifest", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
+      degraded: true,
+      liveness: { status: "up" },
+      readiness: {
+        reasons: expect.arrayContaining(["model-unconfigured", "agent-runtime-unavailable"]),
+        status: "not-ready"
+      },
       service: "muse-api",
       status: "ok"
     });
@@ -25,6 +31,92 @@ describe("api server: web contract + manifest", () => {
     expect(payload.pid).toBeGreaterThan(0);
     expect(typeof payload.version).toBe("string");
     expect(Number.isFinite(Date.parse(payload.startedAtIso))).toBe(true);
+  });
+
+  it("keeps liveness green while dependency readiness is red with exact safe reasons", async () => {
+    const server = buildServer({
+      dependencyReadiness: { network: "unavailable" },
+      defaultModel: "test-model",
+      logger: false,
+      localOnly: false,
+      modelProvider: {} as never,
+      agentRuntime: {} as never
+    });
+
+    const readiness = await server.inject({ method: "GET", url: "/ready" });
+    const liveness = await server.inject({ method: "GET", url: "/health" });
+
+    expect(readiness.statusCode).toBe(503);
+    expect(readiness.json()).toMatchObject({
+      degraded: true,
+      dependencies: { network: "unavailable" },
+      liveness: { status: "up" },
+      readiness: {
+        reasons: ["network-unavailable"],
+        status: "not-ready"
+      }
+    });
+    expect(liveness.statusCode).toBe(200);
+    expect(liveness.json()).toMatchObject({
+      liveness: { status: "up" },
+      readiness: { reasons: ["network-unavailable"], status: "not-ready" }
+    });
+  });
+
+  it("fails closed when a required cloud network is incorrectly marked not-required", async () => {
+    const server = buildServer({
+      dependencyReadiness: { network: "not-required" },
+      defaultModel: "test-model",
+      logger: false,
+      localOnly: false,
+      modelProvider: {} as never,
+      agentRuntime: {} as never
+    });
+
+    const readiness = await server.inject({ method: "GET", url: "/ready" });
+    expect(readiness.statusCode).toBe(503);
+    expect(readiness.json()).toMatchObject({
+      dependencies: { network: "unverified" },
+      readiness: { reasons: ["network-unverified"], status: "not-ready" }
+    });
+  });
+
+  it("exposes ready aliases when local resident dependencies are configured", async () => {
+    let providerCalls = 0;
+    const modelProvider = {
+      generate: () => {
+        providerCalls += 1;
+        throw new Error("health must not generate");
+      },
+      id: "health-no-egress",
+      listModels: () => {
+        providerCalls += 1;
+        throw new Error("health must not list models");
+      },
+      stream: () => {
+        providerCalls += 1;
+        throw new Error("health must not stream");
+      }
+    };
+    const server = buildServer({
+      defaultModel: "test-model",
+      logger: false,
+      localOnly: true,
+      modelProvider: modelProvider as never,
+      agentRuntime: {} as never
+    });
+
+    for (const url of ["/ready", "/api/ready", "/api/health"]) {
+      const response = await server.inject({ method: "GET", url });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        degraded: false,
+        dependencies: { network: "not-required" },
+        liveness: { status: "up" },
+        readiness: { reasons: [], status: "ready" }
+      });
+    }
+    expect(providerCalls).toBe(0);
   });
 
   it("applies Muse compatible web contract headers", async () => {

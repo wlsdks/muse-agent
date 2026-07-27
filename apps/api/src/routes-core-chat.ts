@@ -16,12 +16,22 @@ import {
   runMultipartChat
 } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
+import { projectApiHealth } from "./api-readiness.js";
+
+export interface CoreRouteHealthOptions {
+  readonly dependencyReadiness?: ServerOptions["dependencyReadiness"];
+  readonly localOnly: boolean;
+  readonly modelConfigured: boolean;
+  readonly residentConfigured: boolean;
+}
 
 export function registerCoreRoutes(
   server: FastifyInstance,
-  apiRouteMethods: ReadonlyMap<string, ReadonlySet<string>>
+  apiRouteMethods: ReadonlyMap<string, ReadonlySet<string>>,
+  healthOptions: CoreRouteHealthOptions
 ): void {
   const healthPayload = {
+    ...projectApiHealth(healthOptions),
     pid: process.pid,
     service: "muse-api",
     startedAtIso: serverStartedAtIso(),
@@ -30,6 +40,16 @@ export function registerCoreRoutes(
   };
   server.get("/health", async () => healthPayload);
   server.get("/api/health", async () => healthPayload);
+  server.get("/ready", async (_request, reply) => {
+    return reply
+      .status(healthPayload.readiness.status === "ready" ? 200 : 503)
+      .send(healthPayload);
+  });
+  server.get("/api/ready", async (_request, reply) => {
+    return reply
+      .status(healthPayload.readiness.status === "ready" ? 200 : 503)
+      .send(healthPayload);
+  });
 
   server.get("/spec", async () => ({
     agentCore: "model-agnostic",

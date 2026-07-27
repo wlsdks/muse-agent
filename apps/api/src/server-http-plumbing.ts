@@ -163,6 +163,9 @@ export function isPublicRequest(method: string, url: string): boolean {
   const path = url.split("?")[0] ?? url;
   return (
     path === "/health" ||
+    path === "/api/health" ||
+    path === "/ready" ||
+    path === "/api/ready" ||
     path === "/spec" ||
     path === "/v3/api-docs" ||
     path === "/api/openapi.json" ||

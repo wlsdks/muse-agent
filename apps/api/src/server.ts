@@ -268,7 +268,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     });
   }
 
-  registerCoreRoutes(server, apiRouteMethods);
+  registerCoreRoutes(server, apiRouteMethods, {
+    dependencyReadiness: options.dependencyReadiness,
+    localOnly: integrationEnv.localOnly,
+    modelConfigured: Boolean(options.modelProvider && options.defaultModel),
+    residentConfigured: Boolean(options.agentRuntime)
+  });
   registerChatRoutes(server, options);
   registerAdminRunRoutes(server, options, agentSpecRegistry, runtimeSettings, { authService });
 

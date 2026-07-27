@@ -143,6 +143,9 @@ describe("isPublicRequest — the auth-bypass allowlist", () => {
   it.each([
     ["GET", "/health"],
     ["GET", "/health?probe=1"],
+    ["GET", "/api/health"],
+    ["GET", "/ready"],
+    ["GET", "/api/ready"],
     ["GET", "/spec"],
     ["GET", "/v3/api-docs"],
     ["GET", "/api/openapi.json"],

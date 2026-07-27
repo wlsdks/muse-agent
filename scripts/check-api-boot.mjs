@@ -49,10 +49,27 @@ async function main() {
 
   try {
     api = await startInProcessApi({ env, startupTimeoutMs: BOOT_TIMEOUT_MS });
-    const response = await fetch(`${api.baseUrl}/health`, { signal: AbortSignal.timeout(1_000) });
-    const body = await response.json();
-    if (!response.ok || body.status !== "ok") {
-      throw new Error(`health probe returned HTTP ${response.status.toString()}: ${JSON.stringify(body)}`);
+    const [livenessResponse, readinessResponse] = await Promise.all([
+      fetch(`${api.baseUrl}/health`, { signal: AbortSignal.timeout(1_000) }),
+      fetch(`${api.baseUrl}/ready`, { signal: AbortSignal.timeout(1_000) })
+    ]);
+    const [livenessBody, readinessBody] = await Promise.all([
+      livenessResponse.json(),
+      readinessResponse.json()
+    ]);
+    if (
+      !livenessResponse.ok
+      || livenessBody.status !== "ok"
+      || livenessBody.liveness?.status !== "up"
+    ) {
+      throw new Error(
+        `liveness probe returned HTTP ${livenessResponse.status.toString()}: ${JSON.stringify(livenessBody)}`
+      );
+    }
+    if (!readinessResponse.ok || readinessBody.readiness?.status !== "ready") {
+      throw new Error(
+        `readiness probe returned HTTP ${readinessResponse.status.toString()}: ${JSON.stringify(readinessBody)}`
+      );
     }
     healthy = true;
   } catch (error) {
@@ -71,7 +88,7 @@ async function main() {
   }
 
   if (healthy) {
-    console.log("✓ API server boots in-process and answers /health (diagnostic provider).");
+    console.log("✓ API server boots in-process with /health up and /ready ready (diagnostic provider).");
     return;
   }
 

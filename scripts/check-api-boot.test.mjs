@@ -29,5 +29,9 @@ test("boot check starts the API in-process with the tsx loader", () => {
   const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.doesNotMatch(source, /node:child_process|\bspawn\s*\(|\.kill\s*\(/u);
   assert.match(source, /startInProcessApi/u);
+  assert.match(source, /\/health/u);
+  assert.match(source, /\/ready/u);
+  assert.match(source, /liveness\?\.status !== "up"/u);
+  assert.match(source, /readiness\?\.status !== "ready"/u);
   assert.equal(manifest.scripts["check:api-boot"], "node --import tsx scripts/check-api-boot.mjs");
 });

@@ -30,8 +30,14 @@ import type { AdminRouteState } from "./admin-routes.js";
 import type { McpRouteMcp } from "./mcp-routes.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
 import type { DeliverySafetySupplier } from "./delivery-safety-resolver.js";
+import type { ApiDependencyReadinessSnapshot } from "./api-readiness.js";
 
 export interface ServerOptions {
+  /**
+   * Trusted, non-executable projection of dependency state captured at server
+   * construction. Health requests never invoke a callback or provider egress.
+   */
+  readonly dependencyReadiness?: ApiDependencyReadinessSnapshot;
   /** Lazy canonical projection shared by authenticated delivery-safety surfaces. */
   readonly deliverySafety?: DeliverySafetySupplier;
   /** Owner-only Personal Continuity ledger used by the read-only evaluation route. */
