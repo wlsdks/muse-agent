@@ -3,10 +3,15 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createNoteSpanIdentityV1, createSupersedesRelationV1 } from "@muse/recall";
+import {
+  createNoteSpanIdentityV1,
+  createSupersedesRelationV1,
+  FRESHNESS_SUPERSESSION_POLICY_V2
+} from "@muse/recall";
 import { describe, expect, it } from "vitest";
 
 import { auditNoteRelationsStore, temporalClaimGraphFromAuditV1 } from "./note-relations-audit.js";
+import { captureTemporalClaimContext } from "./ask-note-retrieval.js";
 import { loadBoundedNotesIndex, loadIndexedNoteSource } from "./note-relations-context.js";
 import { mutateNoteRelationsStore, resolveNoteRelationsPathSnapshot } from "./note-relations-store.js";
 
@@ -70,6 +75,50 @@ describe("note relations audit", () => {
     expect(audit.edges).toEqual([{ edgeId: relation.edgeId, status: "valid" }]);
     expect(audit.semanticDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(temporalClaimGraphFromAuditV1(audit)?.semanticDigest).toBe(audit.semanticDigest);
+  });
+
+  it("mints an executable capability bound to the exact audited graph and authority", async () => {
+    const { paths, relation } = await setupRelation();
+    const context = await captureTemporalClaimContext({ HOME: paths.home });
+    expect(context.authority.storeState).toBe("valid");
+    expect(context.graph?.semanticDigest).toBe(context.authority.graphDigest);
+    expect(context.verifyExplicitRelation).toEqual(expect.any(Function));
+    expect(context.verifyExplicitRelation?.({
+      authority: context.authority,
+      graph: context.graph!,
+      policyVersion: FRESHNESS_SUPERSESSION_POLICY_V2,
+      relation: context.graph!.relations[0]!
+    })).toBe(true);
+    expect(context.verifyExplicitRelation?.({
+      authority: { ...context.authority },
+      graph: context.graph!,
+      policyVersion: FRESHNESS_SUPERSESSION_POLICY_V2,
+      relation
+    })).toBe(false);
+    expect(context.verifyExplicitRelation?.({
+      authority: context.authority,
+      graph: JSON.parse(JSON.stringify(context.graph)),
+      policyVersion: FRESHNESS_SUPERSESSION_POLICY_V2,
+      relation
+    })).toBe(false);
+    let getterCalls = 0;
+    const hostileRelation = {};
+    for (const [key, value] of Object.entries(relation)) {
+      Object.defineProperty(hostileRelation, key, {
+        enumerable: true,
+        get: () => {
+          getterCalls += 1;
+          return value;
+        }
+      });
+    }
+    expect(context.verifyExplicitRelation?.({
+      authority: context.authority,
+      graph: context.graph!,
+      policyVersion: FRESHNESS_SUPERSESSION_POLICY_V2,
+      relation: hostileRelation as typeof relation
+    })).toBe(false);
+    expect(getterCalls).toBe(0);
   });
 
   it("retains a stale stored edge as unavailable without rewriting it", async () => {

@@ -6,6 +6,7 @@ import {
   createNoteSpanIdentityV1,
   createSupersedesRelationV1,
   createTemporalClaimGraphV1,
+  FRESHNESS_SUPERSESSION_POLICY_V2,
   type NoteSourceIndexViewV1
 } from "./index.js";
 
@@ -86,9 +87,29 @@ describe("temporal-links-visible-v1 exact 80-cell matrix", () => {
     expect(cases.filter(({ state }) => state.endsWith("endpoint"))).toHaveLength(20);
     for (const entry of cases) {
       const fixture = buildCase(entry.locale, entry.domain, entry.state);
+      const authority = Object.freeze({
+        chunkerVersion: "muse.notes.chunk-text.v1" as const,
+        graphDigest: fixture.graph.semanticDigest,
+        indexDigest: "2".repeat(64),
+        rawStoreDigest: "3".repeat(64),
+        schema: "muse.temporal-claim-snapshot-authority.v1" as const,
+        sourceProvenanceDigest: "4".repeat(64),
+        storeRevision: 1,
+        storeState: "valid" as const
+      });
       const activated = activateTemporalClaimGraphV1({
-        candidates: fixture.candidates, confidentAt: 0.7, graph: fixture.graph,
-        indexFiles: fixture.indexFiles, notesDir: fixture.root, query: fixture.query, topK: 2
+        authority,
+        candidates: fixture.candidates,
+        confidentAt: 0.7,
+        graph: fixture.graph,
+        indexFiles: fixture.indexFiles,
+        notesDir: fixture.root,
+        query: fixture.query,
+        topK: 2,
+        verifyExplicitRelation: (input) => input.authority === authority
+          && input.graph === fixture.graph
+          && input.policyVersion === FRESHNESS_SUPERSESSION_POLICY_V2
+          && fixture.graph.relations.includes(input.relation)
       });
       const positive = entry.state === "current-endpoint" || entry.state === "stale-endpoint";
       expect(activated !== undefined, `${entry.locale}/${entry.domain}/${entry.state}`).toBe(positive);

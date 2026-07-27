@@ -11,6 +11,8 @@ import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 
 import {
+  FRESHNESS_SUPERSESSION_POLICY_V2,
+  createTemporalClaimGraphV1,
   detectStaleMarker,
   filterNotesByScope,
   retrieveAndRankNotes as retrieveAndRankNotesCore,
@@ -20,7 +22,8 @@ import {
   type RecallRerankFn,
   type RecallRerankPairHint,
   type TemporalClaimContextV1,
-  type TemporalClaimSnapshotAuthorityV1
+  type TemporalClaimSnapshotAuthorityV1,
+  type VerifyExplicitTemporalRelationV1
 } from "@muse/recall";
 
 import { resolveDefaultModel } from "@muse/autoconfigure";
@@ -369,10 +372,12 @@ export async function retrieveAndRankNotes(
   const fetchFn = runtime.fetchFn ?? defaultFetch;
   let temporalClaimGraph = (params as CoreParams).temporalClaimGraph;
   let temporalClaimAuthority = (params as CoreParams & { readonly temporalClaimAuthority?: TemporalClaimSnapshotAuthorityV1 }).temporalClaimAuthority;
+  let verifyExplicitTemporalRelation = (params as CoreParams).verifyExplicitTemporalRelation;
   if (!Object.hasOwn(params, "temporalClaimGraph")) {
     const context = await captureTemporalClaimContext(envSnapshot);
     temporalClaimGraph = context.graph;
     temporalClaimAuthority = context.authority;
+    verifyExplicitTemporalRelation = context.verifyExplicitRelation;
   }
   const hasExplicitRerankFn = Object.hasOwn(params, "rerankFn");
   const binding = hasExplicitRerankFn ? undefined : createRecallRerankBinding(envSnapshot, { fetchFn });
@@ -387,6 +392,7 @@ export async function retrieveAndRankNotes(
     env: envSnapshot,
     ...(temporalClaimGraph ? { temporalClaimGraph } : {}),
     ...(temporalClaimAuthority ? { temporalClaimAuthority } : {}),
+    ...(verifyExplicitTemporalRelation ? { verifyExplicitTemporalRelation } : {}),
     ...(selectedRerankFn ? { rerankFn: selectedRerankFn } : {}),
     ...(prepareRerankFn ? { prepareRerankFn } : {})
   } as CoreParams);
@@ -412,7 +418,25 @@ export async function captureTemporalClaimContext(
       storeRevision: audit.revision,
       storeState: audit.state
     } satisfies TemporalClaimSnapshotAuthorityV1);
-    return Object.freeze({ authority, ...(graph ? { graph } : {}) });
+    const verifyExplicitRelation: VerifyExplicitTemporalRelationV1 | undefined = graph
+      ? (input) => {
+          if (
+            input.graph !== graph
+            || input.authority !== authority
+            || input.policyVersion !== FRESHNESS_SUPERSESSION_POLICY_V2
+          ) return false;
+          try {
+            createTemporalClaimGraphV1({ relations: [input.relation] });
+          } catch {
+            return false;
+          }
+          return graph.relations.some((relation) => JSON.stringify(relation) === JSON.stringify(input.relation));
+        }
+      : undefined;
+    return Object.freeze({
+      authority,
+      ...(graph && verifyExplicitRelation ? { graph, verifyExplicitRelation: Object.freeze(verifyExplicitRelation) } : {})
+    });
   } catch {
     return Object.freeze({
       authority: Object.freeze({

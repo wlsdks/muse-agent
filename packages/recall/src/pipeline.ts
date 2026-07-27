@@ -42,6 +42,7 @@ import {
 import { dedupNearDuplicateChunks, notesGroundingFraming, type ScoredChunk } from "./chunks.js";
 export type { ScoredChunk } from "./chunks.js";
 import { demoteStale } from "./conflict.js";
+import type { FreshnessSupersessionDecisionV2 } from "./freshness-supersession-reducer.js";
 import { cosine, loadIndex, type NotesIndex } from "./notes-index.js";
 import { buildNoteContextBlock } from "./context-blocks.js";
 import { formatSourceReceipts, groundingSectionLines, relativizeNoteSource } from "./present.js";
@@ -287,6 +288,7 @@ export type GroundedRecallEvent =
     readonly groundedChunkCount: number;
     readonly verdict: "confident" | "ambiguous" | "none";
     readonly notesUnavailable: boolean;
+    readonly freshnessSupersessionDecision?: FreshnessSupersessionDecisionV2;
     /** Same array `GroundedRecallResult.scored` carries — exposed here too so a
      *  streaming caller can render a pre-generation "grounded on …" summary
      *  before the model has produced a single token. */
@@ -296,6 +298,7 @@ export type GroundedRecallEvent =
   | { readonly type: "result"; readonly result: GroundedRecallResult };
 
 export interface PreparedGroundedRecall {
+  readonly freshnessSupersessionDecision?: FreshnessSupersessionDecisionV2;
   readonly systemPrompt: string;
   readonly allowedNotes: readonly string[];
   readonly scored: readonly ScoredChunk[];
@@ -376,6 +379,9 @@ async function prepareRecall(input: PrepareRecallInput): Promise<PreparedGrounde
         scope: options.scope,
         ...(temporalContext ? {
           temporalClaimAuthority: temporalContext.authority,
+          ...(temporalContext.verifyExplicitRelation
+            ? { verifyExplicitTemporalRelation: temporalContext.verifyExplicitRelation }
+            : {}),
           ...(temporalContext.graph ? { temporalClaimGraph: temporalContext.graph } : {})
         } : {}),
         topK
@@ -422,6 +428,9 @@ async function prepareRecall(input: PrepareRecallInput): Promise<PreparedGrounde
 
   return {
     allowedNotes: [...new Set(contextChunks.map((s) => relativizeNoteSource(s.file, sources.notesDir)))],
+    ...(retrieval.freshnessSupersessionDecision
+      ? { freshnessSupersessionDecision: cloneFreshnessDecision(retrieval.freshnessSupersessionDecision) }
+      : {}),
     notesUnavailable,
     scored: contextChunks,
     systemPrompt: extras?.composeSystemPrompt
@@ -460,10 +469,22 @@ function cloneSnapshotResult(result: Omit<NoteRetrievalResult, "snapshot">): Omi
     scored: [...result.scored],
     splitClauses: [...result.splitClauses],
     subqueryEmbeddings: result.subqueryEmbeddings.map((embedding) => [...embedding]),
+    ...(result.freshnessSupersessionDecision
+      ? { freshnessSupersessionDecision: cloneFreshnessDecision(result.freshnessSupersessionDecision) }
+      : {}),
     ...(result.verifiedCorrectionPair
       ? { verifiedCorrectionPair: { current: { ...result.verifiedCorrectionPair.current }, stale: { ...result.verifiedCorrectionPair.stale } } }
       : {})
   };
+}
+
+function cloneFreshnessDecision(
+  decision: FreshnessSupersessionDecisionV2
+): FreshnessSupersessionDecisionV2 {
+  return Object.freeze({
+    ...decision,
+    orderedIdentities: Object.freeze([...decision.orderedIdentities])
+  });
 }
 
 /**
@@ -539,6 +560,9 @@ function finalizeRecall(raw: string, prepared: PreparedGroundedRecall, input: Gr
 export async function* streamGroundedRecall(input: GroundedRecallInput): AsyncGenerator<GroundedRecallEvent> {
   const prepared = await prepareRecall(toPrepareRecallInput(input));
   yield {
+    ...(prepared.freshnessSupersessionDecision
+      ? { freshnessSupersessionDecision: prepared.freshnessSupersessionDecision }
+      : {}),
     groundedChunkCount: prepared.scored.length,
     notesUnavailable: prepared.notesUnavailable,
     scored: prepared.scored,

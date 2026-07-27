@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  FRESHNESS_SUPERSESSION_POLICY_V1,
-  FRESHNESS_SUPERSESSION_MAX_LINKS_V1,
+  FRESHNESS_SUPERSESSION_POLICY_V2,
+  FRESHNESS_SUPERSESSION_MAX_LINKS_V2,
   FreshnessSupersessionInputError,
-  reduceFreshnessSupersessionV1,
-  type FreshnessCandidateV1,
-  type FreshnessSupersessionInputV1
+  reduceFreshnessSupersessionV2,
+  type FreshnessCandidateV2,
+  type FreshnessSupersessionInputV2
 } from "./index.js";
 
 const candidate = (
   identity: string,
-  overrides: Partial<Omit<FreshnessCandidateV1, "identity">> = {}
-): FreshnessCandidateV1 => ({
+  overrides: Partial<Omit<FreshnessCandidateV2, "identity">> = {}
+): FreshnessCandidateV2 => ({
   confidence: 0.8,
   identity,
   observedAt: "2026-07-20T00:00:00.000Z",
@@ -21,13 +21,13 @@ const candidate = (
 });
 
 const input = (
-  left: FreshnessCandidateV1,
-  right: FreshnessCandidateV1,
-  correctionLinks: FreshnessSupersessionInputV1["correctionLinks"] = []
-): FreshnessSupersessionInputV1 => ({
+  left: FreshnessCandidateV2,
+  right: FreshnessCandidateV2,
+  correctionLinks: FreshnessSupersessionInputV2["correctionLinks"] = []
+): FreshnessSupersessionInputV2 => ({
   candidates: [left, right],
   correctionLinks,
-  policyVersion: FRESHNESS_SUPERSESSION_POLICY_V1
+  policyVersion: FRESHNESS_SUPERSESSION_POLICY_V2
 });
 
 const permutations = <T>(left: T, right: T): readonly (readonly [T, T])[] => [
@@ -35,7 +35,7 @@ const permutations = <T>(left: T, right: T): readonly (readonly [T, T])[] => [
   [right, left]
 ];
 
-describe("freshness supersession policy v1", () => {
+describe("freshness supersession policy v2", () => {
   it("lets a verified explicit correction win over every weaker signal and deduplicates the link", () => {
     const current = candidate("fact-current", {
       confidence: 0.1,
@@ -48,20 +48,24 @@ describe("freshness supersession policy v1", () => {
       sourceAuthority: "user-authored"
     });
     for (const candidates of permutations(current, stale)) {
-      const decision = reduceFreshnessSupersessionV1({
+      const decision = reduceFreshnessSupersessionV2({
         candidates,
         correctionLinks: Array.from(
-          { length: FRESHNESS_SUPERSESSION_MAX_LINKS_V1 },
-          () => ({ currentIdentity: current.identity, staleIdentity: stale.identity, verification: "user-authored" as const })
+          { length: FRESHNESS_SUPERSESSION_MAX_LINKS_V2 },
+          () => ({
+            currentIdentity: current.identity,
+            staleIdentity: stale.identity,
+            verification: "audited-explicit-local-relation" as const
+          })
         ),
-        policyVersion: FRESHNESS_SUPERSESSION_POLICY_V1
+        policyVersion: FRESHNESS_SUPERSESSION_POLICY_V2
       });
       expect(decision).toEqual({
         decisiveDimension: "explicit-correction",
         orderedIdentities: ["fact-current", "fact-stale"],
-        policyVersion: FRESHNESS_SUPERSESSION_POLICY_V1,
+        policyVersion: FRESHNESS_SUPERSESSION_POLICY_V2,
         reason: "explicit-correction",
-        schema: "muse.freshness-supersession-decision.v1",
+        schema: "muse.freshness-supersession-decision.v2",
         selectedIdentity: "fact-current",
         status: "selected"
       });
@@ -81,7 +85,7 @@ describe("freshness supersession policy v1", () => {
       sourceAuthority: "inferred"
     });
     for (const candidates of permutations(user, inferred)) {
-      const decision = reduceFreshnessSupersessionV1({ ...input(candidates[0], candidates[1]) });
+      const decision = reduceFreshnessSupersessionV2({ ...input(candidates[0], candidates[1]) });
       expect(decision.selectedIdentity).toBe("fact-user");
       expect(decision.reason).toBe("source-authority");
     }
@@ -99,7 +103,7 @@ describe("freshness supersession policy v1", () => {
       sourceAuthority: "inferred"
     });
     for (const candidates of permutations(olderStrong, newerWeak)) {
-      const decision = reduceFreshnessSupersessionV1(input(candidates[0], candidates[1]));
+      const decision = reduceFreshnessSupersessionV2(input(candidates[0], candidates[1]));
       expect(decision).toMatchObject({
         decisiveDimension: "confidence",
         selectedIdentity: "fact-older-strong",
@@ -112,7 +116,7 @@ describe("freshness supersession policy v1", () => {
     const older = candidate("fact-older", { observedAt: "2026-07-20T00:00:00.000Z" });
     const newer = candidate("fact-newer", { observedAt: "2026-07-22T00:00:00.000Z" });
     for (const candidates of permutations(older, newer)) {
-      const decision = reduceFreshnessSupersessionV1(input(candidates[0], candidates[1]));
+      const decision = reduceFreshnessSupersessionV2(input(candidates[0], candidates[1]));
       expect(decision.selectedIdentity).toBe("fact-newer");
       expect(decision.reason).toBe("event-time");
     }
@@ -122,15 +126,15 @@ describe("freshness supersession policy v1", () => {
     const lower = candidate("fact-lower", { confidence: 0.4 });
     const higher = candidate("fact-higher", { confidence: 0.9 });
     for (const candidates of permutations(lower, higher)) {
-      const decision = reduceFreshnessSupersessionV1(input(candidates[0], candidates[1]));
+      const decision = reduceFreshnessSupersessionV2(input(candidates[0], candidates[1]));
       expect(decision.selectedIdentity).toBe("fact-higher");
       expect(decision.reason).toBe("confidence");
     }
 
     const tieA = candidate("fact-a");
     const tieB = candidate("fact-b");
-    const first = reduceFreshnessSupersessionV1(input(tieA, tieB));
-    const second = reduceFreshnessSupersessionV1(input(tieB, tieA));
+    const first = reduceFreshnessSupersessionV2(input(tieA, tieB));
+    const second = reduceFreshnessSupersessionV2(input(tieB, tieA));
     expect(first).toEqual(second);
     expect(first).toMatchObject({
       decisiveDimension: "none",
@@ -141,29 +145,79 @@ describe("freshness supersession policy v1", () => {
     });
   });
 
+  it("keeps unknown evidence inert and lets an audited explicit local relation decide", () => {
+    const current = candidate("fact-current", {
+      confidence: null,
+      observedAt: null,
+      sourceAuthority: null
+    });
+    const stale = candidate("fact-stale", {
+      confidence: null,
+      observedAt: null,
+      sourceAuthority: null
+    });
+    for (const candidates of permutations(current, stale)) {
+      expect(reduceFreshnessSupersessionV2(input(candidates[0], candidates[1]))).toMatchObject({
+        decisiveDimension: "none",
+        selectedIdentity: null,
+        status: "unresolved"
+      });
+      expect(reduceFreshnessSupersessionV2(input(candidates[0], candidates[1], [{
+        currentIdentity: current.identity,
+        staleIdentity: stale.identity,
+        verification: "audited-explicit-local-relation"
+      }]))).toMatchObject({
+        decisiveDimension: "explicit-correction",
+        reason: "explicit-correction",
+        selectedIdentity: current.identity,
+        status: "selected"
+      });
+    }
+  });
+
+  it("does not treat asymmetric missing evidence as weaker evidence", () => {
+    const complete = candidate("fact-complete");
+    const unknown = candidate("fact-unknown", {
+      confidence: null,
+      observedAt: null,
+      sourceAuthority: null
+    });
+    for (const candidates of permutations(complete, unknown)) {
+      expect(reduceFreshnessSupersessionV2(input(candidates[0], candidates[1]))).toMatchObject({
+        decisiveDimension: "none",
+        selectedIdentity: null,
+        status: "unresolved"
+      });
+    }
+  });
+
   it("fails closed for unknown versions, malformed evidence, and conflicting correction directions", () => {
     const left = candidate("fact-left");
     const right = candidate("fact-right");
     const invalidInputs: unknown[] = [
-      { ...input(left, right), policyVersion: "muse.freshness-supersession-policy.v2" },
+      { ...input(left, right), policyVersion: "muse.freshness-supersession-policy.v1" },
       input({ ...left, confidence: Number.NaN }, right),
       input({ ...left, observedAt: "2026-07-20" }, right),
       input({ ...left, sourceAuthority: "model" as never }, right),
       input(left, { ...right, identity: left.identity }),
-      input(left, right, [{ currentIdentity: left.identity, staleIdentity: left.identity, verification: "user-authored" }]),
-      input(left, right, [{ currentIdentity: left.identity, staleIdentity: "missing", verification: "user-authored" }]),
+      input(left, right, [{ currentIdentity: left.identity, staleIdentity: left.identity, verification: "audited-explicit-local-relation" }]),
+      input(left, right, [{ currentIdentity: left.identity, staleIdentity: "missing", verification: "audited-explicit-local-relation" }]),
       input(left, right, [{ currentIdentity: left.identity, staleIdentity: right.identity, verification: "inferred" as never }]),
       input(left, right, [
-        { currentIdentity: left.identity, staleIdentity: right.identity, verification: "user-authored" },
-        { currentIdentity: right.identity, staleIdentity: left.identity, verification: "user-authored" }
+        { currentIdentity: left.identity, staleIdentity: right.identity, verification: "audited-explicit-local-relation" },
+        { currentIdentity: right.identity, staleIdentity: left.identity, verification: "audited-explicit-local-relation" }
       ]),
       input(left, right, Array.from(
-        { length: FRESHNESS_SUPERSESSION_MAX_LINKS_V1 + 1 },
-        () => ({ currentIdentity: left.identity, staleIdentity: right.identity, verification: "user-authored" as const })
+        { length: FRESHNESS_SUPERSESSION_MAX_LINKS_V2 + 1 },
+        () => ({
+          currentIdentity: left.identity,
+          staleIdentity: right.identity,
+          verification: "audited-explicit-local-relation" as const
+        })
       ))
     ];
     for (const invalidInput of invalidInputs) {
-      expect(() => reduceFreshnessSupersessionV1(invalidInput as FreshnessSupersessionInputV1)).toThrow(FreshnessSupersessionInputError);
+      expect(() => reduceFreshnessSupersessionV2(invalidInput as FreshnessSupersessionInputV2)).toThrow(FreshnessSupersessionInputError);
     }
   });
 
@@ -174,7 +228,7 @@ describe("freshness supersession policy v1", () => {
     const validLink = {
       currentIdentity: left.identity,
       staleIdentity: right.identity,
-      verification: "user-authored" as const
+      verification: "audited-explicit-local-relation" as const
     };
     const invalidInputs: unknown[] = [
       { ...valid, extra: true },
@@ -197,13 +251,13 @@ describe("freshness supersession policy v1", () => {
       input({ ...left, identity: `f${"a".repeat(128)}` }, right)
     ];
     for (const invalidInput of invalidInputs) {
-      expect(() => reduceFreshnessSupersessionV1(invalidInput as FreshnessSupersessionInputV1)).toThrow(FreshnessSupersessionInputError);
+      expect(() => reduceFreshnessSupersessionV2(invalidInput as FreshnessSupersessionInputV2)).toThrow(FreshnessSupersessionInputError);
     }
 
     const zero = candidate("fact-zero", { confidence: 0 });
     const one = candidate("fact-one", { confidence: 1 });
     for (const candidates of permutations(zero, one)) {
-      expect(reduceFreshnessSupersessionV1(input(candidates[0], candidates[1]))).toMatchObject({
+      expect(reduceFreshnessSupersessionV2(input(candidates[0], candidates[1]))).toMatchObject({
         reason: "confidence",
         selectedIdentity: "fact-one",
         status: "selected"
@@ -230,7 +284,7 @@ describe("freshness supersession policy v1", () => {
     const symbolExtra = { ...left, [Symbol("extra")]: true };
     const sparseCandidates = new Array(2);
     sparseCandidates[0] = left;
-    const candidatesWithExtra = [left, right] as FreshnessCandidateV1[] & { extra?: boolean };
+    const candidatesWithExtra = [left, right] as FreshnessCandidateV2[] & { extra?: boolean };
     candidatesWithExtra.extra = true;
     const hostileTopLevel = new Proxy(input(left, right), {
       ownKeys: () => {
@@ -238,7 +292,7 @@ describe("freshness supersession policy v1", () => {
       }
     });
     const invalidInputs: unknown[] = [
-      input(accessorCandidate as FreshnessCandidateV1, right),
+      input(accessorCandidate as FreshnessCandidateV2, right),
       input(hiddenExtra, right),
       input(symbolExtra, right),
       { ...input(left, right), candidates: sparseCandidates },
@@ -248,7 +302,7 @@ describe("freshness supersession policy v1", () => {
     for (const invalidInput of invalidInputs) {
       let error: unknown;
       try {
-        reduceFreshnessSupersessionV1(invalidInput as FreshnessSupersessionInputV1);
+        reduceFreshnessSupersessionV2(invalidInput as FreshnessSupersessionInputV2);
       } catch (cause) {
         error = cause;
       }

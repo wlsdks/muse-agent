@@ -18,6 +18,11 @@ import { existsSync } from "node:fs";
 import { errorMessage } from "@muse/shared";
 
 import { filterLiveNoteIndexFiles } from "./live-files.js";
+import {
+  FRESHNESS_SUPERSESSION_POLICY_V2,
+  reduceFreshnessSupersessionV2,
+  type FreshnessSupersessionDecisionV2
+} from "./freshness-supersession-reducer.js";
 import { cosine } from "./notes-index.js";
 import { linkExpandRefs } from "./notes-links.js";
 import { NOTES_CHUNKER_VERSION } from "./notes-chunk.js";
@@ -98,6 +103,8 @@ export interface NoteRetrievalResult {
   rerankPair?: RecallRerankPairHint;
   /** Validated correction pair carried beyond the rerank window by exact opaque chunk identity. */
   verifiedCorrectionPair?: VerifiedCorrectionPair;
+  /** Content-blind deterministic freshness receipt; never contains note or query text. */
+  freshnessSupersessionDecision?: FreshnessSupersessionDecisionV2;
   /** Immutable first-retrieval snapshot for an identity-matching prepare seam. */
   snapshot?: NoteRetrievalSnapshot;
 }
@@ -113,6 +120,7 @@ export interface VerifiedCorrectionPair {
 }
 
 export interface TemporalClaimGraphActivationV1 {
+  readonly freshnessSupersessionDecision: FreshnessSupersessionDecisionV2;
   readonly relation: SupersedesRelationV1;
   readonly scored: readonly ScoredChunk[];
   readonly verifiedCorrectionPair: VerifiedCorrectionPair;
@@ -182,13 +190,33 @@ export interface TemporalClaimSnapshotAuthorityV1 {
 
 export interface TemporalClaimSnapshotIdentityV1 {
   readonly authority?: TemporalClaimSnapshotAuthorityV1;
+  readonly freshnessPolicyDigest?: string;
+  readonly freshnessPolicyVersion?: typeof FRESHNESS_SUPERSESSION_POLICY_V2;
   readonly selectedRelation?: SupersedesRelationV1;
 }
+
+export interface VerifyExplicitTemporalRelationInputV1 {
+  readonly authority: TemporalClaimSnapshotAuthorityV1;
+  readonly graph: TemporalClaimGraphV1;
+  readonly policyVersion: typeof FRESHNESS_SUPERSESSION_POLICY_V2;
+  readonly relation: SupersedesRelationV1;
+}
+
+/**
+ * Executable trust capability supplied by the local audited-store adapter.
+ * Serialized data cannot recreate it; core callers without one remain inert.
+ */
+export type VerifyExplicitTemporalRelationV1 = (input: VerifyExplicitTemporalRelationInputV1) => boolean;
 
 export interface TemporalClaimContextV1 {
   readonly authority: TemporalClaimSnapshotAuthorityV1;
   readonly graph?: TemporalClaimGraphV1;
+  readonly verifyExplicitRelation?: VerifyExplicitTemporalRelationV1;
 }
+
+const FRESHNESS_POLICY_DIGEST_V2 = createHash("sha256")
+  .update(FRESHNESS_SUPERSESSION_POLICY_V2)
+  .digest("hex");
 
 export function temporalClaimSnapshotMatchesContextV1(
   snapshot: NoteRetrievalSnapshot,
@@ -199,8 +227,32 @@ export function temporalClaimSnapshotMatchesContextV1(
   if (!identity?.authority || !context) return false;
   if (identity.authority.storeState === "unavailable" || context.authority.storeState === "unavailable") return false;
   if (JSON.stringify(identity.authority) !== JSON.stringify(context.authority)) return false;
-  if (!identity.selectedRelation) return true;
-  return context.graph?.relations.some((relation) => JSON.stringify(relation) === JSON.stringify(identity.selectedRelation)) === true;
+  const snapshotDecision = snapshot.result.freshnessSupersessionDecision;
+  if (!identity.selectedRelation) {
+    return snapshotDecision === undefined
+      && identity.freshnessPolicyVersion === undefined
+      && identity.freshnessPolicyDigest === undefined;
+  }
+  if (
+    !snapshotDecision
+    || identity.freshnessPolicyVersion !== FRESHNESS_SUPERSESSION_POLICY_V2
+    || identity.freshnessPolicyDigest !== FRESHNESS_POLICY_DIGEST_V2
+    || !context.graph
+    || !context.verifyExplicitRelation
+  ) return false;
+  try {
+    return context.verifyExplicitRelation({
+      authority: context.authority,
+      graph: context.graph,
+      policyVersion: FRESHNESS_SUPERSESSION_POLICY_V2,
+      relation: identity.selectedRelation
+    }) === true
+      && JSON.stringify(snapshotDecision) === JSON.stringify(
+        freshnessDecisionForExplicitRelation(identity.selectedRelation)
+      );
+  } catch {
+    return false;
+  }
 }
 
 export function retrievalIndexSnapshotDigestV1(indexFiles: readonly RetrievalFileEntry[]): string {
@@ -230,8 +282,28 @@ function temporalCandidateKey(sourcePath: string, chunkIndex: number): string {
   return JSON.stringify([sourcePath, chunkIndex]);
 }
 
+function freshnessDecisionForExplicitRelation(
+  relation: SupersedesRelationV1
+): FreshnessSupersessionDecisionV2 {
+  const currentIdentity = `${relation.edgeId}:current`;
+  const staleIdentity = `${relation.edgeId}:stale`;
+  return reduceFreshnessSupersessionV2({
+    candidates: [
+      { confidence: null, identity: currentIdentity, observedAt: null, sourceAuthority: null },
+      { confidence: null, identity: staleIdentity, observedAt: null, sourceAuthority: null }
+    ],
+    correctionLinks: [{
+      currentIdentity,
+      staleIdentity,
+      verification: "audited-explicit-local-relation"
+    }],
+    policyVersion: FRESHNESS_SUPERSESSION_POLICY_V2
+  });
+}
+
 /** Pure, bounded activation of one already-validated explicit temporal edge. */
 export function activateTemporalClaimGraphV1(input: {
+  readonly authority: TemporalClaimSnapshotAuthorityV1;
   readonly candidates: readonly ScoredChunk[];
   readonly confidentAt: number;
   readonly graph: TemporalClaimGraphV1;
@@ -239,6 +311,7 @@ export function activateTemporalClaimGraphV1(input: {
   readonly notesDir: string;
   readonly query: string;
   readonly topK: number;
+  readonly verifyExplicitRelation: VerifyExplicitTemporalRelationV1;
 }): TemporalClaimGraphActivationV1 | undefined {
   try {
     if (input.topK < 2 || input.candidates.length === 0 || input.candidates.length > MAX_TEMPORAL_GRAPH_CANDIDATES
@@ -293,9 +366,29 @@ export function activateTemporalClaimGraphV1(input: {
     const currentTokens = lexicalTokens(selected.current.span);
     const staleTokens = lexicalTokens(selected.stale.span);
     if (![...queryTokens].some((token) => currentTokens.has(token) && staleTokens.has(token))) return undefined;
+    if (
+      input.authority.storeState !== "valid"
+      || input.authority.graphDigest !== graph.semanticDigest
+      || input.authority.rawStoreDigest === null
+      || input.authority.indexDigest === null
+      || input.authority.sourceProvenanceDigest === null
+      || !input.verifyExplicitRelation({
+        authority: input.authority,
+        graph: input.graph,
+        policyVersion: FRESHNESS_SUPERSESSION_POLICY_V2,
+        relation: selected.relation
+      })
+    ) return undefined;
+    const currentIdentity = `${selected.relation.edgeId}:current`;
+    const freshnessSupersessionDecision = freshnessDecisionForExplicitRelation(selected.relation);
+    if (
+      freshnessSupersessionDecision.status !== "selected"
+      || freshnessSupersessionDecision.selectedIdentity !== currentIdentity
+    ) return undefined;
     const baseline = diversifyAskChunks(input.candidates, input.topK, undefined, input.query);
     const rest = baseline.filter((candidate) => candidate !== selected.current.candidate && candidate !== selected.stale.candidate);
     return Object.freeze({
+      freshnessSupersessionDecision,
       relation: selected.relation,
       scored: Object.freeze([selected.current.candidate, selected.stale.candidate, ...rest].slice(0, input.topK)),
       verifiedCorrectionPair: Object.freeze({
@@ -337,6 +430,8 @@ export async function retrieveAndRankNotes(params: {
   readonly temporalClaimGraph?: TemporalClaimGraphV1;
   /** Frozen local authority metadata captured by the CLI at the first retrieval boundary. */
   readonly temporalClaimAuthority?: TemporalClaimSnapshotAuthorityV1;
+  /** Executable local audit capability; serialized graph/authority data cannot replace it. */
+  readonly verifyExplicitTemporalRelation?: VerifyExplicitTemporalRelationV1;
 }): Promise<NoteRetrievalResult> {
   const { query, embedModel, indexFiles, notesDir, scope, json, onStderr, embedFn } = params;
   let rerankFn = params.rerankFn;
@@ -355,6 +450,7 @@ export async function retrieveAndRankNotes(params: {
   let rerankWindow: readonly ScoredChunk[] = [];
   let temporalActivated = false;
   let selectedTemporalRelation: SupersedesRelationV1 | undefined;
+  let freshnessSupersessionDecision: FreshnessSupersessionDecisionV2 | undefined;
   try {
     // S3 narrate-the-wait: a REAL stage delta before the embed — on a 10-40s local
     // model the pre-answer gap reads as a hang; this makes it read as thinking.
@@ -375,19 +471,24 @@ export async function retrieveAndRankNotes(params: {
     preGapScored = [...allScored].sort((a, b) => b.score - a.score).slice(0, topK);
     const candidateSnapshot = Object.freeze(allScored.map((candidate) => Object.freeze(candidate)));
     const temporalActivation = params.temporalClaimGraph
+      && params.temporalClaimAuthority
+      && params.verifyExplicitTemporalRelation
       ? activateTemporalClaimGraphV1({
+          authority: params.temporalClaimAuthority,
           candidates: candidateSnapshot,
           confidentAt: resolveRecallConfidentAt(env, embedModel),
           graph: params.temporalClaimGraph,
           indexFiles: scopedNoteFiles,
           notesDir,
           query,
-          topK
+          topK,
+          verifyExplicitRelation: params.verifyExplicitTemporalRelation
         })
       : undefined;
     if (temporalActivation) {
       temporalActivated = true;
       selectedTemporalRelation = temporalActivation.relation;
+      freshnessSupersessionDecision = temporalActivation.freshnessSupersessionDecision;
       scored = [...temporalActivation.scored];
       verifiedCorrectionPair = cloneVerifiedCorrectionPair(temporalActivation.verifiedCorrectionPair);
     } else {
@@ -595,6 +696,9 @@ export async function retrieveAndRankNotes(params: {
     ...(rerankDecision ? { rerankDecision } : {}),
     ...(rerankPair ? { rerankPair: { ...rerankPair } } : {}),
     ...(verifiedCorrectionPair ? { verifiedCorrectionPair: cloneVerifiedCorrectionPair(verifiedCorrectionPair) } : {}),
+    ...(freshnessSupersessionDecision
+      ? { freshnessSupersessionDecision: cloneFreshnessSupersessionDecision(freshnessSupersessionDecision) }
+      : {}),
     scored: demoteStale(scored, (s) => s.chunk.text),
     splitClauses: [...splitClauses],
     subqueryEmbeddings: subqueryEmbeddings.map((embedding) => [...embedding])
@@ -607,6 +711,9 @@ export async function retrieveAndRankNotes(params: {
     scored: [...result.scored],
     splitClauses: [...result.splitClauses],
     subqueryEmbeddings: result.subqueryEmbeddings.map((embedding) => [...embedding]),
+    ...(result.freshnessSupersessionDecision
+      ? { freshnessSupersessionDecision: cloneFreshnessSupersessionDecision(result.freshnessSupersessionDecision) }
+      : {}),
     ...(result.verifiedCorrectionPair ? { verifiedCorrectionPair: cloneVerifiedCorrectionPair(result.verifiedCorrectionPair) } : {})
   };
   const identity: NoteRetrievalSnapshotIdentity = {
@@ -621,6 +728,10 @@ export async function retrieveAndRankNotes(params: {
     ...((params.temporalClaimAuthority || selectedTemporalRelation) ? {
       temporalClaim: Object.freeze({
         ...(params.temporalClaimAuthority ? { authority: params.temporalClaimAuthority } : {}),
+        ...(freshnessSupersessionDecision ? {
+          freshnessPolicyDigest: FRESHNESS_POLICY_DIGEST_V2,
+          freshnessPolicyVersion: FRESHNESS_SUPERSESSION_POLICY_V2
+        } : {}),
         ...(selectedTemporalRelation ? { selectedRelation: selectedTemporalRelation } : {})
       })
     } : {}),
@@ -632,6 +743,10 @@ export async function retrieveAndRankNotes(params: {
   Object.freeze(snapshotResult.scored);
   Object.freeze(snapshotResult.splitClauses);
   if (snapshotResult.rerankPair) Object.freeze(snapshotResult.rerankPair);
+  if (snapshotResult.freshnessSupersessionDecision) {
+    Object.freeze(snapshotResult.freshnessSupersessionDecision.orderedIdentities);
+    Object.freeze(snapshotResult.freshnessSupersessionDecision);
+  }
   if (snapshotResult.verifiedCorrectionPair) {
     Object.freeze(snapshotResult.verifiedCorrectionPair.current);
     Object.freeze(snapshotResult.verifiedCorrectionPair.stale);
@@ -1070,6 +1185,15 @@ function sameNoteChunkIdentity(left: NoteChunkIdentity, right: NoteChunkIdentity
 
 function cloneVerifiedCorrectionPair(pair: VerifiedCorrectionPair): VerifiedCorrectionPair {
   return { current: { ...pair.current }, stale: { ...pair.stale } };
+}
+
+function cloneFreshnessSupersessionDecision(
+  decision: FreshnessSupersessionDecisionV2
+): FreshnessSupersessionDecisionV2 {
+  return Object.freeze({
+    ...decision,
+    orderedIdentities: Object.freeze([...decision.orderedIdentities])
+  });
 }
 
 function preserveRerankPair(
