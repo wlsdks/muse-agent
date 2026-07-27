@@ -13,9 +13,6 @@ import { errorMessage } from "@muse/shared";
 import {
   defaultBeliefProvenanceFile,
   FileBeliefProvenanceStore,
-  FileUserMemoryStore,
-  normalizeMemoryKey,
-  recordRetraction,
   type BeliefProvenance
 } from "@muse/memory";
 import { createQualificationLearningWriteGate, resolveAuthoredSkillsDir, resolvePlaybookFile } from "@muse/autoconfigure";
@@ -182,16 +179,11 @@ export function registerJourneyCommands(program: Command, io: ProgramIO): void {
           return;
         }
         if (target.storeKind === "fact") {
-          const store = new FileUserMemoryStore();
-          const removed = await store.forget(userId, target.ref);
-          if (removed) {
-            try {
-              await recordRetraction(new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()), userId, normalizeMemoryKey(target.ref));
-            } catch { /* provenance is best-effort; the forget already succeeded */ }
-          }
-          io.stdout(removed
-            ? `Forgot "${normalizeMemoryKey(target.ref)}" (user=${userId})\n`
-            : `(nothing remembered under "${target.ref}" — already forgotten or never stored)\n`);
+          io.stdout(
+            `Journey ref "${target.ref}" is display evidence, not deletion authority. `
+            + "Run `muse memory inspect`, preview the exact ID, then use "
+            + "`muse memory forget <exact-id> --expected-version <n> --confirm <exact-id>`.\n"
+          );
           return;
         }
         if (target.storeKind === "strategy") {

@@ -1,5 +1,5 @@
 /**
- * `muse remember <text>` / `muse forget <key>` — natural-language
+ * `muse remember <text>` / `muse forget --all --force` — natural-language
  * memory tweaks. Two top-level shortcuts so the user can train
  * JARVIS in one line from anywhere (shell aliases, scripts, voice
  * loop, ad-hoc commands) without entering the REPL.
@@ -8,8 +8,8 @@
  *   → runs the auto-extract prompt against the local model
  *   → writes facts/prefs/vetoes/goals into ~/.muse/user-memory.json
  *
- * `muse forget reply_style`
- *   → drops a single key (fact OR preference) from the persona
+ * Single-entry deletion lives under `muse memory inspect|preview|forget|undo`
+ * so a display key can never become fuzzy deletion authority.
  *
  * `muse forget --all`
  *   → wipes the entire persona for the user (requires --force)
@@ -61,7 +61,7 @@ export function registerRememberCommands(program: Command, io: ProgramIO): void 
 Examples:
   $ muse remember "I'm vegetarian and I hate 8am meetings"   # extracts facts/prefs/goals
   $ muse remember --json "my timezone is KST"                # structured {written,skipped} output
-  $ muse forget home_city                                    # remove a single remembered fact`)
+  $ muse memory inspect                                      # exact-ID correction/deletion starts here`)
     .argument("<text...>", "Natural-language statement (one or more words)")
     .option("--user <id>", "User identity (default $MUSE_USER_ID / $USER)")
     .option("--persona <slot>", "Persona slot (work / home)")
@@ -113,6 +113,20 @@ Examples:
 
       const written: Array<{ kind: "fact" | "preference" | "veto" | "goal"; key: string; value: string }> = [];
       const skipped: Array<{ kind: string; key?: string; reason: string }> = [];
+      const createMemory = async (kind: "fact" | "preference", key: string, value: string): Promise<boolean> => {
+        const result = kind === "fact"
+          ? await assembly.userMemoryStore.createFactIfAbsent(userKey, key, value)
+          : await assembly.userMemoryStore.createPreferenceIfAbsent(userKey, key, value);
+        if (result.created) return true;
+        skipped.push({
+          key,
+          kind,
+          reason: result.existingValue === value
+            ? "already stored"
+            : "existing memory requires exact-ID correction via `muse memory inspect` + `muse memory correct`"
+        });
+        return false;
+      };
       const emitWrite = (kind: "fact" | "preference" | "veto" | "goal", key: string, value: string, label: string): void => {
         written.push({ key, kind, value });
         if (!options.json) {
@@ -121,7 +135,7 @@ Examples:
       };
       for (const [key, value] of Object.entries(payload.facts ?? {})) {
         if (typeof value === "string" && value.length > 0) {
-          await assembly.userMemoryStore.upsertFact(userKey, key, value);
+          if (!await createMemory("fact", key, value)) continue;
           emitWrite("fact", key, value, `fact.${key}`);
         } else {
           skipped.push({ key, kind: "fact", reason: "empty or non-string value" });
@@ -129,7 +143,7 @@ Examples:
       }
       for (const [key, value] of Object.entries(payload.preferences ?? {})) {
         if (typeof value === "string" && value.length > 0) {
-          await assembly.userMemoryStore.upsertPreference(userKey, key, value);
+          if (!await createMemory("preference", key, value)) continue;
           emitWrite("preference", key, value, `pref.${key}`);
         } else {
           skipped.push({ key, kind: "preference", reason: "empty or non-string value" });
@@ -138,7 +152,7 @@ Examples:
       for (const slot of payload.vetoes ?? []) {
         if (slot && typeof slot.value === "string" && slot.value.length > 0) {
           const key = `veto:${slot.id || slot.value.slice(0, 24)}`;
-          await assembly.userMemoryStore.upsertPreference(userKey, key, slot.value);
+          if (!await createMemory("preference", key, slot.value)) continue;
           emitWrite("veto", key, slot.value, key);
         } else {
           skipped.push({ kind: "veto", reason: "empty or non-string value" });
@@ -147,7 +161,7 @@ Examples:
       for (const slot of payload.goals ?? []) {
         if (slot && typeof slot.value === "string" && slot.value.length > 0) {
           const key = `goal:${slot.id || slot.value.slice(0, 24)}`;
-          await assembly.userMemoryStore.upsertPreference(userKey, key, slot.value);
+          if (!await createMemory("preference", key, slot.value)) continue;
           emitWrite("goal", key, slot.value, key);
         } else {
           skipped.push({ kind: "goal", reason: "empty or non-string value" });
@@ -164,12 +178,13 @@ Examples:
 
   program
     .command("forget")
-    .description("Remove a fact/preference (`muse forget name`) or the whole persona (`muse forget --all --force`)")
+    .description("Wipe the whole persona; use `muse memory forget` for one exact, undoable entry")
     .addHelpText("after", `
 Examples:
-  $ muse forget home_city         # remove one fact/preference by key
+  $ muse memory inspect           # obtain exact entry IDs and versions
+  $ muse memory forget mem_v1_… --expected-version 1 --confirm mem_v1_…
   $ muse forget --all --force     # wipe the entire persona (destructive)`)
-    .argument("[key]", "Fact or preference key to remove")
+    .argument("[key]", "Deprecated display key; single-entry fuzzy deletion is refused")
     .option("--user <id>", "User identity")
     .option("--persona <slot>", "Persona slot")
     .option("--all", "Wipe the entire persona for the user — destructive, pair with --force")
@@ -199,61 +214,15 @@ Examples:
       }
 
       if (!key) {
-        io.stderr("usage: muse forget <key> | muse forget --all --force\n");
+        io.stderr("usage: muse memory inspect | muse forget --all --force\n");
         process.exitCode = 1;
         return;
       }
-      if (!memory) {
-        io.stdout(`(no memory for user '${userKey}' — nothing to forget)\n`);
-        return;
-      }
-
-      const factHit = memory.facts[key];
-      const prefHit = memory.preferences[key];
-      // Also tolerate the veto:/goal: prefix forms when the user types them.
-      const vetoHit = memory.preferences[`veto:${key}`];
-      const goalHit = memory.preferences[`goal:${key}`];
-
-      if (factHit !== undefined) {
-        // The store has no explicit deleteFact API, so rebuild the
-        // memory by writing every other fact/pref back unchanged and
-        // emit the missing one through a hand-rolled wipe.
-        await rebuildWithout(assembly.userMemoryStore, userKey, memory, { factKey: key });
-        io.stdout(`Forgot fact.${key} (was: ${factHit})\n`);
-      } else if (prefHit !== undefined) {
-        await rebuildWithout(assembly.userMemoryStore, userKey, memory, { prefKey: key });
-        io.stdout(`Forgot pref.${key} (was: ${prefHit})\n`);
-      } else if (vetoHit !== undefined) {
-        await rebuildWithout(assembly.userMemoryStore, userKey, memory, { prefKey: `veto:${key}` });
-        io.stdout(`Forgot veto.${key} (was: ${vetoHit})\n`);
-      } else if (goalHit !== undefined) {
-        await rebuildWithout(assembly.userMemoryStore, userKey, memory, { prefKey: `goal:${key}` });
-        io.stdout(`Forgot goal.${key} (was: ${goalHit})\n`);
-      } else {
-        io.stdout(`(key '${key}' not in memory for user '${userKey}')\n`);
-      }
+      io.stderr(
+        "Single-entry deletion by display key is no longer allowed. "
+        + "Run `muse memory inspect`, preview the exact ID, then use "
+        + "`muse memory forget <exact-id> --expected-version <n> --confirm <exact-id>`.\n"
+      );
+      process.exitCode = 2;
     });
-}
-
-/**
- * UserMemoryStore exposes upsertFact / upsertPreference / deleteByUserId
- * but not "delete one fact". Emulate by wiping the user then re-upserting
- * everything except the targeted key. Atomic from the FileUserMemoryStore
- * tmp+rename writer's perspective — the partial state never lands on disk.
- */
-async function rebuildWithout(
-  store: ReturnType<typeof createMuseRuntimeAssembly>["userMemoryStore"],
-  userKey: string,
-  memory: { readonly facts: Readonly<Record<string, string>>; readonly preferences: Readonly<Record<string, string>> },
-  drop: { readonly factKey?: string; readonly prefKey?: string }
-): Promise<void> {
-  await store.deleteByUserId(userKey);
-  for (const [key, value] of Object.entries(memory.facts)) {
-    if (drop.factKey === key) continue;
-    await store.upsertFact(userKey, key, value);
-  }
-  for (const [key, value] of Object.entries(memory.preferences)) {
-    if (drop.prefKey === key) continue;
-    await store.upsertPreference(userKey, key, value);
-  }
 }

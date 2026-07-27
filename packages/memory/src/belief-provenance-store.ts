@@ -825,7 +825,15 @@ export class FileBeliefProvenanceStore implements BeliefProvenanceStore {
     if (entries.length === 0) return;
     await this.serializeWrite(async () => {
       const existing = await readBeliefProvenance(this.file, this.env);
-      const next = [...existing, ...entries].slice(-MAX_BELIEF_PROVENANCE_ENTRIES);
+      const seen = new Set(existing.map(provenanceEventIdentity));
+      const novel = entries.filter((entry) => {
+        const identity = provenanceEventIdentity(entry);
+        if (seen.has(identity)) return false;
+        seen.add(identity);
+        return true;
+      });
+      if (novel.length === 0) return;
+      const next = [...existing, ...novel].slice(-MAX_BELIEF_PROVENANCE_ENTRIES);
       await writeBeliefProvenance(this.file, next, this.env);
     });
   }
@@ -839,6 +847,20 @@ export class FileBeliefProvenanceStore implements BeliefProvenanceStore {
   private async serializeWrite<T>(operation: () => Promise<T>): Promise<T> {
     return withFileMutationQueue(this.file, () => withFileLock(this.file, operation));
   }
+}
+
+function provenanceEventIdentity(entry: BeliefProvenance): string {
+  return JSON.stringify([
+    entry.userId,
+    entry.key,
+    entry.kind,
+    entry.value,
+    entry.learnedAt,
+    entry.sessionId ?? null,
+    entry.evidenceExcerpt ?? null,
+    entry.source ?? null,
+    entry.retraction ?? false
+  ]);
 }
 
 function isBeliefProvenance(value: unknown): value is BeliefProvenance {

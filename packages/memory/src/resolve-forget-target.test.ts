@@ -8,9 +8,9 @@ describe("resolveForgetTarget", () => {
     expect(target).toEqual({ dropFact: true, dropPref: true, key: "home_city" });
   });
 
-  it("normalizes a raw key not stored verbatim (\"Home City\" -> \"home_city\")", () => {
+  it("rejects a raw key not stored byte-exactly (\"Home City\" does not alias \"home_city\")", () => {
     const target = resolveForgetTarget({ facts: { home_city: "Seoul" }, preferences: {} }, "Home City");
-    expect(target).toEqual({ dropFact: true, dropPref: true, key: "home_city" });
+    expect(target).toBeNull();
   });
 
   it("kind=\"fact\" preserves a same-key preference (only drops the fact)", () => {

@@ -410,7 +410,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
   },
   {
     "name": "forget",
-    "description": "Remove a fact/preference (`muse forget name`) or the whole persona (`muse forget --all --force`)",
+    "description": "Wipe the whole persona; use `muse memory forget` for one exact, undoable entry",
     "argsTerm": "[key]",
     "hasOptions": true,
     "subcommands": []
@@ -545,16 +545,20 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "subcommands": [
       "clear",
       "consolidate",
+      "correct",
       "decrypt",
       "diff",
       "encrypt",
       "encryption-status",
       "forget",
       "history",
+      "inspect",
+      "preview",
       "promote",
       "search",
       "set",
       "show",
+      "undo",
       "why"
     ]
   },

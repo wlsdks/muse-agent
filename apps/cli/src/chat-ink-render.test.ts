@@ -185,38 +185,38 @@ describe("MuseChatApp render — slash command echo + output", () => {
     expect(saved).toEqual({ key: "reply_style", value: "concise" });
   });
 
-  it("/remember shows a visible supersede when overwriting an existing fact", async () => {
+  it("/remember refuses to bypass exact-ID correction for an existing fact", async () => {
+    let called = false;
     const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
       memorySnapshot: async () => ({ facts: { city: "Seoul" }, preferences: {}, recentTopics: [] }),
-      rememberFact: async () => true
+      rememberFact: async () => { called = true; return true; }
     })));
     await tick();
     stdin.write("/remember city=Busan"); await tick(); stdin.write("\r");
-    const frame = await waitForFrame(lastFrame, ["✓ Updated city: Seoul → Busan"]);
+    const frame = await waitForFrame(lastFrame, ["already exists", "muse memory correct"]);
     unmount();
-    expect(frame).toContain("✓ Updated city: Seoul → Busan");
+    expect(frame).toContain("already exists");
+    expect(called).toBe(false);
   });
 
-  it("/forget resolves a substring key and reports ambiguity safely", async () => {
+  it("/forget never turns chat display text into deletion authority", async () => {
     const forgotten: string[] = [];
     const props = makeProps({
       memorySnapshot: async () => ({ facts: { user_name: "jinan", city: "Seoul", work_city: "Busan" }, preferences: {}, recentTopics: [] }),
       forgetMemory: async (k: string) => { forgotten.push(k); return true; }
     });
-    // unique substring "name" → user_name
     const a = render(React.createElement(MuseChatApp, props));
     await tick(); a.stdin.write("/forget name"); await tick(); a.stdin.write("\r");
-    expect(await waitForFrame(a.lastFrame, ['✓ Forgot "user_name".'])).toContain('✓ Forgot "user_name".');
+    expect(await waitForFrame(a.lastFrame, ["does not turn display text", "muse memory inspect"]))
+      .toContain("does not turn display text");
     a.unmount();
-    expect(forgotten).toEqual(["user_name"]);
-    // ambiguous "cit" → matches city + work_city, no exact → asks, forgets nothing
+    expect(forgotten).toEqual([]);
     forgotten.length = 0;
     const b = render(React.createElement(MuseChatApp, props));
-    await tick(); b.stdin.write("/forget cit"); await tick(); b.stdin.write("\r");
-    const fb = await waitForFrame(b.lastFrame, ["matches 2", "Be more specific"]);
+    await tick(); b.stdin.write("/forget --all"); await tick(); b.stdin.write("\r");
+    const fb = await waitForFrame(b.lastFrame, ["never performs an immediate memory wipe", "--all --force"]);
     b.unmount();
-    expect(fb).toContain("matches 2");
-    expect(fb).toContain("Be more specific");
+    expect(fb).toContain("never performs an immediate memory wipe");
     expect(forgotten).toEqual([]);
   });
 
@@ -350,8 +350,8 @@ describe("MuseChatApp render — every slash command responds", () => {
     { input: "/remember city=Seoul", contains: ["✓ Remembered city: Seoul"] },
     { input: "/pref reply_style=concise", contains: ["✓ Preference reply_style: concise"] },
     { input: "/recall budget", contains: ["› /recall budget", "no hits"] },
-    { input: "/forget user_name", contains: ["✓ Forgot \"user_name\"."] },
-    { input: "/forget --all", contains: ["Wiped everything"] },
+    { input: "/forget user_name", contains: ["does not turn display text", "muse memory inspect"] },
+    { input: "/forget --all", contains: ["never performs an immediate memory wipe", "--all --force"] },
     { input: "/trust", contains: ["› /trust", "Trusted tools (0)"] },
     { input: "/persona", contains: ["› /persona", "persona"] },
     { input: "/history", contains: ["› /history", "turns in this conversation"] },

@@ -33,7 +33,7 @@ describe("FileUserMemoryStore — external-edit compare-and-swap", () => {
     const { dir, file, store } = await newStore();
     await store.upsertFact("stark", "name", "Stark");
     await store.upsertPreference("stark", "reply_style", "concise");
-    await store.forget("stark", "name");
+    await store.forgetByCanonicalKey("stark", "name");
 
     const memory = await store.findByUserId("stark");
     expect(memory?.preferences).toEqual({ reply_style: "concise" });

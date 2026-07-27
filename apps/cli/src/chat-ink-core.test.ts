@@ -936,14 +936,13 @@ describe("resolveForgetKey", () => {
   it("prefers an exact key", () => {
     expect(resolveForgetKey(keys, "city")).toEqual({ key: "city", kind: "exact" });
   });
-  it("unique substring → that key", () => {
-    expect(resolveForgetKey(keys, "name")).toEqual({ key: "user_name", kind: "unique" });
-    expect(resolveForgetKey(keys, "style")).toEqual({ key: "reply_style", kind: "unique" });
+  it("rejects unique fuzzy substrings", () => {
+    expect(resolveForgetKey(keys, "name")).toEqual({ kind: "none" });
+    expect(resolveForgetKey(keys, "style")).toEqual({ kind: "none" });
   });
-  it("multiple substring matches → ambiguous (never guesses)", () => {
+  it("rejects ambiguous and case-folded fuzzy matches", () => {
     const r = resolveForgetKey(["city", "work_city"], "cITy");
-    expect(r.kind).toBe("ambiguous");
-    if (r.kind === "ambiguous") expect(r.matches).toEqual(["city", "work_city"]);
+    expect(r).toEqual({ kind: "none" });
   });
   it("no match → none", () => {
     expect(resolveForgetKey(keys, "weather")).toEqual({ kind: "none" });

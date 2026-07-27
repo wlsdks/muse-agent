@@ -147,12 +147,13 @@ describe("muse journey — merged timeline over real file stores", () => {
     expect(exitCode).toBe(1);
   });
 
-  it("forget <fact key> delegates to the memory-forget path and removes it", async () => {
+  it("forget <fact key> refuses display-ref deletion and points to exact owner control", async () => {
     const { out } = await run(["forget", "home_city"]);
-    expect(out).toContain("Forgot");
+    expect(out).toContain("display evidence, not deletion authority");
+    expect(out).toContain("muse memory inspect");
     const { FileUserMemoryStore } = await import("@muse/memory");
     const record = await new FileUserMemoryStore().findByUserId("journey-user");
-    expect(record?.facts.home_city).toBeUndefined();
+    expect(record?.facts.home_city).toBe("Seoul");
   });
 
   it("forget <strategy id prefix> delegates to removePlaybookStrategy", async () => {

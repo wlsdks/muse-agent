@@ -847,7 +847,7 @@ async function persist(
     storeReadFailed = true;
     existing = undefined;
   }
-  const forget = store.forget?.bind(store);
+  const forget = store.forgetByCanonicalKey?.bind(store);
   // Forgotten-fact suppression: a key the user explicitly retracted (`forget`) must NOT
   // be resurfaced by the auto-extractor — an inference overriding an explicit user
   // retraction is the auto-vs-user authority inversion (source: user > auto). A later
@@ -871,7 +871,7 @@ async function persist(
       // Scope the retraction to THIS namespace — a fact retraction must not also
       // wipe a same-key preference (and vice versa).
       if (forget) {
-        writes.push(safeWrite(() => forget(userId, key, kind)));
+        writes.push(safeWrite(() => forget(userId, normalizeMemoryKey(key), kind)));
       } else {
         policyRejected += 1;
       }

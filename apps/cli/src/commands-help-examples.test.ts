@@ -51,13 +51,13 @@ const cases: readonly HelpCase[] = [
     register: (p) => registerTodayCommands(p, io, {} as unknown as TodayCommandHelpers)
   },
   {
-    mustContain: ["muse remember ", "--json", "muse forget home_city"],
+    mustContain: ["muse remember ", "--json", "muse memory inspect"],
     name: "remember",
     path: ["remember"],
     register: (p) => registerRememberCommands(p, io)
   },
   {
-    mustContain: ["muse forget home_city", "--all --force"],
+    mustContain: ["muse memory forget", "--expected-version", "--all --force"],
     name: "forget",
     path: ["forget"],
     register: (p) => registerRememberCommands(p, io)

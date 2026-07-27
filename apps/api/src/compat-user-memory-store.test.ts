@@ -42,11 +42,24 @@ describe("canAccessUserMemory — the privacy gate", () => {
 });
 
 describe("updateUserMemory", () => {
-  it("routes facts to upsertFact and preferences to upsertPreference (trimmed key/value)", async () => {
+  it("routes facts and preferences through atomic create-if-absent (trimmed key/value)", async () => {
     const calls: unknown[][] = [];
+    const memory = {
+      facts: {},
+      preferences: {},
+      recentTopics: [],
+      updatedAt: new Date(0),
+      userId: "u1"
+    };
     const userMemoryStore = {
-      upsertFact: async (u: string, k: string, v: string) => { calls.push(["fact", u, k, v]); },
-      upsertPreference: async (u: string, k: string, v: string) => { calls.push(["pref", u, k, v]); }
+      createFactIfAbsent: async (u: string, k: string, v: string) => {
+        calls.push(["fact", u, k, v]);
+        return { created: true, memory };
+      },
+      createPreferenceIfAbsent: async (u: string, k: string, v: string) => {
+        calls.push(["pref", u, k, v]);
+        return { created: true, memory };
+      }
     } as unknown as CompatibilityRouteOptions["userMemoryStore"];
 
     const out = await updateUserMemory(request({ body: { key: " spouse ", value: " Mina " }, userId: "u1" }), reply().r, "facts", opts({ userMemoryStore }));
@@ -61,6 +74,35 @@ describe("updateUserMemory", () => {
     const { captured, r } = reply();
     await updateUserMemory(request({ body: { key: "", value: "x" } }), r, "facts", opts({}));
     expect(captured.status).toBe(400);
+  });
+
+  it("rejects overwrite-by-key and leaves exact correction to owner control", async () => {
+    const calls: unknown[][] = [];
+    const userMemoryStore = {
+      createFactIfAbsent: async (...args: unknown[]) => {
+        calls.push(args);
+        return {
+          created: false,
+          existingValue: "Seoul",
+          memory: {
+            facts: { home_city: "Seoul" },
+            preferences: {},
+            recentTopics: [],
+            updatedAt: new Date(0),
+            userId: "u1"
+          }
+        };
+      }
+    } as unknown as CompatibilityRouteOptions["userMemoryStore"];
+    const { captured, r } = reply();
+    await updateUserMemory(
+      request({ body: { key: "Home City", value: "Busan" }, userId: "u1" }),
+      r,
+      "facts",
+      opts({ userMemoryStore })
+    );
+    expect(captured.status).toBe(409);
+    expect(calls).toEqual([["u1", "Home City", "Busan"]]);
   });
 });
 

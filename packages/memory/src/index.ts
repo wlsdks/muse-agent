@@ -409,6 +409,12 @@ export interface UserMemory {
   readonly userModel?: UserModel;
 }
 
+export interface UserMemoryCreateResult {
+  readonly created: boolean;
+  readonly memory: UserMemory;
+  readonly existingValue?: string;
+}
+
 export interface UserMemoryStore {
   findByUserId(userId: string): Awaitable<UserMemory | undefined>;
   /**
@@ -421,6 +427,14 @@ export interface UserMemoryStore {
   upsertFact(userId: string, key: string, value: string): Awaitable<UserMemory>;
   /** Same sanitisation contract as upsertFact. */
   upsertPreference(userId: string, key: string, value: string): Awaitable<UserMemory>;
+  /**
+   * Atomically create a normalized-key entry only when it is absent. Add-only
+   * owner surfaces use this instead of a read-then-upsert sequence so aliases
+   * and concurrent requests cannot silently overwrite an existing value.
+   */
+  createFactIfAbsent(userId: string, key: string, value: string): Awaitable<UserMemoryCreateResult>;
+  /** Same atomic add-only contract as createFactIfAbsent. */
+  createPreferenceIfAbsent(userId: string, key: string, value: string): Awaitable<UserMemoryCreateResult>;
   deleteByUserId(userId: string): Awaitable<boolean>;
   /**
    * Remove a single remembered key from `facts` and/or `preferences`
@@ -434,7 +448,7 @@ export interface UserMemoryStore {
    * auto-extractor passes it so a FACT retraction can't wipe a same-key
    * PREFERENCE; omitting it keeps the dual-delete for the explicit `/forget`.
    */
-  forget?(userId: string, key: string, kind?: "fact" | "preference"): Awaitable<boolean>;
+  forgetByCanonicalKey?(userId: string, key: string, kind?: "fact" | "preference"): Awaitable<boolean>;
   /**
    * Optional typed-slot upsert. When the store implements it, callers
    * can write structured `UserModel` slots; replace-by-id semantics
@@ -505,9 +519,20 @@ export {
 // the daily-driver path that doesn't run Postgres. `~/.muse/user-memory.json`
 // keyed by userId.
 export {
+  DEFAULT_USER_MEMORY_UNDO_TTL_MS,
+  exactUserMemoryId,
   FileUserMemoryStore,
+  MAX_USER_MEMORY_MUTATION_RECEIPTS,
+  MAX_USER_MEMORY_UNDO_TTL_MS,
   MemoryExternalEditError,
-  type FileUserMemoryStoreOptions
+  USER_MEMORY_MUTATION_RECEIPT_SCHEMA,
+  UserMemoryOwnerControlError,
+  type ExactUserMemoryEntry,
+  type FileUserMemoryStoreOptions,
+  type UserMemoryEntryKind,
+  type UserMemoryMutationOperation,
+  type UserMemoryMutationReceipt,
+  type UserMemoryOwnerControlErrorCode
 } from "./memory-user-store-file.js";
 export {
   decryptMemoryEnvelope,

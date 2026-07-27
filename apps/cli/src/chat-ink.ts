@@ -50,7 +50,6 @@ import {
   parseSlashCommand,
   parseUndoArg,
   reduceInput,
-  resolveForgetKey,
   runFocusedCompaction,
   undoExchanges,
   type ChatTurnMessage,
@@ -542,16 +541,23 @@ export function MuseChatApp(props: {
         const parsed = parseRememberArg(slash.arg);
         if (!parsed) { note("Tell me what to remember — /remember <key>=<value> (e.g. /remember city=Seoul)."); return; }
         const prior = (await props.memorySnapshot())?.facts[parsed.key];
+        if (prior !== undefined) {
+          note(`"${parsed.key}" already exists. For an undoable correction, run \`muse memory inspect\`, preview its exact ID, then use \`muse memory correct\`.`);
+          return;
+        }
         const ok = await props.rememberFact(parsed.key, parsed.value);
         if (!ok) { note("Couldn't save that — memory isn't available."); return; }
-        note(prior !== undefined && prior !== parsed.value
-          ? `✓ Updated ${parsed.key}: ${prior} → ${parsed.value}`
-          : `✓ Remembered ${parsed.key}: ${parsed.value}`);
+        note(`✓ Remembered ${parsed.key}: ${parsed.value}`);
         return;
       }
       if (slash.cmd === "pref") {
         const parsed = parseRememberArg(slash.arg);
         if (!parsed) { note("Set a preference — /pref <key>=<value> (e.g. /pref reply_style=concise)."); return; }
+        const prior = (await props.memorySnapshot())?.preferences[parsed.key];
+        if (prior !== undefined) {
+          note(`"${parsed.key}" already exists. For an undoable correction, run \`muse memory inspect\`, preview its exact ID, then use \`muse memory correct\`.`);
+          return;
+        }
         const ok = await props.setPreference(parsed.key, parsed.value);
         note(ok ? `✓ Preference ${parsed.key}: ${parsed.value}` : "Couldn't save that — memory isn't available.");
         return;
@@ -689,17 +695,14 @@ export function MuseChatApp(props: {
         const key = slash.arg.trim();
         if (key.length === 0) { note("Tell me what to forget — /forget <key>, or /forget --all to wipe everything."); return; }
         if (key === "--all" || key.toLowerCase() === "all") {
-          const wiped = await props.wipeMemory();
-          note(wiped ? "✓ Wiped everything I remembered about you." : "Nothing to wipe.");
+          note("Chat never performs an immediate memory wipe. Run `muse forget --all --force` in the shell after reviewing the scope.");
           return;
         }
-        const snap = await props.memorySnapshot();
-        const keys = snap ? [...Object.keys(snap.facts), ...Object.keys(snap.preferences)] : [];
-        const resolved = resolveForgetKey(keys, key);
-        if (resolved.kind === "none") { note(`Nothing remembered matching "${key}" — check /memory for the keys.`); return; }
-        if (resolved.kind === "ambiguous") { note(`"${key}" matches ${resolved.matches.length}: ${resolved.matches.join(", ")}. Be more specific.`); return; }
-        const ok = await props.forgetMemory(resolved.key);
-        note(ok ? `✓ Forgot "${resolved.key}".` : `Nothing remembered under "${resolved.key}".`);
+        note(
+          "Chat does not turn display text into deletion authority. "
+          + "Run `muse memory inspect`, preview the exact ID, then use "
+          + "`muse memory forget <exact-id> --expected-version <n> --confirm <exact-id>`."
+        );
         return;
       }
       if (slash.cmd === "help") {

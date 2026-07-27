@@ -66,10 +66,10 @@ describe("FileUserMemoryStore", () => {
     await store.upsertFact("stark", "city", "Seoul");
     await store.upsertPreference("stark", "night_owl", "true");
 
-    expect(await store.forget("stark", "city")).toBe(true);
-    expect(await store.forget("stark", "night_owl")).toBe(true);
-    expect(await store.forget("stark", "missing")).toBe(false);
-    expect(await store.forget("nobody", "name")).toBe(false);
+    expect(await store.forgetByCanonicalKey("stark", "city")).toBe(true);
+    expect(await store.forgetByCanonicalKey("stark", "night_owl")).toBe(true);
+    expect(await store.forgetByCanonicalKey("stark", "missing")).toBe(false);
+    expect(await store.forgetByCanonicalKey("nobody", "name")).toBe(false);
 
     const reread = new FileUserMemoryStore({ file });
     const memory = await reread.findByUserId("stark");
@@ -82,7 +82,7 @@ describe("FileUserMemoryStore", () => {
     await store.upsertFact("stark", "pet", "cat");
     await store.upsertPreference("stark", "pet", "dog");
 
-    expect(await store.forget("stark", "pet", "fact")).toBe(true);
+    expect(await store.forgetByCanonicalKey("stark", "pet", "fact")).toBe(true);
     const after = await store.findByUserId("stark");
     expect(after?.facts.pet).toBeUndefined(); // the fact was retracted
     expect(after?.preferences.pet).toBe("dog"); // the preference the user never retracted SURVIVES
@@ -144,8 +144,9 @@ describe("FileUserMemoryStore", () => {
     const memory = await reread.findByUserId("stark");
     expect(Object.keys(memory?.facts ?? {})).toEqual(["home_city"]); // one entry, not two
     expect(memory?.facts.home_city).toBe("Seoul");
-    // forget resolves a typed variant to the canonical key
-    expect(await reread.forget("stark", "Home City")).toBe(true);
+    // Internal deletion accepts only the canonical key; owner deletion uses an opaque exact ID.
+    expect(await reread.forgetByCanonicalKey("stark", "Home City")).toBe(false);
+    expect(await reread.forgetByCanonicalKey("stark", "home_city")).toBe(true);
     expect((await reread.findByUserId("stark"))?.facts.home_city).toBeUndefined();
   });
 

@@ -12,7 +12,7 @@ import { buildContextWindowOptions, createMuseRuntimeAssembly, createProgressive
 import { LocalCalendarProvider } from "@muse/calendar";
 import { isSkillAvoided, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks, type ConversationSummary } from "@muse/stores";
 import { readCheckins } from "@muse/proactivity";
-import { aggregateActivitySignals, contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, recordRetraction, selectFireablePatterns } from "@muse/memory";
+import { aggregateActivitySignals, contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, selectFireablePatterns } from "@muse/memory";
 import { AuthoredSkillStore, loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import { render } from "ink";
 import { spawn } from "node:child_process";
@@ -391,26 +391,14 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     }
   };
   const forgetMemory = async (key: string): Promise<boolean> => {
-    if (!memoryStore?.forget) return false;
-    try {
-      const removed = await memoryStore.forget(userId, key);
-      if (removed) {
-        await refreshMemory();
-        // Retraction marker (sibling of the CLI `memory forget`): the auto-extractor
-        // must not silently resurface a fact the user forgot mid-chat (user > auto).
-        try {
-          await recordRetraction(new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()), userId, normalizeMemoryKey(key));
-        } catch { /* provenance is best-effort */ }
-      }
-      return removed;
-    } catch {
-      return false;
-    }
+    void key;
+    return false;
   };
   const rememberFact = async (key: string, value: string): Promise<boolean> => {
     if (!memoryStore) return false;
     try {
-      await memoryStore.upsertFact(userId, key, value);
+      const result = await memoryStore.createFactIfAbsent(userId, key, value);
+      if (!result.created) return false;
       await refreshMemory();
       return true;
     } catch {
@@ -420,7 +408,8 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const setPreference = async (key: string, value: string): Promise<boolean> => {
     if (!memoryStore) return false;
     try {
-      await memoryStore.upsertPreference(userId, key, value);
+      const result = await memoryStore.createPreferenceIfAbsent(userId, key, value);
+      if (!result.created) return false;
       await refreshMemory();
       return true;
     } catch {

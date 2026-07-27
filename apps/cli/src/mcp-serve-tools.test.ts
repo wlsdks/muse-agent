@@ -281,7 +281,7 @@ describe("buildMcpServeTools", () => {
     it("never returns anything after the user forgets it", async () => {
       const userMemoryStore = new InMemoryUserMemoryStore();
       userMemoryStore.upsertFact("test-user", "temp_fact", "will be forgotten");
-      userMemoryStore.forget("test-user", "temp_fact");
+      userMemoryStore.forgetByCanonicalKey("test-user", "temp_fact");
       const tools = buildMcpServeTools(baseDeps({ userMemoryStore }, notesDir));
       const userModelRead = tools.find((tool) => tool.definition.name === "user_model_read")!;
       const result = await userModelRead.execute({ kind: "facts" }, context) as unknown as { facts: unknown[] };

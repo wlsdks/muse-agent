@@ -16,11 +16,12 @@
  * the user explicitly disables persistence.
  */
 
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isErrorLike, withFileLock as withSharedFileLock, withFileMutationQueue } from "@muse/shared";
+import { isErrorLike, isRecord, withFileLock as withSharedFileLock, withFileMutationQueue } from "@muse/shared";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 import {
@@ -29,6 +30,7 @@ import {
   upsertUserModelSlot as upsertSlot,
   type FactSupersession,
   type UserMemory,
+  type UserMemoryCreateResult,
   type UserMemoryStore,
   type UserModel,
   type UserModelSlot
@@ -55,6 +57,85 @@ export interface FileUserMemoryStoreOptions {
   readonly env?: NodeJS.ProcessEnv;
 }
 
+export const USER_MEMORY_MUTATION_RECEIPT_SCHEMA = "muse.user-memory-mutation-receipt/v1" as const;
+export const DEFAULT_USER_MEMORY_UNDO_TTL_MS = 24 * 60 * 60 * 1_000;
+export const MAX_USER_MEMORY_UNDO_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
+export const MAX_USER_MEMORY_MUTATION_RECEIPTS = 256;
+
+export type UserMemoryEntryKind = "fact" | "preference";
+export type UserMemoryMutationOperation = "correct" | "forget";
+export type UserMemoryOwnerControlErrorCode =
+  | "conflict"
+  | "corrupt-control-state"
+  | "expired"
+  | "exact-id-required"
+  | "invalid-request"
+  | "not-found"
+  | "receipt-capacity"
+  | "request-reused";
+
+export interface ExactUserMemoryEntry {
+  readonly exactId: string;
+  readonly key: string;
+  readonly kind: UserMemoryEntryKind;
+  readonly value: string;
+  readonly version: number;
+}
+
+export interface UserMemoryMutationReceipt {
+  readonly after: {
+    readonly deleted: boolean;
+    readonly value?: string;
+    readonly version: number;
+  };
+  readonly before: {
+    readonly value: string;
+    readonly version: number;
+  };
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly operation: UserMemoryMutationOperation;
+  readonly receiptId: string;
+  readonly requestId: string;
+  readonly schemaVersion: typeof USER_MEMORY_MUTATION_RECEIPT_SCHEMA;
+  readonly status: "applied" | "undone";
+  readonly target: {
+    readonly exactId: string;
+    readonly key: string;
+    readonly kind: UserMemoryEntryKind;
+  };
+  readonly undo?: {
+    readonly receiptId: string;
+    readonly restoredVersion: number;
+    readonly undoneAt: string;
+  };
+  readonly undoScope: "exact-memory-entry-only";
+}
+
+export class UserMemoryOwnerControlError extends Error {
+  readonly code: UserMemoryOwnerControlErrorCode;
+
+  constructor(code: UserMemoryOwnerControlErrorCode, message: string) {
+    super(message);
+    this.name = "UserMemoryOwnerControlError";
+    this.code = code;
+  }
+}
+
+export function exactUserMemoryId(userId: string, kind: UserMemoryEntryKind, key: string): string {
+  const digest = createHash("sha256")
+    .update(JSON.stringify(["muse.user-memory-entry/v1", userId, kind, key]))
+    .digest("hex")
+    .slice(0, 32);
+  return `mem_v1_${digest}`;
+}
+
+type StoredOwnerControl = {
+  readonly entryVersions: Record<string, number>;
+  readonly mutationReceipts: readonly UserMemoryMutationReceipt[];
+  readonly schemaVersion: 1;
+};
+
 type StoredMemory = {
   readonly userId: string;
   readonly facts: Record<string, string>;
@@ -63,6 +144,7 @@ type StoredMemory = {
   readonly updatedAt: string;
   readonly userModel?: UserModel;
   readonly factHistory?: readonly { readonly key: string; readonly previousValue: string; readonly replacedAt: string; readonly kind?: "refine" | "contradict"; readonly scope?: "fact" | "preference" }[];
+  readonly ownerControl?: StoredOwnerControl;
 };
 
 type StoredFile = { readonly version: 1; readonly users: Record<string, StoredMemory> };
@@ -91,6 +173,283 @@ function defaultPath(): string {
 
 function emptyFile(): StoredFile {
   return { users: {}, version: 1 };
+}
+
+function emptyOwnerControl(): StoredOwnerControl {
+  return { entryVersions: {}, mutationReceipts: [], schemaVersion: 1 };
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 1;
+}
+
+function isMutationReceipt(value: unknown): value is UserMemoryMutationReceipt {
+  if (!isRecord(value) || !isRecord(value.before) || !isRecord(value.after) || !isRecord(value.target)) {
+    return false;
+  }
+  const operation = value.operation;
+  const status = value.status;
+  const createdAt = typeof value.createdAt === "string" ? Date.parse(value.createdAt) : Number.NaN;
+  const expiresAt = typeof value.expiresAt === "string" ? Date.parse(value.expiresAt) : Number.NaN;
+  const targetKind = value.target.kind;
+  const afterDeleted = value.after.deleted;
+  const baseValid = value.schemaVersion === USER_MEMORY_MUTATION_RECEIPT_SCHEMA
+    && typeof value.receiptId === "string"
+    && /^memr_v1_[a-f0-9]{32}$/u.test(value.receiptId)
+    && typeof value.requestId === "string"
+    && value.requestId.trim().length >= 8
+    && value.requestId.length <= 200
+    && (operation === "correct" || operation === "forget")
+    && (status === "applied" || status === "undone")
+    && Number.isFinite(createdAt)
+    && Number.isFinite(expiresAt)
+    && expiresAt > createdAt
+    && value.undoScope === "exact-memory-entry-only"
+    && typeof value.target.exactId === "string"
+    && /^mem_v1_[a-f0-9]{32}$/u.test(value.target.exactId)
+    && typeof value.target.key === "string"
+    && value.target.key.length > 0
+    && (targetKind === "fact" || targetKind === "preference")
+    && typeof value.before.value === "string"
+    && isPositiveSafeInteger(value.before.version)
+    && typeof afterDeleted === "boolean"
+    && isPositiveSafeInteger(value.after.version)
+    && value.after.version === value.before.version + 1
+    && (operation === "forget"
+      ? afterDeleted === true && value.after.value === undefined
+      : afterDeleted === false && typeof value.after.value === "string");
+  if (!baseValid) return false;
+  if (status === "applied") return value.undo === undefined;
+  return isRecord(value.undo)
+    && typeof value.undo.receiptId === "string"
+    && /^memu_v1_[a-f0-9]{32}$/u.test(value.undo.receiptId)
+    && isPositiveSafeInteger(value.undo.restoredVersion)
+    && isPositiveSafeInteger(value.after.version)
+    && value.undo.restoredVersion === value.after.version + 1
+    && typeof value.undo.undoneAt === "string"
+    && Number.isFinite(Date.parse(value.undo.undoneAt));
+}
+
+function parseOwnerControl(value: unknown): StoredOwnerControl {
+  if (value === undefined) {
+    return emptyOwnerControl();
+  }
+  if (
+    !isRecord(value)
+    || value.schemaVersion !== 1
+    || !isRecord(value.entryVersions)
+    || !Array.isArray(value.mutationReceipts)
+  ) {
+    throw new UserMemoryOwnerControlError(
+      "corrupt-control-state",
+      "user-memory owner-control metadata is corrupt; refusing mutation"
+    );
+  }
+  for (const version of Object.values(value.entryVersions)) {
+    if (!isPositiveSafeInteger(version)) {
+      throw new UserMemoryOwnerControlError(
+        "corrupt-control-state",
+        "user-memory entry version is corrupt; refusing mutation"
+      );
+    }
+  }
+  for (const receipt of value.mutationReceipts) {
+    if (!isMutationReceipt(receipt)) {
+      throw new UserMemoryOwnerControlError(
+        "corrupt-control-state",
+        "user-memory mutation receipt is corrupt; refusing mutation"
+      );
+    }
+  }
+  return {
+    entryVersions: { ...value.entryVersions } as Record<string, number>,
+    mutationReceipts: value.mutationReceipts.map((receipt) => structuredClone(receipt)),
+    schemaVersion: 1
+  };
+}
+
+function ownerControlForUser(value: unknown, userId: string): StoredOwnerControl {
+  const control = parseOwnerControl(value);
+  for (const receipt of control.mutationReceipts) {
+    const expectedExactId = exactUserMemoryId(
+      userId,
+      receipt.target.kind,
+      receipt.target.key
+    );
+    const expectedReceiptId = mutationReceiptId(
+      userId,
+      receipt.requestId,
+      receipt.operation,
+      receipt.target.exactId,
+      receipt.before.version
+    );
+    const expectedUndoId = undoReceiptId(receipt.receiptId);
+    if (
+      receipt.target.exactId !== expectedExactId
+      || receipt.receiptId !== expectedReceiptId
+      || (receipt.undo && receipt.undo.receiptId !== expectedUndoId)
+    ) {
+      throw new UserMemoryOwnerControlError(
+        "corrupt-control-state",
+        "user-memory mutation receipt is not bound to its exact user, target, and request; refusing mutation"
+      );
+    }
+    const storedVersion = control.entryVersions[receipt.target.exactId];
+    const minimumVersion = receipt.undo?.restoredVersion ?? receipt.after.version;
+    if (storedVersion !== undefined && storedVersion < minimumVersion) {
+      throw new UserMemoryOwnerControlError(
+        "corrupt-control-state",
+        "user-memory entry version precedes its mutation receipt; refusing mutation"
+      );
+    }
+  }
+  return control;
+}
+
+function entryValue(memory: UserMemory, kind: UserMemoryEntryKind, key: string): string | undefined {
+  return kind === "fact" ? memory.facts[key] : memory.preferences[key];
+}
+
+function currentEntryVersion(
+  control: StoredOwnerControl,
+  userId: string,
+  kind: UserMemoryEntryKind,
+  key: string
+): number {
+  return control.entryVersions[exactUserMemoryId(userId, kind, key)] ?? 1;
+}
+
+function ownerEntries(memory: UserMemory, control: StoredOwnerControl): ExactUserMemoryEntry[] {
+  const entries: ExactUserMemoryEntry[] = [];
+  for (const kind of ["fact", "preference"] as const) {
+    const values = kind === "fact" ? memory.facts : memory.preferences;
+    for (const [key, value] of Object.entries(values)) {
+      entries.push({
+        exactId: exactUserMemoryId(memory.userId, kind, key),
+        key,
+        kind,
+        value,
+        version: currentEntryVersion(control, memory.userId, kind, key)
+      });
+    }
+  }
+  return entries.sort((left, right) =>
+    left.kind.localeCompare(right.kind) || left.key.localeCompare(right.key)
+  );
+}
+
+function requireExactEntry(
+  memory: UserMemory,
+  control: StoredOwnerControl,
+  exactId: string
+): ExactUserMemoryEntry {
+  if (!/^mem_v1_[a-f0-9]{32}$/u.test(exactId)) {
+    throw new UserMemoryOwnerControlError(
+      "exact-id-required",
+      "memory mutation requires the exact ID returned by `muse memory inspect`"
+    );
+  }
+  const entry = ownerEntries(memory, control).find((candidate) => candidate.exactId === exactId);
+  if (!entry) {
+    throw new UserMemoryOwnerControlError("not-found", "exact memory entry was not found");
+  }
+  return entry;
+}
+
+function mutationReceiptId(
+  userId: string,
+  requestId: string,
+  operation: UserMemoryMutationOperation,
+  exactId: string,
+  expectedVersion: number
+): string {
+  const digest = createHash("sha256")
+    .update(JSON.stringify([
+      "muse.user-memory-mutation-receipt/v1",
+      userId,
+      requestId,
+      operation,
+      exactId,
+      expectedVersion
+    ]))
+    .digest("hex")
+    .slice(0, 32);
+  return `memr_v1_${digest}`;
+}
+
+function undoReceiptId(receiptId: string): string {
+  return `memu_v1_${createHash("sha256").update(receiptId).digest("hex").slice(0, 32)}`;
+}
+
+function validateMutationInput(input: {
+  readonly exactId: string;
+  readonly expectedVersion: number;
+  readonly requestId: string;
+}): void {
+  if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1) {
+    throw new UserMemoryOwnerControlError("invalid-request", "expected version must be a positive integer");
+  }
+  if (input.requestId.trim().length < 8 || input.requestId.length > 200) {
+    throw new UserMemoryOwnerControlError("invalid-request", "request ID must contain 8-200 characters");
+  }
+}
+
+function sameReceiptRequest(
+  receipt: UserMemoryMutationReceipt,
+  input: {
+    readonly exactId: string;
+    readonly expectedVersion: number;
+    readonly operation: UserMemoryMutationOperation;
+    readonly requestId: string;
+    readonly value?: string;
+  }
+): boolean {
+  return receipt.requestId === input.requestId
+    && receipt.operation === input.operation
+    && receipt.target.exactId === input.exactId
+    && receipt.before.version === input.expectedVersion
+    && (input.operation !== "correct" || receipt.after.value === input.value);
+}
+
+function replayReceipt(
+  control: StoredOwnerControl,
+  input: {
+    readonly exactId: string;
+    readonly expectedVersion: number;
+    readonly operation: UserMemoryMutationOperation;
+    readonly requestId: string;
+    readonly value?: string;
+  }
+): UserMemoryMutationReceipt | undefined {
+  const sameRequest = control.mutationReceipts.find((receipt) => receipt.requestId === input.requestId);
+  if (sameRequest) {
+    if (!sameReceiptRequest(sameRequest, input)) {
+      throw new UserMemoryOwnerControlError(
+        "request-reused",
+        "request ID was already used for a different memory mutation"
+      );
+    }
+    return structuredClone(sameRequest);
+  }
+  return undefined;
+}
+
+function appendLiveReceipt(
+  control: StoredOwnerControl,
+  receipt: UserMemoryMutationReceipt,
+  nowMs: number
+): StoredOwnerControl {
+  const live = control.mutationReceipts.filter((candidate) => Date.parse(candidate.expiresAt) > nowMs);
+  if (live.length >= MAX_USER_MEMORY_MUTATION_RECEIPTS) {
+    throw new UserMemoryOwnerControlError(
+      "receipt-capacity",
+      "too many live memory mutation receipts; wait for an undo window to expire"
+    );
+  }
+  return {
+    ...control,
+    mutationReceipts: [...live, structuredClone(receipt)]
+  };
 }
 
 function coerceStoredFile(parsed: unknown): StoredFile {
@@ -193,6 +552,169 @@ export class FileUserMemoryStore implements UserMemoryStore {
     return legacy ? { ...storedToMemory(legacy), userId } : undefined;
   }
 
+  /**
+   * Owner-facing inventory. The opaque exact ID is the only accepted mutation
+   * target; display keys and values are deliberately never resolved fuzzily.
+   */
+  async inspectOwnerMemory(userId: string): Promise<readonly ExactUserMemoryEntry[]> {
+    const { file: data } = await this.read();
+    const stored = data.users[userId];
+    if (!stored) return [];
+    const memory = { ...storedToMemory(stored), userId };
+    return ownerEntries(memory, ownerControlForUser(stored.ownerControl, userId));
+  }
+
+  /** Read-only exact-target preview. This does not create a receipt or version. */
+  async previewOwnerMemory(userId: string, exactId: string): Promise<ExactUserMemoryEntry> {
+    const { file: data } = await this.read();
+    const stored = data.users[userId];
+    if (!stored) {
+      if (!/^mem_v1_[a-f0-9]{32}$/u.test(exactId)) {
+        throw new UserMemoryOwnerControlError(
+          "exact-id-required",
+          "memory mutation requires the exact ID returned by `muse memory inspect`"
+        );
+      }
+      throw new UserMemoryOwnerControlError("not-found", "exact memory entry was not found");
+    }
+    return requireExactEntry(
+      { ...storedToMemory(stored), userId },
+      ownerControlForUser(stored.ownerControl, userId),
+      exactId
+    );
+  }
+
+  async correctOwnerMemory(
+    userId: string,
+    input: {
+      readonly exactId: string;
+      readonly expectedVersion: number;
+      readonly requestId: string;
+      readonly undoTtlMs?: number;
+      readonly value: string;
+    }
+  ): Promise<UserMemoryMutationReceipt> {
+    validateMutationInput(input);
+    const safeValue = sanitizeUserMemoryValue(input.value);
+    if (safeValue.length === 0) {
+      throw new UserMemoryOwnerControlError("invalid-request", "corrected memory value must not be empty");
+    }
+    return this.mutateOwnerMemory(userId, {
+      ...input,
+      operation: "correct",
+      value: safeValue
+    });
+  }
+
+  async forgetOwnerMemory(
+    userId: string,
+    input: {
+      readonly exactId: string;
+      readonly expectedVersion: number;
+      readonly requestId: string;
+      readonly undoTtlMs?: number;
+    }
+  ): Promise<UserMemoryMutationReceipt> {
+    validateMutationInput(input);
+    return this.mutateOwnerMemory(userId, { ...input, operation: "forget" });
+  }
+
+  async undoOwnerMemory(userId: string, receiptId: string): Promise<UserMemoryMutationReceipt> {
+    if (!/^memr_v1_[a-f0-9]{32}$/u.test(receiptId)) {
+      throw new UserMemoryOwnerControlError("not-found", "memory mutation receipt was not found");
+    }
+    return this.serializeWrite(async () => this.withFileLock(async () => {
+      const { file: data, encrypted, raw } = await this.read();
+      const stored = data.users[userId];
+      if (!stored) {
+        throw new UserMemoryOwnerControlError("not-found", "memory mutation receipt was not found");
+      }
+      const control = ownerControlForUser(stored.ownerControl, userId);
+      const index = control.mutationReceipts.findIndex((receipt) => receipt.receiptId === receiptId);
+      if (index < 0) {
+        throw new UserMemoryOwnerControlError("not-found", "memory mutation receipt was not found");
+      }
+      const receipt = control.mutationReceipts[index]!;
+      if (receipt.status === "undone") {
+        return structuredClone(receipt);
+      }
+      const now = this.now();
+      if (now.getTime() >= Date.parse(receipt.expiresAt)) {
+        const ownerControl: StoredOwnerControl = {
+          ...control,
+          mutationReceipts: control.mutationReceipts.filter(
+            (candidate) => candidate.receiptId !== receipt.receiptId
+          )
+        };
+        const users = {
+          ...data.users,
+          [userId]: { ...stored, userId, ownerControl }
+        };
+        await this.write({ ...data, users }, encrypted, { raw });
+        throw new UserMemoryOwnerControlError(
+          "expired",
+          `undo window expired at ${receipt.expiresAt}`
+        );
+      }
+      const memory = { ...storedToMemory(stored), userId };
+      const currentValue = entryValue(memory, receipt.target.kind, receipt.target.key);
+      const currentVersion = currentEntryVersion(
+        control,
+        userId,
+        receipt.target.kind,
+        receipt.target.key
+      );
+      const afterMatches = currentVersion === receipt.after.version
+        && (receipt.after.deleted ? currentValue === undefined : currentValue === receipt.after.value);
+      if (!afterMatches) {
+        throw new UserMemoryOwnerControlError(
+          "conflict",
+          "memory changed after this receipt; refusing undo so a newer value is not clobbered"
+        );
+      }
+
+      const restoredVersion = receipt.after.version + 1;
+      const restored = receipt.target.kind === "fact"
+        ? {
+            ...memory,
+            facts: mergeRecordTouchLast(memory.facts, { [receipt.target.key]: receipt.before.value })
+          }
+        : {
+            ...memory,
+            preferences: mergeRecordTouchLast(memory.preferences, { [receipt.target.key]: receipt.before.value })
+          };
+      const updatedReceipt: UserMemoryMutationReceipt = {
+        ...receipt,
+        status: "undone",
+        undo: {
+          receiptId: undoReceiptId(receipt.receiptId),
+          restoredVersion,
+          undoneAt: now.toISOString()
+        }
+      };
+      const mutationReceipts = control.mutationReceipts.map((candidate, receiptIndex) =>
+        receiptIndex === index ? updatedReceipt : candidate
+      );
+      const ownerControl: StoredOwnerControl = {
+        ...control,
+        entryVersions: {
+          ...control.entryVersions,
+          [receipt.target.exactId]: restoredVersion
+        },
+        mutationReceipts
+      };
+      const users = {
+        ...data.users,
+        [userId]: {
+          ...memoryToStored({ ...restored, updatedAt: now }),
+          ownerControl
+        }
+      };
+      await this.write({ ...data, users }, encrypted, { raw });
+      return structuredClone(updatedReceipt);
+    }));
+  }
+
   async upsertFact(userId: string, rawKey: string, value: string): Promise<UserMemory> {
     const key = normalizeMemoryKey(rawKey);
     const safe = sanitizeUserMemoryValue(value);
@@ -225,6 +747,14 @@ export class FileUserMemoryStore implements UserMemoryStore {
     });
   }
 
+  async createFactIfAbsent(userId: string, rawKey: string, value: string): Promise<UserMemoryCreateResult> {
+    return this.createIfAbsent(userId, "fact", rawKey, value);
+  }
+
+  async createPreferenceIfAbsent(userId: string, rawKey: string, value: string): Promise<UserMemoryCreateResult> {
+    return this.createIfAbsent(userId, "preference", rawKey, value);
+  }
+
   // Typed user-model slots — the local-first write path. The slots
   // round-trip through this file store already; these add the missing
   // mutators so the local JARVIS can actually accrue a typed model
@@ -243,7 +773,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
     }));
   }
 
-  async forget(userId: string, rawKey: string, kind?: "fact" | "preference"): Promise<boolean> {
+  async forgetByCanonicalKey(userId: string, rawKey: string, kind?: "fact" | "preference"): Promise<boolean> {
     const existing = await this.findByUserId(userId);
     if (!existing) return false;
     const target = resolveForgetTarget(existing, rawKey, kind);
@@ -271,7 +801,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
     }));
   }
 
-  private async patch(userId: string, mutator: (existing: UserMemory) => UserMemory): Promise<UserMemory> {
+  private async patch(userId: string, mutator: (existing: UserMemory) => UserMemory | undefined): Promise<UserMemory> {
     return this.serializeWrite(async () => this.withFileLock(async () => {
       const { file: data, encrypted, raw } = await this.read();
       const existingStored = data.users[userId];
@@ -291,14 +821,187 @@ export class FileUserMemoryStore implements UserMemoryStore {
               updatedAt: this.now(),
               userId
             };
-      const updated: UserMemory = { ...mutator(baseline), updatedAt: this.now() };
-      const users: Record<string, StoredMemory> = { ...data.users, [userId]: memoryToStored(updated) };
+      const mutation = mutator(baseline);
+      if (!mutation) {
+        return structuredClone(baseline);
+      }
+      const updated: UserMemory = { ...mutation, updatedAt: this.now() };
+      let ownerControl = ownerControlForUser((existingStored ?? legacy)?.ownerControl, userId);
+      const entryVersions = { ...ownerControl.entryVersions };
+      for (const kind of ["fact", "preference"] as const) {
+        const before = kind === "fact" ? baseline.facts : baseline.preferences;
+        const after = kind === "fact" ? updated.facts : updated.preferences;
+        for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+          if (before[key] !== after[key]) {
+            const exactId = exactUserMemoryId(userId, kind, key);
+            entryVersions[exactId] = (entryVersions[exactId] ?? (before[key] === undefined ? 0 : 1)) + 1;
+          }
+        }
+      }
+      ownerControl = {
+        ...ownerControl,
+        entryVersions,
+        mutationReceipts: ownerControl.mutationReceipts.filter(
+          (receipt) => Date.parse(receipt.expiresAt) > this.now().getTime()
+        )
+      };
+      const users: Record<string, StoredMemory> = {
+        ...data.users,
+        [userId]: { ...memoryToStored(updated), ownerControl }
+      };
       if (legacy) {
         delete users["default"];
       }
       const next: StoredFile = { ...data, users };
       await this.write(next, encrypted, { raw });
       return updated;
+    }));
+  }
+
+  private async createIfAbsent(
+    userId: string,
+    kind: "fact" | "preference",
+    rawKey: string,
+    value: string
+  ): Promise<UserMemoryCreateResult> {
+    const key = normalizeMemoryKey(rawKey);
+    const safe = sanitizeUserMemoryValue(value);
+    let created = false;
+    let existingValue: string | undefined;
+    const memory = await this.patch(userId, (existing) => {
+      existingValue = kind === "fact" ? existing.facts[key] : existing.preferences[key];
+      if (existingValue !== undefined) return undefined;
+      created = true;
+      return kind === "fact"
+        ? { ...existing, facts: mergeRecordTouchLast(existing.facts, { [key]: safe }) }
+        : { ...existing, preferences: mergeRecordTouchLast(existing.preferences, { [key]: safe }) };
+    });
+    return {
+      created,
+      memory,
+      ...(existingValue !== undefined ? { existingValue } : {})
+    };
+  }
+
+  private async mutateOwnerMemory(
+    userId: string,
+    input: {
+      readonly exactId: string;
+      readonly expectedVersion: number;
+      readonly operation: UserMemoryMutationOperation;
+      readonly requestId: string;
+      readonly undoTtlMs?: number;
+      readonly value?: string;
+    }
+  ): Promise<UserMemoryMutationReceipt> {
+    return this.serializeWrite(async () => this.withFileLock(async () => {
+      const { file: data, encrypted, raw } = await this.read();
+      const stored = data.users[userId];
+      if (!stored) {
+        if (!/^mem_v1_[a-f0-9]{32}$/u.test(input.exactId)) {
+          throw new UserMemoryOwnerControlError(
+            "exact-id-required",
+            "memory mutation requires the exact ID returned by `muse memory inspect`"
+          );
+        }
+        throw new UserMemoryOwnerControlError("not-found", "exact memory entry was not found");
+      }
+      const memory = { ...storedToMemory(stored), userId };
+      const control = ownerControlForUser(stored.ownerControl, userId);
+      const prior = replayReceipt(control, input);
+      if (prior) return prior;
+      const entry = requireExactEntry(memory, control, input.exactId);
+      if (entry.version !== input.expectedVersion) {
+        throw new UserMemoryOwnerControlError(
+          "conflict",
+          `memory version changed: expected ${input.expectedVersion.toString()}, current ${entry.version.toString()}`
+        );
+      }
+      if (input.operation === "correct" && entry.value === input.value) {
+        throw new UserMemoryOwnerControlError("invalid-request", "corrected value is unchanged");
+      }
+      const undoTtlMs = input.undoTtlMs ?? DEFAULT_USER_MEMORY_UNDO_TTL_MS;
+      if (!Number.isSafeInteger(undoTtlMs) || undoTtlMs < 1 || undoTtlMs > MAX_USER_MEMORY_UNDO_TTL_MS) {
+        throw new UserMemoryOwnerControlError(
+          "invalid-request",
+          `undo TTL must be between 1 and ${MAX_USER_MEMORY_UNDO_TTL_MS.toString()} milliseconds`
+        );
+      }
+      const now = this.now();
+      const afterVersion = entry.version + 1;
+      let updated: UserMemory;
+      if (input.operation === "correct") {
+        const value = input.value!;
+        const factHistory = appendFactHistory(
+          memory.factHistory,
+          collectFactSupersessions(
+            entry.kind === "fact" ? memory.facts : memory.preferences,
+            { [entry.key]: value },
+            now,
+            entry.kind === "preference" ? "preference" : "fact"
+          )
+        );
+        updated = entry.kind === "fact"
+          ? {
+              ...memory,
+              facts: mergeRecordTouchLast(memory.facts, { [entry.key]: value }),
+              ...(factHistory ? { factHistory } : {})
+            }
+          : {
+              ...memory,
+              preferences: mergeRecordTouchLast(memory.preferences, { [entry.key]: value }),
+              ...(factHistory ? { factHistory } : {})
+            };
+      } else if (entry.kind === "fact") {
+        const { [entry.key]: _removed, ...facts } = memory.facts;
+        updated = { ...memory, facts };
+      } else {
+        const { [entry.key]: _removed, ...preferences } = memory.preferences;
+        updated = { ...memory, preferences };
+      }
+      const receipt: UserMemoryMutationReceipt = {
+        after: {
+          deleted: input.operation === "forget",
+          ...(input.operation === "correct" ? { value: input.value } : {}),
+          version: afterVersion
+        },
+        before: { value: entry.value, version: entry.version },
+        createdAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + undoTtlMs).toISOString(),
+        operation: input.operation,
+        receiptId: mutationReceiptId(
+          userId,
+          input.requestId,
+          input.operation,
+          entry.exactId,
+          entry.version
+        ),
+        requestId: input.requestId,
+        schemaVersion: USER_MEMORY_MUTATION_RECEIPT_SCHEMA,
+        status: "applied",
+        target: {
+          exactId: entry.exactId,
+          key: entry.key,
+          kind: entry.kind
+        },
+        undoScope: "exact-memory-entry-only"
+      };
+      const ownerControl = appendLiveReceipt({
+        ...control,
+        entryVersions: {
+          ...control.entryVersions,
+          [entry.exactId]: afterVersion
+        }
+      }, receipt, now.getTime());
+      const users = {
+        ...data.users,
+        [userId]: {
+          ...memoryToStored({ ...updated, updatedAt: now }),
+          ownerControl
+        }
+      };
+      await this.write({ ...data, users }, encrypted, { raw });
+      return structuredClone(receipt);
     }));
   }
 

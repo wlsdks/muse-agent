@@ -20,10 +20,11 @@ import { errorMessage, isRecord } from "@muse/shared";
  * so a single user sees the same persona everywhere.
  */
 
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import { isMemoryInjection } from "@muse/agent-core";
-import { beliefValueTimeline, classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, keysWithActiveRetraction, normalizeMemoryKey, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
+import { beliefValueTimeline, classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, keysWithActiveRetraction, normalizeMemoryKey, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, UserMemoryOwnerControlError, type BeliefProvenance, type ConsolidationPlan, type UserMemoryMutationReceipt } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
 import { decryptFileAtRest, encryptFileAtRest, readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/stores";
 import type { Command } from "commander";
@@ -65,6 +66,34 @@ interface MemoryCommonOptions {
   readonly persona?: string;
   readonly local?: boolean;
   readonly json?: boolean;
+}
+
+function localMemoryStore(): FileUserMemoryStore {
+  const file = readNonEmptyEnv(process.env, "MUSE_USER_MEMORY_FILE");
+  return new FileUserMemoryStore(file ? { file } : {});
+}
+
+function parseExactMemoryVersion(raw: string): number {
+  const version = Number(raw);
+  if (!Number.isSafeInteger(version) || version < 1) {
+    throw new UserMemoryOwnerControlError("invalid-request", "version must be a positive integer");
+  }
+  return version;
+}
+
+function writeOwnerControlError(io: ProgramIO, command: string, cause: unknown): boolean {
+  if (!(cause instanceof UserMemoryOwnerControlError)) return false;
+  io.stderr(`muse memory ${command}: ${cause.message} (${cause.code})\n`);
+  process.exitCode = 2;
+  return true;
+}
+
+function formatMutationReceipt(receipt: UserMemoryMutationReceipt): string {
+  const action = receipt.operation === "correct" ? "Corrected" : "Forgot";
+  const undo = receipt.status === "undone"
+    ? `; undone at ${receipt.undo?.undoneAt ?? "unknown"}`
+    : `; undo until ${receipt.expiresAt}`;
+  return `${action} ${receipt.target.kind} ${receipt.target.key} (${receipt.target.exactId})\nReceipt: ${receipt.receiptId}${undo}\n`;
 }
 
 export interface MemorySearchHit {
@@ -234,9 +263,11 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
   memory.addHelpText("after", `
 Examples:
   $ muse memory show              # list stored facts & preferences
+  $ muse memory inspect           # list exact IDs accepted by owner controls
+  $ muse memory preview mem_v1_…  # read-only preview before a mutation
   $ muse memory search city       # find a remembered fact by key or value
   $ muse memory why home_city     # when + which conversation Muse learned it from
-  $ muse memory forget home_city  # forget one fact (vs \`clear\` = wipe everything)`);
+  $ muse memory forget mem_v1_… --expected-version 1 --confirm mem_v1_…`);
 
   memory
     .command("show")
@@ -248,7 +279,7 @@ Examples:
     .action(async (options: MemoryCommonOptions, command) => {
       const userId = resolveMemoryUserId(options.user, options.persona);
       const readLocalMemory = async (): Promise<Record<string, unknown>> => {
-        const store = new FileUserMemoryStore();
+        const store = localMemoryStore();
         const memoryRecord = await store.findByUserId(userId);
         if (!memoryRecord) {
           return { facts: {}, preferences: {}, recentTopics: [] };
@@ -293,6 +324,97 @@ Examples:
     });
 
   memory
+    .command("inspect")
+    .description("List owner-controllable memory entries with stable exact IDs and versions")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …)")
+    .option("--json", "Print the exact-entry array")
+    .action(async (options: MemoryCommonOptions) => {
+      const userId = resolveMemoryUserId(options.user, options.persona);
+      try {
+        const entries = await localMemoryStore().inspectOwnerMemory(userId);
+        if (options.json) {
+          helpers.writeOutput(io, entries);
+          return;
+        }
+        if (entries.length === 0) {
+          io.stdout("(no owner-controllable memory entries)\n");
+          return;
+        }
+        io.stdout(`Memory entries for ${userId} (${entries.length.toString()}):\n`);
+        for (const entry of entries) {
+          io.stdout(`  ${entry.exactId}  v${entry.version.toString()}  [${entry.kind}] ${entry.key}: ${entry.value}\n`);
+        }
+      } catch (cause) {
+        if (!writeOwnerControlError(io, "inspect", cause)) throw cause;
+      }
+    });
+
+  memory
+    .command("preview")
+    .description("Read-only preview of one exact memory ID before correction or deletion")
+    .argument("<exact-id>", "Exact ID returned by `muse memory inspect`")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …)")
+    .option("--json", "Print the exact entry")
+    .action(async (exactId: string, options: MemoryCommonOptions) => {
+      const userId = resolveMemoryUserId(options.user, options.persona);
+      try {
+        const entry = await localMemoryStore().previewOwnerMemory(userId, exactId);
+        if (options.json) {
+          helpers.writeOutput(io, entry);
+          return;
+        }
+        io.stdout(`${entry.exactId}  v${entry.version.toString()}  [${entry.kind}] ${entry.key}: ${entry.value}\n`);
+      } catch (cause) {
+        if (!writeOwnerControlError(io, "preview", cause)) throw cause;
+      }
+    });
+
+  memory
+    .command("correct")
+    .description("Correct one exact memory entry and create a versioned, undoable receipt")
+    .argument("<exact-id>", "Exact ID returned by `muse memory inspect`")
+    .argument("<value>", "Replacement value")
+    .requiredOption("--expected-version <n>", "Expected version returned by inspect/preview")
+    .option("--request-id <id>", "Stable retry ID (generated when omitted)")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …)")
+    .option("--json", "Print the mutation receipt")
+    .action(async (
+      exactId: string,
+      value: string,
+      options: MemoryCommonOptions & { readonly expectedVersion: string; readonly requestId?: string }
+    ) => {
+      const userId = resolveMemoryUserId(options.user, options.persona);
+      try {
+        const receipt = await localMemoryStore().correctOwnerMemory(userId, {
+          exactId,
+          expectedVersion: parseExactMemoryVersion(options.expectedVersion),
+          requestId: options.requestId ?? randomUUID(),
+          value
+        });
+        try {
+          await new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()).record({
+            userId,
+            key: receipt.target.key,
+            kind: receipt.target.kind,
+            value: receipt.after.value!,
+            learnedAt: receipt.createdAt,
+            source: "user"
+          });
+        } catch { /* owner mutation is durable; provenance remains best-effort */ }
+        if (options.json) {
+          helpers.writeOutput(io, receipt);
+          return;
+        }
+        io.stdout(formatMutationReceipt(receipt));
+      } catch (cause) {
+        if (!writeOwnerControlError(io, "correct", cause)) throw cause;
+      }
+    });
+
+  memory
     .command("consolidate")
     .description("Sleep consolidation: promotes salient recalled memories, down-ranks fading ones in recall (never deletes)")
     .option("--json", "Print the raw plan")
@@ -328,7 +450,7 @@ Examples:
     .option("--json", "Print the raw hits instead of the formatted list")
     .action(async (parts: string[], options: MemoryCommonOptions) => {
       const userId = resolveMemoryUserId(options.user, options.persona);
-      const store = new FileUserMemoryStore();
+      const store = localMemoryStore();
       const record = await store.findByUserId(userId);
       const hits = searchMemoryEntries(record?.facts ?? {}, record?.preferences ?? {}, parts.join(" "));
       if (options.json) {
@@ -398,25 +520,81 @@ Examples:
 
   memory
     .command("forget")
-    .description("Forget ONE remembered fact/preference by key (vs `clear`, which wipes everything)")
-    .argument("<key>", "Memory key to drop, e.g. `muse memory forget home_city`")
+    .description("Forget ONE exact memory entry with an undoable receipt")
+    .argument("<exact-id>", "Exact ID returned by `muse memory inspect`")
+    .requiredOption("--expected-version <n>", "Expected version returned by inspect/preview")
+    .requiredOption("--confirm <exact-id>", "Separate deletion confirmation; must equal the exact target ID")
+    .option("--request-id <id>", "Stable retry ID (generated when omitted)")
     .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
     .option("--persona <slot>", "Persona slot (work / home / hobby / …)")
-    .action(async (key: string, options: MemoryCommonOptions) => {
-      const userId = resolveMemoryUserId(options.user, options.persona);
-      const store = new FileUserMemoryStore();
-      const removed = await store.forget(userId, key);
-      // Record a RETRACTION marker so the auto-extractor won't silently resurface
-      // the fact the user just forgot (source: user > auto). Fail-open. Only when
-      // something was actually removed — a no-op forget records nothing.
-      if (removed) {
-        try {
-          await recordRetraction(new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()), userId, normalizeMemoryKey(key));
-        } catch { /* provenance is best-effort; the forget already succeeded */ }
+    .option("--json", "Print the mutation receipt")
+    .action(async (
+      exactId: string,
+      options: MemoryCommonOptions & {
+        readonly confirm: string;
+        readonly expectedVersion: string;
+        readonly requestId?: string;
       }
-      io.stdout(removed
-        ? `Forgot "${normalizeMemoryKey(key)}" (user=${userId})\n`
-        : `(nothing remembered under "${key}" — already forgotten or never stored)\n`);
+    ) => {
+      const userId = resolveMemoryUserId(options.user, options.persona);
+      if (options.confirm !== exactId) {
+        io.stderr("muse memory forget: --confirm must exactly match the target memory ID; no deletion performed\n");
+        process.exitCode = 2;
+        return;
+      }
+      try {
+        const receipt = await localMemoryStore().forgetOwnerMemory(userId, {
+          exactId,
+          expectedVersion: parseExactMemoryVersion(options.expectedVersion),
+          requestId: options.requestId ?? randomUUID()
+        });
+        try {
+          await recordRetraction(
+            new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()),
+            userId,
+            receipt.target.key,
+            { kind: receipt.target.kind, nowIso: receipt.createdAt }
+          );
+        } catch { /* owner mutation is durable; provenance remains best-effort */ }
+        if (options.json) {
+          helpers.writeOutput(io, receipt);
+          return;
+        }
+        io.stdout(formatMutationReceipt(receipt));
+      } catch (cause) {
+        if (!writeOwnerControlError(io, "forget", cause)) throw cause;
+      }
+    });
+
+  memory
+    .command("undo")
+    .description("Undo one exact correction/forget receipt before its expiry")
+    .argument("<receipt-id>", "Receipt ID returned by memory correct/forget")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …)")
+    .option("--json", "Print the updated receipt")
+    .action(async (receiptId: string, options: MemoryCommonOptions) => {
+      const userId = resolveMemoryUserId(options.user, options.persona);
+      try {
+        const receipt = await localMemoryStore().undoOwnerMemory(userId, receiptId);
+        try {
+          await new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()).record({
+            userId,
+            key: receipt.target.key,
+            kind: receipt.target.kind,
+            value: receipt.before.value,
+            learnedAt: receipt.undo?.undoneAt ?? new Date().toISOString(),
+            source: "user"
+          });
+        } catch { /* restored owner memory remains authoritative */ }
+        if (options.json) {
+          helpers.writeOutput(io, receipt);
+          return;
+        }
+        io.stdout(`Undid ${receipt.operation} for ${receipt.target.kind} ${receipt.target.key} (${receipt.target.exactId})\nReceipt: ${receipt.receiptId}\n`);
+      } catch (cause) {
+        if (!writeOwnerControlError(io, "undo", cause)) throw cause;
+      }
     });
 
   memory
@@ -439,10 +617,20 @@ Examples:
       const segment = parseKindSegment(kind);
       const userId = resolveMemoryUserId(options.user, options.persona);
       if (options.local) {
-        const store = new FileUserMemoryStore();
-        const updated = segment === "facts"
-          ? await store.upsertFact(userId, key, value)
-          : await store.upsertPreference(userId, key, value);
+        const store = localMemoryStore();
+        const normalizedKey = normalizeMemoryKey(key);
+        const result = segment === "facts"
+          ? await store.createFactIfAbsent(userId, key, value)
+          : await store.createPreferenceIfAbsent(userId, key, value);
+        if (!result.created) {
+          io.stderr(
+            `muse memory set: "${normalizedKey}" already exists; use `
+            + "`muse memory inspect` + `muse memory correct` for a versioned, undoable correction\n"
+          );
+          process.exitCode = 2;
+          return;
+        }
+        const updated = result.memory;
         // Record user-provenance: a direct `set` is a user-stated truth, not
         // an inference. Fail-open — a provenance write never blocks the set.
         try {
@@ -634,7 +822,7 @@ Examples:
 interface PromoteMemoriesStore {
   findByUserId(userId: string): Promise<{ readonly facts: Record<string, string> } | undefined>;
   upsertFact(userId: string, key: string, value: string): Promise<unknown>;
-  forget(userId: string, key: string): Promise<unknown> | unknown;
+  forgetByCanonicalKey(userId: string, key: string): Promise<unknown> | unknown;
 }
 
 export interface PromoteMemoriesResult {
@@ -673,7 +861,7 @@ export async function promoteRecalledMemories(options: {
   const current = await options.store.findByUserId(options.userId).catch(() => undefined);
   for (const key of Object.keys(current?.facts ?? {})) {
     if (key.startsWith(PROMOTED_FACT_PREFIX)) {
-      await options.store.forget(options.userId, key);
+      await options.store.forgetByCanonicalKey(options.userId, key);
     }
   }
 

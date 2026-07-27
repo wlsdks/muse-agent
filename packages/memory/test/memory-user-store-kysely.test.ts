@@ -120,6 +120,17 @@ describe("KyselyUserMemoryStore (class runtime behavior against a fake db)", () 
     expect(memory?.preferences).toEqual({ tone: "concise" });
   });
 
+  it("create-if-absent normalizes aliases and refuses an unreceipted overwrite", async () => {
+    const { db } = createFakeUserMemoriesDb();
+    const store = createStore(db);
+    const first = await store.createFactIfAbsent("stark", "Home City", "Seoul");
+    const second = await store.createFactIfAbsent("stark", "home_city", "Busan");
+
+    expect(first.created).toBe(true);
+    expect(second).toMatchObject({ created: false, existingValue: "Seoul" });
+    expect((await store.findByUserId("stark"))?.facts).toEqual({ home_city: "Seoul" });
+  });
+
   it("upsertUserModelSlot preserves existing facts/preferences and replaces a slot by id within its kind", async () => {
     const { db } = createFakeUserMemoriesDb();
     const store = createStore(db);

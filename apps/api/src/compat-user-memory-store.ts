@@ -8,7 +8,7 @@
  */
 
 import { extractBearerToken, type AuthIdentity } from "@muse/auth";
-import type { UserMemory } from "@muse/memory";
+import { normalizeMemoryKey, type UserMemory } from "@muse/memory";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import {
   errorResponse,
@@ -35,9 +35,16 @@ export async function updateUserMemory(
   }
 
   if (options?.userMemoryStore) {
-    await (key === "facts"
-      ? options.userMemoryStore.upsertFact(userId, itemKey, itemValue)
-      : options.userMemoryStore.upsertPreference(userId, itemKey, itemValue));
+    const normalizedKey = normalizeMemoryKey(itemKey);
+    const result = key === "facts"
+      ? await options.userMemoryStore.createFactIfAbsent(userId, itemKey, itemValue)
+      : await options.userMemoryStore.createPreferenceIfAbsent(userId, itemKey, itemValue);
+    if (!result.created) {
+      if (result.existingValue === itemValue) return { updated: true };
+      return reply.status(409).send(errorResponse(
+        `Memory "${normalizedKey}" already exists; correction requires the exact-ID owner-control path`
+      ));
+    }
     return { updated: true };
   }
 
@@ -48,6 +55,15 @@ export async function updateUserMemory(
     recentTopics: [],
     updatedAt: nowIso()
   };
+  const prior = key === "facts" ? existing.facts[itemKey] : existing.preferences[itemKey];
+  if (prior !== undefined) {
+    if (prior === itemValue) {
+      return { updated: true };
+    }
+    return reply.status(409).send(errorResponse(
+      `Memory "${itemKey}" already exists; correction requires the exact-ID owner-control path`
+    ));
+  }
   const updated = {
     facts: key === "facts" ? { ...existing.facts, [itemKey]: itemValue } : existing.facts,
     preferences: key === "preferences" ? { ...existing.preferences, [itemKey]: itemValue } : existing.preferences,

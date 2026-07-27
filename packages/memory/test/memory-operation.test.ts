@@ -98,8 +98,8 @@ describe("auto-extract applies Mem0 operations", () => {
   it("NOOP: a retraction for a key that was NEVER stored does NOT call forget (no spurious delete write)", async () => {
     const store = new InMemoryUserMemoryStore();
     let forgetCalls = 0;
-    const realForget = store.forget.bind(store);
-    store.forget = (...args: Parameters<typeof realForget>) => { forgetCalls += 1; return realForget(...args); };
+    const realForget = store.forgetByCanonicalKey.bind(store);
+    store.forgetByCanonicalKey = (...args: Parameters<typeof realForget>) => { forgetCalls += 1; return realForget(...args); };
     await run(store, { facts: { home_city: "unknown" }, preferences: {}, vetoes: [], goals: [] });
     expect(forgetCalls).toBe(0); // never-stored key → NOOP, not a forget() write
     expect((await store.findByUserId("u1"))?.facts.home_city).toBeUndefined();
@@ -131,7 +131,7 @@ describe("InMemory store canonicalizes the key (parity with the File store)", ()
   it("forget still finds the entry by a raw OR normalized key after normalization", () => {
     const store = new InMemoryUserMemoryStore();
     store.upsertFact("u1", "Home City", "Seoul");
-    expect(store.forget("u1", "Home City")).toBe(true); // raw key resolves to the normalized entry
+    expect(store.forgetByCanonicalKey("u1", "home_city")).toBe(true);
     expect(store.findByUserId("u1")?.facts.home_city).toBeUndefined();
   });
 });
@@ -145,17 +145,17 @@ describe("forget — namespace-scoped delete (InMemory)", () => {
       return s;
     };
     const factOnly = seed();
-    factOnly.forget("u1", "pet", "fact");
+    factOnly.forgetByCanonicalKey("u1", "pet", "fact");
     expect(factOnly.findByUserId("u1")?.facts.pet).toBeUndefined();
     expect(factOnly.findByUserId("u1")?.preferences.pet).toBe("dog");
 
     const prefOnly = seed();
-    prefOnly.forget("u1", "pet", "preference");
+    prefOnly.forgetByCanonicalKey("u1", "pet", "preference");
     expect(prefOnly.findByUserId("u1")?.facts.pet).toBe("cat");
     expect(prefOnly.findByUserId("u1")?.preferences.pet).toBeUndefined();
 
     const both = seed();
-    both.forget("u1", "pet"); // no kind → explicit /forget keeps the dual-delete
+    both.forgetByCanonicalKey("u1", "pet"); // no kind → internal dual-delete keeps both namespaces aligned
     expect(both.findByUserId("u1")?.facts.pet).toBeUndefined();
     expect(both.findByUserId("u1")?.preferences.pet).toBeUndefined();
   });

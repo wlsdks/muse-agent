@@ -19,7 +19,7 @@ import type { MuseDatabase } from "@muse/db";
 import { redactSecretsInText, type JsonValue } from "@muse/shared";
 import { sql, type Insertable, type Kysely } from "kysely";
 import { classifyValueChange } from "./belief-provenance-store.js";
-import { EMPTY_USER_MODEL, type FactSupersession, type UserMemory, type UserMemoryStore, type UserModel, type UserModelSlot } from "./index.js";
+import { EMPTY_USER_MODEL, type FactSupersession, type UserMemory, type UserMemoryCreateResult, type UserMemoryStore, type UserModel, type UserModelSlot } from "./index.js";
 
 type UserMemoryRow = Record<string, unknown>;
 type UserMemoryInsert = Insertable<MuseDatabase["user_memories"]>;
@@ -149,7 +149,7 @@ export function normalizeMemoryKey(key: string): string {
 }
 
 /**
- * Decide what `forget(userId, rawKey, kind)` should drop, shared by both the
+ * Decide what `forgetByCanonicalKey(userId, key, kind)` should drop, shared by both the
  * in-memory and file-backed stores so the resolution logic exists ONCE:
  *   - key resolution: keys are stored canonicalized (upsert normalizes), so a
  *     raw key resolves to its stored form — exact match first, else the
@@ -164,7 +164,7 @@ export function resolveForgetTarget(
   rawKey: string,
   kind?: "fact" | "preference"
 ): { readonly key: string; readonly dropFact: boolean; readonly dropPref: boolean } | null {
-  const key = (rawKey in existing.facts || rawKey in existing.preferences) ? rawKey : normalizeMemoryKey(rawKey);
+  const key = rawKey;
   const dropFact = kind !== "preference";
   const dropPref = kind !== "fact";
   const hadFact = dropFact && key in existing.facts;
@@ -228,11 +228,19 @@ export class InMemoryUserMemoryStore implements UserMemoryStore {
     return this.upsert(userId, { preferences: { [normalizeMemoryKey(key)]: sanitizeUserMemoryValue(value) } });
   }
 
+  createFactIfAbsent(userId: string, rawKey: string, value: string): UserMemoryCreateResult {
+    return this.createIfAbsent(userId, "fact", rawKey, value);
+  }
+
+  createPreferenceIfAbsent(userId: string, rawKey: string, value: string): UserMemoryCreateResult {
+    return this.createIfAbsent(userId, "preference", rawKey, value);
+  }
+
   deleteByUserId(userId: string): boolean {
     return this.memories.delete(userId);
   }
 
-  forget(userId: string, rawKey: string, kind?: "fact" | "preference"): boolean {
+  forgetByCanonicalKey(userId: string, rawKey: string, kind?: "fact" | "preference"): boolean {
     const existing = this.memories.get(userId);
     if (!existing) {
       return false;
@@ -264,6 +272,26 @@ export class InMemoryUserMemoryStore implements UserMemoryStore {
     const baseModel = existing?.userModel ?? EMPTY_USER_MODEL;
     const nextModel = applyUserModelSlot(baseModel, slot);
     return this.upsert(userId, { userModel: nextModel });
+  }
+
+  private createIfAbsent(
+    userId: string,
+    kind: "fact" | "preference",
+    rawKey: string,
+    value: string
+  ): UserMemoryCreateResult {
+    const key = normalizeMemoryKey(rawKey);
+    const existing = this.memories.get(userId);
+    const existingValue = kind === "fact" ? existing?.facts[key] : existing?.preferences[key];
+    if (existing && existingValue !== undefined) {
+      return { created: false, existingValue, memory: cloneUserMemory(existing) ?? existing };
+    }
+    const safe = sanitizeUserMemoryValue(value);
+    const memory = this.upsert(
+      userId,
+      kind === "fact" ? { facts: { [key]: safe } } : { preferences: { [key]: safe } }
+    );
+    return { created: true, memory };
   }
 
   private upsert(
@@ -333,6 +361,14 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
     }));
   }
 
+  async createFactIfAbsent(userId: string, key: string, value: string): Promise<UserMemoryCreateResult> {
+    return this.createIfAbsent(userId, "fact", key, value);
+  }
+
+  async createPreferenceIfAbsent(userId: string, key: string, value: string): Promise<UserMemoryCreateResult> {
+    return this.createIfAbsent(userId, "preference", key, value);
+  }
+
   async deleteByUserId(userId: string): Promise<boolean> {
     const result = await this.db.deleteFrom("user_memories").where("user_id", "=", userId).executeTakeFirst();
     return Number(result.numDeletedRows ?? 0) > 0;
@@ -362,6 +398,37 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
       // cannot overwrite each other's facts, preferences, or typed slots.
       await this.acquireUserLock(transaction, userId);
       return this.save(transaction, operation(await this.find(transaction, userId)));
+    });
+  }
+
+  private async createIfAbsent(
+    userId: string,
+    kind: "fact" | "preference",
+    rawKey: string,
+    value: string
+  ): Promise<UserMemoryCreateResult> {
+    const key = normalizeMemoryKey(rawKey);
+    const safe = sanitizeUserMemoryValue(value);
+    return this.db.transaction().execute(async (transaction) => {
+      await this.acquireUserLock(transaction, userId);
+      const existing = await this.find(transaction, userId);
+      const existingValue = kind === "fact" ? existing?.facts[key] : existing?.preferences[key];
+      if (existing && existingValue !== undefined) {
+        return { created: false, existingValue, memory: existing };
+      }
+      const memory = await this.save(transaction, {
+        facts: kind === "fact"
+          ? mergeRecordTouchLast(existing?.facts ?? {}, { [key]: safe })
+          : existing?.facts ?? {},
+        preferences: kind === "preference"
+          ? mergeRecordTouchLast(existing?.preferences ?? {}, { [key]: safe })
+          : existing?.preferences ?? {},
+        recentTopics: existing?.recentTopics ?? [],
+        updatedAt: new Date(),
+        userId,
+        ...(existing?.userModel ? { userModel: existing.userModel } : {})
+      });
+      return { created: true, memory };
     });
   }
 

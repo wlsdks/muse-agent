@@ -85,7 +85,7 @@ describe("promoteRecalledMemories — dreaming pass (store injected)", () => {
       facts,
       store: {
         findByUserId: async () => ({ facts }),
-        forget: async (_u: string, key: string) => { delete facts[key]; },
+        forgetByCanonicalKey: async (_u: string, key: string) => { delete facts[key]; },
         upsertFact: async (_u: string, key: string, value: string) => { facts[key] = value; }
       }
     };

@@ -173,7 +173,7 @@ function executeMemory(record: Extract<EvalRecord, { family: "memory-preference-
       store.upsertPreference(userId, key, existing);
       return store.findByUserId(userId)?.preferences[storedKey] === existing;
     case "delete":
-      return store.forget(userId, key, "preference") && store.findByUserId(userId)?.preferences[storedKey] === undefined;
+      return store.forgetByCanonicalKey(userId, key, "preference") && store.findByUserId(userId)?.preferences[storedKey] === undefined;
   }
 }
 
