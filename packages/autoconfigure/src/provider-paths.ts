@@ -81,6 +81,15 @@ export function resolveTokenUsageFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_TOKEN_USAGE_FILE", "token-usage.jsonl");
 }
 
+/** Bounded, privacy-minimal terminal outcomes for user-memory auto extraction. */
+export function resolveUserMemoryAutoExtractOutcomesFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(
+    env,
+    "MUSE_USER_MEMORY_AUTO_EXTRACT_OUTCOMES_FILE",
+    "memory-auto-extract-outcomes.json"
+  );
+}
+
 /** Local-first checkpoint directory — where the no-DB product persists per-run
  *  execution checkpoints so a crashed run can resume (one JSON file per runId). */
 export function resolveCheckpointsDir(env: MuseEnvironment): string {

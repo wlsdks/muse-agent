@@ -53,6 +53,7 @@ import {
   createUserMemoryAutoExtractHook,
   defaultBeliefProvenanceFile,
   FileBeliefProvenanceStore,
+  FileUserMemoryAutoExtractOutcomeStore,
   InMemoryContextReferenceStore,
   scaleToolOutputBudget,
   type ConversationSummaryStore,
@@ -157,6 +158,7 @@ import {
   resolveRemindersFile,
   resolveTasksFile,
   resolveTokenUsageFile,
+  resolveUserMemoryAutoExtractOutcomesFile,
   resolveCheckpointsDir
 } from "./personal-providers.js";
 import {
@@ -1003,14 +1005,20 @@ function buildHooksAndContextProviders(params: {
   } = params;
 
   const autoExtractHook: HookStage | undefined = parseBoolean(env.MUSE_USER_MEMORY_AUTO_EXTRACT, true) && modelProvider && defaultModel
-    ? createUserMemoryAutoExtractHook({
-      model: env.MUSE_USER_MEMORY_AUTO_EXTRACT_MODEL ?? defaultModel,
-      modelProvider,
-      store: userMemoryStore,
-      ...(parseBoolean(env.MUSE_BELIEF_PROVENANCE, true)
-        ? { provenanceStore: new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()) }
-        : {})
-    }) as HookStage
+    ? (() => {
+      const outcomeStore = new FileUserMemoryAutoExtractOutcomeStore({
+        file: resolveUserMemoryAutoExtractOutcomesFile(env)
+      });
+      return createUserMemoryAutoExtractHook({
+        model: env.MUSE_USER_MEMORY_AUTO_EXTRACT_MODEL ?? defaultModel,
+        modelProvider,
+        onOutcome: (outcome) => outcomeStore.record(outcome),
+        store: userMemoryStore,
+        ...(parseBoolean(env.MUSE_BELIEF_PROVENANCE, true)
+          ? { provenanceStore: new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()) }
+          : {})
+      }) as HookStage;
+    })()
     : undefined;
   const reviewArmDeps = {
     env,

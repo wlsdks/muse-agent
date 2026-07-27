@@ -41,6 +41,7 @@ import {
   resolveTasksFile,
   resolveTelegramInboxFile,
   resolveTelegramOffsetFile,
+  resolveUserMemoryAutoExtractOutcomesFile,
   resolveUserSkillsDir,
   resolveVetoesFile,
 } from "../src/provider-paths.js";
@@ -93,6 +94,11 @@ const RESOLVERS: ReadonlyArray<readonly [(e: MuseEnvironment) => string, string,
   [resolveUserSkillsDir, "MUSE_SKILLS_DIR", "skills"],
   [resolveAuthoredSkillsDir, "MUSE_AUTHORED_SKILLS_DIR", "skills/authored"],
   [resolveModelKeysFile, "MUSE_MODEL_KEYS_FILE", "models.json"],
+  [
+    resolveUserMemoryAutoExtractOutcomesFile,
+    "MUSE_USER_MEMORY_AUTO_EXTRACT_OUTCOMES_FILE",
+    "memory-auto-extract-outcomes.json"
+  ],
 ];
 
 describe("provider-paths shared resolution (via resolveTasksFile)", () => {

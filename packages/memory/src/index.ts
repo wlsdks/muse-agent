@@ -715,6 +715,19 @@ export {
 // what to surface, and every item cites its recorded supersession.
 export { formatLearnedConfirmation, projectRecentlyLearned, renderRecentlyLearnedLines, selectNewSupersessions, summarizeRecentlyLearned, type RecentlyLearnedItem } from "./recently-learned.js";
 
+// Privacy-minimal, bounded terminal outcomes for automatic memory extraction.
+export {
+  DEFAULT_USER_MEMORY_AUTO_EXTRACT_OUTCOME_MAX_ENTRIES,
+  FileUserMemoryAutoExtractOutcomeStore,
+  USER_MEMORY_AUTO_EXTRACT_REASONS,
+  readUserMemoryAutoExtractOutcomes,
+  type FileUserMemoryAutoExtractOutcomeStoreOptions,
+  type PersistedUserMemoryAutoExtractOutcome,
+  type UserMemoryAutoExtractOutcome,
+  type UserMemoryAutoExtractOutcomeStore,
+  type UserMemoryAutoExtractReason
+} from "./memory-auto-extract-outcome-store.js";
+
 // Bounded deterministic query identifier for the recall-hits sidecar — fuels
 // selectPromotableMemories's minUniqueQueries gate.
 export { hashQuery, normalizeQueryForHash } from "./query-hash.js";

@@ -29,6 +29,10 @@ import { extractDeterministicFactCandidates, mergeFactBackstop } from "./memory-
 import { dropEphemeralFacts } from "./memory-ephemeral-value-guard.js";
 import { dropExistingPetBindingConflicts, resolvePetBindingCandidates } from "./memory-pet-binding-guard.js";
 import type {
+  UserMemoryAutoExtractOutcome,
+  UserMemoryAutoExtractReason
+} from "./memory-auto-extract-outcome-store.js";
+import type {
   FactSupersession,
   UserGoalSlot,
   UserMemoryStore,
@@ -112,6 +116,12 @@ export interface UserMemoryAutoExtractOptions {
    */
   readonly extractionCooldownMs?: number;
   /**
+   * Maximum time spent waiting for the optional terminal-outcome recorder.
+   * Default 1_000ms. A stuck diagnostic sink must not hold the conversation's
+   * afterComplete chain open.
+   */
+  readonly outcomeRecordingTimeoutMs?: number;
+  /**
    * Injectable clock for deterministic tests. The
    * throttle compares `now()` against the per-user last-fire
    * timestamp; without this, tests have to wait real seconds
@@ -127,6 +137,14 @@ export interface UserMemoryAutoExtractOptions {
    * failed read never blocks the write chain; absent ⇒ the diff reads are skipped.
    */
   readonly onLearned?: (learned: readonly FactSupersession[]) => void;
+  /**
+   * Privacy-minimal terminal notification for each extraction ATTEMPT. Skipped
+   * turns (no user id, explicit opt-out, cooldown, or no exchange text) emit
+   * nothing. Recorder failures are fail-open and never change the conversation.
+   */
+  readonly onOutcome?: (
+    outcome: UserMemoryAutoExtractOutcome
+  ) => Promise<void> | void;
 }
 
 export interface ExtractionPayload {
@@ -229,6 +247,12 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
   // Per-user cooldown stops a burst of short turns from churning
   // user-memory.json. Explicit 0 disables.
   const extractionCooldownMs = normalizeNonNegativeSafeInteger(options.extractionCooldownMs, 60_000, "extractionCooldownMs");
+  const outcomeRecordingTimeoutMs = normalizeMinimumSafeInteger(
+    options.outcomeRecordingTimeoutMs,
+    1_000,
+    10,
+    "outcomeRecordingTimeoutMs"
+  );
   const now = options.now ?? (() => Date.now());
   const lastFiredByUser = new Map<string, number>();
 
@@ -283,14 +307,34 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
       const boundedAssistant = assistantOutput.length > maxAssistantOutput
         ? `${assistantOutput.slice(0, maxAssistantOutput - 1)}…`
         : assistantOutput;
+      let payload: ExtractionPayload | undefined;
       try {
-        const payload = await runWithTimeout(
+        payload = await runWithTimeout(
           runExtraction(options.modelProvider, options.model, boundedUser, boundedAssistant),
           extractionTimeoutMs
         );
-        if (!payload) {
-          return;
-        }
+      } catch (error) {
+        await recordOutcome(
+          options.onOutcome,
+          context.runId,
+          error instanceof AutoExtractTimeoutError ? "timeout" : "model_error",
+          now,
+          outcomeRecordingTimeoutMs
+        );
+        return;
+      }
+      if (!payload || !isExtractionPayload(payload)) {
+        await recordOutcome(
+          options.onOutcome,
+          context.runId,
+          "schema_error",
+          now,
+          outcomeRecordingTimeoutMs
+        );
+        return;
+      }
+
+      try {
         // Provenance gate: a fact/preference/veto/goal whose value the MODEL
         // asserted (in its reply) but the USER never said (absent from their turn)
         // is dropped — never persisted as "what you told me". Vetoes/goals get the
@@ -308,8 +352,9 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
         // candidates and merge them ADDITIVELY — a model-extracted value for
         // the same key always wins (memory-fact-backstop.ts).
         const backstopCandidates = extractDeterministicFactCandidates(boundedUser, { now: new Date(now()) });
-        const factsIsArray = Array.isArray(payload.facts);
-        const groundedFacts = payload.facts && !factsIsArray
+        const rawCandidateCount = countExtractionCandidates(payload)
+          + Object.keys(backstopCandidates).filter((key) => !(key in (payload.facts ?? {}))).length;
+        const groundedFacts = payload.facts
           ? dropModelAssertedValues(payload.facts, boundedUser, boundedAssistant)
           : undefined;
         // A fact VALUE that reads as a same-day-relative, time-decaying
@@ -320,7 +365,7 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
         // dog turn bound the name to dog/cat/pet_* keys at once). Resolved
         // deterministically against the user's own words, drop-not-guess
         // (memory-pet-binding-guard.ts).
-        const finalFacts = !factsIsArray && (groundedFacts !== undefined || Object.keys(backstopCandidates).length > 0)
+        const finalFacts = groundedFacts !== undefined || Object.keys(backstopCandidates).length > 0
           ? resolvePetBindingCandidates(dropEphemeralFacts(mergeFactBackstop(groundedFacts, backstopCandidates)), boundedUser)
           : undefined;
         const groundedPayload: ExtractionPayload = {
@@ -350,31 +395,65 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
         // Snapshot factHistory BEFORE the writes so the surface can be told
         // exactly what changed this turn. Only when a subscriber is wired —
         // otherwise skip the extra reads entirely.
-        const historyBefore = options.onLearned
-          ? (await options.store.findByUserId(userId))?.factHistory ?? []
-          : undefined;
-        await persist(options.store, userId, groundedPayload, {
+        let learnedHistoryReadFailed = false;
+        let historyBefore: readonly FactSupersession[] | undefined;
+        if (options.onLearned) {
+          try {
+            historyBefore = (await options.store.findByUserId(userId))?.factHistory ?? [];
+          } catch {
+            learnedHistoryReadFailed = true;
+          }
+        }
+        const persistResult = await persist(options.store, userId, groundedPayload, {
           maxFacts,
           maxGoals,
           maxKey,
           maxPreferences,
           maxValue,
           maxVetoes
-        }, provenance);
+        }, provenance, rawCandidateCount);
         if (options.onLearned && historyBefore !== undefined) {
+          let historyAfter: readonly FactSupersession[] | undefined;
           try {
-            const historyAfter = (await options.store.findByUserId(userId))?.factHistory ?? [];
+            historyAfter = (await options.store.findByUserId(userId))?.factHistory ?? [];
+          } catch {
+            learnedHistoryReadFailed = true;
+          }
+          if (historyAfter) {
             const learned = selectNewSupersessions(historyBefore, historyAfter);
             if (learned.length > 0) {
-              options.onLearned(learned);
+              try {
+                options.onLearned(learned);
+              } catch {
+                // UI notification failure is not a memory-store failure.
+              }
             }
-          } catch {
-            // fail-open — a read/callback failure never blocks the run.
           }
         }
+        const reason: UserMemoryAutoExtractReason = persistResult.failedWrites > 0 || learnedHistoryReadFailed
+          ? "store_error"
+          : persistResult.successfulWrites > 0
+            ? "learned"
+            : persistResult.policyRejected > 0
+              ? "policy_rejected"
+              : "nothing_new";
+        await recordOutcome(
+          options.onOutcome,
+          context.runId,
+          reason,
+          now,
+          outcomeRecordingTimeoutMs
+        );
       } catch {
-        // fail-open — including the timeout path. The next run
-        // is not blocked.
+        // Store reads/writes and deterministic post-processing stay fail-open.
+        // This path is terminal and observable instead of silently disappearing.
+        await recordOutcome(
+          options.onOutcome,
+          context.runId,
+          "store_error",
+          now,
+          outcomeRecordingTimeoutMs
+        );
       }
     },
     id: "user-memory-auto-extract"
@@ -391,17 +470,47 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
  * Used by the auto-extract hook to keep a misbehaving extractor
  * model from hanging `afterComplete` indefinitely.
  */
+class AutoExtractTimeoutError extends Error {
+  constructor() {
+    super("auto-extract: extraction timed out");
+    this.name = "AutoExtractTimeoutError";
+  }
+}
+
 async function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   const timeoutController = new AbortController();
   try {
     return await Promise.race([
       promise,
       sleepWithTimer(timeoutMs, undefined, { signal: timeoutController.signal }).then(() => {
-        throw new Error("auto-extract: extraction timed out");
+        throw new AutoExtractTimeoutError();
       })
     ]);
   } finally {
     timeoutController.abort();
+  }
+}
+
+async function recordOutcome(
+  recorder: UserMemoryAutoExtractOptions["onOutcome"],
+  runId: string,
+  reason: UserMemoryAutoExtractReason,
+  now: () => number,
+  timeoutMs: number
+): Promise<void> {
+  if (!recorder) return;
+  try {
+    await runWithTimeout(
+      Promise.resolve().then(() => recorder({
+        reason,
+        recordedAt: new Date(now()).toISOString(),
+        runId,
+        schemaVersion: 1
+      })),
+      timeoutMs
+    );
+  } catch {
+    // Diagnostic persistence is subordinate to the completed conversation.
   }
 }
 
@@ -581,6 +690,36 @@ const AUTO_EXTRACT_SCHEMA = {
   additionalProperties: false
 };
 
+function isStringRecord(value: unknown): value is Readonly<Record<string, string>> {
+  return Boolean(value)
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && Object.values(value as Record<string, unknown>).every((entry) => typeof entry === "string");
+}
+
+function isExtractionPayload(value: unknown): value is ExtractionPayload {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const payload = value as Record<string, unknown>;
+  const allowedKeys = new Set(["facts", "preferences", "vetoes", "goals"]);
+  if (Object.keys(payload).some((key) => !allowedKeys.has(key))) return false;
+  if (![...allowedKeys].every((key) => Object.hasOwn(payload, key))) return false;
+  if (payload.facts !== undefined && !isStringRecord(payload.facts)) return false;
+  if (payload.preferences !== undefined && !isStringRecord(payload.preferences)) return false;
+  // Array element validation stays at the existing sanitizer boundary so a
+  // mixed payload can salvage valid slots and count malformed entries as
+  // policy-rejected instead of discarding the whole extraction.
+  if (payload.vetoes !== undefined && !Array.isArray(payload.vetoes)) return false;
+  if (payload.goals !== undefined && !Array.isArray(payload.goals)) return false;
+  return true;
+}
+
+function countExtractionCandidates(payload: ExtractionPayload): number {
+  return Object.keys(payload.facts ?? {}).length
+    + Object.keys(payload.preferences ?? {}).length
+    + (payload.vetoes?.length ?? 0)
+    + (payload.goals?.length ?? 0);
+}
+
 async function runExtraction(
   modelProvider: ModelProvider,
   model: string,
@@ -629,13 +768,20 @@ interface PersistLimits {
   readonly maxValue: number;
 }
 
+interface PersistResult {
+  readonly failedWrites: number;
+  readonly policyRejected: number;
+  readonly successfulWrites: number;
+}
+
 async function persist(
   store: UserMemoryStore,
   userId: string,
   payload: ExtractionPayload,
   limits: PersistLimits,
-  provenance?: ProvenanceContext
-): Promise<void> {
+  provenance: ProvenanceContext | undefined,
+  rawCandidateCount: number
+): Promise<PersistResult> {
   const factEntries = sanitizeEntries(payload.facts, limits.maxFacts, limits.maxKey, limits.maxValue);
   const preferenceEntries = sanitizeEntries(
     payload.preferences,
@@ -645,6 +791,10 @@ async function persist(
   );
   const vetoSlots = sanitizeSlotArray(payload.vetoes, limits.maxVetoes, limits.maxKey, limits.maxValue);
   const goalSlots = sanitizeSlotArray(payload.goals, limits.maxGoals, limits.maxKey, limits.maxValue);
+  let policyRejected = Math.max(
+    0,
+    rawCandidateCount - factEntries.length - preferenceEntries.length - vetoSlots.length - goalSlots.length
+  );
 
   // Parallelise the writes: run sequentially this would be 16
   // `await store.upsertX(...)` round trips per turn (5 facts +
@@ -661,15 +811,20 @@ async function persist(
   // failures: the surrounding `afterComplete` is already
   // fail-open, and partial success across 16 writes is preferable
   // to all-or-nothing on the first failure.
-  const writes: Promise<void>[] = [];
+  const writes: Promise<boolean>[] = [];
   // Provenance entries are COLLECTED and written in one batch after the
   // memory writes — recording them as concurrent per-key writes would race
-  // on the shared provenance file (last write wins).
+  // on the shared provenance file (last write wins). They are indexed to the
+  // corresponding memory write and emitted only when that write succeeds.
   const learnedAt = provenance ? new Date(provenance.now()).toISOString() : "";
-  const provenanceEntries: BeliefProvenance[] = [];
-  const collectProvenance = (kind: "fact" | "preference", key: string, value: string): void => {
-    if (!provenance) return;
-    provenanceEntries.push({
+  const provenanceByWriteIndex = new Map<number, BeliefProvenance>();
+  const makeProvenance = (
+    kind: "fact" | "preference",
+    key: string,
+    value: string
+  ): BeliefProvenance | undefined => {
+    if (!provenance) return undefined;
+    return {
       userId,
       key: normalizeMemoryKey(key),
       kind,
@@ -678,21 +833,35 @@ async function persist(
       source: "auto",
       ...(provenance.sessionId ? { sessionId: provenance.sessionId } : {}),
       ...(provenance.evidenceExcerpt ? { evidenceExcerpt: provenance.evidenceExcerpt } : {})
-    });
+    };
   };
   // Mem0 (arXiv 2504.19413): classify each candidate against existing memory
   // (ADD/UPDATE/NOOP/DELETE) instead of blind-upserting — NOOP skips the
   // redundant write + provenance on a re-confirmation, DELETE drops a key the
   // extractor reported as a no-value/retraction token rather than storing junk.
-  const existing = await Promise.resolve(store.findByUserId(userId)).catch(() => undefined);
+  let existing: Awaited<ReturnType<UserMemoryStore["findByUserId"]>>;
+  let storeReadFailed = false;
+  try {
+    existing = await store.findByUserId(userId);
+  } catch {
+    storeReadFailed = true;
+    existing = undefined;
+  }
   const forget = store.forget?.bind(store);
   // Forgotten-fact suppression: a key the user explicitly retracted (`forget`) must NOT
   // be resurfaced by the auto-extractor — an inference overriding an explicit user
   // retraction is the auto-vs-user authority inversion (source: user > auto). A later
   // deliberate re-`set` clears the marker (keysWithActiveRetraction). Fail-open.
-  const retractedKeys: ReadonlySet<string> = provenance
-    ? keysWithActiveRetraction(await provenance.store.query(userId).catch(() => []))
-    : new Set<string>();
+  let provenanceStoreFailed = false;
+  let provenanceRecords: readonly BeliefProvenance[] = [];
+  if (provenance) {
+    try {
+      provenanceRecords = await provenance.store.query(userId);
+    } catch {
+      provenanceStoreFailed = true;
+    }
+  }
+  const retractedKeys: ReadonlySet<string> = keysWithActiveRetraction(provenanceRecords);
   const applyOp = (kind: "fact" | "preference", key: string, value: string, current: string | undefined): void => {
     const op = classifyMemoryOperation(current, value);
     if (op === "noop") {
@@ -701,15 +870,28 @@ async function persist(
     if (op === "delete") {
       // Scope the retraction to THIS namespace — a fact retraction must not also
       // wipe a same-key preference (and vice versa).
-      if (forget) writes.push(safeWrite(forget(userId, key, kind)));
+      if (forget) {
+        writes.push(safeWrite(() => forget(userId, key, kind)));
+      } else {
+        policyRejected += 1;
+      }
       return;
     }
     if (retractedKeys.has(normalizeMemoryKey(key))) {
       // The user forgot this key — don't let an inference silently re-persist it.
+      policyRejected += 1;
       return;
     }
-    writes.push(safeWrite(kind === "fact" ? store.upsertFact(userId, key, value) : store.upsertPreference(userId, key, value)));
-    collectProvenance(kind, key, value);
+    const writeIndex = writes.length;
+    writes.push(safeWrite(() =>
+      kind === "fact"
+        ? store.upsertFact(userId, key, value)
+        : store.upsertPreference(userId, key, value)
+    ));
+    const provenanceEntry = makeProvenance(kind, key, value);
+    if (provenanceEntry) {
+      provenanceByWriteIndex.set(writeIndex, provenanceEntry);
+    }
   };
   // Store-aware binding guard: an extraction can't quietly rebind a value
   // that already lives under another key of the pet-name family — the first
@@ -717,6 +899,7 @@ async function persist(
   const guardedFactEntries = Object.entries(
     dropExistingPetBindingConflicts(Object.fromEntries(factEntries), existing?.facts)
   );
+  policyRejected += Math.max(0, factEntries.length - guardedFactEntries.length);
   for (const [key, value] of guardedFactEntries) {
     applyOp("fact", key, value, existing?.facts?.[normalizeMemoryKey(key)]);
   }
@@ -739,7 +922,7 @@ async function persist(
         value: slot.value,
         ...(slot.scope ? { scope: slot.scope } : {})
       };
-      writes.push(safeWrite(upsertSlot(userId, veto)));
+      writes.push(safeWrite(() => upsertSlot(userId, veto)));
     }
     for (const slot of goalSlots) {
       const goal: UserGoalSlot = {
@@ -749,30 +932,48 @@ async function persist(
         updatedAt: now,
         value: slot.value
       };
-      writes.push(safeWrite(upsertSlot(userId, goal)));
+      writes.push(safeWrite(() => upsertSlot(userId, goal)));
     }
+  } else {
+    policyRejected += vetoSlots.length + goalSlots.length;
   }
-  await Promise.all(writes);
+  const writeResults = await Promise.all(writes);
+  const provenanceEntries = writeResults.flatMap((succeeded, index): readonly BeliefProvenance[] => {
+    const entry = provenanceByWriteIndex.get(index);
+    return succeeded && entry ? [entry] : [];
+  });
   if (provenance && provenanceEntries.length > 0) {
-    await safeWrite(provenance.store.recordMany(provenanceEntries));
+    const provenanceWriteSucceeded = await safeWrite(
+      () => provenance.store.recordMany(provenanceEntries)
+    );
+    provenanceStoreFailed ||= !provenanceWriteSucceeded;
   }
+  return {
+    failedWrites: writeResults.filter((succeeded) => !succeeded).length
+      + (storeReadFailed ? 1 : 0)
+      + (provenanceStoreFailed ? 1 : 0),
+    policyRejected,
+    successfulWrites: writeResults.filter(Boolean).length
+  };
 }
 
 /**
  * Per-write catch. The auto-extract hook is fail-open at the
  * `afterComplete` boundary, so a single store-write failure must
  * not poison `Promise.all` and abort the other 15 in-flight
- * writes. Returning `undefined` on rejection lets the parallel
- * batch settle so every salvageable extraction lands.
+ * writes. Returning `false` on rejection lets the parallel batch settle so
+ * every salvageable extraction lands while the terminal outcome remains
+ * `store_error`.
  *
  * Accepts `Awaitable<T>` (the shape `UserMemoryStore.upsertX`
  * methods return) — synchronous stores resolve through the
  * `await` boundary cleanly.
  */
-async function safeWrite(awaitable: unknown): Promise<void> {
+async function safeWrite(operation: () => unknown): Promise<boolean> {
   try {
-    await awaitable;
+    await operation();
+    return true;
   } catch {
-    // partial failure tolerated
+    return false;
   }
 }

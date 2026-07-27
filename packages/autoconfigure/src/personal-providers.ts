@@ -100,6 +100,7 @@ export {
   resolveSlackInboxFile,
   resolveTasksFile,
   resolveTokenUsageFile,
+  resolveUserMemoryAutoExtractOutcomesFile,
   resolveCheckpointsDir,
   resolveWeaknessesFile,
   resolveTelegramInboxFile,

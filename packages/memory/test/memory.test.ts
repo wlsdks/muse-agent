@@ -1208,7 +1208,9 @@ describe("createUserMemoryAutoExtractHook", () => {
     const store = new InMemoryUserMemoryStore();
     const provider = makeProvider(JSON.stringify({
       facts: { spouse_name: "Alex" },
-      preferences: { favorite_drink: "matcha latte" }
+      goals: [],
+      preferences: { favorite_drink: "matcha latte" },
+      vetoes: []
     }));
     const hook = createUserMemoryAutoExtractHook({ model: "stub", modelProvider: provider as never, store });
 
@@ -1245,7 +1247,9 @@ describe("createUserMemoryAutoExtractHook", () => {
     const store = new InMemoryUserMemoryStore();
     const provider = makeProvider(JSON.stringify({
       facts: { "Loud  Noisy Key!! WithLotsOfText": "value-A" },
-      preferences: {}
+      goals: [],
+      preferences: {},
+      vetoes: []
     }));
     const hook = createUserMemoryAutoExtractHook({
       maxKeyLength: 16,

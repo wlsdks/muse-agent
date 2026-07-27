@@ -63,7 +63,7 @@ describe("createUserMemoryAutoExtractHook — onLearned", () => {
     const learned: FactSupersession[] = [];
     const hook = createUserMemoryAutoExtractHook({
       store,
-      modelProvider: fakeProvider('{"facts":{"home_city":"Busan"}}'),
+      modelProvider: fakeProvider('{"facts":{"home_city":"Busan"},"preferences":{},"vetoes":[],"goals":[]}'),
       model: "m",
       extractionCooldownMs: 0,
       onLearned: (entries) => learned.push(...entries)
@@ -78,7 +78,7 @@ describe("createUserMemoryAutoExtractHook — onLearned", () => {
     const learned: FactSupersession[] = [];
     const hook = createUserMemoryAutoExtractHook({
       store,
-      modelProvider: fakeProvider('{"facts":{"pet":"dog"}}'),
+      modelProvider: fakeProvider('{"facts":{"pet":"dog"},"preferences":{},"vetoes":[],"goals":[]}'),
       model: "m",
       extractionCooldownMs: 0,
       onLearned: (entries) => learned.push(...entries)
@@ -93,7 +93,7 @@ describe("createUserMemoryAutoExtractHook — onLearned", () => {
     let line: string | undefined;
     const hook = createUserMemoryAutoExtractHook({
       store,
-      modelProvider: fakeProvider('{"facts":{"home_city":"Busan"}}'),
+      modelProvider: fakeProvider('{"facts":{"home_city":"Busan"},"preferences":{},"vetoes":[],"goals":[]}'),
       model: "m",
       extractionCooldownMs: 0,
       onLearned: (entries) => {
