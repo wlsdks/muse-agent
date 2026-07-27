@@ -24,7 +24,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import { isMemoryInjection } from "@muse/agent-core";
-import { beliefValueTimeline, classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, keysWithActiveRetraction, normalizeMemoryKey, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, UserMemoryOwnerControlError, type BeliefProvenance, type ConsolidationPlan, type UserMemoryMutationReceipt } from "@muse/memory";
+import { beliefProvenanceSourceId, beliefValueTimeline, BeliefProvenanceResolutionError, classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, inspectBeliefProvenanceSource, keysWithActiveRetraction, normalizeMemoryKey, projectMemoryConflictViews, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, UserMemoryOwnerControlError, type BeliefProvenance, type ConsolidationPlan, type MemoryConflictView, type UserMemoryKeepReceipt, type UserMemoryMutationReceipt } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
 import { decryptFileAtRest, encryptFileAtRest, readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/stores";
 import type { Command } from "commander";
@@ -73,6 +73,18 @@ function localMemoryStore(): FileUserMemoryStore {
   return new FileUserMemoryStore(file ? { file } : {});
 }
 
+async function readConflictProvenance(userId: string): Promise<readonly BeliefProvenance[]> {
+  const inspection = await inspectBeliefProvenanceSource(defaultBeliefProvenanceFile());
+  if (inspection.result === "absent") return [];
+  if (inspection.result !== "available" || inspection.value.excludedCount > 0) {
+    throw new BeliefProvenanceResolutionError(
+      "invalid-request",
+      "belief provenance authority is unreadable or contains excluded records"
+    );
+  }
+  return inspection.value.entries.filter((entry) => entry.userId === userId);
+}
+
 function parseExactMemoryVersion(raw: string): number {
   const version = Number(raw);
   if (!Number.isSafeInteger(version) || version < 1) {
@@ -88,12 +100,81 @@ function writeOwnerControlError(io: ProgramIO, command: string, cause: unknown):
   return true;
 }
 
+function writeConflictResolutionError(io: ProgramIO, command: "conflicts" | "keep", cause: unknown): boolean {
+  if (!(cause instanceof BeliefProvenanceResolutionError)) return false;
+  io.stderr(`muse memory ${command}: ${cause.message} (${cause.code})\n`);
+  process.exitCode = 2;
+  return true;
+}
+
 function formatMutationReceipt(receipt: UserMemoryMutationReceipt): string {
   const action = receipt.operation === "correct" ? "Corrected" : "Forgot";
   const undo = receipt.status === "undone"
     ? `; undone at ${receipt.undo?.undoneAt ?? "unknown"}`
     : `; undo until ${receipt.expiresAt}`;
   return `${action} ${receipt.target.kind} ${receipt.target.key} (${receipt.target.exactId})\nReceipt: ${receipt.receiptId}${undo}\n`;
+}
+
+function formatKeepReceipt(receipt: UserMemoryKeepReceipt): string {
+  return `Kept ${receipt.target.kind} ${receipt.target.key} = ${receipt.target.value} `
+    + `(${receipt.target.exactId}, v${receipt.target.version.toString()})\n`
+    + `Source receipt: ${receipt.sourceId} · ${receipt.policyEffect}\n`;
+}
+
+export interface ActionableMemoryConflict extends MemoryConflictView {
+  readonly actions: {
+    readonly correct: string;
+    readonly forget: string;
+    readonly keep: string;
+  };
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+export function actionableMemoryConflict(
+  conflict: MemoryConflictView,
+  userId: string
+): ActionableMemoryConflict {
+  const { exactId, version } = conflict.target;
+  const user = ` --user ${shellQuote(userId)}`;
+  const versionFlag = ` --expected-version ${version.toString()}`;
+  return {
+    ...conflict,
+    actions: {
+      correct: `muse memory correct ${exactId} '<new-value>'${versionFlag}${user}`,
+      forget: `muse memory forget ${exactId}${versionFlag} --confirm ${exactId}${user}`,
+      keep: `muse memory keep ${exactId}${versionFlag} --request-id keep-${exactId}-v${version.toString()}${user}`
+    }
+  };
+}
+
+export function formatMemoryConflicts(conflicts: readonly ActionableMemoryConflict[]): string {
+  if (conflicts.length === 0) return "(no actionable memory conflicts)\n";
+  const lines = [`Actionable memory conflicts (${conflicts.length.toString()}):`];
+  for (const conflict of conflicts) {
+    lines.push(
+      `[${conflict.currentPolicy.state}/${conflict.currentPolicy.eligibility}] `
+      + `${conflict.target.kind} ${conflict.target.key} = ${conflict.target.value} `
+      + `(${conflict.target.exactId}, v${conflict.target.version.toString()})`,
+      `  current policy: ${conflict.currentPolicy.reason}`
+      + `${conflict.currentPolicy.value !== undefined ? ` → ${JSON.stringify(conflict.currentPolicy.value)}` : ""}`
+      + `${conflict.currentPolicy.sourceId ? ` from ${conflict.currentPolicy.sourceId}` : ""}`
+      + ` · ${conflict.currentPolicy.policyVersion}`
+    );
+    for (const source of conflict.sources) {
+      const value = source.retraction ? "(retraction)" : JSON.stringify(source.value);
+      const session = source.sessionId ? ` · session ${source.sessionId}` : "";
+      lines.push(`  source ${source.sourceId}: ${value} · ${source.source} · ${source.learnedAt}${session}`);
+    }
+    lines.push(
+      `  keep:   ${conflict.actions.keep}`,
+      `  correct:${conflict.actions.correct}`,
+      `  forget: ${conflict.actions.forget}`
+    );
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 export interface MemorySearchHit {
@@ -264,6 +345,7 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
 Examples:
   $ muse memory show              # list stored facts & preferences
   $ muse memory inspect           # list exact IDs accepted by owner controls
+  $ muse memory conflicts         # exact sources, current policy, and owner actions
   $ muse memory preview mem_v1_…  # read-only preview before a mutation
   $ muse memory search city       # find a remembered fact by key or value
   $ muse memory why home_city     # when + which conversation Muse learned it from
@@ -351,6 +433,36 @@ Examples:
     });
 
   memory
+    .command("conflicts")
+    .description("Show actionable memory conflicts with exact sources and current policy")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …)")
+    .option("--json", "Print the actionable conflict projection")
+    .action(async (options: MemoryCommonOptions) => {
+      const userId = resolveMemoryUserId(options.user, options.persona);
+      try {
+        const targets = await localMemoryStore().inspectOwnerMemory(userId);
+        const provenance = await readConflictProvenance(userId);
+        const conflicts = projectMemoryConflictViews(
+          userId,
+          targets,
+          provenance,
+          { normalizeKey: normalizeMemoryKey }
+        ).map((conflict) => actionableMemoryConflict(conflict, userId));
+        if (options.json) {
+          helpers.writeOutput(io, conflicts);
+          return;
+        }
+        io.stdout(formatMemoryConflicts(conflicts));
+      } catch (cause) {
+        if (
+          !writeOwnerControlError(io, "conflicts", cause)
+          && !writeConflictResolutionError(io, "conflicts", cause)
+        ) throw cause;
+      }
+    });
+
+  memory
     .command("preview")
     .description("Read-only preview of one exact memory ID before correction or deletion")
     .argument("<exact-id>", "Exact ID returned by `muse memory inspect`")
@@ -368,6 +480,75 @@ Examples:
         io.stdout(`${entry.exactId}  v${entry.version.toString()}  [${entry.kind}] ${entry.key}: ${entry.value}\n`);
       } catch (cause) {
         if (!writeOwnerControlError(io, "preview", cause)) throw cause;
+      }
+    });
+
+  memory
+    .command("keep")
+    .description("Explicitly keep the current exact value for one actionable conflict")
+    .argument("<exact-id>", "Exact ID returned by `muse memory conflicts`")
+    .requiredOption("--expected-version <n>", "Expected version shown by the conflict view")
+    .option("--request-id <id>", "Stable retry ID (use the conflict view suggestion)")
+    .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
+    .option("--persona <slot>", "Persona slot (work / home / hobby / …)")
+    .option("--json", "Print the keep receipt")
+    .action(async (
+      exactId: string,
+      options: MemoryCommonOptions & { readonly expectedVersion: string; readonly requestId?: string }
+    ) => {
+      const userId = resolveMemoryUserId(options.user, options.persona);
+      const expectedVersion = parseExactMemoryVersion(options.expectedVersion);
+      const requestId = options.requestId ?? randomUUID();
+      const provenanceStore = new FileBeliefProvenanceStore(defaultBeliefProvenanceFile());
+      try {
+        await readConflictProvenance(userId);
+        const memoryStore = localMemoryStore();
+        const receipt = await memoryStore.keepOwnerMemory(
+          userId,
+          { exactId, expectedVersion, requestId },
+          {
+            record: async ({ beforeVersion, createdAt, target }) => {
+              const persisted = await provenanceStore.recordOwnerKeepResolution({
+                createdAt,
+                exactId: target.exactId,
+                expectedVersion: beforeVersion,
+                key: target.key,
+                kind: target.kind,
+                requestId,
+                userId,
+                value: target.value
+              });
+              return {
+                createdAt: persisted.learnedAt,
+                sourceId: beliefProvenanceSourceId(persisted)
+              };
+            },
+            validate: async ({ target }) => {
+              const currentEntries = await readConflictProvenance(userId);
+              const conflicts = projectMemoryConflictViews(
+                userId,
+                [target],
+                currentEntries,
+                { normalizeKey: normalizeMemoryKey }
+              );
+              if (conflicts.length !== 1) {
+                throw new BeliefProvenanceResolutionError(
+                  "invalid-request",
+                  "exact memory target is not an actionable conflict"
+                );
+              }
+            }
+          }
+        );
+        if (options.json) {
+          helpers.writeOutput(io, receipt);
+          return;
+        }
+        io.stdout(formatKeepReceipt(receipt));
+      } catch (cause) {
+        if (!writeOwnerControlError(io, "keep", cause) && !writeConflictResolutionError(io, "keep", cause)) {
+          throw cause;
+        }
       }
     });
 

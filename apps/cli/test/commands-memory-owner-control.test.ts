@@ -1,8 +1,8 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { defaultBeliefProvenanceFile, FileUserMemoryStore, readBeliefProvenance } from "@muse/memory";
+import { defaultBeliefProvenanceFile, FileBeliefProvenanceStore, FileUserMemoryStore, readBeliefProvenance } from "@muse/memory";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createProgram } from "../src/program.js";
@@ -168,6 +168,191 @@ describe("muse memory exact owner controls", () => {
     expect(process.exitCode).toBe(2);
     expect(output.join("")).toContain("exact-id-required");
     expect(await readFile(file, "utf8")).toBe(before);
+  });
+
+  it("lists exact actionable conflicts read-only and keeps one idempotently", async () => {
+    const store = new FileUserMemoryStore({ file });
+    const provenanceFile = defaultBeliefProvenanceFile();
+    const provenance = new FileBeliefProvenanceStore(provenanceFile);
+    await store.upsertFact("owner", "home_city", "Busan");
+    await provenance.recordMany([
+      {
+        evidenceExcerpt: "owner-private-prompt",
+        key: "home_city",
+        kind: "fact",
+        learnedAt: "2026-07-27T15:00:00.000Z",
+        source: "auto",
+        userId: "owner",
+        value: "Seoul"
+      },
+      {
+        key: "home_city",
+        kind: "fact",
+        learnedAt: "2026-07-27T15:30:00.000Z",
+        source: "auto",
+        userId: "owner",
+        value: "Busan"
+      },
+      {
+        evidenceExcerpt: "OTHER-USER-SECRET",
+        key: "home_city",
+        kind: "fact",
+        learnedAt: "2026-07-27T15:45:00.000Z",
+        source: "auto",
+        userId: "intruder",
+        value: "OTHER-USER-VALUE"
+      }
+    ]);
+    const beforeMemory = await readFile(file, "utf8");
+    const beforeProvenance = await readFile(provenanceFile, "utf8");
+    const { io, output } = captureOutput();
+    const program = createProgram(io);
+
+    await program.parseAsync(["node", "muse", "memory", "conflicts", "--json"], { from: "node" });
+    const conflicts = JSON.parse(output.join("")) as Array<{
+      actions: { correct: string; forget: string; keep: string };
+      sources: Array<{ sourceId: string }>;
+      target: { exactId: string; version: number };
+    }>;
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]?.sources).toHaveLength(2);
+    expect(conflicts[0]?.actions.keep).toContain(conflicts[0]!.target.exactId);
+    expect(conflicts[0]?.actions.correct).toContain("--expected-version 1");
+    expect(conflicts[0]?.actions.forget).toContain(`--confirm ${conflicts[0]!.target.exactId}`);
+    expect(output.join("")).not.toContain("private-prompt");
+    expect(output.join("")).not.toContain("OTHER-USER");
+    expect(await readFile(file, "utf8")).toBe(beforeMemory);
+    expect(await readFile(provenanceFile, "utf8")).toBe(beforeProvenance);
+
+    output.length = 0;
+    const requestId = "keep-cli-home-city-v1";
+    await program.parseAsync([
+      "node", "muse", "memory", "keep", conflicts[0]!.target.exactId,
+      "--expected-version", "1", "--request-id", requestId, "--json"
+    ], { from: "node" });
+    const receipt = JSON.parse(output.join("")) as { sourceId: string; status: string };
+    expect(receipt).toMatchObject({
+      sourceId: expect.stringMatching(/^bps_v1_[a-f0-9]{32}$/u),
+      status: "applied"
+    });
+    expect((await store.inspectOwnerMemory("owner"))[0]?.version).toBe(2);
+    const afterKeepMemory = await readFile(file, "utf8");
+    const afterKeepProvenance = await readFile(provenanceFile, "utf8");
+
+    output.length = 0;
+    await program.parseAsync([
+      "node", "muse", "memory", "keep", conflicts[0]!.target.exactId,
+      "--expected-version", "1", "--request-id", requestId, "--json"
+    ], { from: "node" });
+    expect(JSON.parse(output.join(""))).toEqual(receipt);
+    expect(await readFile(file, "utf8")).toBe(afterKeepMemory);
+    expect(await readFile(provenanceFile, "utf8")).toBe(afterKeepProvenance);
+
+    output.length = 0;
+    await program.parseAsync(["node", "muse", "memory", "conflicts", "--json"], { from: "node" });
+    expect(JSON.parse(output.join(""))).toEqual([]);
+  });
+
+  it("fails conflict reads and keep closed on excluded provenance without changing bytes", async () => {
+    const store = new FileUserMemoryStore({ file });
+    await store.upsertFact("owner", "home_city", "Busan");
+    const target = (await store.inspectOwnerMemory("owner"))[0]!;
+    const provenanceFile = defaultBeliefProvenanceFile();
+    await new FileBeliefProvenanceStore(provenanceFile).record({
+      key: "seed",
+      kind: "fact",
+      learnedAt: "2026-07-27T14:00:00.000Z",
+      source: "auto",
+      userId: "owner",
+      value: "seed"
+    });
+    await writeFile(provenanceFile, `${JSON.stringify({
+      entries: [{
+        key: "home_city",
+        kind: "fact",
+        learnedAt: "2026-07-27T15:00:00.000Z",
+        source: "invalid",
+        userId: "owner",
+        value: "Seoul"
+      }]
+    }, null, 2)}\n`, { mode: 0o600 });
+    const beforeMemory = await readFile(file, "utf8");
+    const beforeProvenance = await readFile(provenanceFile, "utf8");
+    const { io, output } = captureOutput();
+    const program = createProgram(io);
+
+    await program.parseAsync(["node", "muse", "memory", "conflicts", "--json"], { from: "node" });
+    expect(process.exitCode).toBe(2);
+    expect(output.join("")).toContain("excluded records");
+    expect(await readFile(file, "utf8")).toBe(beforeMemory);
+    expect(await readFile(provenanceFile, "utf8")).toBe(beforeProvenance);
+
+    process.exitCode = undefined;
+    output.length = 0;
+    await program.parseAsync([
+      "node", "muse", "memory", "keep", target.exactId,
+      "--expected-version", "1", "--request-id", "keep-corrupt-authority"
+    ], { from: "node" });
+    expect(process.exitCode).toBe(2);
+    expect(output.join("")).toContain("excluded records");
+    expect(await readFile(file, "utf8")).toBe(beforeMemory);
+    expect(await readFile(provenanceFile, "utf8")).toBe(beforeProvenance);
+  });
+
+  it("fails conflict inspection on corrupt user memory without quarantine or byte changes", async () => {
+    const corrupt = "{not-json\n";
+    await writeFile(file, corrupt, { mode: 0o600 });
+    const directory = join(file, "..");
+    const beforeNames = await readdir(directory);
+    const { io, output } = captureOutput();
+    const program = createProgram(io);
+
+    await program.parseAsync(["node", "muse", "memory", "conflicts", "--json"], { from: "node" });
+
+    expect(process.exitCode).toBe(2);
+    expect(output.join("")).toContain("corrupt-control-state");
+    expect(await readFile(file, "utf8")).toBe(corrupt);
+    expect(await readdir(directory)).toEqual(beforeNames);
+  });
+
+  it("rejects a non-actionable CLI keep without poisoning later owner controls", async () => {
+    const store = new FileUserMemoryStore({ file });
+    await store.upsertFact("owner", "home_city", "Busan");
+    const provenanceFile = defaultBeliefProvenanceFile();
+    await new FileBeliefProvenanceStore(provenanceFile).record({
+      key: "home_city",
+      kind: "fact",
+      learnedAt: "2026-07-27T15:00:00.000Z",
+      source: "user",
+      userId: "owner",
+      value: "Busan"
+    });
+    const target = (await store.inspectOwnerMemory("owner"))[0]!;
+    const beforeMemory = await readFile(file, "utf8");
+    const beforeProvenance = await readFile(provenanceFile, "utf8");
+    const { io, output } = captureOutput();
+    const program = createProgram(io);
+
+    await program.parseAsync([
+      "node", "muse", "memory", "keep", target.exactId,
+      "--expected-version", "1", "--request-id", "keep-not-actionable-cli"
+    ], { from: "node" });
+    expect(process.exitCode).toBe(2);
+    expect(output.join("")).toContain("not an actionable conflict");
+    expect(await readFile(file, "utf8")).toBe(beforeMemory);
+    expect(await readFile(provenanceFile, "utf8")).toBe(beforeProvenance);
+
+    process.exitCode = undefined;
+    output.length = 0;
+    await program.parseAsync([
+      "node", "muse", "memory", "correct", target.exactId, "Incheon",
+      "--expected-version", "1", "--request-id", "correct-after-rejected-cli", "--json"
+    ], { from: "node" });
+    expect(process.exitCode).toBeUndefined();
+    expect((await store.previewOwnerMemory("owner", target.exactId))).toMatchObject({
+      value: "Incheon",
+      version: 2
+    });
   });
 
   it("refuses legacy top-level forget and local set overwrite bypasses", async () => {

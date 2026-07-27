@@ -11,6 +11,7 @@
  * write, tolerant read, corrupt store quarantined aside (never destroyed).
  */
 
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -49,6 +50,13 @@ export interface BeliefProvenance {
    * the user deleted. A later non-retraction event (a deliberate re-`set`) clears it.
    */
   readonly retraction?: boolean;
+  /** Exact, idempotent owner choice made from the actionable conflict view. */
+  readonly ownerResolution?: {
+    readonly action: "keep";
+    readonly exactId: string;
+    readonly expectedVersion: number;
+    readonly requestId: string;
+  };
 }
 
 export interface BeliefProvenanceStore {
@@ -61,6 +69,16 @@ export interface BeliefProvenanceStore {
    */
   recordMany(entries: readonly BeliefProvenance[]): Promise<void>;
   query(userId: string, key?: string): Promise<readonly BeliefProvenance[]>;
+}
+
+export class BeliefProvenanceResolutionError extends Error {
+  readonly code: "invalid-request" | "request-reused";
+
+  constructor(code: "invalid-request" | "request-reused", message: string) {
+    super(message);
+    this.name = "BeliefProvenanceResolutionError";
+    this.code = code;
+  }
 }
 
 export interface BeliefProvenanceSourceSnapshot {
@@ -96,9 +114,144 @@ export interface FactRecallDecision {
     | "auto-values-conflict"
     | "newer-authoritative-value"
     | "active-retraction"
+    | "equal-authority-conflict"
     | "malformed-history"
     | "authority-unavailable";
   readonly state: FactRecallState;
+}
+
+export interface MemoryConflictTarget {
+  readonly exactId: string;
+  readonly key: string;
+  readonly kind: "fact" | "preference";
+  readonly value: string;
+  readonly version: number;
+}
+
+export interface MemoryConflictSource {
+  readonly learnedAt: string;
+  readonly retraction: boolean;
+  readonly sessionId?: string;
+  readonly source: "auto" | "user";
+  readonly sourceId: string;
+  readonly value?: string;
+}
+
+export interface MemoryConflictView {
+  readonly currentPolicy: {
+    readonly eligibility: FactRecallEligibility;
+    readonly policyVersion: typeof FACT_RECALL_LIFECYCLE_POLICY_V1;
+    readonly reason: FactRecallDecision["reason"];
+    readonly sourceId?: string;
+    readonly state: FactRecallState;
+    readonly value?: string;
+  };
+  readonly sources: readonly MemoryConflictSource[];
+  readonly target: MemoryConflictTarget;
+}
+
+/** Stable, content-bound locator for one exact provenance event. */
+export function beliefProvenanceSourceId(entry: BeliefProvenance): string {
+  const digest = createHash("sha256")
+    .update(JSON.stringify([
+      entry.userId,
+      entry.kind,
+      entry.key,
+      entry.value,
+      entry.learnedAt,
+      entry.sessionId ?? null,
+      entry.evidenceExcerpt ?? null,
+      entry.source ?? "auto",
+      entry.retraction === true,
+      entry.ownerResolution ?? null
+    ]))
+    .digest("hex")
+    .slice(0, 32);
+  return `bps_v1_${digest}`;
+}
+
+/**
+ * Read-only actionable conflict projection. It reuses the authoritative recall
+ * reducer and deliberately omits evidence excerpts so a conflict list cannot
+ * become a second raw-prompt disclosure surface.
+ */
+export function projectMemoryConflictViews(
+  userId: string,
+  targets: readonly MemoryConflictTarget[],
+  entries: readonly BeliefProvenance[],
+  opts: { readonly normalizeKey?: (key: string) => string } = {}
+): readonly MemoryConflictView[] {
+  const normalizeKey = opts.normalizeKey ?? ((key: string): string => key);
+  const scopedEntries = entries.filter((entry) => entry.userId === userId);
+  const decisions = projectFactRecallLifecycle(targets, scopedEntries, { normalizeKey });
+  const byIdentity = new Map<string, BeliefProvenance[]>();
+  for (const entry of scopedEntries) {
+    const identity = factRecallIdentity(entry.kind, normalizeKey(entry.key));
+    const group = byIdentity.get(identity) ?? [];
+    group.push(entry);
+    byIdentity.set(identity, group);
+  }
+  const views: MemoryConflictView[] = [];
+  targets.forEach((target, index) => {
+    const decision = decisions[index]!;
+    const group = byIdentity.get(factRecallIdentity(target.kind, normalizeKey(target.key))) ?? [];
+    const distinctValues = new Set(
+      group
+        .filter((entry) => entry.retraction !== true)
+        .map((entry) => canonicalFactRecallValue(entry.value))
+    );
+    if (decision.state === "active" || (distinctValues.size < 2 && decision.state !== "deleted")) return;
+    const sources = [...group]
+      .sort(compareConflictSources)
+      .map((entry): MemoryConflictSource => Object.freeze({
+        learnedAt: entry.learnedAt,
+        retraction: entry.retraction === true,
+        ...(entry.sessionId ? { sessionId: entry.sessionId } : {}),
+        source: entry.source ?? "auto",
+        sourceId: beliefProvenanceSourceId(entry),
+        ...(entry.retraction === true ? {} : { value: entry.value })
+      }));
+    const authoritative = decision.reason === "newer-authoritative-value"
+      ? authoritativeConflictEntry(group)
+      : undefined;
+    views.push(Object.freeze({
+      currentPolicy: Object.freeze({
+        eligibility: decision.eligibility,
+        policyVersion: decision.policyVersion,
+        reason: decision.reason,
+        ...(authoritative ? { sourceId: beliefProvenanceSourceId(authoritative) } : {}),
+        state: decision.state,
+        ...(decision.state === "deleted" || decision.reason === "equal-authority-conflict"
+          ? {}
+          : { value: authoritative?.value ?? target.value })
+      }),
+      sources: Object.freeze(sources),
+      target: Object.freeze({ ...target })
+    }));
+  });
+  return Object.freeze(views.sort((left, right) =>
+    left.target.kind.localeCompare(right.target.kind)
+    || left.target.key.localeCompare(right.target.key)
+    || left.target.exactId.localeCompare(right.target.exactId)
+  ));
+}
+
+function compareConflictSources(left: BeliefProvenance, right: BeliefProvenance): number {
+  const leftTime = Date.parse(left.learnedAt);
+  const rightTime = Date.parse(right.learnedAt);
+  if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+    return leftTime - rightTime;
+  }
+  return beliefProvenanceSourceId(left).localeCompare(beliefProvenanceSourceId(right));
+}
+
+function authoritativeConflictEntry(group: readonly BeliefProvenance[]): BeliefProvenance | undefined {
+  const ordered = group
+    .filter((entry) => Number.isFinite(Date.parse(entry.learnedAt)))
+    .sort(compareConflictSources);
+  return [...ordered].reverse().find((entry) =>
+    entry.retraction !== true && entry.source === "user"
+  ) ?? [...ordered].reverse().find((entry) => entry.retraction !== true);
 }
 
 /** Exact inspection for a status read model; supports encrypted stores without quarantine or rewrite. */
@@ -282,9 +435,27 @@ export function projectFactRecallLifecycle(
     const latestExplicitUser = [...ordered].reverse().find(({ entry }) =>
       entry.retraction !== true && entry.source === "user"
     );
+    const latestExplicitTimestamp = latestExplicitUser?.timestamp;
+    if (latestExplicitTimestamp !== undefined) {
+      const tiedExplicitValues = new Set(ordered
+        .filter(({ entry, timestamp }) =>
+          timestamp === latestExplicitTimestamp
+          && entry.retraction !== true
+          && entry.source === "user"
+        )
+        .map(({ entry }) => canonicalFactRecallValue(entry.value)));
+      if (tiedExplicitValues.size > 1) {
+        return freezeFactRecallDecision(
+          candidate,
+          "disputed",
+          "uncertain",
+          "equal-authority-conflict"
+        );
+      }
+    }
     if (
       latestRetraction
-      && (!latestExplicitUser || compareFactRecallEvents(latestExplicitUser, latestRetraction) <= 0)
+      && (!latestExplicitUser || latestExplicitUser.timestamp <= latestRetraction.timestamp)
     ) {
       return freezeFactRecallDecision(candidate, "deleted", "ineligible", "active-retraction");
     }
@@ -294,13 +465,12 @@ export function projectFactRecallLifecycle(
     if (!authoritative) {
       return freezeFactRecallDecision(candidate, "deleted", "ineligible", "active-retraction");
     }
-    if (canonicalFactRecallValue(candidate.value) !== canonicalFactRecallValue(authoritative.entry.value)) {
-      return freezeFactRecallDecision(candidate, "superseded", "ineligible", "newer-authoritative-value");
-    }
-
     const distinctValues = new Set(nonRetractions.map(({ entry }) => canonicalFactRecallValue(entry.value)));
     if (!latestExplicitUser && distinctValues.size > 1) {
       return freezeFactRecallDecision(candidate, "disputed", "uncertain", "auto-values-conflict");
+    }
+    if (canonicalFactRecallValue(candidate.value) !== canonicalFactRecallValue(authoritative.entry.value)) {
+      return freezeFactRecallDecision(candidate, "superseded", "ineligible", "newer-authoritative-value");
     }
     return latestExplicitUser
       ? freezeFactRecallDecision(candidate, "active", "eligible", "explicit-user-current")
@@ -844,12 +1014,100 @@ export class FileBeliefProvenanceStore implements BeliefProvenanceStore {
     return [...scoped].sort(compareNewestFirst);
   }
 
+  async recordOwnerKeepResolution(input: {
+    readonly createdAt: string;
+    readonly exactId: string;
+    readonly expectedVersion: number;
+    readonly key: string;
+    readonly kind: "fact" | "preference";
+    readonly requestId: string;
+    readonly userId: string;
+    readonly value: string;
+  }): Promise<BeliefProvenance> {
+    if (
+      !/^mem_v1_[a-f0-9]{32}$/u.test(input.exactId)
+      || !Number.isSafeInteger(input.expectedVersion)
+      || input.expectedVersion < 1
+      || input.requestId.trim().length < 8
+      || input.requestId.length > 128
+      || /[\u0000-\u001f\u007f]/u.test(input.requestId)
+      || !Number.isFinite(Date.parse(input.createdAt))
+    ) {
+      throw new BeliefProvenanceResolutionError("invalid-request", "invalid owner keep resolution");
+    }
+    return this.serializeWrite(async () => {
+      const inspection = await inspectBeliefProvenanceSource(this.file, this.env);
+      const existing = inspection.result === "absent"
+        ? []
+        : inspection.result === "available" && inspection.value.excludedCount === 0
+          ? inspection.value.entries
+          : undefined;
+      if (!existing) {
+        throw new BeliefProvenanceResolutionError(
+          "invalid-request",
+          "belief provenance authority is unreadable or contains excluded records"
+        );
+      }
+      const replay = existing.find((entry) =>
+        entry.userId === input.userId
+        && entry.ownerResolution?.requestId === input.requestId
+      );
+      if (replay) {
+        const resolution = replay.ownerResolution!;
+        if (
+          replay.key !== input.key
+          || replay.kind !== input.kind
+          || replay.value !== input.value
+          || resolution.action !== "keep"
+          || resolution.exactId !== input.exactId
+          || resolution.expectedVersion !== input.expectedVersion
+        ) {
+          throw new BeliefProvenanceResolutionError(
+            "request-reused",
+            "keep request ID was already used for a different memory target or value"
+          );
+        }
+        return replay;
+      }
+      const entry: BeliefProvenance = {
+        key: input.key,
+        kind: input.kind,
+        learnedAt: input.createdAt,
+        ownerResolution: {
+          action: "keep",
+          exactId: input.exactId,
+          expectedVersion: input.expectedVersion,
+          requestId: input.requestId
+        },
+        source: "user",
+        userId: input.userId,
+        value: input.value
+      };
+      const next = [...existing, entry].slice(-MAX_BELIEF_PROVENANCE_ENTRIES);
+      await writeBeliefProvenance(this.file, next, this.env);
+      return entry;
+    });
+  }
+
   private async serializeWrite<T>(operation: () => Promise<T>): Promise<T> {
     return withFileMutationQueue(this.file, () => withFileLock(this.file, operation));
   }
 }
 
 function provenanceEventIdentity(entry: BeliefProvenance): string {
+  if (entry.ownerResolution) {
+    return JSON.stringify([
+      "owner-resolution",
+      entry.userId,
+      entry.key,
+      entry.kind,
+      entry.value,
+      entry.ownerResolution.action,
+      entry.ownerResolution.exactId,
+      entry.ownerResolution.expectedVersion,
+      entry.ownerResolution.requestId
+    ]);
+  }
   return JSON.stringify([
     entry.userId,
     entry.key,
@@ -859,7 +1117,8 @@ function provenanceEventIdentity(entry: BeliefProvenance): string {
     entry.sessionId ?? null,
     entry.evidenceExcerpt ?? null,
     entry.source ?? null,
-    entry.retraction ?? false
+    entry.retraction ?? false,
+    null
   ]);
 }
 
@@ -870,10 +1129,28 @@ function isBeliefProvenance(value: unknown): value is BeliefProvenance {
   if (typeof e.key !== "string" || e.key.length === 0) return false;
   if (e.kind !== "fact" && e.kind !== "preference") return false;
   if (typeof e.value !== "string") return false;
-  if (typeof e.learnedAt !== "string" || e.learnedAt.length === 0) return false;
+  if (
+    typeof e.learnedAt !== "string"
+    || e.learnedAt.length === 0
+    || !Number.isFinite(Date.parse(e.learnedAt))
+  ) return false;
   if (e.sessionId !== undefined && typeof e.sessionId !== "string") return false;
   if (e.evidenceExcerpt !== undefined && typeof e.evidenceExcerpt !== "string") return false;
   if (e.source !== undefined && e.source !== "auto" && e.source !== "user") return false;
   if (e.retraction !== undefined && typeof e.retraction !== "boolean") return false;
+  if (e.ownerResolution !== undefined) {
+    const resolution = e.ownerResolution;
+    if (!resolution || typeof resolution !== "object") return false;
+    if (resolution.action !== "keep") return false;
+    if (!/^mem_v1_[a-f0-9]{32}$/u.test(resolution.exactId)) return false;
+    if (!Number.isSafeInteger(resolution.expectedVersion) || resolution.expectedVersion < 1) return false;
+    if (
+      typeof resolution.requestId !== "string"
+      || resolution.requestId.trim().length < 8
+      || resolution.requestId.length > 128
+      || /[\u0000-\u001f\u007f]/u.test(resolution.requestId)
+    ) return false;
+    if (e.source !== "user" || e.retraction === true) return false;
+  }
   return true;
 }

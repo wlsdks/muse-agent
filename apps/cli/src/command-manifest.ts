@@ -545,6 +545,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "subcommands": [
       "clear",
       "consolidate",
+      "conflicts",
       "correct",
       "decrypt",
       "diff",
@@ -553,6 +554,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "forget",
       "history",
       "inspect",
+      "keep",
       "preview",
       "promote",
       "search",

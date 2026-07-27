@@ -21,7 +21,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isErrorLike, isRecord, withFileLock as withSharedFileLock, withFileMutationQueue } from "@muse/shared";
+import { inspectReadOnlyJsonSource, isErrorLike, isRecord, withFileLock as withSharedFileLock, withFileMutationQueue } from "@muse/shared";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
 import {
@@ -58,6 +58,8 @@ export interface FileUserMemoryStoreOptions {
 }
 
 export const USER_MEMORY_MUTATION_RECEIPT_SCHEMA = "muse.user-memory-mutation-receipt/v1" as const;
+export const USER_MEMORY_KEEP_RECEIPT_SCHEMA = "muse.user-memory-keep-receipt/v1" as const;
+export const MAX_USER_MEMORY_KEEP_RECEIPTS = 256;
 export const DEFAULT_USER_MEMORY_UNDO_TTL_MS = 24 * 60 * 60 * 1_000;
 export const MAX_USER_MEMORY_UNDO_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 export const MAX_USER_MEMORY_MUTATION_RECEIPTS = 256;
@@ -112,6 +114,42 @@ export interface UserMemoryMutationReceipt {
   readonly undoScope: "exact-memory-entry-only";
 }
 
+export interface UserMemoryKeepReceipt {
+  readonly action: "keep";
+  readonly afterVersion: number;
+  readonly beforeVersion: number;
+  readonly createdAt: string;
+  readonly policyEffect: "explicit-user-current";
+  readonly requestId: string;
+  readonly schemaVersion: typeof USER_MEMORY_KEEP_RECEIPT_SCHEMA;
+  readonly sourceId?: string;
+  readonly status: "pending" | "applied";
+  readonly target: ExactUserMemoryEntry;
+}
+
+export interface UserMemoryKeepResolutionContext {
+  readonly beforeVersion: number;
+  readonly createdAt: string;
+  readonly requestId: string;
+  readonly target: ExactUserMemoryEntry;
+  readonly userId: string;
+}
+
+export interface UserMemoryKeepCoordinator {
+  /**
+   * Confirm that this exact target is currently actionable. Runs under the
+   * user-memory mutation lock before any receipt or version is persisted.
+   */
+  validate(context: Omit<UserMemoryKeepResolutionContext, "createdAt">): Promise<void>;
+  /**
+   * Persist the explicit owner resolution. A failed write leaves the already
+   * validated pending receipt retryable; replay does not repeat validation.
+   */
+  record(
+    context: UserMemoryKeepResolutionContext
+  ): Promise<{ readonly createdAt: string; readonly sourceId: string }>;
+}
+
 export class UserMemoryOwnerControlError extends Error {
   readonly code: UserMemoryOwnerControlErrorCode;
 
@@ -132,6 +170,7 @@ export function exactUserMemoryId(userId: string, kind: UserMemoryEntryKind, key
 
 type StoredOwnerControl = {
   readonly entryVersions: Record<string, number>;
+  readonly keepReceipts: readonly UserMemoryKeepReceipt[];
   readonly mutationReceipts: readonly UserMemoryMutationReceipt[];
   readonly schemaVersion: 1;
 };
@@ -176,7 +215,7 @@ function emptyFile(): StoredFile {
 }
 
 function emptyOwnerControl(): StoredOwnerControl {
-  return { entryVersions: {}, mutationReceipts: [], schemaVersion: 1 };
+  return { entryVersions: {}, keepReceipts: [], mutationReceipts: [], schemaVersion: 1 };
 }
 
 function isPositiveSafeInteger(value: unknown): value is number {
@@ -230,6 +269,33 @@ function isMutationReceipt(value: unknown): value is UserMemoryMutationReceipt {
     && Number.isFinite(Date.parse(value.undo.undoneAt));
 }
 
+function isKeepReceipt(value: unknown): value is UserMemoryKeepReceipt {
+  if (!isRecord(value) || !isRecord(value.target)) return false;
+  const status = value.status;
+  return value.schemaVersion === USER_MEMORY_KEEP_RECEIPT_SCHEMA
+    && value.action === "keep"
+    && (status === "pending" || status === "applied")
+    && typeof value.requestId === "string"
+    && value.requestId.trim().length >= 8
+    && value.requestId.length <= 200
+    && typeof value.createdAt === "string"
+    && Number.isFinite(Date.parse(value.createdAt))
+    && value.policyEffect === "explicit-user-current"
+    && isPositiveSafeInteger(value.beforeVersion)
+    && isPositiveSafeInteger(value.afterVersion)
+    && value.afterVersion === value.beforeVersion + 1
+    && typeof value.target.exactId === "string"
+    && /^mem_v1_[a-f0-9]{32}$/u.test(value.target.exactId)
+    && typeof value.target.key === "string"
+    && value.target.key.length > 0
+    && (value.target.kind === "fact" || value.target.kind === "preference")
+    && typeof value.target.value === "string"
+    && value.target.version === value.afterVersion
+    && (status === "pending"
+      ? value.sourceId === undefined
+      : typeof value.sourceId === "string" && /^bps_v1_[a-f0-9]{32}$/u.test(value.sourceId));
+}
+
 function parseOwnerControl(value: unknown): StoredOwnerControl {
   if (value === undefined) {
     return emptyOwnerControl();
@@ -238,6 +304,7 @@ function parseOwnerControl(value: unknown): StoredOwnerControl {
     !isRecord(value)
     || value.schemaVersion !== 1
     || !isRecord(value.entryVersions)
+    || (value.keepReceipts !== undefined && !Array.isArray(value.keepReceipts))
     || !Array.isArray(value.mutationReceipts)
   ) {
     throw new UserMemoryOwnerControlError(
@@ -261,8 +328,18 @@ function parseOwnerControl(value: unknown): StoredOwnerControl {
       );
     }
   }
+  const keepReceipts = value.keepReceipts ?? [];
+  for (const receipt of keepReceipts) {
+    if (!isKeepReceipt(receipt)) {
+      throw new UserMemoryOwnerControlError(
+        "corrupt-control-state",
+        "user-memory keep receipt is corrupt; refusing mutation"
+      );
+    }
+  }
   return {
     entryVersions: { ...value.entryVersions } as Record<string, number>,
+    keepReceipts: keepReceipts.map((receipt) => structuredClone(receipt)),
     mutationReceipts: value.mutationReceipts.map((receipt) => structuredClone(receipt)),
     schemaVersion: 1
   };
@@ -303,7 +380,28 @@ function ownerControlForUser(value: unknown, userId: string): StoredOwnerControl
       );
     }
   }
+  for (const receipt of control.keepReceipts) {
+    const expectedExactId = exactUserMemoryId(userId, receipt.target.kind, receipt.target.key);
+    if (
+      receipt.target.exactId !== expectedExactId
+      || (control.entryVersions[receipt.target.exactId] ?? 1) < receipt.afterVersion
+    ) {
+      throw new UserMemoryOwnerControlError(
+        "corrupt-control-state",
+        "user-memory keep receipt is not bound to its exact user, target, and version"
+      );
+    }
+  }
   return control;
+}
+
+function assertNoPendingKeep(control: StoredOwnerControl): void {
+  if (control.keepReceipts.some((receipt) => receipt.status === "pending")) {
+    throw new UserMemoryOwnerControlError(
+      "conflict",
+      "a prior memory keep is pending provenance delivery; retry that request before another mutation"
+    );
+  }
 }
 
 function entryValue(memory: UserMemory, kind: UserMemoryEntryKind, key: string): string | undefined {
@@ -557,18 +655,17 @@ export class FileUserMemoryStore implements UserMemoryStore {
    * target; display keys and values are deliberately never resolved fuzzily.
    */
   async inspectOwnerMemory(userId: string): Promise<readonly ExactUserMemoryEntry[]> {
-    const { file: data } = await this.read();
-    const stored = data.users[userId];
-    if (!stored) return [];
+    const inspected = await this.inspectOwnerSource(userId);
+    if (!inspected) return [];
+    const { control, stored } = inspected;
     const memory = { ...storedToMemory(stored), userId };
-    return ownerEntries(memory, ownerControlForUser(stored.ownerControl, userId));
+    return ownerEntries(memory, control);
   }
 
   /** Read-only exact-target preview. This does not create a receipt or version. */
   async previewOwnerMemory(userId: string, exactId: string): Promise<ExactUserMemoryEntry> {
-    const { file: data } = await this.read();
-    const stored = data.users[userId];
-    if (!stored) {
+    const inspected = await this.inspectOwnerSource(userId);
+    if (!inspected) {
       if (!/^mem_v1_[a-f0-9]{32}$/u.test(exactId)) {
         throw new UserMemoryOwnerControlError(
           "exact-id-required",
@@ -578,8 +675,8 @@ export class FileUserMemoryStore implements UserMemoryStore {
       throw new UserMemoryOwnerControlError("not-found", "exact memory entry was not found");
     }
     return requireExactEntry(
-      { ...storedToMemory(stored), userId },
-      ownerControlForUser(stored.ownerControl, userId),
+      { ...storedToMemory(inspected.stored), userId },
+      inspected.control,
       exactId
     );
   }
@@ -619,6 +716,180 @@ export class FileUserMemoryStore implements UserMemoryStore {
     return this.mutateOwnerMemory(userId, { ...input, operation: "forget" });
   }
 
+  /**
+   * Validate an exact keep choice while holding the same lock used by
+   * correction and forgetting. The injected provenance append therefore
+   * cannot race a stale target/version into policy authority.
+   */
+  async keepOwnerMemory(
+    userId: string,
+    input: {
+      readonly exactId: string;
+      readonly expectedVersion: number;
+      readonly requestId: string;
+    },
+    coordinator: UserMemoryKeepCoordinator
+  ): Promise<UserMemoryKeepReceipt> {
+    validateMutationInput(input);
+    if (input.requestId.length > 128 || /[\u0000-\u001f\u007f]/u.test(input.requestId)) {
+      throw new UserMemoryOwnerControlError(
+        "invalid-request",
+        "keep request ID must be 8-128 printable characters"
+      );
+    }
+    return this.serializeWrite(async () => this.withFileLock(async () => {
+      const { file: data, encrypted, raw } = await this.read();
+      const stored = data.users[userId];
+      if (!stored) {
+        if (!/^mem_v1_[a-f0-9]{32}$/u.test(input.exactId)) {
+          throw new UserMemoryOwnerControlError("exact-id-required", "memory keep requires an exact ID");
+        }
+        throw new UserMemoryOwnerControlError("not-found", "exact memory entry was not found");
+      }
+      const control = ownerControlForUser(stored.ownerControl, userId);
+      const replay = control.keepReceipts.find((receipt) => receipt.requestId === input.requestId);
+      if (replay) {
+        if (
+          replay.target.exactId !== input.exactId
+          || replay.beforeVersion !== input.expectedVersion
+        ) {
+          throw new UserMemoryOwnerControlError(
+            "request-reused",
+            "keep request ID was already used for a different memory target or version"
+          );
+        }
+        if (replay.status === "applied") return structuredClone(replay);
+        const persisted = await coordinator.record({
+          beforeVersion: replay.beforeVersion,
+          createdAt: replay.createdAt,
+          requestId: replay.requestId,
+          target: replay.target,
+          userId
+        });
+        if (
+          !/^bps_v1_[a-f0-9]{32}$/u.test(persisted.sourceId)
+          || !Number.isFinite(Date.parse(persisted.createdAt))
+        ) {
+          throw new UserMemoryOwnerControlError(
+            "corrupt-control-state",
+            "keep provenance writer returned an invalid source receipt"
+          );
+        }
+        const applied: UserMemoryKeepReceipt = {
+          ...replay,
+          createdAt: persisted.createdAt,
+          sourceId: persisted.sourceId,
+          status: "applied"
+        };
+        const ownerControl: StoredOwnerControl = {
+          ...control,
+          keepReceipts: control.keepReceipts.map((receipt) =>
+            receipt.requestId === replay.requestId ? applied : receipt
+          )
+        };
+        await this.write(
+          { ...data, users: { ...data.users, [userId]: { ...stored, ownerControl } } },
+          encrypted,
+          { raw }
+        );
+        return structuredClone(applied);
+      }
+      assertNoPendingKeep(control);
+      if (control.keepReceipts.length >= MAX_USER_MEMORY_KEEP_RECEIPTS) {
+        throw new UserMemoryOwnerControlError("receipt-capacity", "memory keep receipt capacity reached");
+      }
+      const target = requireExactEntry(
+        { ...storedToMemory(stored), userId },
+        control,
+        input.exactId
+      );
+      if (target.version !== input.expectedVersion) {
+        throw new UserMemoryOwnerControlError(
+          "conflict",
+          `memory version changed: expected ${input.expectedVersion.toString()}, current ${target.version.toString()}`
+        );
+      }
+      await coordinator.validate({
+        beforeVersion: target.version,
+        requestId: input.requestId,
+        target,
+        userId
+      });
+      const createdAt = this.now().toISOString();
+      const afterVersion = target.version + 1;
+      const pending: UserMemoryKeepReceipt = {
+        action: "keep",
+        afterVersion,
+        beforeVersion: target.version,
+        createdAt,
+        policyEffect: "explicit-user-current",
+        requestId: input.requestId,
+        schemaVersion: USER_MEMORY_KEEP_RECEIPT_SCHEMA,
+        status: "pending",
+        target: { ...target, version: afterVersion }
+      };
+      const pendingControl: StoredOwnerControl = {
+        ...control,
+        entryVersions: { ...control.entryVersions, [target.exactId]: afterVersion },
+        keepReceipts: [...control.keepReceipts, pending]
+      };
+      await this.write(
+        {
+          ...data,
+          users: {
+            ...data.users,
+            [userId]: { ...stored, updatedAt: createdAt, ownerControl: pendingControl }
+          }
+        },
+        encrypted,
+        { raw }
+      );
+      const persisted = await coordinator.record({
+        beforeVersion: target.version,
+        createdAt,
+        requestId: input.requestId,
+        target: pending.target,
+        userId
+      });
+      if (
+        !/^bps_v1_[a-f0-9]{32}$/u.test(persisted.sourceId)
+        || !Number.isFinite(Date.parse(persisted.createdAt))
+      ) {
+        throw new UserMemoryOwnerControlError(
+          "corrupt-control-state",
+          "keep provenance writer returned an invalid source receipt"
+        );
+      }
+      const applied: UserMemoryKeepReceipt = {
+        ...pending,
+        createdAt: persisted.createdAt,
+        sourceId: persisted.sourceId,
+        status: "applied"
+      };
+      const current = await this.read();
+      const currentStored = current.file.users[userId];
+      if (!currentStored) {
+        throw new UserMemoryOwnerControlError("corrupt-control-state", "pending keep state disappeared");
+      }
+      const currentControl = ownerControlForUser(currentStored.ownerControl, userId);
+      const ownerControl: StoredOwnerControl = {
+        ...currentControl,
+        keepReceipts: currentControl.keepReceipts.map((receipt) =>
+          receipt.requestId === input.requestId ? applied : receipt
+        )
+      };
+      await this.write(
+        {
+          ...current.file,
+          users: { ...current.file.users, [userId]: { ...currentStored, ownerControl } }
+        },
+        current.encrypted,
+        { raw: current.raw }
+      );
+      return structuredClone(applied);
+    }));
+  }
+
   async undoOwnerMemory(userId: string, receiptId: string): Promise<UserMemoryMutationReceipt> {
     if (!/^memr_v1_[a-f0-9]{32}$/u.test(receiptId)) {
       throw new UserMemoryOwnerControlError("not-found", "memory mutation receipt was not found");
@@ -630,6 +901,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
         throw new UserMemoryOwnerControlError("not-found", "memory mutation receipt was not found");
       }
       const control = ownerControlForUser(stored.ownerControl, userId);
+      assertNoPendingKeep(control);
       const index = control.mutationReceipts.findIndex((receipt) => receipt.receiptId === receiptId);
       if (index < 0) {
         throw new UserMemoryOwnerControlError("not-found", "memory mutation receipt was not found");
@@ -792,9 +1064,11 @@ export class FileUserMemoryStore implements UserMemoryStore {
   async deleteByUserId(userId: string): Promise<boolean> {
     return this.serializeWrite(async () => this.withFileLock(async () => {
       const { file: data, encrypted, raw } = await this.read();
-      if (!data.users[userId]) {
+      const stored = data.users[userId];
+      if (!stored) {
         return false;
       }
+      assertNoPendingKeep(ownerControlForUser(stored.ownerControl, userId));
       const { [userId]: _dropped, ...rest } = data.users;
       await this.write({ ...data, users: rest }, encrypted, { raw });
       return true;
@@ -821,12 +1095,14 @@ export class FileUserMemoryStore implements UserMemoryStore {
               updatedAt: this.now(),
               userId
             };
+      const existingControl = ownerControlForUser((existingStored ?? legacy)?.ownerControl, userId);
+      assertNoPendingKeep(existingControl);
       const mutation = mutator(baseline);
       if (!mutation) {
         return structuredClone(baseline);
       }
       const updated: UserMemory = { ...mutation, updatedAt: this.now() };
-      let ownerControl = ownerControlForUser((existingStored ?? legacy)?.ownerControl, userId);
+      let ownerControl = existingControl;
       const entryVersions = { ...ownerControl.entryVersions };
       for (const kind of ["fact", "preference"] as const) {
         const before = kind === "fact" ? baseline.facts : baseline.preferences;
@@ -910,6 +1186,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
       const control = ownerControlForUser(stored.ownerControl, userId);
       const prior = replayReceipt(control, input);
       if (prior) return prior;
+      assertNoPendingKeep(control);
       const entry = requireExactEntry(memory, control, input.exactId);
       if (entry.version !== input.expectedVersion) {
         throw new UserMemoryOwnerControlError(
@@ -1007,6 +1284,53 @@ export class FileUserMemoryStore implements UserMemoryStore {
 
   private async serializeWrite<T>(fn: () => Promise<T>): Promise<T> {
     return withFileMutationQueue(this.file, fn);
+  }
+
+  /**
+   * Strict owner-control inspection. Unlike the tolerant runtime read path,
+   * this never quarantines, repairs, renames, chmods, or rewrites the source.
+   */
+  private async inspectOwnerSource(
+    userId: string
+  ): Promise<{ readonly control: StoredOwnerControl; readonly stored: StoredMemory } | undefined> {
+    const inspection = await inspectReadOnlyJsonSource(this.file, (outer) => {
+      let parsed = outer;
+      if (isEncryptedMemoryEnvelope(parsed)) {
+        parsed = JSON.parse(decryptMemoryEnvelope(parsed, this.env)) as unknown;
+      }
+      if (!isRecord(parsed) || parsed.version !== 1 || !isRecord(parsed.users)) {
+        return undefined;
+      }
+      const candidate = parsed.users[userId];
+      if (candidate === undefined) return { present: false as const };
+      if (
+        !isRecord(candidate)
+        || !isRecord(candidate.facts)
+        || !isRecord(candidate.preferences)
+        || Object.values(candidate.facts).some((value) => typeof value !== "string")
+        || Object.values(candidate.preferences).some((value) => typeof value !== "string")
+      ) {
+        return undefined;
+      }
+      const stored = candidate as StoredMemory;
+      return {
+        control: ownerControlForUser(stored.ownerControl, userId),
+        present: true as const,
+        stored
+      };
+    });
+    if (inspection.result === "absent") return undefined;
+    if (inspection.result !== "available") {
+      throw new UserMemoryOwnerControlError(
+        "corrupt-control-state",
+        `user-memory source is ${inspection.result} (${inspection.errorCode}); refusing owner-control inspection`
+      );
+    }
+    if (!inspection.value.present) return undefined;
+    return {
+      control: inspection.value.control,
+      stored: inspection.value.stored
+    };
   }
 
   // Returns the parsed file AND whether it was encrypted at rest, so a write can
