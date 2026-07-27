@@ -4,10 +4,10 @@
 
 | Model | Ordinary confident + correct | Absent abstention | Correction pair retained | Correction current top-1 |
 | --- | ---: | ---: | ---: | ---: |
-| nomic-embed-text | 17/20 | 10/20 | 0/20 | 0/20 |
-| nomic-embed-text-v2-moe | 19/20 | 20/20 | 0/20 | 0/20 |
-| embeddinggemma | 18/20 | 20/20 | 1/20 | 0/20 |
-| qwen3-embedding:0.6b | 19/20 | 20/20 | 1/20 | 0/20 |
+| nomic-embed-text | 17/20 | 10/20 | 4/20 | 4/20 |
+| nomic-embed-text-v2-moe | 19/20 | 20/20 | 4/20 | 3/20 |
+| embeddinggemma | 18/20 | 20/20 | 5/20 | 3/20 |
+| qwen3-embedding:0.6b | 19/20 | 20/20 | 5/20 | 4/20 |
 
 Production configuration: CLI default `topK=3`, `refineChunks=true`, real note files, v2 JSON + Float32 sidecar, two identical-condition trials per model.
 

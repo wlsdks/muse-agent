@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -64,6 +64,20 @@ export async function runtimeSourceProvenance() {
 }
 function safeModelName(model) { return model.replaceAll(/[^a-z0-9.-]/giu, "_"); }
 function sourceFilename(source) { return `${source.replaceAll(":", "__")}.md`; }
+export function resolveDeclaredEmbeddingSidecarPath(indexPath, metadata) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) throw new Error("production v2 index metadata missing");
+  const { embeddingFile, embeddingSha256 } = metadata;
+  const stem = basename(indexPath).replace(/\.json$/u, "");
+  if (
+    typeof embeddingFile !== "string"
+    || typeof embeddingSha256 !== "string"
+    || !/^[0-9a-f]{64}$/u.test(embeddingSha256)
+    || isAbsolute(embeddingFile)
+    || basename(embeddingFile) !== embeddingFile
+    || embeddingFile !== `${stem}.embeddings.${embeddingSha256}.bin`
+  ) throw new Error("production v2 index embedding pointer invalid");
+  return join(dirname(indexPath), embeddingFile);
+}
 function scrubbedEnv(baseUrl, home) {
   return {
     HOME: home,
@@ -325,7 +339,7 @@ export async function validateArtifacts(paths = trackedPaths) {
 }
 
 export async function createProductionFixture({ embed, home, modelTag }) {
-  const { embeddingsSidecarPath, loadIndex, prepareGroundedRecall, reindexNotes } = await import("../packages/recall/dist/index.js");
+  const { loadIndex, prepareGroundedRecall, reindexNotes } = await import("../packages/recall/dist/index.js");
   const notesDir = join(home, ".muse", "notes");
   const indexPath = join(home, ".muse", "notes-index.json");
   await mkdir(notesDir, { recursive: true });
@@ -341,8 +355,9 @@ export async function createProductionFixture({ embed, home, modelTag }) {
   };
   const summary = await reindexNotes({ dir: notesDir, fetchImpl, force: true, indexPath, model: modelTag });
   const loaded = await loadIndex(indexPath);
-  const sidecar = await stat(embeddingsSidecarPath(indexPath));
   if (!loaded || summary.failed !== 0 || summary.embedded !== 60 || loaded.files.length !== 60) throw new Error("production v2 index creation failed");
+  const metadata = JSON.parse(await readFile(indexPath, "utf8"));
+  const sidecar = await stat(resolveDeclaredEmbeddingSidecarPath(indexPath, metadata));
   const firstEmbedding = loaded.files[0]?.chunks[0]?.embedding;
   if (!firstEmbedding || firstEmbedding.length === 0) throw new Error("production v2 index has no embeddings");
   return {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,10 +9,12 @@ import {
   TRIAL_SCHEMA_VERSION,
   aggregateProductionModel,
   buildProductionResult,
+  createProductionFixture,
   executeProductionTrial,
   renderCsv,
   renderMarkdown,
   renderSvg,
+  resolveDeclaredEmbeddingSidecarPath,
   runtimeSourceProvenance,
   scoreProductionCase,
   validateArtifacts,
@@ -26,6 +28,27 @@ test.after(async () => Promise.all(roots.map((root) => rm(root, { recursive: tru
 const scored = (...sources) => ({
   scored: sources.map((source) => ({ file: source })),
   verdict: "confident"
+});
+
+test("production fixture follows the committed content-addressed embedding generation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "muse-production-fixture-test-")); roots.push(root);
+  const fixture = await createProductionFixture({
+    embed: async () => [1, 0, 0],
+    home: root,
+    modelTag: "fixed-test-embedder"
+  });
+  const indexPath = join(root, ".muse", "notes-index.json");
+  const metadata = JSON.parse(await readFile(indexPath, "utf8"));
+  const declaredPath = resolveDeclaredEmbeddingSidecarPath(indexPath, metadata);
+
+  assert.match(metadata.embeddingFile, /^notes-index\.embeddings\.[0-9a-f]{64}\.bin$/u);
+  assert.equal((await stat(declaredPath)).size, 60 * 3 * Float32Array.BYTES_PER_ELEMENT);
+  assert.equal(fixture.index.sidecarBytes, 60 * 3 * Float32Array.BYTES_PER_ELEMENT);
+  await assert.rejects(stat(join(root, ".muse", "notes-index.embeddings.bin")), { code: "ENOENT" });
+  assert.throws(
+    () => resolveDeclaredEmbeddingSidecarPath(indexPath, { ...metadata, embeddingFile: "../notes-index.embeddings.bin" }),
+    /embedding pointer invalid/u
+  );
 });
 
 test("one trial sends all frozen cases through the production prepare seam with CLI defaults", async () => {
