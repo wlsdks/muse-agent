@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIRequestContext } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
@@ -10,10 +10,11 @@ const stateRoot = resolve(requiredEnvironment("MUSE_PERSONAL_AGENT_STATE_ROOT"))
 const embedTrafficFile = resolve(requiredEnvironment("MUSE_PERSONAL_AGENT_EMBED_TRAFFIC_FILE"));
 const embedModel = requiredEnvironment("MUSE_EMBED_MODEL");
 const noteName = "fixture-proof.md";
-const noteContent = "# Personal-agent fixture\n\nThe exact local launch code is ORCHID-742.";
+const noteContent = "The exact local launch code is ORCHID-742.";
 const groundedPrompt = `The exact local launch code is ORCHID-742 [from ${noteName}].`;
+const threadTitle = "Resume the fixture launch";
 
-test("persisted local note yields a citation-gated answer whose source opens the exact note", async ({
+test("persisted note grounds Ask and an explicit Continuity Pack records one confirmed outcome", async ({
   page,
   request
 }) => {
@@ -103,8 +104,211 @@ test("persisted local note yields a citation-gated answer whose source opens the
   await sourceChip.click();
   await expect(page.locator(".note-row.active").getByText(noteName, { exact: true })).toBeVisible();
   await expect(page.locator(".note-content")).toHaveText(noteContent);
+
+  await page.getByRole("button", { exact: true, name: "Continuity" }).click();
+  await expect(page.getByRole("heading", { exact: true, name: "Continuity review" })).toBeVisible();
+  await page.getByPlaceholder("What do you want to resume?").fill(threadTitle);
+  await page.getByRole("main").getByRole("button", { exact: true, name: "Work" }).click();
+  await page.getByRole("button", { exact: true, name: "Start thread" }).click();
+
+  const threadCard = page.locator(".card").filter({
+    has: page.getByText(threadTitle, { exact: true })
+  });
+  await expect(threadCard.getByText("Work · 0 linked sources", { exact: true })).toBeVisible();
+  await threadCard.getByLabel("Exact source ID, note path, or run/checkpoint reference").fill(noteName);
+  await threadCard.getByLabel("Source type").selectOption("note");
+  await threadCard.getByLabel("How Muse may use it").selectOption("context");
+  await threadCard.getByRole("button", { exact: true, name: "Link source" }).click();
+  await expect(threadCard.getByText("Work · 1 linked sources", { exact: true })).toBeVisible();
+  await expect(threadCard.getByRole("button", { exact: true, name: `Remove note:${noteName}` })).toBeVisible();
+
+  const beforeOpen = await readContinuityReview(request);
+  expect(beforeOpen.deliveries).toEqual([]);
+  expect(beforeOpen.evaluation).toMatchObject({
+    measurementStatus: "insufficient",
+    outcomes: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+    totalDeliveries: 0,
+    withOutcome: 0
+  });
+  expect(beforeOpen.reviewQueue.next).toBeUndefined();
+  expect(beforeOpen.threads).toEqual([
+    expect.objectContaining({
+      kind: "work",
+      linkCount: 1,
+      links: [{
+        artifactId: noteName,
+        artifactType: "note",
+        providerId: "local",
+        role: "context"
+      }],
+      title: threadTitle
+    })
+  ]);
+
+  const openPackButton = threadCard.getByRole("button", { exact: true, name: "Open pack" });
+  await expect(openPackButton).toBeEnabled();
+  await openPackButton.click();
+
+  const openedPackCard = page.locator(".card").filter({
+    has: page.getByText(`Continuity Pack: ${threadTitle}`, { exact: true })
+  });
+  await expect(openedPackCard).toBeVisible();
+  await expect(openedPackCard.getByText(`${noteName} · note:${noteName}`, { exact: true })).toBeVisible();
+  await expect(openedPackCard.getByText(noteContent, { exact: true })).toBeVisible();
+
+  await expect.poll(async () => (await readContinuityReview(request)).deliveries.length).toBe(1);
+  const opened = await readContinuityReview(request);
+  expect(opened.deliveries).toHaveLength(1);
+  const delivery = opened.deliveries[0]!;
+  expect(delivery).toMatchObject({
+    evidenceRefs: [{
+      artifactId: noteName,
+      artifactType: "note",
+      providerId: "local",
+      role: "context"
+    }],
+    thread: { kind: "work", title: threadTitle }
+  });
+  expect(delivery.outcome).toBeUndefined();
+  expect(opened.evaluation).toMatchObject({
+    measurementStatus: "insufficient",
+    outcomes: { adjusted: 0, ignored: 0, rejected: 0, used: 0 },
+    totalDeliveries: 1,
+    withOutcome: 0
+  });
+  expect(["hold", "manual-only"]).toContain(opened.evaluation.automationGate.status);
+  expect(["hold", "manual-only"]).toContain(opened.evaluation.byKind.work.automationGate.status);
+  expect(opened.reviewQueue.next).toMatchObject({
+    deliveryId: delivery.id,
+    evidence: [{
+      artifact: expect.objectContaining({
+        artifactId: noteName,
+        artifactType: "note",
+        providerId: "local",
+        summary: noteContent,
+        title: noteName
+      }),
+      reference: {
+        artifactId: noteName,
+        artifactType: "note",
+        providerId: "local",
+        role: "context"
+      },
+      status: "available"
+    }],
+    thread: { kind: "work", title: threadTitle }
+  });
+  await expect(openedPackCard.getByText(`Work · delivery ${delivery.id}`, { exact: true })).toBeVisible();
+  await expect(page.getByText("awaiting feedback", { exact: true })).toBeVisible();
+
+  const usedButton = page.getByRole("button", {
+    exact: true,
+    name: `Record used for ${delivery.id}`
+  });
+  await expect(usedButton).toBeEnabled();
+  const confirmMessage = await Promise.all([
+    page.waitForEvent("dialog").then(async (dialog) => {
+      const message = dialog.message();
+      expect(dialog.type()).toBe("confirm");
+      await dialog.accept();
+      return message;
+    }),
+    usedButton.click()
+  ]).then(([message]) => message);
+  expect(confirmMessage).toBe(
+    "Record 'used' for this delivery? Outcomes are immutable and will update the next pack's display policy."
+  );
+
+  await expect.poll(async () => {
+    const current = await readContinuityReview(request);
+    return current.deliveries[0]?.outcome?.outcome;
+  }).toBe("used");
+
+  await page.reload();
+  await expect(page.getByText("Connected")).toBeVisible();
+  const persisted = await readContinuityReview(request);
+  expect(persisted.deliveries).toHaveLength(1);
+  expect(persisted.deliveries.filter((entry) => entry.outcome !== undefined)).toHaveLength(1);
+  expect(persisted.deliveries[0]).toMatchObject({
+    id: delivery.id,
+    outcome: { outcome: "used" },
+    thread: { kind: "work", title: threadTitle }
+  });
+  expect(persisted.evaluation).toMatchObject({
+    measurementStatus: "insufficient",
+    outcomes: { adjusted: 0, ignored: 0, rejected: 0, used: 1 },
+    totalDeliveries: 1,
+    withOutcome: 1
+  });
+  expect(["hold", "manual-only"]).toContain(persisted.evaluation.automationGate.status);
+  expect(["hold", "manual-only"]).toContain(persisted.evaluation.byKind.work.automationGate.status);
+  expect(persisted.evaluation.measurements.some((metric) => metric.claim === "personal-effectiveness")).toBe(false);
   expect(unexpectedEgress).toEqual([]);
 });
+
+interface ContinuityReviewSnapshot {
+  readonly deliveries: readonly {
+    readonly evidenceRefs: readonly {
+      readonly artifactId: string;
+      readonly artifactType: string;
+      readonly providerId: string;
+      readonly role: string;
+    }[];
+    readonly id: string;
+    readonly outcome?: { readonly outcome: string };
+    readonly thread: { readonly kind: string; readonly title: string };
+  }[];
+  readonly evaluation: {
+    readonly automationGate: { readonly status: "hold" | "manual-only" };
+    readonly byKind: {
+      readonly work: { readonly automationGate: { readonly status: "hold" | "manual-only" } };
+    };
+    readonly measurements: readonly { readonly claim: string }[];
+    readonly measurementStatus: "available" | "insufficient";
+    readonly outcomes: Readonly<Record<"adjusted" | "ignored" | "rejected" | "used", number>>;
+    readonly totalDeliveries: number;
+    readonly withOutcome: number;
+  };
+  readonly reviewQueue: {
+    readonly next?: {
+      readonly deliveryId: string;
+      readonly evidence: readonly {
+        readonly artifact?: {
+          readonly artifactId: string;
+          readonly artifactType: string;
+          readonly providerId: string;
+          readonly summary?: string;
+          readonly title: string;
+        };
+        readonly reference: {
+          readonly artifactId: string;
+          readonly artifactType: string;
+          readonly providerId: string;
+          readonly role: string;
+        };
+        readonly status: string;
+      }[];
+      readonly thread: { readonly kind: string; readonly title: string };
+    };
+  };
+  readonly threads: readonly {
+    readonly kind: string;
+    readonly linkCount: number;
+    readonly links: readonly {
+      readonly artifactId: string;
+      readonly artifactType: string;
+      readonly providerId: string;
+      readonly role: string;
+    }[];
+    readonly title: string;
+  }[];
+}
+
+async function readContinuityReview(request: APIRequestContext): Promise<ContinuityReviewSnapshot> {
+  const response = await request.get(`${apiUrl}/api/attunement/review`);
+  expect(response.status()).toBe(200);
+  return await response.json() as ContinuityReviewSnapshot;
+}
 
 async function readEmbeddingTraffic(): Promise<readonly {
   readonly endpoint: string;

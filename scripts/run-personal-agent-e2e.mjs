@@ -27,7 +27,7 @@ const artifactDir = join(
   ".muse-dev",
   "evals",
   "personal-agent-roadmap",
-  "task-046-b",
+  "task-046-c",
   "playwright"
 );
 

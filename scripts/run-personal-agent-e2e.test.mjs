@@ -22,6 +22,7 @@ test("personal-agent E2E environment is sparse, local-only, and owner-secret fre
   assert.equal(env.MUSE_LOCAL_ONLY, "true");
   assert.match(env.MUSE_MODEL, /^diagnostic\//u);
   assert.equal(env.MUSE_PERSONAL_AGENT_API_URL, "http://127.0.0.1:41001");
+  assert.match(env.MUSE_PERSONAL_AGENT_ARTIFACT_DIR, /task-046-c\/playwright$/u);
   assert.equal(env.MUSE_PERSONAL_AGENT_EMBED_URL, "http://127.0.0.1:41003");
   assert.equal(env.MUSE_PERSONAL_AGENT_WEB_URL, "http://127.0.0.1:41002");
   assert.equal(env.MUSE_CORS_ALLOWED_ORIGINS, "http://127.0.0.1:41002");
