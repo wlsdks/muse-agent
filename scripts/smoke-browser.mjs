@@ -61,6 +61,7 @@ import {
   createExactOwnershipReceipt,
   OwnedResourceScope
 } from "./lib/owned-resource-scope.mjs";
+import { installOwnedResourceSignalHandlers } from "./lib/owned-resource-signals.mjs";
 
 const SPA_HTML = `<!doctype html><html><head><title>SPA</title></head><body><div id="root"></div>
 <script>setTimeout(() => {
@@ -247,13 +248,29 @@ const resources = new OwnedResourceScope({
   cleanupTimeoutMs: 10_000,
   forceCleanupTimeoutMs: 5_000
 });
+const uninstallSignalHandlers = installOwnedResourceSignalHandlers({
+  close: async () => {
+    const injectedDelayMs = Number(process.env.MUSE_BROWSER_SMOKE_SIGNAL_CLEANUP_DELAY_MS ?? "0");
+    if (Number.isSafeInteger(injectedDelayMs) && injectedDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, injectedDelayMs));
+    }
+    await resources.close();
+  },
+  onCleanupError: (error) => {
+    console.error(`smoke:browser signal cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+});
 
 try {
-  await runSmoke();
-} catch (error) {
-  await resources.close({ primaryError: error });
+  try {
+    await runSmoke();
+  } catch (error) {
+    await resources.close({ primaryError: error });
+  }
+  await resources.close();
+} finally {
+  uninstallSignalHandlers();
 }
-await resources.close();
 
 async function runSmoke() {
   const browserExitCompletions = [];
@@ -402,6 +419,20 @@ async function runSmoke() {
     ),
     "the receipt matches the live PID, process group, executable, profile, and launch id"
   );
+  const faultCase = process.env.MUSE_BROWSER_SMOKE_FAULT_CASE;
+  if (faultCase !== undefined) {
+    console.log(`smoke:browser ownership ${JSON.stringify(launchReceipts[0])}`);
+    if (faultCase === "assertion") {
+      throw new Error("ASSERT FAILED: injected browser-smoke qualification failure");
+    }
+    if (faultCase === "pause") {
+      console.log("smoke:browser fault-ready");
+      await new Promise(() => {});
+    }
+    if (faultCase !== "pass") {
+      throw new Error(`Unknown MUSE_BROWSER_SMOKE_FAULT_CASE '${faultCase}'`);
+    }
+  }
   assert(snap.text.includes("Rendered application content"), "settled snapshot carries the late text");
   assert(snap.elements.some((el) => el.name === "Start here"), "late-rendered button is listed");
 
