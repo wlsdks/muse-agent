@@ -242,6 +242,7 @@ export {
   type AllowedCitations,
   type BestGroundedDraft,
   type CitationEnforcement,
+  type CitationEnforcementOptions,
   type GroundingExplanationOptions,
   judgeConsensus,
   type GroundingReverify,

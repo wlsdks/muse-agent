@@ -328,7 +328,62 @@ function splitCitationSentences(text: string): string[] {
   return out;
 }
 
+/**
+ * Models commonly emit `Claim. [from source]` rather than
+ * `Claim [from source].`. The lossless sentence splitter necessarily sees the
+ * citation at the start of the next segment; for strict grounding, attach only
+ * that leading citation span to the preceding sentence while preserving byte
+ * order. Any prose after the marker remains its own sentence and must carry its
+ * own citation.
+ */
+function attachLeadingCitationsToPreviousSentence(sentences: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const sentence of sentences) {
+    if (out.length === 0) {
+      out.push(sentence);
+      continue;
+    }
+    let cursor = 0;
+    let found = false;
+    while (cursor < sentence.length) {
+      while (cursor < sentence.length && /[ \t\n]/u.test(sentence[cursor]!)) cursor++;
+      let matchedEnd: number | undefined;
+      const remaining = sentence.slice(cursor);
+      for (const citationClass of CITATION_CLASSES) {
+        citationClass.re.lastIndex = 0;
+        const match = citationClass.re.exec(remaining);
+        citationClass.re.lastIndex = 0;
+        if (match?.index === 0) {
+          matchedEnd = cursor + match[0].length;
+          break;
+        }
+      }
+      if (matchedEnd === undefined) break;
+      found = true;
+      cursor = matchedEnd;
+    }
+    if (!found) {
+      out.push(sentence);
+      continue;
+    }
+    while (cursor < sentence.length && /[ \t\n]/u.test(sentence[cursor]!)) cursor++;
+    out[out.length - 1] = `${out[out.length - 1]!}${sentence.slice(0, cursor)}`;
+    if (cursor < sentence.length) out.push(sentence.slice(cursor));
+  }
+  return out;
+}
+
 type CitationClass = (typeof CITATION_CLASSES)[number];
+
+export interface CitationEnforcementOptions {
+  /**
+   * Require every surviving sentence to carry at least one citation that
+   * resolves against `allowed`. This is intentionally opt-in: conversational
+   * callers may preserve uncited prose, while factual recall finalizers can
+   * fail closed against a cited sentence followed by an unsupported claim.
+   */
+  readonly requireCitationPerSentence?: boolean;
+}
 
 /** Resolve one citation VALUE against `allowed` — exact first, then (when the
  * class supports it) the tolerant path. `canonical` is set only when the
@@ -343,10 +398,18 @@ function resolveCitation(
   return canonical !== undefined ? { valid: true, canonical } : { valid: false };
 }
 
-export function enforceAnswerCitations(answer: string, allowed: AllowedCitations): CitationEnforcement {
+export function enforceAnswerCitations(
+  answer: string,
+  allowed: AllowedCitations,
+  options?: CitationEnforcementOptions
+): CitationEnforcement {
   const stripped: string[] = [];
   const kept: string[] = [];
-  for (const sentence of splitCitationSentences(answer)) {
+  const split = splitCitationSentences(answer);
+  const sentences = options?.requireCitationPerSentence === true
+    ? attachLeadingCitationsToPreviousSentence(split)
+    : split;
+  for (const sentence of sentences) {
     let hasValid = false;
     let hasInvalid = false;
     for (const c of CITATION_CLASSES) {
@@ -361,7 +424,7 @@ export function enforceAnswerCitations(answer: string, allowed: AllowedCitations
     // tolerantly) — an un-groundable claim removed by code, not laundered into
     // an un-cited assertion. A sentence with ANY valid citation is kept and
     // merely loses the bad marker below (a real source elsewhere rescues it).
-    if (hasInvalid && !hasValid) {
+    if (!hasValid && (hasInvalid || options?.requireCitationPerSentence === true)) {
       for (const c of CITATION_CLASSES) {
         for (const m of sentence.matchAll(c.re)) {
           if (!resolveCitation(c, m[1]!.trim(), allowed[c.key] ?? []).valid) stripped.push(m[1]!.trim());

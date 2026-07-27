@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { UNGROUNDABLE_ANSWER_NOTICE } from "@muse/agent-core";
 import { MUSE_IDENTITY_CORE, SURFACE_ROLES } from "@muse/prompts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -10,6 +11,16 @@ import { loadIndex, NOTES_INDEX_SCHEMA_VERSION } from "./notes-index.js";
 import { prepareGroundedRecall, runGroundedRecall, streamGroundedRecall, type GroundedRecallInput, type ScoredChunk } from "./pipeline.js";
 
 const EMBED_MODEL = "test-embedder";
+const ABSENT_FACT_CASES = [
+  ["ko-fox-brooch", "내 여우 모양 브로치에 붙인 애칭은 무엇인가요?"],
+  ["ko-indigo-bowl", "내 쪽빛 그릇 바닥에 적힌 비밀 단어는 무엇인가요?"],
+  ["ko-lotus-lamp", "내 연꽃 전등을 만든 장인의 이름은 무엇인가요?"],
+  ["ko-snowy-drum", "내 눈꽃 북의 개인 식별 문자는 무엇인가요?"],
+  ["en-badger-pin", "What private nickname did I give my badger lapel pin?"],
+  ["en-jade-whistle", "Which maker crafted my jade-colored whistle?"],
+  ["en-moth-journal", "What hidden word is stamped inside my moth journal?"],
+  ["en-sunrise-tongs", "What personal code is engraved on my sunrise pastry tongs?"]
+] as const;
 
 /** Deterministic embedder: vpn/mtu-ish text → e1 axis, everything else → e2 axis. */
 async function fakeEmbed(text: string): Promise<number[]> {
@@ -119,6 +130,247 @@ describe("runGroundedRecall — the grounded-recall seam", () => {
     expect(result.citations).toEqual([]);
     expect(result.strippedCitations).toContain("vpn.md");
     expect(result.answer).not.toContain("[from vpn.md]");
+  });
+
+  it("FAIL-CLOSE: an absent fact cannot surface as a raw uncited assertion", async () => {
+    await rm(indexFile, { force: true });
+    const result = await runGroundedRecall(input("The MTU is 1380.", "what MTU?"));
+    expect(result.answer).toBe(UNGROUNDABLE_ANSWER_NOTICE);
+    expect(result.refusal).toBe(true);
+    expect(result.citations).toEqual([]);
+    expect(result.verdict).toBe("none");
+  });
+
+  it.each(ABSENT_FACT_CASES)("absent baseline 8/8 abstains: %s", async (_id, query) => {
+    await rm(indexFile, { force: true });
+    const result = await runGroundedRecall(input("The private answer is cobalt.", query));
+    expect(result.answer).toBe(UNGROUNDABLE_ANSWER_NOTICE);
+    expect(result.refusal).toBe(true);
+    expect(result.citations).toEqual([]);
+    expect(result.verdict).toBe("none");
+  });
+
+  it("FAIL-CLOSE: a tempting near-match below the support floor still abstains", async () => {
+    const near = join(notesDir, "orion-draft.md");
+    await writeFile(near, "Project Orion draft mentions a possible Friday delivery window, but it is not confirmed.");
+    await writeIndex([{
+      embedding: [1, 0, 0],
+      path: near,
+      text: "Project Orion draft mentions a possible Friday delivery window, but it is not confirmed."
+    }]);
+    const result = await runGroundedRecall(input(
+      "The confirmed Orion delivery window is Friday. [from orion-draft.md]",
+      "What is the confirmed delivery window for Orion?"
+    ));
+    expect(result.answer).toBe(UNGROUNDABLE_ANSWER_NOTICE);
+    expect(result.refusal).toBe(true);
+    expect(result.citations).toEqual([]);
+    expect(result.verdict).not.toBe("confident");
+  });
+
+  it("FAIL-CLOSE: a same-attribute different-entity near-match also abstains", async () => {
+    const near = join(notesDir, "apollo.md");
+    await writeFile(near, "Project Apollo has a confirmed Monday delivery window.");
+    await writeIndex([{
+      embedding: [1, 0, 0],
+      path: near,
+      text: "Project Apollo has a confirmed Monday delivery window."
+    }]);
+    const result = await runGroundedRecall(input(
+      "Project Orion has a confirmed Monday delivery window. [from apollo.md]",
+      "What is the confirmed delivery window for Orion?"
+    ));
+    expect(result.answer).toBe(UNGROUNDABLE_ANSWER_NOTICE);
+    expect(result.refusal).toBe(true);
+    expect(result.citations).toEqual([]);
+    expect(result.verdict).not.toBe("confident");
+  });
+
+  it("FAIL-CLOSE: score and lexical support cannot be borrowed from different candidates", async () => {
+    const unrelated = join(notesDir, "unrelated.md");
+    const near = join(notesDir, "apollo.md");
+    await writeFile(unrelated, "Grocery receipt and pantry inventory.");
+    await writeFile(near, "Project Apollo has a confirmed Monday delivery window.");
+    await writeIndex([
+      {
+        embedding: [Math.sqrt(1 - 0.49 ** 2), 0.49, 0],
+        path: unrelated,
+        text: "Grocery receipt and pantry inventory."
+      },
+      {
+        embedding: [1, 0, 0],
+        path: near,
+        text: "Project Apollo has a confirmed Monday delivery window."
+      }
+    ]);
+    const result = await runGroundedRecall(input(
+      "Project Orion has a confirmed Monday delivery window. [from apollo.md]",
+      "What is the confirmed delivery window for Orion?"
+    ));
+    expect(result.answer).toBe(UNGROUNDABLE_ANSWER_NOTICE);
+    expect(result.refusal).toBe(true);
+    expect(result.citations).toEqual([]);
+    expect(result.verdict).toBe("ambiguous");
+  });
+
+  it("FAIL-CLOSE: a confident factual answer without a source citation abstains", async () => {
+    const result = await runGroundedRecall(input("Your VPN MTU is 1380."));
+    expect(result.answer).toBe(UNGROUNDABLE_ANSWER_NOTICE);
+    expect(result.refusal).toBe(true);
+    expect(result.citations).toEqual([]);
+    expect(result.verdict).toBe("confident");
+  });
+
+  it.each([
+    "I'm not sure, but your VPN MTU is 1380.",
+    "I'm not sure, but your VPN MTU is 1380. [from vpn.md]",
+    "확실하지 않지만 VPN MTU는 1380입니다."
+  ])("FAIL-CLOSE: a refusal hedge cannot smuggle an assertion: %s", async (raw) => {
+    const result = await runGroundedRecall(input(raw));
+    expect(result.answer).toBe(UNGROUNDABLE_ANSWER_NOTICE);
+    expect(result.refusal).toBe(true);
+    expect(result.citations).toEqual([]);
+  });
+
+  it("drops a trailing uncited factual sentence while retaining a valid cited claim", async () => {
+    const result = await runGroundedRecall(input(
+      "Your VPN MTU is 1380. [from vpn.md] Your router password is hunter2."
+    ));
+    expect(result.answer).toBe("Your VPN MTU is 1380. [from vpn.md]");
+    expect(result.refusal).toBe(false);
+    expect(result.citations).toEqual(["vpn.md"]);
+  });
+
+  it("FAIL-CLOSE: unresolved trusted-note contradictions force abstention", async () => {
+    const fileA = join(notesDir, "rent_a.md");
+    const fileB = join(notesDir, "rent_b.md");
+    await writeFile(fileA, "office rent is 100");
+    await writeFile(fileB, "office rent is 200");
+    await writeIndex([
+      { embedding: [1, 0, 0], path: fileA, text: "office rent is 100" },
+      { embedding: [1, 0, 0], path: fileB, text: "office rent is 200" }
+    ]);
+    const result = await runGroundedRecall({
+      options: { answerModel: "test-answerer", embedModel: EMBED_MODEL, topK: 2 },
+      query: "office rent",
+      runtime: {
+        embedFn: async () => [1, 0, 0],
+        generateAnswer: async () => "Office rent is 100. [from rent_a.md]"
+      },
+      sources: { notesDir, notesIndexFile: indexFile }
+    });
+    expect(result.answer).toBe(UNGROUNDABLE_ANSWER_NOTICE);
+    expect(result.refusal).toBe(true);
+    expect(result.citations).toEqual([]);
+  });
+
+  it("preserves trusted-over-untrusted precedence instead of blanket conflict abstention", async () => {
+    const fileA = join(notesDir, "rent_a.md");
+    const fileB = join(notesDir, "rent_b.md");
+    await writeFile(fileA, "office rent is 100");
+    await writeFile(fileB, "office rent is 200");
+    await writeIndex([
+      { embedding: [1, 0, 0], path: fileA, text: "office rent is 100" },
+      { embedding: [1, 0, 0], path: fileB, text: "office rent is 200" }
+    ]);
+    const result = await runGroundedRecall({
+      extras: { untrustedNoteSources: new Set(["rent_b.md"]) },
+      options: { answerModel: "test-answerer", embedModel: EMBED_MODEL, topK: 2 },
+      query: "office rent",
+      runtime: {
+        embedFn: async () => [1, 0, 0],
+        generateAnswer: async () => "Office rent is 100. [from rent_a.md]"
+      },
+      sources: { notesDir, notesIndexFile: indexFile }
+    });
+    expect(result.answer).toBe("Office rent is 100. [from rent_a.md]");
+    expect(result.refusal).toBe(false);
+    expect(result.citations).toEqual(["rent_a.md"]);
+  });
+
+  it("preserves a selector-verified correction pair and answers from the current source", async () => {
+    const stale = {
+      embedding: [0.95, Math.sqrt(1 - 0.95 ** 2)],
+      path: join(notesDir, "rent-old.md"),
+      text: "I used to pay office rent 1200; no longer current."
+    };
+    const agenda = {
+      embedding: [0.9, Math.sqrt(1 - 0.9 ** 2)],
+      path: join(notesDir, "agenda.md"),
+      text: "Tuesday meeting agenda."
+    };
+    const current = {
+      embedding: [0.4, Math.sqrt(1 - 0.4 ** 2)],
+      path: join(notesDir, "rent-current.md"),
+      text: "Office rent is 1300 now."
+    };
+    const tail = {
+      embedding: [0.3, Math.sqrt(1 - 0.3 ** 2)],
+      path: join(notesDir, "tail.md"),
+      text: "Unrelated archive."
+    };
+    for (const file of [stale, agenda, current, tail]) await writeFile(file.path, file.text);
+    await writeIndex([stale, agenda, current, tail]);
+    let seenRerankTexts: readonly string[] = [];
+    const rerankFn = Object.assign(async (_query: string, texts: readonly string[]) => {
+      seenRerankTexts = [...texts];
+      const currentIndex = texts.findIndex((text) => text.includes("1300"));
+      const staleIndex = texts.findIndex((text) => text.includes("used to pay"));
+      return {
+        httpAttempts: 1,
+        order: [currentIndex, staleIndex],
+        outcome: "success" as const,
+        pairHints: [{ current: currentIndex, stale: staleIndex }]
+      };
+    }, { mode: "correction-pair" as const });
+    const correctionEmbed = async (text: string): Promise<number[]> =>
+      text.includes("agenda") ? [0, 1] : [1, 0];
+    const index = await loadIndex(indexFile);
+    const first = await retrieveAndRankNotes({
+      conflictAwareSelection: true,
+      embedFn: correctionEmbed,
+      embedModel: EMBED_MODEL,
+      indexFiles: index?.files ?? [],
+      json: true,
+      notesDir,
+      onStderr: () => {},
+      query: "what is the office rent",
+      rerankFn,
+      scope: undefined,
+      snapshotIdentity: { indexBuiltAtIso: index?.builtAtIso ?? "", notesIndexFile: indexFile },
+      topK: 3
+    });
+    expect(seenRerankTexts).toContain(current.text);
+    expect(seenRerankTexts).toContain(stale.text);
+    expect(first.verifiedCorrectionPair).toEqual({
+      current: { chunkIndex: 0, file: current.path },
+      stale: { chunkIndex: 0, file: stale.path }
+    });
+    const prepared = await prepareGroundedRecall({
+      embedFn: correctionEmbed,
+      options: { embedModel: EMBED_MODEL, topK: 3 },
+      query: "what is the office rent",
+      rerankFn,
+      retrievalSnapshot: first.snapshot,
+      sources: { notesDir, notesIndexFile: indexFile }
+    });
+    expect(prepared.verdict).toBe("confident");
+    expect(prepared.systemPrompt).toContain("DIFFERENT values");
+    expect(prepared.hasUnresolvedContradiction).toBe(false);
+    const result = await runGroundedRecall({
+      options: { answerModel: "test-answerer", embedModel: EMBED_MODEL, topK: 3 },
+      query: "what is the office rent",
+      retrievalSnapshot: first.snapshot,
+      runtime: {
+        embedFn: correctionEmbed,
+        generateAnswer: async () => "Office rent is 1300 now. [from rent-current.md]",
+        rerankFn
+      },
+      sources: { notesDir, notesIndexFile: indexFile }
+    });
+    expect(result.answer).toBe("Office rent is 1300 now. [from rent-current.md]");
+    expect(result.refusal).toBe(false);
+    expect(result.citations).toEqual(["rent-current.md"]);
   });
 
   it("an index built by a DIFFERENT embed model contributes nothing (cross-model cosine is meaningless)", async () => {

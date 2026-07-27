@@ -14,6 +14,10 @@ export interface ScoredChunk {
 }
 
 const ASK_MMR_LAMBDA = 0.7;
+// A lexical overlap may disambiguate a genuinely related sub-bar match, but it
+// must never manufacture confidence for an embedding-space miss. This matches
+// the calibrated promotion floor used by the shared confidence evaluator.
+const STRONG_LEXICAL_PROMOTE_FLOOR = 0.45;
 
 /**
  * Pick the top-K note chunks to ground on. When a `query` is supplied,
@@ -247,14 +251,15 @@ export function notesGroundingFraming(
   // just below the confident cosine threshold and get falsely flagged LOW —
   // a soft false-refusal ("verify, may not be in your notes") on a correctly
   // cited answer, which erodes the trust edge. A STRONG lexical match (≥2
-  // distinct query content tokens present in a grounded chunk) is a
-  // high-precision signal that the corpus really does cover the question, so
-  // it upgrades an ambiguous cosine verdict to confident. A must-refuse
-  // question shares no content tokens, so it stays LOW/none — fabrication=0
-  // is preserved (and the citation gate is the hard backstop regardless).
+  // distinct query content tokens present in a grounded chunk) can disambiguate
+  // a genuinely related sub-bar match. An absent near-match can share several
+  // tokens too, so the absolute promotion floor below must also hold —
+  // fabrication=0 is preserved (and the citation gate is the hard backstop).
   const queryTokens = query ? lexicalTokens(query) : new Set<string>();
   const strongLexical = queryTokens.size >= 2
-    && verdictSet.some((s) => lexicalOverlap(queryTokens, s.chunk.text) >= 2);
+    && verdictSet.some((s) =>
+      s.score >= STRONG_LEXICAL_PROMOTE_FLOOR
+      && lexicalOverlap(queryTokens, s.chunk.text) >= 2);
   const verdict: RetrievalConfidence = cosineVerdict === "ambiguous" && strongLexical ? "confident" : cosineVerdict;
   if (verdict === "ambiguous") {
     return {

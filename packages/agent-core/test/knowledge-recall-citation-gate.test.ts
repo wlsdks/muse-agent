@@ -304,6 +304,25 @@ describe("enforceAnswerCitations — output-side recall grounding gate", () => {
     expect(out.stripped).toEqual([]);
   });
 
+  it("strict factual mode drops every uncited sentence while preserving independently cited sentences", () => {
+    const out = enforceAnswerCitations(
+      "MTU is 1380 [from notes/vpn.md]. Router password is hunter2. DNS is local [from notes/network.md].",
+      { notes: ["notes/vpn.md", "notes/network.md"] },
+      { requireCitationPerSentence: true }
+    );
+    expect(out.text).toBe("MTU is 1380 [from notes/vpn.md]. DNS is local [from notes/network.md].");
+    expect(out.stripped).toEqual([]);
+  });
+
+  it("strict factual mode returns empty for a wholly uncited claim", () => {
+    const out = enforceAnswerCitations(
+      "The MTU is 1380.",
+      { notes: ["notes/vpn.md"] },
+      { requireCitationPerSentence: true }
+    );
+    expect(out).toEqual({ stripped: [], text: "" });
+  });
+
   it("clean answer with multi-space indentation is returned byte-for-byte (no whitespace mangling)", () => {
     const answer = "Here:\n\n    def f():\n        return  1\n\nDone.";
     const out = enforceAnswerCitations(answer, { notes: [] });

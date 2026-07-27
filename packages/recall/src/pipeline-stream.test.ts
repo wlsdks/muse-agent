@@ -66,7 +66,7 @@ async function collect(events: AsyncIterable<GroundedRecallEvent>): Promise<Grou
 }
 
 describe("streamGroundedRecall — the live-gated event stream", () => {
-  it("streams retrieval first, live-gated deltas, then the authoritative result", async () => {
+  it("streams retrieval first, one full-answer-gated delta, then the authoritative result", async () => {
     const events = await collect(streamGroundedRecall(input({
       streamAnswer: () => chunked(["Your VPN MTU is 1380. ", "[from vpn.md]"])
     })));
@@ -96,6 +96,30 @@ describe("streamGroundedRecall — the live-gated event stream", () => {
       expect(last.result.strippedCitations).toContain("secrets.md");
       expect(last.result.answer).not.toContain("secrets.md");
     }
+  });
+
+  it("an uncited factual claim never flashes before the final abstention", async () => {
+    const events = await collect(streamGroundedRecall(input({
+      streamAnswer: () => chunked(["Your VPN ", "MTU is 1380."])
+    })));
+    const deltas = events.filter((e) => e.type === "answer-delta").map((e) => e.text);
+    expect(deltas).toEqual(["I'm not sure — none of that checks out against a real source."]);
+    expect(deltas.join("")).not.toContain("1380");
+    const last = events[events.length - 1]!;
+    expect(last.type).toBe("result");
+    if (last.type === "result") expect(last.result.refusal).toBe(true);
+  });
+
+  it("a cited sentence can stream only after an uncited trailing claim has been removed", async () => {
+    const events = await collect(streamGroundedRecall(input({
+      streamAnswer: () => chunked([
+        "Your VPN MTU is 1380. ",
+        "[from vpn.md] Router password is hunter2."
+      ])
+    })));
+    const streamed = events.filter((e) => e.type === "answer-delta").map((e) => e.text).join("");
+    expect(streamed).toBe("Your VPN MTU is 1380. [from vpn.md]");
+    expect(streamed).not.toContain("hunter2");
   });
 
   it("PARITY: the streamed result equals the buffered runGroundedRecall result", async () => {

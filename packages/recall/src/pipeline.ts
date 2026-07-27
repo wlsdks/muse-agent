@@ -20,13 +20,14 @@ import {
   detectEvidenceContradictions,
   enforceAnswerCitations,
   reorderForLongContext,
+  stripCitationMarkers,
+  UNGROUNDABLE_ANSWER_NOTICE,
   withUngroundableFallback,
   type AllowedCitations
 } from "@muse/agent-core";
 import { composeSurfacePrompt } from "@muse/prompts";
 
 import { CITATION_INSTRUCTION_LINES } from "./ask-prompt-constants.js";
-import { createCitationStreamFilter } from "./citation-stream.js";
 import {
   noteRetrievalResultHash,
   retrievalIndexSnapshotDigestV1,
@@ -46,7 +47,7 @@ import type { FreshnessSupersessionDecisionV2 } from "./freshness-supersession-r
 import { cosine, loadIndex, type NotesIndex } from "./notes-index.js";
 import { buildNoteContextBlock } from "./context-blocks.js";
 import { formatSourceReceipts, groundingSectionLines, relativizeNoteSource } from "./present.js";
-import { answerIsRefusal, stripEchoedCiteAs } from "./text.js";
+import { answerIsPureRefusal, answerIsRefusal, stripEchoedCiteAs } from "./text.js";
 
 export interface GroundedRecallSources {
   /** The notes corpus root — cited paths are shown relative to it. */
@@ -277,10 +278,11 @@ function composeDefaultRecallSystemPrompt(args: {
 }
 
 /**
- * The live event stream of `streamGroundedRecall`. `answer-delta` text has
- * already passed the LIVE citation filter — a fabricated `[from …]` never
- * reaches a display, not even for a flash (the buffered gate then remains the
- * authoritative pass on the full answer). The final event is always `result`.
+ * The event stream of `streamGroundedRecall`. `answer-delta` text has already
+ * passed the full-answer grounding gate. Provider token streaming is buffered
+ * internally because minimum support, contradictions, and per-sentence source
+ * requirements cannot be decided safely from an isolated token span. The final
+ * event is always `result`.
  */
 export type GroundedRecallEvent =
   | {
@@ -299,6 +301,11 @@ export type GroundedRecallEvent =
 
 export interface PreparedGroundedRecall {
   readonly freshnessSupersessionDecision?: FreshnessSupersessionDecisionV2;
+  /**
+   * True when deterministic evidence analysis found a same-trust contradiction
+   * that neither source authority nor a verified correction pair resolves.
+   */
+  readonly hasUnresolvedContradiction: boolean;
   readonly systemPrompt: string;
   readonly allowedNotes: readonly string[];
   readonly scored: readonly ScoredChunk[];
@@ -401,7 +408,10 @@ async function prepareRecall(input: PrepareRecallInput): Promise<PreparedGrounde
   const dedupedScored = extras?.refineChunks
     ? dedupNearDuplicateChunks(rawScored, cosine)
     : rawScored;
-  const framing = notesGroundingFraming(dedupedScored, query, retrieval.preGapScored, embedModel);
+  const verdictInput = extraChunks.length > 0
+    ? [...retrieval.preGapScored, ...extraChunks]
+    : retrieval.preGapScored;
+  const framing = notesGroundingFraming(dedupedScored, query, verdictInput, embedModel);
   // `reorderForLongContext` re-sorts by raw cosine score, which would put a
   // higher-scoring but explicitly-superseded chunk back ahead of its current
   // counterpart — so the stale demotion `retrieveAndRankNotes` already applied
@@ -418,6 +428,18 @@ async function prepareRecall(input: PrepareRecallInput): Promise<PreparedGrounde
     contextChunks.map((s: ScoredChunk) => ({ cosine: s.score, score: s.score, source: s.file, text: s.chunk.text })),
     (text) => embedFn(text, embedModel ?? "")
   ).catch(() => [] as const);
+  const untrustedNoteSources = extras?.untrustedNoteSources;
+  const hasUnresolvedContradiction = contradictions.some((pair) => {
+    const a = contextChunks[pair.aIndex];
+    const b = contextChunks[pair.bIndex];
+    if (a === undefined || b === undefined) return true;
+    if (isVerifiedCorrectionPair(a, b, retrieval.verifiedCorrectionPair)) return false;
+    const aUntrusted = untrustedNoteSources?.has(relativizeNoteSource(a.file, sources.notesDir)) === true;
+    const bUntrusted = untrustedNoteSources?.has(relativizeNoteSource(b.file, sources.notesDir)) === true;
+    // Mixed authority has an explicit winner: the user's own note. Equal
+    // authority has no deterministic winner and therefore must abstain.
+    return aUntrusted === bUntrusted;
+  });
   // Ad-hoc chunks are note-class evidence found THIS turn — notes are no
   // longer "unavailable" once any (index retrieval OR ad-hoc) contributed.
   const notesUnavailable = retrieval.notesUnavailable && extraChunks.length === 0;
@@ -431,6 +453,7 @@ async function prepareRecall(input: PrepareRecallInput): Promise<PreparedGrounde
     ...(retrieval.freshnessSupersessionDecision
       ? { freshnessSupersessionDecision: cloneFreshnessDecision(retrieval.freshnessSupersessionDecision) }
       : {}),
+    hasUnresolvedContradiction,
     notesUnavailable,
     scored: contextChunks,
     systemPrompt: extras?.composeSystemPrompt
@@ -455,6 +478,18 @@ function pinVerifiedCorrectionPair(
   if (currentMatches.length !== 1 || staleMatches.length !== 1 || currentMatches[0] === staleMatches[0]) return chunks;
   const current = currentMatches[0]!;
   return [current, ...chunks.filter((chunk) => chunk !== current)];
+}
+
+function isVerifiedCorrectionPair(
+  a: ScoredChunk,
+  b: ScoredChunk,
+  pair: VerifiedCorrectionPair | undefined
+): boolean {
+  if (pair === undefined) return false;
+  const same = (chunk: ScoredChunk, identity: NoteChunkIdentity): boolean =>
+    chunk.file === identity.file && chunk.chunk.chunkIndex === identity.chunkIndex;
+  return (same(a, pair.current) && same(b, pair.stale))
+    || (same(a, pair.stale) && same(b, pair.current));
 }
 
 function matchesNoteChunkIdentity(chunk: ScoredChunk, identity: NoteChunkIdentity): boolean {
@@ -506,11 +541,26 @@ function finalizeRecall(raw: string, prepared: PreparedGroundedRecall, input: Gr
   const allowedCitations: AllowedCitations = { notes: [...prepared.allowedNotes], ...input.extras?.allowedCitations };
   const stripped = stripEchoedCiteAs(raw);
   const normalized = input.extras?.normalizeAnswer ? input.extras.normalizeAnswer(stripped) : stripped;
-  const enforced = enforceAnswerCitations(normalized, allowedCitations);
+  // The broad refusal detector intentionally catches hedged prose, including
+  // "I'm not sure, but <assertion>". Only a PURE refusal may bypass factual
+  // citation enforcement; a hedge followed by a claim must fail closed.
+  const pureRefusal = answerIsPureRefusal(stripCitationMarkers(normalized));
+  const enforced = enforceAnswerCitations(
+    normalized,
+    allowedCitations,
+    pureRefusal ? undefined : { requireCitationPerSentence: true }
+  );
   // Every sentence can be dropped as un-groundable (the citation-gate clause-leak
   // fix) — an empty string there would read as a silent bug, not an honest
   // abstention, so surface the SAME fixed hedge every other refusal uses.
-  let answer = withUngroundableFallback(enforced).trim();
+  let answer = !pureRefusal && (
+    prepared.verdict !== "confident"
+    || prepared.hasUnresolvedContradiction
+    || enforced.text.trim().length === 0
+    || answerIsRefusal(enforced.text)
+  )
+    ? UNGROUNDABLE_ANSWER_NOTICE
+    : withUngroundableFallback(enforced).trim();
   const preRefusalStrippedCitations = [...enforced.stripped];
   const strippedCitations = [...enforced.stripped];
 
@@ -550,12 +600,12 @@ function finalizeRecall(raw: string, prepared: PreparedGroundedRecall, input: Gr
 }
 
 /**
- * The streaming form of the seam. Deltas pass through the LIVE citation filter
- * (`createCitationStreamFilter` over the same `enforceAnswerCitations` set), so
- * a fabricated citation never flashes on a display; the buffered gate then runs
- * over the FULL answer and the final `result` event is the authoritative one
- * (identical to `runGroundedRecall`'s). Without `runtime.streamAnswer`, the
- * buffered generation is used and the single delta is the already-gated answer.
+ * The streaming form of the seam. Provider deltas are accumulated before Muse
+ * emits user-visible answer text: an isolated token span cannot prove minimum
+ * support, resolve contradictions, or show that every factual sentence carries
+ * a valid source. This trades token-by-token display latency for a fail-closed
+ * no-flash contract. Buffered and provider-streaming paths emit the same single
+ * gate-clean answer delta followed by the authoritative result.
  */
 export async function* streamGroundedRecall(input: GroundedRecallInput): AsyncGenerator<GroundedRecallEvent> {
   const prepared = await prepareRecall(toPrepareRecallInput(input));
@@ -579,25 +629,13 @@ export async function* streamGroundedRecall(input: GroundedRecallInput): AsyncGe
 
   let raw = "";
   if (input.runtime.streamAnswer) {
-    // Must accept the SAME categories the buffered gate in `finalizeRecall`
-    // does — otherwise a valid extra-category citation would flash-strip live
-    // and then reappear in the final `result`, breaking stream/buffered parity.
-    const liveAllowedCitations: AllowedCitations = { notes: [...prepared.allowedNotes], ...input.extras?.allowedCitations };
-    const filter = createCitationStreamFilter(
-      (span) => enforceAnswerCitations(span, liveAllowedCitations).text
-    );
     for await (const delta of input.runtime.streamAnswer(generateArgs)) {
       raw += delta;
-      const safe = filter.push(delta);
-      if (safe.length > 0) {
-        yield { text: safe, type: "answer-delta" };
-      }
-    }
-    const tail = filter.flush();
-    if (tail.length > 0) {
-      yield { text: tail, type: "answer-delta" };
     }
     const result = finalizeRecall(raw, prepared, input);
+    if (result.answer.length > 0) {
+      yield { text: result.answer, type: "answer-delta" };
+    }
     yield { result, type: "result" };
     return;
   }

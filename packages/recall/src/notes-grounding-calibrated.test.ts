@@ -58,4 +58,37 @@ describe("notesGroundingFraming honors the conformal-calibrated MUSE_GROUNDING_M
     ];
     expect(notesGroundingFraming(absent, undefined, undefined, "nomic-embed-text-v2-moe").verdict).toBe("ambiguous");
   });
+
+  it("strong lexical overlap cannot promote an embedding-space miss", () => {
+    const nearMatch: readonly ScoredChunk[] = [
+      chunk("orion.md", "Orion delivery window is only a draft and not confirmed", 0)
+    ];
+    expect(notesGroundingFraming(
+      nearMatch,
+      "What is the confirmed delivery window for Orion?"
+    ).verdict).toBe("ambiguous");
+  });
+
+  it("cannot combine an unrelated candidate's score with a different weak candidate's lexical overlap", () => {
+    const crossCandidateNearMatch: readonly ScoredChunk[] = [
+      chunk("unrelated.md", "grocery receipt and pantry inventory", 0.49),
+      chunk("apollo.md", "Project Apollo has a confirmed Monday delivery window", 0)
+    ];
+    expect(notesGroundingFraming(
+      crossCandidateNearMatch,
+      "What is the confirmed delivery window for Orion?"
+    ).verdict).toBe("ambiguous");
+  });
+
+  it("strong lexical overlap still rescues a genuinely related sub-bar match above the calibrated floor", () => {
+    const related: readonly ScoredChunk[] = [
+      chunk("vpn.md", "office vpn mtu is 1380", 0.49)
+    ];
+    expect(notesGroundingFraming(
+      related,
+      "What is the office VPN MTU?",
+      undefined,
+      "nomic-embed-text"
+    ).verdict).toBe("confident");
+  });
 });
