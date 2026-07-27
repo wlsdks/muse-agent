@@ -98,6 +98,11 @@ const IFRAME_HTML = `<!doctype html><html><head><title>Iframe</title></head><bod
 <iframe srcdoc='<button id="b" onclick="this.textContent=String.fromCharCode(79,75)">Embedded action</button>'></iframe>
 </body></html>`;
 
+const IFRAME_DIALOG_HTML = `<!doctype html><html><head><title>Nested dialog</title></head><body>
+<p>Parent page around the dialog frame.</p>
+<iframe srcdoc='<button onclick="parent.document.title=confirm(String.fromCharCode(78,101,115,116,101,100,32,102,114,97,109,101,32,97,99,116,105,111,110,63))?String.fromCharCode(78,69,83,84,69,68,45,67,79,78,70,73,82,77,69,68):String.fromCharCode(78,69,83,84,69,68,45,68,73,83,77,73,83,83,69,68)">Nested confirm</button>'></iframe>
+</body></html>`;
+
 const PAGING_HTML = `<!doctype html><html><head><title>Paging</title></head><body>
 ${Array.from({ length: 60 }, (_v, i) => `<a href="#l${String(i)}">link ${String(i)}</a>`).join("")}
 </body></html>`;
@@ -248,6 +253,17 @@ const statusServer = createServer((req, res) => {
     res.end("<!doctype html><title>AFTER-UNLOAD</title><h1>Navigation completed</h1>");
     return;
   }
+  if (req.url === "/dialog-navigation") {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(`<!doctype html><title>Before dialog navigation</title>
+      <button onclick="if(confirm('Continue to the terminal page?'))location.href='/dialog-navigation-terminal';else document.title='NAVIGATION-DISMISSED'">Continue navigation</button>`);
+    return;
+  }
+  if (req.url === "/dialog-navigation-terminal") {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end("<!doctype html><title>NAVIGATION-COMPLETED</title><h1>Post-dialog terminal page</h1>");
+    return;
+  }
   if (req.url === "/ok") {
     res.writeHead(200, { "content-type": "text/html" });
     res.end("<!doctype html><title>OK page</title><h1>The real content</h1>");
@@ -276,6 +292,7 @@ try {
   await writeFile(join(dir, "shadow.html"), SHADOW_HTML);
   await writeFile(join(dir, "select.html"), SELECT_HTML);
   await writeFile(join(dir, "iframe.html"), IFRAME_HTML);
+  await writeFile(join(dir, "iframe-dialog.html"), IFRAME_DIALOG_HTML);
   await writeFile(join(dir, "paging.html"), PAGING_HTML);
   await writeFile(join(dir, "scroll.html"), SCROLL_HTML);
   await writeFile(join(dir, "dialog.html"), DIALOG_HTML);
@@ -450,6 +467,48 @@ try {
     identity: pending.dialog
   });
   assert(!decision.ok && decision.reason === "terminal", "closing the page abandons the pending authority");
+
+  console.log("10e) nested-frame/navigation timing — pending identity precedes the terminal observation");
+  snap = await controller.open(pathToFileURL(join(dir, "iframe-dialog.html")).href);
+  const nestedDialogButton = snap.elements.find((el) => el.name === "Nested confirm");
+  assert(nestedDialogButton !== undefined, "the dialog button inside the same-origin child frame is listed");
+  pending = await controller.clickWithPendingDialog(nestedDialogButton.ref);
+  assert(pending.status === "pending", "the child-frame confirm returns pending authority");
+  assert(
+    pending.status === "pending" && pending.dialog.pageUrl === snap.url
+      && !("snapshot" in pending),
+    "nested pending authority is bound to the parent page and exposes no early snapshot"
+  );
+  decision = await controller.decidePendingDialog({
+    claimantId: "smoke:nested-frame-confirm",
+    decision: { kind: "accept" },
+    identity: pending.dialog
+  });
+  assert(
+    decision.ok && decision.snapshot.title === "NESTED-CONFIRMED",
+    "the child-frame continuation reaches the exact parent terminal state"
+  );
+
+  snap = await controller.open(`http://127.0.0.1:${String(statusPort)}/dialog-navigation`);
+  const preDecisionUrl = snap.url;
+  pending = await controller.clickWithPendingDialog(
+    snap.elements.find((el) => el.name === "Continue navigation").ref
+  );
+  assert(
+    pending.status === "pending" && pending.dialog.pageUrl === preDecisionUrl
+      && controller.currentUrl() === preDecisionUrl,
+    "the navigation-preceding confirm is bound to the pre-navigation page"
+  );
+  decision = await controller.decidePendingDialog({
+    claimantId: "smoke:navigation-confirm",
+    decision: { kind: "accept" },
+    identity: pending.dialog
+  });
+  assert(
+    decision.ok && decision.snapshot.title === "NAVIGATION-COMPLETED"
+      && decision.snapshot.url.endsWith("/dialog-navigation-terminal"),
+    "only the separately accepted decision continues to the terminal navigation"
+  );
 
   console.log("11) async-after-action — DOM-stable settle catches post-click content");
   snap = await controller.open(pathToFileURL(join(dir, "ajax.html")).href);
