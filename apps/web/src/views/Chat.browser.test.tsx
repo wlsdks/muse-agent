@@ -384,7 +384,7 @@ test("'Later' dismisses the nudge and it does not reappear on remount within the
   await first.getByRole("button", { name: "Later" }).click();
   await expect.element(first.getByText("Continue this? — Prepare quarterly review", { exact: true })).not.toBeInTheDocument();
 
-  cleanup();
+  await cleanup();
   const second = await renderNudge({ get });
   expect(second.container.textContent).toBe("");
 });
@@ -401,4 +401,3 @@ test("'Continue' writes the one-shot Home handoff (the exact thread id) and navi
   expect(onNavigate).toHaveBeenCalledWith("home");
   expect(consumeAutoContinueThread(safeSessionStorage())).toBe("thread_life");
 });
-
