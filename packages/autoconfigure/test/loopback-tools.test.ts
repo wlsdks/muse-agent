@@ -137,12 +137,18 @@ describe("buildLoopbackTools — gating", () => {
 
     const denied: unknown[] = [];
     const deniedBundle = buildLoopbackTools(baseDeps({ messagingApprovalGate: () => ({ approved: false, reason: "no" }), messagingRegistry: new MessagingProviderRegistry([sendProvider(denied)]), ...poll }));
-    await findSend(deniedBundle).execute({ destination: "@me", text: "hi" }, {} as never);
+    await findSend(deniedBundle).execute(
+      { destination: "@me", effectId: "test-denied-send", text: "hi" },
+      {} as never
+    );
     expect(denied).toHaveLength(0); // gate denied → provider.send never called
 
     const approved: unknown[] = [];
     const approvedBundle = buildLoopbackTools(baseDeps({ messagingApprovalGate: () => ({ approved: true }), messagingRegistry: new MessagingProviderRegistry([sendProvider(approved)]), ...poll }));
-    await findSend(approvedBundle).execute({ destination: "@me", text: "hi" }, {} as never);
+    await findSend(approvedBundle).execute(
+      { destination: "@me", effectId: "test-approved-send", text: "hi" },
+      {} as never
+    );
     expect(approved).toHaveLength(1); // gate approved → provider.send called
   });
 
