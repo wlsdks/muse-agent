@@ -41,7 +41,7 @@ import {
   provisionalFactKeys,
   staleFactKeys
 } from "@muse/memory";
-import type { UserMemory } from "@muse/memory";
+import type { FactRecallDecision, UserMemory } from "@muse/memory";
 import type { MuseRuntimeAssembly } from "@muse/autoconfigure";
 import {
   allUserMemoryFacts,
@@ -77,6 +77,7 @@ export interface AskContextAssemblyInput {
   readonly assembly: MuseRuntimeAssembly;
   readonly userKey: string;
   readonly userMemory: UserMemory | undefined;
+  readonly memoryRecallDecisions?: readonly FactRecallDecision[];
   readonly personaPrompt: string | undefined;
   readonly personaTemplatePreamble: string;
   readonly episodeHits: SessionFeedReflectionGrounding["episodeHits"];
@@ -142,7 +143,12 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
   // grounded cautiously, not asserted as confirmed truth. Fail-soft — no
   // provenance log ⇒ no annotation.
   let provisionalMemoryKeys: ReadonlySet<string> = new Set();
-  let contestedMemoryKeys: ReadonlySet<string> = new Set();
+  let contestedMemoryKeys: ReadonlySet<string> = new Set(
+    input.memoryRecallDecisions
+      ?.filter((decision) => decision.state === "disputed" && decision.eligibility !== "ineligible")
+      .map((decision) => decision.key)
+      ?? []
+  );
   let staleMemoryKeys: ReadonlySet<string> = new Set();
   if (matchedMemories.length > 0) {
     try {
@@ -158,11 +164,14 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
       // the volatile-belief signal (today only the daily recap sees it) at point-of-
       // use, so a grounded answer says "confirm it's current" instead of a factually
       // wrong "learned once". Takes precedence over the provisional mark in render.
-      contestedMemoryKeys = contestedFactKeys(
+      contestedMemoryKeys = new Set([
+        ...contestedMemoryKeys,
+        ...contestedFactKeys(
         matchedMemories.map((m) => m.key),
         provenance,
         { normalizeKey: normalizeMemoryKey, now: nowMs }
-      );
+        )
+      ]);
       // STALE: a matched fact last confirmed long ago — point-of-use caution that it
       // may be out of date (the mildest mark; render never double-marks a contested/
       // provisional key). Same provenance, same fail-soft scope.
@@ -411,6 +420,7 @@ export async function assembleAskContext(input: AskContextAssemblyInput) {
     matchedFlows,
     allMemoryFacts,
     matchedMemories,
+    memoryRecallDecisions: input.memoryRecallDecisions ?? [],
     memoryBlock,
     actionBlock,
     gitBlock,

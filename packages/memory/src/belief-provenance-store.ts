@@ -68,6 +68,39 @@ export interface BeliefProvenanceSourceSnapshot {
   readonly excludedCount: number;
 }
 
+export const FACT_RECALL_LIFECYCLE_POLICY_V1 = "muse.fact-recall-lifecycle.v1";
+
+export type FactRecallState = "active" | "superseded" | "disputed" | "deleted";
+export type FactRecallEligibility = "eligible" | "uncertain" | "ineligible";
+
+export interface FactRecallCandidate {
+  readonly key: string;
+  readonly kind: "fact" | "preference";
+  readonly value: string;
+}
+
+/**
+ * Content-blind recall decision for one flat-store candidate. `key` is already
+ * a citation identity; values never enter the receipt so a deleted fact cannot
+ * leak through diagnostics after it has been excluded from answer evidence.
+ */
+export interface FactRecallDecision {
+  readonly eligibility: FactRecallEligibility;
+  readonly key: string;
+  readonly kind: "fact" | "preference";
+  readonly policyVersion: typeof FACT_RECALL_LIFECYCLE_POLICY_V1;
+  readonly reason:
+    | "legacy-no-provenance"
+    | "stable-current"
+    | "explicit-user-current"
+    | "auto-values-conflict"
+    | "newer-authoritative-value"
+    | "active-retraction"
+    | "malformed-history"
+    | "authority-unavailable";
+  readonly state: FactRecallState;
+}
+
 /** Exact inspection for a status read model; supports encrypted stores without quarantine or rewrite. */
 export function inspectBeliefProvenanceSource(
   file: string,
@@ -199,6 +232,111 @@ export function keysWithActiveRetraction(entries: readonly BeliefProvenance[]): 
     if (newest.retraction === true) out.add(key);
   }
   return out;
+}
+
+/**
+ * Project the append-only provenance log into deterministic answer-evidence
+ * eligibility for the flat user-memory candidates.
+ *
+ * Authority is deliberately stricter than write-side aggregation:
+ * - an explicit retraction stays deleted until a later explicit user `set`;
+ *   an auto extraction can never resurrect it;
+ * - the latest explicit user value outranks later auto inference;
+ * - a candidate that differs from that authoritative value is superseded;
+ * - conflicting auto-only values remain visible only as disputed/uncertain;
+ * - an unorderable history containing a retraction fails closed as deleted.
+ *
+ * No provenance means a legacy candidate remains byte-compatible and active.
+ * The caller injects key normalization so this file does not create a cycle
+ * back to the user-memory store.
+ */
+export function projectFactRecallLifecycle(
+  candidates: readonly FactRecallCandidate[],
+  entries: readonly BeliefProvenance[],
+  opts: { readonly normalizeKey?: (key: string) => string } = {}
+): readonly FactRecallDecision[] {
+  const normalizeKey = opts.normalizeKey ?? ((key: string): string => key);
+  const byIdentity = new Map<string, Array<{ readonly entry: BeliefProvenance; readonly index: number; readonly timestamp: number }>>();
+  entries.forEach((entry, index) => {
+    const identity = factRecallIdentity(entry.kind, normalizeKey(entry.key));
+    const group = byIdentity.get(identity) ?? [];
+    group.push({ entry, index, timestamp: Date.parse(entry.learnedAt) });
+    byIdentity.set(identity, group);
+  });
+
+  return Object.freeze(candidates.map((candidate): FactRecallDecision => {
+    const group = byIdentity.get(factRecallIdentity(candidate.kind, normalizeKey(candidate.key))) ?? [];
+    if (group.length === 0) {
+      return freezeFactRecallDecision(candidate, "active", "eligible", "legacy-no-provenance");
+    }
+
+    const malformed = group.some(({ timestamp }) => !Number.isFinite(timestamp));
+    if (malformed) {
+      return group.some(({ entry }) => entry.retraction === true)
+        ? freezeFactRecallDecision(candidate, "deleted", "ineligible", "malformed-history")
+        : freezeFactRecallDecision(candidate, "disputed", "uncertain", "malformed-history");
+    }
+
+    const ordered = [...group].sort(compareFactRecallEvents);
+    const latestRetraction = [...ordered].reverse().find(({ entry }) => entry.retraction === true);
+    const latestExplicitUser = [...ordered].reverse().find(({ entry }) =>
+      entry.retraction !== true && entry.source === "user"
+    );
+    if (
+      latestRetraction
+      && (!latestExplicitUser || compareFactRecallEvents(latestExplicitUser, latestRetraction) <= 0)
+    ) {
+      return freezeFactRecallDecision(candidate, "deleted", "ineligible", "active-retraction");
+    }
+
+    const nonRetractions = ordered.filter(({ entry }) => entry.retraction !== true);
+    const authoritative = latestExplicitUser ?? nonRetractions[nonRetractions.length - 1];
+    if (!authoritative) {
+      return freezeFactRecallDecision(candidate, "deleted", "ineligible", "active-retraction");
+    }
+    if (canonicalFactRecallValue(candidate.value) !== canonicalFactRecallValue(authoritative.entry.value)) {
+      return freezeFactRecallDecision(candidate, "superseded", "ineligible", "newer-authoritative-value");
+    }
+
+    const distinctValues = new Set(nonRetractions.map(({ entry }) => canonicalFactRecallValue(entry.value)));
+    if (!latestExplicitUser && distinctValues.size > 1) {
+      return freezeFactRecallDecision(candidate, "disputed", "uncertain", "auto-values-conflict");
+    }
+    return latestExplicitUser
+      ? freezeFactRecallDecision(candidate, "active", "eligible", "explicit-user-current")
+      : freezeFactRecallDecision(candidate, "active", "eligible", "stable-current");
+  }));
+}
+
+function factRecallIdentity(kind: "fact" | "preference", key: string): string {
+  return `${kind}\u0000${key}`;
+}
+
+function canonicalFactRecallValue(value: string): string {
+  return value.normalize("NFC").trim().toLowerCase();
+}
+
+function compareFactRecallEvents(
+  left: { readonly index: number; readonly timestamp: number },
+  right: { readonly index: number; readonly timestamp: number }
+): number {
+  return left.timestamp === right.timestamp ? left.index - right.index : left.timestamp - right.timestamp;
+}
+
+function freezeFactRecallDecision(
+  candidate: FactRecallCandidate,
+  state: FactRecallState,
+  eligibility: FactRecallEligibility,
+  reason: FactRecallDecision["reason"]
+): FactRecallDecision {
+  return Object.freeze({
+    eligibility,
+    key: candidate.key,
+    kind: candidate.kind,
+    policyVersion: FACT_RECALL_LIFECYCLE_POLICY_V1,
+    reason,
+    state
+  });
 }
 
 /**
@@ -714,5 +852,6 @@ function isBeliefProvenance(value: unknown): value is BeliefProvenance {
   if (e.sessionId !== undefined && typeof e.sessionId !== "string") return false;
   if (e.evidenceExcerpt !== undefined && typeof e.evidenceExcerpt !== "string") return false;
   if (e.source !== undefined && e.source !== "auto" && e.source !== "user") return false;
+  if (e.retraction !== undefined && typeof e.retraction !== "boolean") return false;
   return true;
 }

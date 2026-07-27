@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { RULE_BUDGET_DEFAULT } from "@muse/agent-core";
 import { composeChatSystemContent, createStageTimer } from "@muse/recall";
 import type { MuseRuntimeAssembly } from "@muse/autoconfigure";
-import type { UserMemory } from "@muse/memory";
+import type { FactRecallDecision, UserMemory } from "@muse/memory";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { assembleAskContext } from "./ask-context-assembly.js";
@@ -28,6 +28,7 @@ const QUERY = "should I take the morning train or the afternoon train";
 let dir: string;
 let playbookFile: string;
 let prevPlaybookFile: string | undefined;
+let prevHome: string | undefined;
 
 const io: ProgramIO = { stderr: () => {}, stdout: () => {} };
 const assembly = {} as MuseRuntimeAssembly;
@@ -49,7 +50,11 @@ function entry(id: string, i: number, extra: Record<string, unknown> = {}): Reco
   };
 }
 
-async function callAssemble(query: string, userMemory: UserMemory | undefined = undefined) {
+async function callAssemble(
+  query: string,
+  userMemory: UserMemory | undefined = undefined,
+  memoryRecallDecisions: readonly FactRecallDecision[] | undefined = undefined
+) {
   return assembleAskContext({
     askStages: createStageTimer(),
     assembly,
@@ -61,6 +66,7 @@ async function callAssemble(query: string, userMemory: UserMemory | undefined = 
     feedBlock: "",
     feedHeadlines: [],
     io,
+    ...(memoryRecallDecisions ? { memoryRecallDecisions } : {}),
     options,
     personaPrompt: undefined,
     personaTemplatePreamble: "",
@@ -80,10 +86,14 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "muse-ask-rule-budget-int-"));
   playbookFile = join(dir, "playbook.json");
   prevPlaybookFile = process.env.MUSE_PLAYBOOK_FILE;
+  prevHome = process.env.HOME;
+  process.env.HOME = dir;
   process.env.MUSE_PLAYBOOK_FILE = playbookFile;
 });
 
 afterEach(async () => {
+  if (prevHome === undefined) delete process.env.HOME;
+  else process.env.HOME = prevHome;
   if (prevPlaybookFile === undefined) delete process.env.MUSE_PLAYBOOK_FILE;
   else process.env.MUSE_PLAYBOOK_FILE = prevPlaybookFile;
   await rm(dir, { force: true, recursive: true });
@@ -177,5 +187,29 @@ describe("assembleAskContext — production wiring to the shared behavioural-rul
 describe("assembleAskContext — RULE_BUDGET_DEFAULT sanity", () => {
   it("the default is 7 (documents the constant this file's expectations are built around)", () => {
     expect(RULE_BUDGET_DEFAULT).toBe(7);
+  });
+});
+
+describe("assembleAskContext — disputed memory recall receipt", () => {
+  it("renders an eligible disputed fact with uncertainty instead of established-fact wording", async () => {
+    const userMemory: UserMemory = {
+      facts: { home_city: "Busan" },
+      preferences: {},
+      recentTopics: [],
+      updatedAt: new Date("2026-07-27T00:00:00.000Z"),
+      userId: USER
+    };
+    const decisions: readonly FactRecallDecision[] = [{
+      eligibility: "uncertain",
+      key: "home_city",
+      kind: "fact",
+      policyVersion: "muse.fact-recall-lifecycle.v1",
+      reason: "auto-values-conflict",
+      state: "disputed"
+    }];
+    const assembled = await callAssemble("what is my home city", userMemory, decisions);
+    expect(assembled.memoryBlock).toContain("home city: Busan");
+    expect(assembled.memoryBlock).toMatch(/changed before|confirm/u);
+    expect(assembled.memoryRecallDecisions).toEqual(decisions);
   });
 });

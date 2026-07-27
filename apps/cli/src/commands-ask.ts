@@ -84,6 +84,7 @@ import { runGroundingVerdict } from "./ask-grounding-verdict.js";
 import { finalizeAndRenderAsk } from "./ask-finalize.js";
 import { computeRuleAdmission } from "./ask-behavioural-rules.js";
 import { assembleAskContext } from "./ask-context-assembly.js";
+import { resolveAskMemoryRecallAuthority } from "./ask-memory-recall-authority.js";
 import { assertTrustedAskB1Preflight } from "./ask-trusted-preflight.js";
 import { applyAskOptions, type AskOptions } from "./ask-command-options.js";
 export type { AskOptions };
@@ -310,7 +311,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         return;
       }
 
-      const userMemory = await assembly.userMemoryStore.findByUserId(userKey);
+      const storedUserMemory = await assembly.userMemoryStore.findByUserId(userKey);
+      const memoryRecallAuthority = await resolveAskMemoryRecallAuthority(storedUserMemory, userKey);
+      const userMemory = memoryRecallAuthority.memory;
       // The shared behavioural-rule budget (agent-core's selectBehaviouralRules)
       // decides which vetoes/preferences/goals reach the persona for THIS
       // turn's actual query — a turn-relevant veto is always admitted; see
@@ -354,6 +357,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         personaPrompt,
         personaTemplatePreamble,
         query,
+        memoryRecallDecisions: memoryRecallAuthority.decisions,
         reflectionBlock,
         reflectionLines,
         userKey,

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { withFileLock } from "@muse/shared";
 import { describe, expect, it } from "vitest";
 
-import { beliefValueTimeline, defaultBeliefProvenanceFile, FileBeliefProvenanceStore, formatFirstLearned, selectRecentlyForgotten, selectRecentlyLearnedFacts, type BeliefProvenance, type FactProvenance } from "./belief-provenance-store.js";
+import { beliefValueTimeline, defaultBeliefProvenanceFile, FileBeliefProvenanceStore, formatFirstLearned, projectFactRecallLifecycle, selectRecentlyForgotten, selectRecentlyLearnedFacts, type BeliefProvenance, type FactProvenance, type FactRecallCandidate } from "./belief-provenance-store.js";
 
 describe("defaultBeliefProvenanceFile", () => {
   it("resolves from injected HOME instead of ambient os.homedir", () => {
@@ -59,6 +59,127 @@ const bp = (over: Partial<BeliefProvenance>): BeliefProvenance => ({
   value: "Busan",
   learnedAt: "2026-06-20T00:00:00Z",
   ...over
+});
+
+describe("projectFactRecallLifecycle", () => {
+  const candidate = (over: Partial<FactRecallCandidate> = {}): FactRecallCandidate => ({
+    key: "home_city",
+    kind: "fact",
+    value: "Busan",
+    ...over
+  });
+
+  it("keeps a legacy candidate active when no provenance exists", () => {
+    expect(projectFactRecallLifecycle([candidate()], [])).toEqual([
+      expect.objectContaining({
+        eligibility: "eligible",
+        reason: "legacy-no-provenance",
+        state: "active"
+      })
+    ]);
+  });
+
+  it("marks a flat-store value superseded when an explicit user value is authoritative", () => {
+    const decisions = projectFactRecallLifecycle(
+      [candidate({ value: "Seoul" }), candidate({ key: "HOME-CITY", value: "Busan" })],
+      [
+        bp({ value: "Seoul", learnedAt: "2026-06-10T00:00:00Z", source: "auto" }),
+        bp({ value: "Busan", learnedAt: "2026-06-20T00:00:00Z", source: "user" })
+      ],
+      { normalizeKey: (key) => key.toLowerCase().replace(/-/gu, "_") }
+    );
+    expect(decisions.map(({ eligibility, state }) => ({ eligibility, state }))).toEqual([
+      { eligibility: "ineligible", state: "superseded" },
+      { eligibility: "eligible", state: "active" }
+    ]);
+  });
+
+  it("does not let a later auto inference override an explicit user value", () => {
+    expect(projectFactRecallLifecycle(
+      [candidate({ value: "Busan" })],
+      [
+        bp({ value: "Busan", learnedAt: "2026-06-20T00:00:00Z", source: "user" }),
+        bp({ value: "Seoul", learnedAt: "2026-06-21T00:00:00Z", source: "auto" })
+      ]
+    )).toEqual([
+      expect.objectContaining({
+        eligibility: "eligible",
+        reason: "explicit-user-current",
+        state: "active"
+      })
+    ]);
+  });
+
+  it("keeps conflicting auto-only current evidence visible only as disputed uncertainty", () => {
+    expect(projectFactRecallLifecycle(
+      [candidate()],
+      [
+        bp({ value: "Seoul", learnedAt: "2026-06-10T00:00:00Z", source: "auto" }),
+        bp({ value: "Busan", learnedAt: "2026-06-20T00:00:00Z", source: "auto" })
+      ]
+    )).toEqual([
+      expect.objectContaining({
+        eligibility: "uncertain",
+        reason: "auto-values-conflict",
+        state: "disputed"
+      })
+    ]);
+  });
+
+  it("makes a tombstoned candidate ineligible and does not let later auto extraction resurrect it", () => {
+    const entries = [
+      bp({ value: "Busan", learnedAt: "2026-06-10T00:00:00Z", source: "user" }),
+      bp({ value: "", learnedAt: "2026-06-20T00:00:00Z", retraction: true, source: "user" }),
+      bp({ value: "Busan", learnedAt: "2026-06-21T00:00:00Z", source: "auto" })
+    ];
+    expect(projectFactRecallLifecycle([candidate()], entries)).toEqual([
+      expect.objectContaining({
+        eligibility: "ineligible",
+        reason: "active-retraction",
+        state: "deleted"
+      })
+    ]);
+  });
+
+  it("allows a later explicit user set to reopen a tombstoned key", () => {
+    const entries = [
+      bp({ value: "", learnedAt: "2026-06-20T00:00:00Z", retraction: true, source: "user" }),
+      bp({ value: "Busan", learnedAt: "2026-06-21T00:00:00Z", source: "user" })
+    ];
+    expect(projectFactRecallLifecycle([candidate()], entries)).toEqual([
+      expect.objectContaining({
+        eligibility: "eligible",
+        reason: "explicit-user-current",
+        state: "active"
+      })
+    ]);
+  });
+
+  it("fails closed when a retraction timestamp cannot be ordered", () => {
+    expect(projectFactRecallLifecycle(
+      [candidate()],
+      [bp({ value: "", learnedAt: "not-a-time", retraction: true, source: "user" })]
+    )).toEqual([
+      expect.objectContaining({
+        eligibility: "ineligible",
+        reason: "malformed-history",
+        state: "deleted"
+      })
+    ]);
+  });
+
+  it("marks malformed non-retraction history uncertain instead of established", () => {
+    expect(projectFactRecallLifecycle(
+      [candidate()],
+      [bp({ learnedAt: "not-a-time", source: "auto" })]
+    )).toEqual([
+      expect.objectContaining({
+        eligibility: "uncertain",
+        reason: "malformed-history",
+        state: "disputed"
+      })
+    ]);
+  });
 });
 
 describe("selectRecentlyForgotten (the FORGETS half of Learns-you)", () => {
