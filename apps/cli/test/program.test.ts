@@ -5110,7 +5110,7 @@ describe("cli program", () => {
       expect(text).toContain("unknown command 'statu'");
       expect(text).toContain("Did you mean 'muse status'?");
       expect(text).toContain("muse --help");
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(2);
     } finally {
       process.exitCode = prevExitCode;
     }
@@ -5126,7 +5126,7 @@ describe("cli program", () => {
       const text = output.join("");
       expect(text).toContain("unknown command 'totally-unrelated-input'");
       expect(text).not.toContain("Did you mean");
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(2);
     } finally {
       process.exitCode = prevExitCode;
     }
@@ -5142,7 +5142,7 @@ describe("cli program", () => {
       const text = output.join("");
       expect(text).toContain("unknown command 'cal'");
       expect(text).toContain("Did you mean 'muse calendar'?");
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(2);
     } finally {
       process.exitCode = prevExitCode;
     }
@@ -5158,7 +5158,7 @@ describe("cli program", () => {
       const text = output.join("");
       expect(text).toContain("unknown command 're'");
       expect(text).not.toContain("Did you mean");
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(2);
     } finally {
       process.exitCode = prevExitCode;
     }

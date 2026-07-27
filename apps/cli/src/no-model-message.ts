@@ -10,6 +10,7 @@
 import { resolveCliLanguage, t } from "./cli-i18n.js";
 import { readConfigStore } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
+import { setCliTerminalState } from "./cli-terminal-state.js";
 
 /**
  * Resolves the CLI language, writes the localized message to stderr, and
@@ -23,5 +24,5 @@ export async function reportNoModelConfigured(
 ): Promise<void> {
   await resolveCliLanguage(env, () => readConfigStore(io));
   io.stderr(`${t("model.notConfigured", { command })}\n`);
-  process.exitCode = 2;
+  setCliTerminalState("user-error");
 }

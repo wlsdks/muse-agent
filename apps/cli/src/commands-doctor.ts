@@ -70,6 +70,7 @@ import {
 } from "./personal-agent-qualification-probes.js";
 import type { RuntimeQualificationObservation } from "./personal-agent-qualification.js";
 import type { ProgramIO } from "./program.js";
+import { setCliTerminalState } from "./cli-terminal-state.js";
 import { readDaemonResourceSnapshot, type DaemonResourceSnapshot } from "./daemon-resource-admission.js";
 import type { ResidentDaemonProcessSnapshot } from "./daemon-resource-status.js";
 import { buildDaemonResourceDoctorCheck, buildLocalModelMemoryDoctorCheck, readResidentDaemonProcessSnapshot } from "./commands-doctor-runtime-resources.js";
@@ -245,11 +246,13 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
     ) => {
       // --grounding is a standalone live mode: score the bundled edge corpus on
       // the local model and print the two rates. Skips (exit 0) when Ollama is
-      // down; exit 1 only on a rate regression below the shipped floor.
+      // down; a required live skip is unverified (exit 4), never a false pass.
       if (options.grounding) {
         const status = await runGroundingDoctor(io);
         if (status === "fail") {
-          process.exitCode = 1;
+          setCliTerminalState("internal-failure");
+        } else if (status === "unverified") {
+          setCliTerminalState("unverified");
         }
         return;
       }
@@ -393,17 +396,17 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
  * `muse doctor --grounding` — score the bundled held-out corpus on the REAL
  * local recall + RGV stack and print faithfulness + false-refusal. Makes the
  * `fabrication=0` claim a number the user reads on their own box; the same
- * scorer is the verify-faithfulness-rate regression gate. Skips (returns "ok")
+ * scorer is the verify-faithfulness-rate regression gate. Returns unverified
  * when Ollama / the embed model is unreachable — a skip is not a pass, but
  * doctor must not dead-end on a box with no model up (same policy as the live
  * batteries). Lazy imports keep the runtime assembly out of the default path.
  */
-async function runGroundingDoctor(io: ProgramIO): Promise<"ok" | "fail"> {
+async function runGroundingDoctor(io: ProgramIO): Promise<"ok" | "fail" | "unverified"> {
   const baseUrl = resolveOllamaUrl().replace(/\/$/, "");
   const reachable = (await probeOllamaModels(baseUrl, { timeoutMs: 3_000 })).reachable;
   if (!reachable) {
     io.stdout(`grounding edge — skipped: local Ollama not reachable at ${baseUrl} (a skip is not a pass; start Ollama to measure).\n`);
-    return "ok";
+    return "unverified";
   }
 
   const { createMuseRuntimeAssembly, createOllamaEmbedder } = await import("@muse/autoconfigure");
@@ -419,7 +422,7 @@ async function runGroundingDoctor(io: ProgramIO): Promise<"ok" | "fail"> {
     io.stdout(
       `grounding edge — skipped: embed model '${DEFAULT_EMBED_MODEL}' unavailable (${errorMessage(cause)}). Try: ollama pull ${DEFAULT_EMBED_MODEL}\n`
     );
-    return "ok";
+    return "unverified";
   }
 
   const model = process.env.MUSE_DEFAULT_MODEL ?? process.env.MUSE_MODEL ?? LOCAL_FIRST_DEFAULT_MODEL;
@@ -427,7 +430,7 @@ async function runGroundingDoctor(io: ProgramIO): Promise<"ok" | "fail"> {
   const modelProvider = createMuseRuntimeAssembly().modelProvider;
   if (!modelProvider) {
     io.stdout("grounding edge — skipped: no local model provider configured (set MUSE_DEFAULT_MODEL).\n");
-    return "ok";
+    return "unverified";
   }
   const reverify = createQwenReverify(modelProvider, model);
 

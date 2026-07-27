@@ -48,6 +48,7 @@ import type { TodayCommandShells } from "./commands-today.js";
 import { COMMAND_STUBS } from "./command-manifest.js";
 import { LOADER_BY_NAME, type LazyDeps } from "./command-loaders.js";
 import { registerCompletionCommand } from "./commands-completion.js";
+import { setCliTerminalState } from "./cli-terminal-state.js";
 
 /**
  * Thrown by a group's default-subcommand guard to ABORT the default action
@@ -405,7 +406,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         const loaded = await loadImageAttachment(options.image);
         if (!loaded.ok) {
           io.stderr(`${loaded.error}\n`);
-          process.exitCode = 1;
+          setCliTerminalState("user-error");
           return;
         }
         imageAttachments = [loaded.attachment];
@@ -563,7 +564,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       const match = program.commands.find((command) => command.name() === target);
       if (!match) {
         io.stderr(formatUnknownCommand(target, listAllCommandNames(program)));
-        process.exitCode = 1;
+        setCliTerminalState("user-error");
         return;
       }
       match.outputHelp();
@@ -657,7 +658,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       return;
     }
     io.stderr(formatUnknownCommand(attempted, listAllCommandNames(program)));
-    process.exitCode = 1;
+    setCliTerminalState("user-error");
   });
 
   // Lazy dispatch: wrap parseAsync so the invoked command's REAL module graph
@@ -802,7 +803,7 @@ function attachLoadedSubcommandGuidance(
     const knownSubs = [...subs].sort();
     group.on("command:*", (operands: readonly string[]) => {
       stderr(`${formatUnknownSubcommand(name, operands[0] ?? "", knownSubs)}\n`);
-      process.exitCode = 1;
+      setCliTerminalState("user-error");
     });
     attachDefaultSubcommandGuard(group, stderr, name, knownSubs);
   }
@@ -843,7 +844,7 @@ function attachDefaultSubcommandGuard(
       return;
     }
     stderr(`${formatUnknownSubcommand(groupName, attempted, knownSubs)}\n`);
-    process.exitCode = 1;
+    setCliTerminalState("user-error");
     throw new UnknownSubcommandAbort();
   });
 }

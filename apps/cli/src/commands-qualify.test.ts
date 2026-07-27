@@ -197,7 +197,7 @@ describe("muse qualify", () => {
       /safe\/workspace|PRIVATE|src\/index\.ts|"(?:cwd|diskArguments|environment|liveArguments|path|pid|processArguments)"\s*:/iu
     );
     expect(result.stdout.trim().split("\n")).toHaveLength(1);
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(4);
     expect(result.stderr).toBe("");
   });
 

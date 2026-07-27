@@ -28,6 +28,7 @@ import {
 } from "@muse/stores";
 
 import { commandErrorLine } from "./format-cli-error.js";
+import { setCliTerminalState } from "./cli-terminal-state.js";
 import { waitForChildProcessResult } from "./async-promises.js";
 import type { ProgramIO } from "./program.js";
 
@@ -142,6 +143,7 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
       const record = (await readBackgroundProcesses(backgroundStoreFile())).find((entry) => entry.id === id);
       if (!record) {
         io.stderr(commandErrorLine("bg logs", `No background process with id '${id}'.`));
+        setCliTerminalState("user-error");
         return;
       }
       if (!record.logFile) {
@@ -201,6 +203,7 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
       const prior = (await readBackgroundProcesses(backgroundStoreFile())).find((entry) => entry.id === id);
       if (!prior) {
         io.stderr(commandErrorLine("bg restart", `No background process with id '${id}'.`));
+        setCliTerminalState("user-error");
         return;
       }
       try {
@@ -234,6 +237,7 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
       );
       if (result === "not_found") {
         io.stderr(commandErrorLine("bg stop", `No background process with id '${id}'.`));
+        setCliTerminalState("user-error");
       } else if (result === "already_done") {
         io.stdout(`'${id}' is not running.\n`);
       } else if (result === "pid_reused") {
@@ -243,4 +247,3 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
       }
     });
 }
-

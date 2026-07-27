@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { Command, InvalidArgumentError } from "commander";
 
 import type { ProgramIO } from "./program.js";
+import { setCliTerminalState } from "./cli-terminal-state.js";
 import {
   DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_HOURS,
   qualifyPersonalAgent,
@@ -73,6 +74,10 @@ export function registerQualifyCommand(
       });
       const report = qualifyPersonalAgent(observations);
       io.stdout(options.json ? `${JSON.stringify(report)}\n` : renderPersonalAgentQualification(report));
-      process.exitCode = report.status === "qualified" ? 0 : 1;
+      setCliTerminalState(
+        report.status === "qualified"
+          ? "success"
+          : report.status === "unverified" ? "unverified" : "internal-failure"
+      );
     });
 }

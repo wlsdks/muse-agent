@@ -77,7 +77,7 @@ describe("lazy dispatch — real invocation through the parseAsync wrapper", () 
       const text = err.join("");
       expect(text).toContain("unknown command 'muse memory bogus-sub'");
       expect(text).toContain("Available memory commands:");
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(2);
     } finally {
       process.exitCode = prevExit;
     }
@@ -93,7 +93,7 @@ describe("lazy dispatch — discovery surfaces stay off the stubs (fast path)", 
       const program = createProgram(io);
       await program.parseAsync(["node", "muse", "statu"], { from: "node" });
       expect(err.join("")).toContain("Did you mean 'muse status'?");
-      expect(process.exitCode).toBe(1);
+      expect(process.exitCode).toBe(2);
     } finally {
       process.exitCode = prevExit;
     }

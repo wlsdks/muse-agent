@@ -17,6 +17,10 @@ import type { Command } from "commander";
 import { stripUntrustedTerminalChars, truncateErrorBody , errorMessage, isErrorLike } from "@muse/shared";
 
 import { isRecord } from "./credential-store.js";
+import {
+  classifyApiTerminalState,
+  CliTerminalStateError
+} from "./cli-terminal-state.js";
 import { t } from "./cli-i18n.js";
 import { parseJson } from "./json-parse.js";
 import { formatCitations } from "./human-formatters.js";
@@ -76,7 +80,10 @@ export function formatApiErrorResponse(
 ): Error {
   const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
   if (contentType.includes("text/html")) {
-    return new Error(t("programHttp.htmlResponseHint", { baseUrl, status: response.status }));
+    return new CliTerminalStateError(
+      classifyApiTerminalState(response.status),
+      t("programHttp.htmlResponseHint", { baseUrl, status: response.status })
+    );
   }
   const trimmed = body.trim();
   // The Muse API error envelope is a JSON object carrying a
@@ -90,10 +97,17 @@ export function formatApiErrorResponse(
     const msg = structured.message.length > 240
       ? `${structured.message.slice(0, 240)}…`
       : structured.message;
-    return new Error(`Muse API ${response.status}${code}: ${msg}`);
+    return new CliTerminalStateError(
+      classifyApiTerminalState(response.status, structured.code),
+      `Muse API ${response.status}${code}: ${msg}`,
+      structured.code
+    );
   }
   const preview = trimmed.length > 240 ? `${trimmed.slice(0, 240)}…` : trimmed;
-  return new Error(`Muse API ${response.status}: ${preview || response.statusText}`);
+  return new CliTerminalStateError(
+    classifyApiTerminalState(response.status),
+    `Muse API ${response.status}: ${preview || response.statusText}`
+  );
 }
 
 function extractApiErrorEnvelope(
@@ -132,13 +146,13 @@ function friendlyFetchError(baseUrl: string, error: unknown): Error {
   const cause = isRecord(error) && isRecord(error.cause) ? error.cause : undefined;
   const code = cause && typeof cause.code === "string" ? cause.code : undefined;
   if (code === "ECONNREFUSED") {
-    return new Error(t("programHttp.serverNotRunning", { baseUrl }));
+    return new CliTerminalStateError("unverified", t("programHttp.serverNotRunning", { baseUrl }));
   }
   if (code === "ENOTFOUND") {
-    return new Error(`Muse API host unresolved (${baseUrl}). Check --api-url.`);
+    return new CliTerminalStateError("unverified", `Muse API host unresolved (${baseUrl}). Check --api-url.`);
   }
   const message = errorMessage(error);
-  return new Error(`Muse API request failed: ${message}`);
+  return new CliTerminalStateError("unverified", `Muse API request failed: ${message}`);
 }
 
 /**

@@ -44,24 +44,24 @@ async function runBg(args: string[]): Promise<{ stdout: string; stderr: string; 
 }
 
 describe("muse bg — unknown-id error envelope", () => {
-  it("bg logs <unknown> → `muse bg logs:`-prefixed stderr; exit code unchanged (0), stdout empty", async () => {
+  it("bg logs <unknown> → canonical user-error exit 2 with stderr and empty stdout", async () => {
     const r = await runBg(["logs", "bg-nope"]);
     expect(r.stderr).toBe("muse bg logs: No background process with id 'bg-nope'.\n");
     expect(r.stdout).toBe("");
-    expect(r.exitCode).toBeUndefined();
+    expect(r.exitCode).toBe(2);
   });
 
-  it("bg restart <unknown> → `muse bg restart:`-prefixed stderr; exit code unchanged (0), stdout empty", async () => {
+  it("bg restart <unknown> → canonical user-error exit 2 with stderr and empty stdout", async () => {
     const r = await runBg(["restart", "bg-nope"]);
     expect(r.stderr).toBe("muse bg restart: No background process with id 'bg-nope'.\n");
     expect(r.stdout).toBe("");
-    expect(r.exitCode).toBeUndefined();
+    expect(r.exitCode).toBe(2);
   });
 
-  it("bg stop <unknown> → `muse bg stop:`-prefixed stderr; exit code unchanged (0), stdout empty", async () => {
+  it("bg stop <unknown> → canonical user-error exit 2 with stderr and empty stdout", async () => {
     const r = await runBg(["stop", "bg-nope"]);
     expect(r.stderr).toBe("muse bg stop: No background process with id 'bg-nope'.\n");
     expect(r.stdout).toBe("");
-    expect(r.exitCode).toBeUndefined();
+    expect(r.exitCode).toBe(2);
   });
 });

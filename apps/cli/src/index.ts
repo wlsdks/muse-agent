@@ -34,17 +34,62 @@ if (tryVersionFastPath(process.argv, fastWrite) || trySpecFastPath(process.argv,
   process.exit(0);
 }
 
+const terminalContract = await import("./cli-terminal-state.js");
+const jsonRequested = terminalContract.jsonModeRequested(process.argv);
+let stdoutWritten = false;
+let bufferedStderr = "";
+const programIo = {
+  stderr: (message: string) => {
+    bufferedStderr += message;
+  },
+  stdout: (message: string) => {
+    stdoutWritten ||= message.length > 0;
+    process.stdout.write(message);
+  },
+  workspaceDir: process.cwd()
+};
+
 try {
   const { createProgram } = await import("./program.js");
-  await createProgram().parseAsync(process.argv);
+  const program = createProgram(programIo);
+  // Production owns Commander termination so every parser/argument failure
+  // reaches the same terminal-state classifier instead of calling exit early.
+  program.exitOverride();
+  await program.parseAsync(process.argv);
+
+  const state = terminalContract.terminalStateFromExitCode(process.exitCode);
+  if (bufferedStderr.trim().length > 0) {
+    if (jsonRequested && state !== "success" && !stdoutWritten) {
+      process.stdout.write(terminalContract.jsonTerminalFailure(
+        new terminalContract.CliTerminalStateError(state, bufferedStderr.trim()),
+        state,
+        { command: terminalContract.commandNameFromArgv(process.argv) }
+      ));
+    } else if (!jsonRequested) {
+      process.stderr.write(bufferedStderr);
+    }
+  }
 } catch (error) {
-  const [{ formatCliError, commandFromArgv }, { MUSE_CLI_VERSION }] = await Promise.all([
+  const [{ formatCliError }, { MUSE_CLI_VERSION }] = await Promise.all([
     import("./format-cli-error.js"),
     import("./muse-version.js")
   ]);
-  process.stderr.write(formatCliError(error, {
-    command: commandFromArgv(process.argv) ?? "",
-    version: MUSE_CLI_VERSION
-  }));
-  process.exit(1);
+  const state = terminalContract.classifyCliTerminalState(error);
+  if (state === "success") {
+    process.exitCode = 0;
+  } else {
+    const command = terminalContract.commandNameFromArgv(process.argv);
+    if (jsonRequested && !stdoutWritten) {
+      process.stdout.write(terminalContract.jsonTerminalFailure(error, state, {
+        command,
+        fallbackMessage: bufferedStderr
+      }));
+    } else if (!jsonRequested) {
+      process.stderr.write(formatCliError(error, {
+        command,
+        version: MUSE_CLI_VERSION
+      }));
+    }
+    process.exitCode = terminalContract.cliExitCode(state);
+  }
 }
