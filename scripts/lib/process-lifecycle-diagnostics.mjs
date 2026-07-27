@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { basename } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -66,7 +67,14 @@ export function matchesProcessIdentity(receipt, observed) {
     && receipt.pid === observed.pid
     && receipt.processGroupId === observed.processGroupId
     && receipt.osStartedAt === observed.osStartedAt
-    && receipt.executable === observed.executable;
+    && (
+      receipt.executable === observed.executable
+      // macOS decorates a reaped-but-not-yet-removed process as `(name)` in
+      // `ps -o comm`. PID + PGID + exact birth time still bind this short-lived
+      // zombie to the same launch; accepting only the receipt basename keeps
+      // replacement processes fail-closed.
+      || observed.executable === `(${basename(receipt.executable)})`
+    );
 }
 
 export async function captureProcessLifecycleDiagnostics({
