@@ -21,8 +21,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+import { captureProcessLifecycleDiagnostics } from "./lib/process-lifecycle-diagnostics.mjs";
+
 const rootDir = process.cwd();
 const cliEntry = `${rootDir}/apps/cli/dist/index.js`;
+const lifecycleDiagnosticsEnabled = process.env.MUSE_CLI_SMOKE_LIFECYCLE_DIAGNOSTICS === "1";
 
 if (!existsSync(cliEntry)) {
   console.error(`smoke:cli — cannot find ${cliEntry}; run 'pnpm --filter @muse/cli build' first`);
@@ -190,6 +193,14 @@ try {
 
   api.kill("SIGTERM");
   await waitForExit(api, 5_000);
+  if (lifecycleDiagnosticsEnabled) {
+    const diagnostic = await captureProcessLifecycleDiagnostics();
+    console.log(`smoke:cli lifecycle ${JSON.stringify({
+      ...diagnostic,
+      schedulerRoot,
+      stage: "post-shutdown"
+    })}`);
+  }
   rmSync(schedulerRoot, { force: true, recursive: true });
   process.exitCode = failures > 0 ? 1 : 0;
 }
