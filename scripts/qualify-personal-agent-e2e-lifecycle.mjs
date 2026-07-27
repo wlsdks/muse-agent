@@ -24,16 +24,22 @@ const artifactPath = join(
   ".muse-dev",
   "evals",
   "personal-agent-roadmap",
-  "task-046-d.json"
+  "task-047-b.json"
 );
 const inputFiles = [
+  "apps/api/src/tasks-routes.ts",
+  "apps/cli/src/commands-tasks.ts",
   "apps/web/e2e/personal-agent/fixture-isolation.spec.ts",
+  "apps/web/e2e/personal-agent/surface-parity.spec.ts",
   "apps/web/playwright.personal-agent.config.ts",
+  "apps/web/src/views/Tasks.tsx",
   "package.json",
   "scripts/qualify-personal-agent-e2e-lifecycle.mjs",
   "scripts/fixtures/personal-agent-embedding-stub.mjs",
+  "scripts/lib/task-add-parity-contract.mjs",
   "scripts/run-personal-agent-e2e.mjs",
   "scripts/run-personal-agent-e2e.test.mjs",
+  "scripts/task-add-parity-contract.test.mjs",
   "scripts/test-changed.mjs"
 ];
 
@@ -77,12 +83,12 @@ await writeFile(artifactPath, `${JSON.stringify({
   inputHashStart,
   result,
   source: { endHead, startHead },
-  taskId: "046-D",
+  taskId: "047-B",
   trials,
   ...(primaryError === undefined ? {} : { error: errorMessage(primaryError) })
 }, null, 2)}\n`, "utf8");
 
-if (result !== "pass") throw primaryError ?? new Error("Task046-D lifecycle qualification failed");
+if (result !== "pass") throw primaryError ?? new Error("Task047-B lifecycle qualification failed");
 console.log("qualify:personal-agent-e2e-lifecycle PASS (normal/failure/SIGTERM; API/web/embed ports and temp/process residue 0)");
 
 async function runTrial(name, envOverrides, contract) {
