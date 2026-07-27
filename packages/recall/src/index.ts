@@ -30,6 +30,7 @@ export * from "./notes-links.js";
 export * from "./live-files.js";
 export * from "./episode-index.js";
 export * from "./feeds-store.js";
+export * from "./freshness-supersession-reducer.js";
 export * from "./browsing-store.js";
 export * from "./chrome-history.js";
 export * from "./browsing-sync.js";
