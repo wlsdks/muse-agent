@@ -1,3 +1,7 @@
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -7,7 +11,7 @@ import {
   type ResidentMuseProcessInventory
 } from "@muse/runtime-state";
 
-import { registerQualifyCommand } from "./commands-qualify.js";
+import { registerQualifyCommand, resolveQualificationWorkspaceDir } from "./commands-qualify.js";
 import {
   AGENT_CAPABILITY_MATRIX_ID,
   AGENT_CAPABILITY_REQUIREMENTS,
@@ -179,6 +183,47 @@ afterEach(() => {
 });
 
 describe("muse qualify", () => {
+  it("resolves a filtered package entry back to the Muse workspace root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-qualify-workspace-"));
+    try {
+      const entry = join(root, "apps", "cli", "src", "index.ts");
+      await mkdir(join(root, "apps", "cli", "src"), { recursive: true });
+      await Promise.all([
+        writeFile(entry, "#!/usr/bin/env node\n"),
+        writeFile(join(root, "pnpm-workspace.yaml"), "packages:\n  - apps/*\n")
+      ]);
+      expect(resolveQualificationWorkspaceDir({
+        cwd: join(root, "apps", "cli"),
+        entryFile: entry,
+        initCwd: undefined,
+        ioWorkspaceDir: join(root, "apps", "cli")
+      })).toBe(await realpath(root));
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  it("preserves invocation and IO fallbacks outside a source workspace", () => {
+    expect(resolveQualificationWorkspaceDir({
+      cwd: "/fallback/cwd",
+      entryFile: undefined,
+      initCwd: "/invocation/root",
+      ioWorkspaceDir: "/io/root"
+    })).toBe("/invocation/root");
+    expect(resolveQualificationWorkspaceDir({
+      cwd: "/fallback/cwd",
+      entryFile: undefined,
+      initCwd: undefined,
+      ioWorkspaceDir: "/io/root"
+    })).toBe("/io/root");
+    expect(resolveQualificationWorkspaceDir({
+      cwd: "/fallback/cwd",
+      entryFile: undefined,
+      initCwd: undefined,
+      ioWorkspaceDir: undefined
+    })).toBe("/fallback/cwd");
+  });
+
   it("emits only the machine report in JSON mode and exits non-zero for unverified evidence", async () => {
     const result = await run(["--json"], observations("running"));
     const report = JSON.parse(result.stdout) as {

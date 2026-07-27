@@ -14,6 +14,7 @@ import {
   collectPersonalAgentQualificationObservations,
   type CollectQualificationOptions
 } from "./personal-agent-qualification-probes.js";
+import { discoverRepoRoot } from "./commands-update.js";
 
 export interface QualifyCommandDependencies {
   readonly collect?: (options: CollectQualificationOptions) => Promise<PersonalAgentQualificationObservations>;
@@ -43,8 +44,27 @@ export function renderPersonalAgentQualification(report: PersonalAgentQualificat
   return `${lines.join("\n")}\n`;
 }
 
+export function resolveQualificationWorkspaceDir(input: {
+  readonly cwd: string;
+  readonly entryFile: string | undefined;
+  readonly initCwd: string | undefined;
+  readonly ioWorkspaceDir: string | undefined;
+}): string {
+  return resolve(
+    discoverRepoRoot(input.entryFile)
+    ?? input.initCwd
+    ?? input.ioWorkspaceDir
+    ?? input.cwd
+  );
+}
+
 function defaultWorkspaceDir(io: ProgramIO): string {
-  return resolve(io.workspaceDir ?? process.env.INIT_CWD ?? process.cwd());
+  return resolveQualificationWorkspaceDir({
+    cwd: process.cwd(),
+    entryFile: process.argv[1],
+    initCwd: process.env.INIT_CWD,
+    ioWorkspaceDir: io.workspaceDir
+  });
 }
 
 export function registerQualifyCommand(
