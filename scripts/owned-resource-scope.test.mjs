@@ -55,6 +55,38 @@ test("cleanup runs in reverse order exactly once across concurrent close calls",
   assert.deepEqual(releases, ["second", "first"]);
 });
 
+test("an explicit browser-exit dependency retains its temp root until process exit", async () => {
+  const processExit = deferred();
+  const browserExited = Promise.withResolvers();
+  const events = [];
+  const scope = new OwnedResourceScope();
+  await scope.acquire({
+    acquire: () => "temp-root",
+    label: "temp-root",
+    release: async () => {
+      await browserExited.promise;
+      events.push("temp-remove");
+    }
+  });
+  await scope.acquire({
+    acquire: () => "browser",
+    label: "browser",
+    release: async () => {
+      events.push("browser-close-start");
+      await processExit.promise;
+      events.push("browser-exit");
+      browserExited.resolve();
+    }
+  });
+
+  const closing = scope.close();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(events, ["browser-close-start"]);
+  processExit.resolve();
+  await closing;
+  assert.deepEqual(events, ["browser-close-start", "browser-exit", "temp-remove"]);
+});
+
 test("an acquisition cannot start after cleanup begins", async () => {
   const scope = new OwnedResourceScope();
   await scope.close();

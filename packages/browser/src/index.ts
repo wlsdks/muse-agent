@@ -10,6 +10,7 @@ export * from "./controller.js";
 export * from "./browser-tools.js";
 export * from "./matcher.js";
 export {
+  type DetachedBrowserLaunchReceipt,
   PuppeteerBrowserController,
   type PendingPuppeteerClickResult,
   type PendingPuppeteerDialogDecisionResult,

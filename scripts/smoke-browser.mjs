@@ -50,6 +50,17 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { PuppeteerBrowserController, matchElement, statusFields } from "../packages/browser/dist/index.js";
+import {
+  bindOwnedBrowserProcess,
+  matchesOwnedBrowserProcess,
+  observeOwnedBrowserProcess,
+  terminateOwnedBrowserProcess,
+  waitForOwnedBrowserExit
+} from "./lib/owned-browser-process.mjs";
+import {
+  createExactOwnershipReceipt,
+  OwnedResourceScope
+} from "./lib/owned-resource-scope.mjs";
 
 const SPA_HTML = `<!doctype html><html><head><title>SPA</title></head><body><div id="root"></div>
 <script>setTimeout(() => {
@@ -232,16 +243,75 @@ function assert(condition, label) {
   console.log(`  ✓ ${label}`);
 }
 
-const dir = await mkdtemp(join(tmpdir(), "muse-browser-smoke-"));
-const controller = new PuppeteerBrowserController({
-  headless: true,
-  userDataDir: join(dir, "profile")
+const resources = new OwnedResourceScope({
+  cleanupTimeoutMs: 10_000,
+  forceCleanupTimeoutMs: 5_000
 });
 
-// A real localhost HTTP server so the navigation-status check exercises the
-// REAL goto/goBack → HTTPResponse.status() path (file:// has no HTTP status).
-// `/ok` → 200, anything else → a 404 error page whose body looks like content.
-const statusServer = createServer((req, res) => {
+try {
+  await runSmoke();
+} catch (error) {
+  await resources.close({ primaryError: error });
+}
+await resources.close();
+
+async function runSmoke() {
+  const browserExitCompletions = [];
+  const dir = await resources.acquire({
+    acquire: () => mkdtemp(join(tmpdir(), "muse-browser-smoke-")),
+    label: "browser-smoke-temp-root",
+    release: async (path) => {
+      // OwnedResourceScope starts LIFO releases without serially blocking on a
+      // hung acquisition. Preserve the stronger filesystem dependency here:
+      // never remove a profile until every exact browser launch has exited.
+      // If a browser cannot be reclaimed, this stays pending until the scope's
+      // deadline and retains the artifacts for diagnosis.
+      await Promise.all(browserExitCompletions);
+      await rm(path, { force: true, maxRetries: 10, recursive: true, retryDelay: 200 });
+    }
+  });
+  const launchReceipts = [];
+  const launchRegistrations = [];
+  const trackedController = (options) => {
+    const controller = new PuppeteerBrowserController({
+      ...options,
+      onDetachedLaunch: async (spawnReceipt) => {
+        const browserExited = Promise.withResolvers();
+        browserExitCompletions.push(browserExited.promise);
+        const receipt = await bindOwnedBrowserProcess(spawnReceipt);
+        launchReceipts.push(receipt);
+        const ownership = createExactOwnershipReceipt({
+          acquiredAt: receipt.osStartedAt,
+          id: `${receipt.pid.toString()}:${receipt.launchId}`,
+          kind: "detached-browser-process"
+        });
+        launchRegistrations.push(resources.acquire({
+          acquire: () => ({ ownership, value: { controller, receipt } }),
+          forceRelease: async ({ receipt: ownedReceipt }) => {
+            await terminateOwnedBrowserProcess(ownedReceipt);
+            await waitForOwnedBrowserExit(ownedReceipt, { timeoutMs: 5_000 });
+            browserExited.resolve();
+          },
+          label: `detached-browser:${receipt.launchId}`,
+          release: async ({ controller: owner, receipt: ownedReceipt }) => {
+            await owner.close();
+            await waitForOwnedBrowserExit(ownedReceipt, { timeoutMs: 5_000 });
+            browserExited.resolve();
+          }
+        }));
+      }
+    });
+    return controller;
+  };
+  const controller = trackedController({
+    headless: true,
+    userDataDir: join(dir, "profile")
+  });
+
+  // A real localhost HTTP server so the navigation-status check exercises the
+  // REAL goto/goBack → HTTPResponse.status() path (file:// has no HTTP status).
+  // `/ok` → 200, anything else → a 404 error page whose body looks like content.
+  const statusServer = createServer((req, res) => {
   if (req.url === "/beforeunload") {
     res.writeHead(200, { "content-type": "text/html" });
     res.end(`<!doctype html><title>Before unload</title>
@@ -279,15 +349,19 @@ const statusServer = createServer((req, res) => {
   }
   res.writeHead(404, { "content-type": "text/html" });
   res.end("<!doctype html><title>404 Not Found</title><h1>Not Found</h1><p>No such page.</p>");
-});
-const startStatusServer = Promise.withResolvers();
-statusServer.once("error", (cause) => startStatusServer.reject(cause instanceof Error ? cause : new Error(String(cause))));
-statusServer.listen(0, "127.0.0.1", () => startStatusServer.resolve());
-await startStatusServer.promise;
-const statusPort = statusServer.address().port;
+  });
+  const statusPort = await resources.acquire({
+    acquire: async () => {
+      const startStatusServer = Promise.withResolvers();
+      statusServer.once("error", (cause) => startStatusServer.reject(cause instanceof Error ? cause : new Error(String(cause))));
+      statusServer.listen(0, "127.0.0.1", () => startStatusServer.resolve());
+      await startStatusServer.promise;
+      return statusServer.address().port;
+    },
+    label: "browser-smoke-http-server",
+    release: () => closeServer(statusServer)
+  });
 
-let launched = false;
-try {
   await writeFile(join(dir, "spa.html"), SPA_HTML);
   await writeFile(join(dir, "shadow.html"), SHADOW_HTML);
   await writeFile(join(dir, "select.html"), SELECT_HTML);
@@ -315,11 +389,19 @@ try {
   let snap;
   try {
     snap = await controller.open(pathToFileURL(join(dir, "spa.html")).href);
-    launched = true;
   } catch (cause) {
     console.log(`SKIP: Chrome unavailable (${cause instanceof Error ? cause.message.split("\n")[0] : cause})`);
-    process.exit(0);
+    return;
   }
+  await Promise.all(launchRegistrations);
+  assert(launchReceipts.length === 1, "the fresh disposable Chrome emits exactly one launch receipt");
+  assert(
+    matchesOwnedBrowserProcess(
+      launchReceipts[0],
+      await observeOwnedBrowserProcess(launchReceipts[0])
+    ),
+    "the receipt matches the live PID, process group, executable, profile, and launch id"
+  );
   assert(snap.text.includes("Rendered application content"), "settled snapshot carries the late text");
   assert(snap.elements.some((el) => el.name === "Start here"), "late-rendered button is listed");
 
@@ -358,9 +440,10 @@ try {
   assert(snap.elements.some((el) => el.name === "Accept cookies"), "position:fixed button is visible");
 
   console.log("6) cross-invocation reconnect — a second controller drives the SAME Chrome");
-  const second = new PuppeteerBrowserController({ headless: true, userDataDir: join(dir, "profile") });
+  const second = trackedController({ headless: true, userDataDir: join(dir, "profile") });
   const reSnap = await second.snapshot();
   assert(reSnap.url === snap.url, "new controller reconnected to the running browser (no profile-lock crash)");
+  assert(launchReceipts.length === 1, "reconnecting to an existing profile emits no false ownership receipt");
 
   console.log("7) same-origin iframe — embedded control observed AND clickable cross-frame");
   snap = await controller.open(pathToFileURL(join(dir, "iframe.html")).href);
@@ -591,11 +674,11 @@ try {
   assert(waitText.matched === true, "waitFor(text) polls until the late content appears (matched=true)");
   assert(waitText.snapshot.text.includes("Order confirmed #A12"), "the awaited text is now in the re-read snapshot");
   // a CSS selector for the same late element resolves too (re-open for a fresh, quiet page)
-  snap = await controller.open(pathToFileURL(join(dir, "wait.html")).href);
+  await controller.open(pathToFileURL(join(dir, "wait.html")).href);
   const waitSel = await controller.waitFor({ selector: ".result" });
   assert(waitSel.matched === true, "waitFor(selector) resolves once the late element renders");
   // a condition that never holds reports matched=false (no fabricated success), with the live page intact
-  snap = await controller.open(pathToFileURL(join(dir, "wait.html")).href);
+  await controller.open(pathToFileURL(join(dir, "wait.html")).href);
   const waitMiss = await controller.waitFor({ text: "this string never appears on the page", timeoutMs: 1500 });
   assert(waitMiss.matched === false, "an unmet condition times out to matched=false (honest, not a fabricated success)");
   assert(waitMiss.snapshot.text.includes("Checkout"), "the live page is still returned on a timeout so the model can report what IS there");
@@ -624,7 +707,7 @@ try {
   // it would block for puppeteer's 180s default. It gets a separate disposable
   // Chrome/profile because the deliberately wedged renderer must not poison
   // the later upload and disconnect qualifications.
-  const boundController = new PuppeteerBrowserController({
+  const boundController = trackedController({
     headless: true,
     protocolTimeoutMs: 3_000,
     timeoutMs: 4_000,
@@ -642,6 +725,7 @@ try {
   const elapsedMs = Date.now() - startedAt;
   assert(rejected, "a CDP call that never returns rejects (does not hang the agent forever)");
   assert(elapsedMs < 60_000, `it fails fast within the bound, not puppeteer's 180s default (took ${String(elapsedMs)}ms)`);
+  assert(launchReceipts.length === 2, "the isolated timeout Chrome emits its own distinct launch receipt");
 
   console.log("24) browser_upload — setInputFiles attaches a real file to a real <input type=file>; a non-file element is refused");
   snap = await controller.open(pathToFileURL(join(dir, "upload.html")).href);
@@ -678,11 +762,14 @@ try {
   assert(!await second.hasOpenPage(), "the already-owned second connection closes the exact disposable browser");
 
   console.log("\nsmoke:browser PASS");
-} finally {
-  statusServer.close();
-  if (launched) await controller.close();
-  // close() terminates the detached Chrome over CDP, but the OS process releases
-  // its profile file handles a beat later — retry the temp cleanup so the race
-  // never turns a green smoke into a non-zero exit (and never fail on cleanup).
-  await rm(dir, { force: true, maxRetries: 10, recursive: true, retryDelay: 200 }).catch(() => { /* temp dir; OS reaps it */ });
+}
+
+async function closeServer(server) {
+  if (!server.listening) return;
+  await new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
 }

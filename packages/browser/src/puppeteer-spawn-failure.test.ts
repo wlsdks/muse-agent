@@ -26,4 +26,24 @@ describe("a Chrome that cannot be launched", () => {
     await expect(controller.snapshot()).rejects.toThrow(/MUSE_CHROME_PATH/u);
     await expect(controller.snapshot()).rejects.toThrow(/nonexistent\/muse-test-chrome/u);
   });
+
+  it("bounds cleanup of the exact child when the opt-in receipt callback rejects", async () => {
+    if (process.platform === "win32") return;
+    let launchedPid: number | undefined;
+    const controller = new PuppeteerBrowserController({
+      executablePath: "/usr/bin/yes",
+      onDetachedLaunch: (receipt) => {
+        launchedPid = receipt.pid;
+        throw new Error("qualification registry rejected");
+      }
+    });
+
+    await expect(controller.snapshot()).rejects.toThrow(/ownership receipt was rejected/iu);
+    expect(launchedPid).toBeTypeOf("number");
+    const exactPid = launchedPid;
+    if (exactPid === undefined) throw new Error("launch callback did not receive a pid");
+    expect(() => process.kill(exactPid, 0)).toThrow(
+      expect.objectContaining({ code: "ESRCH" })
+    );
+  });
 });

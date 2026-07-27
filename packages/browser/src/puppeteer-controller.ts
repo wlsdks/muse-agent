@@ -11,7 +11,7 @@
  * type() resolve the ref back to the live element via that attribute.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -73,6 +73,22 @@ export interface PuppeteerBrowserControllerOptions {
   readonly protocolTimeoutMs?: number;
   /** Run without a visible window (default false — Muse shows the browser). */
   readonly headless?: boolean;
+  /**
+   * Qualification-only synchronous ownership seam. Called exactly once after
+   * this controller successfully spawns a fresh detached Chrome, and never
+   * when it reconnects to an existing profile. Normal Muse callers omit it.
+   */
+  readonly onDetachedLaunch?: (receipt: DetachedBrowserLaunchReceipt) => Promise<void> | void;
+}
+
+export interface DetachedBrowserLaunchReceipt {
+  readonly executablePath: string;
+  readonly launchId: string;
+  readonly pid: number;
+  /** A detached POSIX child starts a new process group whose id is its pid. */
+  readonly processGroupId?: number;
+  readonly spawnedAt: string;
+  readonly userDataDir: string;
 }
 
 export type PendingPuppeteerClickResult =
@@ -204,8 +220,10 @@ export class PuppeteerBrowserController implements BrowserController {
       computeSystemExecutablePath({ browser: InstalledBrowser.CHROME, channel: ChromeReleaseChannel.STABLE });
     // A stale port file must not race the fresh launch's probe loop.
     await rm(join(this.userDataDir, "DevToolsActivePort"), { force: true }).catch(() => { /* best-effort */ });
+    const launchId = randomUUID();
     const child = spawn(executable, [
       `--user-data-dir=${this.userDataDir}`,
+      `--muse-launch-id=${launchId}`,
       "--no-first-run",
       "--no-default-browser-check",
       "--remote-debugging-port=0",
@@ -222,6 +240,47 @@ export class PuppeteerBrowserController implements BrowserController {
     child.on("error", (cause: Error) => {
       spawnFailure = cause;
     });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        child.once("spawn", resolve);
+        child.once("error", reject);
+      });
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      throw new Error(
+        `Chrome could not be started at '${executable}' (${detail}) — install Google Chrome, or set MUSE_CHROME_PATH to its executable. For a plain page fetch use web_read instead.`,
+        { cause }
+      );
+    }
+    if (!Number.isSafeInteger(child.pid) || child.pid === undefined || child.pid <= 0) {
+      child.kill("SIGTERM");
+      throw new Error("Chrome started without a valid process id; refusing an unowned detached launch");
+    }
+    const receipt: DetachedBrowserLaunchReceipt = Object.freeze({
+      executablePath: executable,
+      launchId,
+      pid: child.pid,
+      ...(process.platform === "win32" ? {} : { processGroupId: child.pid }),
+      spawnedAt: new Date().toISOString(),
+      userDataDir: this.userDataDir
+    });
+    try {
+      await this.options.onDetachedLaunch?.(receipt);
+    } catch (cause) {
+      let cleanupFailure: unknown;
+      try {
+        await terminateFreshDetachedChild(child);
+      } catch (error) {
+        cleanupFailure = error;
+      }
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      const cleanupDetail = cleanupFailure === undefined
+        ? ""
+        : `; exact child cleanup also failed (${
+            cleanupFailure instanceof Error ? cleanupFailure.message : String(cleanupFailure)
+          })`;
+      throw new Error(`Detached Chrome ownership receipt was rejected (${detail})${cleanupDetail}`, { cause });
+    }
     child.unref();
     // 150 × 200ms = 30s: a FRESH profile's first start can take >10s on a
     // loaded machine, and a too-short window misreads slow as missing.
@@ -1040,4 +1099,23 @@ export class PuppeteerBrowserController implements BrowserController {
     this.browser = undefined;
     this.page = undefined;
   }
+}
+
+async function terminateFreshDetachedChild(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise<void>((resolve) => {
+    child.once("exit", () => resolve());
+  });
+  // ChildProcess.kill() targets the exact still-owned handle. Do not use a
+  // negative PGID here: the qualification callback rejected its receipt, so
+  // group escalation lacks the independently bound OS birth identity.
+  child.kill("SIGTERM");
+  let deadline: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    deadline = setTimeout(
+      () => reject(new Error("Detached Chrome child did not exit within 5s after receipt rejection")),
+      5_000
+    );
+  });
+  await Promise.race([exited, timeout]).finally(() => clearTimeout(deadline));
 }
