@@ -83,6 +83,7 @@ export {
   resolveSlackInboxFile,
   resolveTasksFile,
   resolveTokenUsageFile,
+  resolveUserMemoryAutoExtractOutcomesFile,
   resolveCheckpointsDir,
   resolveTelegramInboxFile,
   resolveTelegramOffsetFile,

@@ -52,8 +52,125 @@ export interface FileUserMemoryAutoExtractOutcomeStoreOptions {
 
 export const DEFAULT_USER_MEMORY_AUTO_EXTRACT_OUTCOME_MAX_ENTRIES = 256;
 
+/** The health projection never examines more than the sidecar's own cap. */
+export const DEFAULT_USER_MEMORY_AUTO_EXTRACT_HEALTH_MAX_INPUT_WINDOW = 256;
+/** A success older than this is no longer current health evidence. */
+export const DEFAULT_USER_MEMORY_AUTO_EXTRACT_HEALTH_FRESHNESS_MS = 24 * 60 * 60 * 1_000;
+
+export type UserMemoryAutoExtractHealthStatus = "healthy" | "degraded" | "stale" | "no-data";
+export type UserMemoryAutoExtractHealthFreshness = "fresh" | "stale" | "no-success";
+export type UserMemoryAutoExtractReasonCounts = Readonly<Record<UserMemoryAutoExtractReason, number>>;
+
+/**
+ * Privacy-minimal health summary for status/doctor. It intentionally excludes
+ * run ids (including hashes), user ids, prompts, and extracted keys/values.
+ */
+export interface UserMemoryAutoExtractHealthProjection {
+  readonly status: UserMemoryAutoExtractHealthStatus;
+  readonly freshness: UserMemoryAutoExtractHealthFreshness;
+  readonly lastSuccessAt?: string;
+  readonly consecutiveFailures: number;
+  readonly reasonCounts: UserMemoryAutoExtractReasonCounts;
+  readonly sampleSize: number;
+}
+
+export interface UserMemoryAutoExtractHealthProjectionOptions {
+  readonly nowMs?: number;
+  /** Lowering this is useful for embedded callers; it can never exceed 256. */
+  readonly maxInputWindow?: number;
+  readonly freshnessMs?: number;
+}
+
 function isReason(value: unknown): value is UserMemoryAutoExtractReason {
   return USER_MEMORY_AUTO_EXTRACT_REASONS.includes(value as UserMemoryAutoExtractReason);
+}
+
+function emptyReasonCounts(): Record<UserMemoryAutoExtractReason, number> {
+  return {
+    learned: 0,
+    model_error: 0,
+    nothing_new: 0,
+    policy_rejected: 0,
+    schema_error: 0,
+    store_error: 0,
+    timeout: 0
+  };
+}
+
+function isProjectableOutcome(
+  value: unknown
+): value is Pick<PersistedUserMemoryAutoExtractOutcome, "reason" | "recordedAt"> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const outcome = value as Partial<Pick<PersistedUserMemoryAutoExtractOutcome, "reason" | "recordedAt">>;
+  return isReason(outcome.reason) && typeof outcome.recordedAt === "string" && !Number.isNaN(Date.parse(outcome.recordedAt));
+}
+
+/**
+ * Pure bounded projection over automatic-extraction terminal outcomes. The sidecar is
+ * append-only, so ordering determines the active technical-failure streak.
+ * Missing, corrupt, or entirely invalid input becomes no-data, never a throw.
+ */
+export function projectUserMemoryAutoExtractHealth(
+  source: readonly unknown[],
+  options: UserMemoryAutoExtractHealthProjectionOptions = {}
+): UserMemoryAutoExtractHealthProjection {
+  const requestedWindow = options.maxInputWindow ?? DEFAULT_USER_MEMORY_AUTO_EXTRACT_HEALTH_MAX_INPUT_WINDOW;
+  const maxInputWindow = Number.isSafeInteger(requestedWindow) && requestedWindow > 0
+    ? Math.min(requestedWindow, DEFAULT_USER_MEMORY_AUTO_EXTRACT_HEALTH_MAX_INPUT_WINDOW)
+    : DEFAULT_USER_MEMORY_AUTO_EXTRACT_HEALTH_MAX_INPUT_WINDOW;
+  const freshnessMs = options.freshnessMs ?? DEFAULT_USER_MEMORY_AUTO_EXTRACT_HEALTH_FRESHNESS_MS;
+  const validFreshnessMs = Number.isFinite(freshnessMs) && freshnessMs >= 0
+    ? freshnessMs
+    : DEFAULT_USER_MEMORY_AUTO_EXTRACT_HEALTH_FRESHNESS_MS;
+  const nowMs = options.nowMs ?? Date.now();
+  const outcomes = source.slice(-maxInputWindow).filter(isProjectableOutcome);
+  const reasonCounts = emptyReasonCounts();
+  let lastSuccessAt: string | undefined;
+  let lastSuccessMs = Number.NEGATIVE_INFINITY;
+
+  for (const outcome of outcomes) {
+    reasonCounts[outcome.reason] += 1;
+    if (outcome.reason === "learned") {
+      const recordedAtMs = Date.parse(outcome.recordedAt);
+      if (recordedAtMs >= lastSuccessMs) {
+        lastSuccessMs = recordedAtMs;
+        lastSuccessAt = outcome.recordedAt;
+      }
+    }
+  }
+
+  let consecutiveFailures = 0;
+  for (let index = outcomes.length - 1; index >= 0; index -= 1) {
+    const reason = outcomes[index]!.reason;
+    if (reason === "model_error" || reason === "schema_error" || reason === "store_error" || reason === "timeout") {
+      consecutiveFailures += 1;
+      continue;
+    }
+    // learned, nothing_new, and policy_rejected reset the technical streak.
+    break;
+  }
+
+  const freshness: UserMemoryAutoExtractHealthFreshness = lastSuccessAt === undefined
+    ? "no-success"
+    : nowMs >= lastSuccessMs && nowMs - lastSuccessMs <= validFreshnessMs
+      ? "fresh"
+      : "stale";
+  const status: UserMemoryAutoExtractHealthStatus = outcomes.length === 0
+    ? "no-data"
+    : consecutiveFailures > 0 || freshness === "no-success"
+      ? "degraded"
+      : freshness === "stale"
+        ? "stale"
+        : "healthy";
+
+  return {
+    consecutiveFailures,
+    freshness,
+    ...(lastSuccessAt ? { lastSuccessAt } : {}),
+    reasonCounts,
+    sampleSize: outcomes.length,
+    status
+  };
 }
 
 function isPersistedOutcome(value: unknown): value is PersistedUserMemoryAutoExtractOutcome {
@@ -92,6 +209,34 @@ export async function readUserMemoryAutoExtractOutcomes(
   return outcomes.flatMap((outcome): readonly PersistedUserMemoryAutoExtractOutcome[] =>
     isPersistedOutcome(outcome) ? [outcome] : []
   );
+}
+
+/** Missing or corrupt sidecars deliberately read as no usable diagnostics. */
+export async function readUserMemoryAutoExtractHealth(
+  file: string,
+  options: UserMemoryAutoExtractHealthProjectionOptions = {}
+): Promise<UserMemoryAutoExtractHealthProjection> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch {
+    return projectUserMemoryAutoExtractHealth([], options);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return projectUserMemoryAutoExtractHealth([], options);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return projectUserMemoryAutoExtractHealth([], options);
+  }
+  const outcomes = (parsed as { outcomes?: unknown }).outcomes;
+  if (!Array.isArray(outcomes) || !outcomes.every(isPersistedOutcome)) {
+    return projectUserMemoryAutoExtractHealth([], options);
+  }
+  return projectUserMemoryAutoExtractHealth(outcomes, options);
 }
 
 async function writeOutcomes(

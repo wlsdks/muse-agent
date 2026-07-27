@@ -19,8 +19,8 @@ import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { evaluateLocalOnlyPosture, mergeModelKeysFromFile, resolveDefaultModel, type LocalOnlyStatusSnapshot, type MuseEnvironment } from "@muse/autoconfigure";
-import { FileUserMemoryStore, projectRecentlyLearned, readBeliefProvenance, selectRecentlyForgotten, summarizeRecentlyLearned } from "@muse/memory";
+import { evaluateLocalOnlyPosture, mergeModelKeysFromFile, resolveDefaultModel, resolveUserMemoryAutoExtractOutcomesFile, type LocalOnlyStatusSnapshot, type MuseEnvironment } from "@muse/autoconfigure";
+import { FileUserMemoryStore, projectRecentlyLearned, readBeliefProvenance, readUserMemoryAutoExtractHealth, selectRecentlyForgotten, summarizeRecentlyLearned, type UserMemoryAutoExtractHealthProjection } from "@muse/memory";
 import {
   classifyDaemonLoopHeartbeat,
   defaultProactiveHeartbeatDir,
@@ -103,6 +103,7 @@ export interface StatusPaths {
   readonly beliefProvenanceFile: string;
   readonly trustFile: string;
   readonly daemonHeartbeatDir: string;
+  readonly memoryAutoExtractOutcomesFile: string;
 }
 
 export interface StatusRuntime {
@@ -139,6 +140,21 @@ function statusPath(env: MuseEnvironment, homeDir: string, envKey: string, filen
 export function resolveStatusRuntime(options: StatusRuntimeOptions = {}): StatusRuntime {
   const env: MuseEnvironment = options.env ?? process.env;
   const homeDir = options.homeDir?.trim() || env.HOME?.trim() || homedir();
+  const ownedPathEnv = Object.create(env) as MuseEnvironment;
+  Object.defineProperty(ownedPathEnv, "HOME", {
+    configurable: true,
+    enumerable: true,
+    value: homeDir,
+    writable: false
+  });
+  if (!env.MUSE_USER_MEMORY_AUTO_EXTRACT_OUTCOMES_FILE?.trim()) {
+    Object.defineProperty(ownedPathEnv, "MUSE_USER_MEMORY_AUTO_EXTRACT_OUTCOMES_FILE", {
+      configurable: true,
+      enumerable: true,
+      value: join(homeDir, ".muse", "memory-auto-extract-outcomes.json"),
+      writable: false
+    });
+  }
   const defaults: StatusPaths = {
     beliefProvenanceFile: statusPath(env, homeDir, "MUSE_BELIEF_PROVENANCE_FILE", "belief-provenance.json"),
     // Not a per-field MUSE_*_FILE override like its siblings — mirrors the
@@ -148,6 +164,7 @@ export function resolveStatusRuntime(options: StatusRuntimeOptions = {}): Status
     episodesFile: statusPath(env, homeDir, "MUSE_EPISODES_FILE", "episodes.json"),
     followupsFile: statusPath(env, homeDir, "MUSE_FOLLOWUPS_FILE", "followups.json"),
     messagingLogFile: statusPath(env, homeDir, "MUSE_MESSAGING_LOG_FILE", "notifications.log"),
+    memoryAutoExtractOutcomesFile: resolveUserMemoryAutoExtractOutcomesFile(ownedPathEnv),
     notesIndexFile: statusPath(env, homeDir, "MUSE_NOTES_INDEX_FILE", "notes-index.json"),
     objectivesFile: statusPath(env, homeDir, "MUSE_OBJECTIVES_FILE", "objectives.json"),
     patternsFiredFile: statusPath(env, homeDir, "MUSE_PATTERNS_FIRED_FILE", "patterns-fired.json"),
@@ -417,6 +434,7 @@ async function collectStatus(userId: string, runtime: StatusRuntime) {
 
   const tokenCost = await readTokenCostToday(paths.tokenCostFile);
   const rag = await readRagStatus(paths.notesIndexFile);
+  const memoryLearning = await readUserMemoryAutoExtractHealth(paths.memoryAutoExtractOutcomesFile);
 
   const daemonPlistFile = runtime.platform === "darwin" ? resolveLaunchAgentFile(env as NodeJS.ProcessEnv) : undefined;
   const daemon = await readDaemonStatus(paths.daemonHeartbeatDir, daemonPlistFile);
@@ -501,6 +519,7 @@ async function collectStatus(userId: string, runtime: StatusRuntime) {
     reminders: remindersSummary,
     session: { dnd: sessionLockUntil !== undefined, ...(sessionLockUntil ? { until: sessionLockUntil } : {}) },
     cost: tokenCost,
+    memoryLearning,
     rag,
     suggestions
   };
@@ -721,6 +740,21 @@ export function formatDaemonStatusLine(daemon: DaemonStatusSnapshot, rel: (iso: 
   return `  daemon: ${verdictLabel}${lastTick}${installedLabel}${hint}\n`;
 }
 
+/** Compact, privacy-minimal human rendering of the structured health projection. */
+export function formatMemoryLearningStatusLine(
+  learning: UserMemoryAutoExtractHealthProjection,
+  rel: (iso: string) => string
+): string {
+  if (learning.status === "no-data") {
+    return "  memory learning: unknown — no usable automatic-extraction outcome data yet\n";
+  }
+  const lastSuccess = learning.lastSuccessAt ? `, last learned ${rel(learning.lastSuccessAt)}` : "";
+  const reasons = Object.entries(learning.reasonCounts)
+    .map(([reason, count]) => `${reason}=${count.toString()}`)
+    .join(", ");
+  return `  memory learning: ${learning.status} (${learning.freshness}${lastSuccess}, ${learning.consecutiveFailures.toString()} consecutive technical failure(s), ${learning.sampleSize.toString()} sampled; ${reasons})\n`;
+}
+
 /**
  * Parse `--interval <n>` (seconds) for `muse status --watch`.
  * Default 5s, clamped to [1, 3600] so a bad input can't lock the
@@ -799,6 +833,7 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
       io.stdout(`    privacy: ${formatPrivacyPosture(snap.localOnly)}\n`);
       io.stdout("\n");
       io.stdout(formatDaemonStatusLine(snap.daemon, rel));
+      io.stdout(formatMemoryLearningStatusLine(snap.memoryLearning, rel));
       io.stdout("\n");
       if (snap.session.dnd) {
         io.stdout(`  (DND) proactive notices paused${snap.session.until ? ` until ${snap.session.until}` : ""} — \`muse session unlock\` to resume\n\n`);

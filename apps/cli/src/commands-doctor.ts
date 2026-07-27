@@ -15,7 +15,7 @@ import { existsSync, promises as fs } from "node:fs";
 import { formatRelativeTime } from "./human-formatters.js";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
-import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, probeOllamaPromptCache, promptCacheHealth, platformPostureCheck, privacyRoutingCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
+import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, memoryAutoExtractHealthCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, probeOllamaPromptCache, promptCacheHealth, platformPostureCheck, privacyRoutingCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
 import { readProactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
 import { readDayRhythmDoctorCheck } from "./commands-doctor-day-rhythm.js";
 export { dayRhythmDoctorCheck } from "./commands-doctor-day-rhythm.js";
@@ -41,8 +41,9 @@ import { isRecord , errorMessage} from "@muse/shared";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { buildMessagingRegistry, describeOfficialMcpPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveActionLogFile, resolveBriefingSidecarFile, resolveContactsFile, resolveDefaultModel, resolveEpisodesFile, resolveIntegrationEnvironment, resolveLearningPauseFile, resolveMuseCliConfigFilePath, resolveNotesDir, resolveRecallHitsFile, resolveReflectionsFile, resolveWeaknessesFile, type MuseEnvironment, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
+import { buildMessagingRegistry, describeOfficialMcpPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveActionLogFile, resolveBriefingSidecarFile, resolveContactsFile, resolveDefaultModel, resolveEpisodesFile, resolveIntegrationEnvironment, resolveLearningPauseFile, resolveMuseCliConfigFilePath, resolveNotesDir, resolveRecallHitsFile, resolveReflectionsFile, resolveUserMemoryAutoExtractOutcomesFile, resolveWeaknessesFile, type MuseEnvironment, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
 import { isLearningPaused, isMasteredWeakness, readBackgroundProcesses, readEpisodes, readPendingLearnEvents, readSchedulerPauseState, readWeaknesses, resolveLearnQueueFile, selectDevFixableWeaknesses, type DevFixableWeakness, type WeaknessEntry } from "@muse/stores";
+import { readUserMemoryAutoExtractHealth } from "@muse/memory";
 import { isLocalOnlyEnabled } from "@muse/model";
 import type { Command } from "commander";
 
@@ -106,6 +107,7 @@ export interface DoctorLocalPaths {
   readonly launchAgentFile: string;
   readonly notesIndexFile: string;
   readonly privacyUserMemoryFile: string;
+  readonly memoryAutoExtractOutcomesFile: string;
 }
 
 export interface DoctorLocalRuntime {
@@ -144,6 +146,21 @@ export function resolveDoctorLocalRuntime(options: DoctorLocalRuntimeOptions = {
   const env: MuseEnvironment = options.env ?? process.env;
   const homeDir = options.homeDir?.trim() || env.HOME?.trim() || homedir();
   const museHome = env.MUSE_HOME?.trim() || join(homeDir, ".muse");
+  const ownedPathEnv = Object.create(env) as MuseEnvironment;
+  Object.defineProperty(ownedPathEnv, "HOME", {
+    configurable: true,
+    enumerable: true,
+    value: homeDir,
+    writable: false
+  });
+  if (!env.MUSE_USER_MEMORY_AUTO_EXTRACT_OUTCOMES_FILE?.trim()) {
+    Object.defineProperty(ownedPathEnv, "MUSE_USER_MEMORY_AUTO_EXTRACT_OUTCOMES_FILE", {
+      configurable: true,
+      enumerable: true,
+      value: join(homeDir, ".muse", "memory-auto-extract-outcomes.json"),
+      writable: false
+    });
+  }
   // Give legacy helpers an owned HOME and sidecar path without spreading or
   // enumerating the supplied environment. This is important for local-only
   // credential-protecting Proxy inputs.
@@ -154,6 +171,7 @@ export function resolveDoctorLocalRuntime(options: DoctorLocalRuntimeOptions = {
     episodeIndexFile: doctorPath(env, museHome, "MUSE_EPISODES_INDEX_FILE", "episodes-index.json"),
     launchAgentFile: "",
     mcpFile: doctorPath(env, museHome, "MUSE_MCP_CONFIG", "mcp.json"),
+    memoryAutoExtractOutcomesFile: resolveUserMemoryAutoExtractOutcomesFile(ownedPathEnv),
     museHome,
     notesIndexFile: doctorPath(env, museHome, "MUSE_NOTES_INDEX_FILE", "notes-index.json"),
     privacyUserMemoryFile: doctorPath(env, museHome, "MUSE_USER_MEMORY_FILE", "user-memory.json"),
@@ -654,6 +672,7 @@ function createDoctorEnvironmentView(merged: MuseEnvironment, runtime: DoctorLoc
     MUSE_EPISODES_INDEX_FILE: runtime.paths.episodeIndexFile,
     MUSE_HOME: runtime.paths.museHome,
     MUSE_MCP_CONFIG: runtime.paths.mcpFile,
+    MUSE_USER_MEMORY_AUTO_EXTRACT_OUTCOMES_FILE: runtime.paths.memoryAutoExtractOutcomesFile,
     MUSE_NOTES_INDEX_FILE: runtime.paths.notesIndexFile,
     MUSE_PROACTIVE_SIDECAR_FILE: join(runtime.paths.proactiveHeartbeatDir, ".doctor-heartbeat-sidecar"),
     MUSE_SCHEDULER_PAUSE_FILE: runtime.paths.schedulerPauseFile,
@@ -743,6 +762,7 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
   checks.push({ name: "scheduler", ...schedulerPauseCheck(await readSchedulerPauseState(runtime.paths.schedulerPauseFile)) });
   checks.push({ name: "background", ...backgroundProcessCheck(await readBackgroundProcesses(runtime.paths.backgroundFile)) });
   checks.push(await readProactiveHeartbeatCheck(env));
+  checks.push(memoryAutoExtractHealthCheck(await readUserMemoryAutoExtractHealth(runtime.paths.memoryAutoExtractOutcomesFile)));
 
   // ~/.muse layout
   const muse_home = runtime.paths.museHome;

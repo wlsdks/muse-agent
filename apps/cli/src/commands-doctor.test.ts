@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -92,6 +92,53 @@ function residentRuntime(overrides: Partial<RuntimeQualificationObservation> = {
 }
 
 describe("local doctor runtime ownership", () => {
+  it("uses the writer's canonical HOME and tilde path semantics for learning outcomes", () => {
+    const homeRuntime = resolveDoctorLocalRuntime({
+      env: { HOME: "/isolated/home", MUSE_HOME: "/isolated/custom" },
+      homeDir: "/isolated/home"
+    });
+    expect(homeRuntime.paths.memoryAutoExtractOutcomesFile)
+      .toBe("/isolated/home/.muse/memory-auto-extract-outcomes.json");
+
+    const tildeRuntime = resolveDoctorLocalRuntime({
+      env: {
+        HOME: "/isolated/home",
+        MUSE_USER_MEMORY_AUTO_EXTRACT_OUTCOMES_FILE: "~/.muse/override.json"
+      },
+      homeDir: "/isolated/home"
+    });
+    expect(tildeRuntime.paths.memoryAutoExtractOutcomesFile)
+      .toBe(join(homedir(), ".muse", "override.json"));
+  });
+
+  it("surfaces bounded memory-learning health without persisted correlation data", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-memory-learning-"));
+    const outcomesFile = join(homeDir, "outcomes.json");
+    writeFileSync(outcomesFile, JSON.stringify({ outcomes: [{
+      reason: "learned",
+      recordedAt: new Date().toISOString(),
+      runIdHash: "b".repeat(32),
+      schemaVersion: 1
+    }] }), "utf8");
+
+    const report = await runLocalDoctor({
+      daemonAutostartStatus: {
+        artifact: { state: "missing" },
+        kind: "darwin",
+        plistFile: join(homeDir, "Library", "LaunchAgents", "com.muse.daemon.plist"),
+        runtime: { state: "not-registered" }
+      },
+      env: { HOME: homeDir, MUSE_MODEL_KEYS_FILE: join(homeDir, "models.json") },
+      fetchImpl: async () => new Response(JSON.stringify({ models: [] }), { status: 200 }),
+      homeDir,
+      paths: { memoryAutoExtractOutcomesFile: outcomesFile }
+    });
+
+    const check = report.checks.find((entry) => entry.name === "memory learning");
+    expect(check).toMatchObject({ status: "ok" });
+    expect(JSON.stringify(check)).not.toContain("runIdHash");
+  });
+
   it("uses its injected paths and never reads a poisoned Gmail credential in local-only mode", async () => {
     let gmailReads = 0;
     let homeTokenReads = 0;

@@ -717,12 +717,21 @@ export { formatLearnedConfirmation, projectRecentlyLearned, renderRecentlyLearne
 
 // Privacy-minimal, bounded terminal outcomes for automatic memory extraction.
 export {
+  DEFAULT_USER_MEMORY_AUTO_EXTRACT_HEALTH_FRESHNESS_MS,
+  DEFAULT_USER_MEMORY_AUTO_EXTRACT_HEALTH_MAX_INPUT_WINDOW,
   DEFAULT_USER_MEMORY_AUTO_EXTRACT_OUTCOME_MAX_ENTRIES,
   FileUserMemoryAutoExtractOutcomeStore,
   USER_MEMORY_AUTO_EXTRACT_REASONS,
+  projectUserMemoryAutoExtractHealth,
+  readUserMemoryAutoExtractHealth,
   readUserMemoryAutoExtractOutcomes,
   type FileUserMemoryAutoExtractOutcomeStoreOptions,
   type PersistedUserMemoryAutoExtractOutcome,
+  type UserMemoryAutoExtractHealthFreshness,
+  type UserMemoryAutoExtractHealthProjection,
+  type UserMemoryAutoExtractHealthProjectionOptions,
+  type UserMemoryAutoExtractHealthStatus,
+  type UserMemoryAutoExtractReasonCounts,
   type UserMemoryAutoExtractOutcome,
   type UserMemoryAutoExtractOutcomeStore,
   type UserMemoryAutoExtractReason

@@ -1,5 +1,6 @@
 import { isCalibratedEmbedder, resolveRecallConfidentAt } from "@muse/agent-core";
 import { evaluateLocalOnlyPosture, evaluateWebEgressStatus, LOCAL_FIRST_DEFAULT_MODEL, parseBoolean, resolveDefaultModel, resolveVisionModel } from "@muse/autoconfigure";
+import type { UserMemoryAutoExtractHealthProjection } from "@muse/memory";
 import { resolvePlatformCapabilities } from "@muse/shared";
 import { DEFAULT_BLUETOOTH_OFF_SHORTCUT, DEFAULT_BLUETOOTH_ON_SHORTCUT, DEFAULT_BRIGHTNESS_SHORTCUT, DEFAULT_FOCUS_OFF_SHORTCUT, DEFAULT_FOCUS_ON_SHORTCUT } from "@muse/macos";
 import type { DevFixableWeakness } from "@muse/stores";
@@ -144,6 +145,23 @@ export interface LocalCheck {
   readonly name: string;
   readonly status: "ok" | "warn" | "fail";
   readonly detail: string;
+}
+
+/** Map the bounded projection to a local-doctor line, never a raw trace. */
+export function memoryAutoExtractHealthCheck(learning: UserMemoryAutoExtractHealthProjection): LocalCheck {
+  const name = "memory learning";
+  if (learning.status === "no-data") {
+    return { detail: "unknown — no usable automatic-extraction outcome data yet", name, status: "warn" };
+  }
+  const lastSuccess = learning.lastSuccessAt ? `; last learned ${learning.lastSuccessAt}` : "; no successful learning recorded";
+  const reasons = Object.entries(learning.reasonCounts)
+    .map(([reason, count]) => `${reason}=${count.toString()}`)
+    .join(", ");
+  return {
+    detail: `${learning.status}; freshness=${learning.freshness}; consecutive technical failures=${learning.consecutiveFailures.toString()}; sampled=${learning.sampleSize.toString()}${lastSuccess}; reasons: ${reasons}`,
+    name,
+    status: learning.status === "healthy" ? "ok" : "warn"
+  };
 }
 
 /**

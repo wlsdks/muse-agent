@@ -6,6 +6,7 @@ import {
   cloudSyncFolderCheck,
   episodeIndexHealth,
   focusShortcutsCheck,
+  memoryAutoExtractHealthCheck,
   messagingConfigCheck,
   notesIndexHealth,
   permissionModeDriftCheck,
@@ -17,6 +18,21 @@ import {
   toolResultCapAdvisoryCheck,
   voiceSetupChecks,
   volatileMountCheck, promptCacheHealth } from "./commands-doctor-checks.js";
+
+describe("memoryAutoExtractHealthCheck", () => {
+  it("warns on unavailable data without exposing trace identifiers", () => {
+    const check = memoryAutoExtractHealthCheck({
+      consecutiveFailures: 0,
+      freshness: "no-success",
+      reasonCounts: { learned: 0, model_error: 0, nothing_new: 0, policy_rejected: 0, schema_error: 0, store_error: 0, timeout: 0 },
+      sampleSize: 0,
+      status: "no-data"
+    });
+
+    expect(check).toEqual({ detail: "unknown — no usable automatic-extraction outcome data yet", name: "memory learning", status: "warn" });
+    expect(JSON.stringify(check)).not.toContain("runId");
+  });
+});
 
 describe("privacyRoutingCheck — mirrors resolvePrivacyRoutedModel's own precedence", () => {
   it("off by default (no env set)", () => {

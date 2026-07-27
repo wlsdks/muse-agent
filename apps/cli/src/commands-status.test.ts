@@ -1,5 +1,5 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { recordProactiveHeartbeat } from "@muse/stores";
@@ -9,6 +9,7 @@ import { Command } from "commander";
 
 import {
   formatDaemonStatusLine,
+  formatMemoryLearningStatusLine,
   formatPrivacyPosture,
   readDaemonStatus,
   readRagStatus,
@@ -16,6 +17,7 @@ import {
   readRecentlyLearnedLine,
   readTokenCostToday,
   registerStatusCommand,
+  resolveStatusRuntime,
   resolveStatusWatchIntervalMs,
   suggestPatternHints
 } from "./commands-status.js";
@@ -334,6 +336,71 @@ describe("muse status — daemon line (wiring, R2-1)", () => {
     const text = out.join("");
     expect(text).toContain("daemon: not running");
     expect(text).toContain("run `muse daemon`");
+  });
+});
+
+describe("muse status — memory learning health", () => {
+  it("uses the writer's canonical HOME and tilde path semantics", () => {
+    const homeRuntime = resolveStatusRuntime({
+      env: { HOME: "/isolated/home", MUSE_HOME: "/isolated/custom" },
+      platform: "linux"
+    });
+    expect(homeRuntime.paths.memoryAutoExtractOutcomesFile)
+      .toBe("/isolated/home/.muse/memory-auto-extract-outcomes.json");
+
+    const tildeRuntime = resolveStatusRuntime({
+      env: {
+        HOME: "/isolated/home",
+        MUSE_USER_MEMORY_AUTO_EXTRACT_OUTCOMES_FILE: "~/.muse/override.json"
+      },
+      platform: "linux"
+    });
+    expect(tildeRuntime.paths.memoryAutoExtractOutcomesFile)
+      .toBe(join(homedir(), ".muse", "override.json"));
+  });
+
+  it("renders only the bounded projection, not raw outcome correlation data", () => {
+    const text = formatMemoryLearningStatusLine({
+      consecutiveFailures: 2,
+      freshness: "fresh",
+      lastSuccessAt: "2026-07-27T11:00:00.000Z",
+      reasonCounts: { learned: 1, model_error: 2, nothing_new: 0, policy_rejected: 0, schema_error: 0, store_error: 0, timeout: 0 },
+      sampleSize: 3,
+      status: "degraded"
+    }, () => "1h ago");
+
+    expect(text).toContain("memory learning: degraded");
+    expect(text).toContain("last learned 1h ago");
+    expect(text).toContain("model_error=2");
+    expect(text).not.toContain("runId");
+    expect(text).not.toContain("runIdHash");
+  });
+
+  it("includes the projection in --json without a persisted correlation hash", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "muse-status-memory-learning-"));
+    const outcomesFile = join(homeDir, "outcomes.json");
+    writeFileSync(outcomesFile, JSON.stringify({ outcomes: [{
+      reason: "learned",
+      recordedAt: new Date().toISOString(),
+      runIdHash: "a".repeat(32),
+      schemaVersion: 1
+    }] }), "utf8");
+    const output: string[] = [];
+    const io: ProgramIO = { stderr: () => undefined, stdout: (line) => { output.push(line); } };
+    const program = new Command();
+    program.exitOverride();
+    registerStatusCommand(program, io, {
+      env: { HOME: homeDir, MUSE_MODEL_KEYS_FILE: join(homeDir, "models.json") },
+      homeDir,
+      paths: { memoryAutoExtractOutcomesFile: outcomesFile },
+      platform: "linux"
+    });
+
+    await program.parseAsync(["node", "muse", "status", "--json"]);
+
+    const snapshot = JSON.parse(output.join("")) as { memoryLearning: Record<string, unknown> };
+    expect(snapshot.memoryLearning).toMatchObject({ freshness: "fresh", sampleSize: 1, status: "healthy" });
+    expect(JSON.stringify(snapshot.memoryLearning)).not.toContain("runIdHash");
   });
 });
 
