@@ -49,6 +49,7 @@ await server.listen({ host, port });
 // Graceful shutdown: drain in-flight cron runs before the process exits.
 const schedulerService = options.scheduler?.service;
 const shutdown = createGracefulShutdown({
+  closeResources: () => options.mcp.manager.shutdown(),
   drainScheduler: schedulerService ? () => schedulerService.shutdown() : undefined,
   closeServer: () => server.close(),
 

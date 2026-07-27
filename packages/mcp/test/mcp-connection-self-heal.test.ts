@@ -209,15 +209,12 @@ describe("DS-16 — MCP connection self-heal", () => {
   it("does not let a delayed concurrent failure retire a replacement connection", async () => {
     let nowMs = 0;
     let releaseFirstClose: (() => void) | undefined;
-    let releaseSecondClose: (() => void) | undefined;
     const firstClose = new Promise<void>((resolve) => { releaseFirstClose = resolve; });
-    const secondClose = new Promise<void>((resolve) => { releaseSecondClose = resolve; });
     const failed = makeConnection("unused");
     failed.callTool = vi.fn().mockRejectedValue(new McpConnectionError("upstream down", 503));
     failed.close = vi
       .fn()
-      .mockImplementationOnce(async () => firstClose)
-      .mockImplementationOnce(async () => secondClose);
+      .mockImplementationOnce(async () => firstClose);
     const replacement = makeConnection("fresh-reply");
     const connector = { connect: vi.fn().mockResolvedValueOnce(failed).mockResolvedValueOnce(replacement) };
     const manager = new McpManager(new InMemoryMcpServerStore(), {
@@ -230,7 +227,9 @@ describe("DS-16 — MCP connection self-heal", () => {
     const [tool] = manager.toMuseTools();
     const first = tool?.execute({}, CONTEXT);
     const second = tool?.execute({}, CONTEXT);
-    await vi.waitFor(() => expect(failed.close).toHaveBeenCalledTimes(2));
+    // Concurrent retirement shares the same close operation. This is important
+    // at shutdown too: an owned stdio child is closed exactly once.
+    await vi.waitFor(() => expect(failed.close).toHaveBeenCalledTimes(1));
 
     releaseFirstClose?.();
     await vi.waitFor(() => expect(manager.getStatus("local")).toBe("failed"));
@@ -238,7 +237,6 @@ describe("DS-16 — MCP connection self-heal", () => {
     await expect(tool?.execute({}, CONTEXT)).resolves.toBe("fresh-reply");
     expect(manager.getStatus("local")).toBe("connected");
 
-    releaseSecondClose?.();
     await Promise.all([first, second]);
     expect(manager.getStatus("local")).toBe("connected");
     expect(manager.getToolCatalog("local")).toHaveLength(1);

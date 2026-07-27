@@ -10,11 +10,6 @@
  * `mcp-tool-factory.js`), never round-tripped through the barrel, which
  * would make `index.ts` and this file a runtime import cycle.
  *
- * One private helper comes over because it was only used by the
- * manager:
- *   - closeConnectionQuietly (best-effort connection cleanup
- *     after failed health checks)
- *
  * `toErrorMessage` (Error.message / String fallback) lives in
  * `./error-utils.js`, shared with `transport.ts` and `index.ts`.
  */
@@ -72,6 +67,11 @@ export class McpManager {
   private readonly connections = new Map<string, McpConnection>();
   private readonly health = new Map<string, McpHealthSnapshot>();
   private readonly tools = new Map<string, readonly McpRemoteTool[]>();
+  private readonly connectionCloses = new WeakMap<McpConnection, Promise<void>>();
+  private readonly connectOperations = new Set<Promise<boolean>>();
+  private readonly healthOperations = new Set<Promise<McpHealthSnapshot>>();
+  private shutdownStarted = false;
+  private shutdownPromise: Promise<void> | undefined;
 
   constructor(
     private readonly store: McpServerStore = new InMemoryMcpServerStore(),
@@ -134,7 +134,9 @@ export class McpManager {
     const connection = this.connections.get(name);
 
     try {
-      await connection?.close?.();
+      if (connection) {
+        await this.closeConnectionOnce(connection);
+      }
     } finally {
       this.connections.delete(name);
       this.tools.delete(name);
@@ -211,6 +213,19 @@ export class McpManager {
   }
 
   async connect(name: string): Promise<boolean> {
+    if (this.shutdownStarted) {
+      return false;
+    }
+    const operation = this.connectWhileRunning(name);
+    this.connectOperations.add(operation);
+    try {
+      return await operation;
+    } finally {
+      this.connectOperations.delete(operation);
+    }
+  }
+
+  private async connectWhileRunning(name: string): Promise<boolean> {
     if (!this.externalTransportAllowed) {
       this.markExternalTransportBlocked(name);
       return false;
@@ -290,15 +305,27 @@ export class McpManager {
     this.statuses.set(name, "connecting");
 
     try {
+      if (this.shutdownStarted) {
+        this.markDisconnected(name);
+        return false;
+      }
       const connection = await this.connector.connect(server, await this.securityPolicyProvider.currentPolicy());
+      if (this.shutdownStarted) {
+        await this.closeConnectionForShutdown(name, connection);
+        return false;
+      }
       const tools = await connection.listTools();
 
+      if (this.shutdownStarted) {
+        await this.closeConnectionForShutdown(name, connection);
+        return false;
+      }
       if (isDeadConnection(connection)) {
         // The child died BETWEEN connect() returning and listTools()
         // finishing — the tools we just read belong to an already-dead
         // transport. Committing them would cache a stale catalog against a
         // corpse; retire it and arm a reconnect instead.
-        await closeConnectionQuietly(connection);
+        await this.closeConnectionQuietly(connection);
         this.statuses.set(name, "failed");
         this.scheduleReconnect(name, connection.disconnectReason ?? "connection closed during catalog refresh");
         return false;
@@ -310,6 +337,10 @@ export class McpManager {
       this.health.set(name, this.createHealthSnapshot(name, "healthy"));
       return true;
     } catch (error) {
+      if (this.shutdownStarted) {
+        this.markDisconnected(name);
+        throw error;
+      }
       if (error instanceof McpConnectionError && !error.retryable) {
         // A permanent failure (revoked/expired token → 401/403, bad
         // config → 4xx) is terminal, exactly like the allowlist and
@@ -332,7 +363,9 @@ export class McpManager {
     const connection = this.connections.get(name);
 
     try {
-      await connection?.close?.();
+      if (connection) {
+        await this.closeConnectionOnce(connection);
+      }
     } finally {
       this.connections.delete(name);
       this.tools.delete(name);
@@ -363,6 +396,19 @@ export class McpManager {
   }
 
   async healthCheck(name: string): Promise<McpHealthSnapshot> {
+    if (this.shutdownStarted) {
+      return this.getHealth(name);
+    }
+    const operation = this.healthCheckWhileRunning(name);
+    this.healthOperations.add(operation);
+    try {
+      return await operation;
+    } finally {
+      this.healthOperations.delete(operation);
+    }
+  }
+
+  private async healthCheckWhileRunning(name: string): Promise<McpHealthSnapshot> {
     if (!this.externalTransportAllowed) {
       return this.markExternalTransportBlocked(name);
     }
@@ -378,11 +424,18 @@ export class McpManager {
     try {
       const tools = await connection.listTools();
 
+      if (this.shutdownStarted) {
+        this.markDisconnected(name);
+        return this.getHealth(name);
+      }
+      if (this.connections.get(name) !== connection) {
+        return this.getHealth(name);
+      }
       if (isDeadConnection(connection)) {
         // Same mid-refresh race as connect(): the transport closed while
         // listTools() was in flight, so these tools are stale. Retire the
         // dead connection and arm a reconnect rather than caching them.
-        await closeConnectionQuietly(connection);
+        await this.closeConnectionQuietly(connection);
         this.connections.delete(name);
         this.tools.delete(name);
         this.statuses.set(name, "failed");
@@ -396,7 +449,14 @@ export class McpManager {
       this.health.set(name, snapshot);
       return snapshot;
     } catch (error) {
-      await closeConnectionQuietly(connection);
+      await this.closeConnectionQuietly(connection);
+      if (this.shutdownStarted) {
+        this.markDisconnected(name);
+        return this.getHealth(name);
+      }
+      if (this.connections.get(name) !== connection) {
+        return this.getHealth(name);
+      }
       this.connections.delete(name);
       this.tools.delete(name);
 
@@ -504,6 +564,9 @@ export class McpManager {
   }
 
   async reconnect(name: string): Promise<boolean> {
+    if (this.shutdownStarted) {
+      return false;
+    }
     if (!this.externalTransportAllowed) {
       this.markExternalTransportBlocked(name);
       return false;
@@ -524,6 +587,9 @@ export class McpManager {
   }
 
   async reconnectDue(): Promise<readonly McpHealthSnapshot[]> {
+    if (this.shutdownStarted) {
+      return [];
+    }
     if (!this.externalTransportAllowed) {
       return (await this.materializeBlockedStoredServers()).map((server) => this.getHealth(server.name));
     }
@@ -591,7 +657,7 @@ export class McpManager {
       return;
     }
 
-    await closeConnectionQuietly(connection);
+    await this.closeConnectionQuietly(connection);
     if (this.connections.get(name) !== connection) {
       return;
     }
@@ -618,6 +684,9 @@ export class McpManager {
    * a permanently-down server.
    */
   private async ensureLiveConnection(name: string): Promise<McpConnectionResolution> {
+    if (this.shutdownStarted) {
+      return { error: `MCP server '${name}' is unavailable because the manager is shutting down` };
+    }
     if (!this.externalTransportAllowed) {
       return { error: externalTransportBlockedMessage };
     }
@@ -631,7 +700,7 @@ export class McpManager {
     const disconnectReason = isDeadConnection(existing) ? existing?.disconnectReason : undefined;
 
     if (existing) {
-      await closeConnectionQuietly(existing);
+      await this.closeConnectionQuietly(existing);
       this.connections.delete(name);
       this.tools.delete(name);
       if (this.statuses.get(name) === "connected") {
@@ -687,6 +756,10 @@ export class McpManager {
   }
 
   private scheduleReconnect(name: string, error: string): McpHealthSnapshot {
+    if (this.shutdownStarted) {
+      this.markDisconnected(name);
+      return this.getHealth(name);
+    }
     const previous = this.health.get(name);
     const attempts = (previous?.reconnectAttempts ?? 0) + 1;
     const nextReconnectAt = computeNextReconnectAt(this.reconnectPolicy, this.now().getTime(), attempts);
@@ -694,6 +767,68 @@ export class McpManager {
 
     this.health.set(name, snapshot);
     return snapshot;
+  }
+
+  /**
+   * Permanently stop this manager. New connection/reconnect work is refused,
+   * in-flight catalog work is awaited and retired, and every owned connection
+   * is closed once. A close failure is reported only after all owners were
+   * attempted so one broken transport cannot strand the rest.
+   */
+  shutdown(): Promise<void> {
+    this.shutdownStarted = true;
+    this.shutdownPromise ??= this.performShutdown();
+    return this.shutdownPromise;
+  }
+
+  private async performShutdown(): Promise<void> {
+    const results = await Promise.allSettled([
+      ...[...this.connections.keys()].map((name) => this.disconnect(name)),
+      ...this.connectOperations,
+      ...this.healthOperations
+    ]);
+    const lateResults = await Promise.allSettled(
+      [...this.connections.keys()].map((name) => this.disconnect(name))
+    );
+    const errors = [...results, ...lateResults]
+      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+      .map((result) => result.reason);
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "MCP manager shutdown failed");
+    }
+  }
+
+  private closeConnectionOnce(connection: McpConnection): Promise<void> {
+    const existing = this.connectionCloses.get(connection);
+    if (existing) {
+      return existing;
+    }
+    const closing = Promise.resolve().then(() => connection.close?.());
+    this.connectionCloses.set(connection, closing);
+    return closing;
+  }
+
+  private async closeConnectionQuietly(connection: McpConnection): Promise<void> {
+    try {
+      await this.closeConnectionOnce(connection);
+    } catch {
+      // Best-effort retirement. Authoritative shutdown uses the rejecting path.
+    }
+  }
+
+  private async closeConnectionForShutdown(name: string, connection: McpConnection): Promise<void> {
+    try {
+      await this.closeConnectionOnce(connection);
+    } finally {
+      this.markDisconnected(name);
+    }
+  }
+
+  private markDisconnected(name: string): void {
+    this.connections.delete(name);
+    this.tools.delete(name);
+    this.statuses.set(name, "disconnected");
+    this.health.set(name, this.createHealthSnapshot(name, "unknown"));
   }
 
   private createHealthSnapshot(
@@ -874,14 +1009,6 @@ function isDeadConnection(connection: McpConnection | undefined): boolean {
 function formatDisconnectError(name: string, disconnectReason?: string, reconnectError?: string): string {
   const head = `MCP server '${name}' disconnected${disconnectReason ? `: ${disconnectReason}` : ""}`;
   return reconnectError ? `${head}; reconnect failed: ${reconnectError}` : head;
-}
-
-async function closeConnectionQuietly(connection: McpConnection): Promise<void> {
-  try {
-    await connection.close?.();
-  } catch {
-    // Best-effort cleanup after failed MCP health checks.
-  }
 }
 
 function auditReason(reasons: readonly string[]): string {

@@ -14,6 +14,9 @@ describe("graceful shutdown", () => {
       closeServer: async () => {
         calls.push("close");
       },
+      closeResources: async () => {
+        calls.push("resources");
+      },
       drainScheduler: async () => {
         calls.push("drain");
       },
@@ -22,7 +25,7 @@ describe("graceful shutdown", () => {
     });
     await shutdown();
     await shutdown();
-    expect(calls).toEqual(["drain", "close"]);
+    expect(calls).toEqual(["drain", "resources", "close"]);
   });
 
   it("a hung drain force-exits at the deadline instead of lingering forever", async () => {
@@ -41,6 +44,26 @@ describe("graceful shutdown", () => {
     await sleep(80);
     expect(exited).toBe(0);
     expect(logs.some((l) => l.includes("forcing exit"))).toBe(true);
+  });
+
+  it("a hung owned-resource close remains covered by the same hard deadline", async () => {
+    let exited: number | undefined;
+    let serverClosed = false;
+    const shutdown = createGracefulShutdown({
+      closeResources: () => Promise.withResolvers<never>().promise,
+      closeServer: async () => {
+        serverClosed = true;
+      },
+      exit: (code) => {
+        exited = code;
+      },
+      forceExitAfterMs: 30
+    });
+
+    void shutdown();
+    await sleep(80);
+    expect(exited).toBe(0);
+    expect(serverClosed).toBe(false);
   });
 
   it("a fast drain never trips the deadline", async () => {
@@ -75,5 +98,30 @@ describe("graceful shutdown", () => {
 
     expect(exited).toBe(0);
     expect(logs).toContain("server close failed; waiting for the forced-exit deadline");
+  });
+
+  it("still closes the server but keeps the deadline armed when resource shutdown fails", async () => {
+    const calls: string[] = [];
+    let exited: number | undefined;
+    const shutdown = createGracefulShutdown({
+      closeResources: async () => {
+        calls.push("resources");
+        throw new Error("resource close boom");
+      },
+      closeServer: async () => {
+        calls.push("server");
+      },
+      exit: (code) => {
+        exited = code;
+      },
+      forceExitAfterMs: 30,
+      log: (message) => calls.push(message)
+    });
+
+    await expect(shutdown()).resolves.toBeUndefined();
+    expect(calls.slice(0, 2)).toEqual(["resources", "resource close failed; continuing server close"]);
+    expect(calls).toContain("server");
+    await sleep(80);
+    expect(exited).toBe(0);
   });
 });

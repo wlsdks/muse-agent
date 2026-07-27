@@ -4,8 +4,10 @@
  * job. Without this the process exits abruptly, leaving runs stuck "running"
  * until reconcile-on-boot corrects the status (the work itself is still lost).
  *
- * Returns an idempotent shutdown fn — a second signal won't double-drain, and
- * a drain failure never blocks the close (best-effort).
+ * Returns an idempotent shutdown fn — a second signal won't double-drain.
+ * Scheduler drain is best-effort. Owned runtime resources (such as MCP stdio
+ * children) close before Fastify; a resource-close failure still allows the
+ * listener to close but keeps the hard deadline armed.
  *
  * The drain is DEADLINED: a long-running cron job or a lingering socket must
  * not keep a supposedly-stopped server alive for minutes — observed live as a
@@ -16,6 +18,8 @@
  */
 export interface GracefulShutdownDeps {
   readonly drainScheduler?: () => Promise<unknown>;
+  /** Close non-server runtime owners before Fastify releases its listener. */
+  readonly closeResources?: () => Promise<unknown>;
   readonly closeServer: () => Promise<unknown>;
   readonly log?: (message: string) => void;
   /** Hard deadline for the whole drain+close (default 8s). */
@@ -52,9 +56,20 @@ export function createGracefulShutdown(deps: GracefulShutdownDeps): () => Promis
         // best-effort drain — a drain failure must not block the server close
       }
     }
+    let resourceCloseFailed = false;
+    if (deps.closeResources) {
+      try {
+        await deps.closeResources();
+      } catch {
+        resourceCloseFailed = true;
+        deps.log?.("resource close failed; continuing server close");
+      }
+    }
     try {
       await deps.closeServer();
-      clearTimeout(deadline);
+      if (!resourceCloseFailed) {
+        clearTimeout(deadline);
+      }
     } catch {
       // Signal handlers intentionally invoke this function with `void`. Keep
       // a close failure observable without creating an unhandled rejection;
