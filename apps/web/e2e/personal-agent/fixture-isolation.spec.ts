@@ -2,9 +2,11 @@ import { expect, test, type APIRequestContext } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
+import { openPreparedContinuityPack } from "../../../../packages/attunement/src/continuity-preparation.js";
 import { reindexNotes } from "../../../../packages/recall/src/notes-index.js";
 
 const apiUrl = requiredLoopbackUrl("MUSE_PERSONAL_AGENT_API_URL");
+const attunementFile = resolve(requiredEnvironment("MUSE_ATTUNEMENT_FILE"));
 const embedUrl = requiredLoopbackUrl("MUSE_PERSONAL_AGENT_EMBED_URL");
 const stateRoot = resolve(requiredEnvironment("MUSE_PERSONAL_AGENT_STATE_ROOT"));
 const embedTrafficFile = resolve(requiredEnvironment("MUSE_PERSONAL_AGENT_EMBED_TRAFFIC_FILE"));
@@ -14,15 +16,19 @@ const noteContent = "The exact local launch code is ORCHID-742.";
 const groundedPrompt = `The exact local launch code is ORCHID-742 [from ${noteName}].`;
 const threadTitle = "Resume the fixture launch";
 
-test("persisted note grounds Ask and an explicit Continuity Pack records one confirmed outcome", async ({
+test("organic feedback persists while controlled Continuity evidence stays held", async ({
   page,
   request
 }) => {
   const unexpectedEgress: string[] = [];
+  const loopbackMutationRequests: string[] = [];
   page.on("request", (outbound) => {
     const url = new URL(outbound.url());
     if ((url.protocol === "http:" || url.protocol === "https:") && url.hostname !== "127.0.0.1") {
       unexpectedEgress.push(url.origin);
+    }
+    if (url.hostname === "127.0.0.1" && !["GET", "HEAD", "OPTIONS"].includes(outbound.method())) {
+      loopbackMutationRequests.push(`${outbound.method()} ${url.pathname}`);
     }
   });
   await page.addInitScript((ownedApiUrl) => {
@@ -243,11 +249,135 @@ test("persisted note grounds Ask and an explicit Continuity Pack records one con
   expect(["hold", "manual-only"]).toContain(persisted.evaluation.automationGate.status);
   expect(["hold", "manual-only"]).toContain(persisted.evaluation.byKind.work.automationGate.status);
   expect(persisted.evaluation.measurements.some((metric) => metric.claim === "personal-effectiveness")).toBe(false);
+
+  expect(attunementFile).toBe(join(stateRoot, "stores", "attunement.json"));
+  const workThread = persisted.threads.find((thread) => thread.title === threadTitle);
+  expect(workThread).toBeDefined();
+  const beforeControlledState = await readAttunementFileState();
+  expect(beforeControlledState.deliveries).toHaveLength(1);
+  const openedControlled = await openPreparedContinuityPack(
+    attunementFile,
+    workThread!.id,
+    async (link) => {
+      expect(link).toMatchObject({
+        artifactId: noteName,
+        artifactType: "note",
+        providerId: "local",
+        role: "context",
+        threadId: workThread!.id
+      });
+      return { ...link, summary: noteContent, title: noteName };
+    },
+    {
+      evidenceClass: "controlled",
+      idFactory: () => "task046d-controlled"
+    }
+  );
+  expect(openedControlled.delivery).toMatchObject({
+    evidenceClass: "controlled",
+    id: "delivery_task046d-controlled",
+    threadId: workThread!.id
+  });
+  expect(openedControlled.delivery.outcome).toBeUndefined();
+  expect(openedControlled.pack.evidence).toEqual([
+    expect.objectContaining({
+      artifact: expect.objectContaining({
+        artifactId: noteName,
+        artifactType: "note",
+        providerId: "local",
+        role: "context",
+        summary: noteContent,
+        title: noteName
+      }),
+      status: "available"
+    })
+  ]);
+
+  const afterControlledState = await readAttunementFileState();
+  const { deliveries: beforeControlledDeliveries, ...beforeControlledNonDelivery } = beforeControlledState;
+  const { deliveries: afterControlledDeliveries, ...afterControlledNonDelivery } = afterControlledState;
+  expect(afterControlledNonDelivery).toEqual(beforeControlledNonDelivery);
+  expect(afterControlledDeliveries).toHaveLength(beforeControlledDeliveries.length + 1);
+  expect(afterControlledDeliveries).toEqual([
+    beforeControlledDeliveries[0],
+    expect.objectContaining({
+      evidenceClass: "controlled",
+      id: openedControlled.delivery.id,
+      threadId: workThread!.id
+    })
+  ]);
+  expect(afterControlledDeliveries[1]?.outcome).toBeUndefined();
+
+  const personalStatus = await readPersonalStatus(request);
+  const heldCard = personalStatus.cards.find((card) => card.id === `feedback:${openedControlled.delivery.id}`);
+  expect(heldCard).toEqual({
+    action: {
+      id: "review-continuity-feedback",
+      target: { focus: "continuity-feedback-review", type: "view", view: "continuity" }
+    },
+    deadline: null,
+    detail: "controlled delivery는 기술 검증 근거이므로 개인 효과 피드백으로 승격하지 않습니다.",
+    id: `feedback:${openedControlled.delivery.id}`,
+    kind: "continuity-feedback",
+    observedAt: openedControlled.delivery.openedAt,
+    priority: 35,
+    sourceId: "attunement",
+    status: "held",
+    title: threadTitle
+  });
+
+  await page.getByRole("button", { exact: true, name: "Home" }).click();
+  const heldRow = page.locator(".personal-status-row").filter({
+    has: page.getByText(threadTitle, { exact: true })
+  }).filter({
+    has: page.getByText("Held", { exact: true })
+  });
+  await expect(heldRow).toBeVisible();
+  await expect(heldRow.getByRole("button", { exact: true, name: "Review feedback" })).toBeVisible();
+  const mutationsBeforeReviewNavigation = loopbackMutationRequests.length;
+  await heldRow.getByRole("button", { exact: true, name: "Review feedback" }).click();
+  await expect(page.getByRole("heading", { exact: true, name: "Continuity review" })).toBeVisible();
+  expect(loopbackMutationRequests).toHaveLength(mutationsBeforeReviewNavigation);
+  for (const outcome of ["used", "adjusted", "ignored", "rejected"]) {
+    await expect(page.getByRole("button", {
+      exact: true,
+      name: `Record ${outcome} for ${openedControlled.delivery.id}`
+    })).toHaveCount(0);
+  }
+
+  const finalReview = await readContinuityReview(request);
+  expect(finalReview.reviewQueue.next).toBeUndefined();
+  expect(finalReview.deliveries).toHaveLength(2);
+  expect(finalReview.deliveries.find((entry) => entry.id === delivery.id)).toMatchObject({
+    evidenceClass: "organic",
+    outcome: { outcome: "used" }
+  });
+  expect(finalReview.deliveries.find((entry) => entry.id === openedControlled.delivery.id)).toMatchObject({
+    evidenceClass: "controlled",
+    id: openedControlled.delivery.id
+  });
+  expect(finalReview.deliveries.find((entry) => entry.id === openedControlled.delivery.id)?.outcome).toBeUndefined();
+  expect(finalReview.evaluation).toMatchObject({
+    measurementStatus: persisted.evaluation.measurementStatus,
+    outcomes: persisted.evaluation.outcomes,
+    totalDeliveries: persisted.evaluation.totalDeliveries,
+    withOutcome: persisted.evaluation.withOutcome
+  });
+  expect(finalReview.evaluation.measurements.some((metric) => metric.claim === "personal-effectiveness")).toBe(false);
+  expect(["hold", "manual-only"]).toContain(finalReview.evaluation.automationGate.status);
+  expect(["hold", "manual-only"]).toContain(finalReview.evaluation.byKind.work.automationGate.status);
+
+  const finalState = await readAttunementFileState();
+  expect(finalState.deliveries.find((entry) => entry.id === openedControlled.delivery.id)?.outcome).toBeUndefined();
+  expect(finalState.deliveries.filter((entry) => entry.outcome !== undefined)).toEqual([
+    expect.objectContaining({ evidenceClass: "organic", id: delivery.id, outcome: expect.objectContaining({ outcome: "used" }) })
+  ]);
   expect(unexpectedEgress).toEqual([]);
 });
 
 interface ContinuityReviewSnapshot {
   readonly deliveries: readonly {
+    readonly evidenceClass: "controlled" | "organic";
     readonly evidenceRefs: readonly {
       readonly artifactId: string;
       readonly artifactType: string;
@@ -292,6 +422,7 @@ interface ContinuityReviewSnapshot {
     };
   };
   readonly threads: readonly {
+    readonly id: string;
     readonly kind: string;
     readonly linkCount: number;
     readonly links: readonly {
@@ -304,10 +435,52 @@ interface ContinuityReviewSnapshot {
   }[];
 }
 
+interface PersonalStatusSnapshot {
+  readonly cards: readonly {
+    readonly action?: {
+      readonly id: string;
+      readonly target: {
+        readonly focus?: string;
+        readonly type: string;
+        readonly view?: string;
+      };
+    };
+    readonly deadline: string | null;
+    readonly detail: string;
+    readonly id: string;
+    readonly kind: string;
+    readonly observedAt: string;
+    readonly priority: number;
+    readonly sourceId: string;
+    readonly status: string;
+    readonly title: string;
+  }[];
+}
+
+interface AttunementFileSnapshot {
+  readonly deliveries: readonly {
+    readonly evidenceClass: "controlled" | "organic";
+    readonly id: string;
+    readonly outcome?: { readonly outcome: string };
+    readonly threadId: string;
+  }[];
+  readonly [key: string]: unknown;
+}
+
 async function readContinuityReview(request: APIRequestContext): Promise<ContinuityReviewSnapshot> {
   const response = await request.get(`${apiUrl}/api/attunement/review`);
   expect(response.status()).toBe(200);
   return await response.json() as ContinuityReviewSnapshot;
+}
+
+async function readPersonalStatus(request: APIRequestContext): Promise<PersonalStatusSnapshot> {
+  const response = await request.get(`${apiUrl}/api/personal-status`);
+  expect(response.status()).toBe(200);
+  return await response.json() as PersonalStatusSnapshot;
+}
+
+async function readAttunementFileState(): Promise<AttunementFileSnapshot> {
+  return JSON.parse(await readFile(attunementFile, "utf8")) as AttunementFileSnapshot;
 }
 
 async function readEmbeddingTraffic(): Promise<readonly {

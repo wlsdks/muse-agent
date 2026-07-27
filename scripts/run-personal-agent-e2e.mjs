@@ -27,7 +27,7 @@ const artifactDir = join(
   ".muse-dev",
   "evals",
   "personal-agent-roadmap",
-  "task-046-c",
+  "task-046-d",
   "playwright"
 );
 
@@ -57,6 +57,7 @@ export function createPersonalAgentE2eEnvironment({
   Object.assign(env, {
     CI: "1",
     MUSE_CORS_ALLOWED_ORIGINS: webUrl,
+    MUSE_ATTUNEMENT_FILE: join(root, "stores", "attunement.json"),
     MUSE_EMBED_MODEL: "personal-agent-fixture-embed",
     MUSE_PERSONAL_AGENT_API_URL: `http://127.0.0.1:${apiPort.toString()}`,
     MUSE_PERSONAL_AGENT_ARTIFACT_DIR: artifactDir,

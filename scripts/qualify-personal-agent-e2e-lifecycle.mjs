@@ -24,7 +24,7 @@ const artifactPath = join(
   ".muse-dev",
   "evals",
   "personal-agent-roadmap",
-  "task-046-c.json"
+  "task-046-d.json"
 );
 const inputFiles = [
   "apps/web/e2e/personal-agent/fixture-isolation.spec.ts",
@@ -77,12 +77,12 @@ await writeFile(artifactPath, `${JSON.stringify({
   inputHashStart,
   result,
   source: { endHead, startHead },
-  taskId: "046-C",
+  taskId: "046-D",
   trials,
   ...(primaryError === undefined ? {} : { error: errorMessage(primaryError) })
 }, null, 2)}\n`, "utf8");
 
-if (result !== "pass") throw primaryError ?? new Error("Task046-C lifecycle qualification failed");
+if (result !== "pass") throw primaryError ?? new Error("Task046-D lifecycle qualification failed");
 console.log("qualify:personal-agent-e2e-lifecycle PASS (normal/failure/SIGTERM; API/web/embed ports and temp/process residue 0)");
 
 async function runTrial(name, envOverrides, contract) {
