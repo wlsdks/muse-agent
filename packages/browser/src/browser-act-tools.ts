@@ -10,6 +10,15 @@ import type { MuseTool } from "@muse/tools";
 
 import { type BrowserController, type PageSnapshot } from "./controller.js";
 import { errorResult, resolveGateDecision, resolveTarget, snapshotToJson, statusFields, type BrowserActionDraft, type BrowserApprovalGate, type ResolveResult } from "./browser-tool-primitives.js";
+import type {
+  ClaimPendingDialogInput,
+  PendingDialogDecision,
+  PendingDialogIdentity
+} from "./pending-dialog-coordinator.js";
+import type {
+  PendingPuppeteerClickResult,
+  PendingPuppeteerDialogDecisionResult
+} from "./puppeteer-controller.js";
 
 export interface BrowserActionGuard {
   /** Consume one action from the per-task budget; refuses (allowed:false) once the cap is hit. */
@@ -19,8 +28,20 @@ export interface BrowserActionGuard {
 export interface BrowserActToolDeps {
   readonly controller: BrowserController;
   readonly approvalGate: BrowserApprovalGate;
+  /** Opt-in controller-specific path; absent keeps the legacy fail-close click contract. */
+  readonly pendingDialogController?: PendingDialogBrowserController;
   /** Optional per-task action budget shared across click/type/fill. Absent ⇒ unbounded (byte-identical to pre-budget behavior). */
   readonly actionBudget?: BrowserActionGuard;
+}
+
+export interface PendingDialogBrowserController extends BrowserController {
+  clickWithPendingDialog(ref: number): Promise<PendingPuppeteerClickResult>;
+  decidePendingDialog(input: ClaimPendingDialogInput): Promise<PendingPuppeteerDialogDecisionResult>;
+}
+
+export interface BrowserDialogDecisionToolDeps {
+  readonly approvalGate: BrowserApprovalGate;
+  readonly controller: PendingDialogBrowserController;
 }
 
 export function createBrowserClickTool(deps: BrowserActToolDeps): MuseTool {
@@ -30,8 +51,8 @@ export function createBrowserClickTool(deps: BrowserActToolDeps): MuseTool {
         "Click something on the page in Muse's browser. Just say WHAT to click in `target` — the link text " +
         "or button label — and Muse finds it; e.g. target 'Sign in', 'Add to cart', 'the first result'. Use " +
         "to follow a link or press a button. The user MUST confirm before Muse clicks (a click can submit a " +
-        "form or change something on a site); absent confirmation nothing happens. Returns the page after " +
-        "the click.",
+        "form or change something on a site); absent confirmation nothing happens. If the page then raises a " +
+        "confirm/prompt, Muse returns exact pending authority for a separate browser_dialog_decide approval.",
       domain: "browser",
       groundedArgs: ["target"],
       inputSchema: {
@@ -67,6 +88,29 @@ export function createBrowserClickTool(deps: BrowserActToolDeps): MuseTool {
         return { clicked: false, reason: decision.reason };
       }
       try {
+        if (deps.pendingDialogController) {
+          const outcome = await deps.pendingDialogController.clickWithPendingDialog(resolved.ref);
+          if (outcome.status === "pending") {
+            return {
+              clicked: true,
+              dialog: pendingIdentityJson(outcome.dialog),
+              status: "pending",
+              ...(budget
+                ? {
+                    actionsUsed: budget.label,
+                    ...(budget.warning ? { budgetWarning: budget.warning } : {})
+                  }
+                : {})
+            };
+          }
+          return {
+            clicked: true,
+            status: "completed",
+            ...snapshotToJson(outcome.snapshot),
+            ...statusFields(outcome.snapshot),
+            ...(budget ? { actionsUsed: budget.label, ...(budget.warning ? { budgetWarning: budget.warning } : {}) } : {})
+          };
+        }
         const snapshot = await deps.controller.click(resolved.ref);
         return {
           clicked: true,
@@ -79,6 +123,312 @@ export function createBrowserClickTool(deps: BrowserActToolDeps): MuseTool {
       }
     }
   };
+}
+
+export function createBrowserDialogDecisionTool(
+  deps: BrowserDialogDecisionToolDeps
+): MuseTool {
+  return {
+    definition: {
+      description:
+        "Accept or dismiss one exact pending browser confirm/prompt. The earlier browser_click approval does " +
+        "NOT approve this separate execute-risk decision; every identity field and prompt response is rebound " +
+        "and shown to the user before the live dialog is touched.",
+      domain: "browser",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          decision: {
+            description: "Exact choice: accept or dismiss.",
+            enum: ["accept", "dismiss"],
+            type: "string"
+          },
+          dialogId: { description: "Opaque dialogId returned by browser_click.", type: "string" },
+          generation: { description: "Exact positive generation returned by browser_click.", type: "number" },
+          message: { description: "Exact page dialog message returned by browser_click.", type: "string" },
+          pageTargetId: { description: "Exact pageTargetId returned by browser_click.", type: "string" },
+          pageUrl: { description: "Exact pageUrl returned by browser_click.", type: "string" },
+          promptDefaultValue: {
+            description: "Exact prompt default returned by browser_click; prompts only.",
+            type: "string"
+          },
+          promptResponse: {
+            description: "Exact text to submit; required only when accepting a prompt.",
+            type: "string"
+          },
+          sessionIncarnation: {
+            description: "Exact sessionIncarnation returned by browser_click.",
+            type: "string"
+          },
+          type: {
+            description: "Exact dialog type returned by browser_click.",
+            enum: ["confirm", "prompt"],
+            type: "string"
+          }
+        },
+        required: [
+          "dialogId",
+          "sessionIncarnation",
+          "pageTargetId",
+          "generation",
+          "type",
+          "message",
+          "pageUrl",
+          "decision"
+        ],
+        type: "object"
+      },
+      keywords: [
+        "browser",
+        "dialog",
+        "confirm",
+        "prompt",
+        "accept",
+        "dismiss",
+        "확인",
+        "취소",
+        "브라우저"
+      ],
+      name: "browser_dialog_decide",
+      risk: "execute"
+    },
+    execute: async (args, context): Promise<JsonObject> => {
+      const claimantUserId = exactNonEmpty(context.userId);
+      const claimantRunId = exactNonEmpty(context.runId);
+      if (!claimantUserId || !claimantRunId) {
+        return {
+          decided: false,
+          reason: "browser_dialog_decide requires current runId and userId authority"
+        };
+      }
+      let parsed: ReturnType<typeof parsePendingDialogDecision>;
+      try {
+        parsed = parsePendingDialogDecision(args);
+      } catch {
+        return {
+          decided: false,
+          reason: "browser_dialog_decide requires a safe own-property JSON object"
+        };
+      }
+      if (!parsed.ok) return { decided: false, reason: parsed.reason };
+      const draft: BrowserActionDraft = {
+        action: "dialog-decision",
+        dialog: parsed.identity,
+        dialogDecision: parsed.decision,
+        target: `${parsed.identity.type} dialog`,
+        url: parsed.identity.pageUrl
+      };
+      const approval = await resolveGateDecision(deps.approvalGate, draft);
+      if (!approval.approved) {
+        return { decided: false, reason: approval.reason };
+      }
+      const claimantId = `tool:${claimantUserId}:${claimantRunId}`;
+      const result = await deps.controller.decidePendingDialog({
+        claimantId,
+        decision: parsed.decision,
+        identity: parsed.identity
+      });
+      if (!result.ok) {
+        return {
+          decided: false,
+          reason: result.reason,
+          ...(result.receipt ? { receipt: receiptJson(result.receipt) } : {})
+        };
+      }
+      if (!receiptMatchesRequest(result.receipt, claimantId, parsed.identity, parsed.decision)) {
+        return {
+          decided: false,
+          reason: "browser dialog controller returned a mismatched decision receipt"
+        };
+      }
+      return {
+        decided: true,
+        receipt: receiptJson(result.receipt),
+        status: "acknowledged",
+        ...snapshotToJson(result.snapshot),
+        ...statusFields(result.snapshot)
+      };
+    }
+  };
+}
+
+const DIALOG_DECISION_KEYS = new Set([
+  "decision",
+  "dialogId",
+  "generation",
+  "message",
+  "pageTargetId",
+  "pageUrl",
+  "promptDefaultValue",
+  "promptResponse",
+  "sessionIncarnation",
+  "type"
+]);
+const REQUIRED_DIALOG_DECISION_KEYS = [
+  "decision",
+  "dialogId",
+  "generation",
+  "message",
+  "pageTargetId",
+  "pageUrl",
+  "sessionIncarnation",
+  "type"
+] as const;
+const OPTIONAL_DIALOG_DECISION_KEYS = [
+  "promptDefaultValue",
+  "promptResponse"
+] as const;
+
+function parsePendingDialogDecision(args: JsonObject):
+  | {
+      readonly ok: true;
+      readonly decision: PendingDialogDecision;
+      readonly identity: PendingDialogIdentity;
+    }
+  | { readonly ok: false; readonly reason: string } {
+  const prototype = Object.getPrototypeOf(args);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return { ok: false, reason: "browser_dialog_decide requires an own-property JSON object" };
+  }
+  const reflected = Reflect.ownKeys(args);
+  if (
+    reflected.some((key) =>
+      typeof key !== "string" || !Object.prototype.propertyIsEnumerable.call(args, key)
+    )
+  ) {
+    return { ok: false, reason: "browser_dialog_decide requires enumerable string keys only" };
+  }
+  const ownKeys = reflected as string[];
+  const unknown = ownKeys.find((key) => !DIALOG_DECISION_KEYS.has(key));
+  if (unknown) return { ok: false, reason: `browser_dialog_decide does not accept '${unknown}'` };
+  if (REQUIRED_DIALOG_DECISION_KEYS.some((key) => !Object.hasOwn(args, key))) {
+    return { ok: false, reason: "browser_dialog_decide requires every identity field as an own property" };
+  }
+  if (
+    OPTIONAL_DIALOG_DECISION_KEYS.some((key) =>
+      Object.hasOwn(args, key) && args[key] === undefined
+    )
+  ) {
+    return { ok: false, reason: "browser_dialog_decide optional fields must be absent or exact strings" };
+  }
+  const dialogId = exactNonEmpty(args["dialogId"]);
+  const sessionIncarnation = exactNonEmpty(args["sessionIncarnation"]);
+  const pageTargetId = exactNonEmpty(args["pageTargetId"]);
+  const generation = args["generation"];
+  const type = args["type"];
+  const message = args["message"];
+  const pageUrl = exactNonEmpty(args["pageUrl"]);
+  const choice = args["decision"];
+  if (
+    !dialogId
+    || !sessionIncarnation
+    || !pageTargetId
+    || !Number.isSafeInteger(generation)
+    || (generation as number) <= 0
+    || (type !== "confirm" && type !== "prompt")
+    || typeof message !== "string"
+    || !pageUrl
+    || (choice !== "accept" && choice !== "dismiss")
+  ) {
+    return { ok: false, reason: "browser_dialog_decide requires one exact pending dialog identity and decision" };
+  }
+  const promptDefaultValue = args["promptDefaultValue"];
+  const promptResponse = args["promptResponse"];
+  if (
+    (type === "prompt" && typeof promptDefaultValue !== "string")
+    || (type === "confirm" && promptDefaultValue !== undefined)
+  ) {
+    return { ok: false, reason: "promptDefaultValue must be present only for prompt dialogs" };
+  }
+  if (
+    (choice === "accept" && type === "prompt" && typeof promptResponse !== "string")
+    || ((choice === "dismiss" || type === "confirm") && promptResponse !== undefined)
+  ) {
+    return {
+      ok: false,
+      reason: "promptResponse is required only when accepting a prompt dialog"
+    };
+  }
+  const identity: PendingDialogIdentity = Object.freeze({
+    dialogId,
+    generation: generation as number,
+    message,
+    pageTargetId,
+    pageUrl,
+    ...(type === "prompt" ? { promptDefaultValue: promptDefaultValue as string } : {}),
+    sessionIncarnation,
+    type
+  });
+  const decision: PendingDialogDecision = Object.freeze(choice === "accept"
+    ? {
+        kind: "accept" as const,
+        ...(type === "prompt" ? { promptResponse: promptResponse as string } : {})
+      }
+    : { kind: "dismiss" as const });
+  return { decision, identity, ok: true };
+}
+
+function exactNonEmpty(value: JsonValue | undefined): string | undefined {
+  return typeof value === "string" && value.length > 0 && value === value.trim()
+    ? value
+    : undefined;
+}
+
+function pendingIdentityJson(identity: PendingDialogIdentity): JsonObject {
+  return {
+    dialogId: identity.dialogId,
+    generation: identity.generation,
+    message: identity.message,
+    pageTargetId: identity.pageTargetId,
+    pageUrl: identity.pageUrl,
+    ...(identity.promptDefaultValue !== undefined
+      ? { promptDefaultValue: identity.promptDefaultValue }
+      : {}),
+    sessionIncarnation: identity.sessionIncarnation,
+    type: identity.type
+  };
+}
+
+function receiptJson(
+  receipt: Extract<PendingPuppeteerDialogDecisionResult, { readonly ok: true }>["receipt"]
+): JsonObject {
+  return {
+    claimantId: receipt.claimantId,
+    decision: receipt.decision.kind === "accept"
+      ? {
+          kind: "accept",
+          ...(receipt.decision.promptResponse !== undefined
+            ? { promptResponse: receipt.decision.promptResponse }
+            : {})
+        }
+      : { kind: "dismiss" },
+    identity: pendingIdentityJson(receipt.identity),
+    schemaVersion: receipt.schemaVersion,
+    status: receipt.status
+  };
+}
+
+function receiptMatchesRequest(
+  receipt: Extract<PendingPuppeteerDialogDecisionResult, { readonly ok: true }>["receipt"],
+  claimantId: string,
+  identity: PendingDialogIdentity,
+  decision: PendingDialogDecision
+): boolean {
+  return receipt.schemaVersion === "muse.browser-dialog-decision-receipt/v1"
+    && receipt.status === "acknowledged"
+    && receipt.claimantId === claimantId
+    && receipt.identity.dialogId === identity.dialogId
+    && receipt.identity.generation === identity.generation
+    && receipt.identity.message === identity.message
+    && receipt.identity.pageTargetId === identity.pageTargetId
+    && receipt.identity.pageUrl === identity.pageUrl
+    && receipt.identity.promptDefaultValue === identity.promptDefaultValue
+    && receipt.identity.sessionIncarnation === identity.sessionIncarnation
+    && receipt.identity.type === identity.type
+    && receipt.decision.kind === decision.kind
+    && (receipt.decision.kind !== "accept"
+      || (decision.kind === "accept"
+        && receipt.decision.promptResponse === decision.promptResponse));
 }
 
 export function createBrowserTypeTool(deps: BrowserActToolDeps): MuseTool {

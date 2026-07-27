@@ -10,7 +10,7 @@
  * available. NOT for payments / money movement (out of scope).
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { createBrowserActionTracker } from "@muse/agent-core";
 import { resolveActionLogFile, resolveContactsFile, resolveHomeAssistantEnvironment, type MuseEnvironment } from "@muse/autoconfigure";
@@ -19,6 +19,7 @@ import { appendActionLog, queryContacts, resolveContact } from "@muse/stores";
 import { createEmailForwardTool, createEmailReplyTool, createEmailSendTool, createHomeActionTool, createWebActionTool, createAllowlistPathValidator, type EmailApprovalGate, type HostLookup, type MessageApprovalGate, type WebActionApprovalGate } from "@muse/domain-tools";
 import { defaultFileReadRoots, type FsWriteApprovalGate, type FsWriteDraft } from "@muse/fs";
 import { isWebEgressAllowed } from "@muse/model";
+import { stripUntrustedTerminalChars } from "@muse/shared";
 import {
   createMacObserveTool,
   resolveMacHelperPath,
@@ -50,6 +51,7 @@ import {
   createBrowserBackTool,
   createBrowserLookTool,
   createBrowserClickTool,
+  createBrowserDialogDecisionTool,
   createBrowserFillFormTool,
   createBrowserHoverTool,
   createBrowserKeyTool,
@@ -248,6 +250,20 @@ export function buildContactsApprovalGate(deps: {
 }
 
 const DEFAULT_INTERACTIVE = (): boolean => Boolean(process.stdout.isTTY && process.stdin.isTTY);
+const BROWSER_DIALOG_DISPLAY_EDGE = 256;
+
+function showBrowserDialogValue(value: string): string {
+  const sanitized = stripUntrustedTerminalChars(value);
+  const controlsHidden = sanitized === value ? "" : "; control characters hidden";
+  if (sanitized.length <= BROWSER_DIALOG_DISPLAY_EDGE * 2) {
+    return `${JSON.stringify(sanitized)}${controlsHidden ? ` [${controlsHidden.slice(2)}]` : ""}`;
+  }
+  const prefix = sanitized.slice(0, BROWSER_DIALOG_DISPLAY_EDGE);
+  const suffix = sanitized.slice(-BROWSER_DIALOG_DISPLAY_EDGE);
+  const digest = createHash("sha256").update(value).digest("hex");
+  return `${JSON.stringify(prefix)}…${JSON.stringify(suffix)}`
+    + ` [truncated; utf16Length=${value.length.toString()}; sha256=${digest}${controlsHidden}]`;
+}
 
 /**
  * Shared fail-closed approval gate for web/home actions. Same contract as the
@@ -322,6 +338,29 @@ function buildBrowserApprovalGate(deps: {
     } else if (draft.action === "type") {
       what = `Type into ${draft.target}: ${draft.text ?? ""}`;
       question = "Type this in the browser?";
+    } else if (draft.action === "dialog-decision") {
+      const dialog = draft.dialog;
+      const decision = draft.dialogDecision;
+      if (!dialog || !decision) {
+        return { approved: false, reason: "invalid browser dialog decision draft" };
+      }
+      what = [
+        `Browser dialog decision: ${decision.kind.toUpperCase()}`,
+        `  Type: ${dialog.type}`,
+        `  Message: ${showBrowserDialogValue(dialog.message)}`,
+        `  Page: ${showBrowserDialogValue(dialog.pageUrl)}`,
+        `  Dialog ID: ${showBrowserDialogValue(dialog.dialogId)}`,
+        `  Session: ${showBrowserDialogValue(dialog.sessionIncarnation)}`,
+        `  Page target: ${showBrowserDialogValue(dialog.pageTargetId)}`,
+        `  Generation: ${dialog.generation.toString()}`,
+        ...(dialog.promptDefaultValue !== undefined
+          ? [`  Prompt default: ${showBrowserDialogValue(dialog.promptDefaultValue)}`]
+          : []),
+        ...(decision.kind === "accept" && decision.promptResponse !== undefined
+          ? [`  Submitted response: ${showBrowserDialogValue(decision.promptResponse)}`]
+          : [])
+      ].join("\n");
+      question = `${decision.kind === "accept" ? "Accept" : "Dismiss"} this browser dialog?`;
     } else {
       what = `Click ${draft.target}`;
       question = "Click this in the browser?";
@@ -452,7 +491,13 @@ export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
     createBrowserWaitTool({ controller }),
     createBrowserHoverTool({ controller }),
     createBrowserKeyTool({ approvalGate: gate, controller }),
-    createBrowserClickTool({ actionBudget, approvalGate: gate, controller }),
+    createBrowserClickTool({
+      actionBudget,
+      approvalGate: gate,
+      controller,
+      pendingDialogController: controller
+    }),
+    createBrowserDialogDecisionTool({ approvalGate: gate, controller }),
     createBrowserTypeTool({ actionBudget, approvalGate: gate, controller }),
     createBrowserFillFormTool({ actionBudget, approvalGate: gate, controller }),
     createBrowserUploadTool({ approvalGate: gate, controller, validatePath }),

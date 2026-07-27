@@ -10,9 +10,9 @@ import type { ModelProvider, ModelResponse } from "@muse/model";
 import { createToolExposureAuthority } from "@muse/policy";
 import type { JsonObject } from "@muse/shared";
 import { ToolRegistry } from "@muse/tools";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildActuatorTools, buildCliPendingApprovalStager, buildContactsApprovalGate, buildEmailApprovalGate, buildFsWriteApprovalGate, buildMessagingApprovalGate, buildWebApprovalGate, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
+import { buildActuatorTools, buildBrowserTools, buildCliPendingApprovalStager, buildContactsApprovalGate, buildEmailApprovalGate, buildFsWriteApprovalGate, buildMessagingApprovalGate, buildWebApprovalGate, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
 import type { ProgramIO } from "./program.js";
 
 describe("buildMessagingApprovalGate — draft-first, fail-closed in non-TTY", () => {
@@ -91,6 +91,93 @@ function sequenceProvider(responses: readonly ModelResponse[]): ModelProvider {
     }
   } as unknown as ModelProvider;
 }
+
+describe("buildBrowserTools — separate dialog-decision approval", () => {
+  const dialogArgs: JsonObject = {
+    decision: "dismiss",
+    dialogId: "dlg_exact",
+    generation: 2,
+    message: "\u001b[2J\nFAKE PROMPT",
+    pageTargetId: "page_exact",
+    pageUrl: "https://example.test/form",
+    promptDefaultValue: "PAGE-DEFAULT",
+    sessionIncarnation: "browser_exact",
+    type: "prompt"
+  };
+
+  it("renders every exact binding safely and asks a distinct question", async () => {
+    const stdout: string[] = [];
+    const questions: string[] = [];
+    const tools = buildBrowserTools({
+      confirmAction: async (question) => {
+        questions.push(question);
+        return false;
+      },
+      io: { ...fakeIo(), stdout: (text) => stdout.push(text) },
+      isInteractive: () => true
+    });
+    const decide = tools.find((tool) => tool.definition.name === "browser_dialog_decide");
+    if (!decide) throw new Error("browser_dialog_decide missing");
+
+    await expect(decide.execute(dialogArgs, { runId: "run-1", userId: "user-1" })).resolves.toEqual({
+      decided: false,
+      reason: "user did not confirm"
+    });
+    const rendered = stdout.join("");
+    expect(rendered).not.toContain("\u001b");
+    expect(rendered).toContain("\\nFAKE PROMPT");
+    expect(rendered).toContain("dlg_exact");
+    expect(rendered).toContain("browser_exact");
+    expect(rendered).toContain("page_exact");
+    expect(rendered).toContain("PAGE-DEFAULT");
+    expect(questions).toEqual(["Dismiss this browser dialog?"]);
+  });
+
+  it("bounds hostile dialog output while binding the exact value by length and digest", async () => {
+    const stdout: string[] = [];
+    const questions: string[] = [];
+    const tools = buildBrowserTools({
+      confirmAction: async (question) => {
+        questions.push(question);
+        return false;
+      },
+      io: { ...fakeIo(), stdout: (text) => stdout.push(text) },
+      isInteractive: () => true
+    });
+    const decide = tools.find((tool) => tool.definition.name === "browser_dialog_decide");
+    if (!decide) throw new Error("browser_dialog_decide missing");
+
+    await decide.execute({
+      ...dialogArgs,
+      message: "x".repeat(1_000_000)
+    }, { runId: "run-1", userId: "user-1" });
+
+    const rendered = stdout.join("");
+    expect(rendered.length).toBeLessThan(3_000);
+    expect(rendered).toContain("truncated; utf16Length=1000000; sha256=");
+    expect(rendered).toMatch(/sha256=[a-f0-9]{64}/u);
+    expect(questions).toEqual(["Dismiss this browser dialog?"]);
+  });
+
+  it("fails closed without rendering or asking in a non-interactive context", async () => {
+    const confirmAction = vi.fn(async () => true);
+    const stdout = vi.fn();
+    const tools = buildBrowserTools({
+      confirmAction,
+      io: { ...fakeIo(), stdout },
+      isInteractive: () => false
+    });
+    const decide = tools.find((tool) => tool.definition.name === "browser_dialog_decide");
+    if (!decide) throw new Error("browser_dialog_decide missing");
+
+    await expect(decide.execute(dialogArgs, { runId: "run-1", userId: "user-1" })).resolves.toEqual({
+      decided: false,
+      reason: "non-interactive — browser actions need a live confirm"
+    });
+    expect(confirmAction).not.toHaveBeenCalled();
+    expect(stdout).not.toHaveBeenCalled();
+  });
+});
 
 describe("buildActuatorTools — env-driven actuator selection", () => {
   it("exposes only web_action when no provider env is set", () => {

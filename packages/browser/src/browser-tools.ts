@@ -35,11 +35,14 @@ export {
 
 export {
   createBrowserClickTool,
+  createBrowserDialogDecisionTool,
   createBrowserFillFormTool,
   createBrowserTypeTool,
   createBrowserUploadTool,
   type BrowserActionGuard,
   type BrowserActToolDeps,
+  type BrowserDialogDecisionToolDeps,
+  type PendingDialogBrowserController,
   type BrowserUploadPathValidationResult,
   type BrowserUploadPathValidator
 } from "./browser-act-tools.js";

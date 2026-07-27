@@ -10,9 +10,10 @@ import { errorMessage, type JsonObject, type JsonValue } from "@muse/shared";
 import { BROWSER_MAX_ELEMENTS, type BrowserController, type PageSnapshot } from "./controller.js";
 import { matchElementResult, type MatchIntent } from "./matcher.js";
 import { defangElementName, wrapPageContent } from "./page-content-guard.js";
+import type { PendingDialogDecision, PendingDialogIdentity } from "./pending-dialog-coordinator.js";
 
 export interface BrowserActionDraft {
-  readonly action: "click" | "type" | "key" | "fill" | "upload";
+  readonly action: "click" | "type" | "key" | "fill" | "upload" | "dialog-decision";
   readonly url: string;
   /** Human label of the target element ("Sign in" button), or the key for `key`. */
   readonly target: string;
@@ -27,6 +28,10 @@ export interface BrowserActionDraft {
    * `action: "fill"` — the gate shows ALL of them in ONE confirm.
    */
   readonly fields?: ReadonlyArray<{ readonly target: string; readonly value: string }>;
+  /** Exact pending-dialog identity; present only for `dialog-decision`. */
+  readonly dialog?: PendingDialogIdentity;
+  /** Exact accept/dismiss choice, including the submitted prompt value. */
+  readonly dialogDecision?: PendingDialogDecision;
 }
 
 export interface BrowserApprovalDecision {
