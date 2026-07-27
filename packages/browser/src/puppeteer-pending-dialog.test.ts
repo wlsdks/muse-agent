@@ -69,6 +69,10 @@ function pendingHarness(
   const page = Object.assign(pageEvents, {
     frames: () => [frame],
     isClosed: () => pageClosed,
+    // Real Puppeteer Page exposes listenerCount but not Node's listeners().
+    // Keep this harness faithful so ownership checks cannot depend on the
+    // broader node:events API by accident.
+    listeners: undefined,
     url: () => "https://example.test/form",
     waitForNetworkIdle
   }) as unknown as Page;
@@ -76,6 +80,7 @@ function pendingHarness(
     connected: true,
     disconnect: vi.fn(async () => {
       browserEvents.emit("disconnected");
+      releaseAction();
     }),
     targets: () => [],
     waitForTarget: vi.fn(async () => {
@@ -98,6 +103,7 @@ function pendingHarness(
     closePage: () => {
       pageClosed = true;
       pageEvents.emit("close");
+      releaseAction();
     },
     controller,
     dismiss,
@@ -407,6 +413,10 @@ describe("PuppeteerBrowserController pending dialog path", () => {
       expect(rig.dismiss).not.toHaveBeenCalled();
       expect(rig.settleDom).not.toHaveBeenCalled();
       expect(rig.snapshot).not.toHaveBeenCalled();
+      const actionCleanup = Reflect.get(rig.controller, "pendingDialogActionCleanup") as Promise<void> | undefined;
+      await actionCleanup;
+      expect(rig.browser.listenerCount("targetcreated")).toBe(0);
+      expect(Reflect.get(rig.controller, "pendingDialogActionCleanup")).toBeUndefined();
     }
   );
 

@@ -1,8 +1,10 @@
+import { EventEmitter } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import type { Page } from "puppeteer-core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { normalizeBrowserTimeout, PuppeteerBrowserController } from "./puppeteer-controller.js";
 
@@ -30,5 +32,37 @@ describe("hasOpenPage — never launches a browser to answer", () => {
     scratchDir = await mkdtemp(join(tmpdir(), "muse-browser-test-"));
     const controller = new PuppeteerBrowserController({ userDataDir: scratchDir });
     await expect(controller.hasOpenPage()).resolves.toBe(false);
+  });
+});
+
+describe("snapshot dialog evidence", () => {
+  it("survives an unsettled first capture and is consumed after the final observation", async () => {
+    const events = new EventEmitter();
+    let capture = 0;
+    const page = Object.assign(events, {
+      evaluate: vi.fn(async (_fn: unknown, ...args: unknown[]) => {
+        if (args.length === 0) {
+          return capture === 0
+            ? ""
+            : "Navigation completed with enough terminal text to be settled.";
+        }
+        capture += 1;
+        return [];
+      }),
+      isClosed: () => false,
+      title: vi.fn(async () => "AFTER-UNLOAD"),
+      url: () => "https://example.test/after"
+    }) as unknown as Page;
+    const controller = new PuppeteerBrowserController();
+    Object.assign(controller, {
+      lastDialog: { message: "", type: "beforeunload" },
+      page
+    });
+
+    const observed = await controller.snapshot();
+    expect(observed.dialog).toEqual({ message: "", type: "beforeunload" });
+    expect(capture).toBe(2);
+
+    await expect(controller.snapshot()).resolves.not.toHaveProperty("dialog");
   });
 });

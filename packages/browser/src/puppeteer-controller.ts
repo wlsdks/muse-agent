@@ -104,10 +104,6 @@ interface PendingDialogContinuation extends PendingDialogCapture {
   action?: Promise<void>;
 }
 
-interface DialogListenerIntrospection {
-  listeners(event: "dialog"): readonly ((dialog: Dialog) => void)[];
-}
-
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_TIMEOUT_MS = 2_147_483_647;
 // Headroom over the per-operation timeout: a legitimate slow nav/settle runs to
@@ -162,6 +158,7 @@ export class PuppeteerBrowserController implements BrowserController {
       }
     | undefined;
   private pendingDialogContinuation: PendingDialogContinuation | undefined;
+  private pendingDialogActionCleanup: Promise<void> | undefined;
 
   constructor(options: PuppeteerBrowserControllerOptions = {}) {
     this.options = options;
@@ -350,8 +347,11 @@ export class PuppeteerBrowserController implements BrowserController {
     owned = this.ownedDialogHandlers.get(page)
   ): boolean {
     if (!owned) return false;
-    const listeners = (page as unknown as DialogListenerIntrospection).listeners("dialog");
-    return listeners.length === 1 && listeners[0] === owned;
+    // Puppeteer's Page exposes EventEmitter's listenerCount(), but unlike
+    // Node's EventEmitter it does not expose listeners(). We registered `owned`
+    // only after observing a zero count, so exactly one current listener means
+    // that handler still has exclusive ownership.
+    return page.listenerCount("dialog") === 1;
   }
 
   private pageTargetId(page: Page): string {
@@ -569,6 +569,10 @@ export class PuppeteerBrowserController implements BrowserController {
     // so it re-captures) doesn't drop the status on the retry. A later bare
     // snapshot() then carries no stale status.
     this.lastHttpStatus = undefined;
+    // Dialog evidence follows the same consume-once boundary. Clearing it in
+    // captureSnapshot() loses an alert/beforeunload record whenever the first
+    // post-navigation document looks unsettled and snapshot() re-captures.
+    this.lastDialog = undefined;
     return snapshot;
   }
 
@@ -672,9 +676,9 @@ export class PuppeteerBrowserController implements BrowserController {
     }, BROWSER_ELEMENT_CEILING, BROWSER_MAX_NAME)) as SnapshotElement[];
     this.lastElements = new Map(elements.map((element) => [element.ref, element]));
     // Surface a dialog that fired since the last observation (handled per
-    // dialog-policy), then clear it so it's reported exactly once.
+    // dialog-policy). snapshot() clears it only after its settle-retry loop so
+    // an intermediate blank/stub capture cannot consume the evidence.
     const dialog = this.lastDialog;
-    this.lastDialog = undefined;
     // Read the navigation's HTTP status (set by open/back). NOT cleared here:
     // snapshot()'s settle-retry can re-capture the SAME navigation, so the status
     // is consumed once in snapshot() after the loop, not per capture.
@@ -732,6 +736,11 @@ export class PuppeteerBrowserController implements BrowserController {
     if (this.pendingDialogContinuation || this.pendingDialogCapture) {
       throw new Error("a browser dialog decision is already pending");
     }
+    // A page-close/disconnect can abandon authority before the underlying
+    // Puppeteer click finishes unwinding its temporary targetcreated listener.
+    // Wait only for that exact Muse-owned action cleanup; otherwise the next
+    // click can mistake our own short-lived listener for foreign authority.
+    await this.pendingDialogActionCleanup;
     const page = await this.ensurePage();
     const { frame, selector } = await this.resolveRef(ref);
     if (!this.hasExclusiveDialogOwnership(page)) {
@@ -761,6 +770,16 @@ export class PuppeteerBrowserController implements BrowserController {
       this.pendingDialogCapture = undefined;
       if (outcome.kind === "pending") {
         outcome.dialog.action = action;
+        const cleanup = action.then(
+          () => undefined,
+          () => undefined
+        );
+        this.pendingDialogActionCleanup = cleanup;
+        void cleanup.then(() => {
+          if (this.pendingDialogActionCleanup === cleanup) {
+            this.pendingDialogActionCleanup = undefined;
+          }
+        });
         const state = this.pendingDialogCoordinator.inspect(outcome.dialog.identity);
         if (state?.status !== "pending") {
           throw new Error("browser dialog was abandoned before authority could be returned");

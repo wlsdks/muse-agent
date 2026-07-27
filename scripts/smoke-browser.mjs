@@ -13,7 +13,8 @@
  *   7. same-origin iframe — embedded controls are observed AND clickable cross-frame
  *   8. element paging  — the controller collects past the 50-element display cap
  *   9. scroll          — scrolling reveals lazily-loaded content
- *  10. JS dialog       — confirm/alert is auto-handled (no hang) and reported
+ *  10. JS dialog       — confirm/prompt pause for an exact second decision;
+ *                        alert/beforeunload complete without a false pending state
  *  11. async-after-act — DOM-stable settle catches content inserted post-click
  *  12. disabled        — disabled controls are omitted (no wasted clicks)
  *  13. new tab         — a target=_blank click is FOLLOWED (new page observed)
@@ -111,17 +112,16 @@ const SCROLL_HTML = `<!doctype html><html><head><title>Scroll</title></head><bod
 });</script>
 </body></html>`;
 
-// A confirm() blocks the page until answered — with no handler the next action
-// hangs to the timeout. The controller auto-accepts (the act was already
-// approved upstream) and reports the dialog.
+// A confirm() blocks the page until answered. The first approved click does not
+// imply a confirm choice: the controller must return pending authority, then
+// continue to the exact terminal state only after a separately claimed decision.
 const DIALOG_HTML = `<!doctype html><html><head><title>Dialog</title></head><body>
-<button onclick="if(confirm('Delete this item?'))document.title='CONFIRMED'">Delete</button>
+<button onclick="document.title=confirm('Delete this item?')?'CONFIRMED':'DISMISSED'">Delete</button>
+<button onclick="alert('Read this notice');document.title='ALERT-CLOSED'">Show notice</button>
 </body></html>`;
 
-// A prompt() with a default value — a bare dialog.accept() submits "" and the
-// page proceeds with blank input (silent garbage). The handler must accept the
-// dialog's OWN defaultValue ("SAVE10"), so the page receives the intended text
-// and the snapshot records what was sent.
+// A prompt() with a default value — the owner response is a distinct decision,
+// not the page default and not text invented by the first click.
 const PROMPT_HTML = `<!doctype html><html><head><title>Prompt</title></head><body>
 <button onclick="document.title='code:'+prompt('Enter coupon code','SAVE10')">Apply coupon</button>
 </body></html>`;
@@ -143,7 +143,7 @@ const WAIT_HTML = `<!doctype html><html><head><title>Order</title></head><body>
 <div id="status"></div>
 <script>setTimeout(() => {
   document.getElementById("status").innerHTML = '<p class="result">Order confirmed #A12</p>';
-}, 2500);</script></body></html>`;
+}, 5000);</script></body></html>`;
 
 const DISABLED_HTML = `<!doctype html><html><head><title>Disabled</title></head><body>
 <button disabled>Submit</button><button>Active button</button>
@@ -237,6 +237,17 @@ const controller = new PuppeteerBrowserController({
 // REAL goto/goBack → HTTPResponse.status() path (file:// has no HTTP status).
 // `/ok` → 200, anything else → a 404 error page whose body looks like content.
 const statusServer = createServer((req, res) => {
+  if (req.url === "/beforeunload") {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(`<!doctype html><title>Before unload</title>
+      <button onclick="window.onbeforeunload=(event)=>{event.preventDefault();event.returnValue=''};location.href='/afterunload'">Leave page</button>`);
+    return;
+  }
+  if (req.url === "/afterunload") {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end("<!doctype html><title>AFTER-UNLOAD</title><h1>Navigation completed</h1>");
+    return;
+  }
   if (req.url === "/ok") {
     res.writeHead(200, { "content-type": "text/html" });
     res.end("<!doctype html><title>OK page</title><h1>The real content</h1>");
@@ -352,18 +363,93 @@ try {
   snap = await controller.scroll("bottom");
   assert(snap.elements.some((el) => el.name === "Lazy loaded"), "lazy content revealed after scroll");
 
-  console.log("10) JS dialog — confirm() auto-handled (no hang) and reported");
+  console.log("10) JS dialog — confirm pauses for an exact accept/dismiss decision");
   snap = await controller.open(pathToFileURL(join(dir, "dialog.html")).href);
-  snap = await controller.click(snap.elements.find((el) => el.name === "Delete").ref);
-  assert(snap.title === "CONFIRMED", "confirm() accepted so the approved action completed (no timeout hang)");
-  assert(snap.dialog?.type === "confirm", "the dialog is reported transparently in the snapshot");
+  let pending = await controller.clickWithPendingDialog(snap.elements.find((el) => el.name === "Delete").ref);
+  assert(pending.status === "pending", "confirm returns pending authority before page continuation");
+  assert(pending.status === "pending" && pending.dialog.type === "confirm", "pending authority identifies the exact confirm");
+  let decision = await controller.decidePendingDialog({
+    claimantId: "smoke:confirm-accept",
+    decision: { kind: "accept" },
+    identity: pending.dialog
+  });
+  assert(decision.ok, "the exact confirm accept is acknowledged");
+  assert(decision.ok && decision.snapshot.title === "CONFIRMED", "accept continues to the confirmed terminal page state");
+  const duplicate = await controller.decidePendingDialog({
+    claimantId: "smoke:confirm-replay",
+    decision: { kind: "dismiss" },
+    identity: pending.dialog
+  });
+  assert(!duplicate.ok && duplicate.reason === "terminal", "a second decision is rejected as terminal");
 
-  console.log("10b) prompt() dialog — accepted with the page's defaultValue (not blank) and recorded");
+  snap = await controller.open(pathToFileURL(join(dir, "dialog.html")).href);
+  pending = await controller.clickWithPendingDialog(snap.elements.find((el) => el.name === "Delete").ref);
+  assert(pending.status === "pending", "a fresh confirm creates fresh pending authority");
+  decision = await controller.decidePendingDialog({
+    claimantId: "smoke:confirm-dismiss",
+    decision: { kind: "dismiss" },
+    identity: pending.dialog
+  });
+  assert(decision.ok && decision.snapshot.title === "DISMISSED", "dismiss continues to the dismissed terminal page state");
+
+  console.log("10b) prompt() dialog — exact owner response is submitted by the second decision");
   snap = await controller.open(pathToFileURL(join(dir, "prompt.html")).href);
-  snap = await controller.click(snap.elements.find((el) => el.name === "Apply coupon").ref);
-  assert(snap.title === "code:SAVE10", "prompt received the page's defaultValue, not an empty string");
-  assert(snap.dialog?.type === "prompt", "the prompt dialog is reported transparently");
-  assert(snap.dialog?.response === "SAVE10", "the submitted prompt text is surfaced so the model knows what was sent");
+  pending = await controller.clickWithPendingDialog(snap.elements.find((el) => el.name === "Apply coupon").ref);
+  assert(pending.status === "pending", "prompt returns pending authority before page continuation");
+  assert(
+    pending.status === "pending" && pending.dialog.promptDefaultValue === "SAVE10",
+    "pending prompt preserves the page's exact default without submitting it"
+  );
+  decision = await controller.decidePendingDialog({
+    claimantId: "smoke:prompt-accept",
+    decision: { kind: "accept", promptResponse: "OWNER-42" },
+    identity: pending.dialog
+  });
+  assert(decision.ok && decision.snapshot.title === "code:OWNER-42", "prompt submits the exact separately approved owner response");
+  assert(
+    decision.ok && decision.receipt.decision.kind === "accept"
+      && decision.receipt.decision.promptResponse === "OWNER-42",
+    "the acknowledgement receipt records the exact prompt response"
+  );
+
+  console.log("10c) alert/beforeunload — safe dialog families complete in the original action path");
+  snap = await controller.open(pathToFileURL(join(dir, "dialog.html")).href);
+  let completed = await controller.clickWithPendingDialog(snap.elements.find((el) => el.name === "Show notice").ref);
+  assert(completed.status === "completed", "alert does not fabricate pending decision authority");
+  assert(
+    completed.status === "completed" && completed.snapshot.title === "ALERT-CLOSED"
+      && completed.snapshot.dialog?.type === "alert",
+    "alert is closed and the page reaches its terminal state"
+  );
+  snap = await controller.open(`http://127.0.0.1:${String(statusPort)}/beforeunload`);
+  completed = await controller.clickWithPendingDialog(snap.elements.find((el) => el.name === "Leave page").ref);
+  assert(completed.status === "completed", "beforeunload does not fabricate pending decision authority");
+  assert(
+    completed.status === "completed" && completed.snapshot.title === "AFTER-UNLOAD",
+    `beforeunload navigation reaches the terminal page (observed ${
+      completed.status === "completed" ? completed.snapshot.title : completed.status
+    })`
+  );
+  assert(
+    completed.status === "completed" && completed.snapshot.dialog?.type === "beforeunload",
+    `the completed snapshot records beforeunload (observed ${
+      completed.status === "completed" ? completed.snapshot.dialog?.type ?? "none" : completed.status
+    })`
+  );
+
+  console.log("10d) page close — abandoned authority cannot decide a live dialog");
+  snap = await controller.open(pathToFileURL(join(dir, "dialog.html")).href);
+  pending = await controller.clickWithPendingDialog(snap.elements.find((el) => el.name === "Delete").ref);
+  assert(pending.status === "pending", "page-close fixture owns one pending confirm");
+  const livePage = Reflect.get(controller, "page");
+  assert(livePage && typeof livePage.close === "function", "qualification can close the exact owned page");
+  await livePage.close({ runBeforeUnload: false });
+  decision = await controller.decidePendingDialog({
+    claimantId: "smoke:closed-page",
+    decision: { kind: "accept" },
+    identity: pending.dialog
+  });
+  assert(!decision.ok && decision.reason === "terminal", "closing the page abandons the pending authority");
 
   console.log("11) async-after-action — DOM-stable settle catches post-click content");
   snap = await controller.open(pathToFileURL(join(dir, "ajax.html")).href);
@@ -476,12 +562,14 @@ try {
   await writeFile(join(dir, "hang.html"), HANG_HTML);
   // A dedicated controller with a SMALL bound so the test is fast: the stuck
   // innerText getter makes the snapshot evaluate hang; without protocolTimeout
-  // it would block for puppeteer's 180s default. Reconnects to the same Chrome.
+  // it would block for puppeteer's 180s default. It gets a separate disposable
+  // Chrome/profile because the deliberately wedged renderer must not poison
+  // the later upload and disconnect qualifications.
   const boundController = new PuppeteerBrowserController({
     headless: true,
     protocolTimeoutMs: 3_000,
     timeoutMs: 4_000,
-    userDataDir: join(dir, "profile")
+    userDataDir: join(dir, "timeout-profile")
   });
   const startedAt = Date.now();
   let rejected = false;
@@ -490,7 +578,7 @@ try {
   } catch {
     rejected = true;
   } finally {
-    await boundController.disconnect();
+    await boundController.close();
   }
   const elapsedMs = Date.now() - startedAt;
   assert(rejected, "a CDP call that never returns rejects (does not hang the agent forever)");
@@ -515,6 +603,20 @@ try {
     refused = true;
   }
   assert(refused, "uploadFile on a non-file element THROWS (fail-close — a file is never attached to the wrong control)");
+
+  console.log("25) disconnect — authority is abandoned, then the exact owned browser is closed");
+  snap = await controller.open(pathToFileURL(join(dir, "dialog.html")).href);
+  pending = await controller.clickWithPendingDialog(snap.elements.find((el) => el.name === "Delete").ref);
+  assert(pending.status === "pending", "disconnect fixture owns one pending confirm");
+  await controller.disconnect();
+  decision = await controller.decidePendingDialog({
+    claimantId: "smoke:disconnected-controller",
+    decision: { kind: "accept" },
+    identity: pending.dialog
+  });
+  assert(!decision.ok && decision.reason === "terminal", "disconnect abandons the pending authority without accepting it");
+  await second.close();
+  assert(!await second.hasOpenPage(), "the already-owned second connection closes the exact disposable browser");
 
   console.log("\nsmoke:browser PASS");
 } finally {
