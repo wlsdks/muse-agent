@@ -96,6 +96,12 @@ for (const [name, entry] of byPackage) {
   const browserConfig = join(dir, "vitest.browser.config.ts");
   const hasBrowserConfig = existsSync(browserConfig);
   const playwrightFiles = files.filter((file) => file.split("/").includes("e2e"));
+  const personalAgentPlaywrightFiles = playwrightFiles.filter((file) =>
+    file.startsWith("e2e/personal-agent/")
+  );
+  const standardPlaywrightFiles = playwrightFiles.filter((file) =>
+    !personalAgentPlaywrightFiles.includes(file)
+  );
   const vitestFiles = files.filter((file) => !playwrightFiles.includes(file));
   if (vitestFiles.length > 0) {
     console.log(`\n── ${name} ── vitest related ${vitestFiles.join(" ")}`);
@@ -121,14 +127,22 @@ for (const [name, entry] of byPackage) {
       failed = true;
     }
   }
-  if (playwrightFiles.length > 0) {
-    console.log(`\n── ${name} e2e ── Playwright ${playwrightFiles.join(" ")}`);
+  if (standardPlaywrightFiles.length > 0) {
+    console.log(`\n── ${name} e2e ── Playwright ${standardPlaywrightFiles.join(" ")}`);
     try {
       execFileSync(
         "pnpm",
-        ["--filter", name, "exec", "playwright", "test", ...playwrightFiles],
+        ["--filter", name, "exec", "playwright", "test", ...standardPlaywrightFiles],
         { cwd: ROOT, stdio: "inherit" }
       );
+    } catch {
+      failed = true;
+    }
+  }
+  if (personalAgentPlaywrightFiles.length > 0) {
+    console.log(`\n── ${name} personal-agent e2e ── owned fixture ${personalAgentPlaywrightFiles.join(" ")}`);
+    try {
+      execFileSync("pnpm", ["test:e2e:personal-agent"], { cwd: ROOT, stdio: "inherit" });
     } catch {
       failed = true;
     }
