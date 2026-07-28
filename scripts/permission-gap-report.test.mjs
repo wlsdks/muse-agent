@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 
 const reportModule = await import("./permission-gap-report.mjs");
 const { ACTUATOR_PERMISSION_MATRIX } = await import("../apps/cli/src/actuator-tools.ts");
-const { createMuseRuntimeAssembly } = await import("../packages/autoconfigure/src/index.ts");
+const { createApiServerOptions } = await import("../packages/autoconfigure/src/index.ts");
 const root = fileURLToPath(new URL("..", import.meta.url));
 
 function digest(bytes) {
@@ -78,7 +78,7 @@ test("permission gap report covers each public surface deterministically without
 
     const toolRows = first.rows.filter((row) => row.surface === "tool");
     const expectedToolNames = new Set([
-      ...createMuseRuntimeAssembly({ env, localOnlyOverride: true }).toolRegistry.list().map((tool) => tool.definition.name),
+      ...createApiServerOptions({ env, localOnlyOverride: true }).toolCatalogProvider().map((tool) => tool.name),
       ...Object.keys(ACTUATOR_PERMISSION_MATRIX)
     ]);
     assert.deepEqual(new Set(toolRows.map((row) => row.name)), expectedToolNames);
@@ -91,6 +91,8 @@ test("permission gap report covers each public surface deterministically without
       [{ authorityClass: "external-send", name: "email send", surface: "cli" }]
     );
     assert.ok(first.rows.some((row) => row.surface === "cli" && row.name === "approval approve"));
+    assert.ok(first.rows.some((row) => row.surface === "api" && row.name === "GET /api/tasks"));
+    assert.ok(first.rows.some((row) => row.surface === "api" && row.name === "POST /api/tasks"));
     assert.equal(reportModule.classifyPermissionGapAuthority("tool", "future_actuator"), "unmapped");
     assert.equal(reportModule.classifyPermissionGapAuthority("cli", "email send"), "external-send");
     assert.equal(reportModule.classifyPermissionGapAuthority("cli", "email reply"), "unmapped");

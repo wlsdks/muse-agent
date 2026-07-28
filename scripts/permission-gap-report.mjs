@@ -8,7 +8,7 @@
  */
 
 import { buildServer } from "../apps/api/src/server.ts";
-import { createMuseRuntimeAssembly } from "../packages/autoconfigure/src/index.ts";
+import { createApiServerOptions } from "../packages/autoconfigure/src/index.ts";
 import {
   ACTUATOR_PERMISSION_MATRIX,
   classifyActuatorPermission
@@ -74,10 +74,10 @@ function defaultReportEnv() {
   };
 }
 
-/** @param {Record<string, string | undefined>} env */
-async function apiRows(env) {
+/** @param {ReturnType<typeof createApiServerOptions>} serverOptions */
+async function apiRows(serverOptions) {
   const server = buildServer({
-    env,
+    ...serverOptions,
     logger: false
   });
   try {
@@ -102,15 +102,15 @@ async function apiRows(env) {
 /** @param {{ readonly env?: Record<string, string | undefined> }} [options] */
 export async function createPermissionGapReport(options = {}) {
   const env = options.env ?? defaultReportEnv();
-  const toolRegistry = createMuseRuntimeAssembly({
+  const serverOptions = createApiServerOptions({
     env,
     localOnlyOverride: true
-  }).toolRegistry;
+  });
   /** @type {PermissionGapRow[]} */
   const rows = [
-    ...toolRegistry.list().map((tool) => ({
-      authorityClass: classifyPermissionGapAuthority("tool", tool.definition.name),
-      name: tool.definition.name,
+    ...serverOptions.toolCatalogProvider().map((tool) => ({
+      authorityClass: classifyPermissionGapAuthority("tool", tool.name),
+      name: tool.name,
       surface: "tool"
     })),
     ...EAGER_COMMAND_NAMES.map((name) => ({
@@ -127,7 +127,7 @@ export async function createPermissionGapReport(options = {}) {
       name: `${command.name} ${subcommand}`,
       surface: "cli"
     }))]),
-    ...(await apiRows(env)),
+    ...(await apiRows(serverOptions)),
     ...describeBuiltinLoopbackMcpServers().flatMap((server) =>
       server.tools.map((tool) => ({
         authorityClass: "unmapped",
