@@ -9,7 +9,7 @@
  */
 
 import { createCachingEmbedder } from "@muse/agent-core";
-import { readAttunementState } from "@muse/attunement";
+import { createPersonalThread, readAttunementState } from "@muse/attunement";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { withChromeDevToolsRisk, withOfficialMcpRisk, type McpManager } from "@muse/mcp";
 import { createHistorySearchTool, readBrowsingStore, type HistoryRecord } from "@muse/recall";
@@ -21,6 +21,7 @@ import { createSchedulerTools, DynamicScheduler } from "@muse/scheduler";
 import { createRunToolPlanTool, type MuseTool } from "@muse/tools";
 
 import { createOllamaEmbedder, recordFactRecallHits } from "./context-engineering-builders.js";
+import { createContinuityThreadCreateTool } from "./continuity-thread-create-tool.js";
 import { createContinuityThreadListTool } from "./continuity-thread-list-tool.js";
 import { readEpisodeKnowledgeEntries } from "./episodes-knowledge-source.js";
 import { parseBoolean } from "./env-parsers.js";
@@ -298,6 +299,9 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     () => [createWorldTimeTool()],
     () => [createContinuityThreadListTool({
       readThreads: async () => (await readAttunementState(resolveAttunementFile(env))).threads
+    })],
+    () => [createContinuityThreadCreateTool({
+      createThread: (input) => createPersonalThread(resolveAttunementFile(env), input)
     })],
     () => [createRememberFactTool({ store: userMemoryStore })],
     () => [createObjectivesListTool({ objectives: () => readObjectives(resolveObjectivesFile(env)) })],
