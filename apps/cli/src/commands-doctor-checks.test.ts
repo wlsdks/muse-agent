@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   bluetoothShortcutsCheck,
@@ -10,6 +10,7 @@ import {
   messagingConfigCheck,
   notesIndexHealth,
   permissionModeDriftCheck,
+  applySensitivePermissionRepair,
   planSensitivePermissionRepair,
   privacyRoutingCheck,
   readSensitiveFileModes,
@@ -309,6 +310,36 @@ describe("volatileMountCheck", () => {
 });
 
 describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
+  it("revalidates no-follow handles before applying a plan and never touches a rejected target", async () => {
+    const plan = {
+      items: [
+        { label: "repair.json", observedMode: 0o644, path: "/muse/repair.json", state: "repairable" as const },
+        { label: "outside.json", path: "/elsewhere/outside.json", reason: "outside", state: "rejected" as const }
+      ],
+      root: "/muse"
+    };
+    const chmod = vi.fn(async () => undefined);
+    const result = await applySensitivePermissionRepair(plan, {
+      lstat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }),
+      open: async () => ({ chmod, close: async () => undefined, stat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }) })
+    });
+    expect(result).toEqual({ applied: [], rejected: "plan contains a rejected target" });
+    expect(chmod).not.toHaveBeenCalled();
+  });
+
+  it("applies 0600 only after every no-follow handle still matches the dry-run mode", async () => {
+    const chmod = vi.fn(async () => undefined);
+    const result = await applySensitivePermissionRepair({
+      items: [{ label: "repair.json", observedMode: 0o644, path: "/muse/repair.json", state: "repairable" }],
+      root: "/muse"
+    }, {
+      lstat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }),
+      open: async () => ({ chmod, close: async () => undefined, stat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }) })
+    });
+    expect(result).toEqual({ applied: ["/muse/repair.json"] });
+    expect(chmod).toHaveBeenCalledWith(0o600);
+  });
+
   it("plans only a loose regular file under the exact Muse root", async () => {
     const plan = await planSensitivePermissionRepair(
       "/muse",

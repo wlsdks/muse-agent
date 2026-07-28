@@ -8,7 +8,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFile = promisify(execFileCallback);
-import { promises as fs } from "node:fs";
+import { constants as fsConstants, promises as fs } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
 
@@ -806,7 +806,26 @@ export interface SensitivePermissionRepairFs {
   lstat(path: string): Promise<SensitivePermissionRepairStat>;
 }
 
+interface SensitivePermissionRepairHandle {
+  chmod(mode: number): Promise<void>;
+  close(): Promise<void>;
+  stat(): Promise<SensitivePermissionRepairStat>;
+}
+
+export interface SensitivePermissionRepairApplyFs extends SensitivePermissionRepairFs {
+  open(path: string, flags: number): Promise<SensitivePermissionRepairHandle>;
+}
+
+export interface SensitivePermissionRepairReceipt {
+  readonly applied: readonly string[];
+  readonly rejected?: string;
+}
+
 const DEFAULT_PERMISSION_REPAIR_FS: SensitivePermissionRepairFs = { lstat: (path) => fs.lstat(path) };
+const DEFAULT_PERMISSION_REPAIR_APPLY_FS: SensitivePermissionRepairApplyFs = {
+  lstat: (path) => fs.lstat(path),
+  open: (path, flags) => fs.open(path, flags)
+};
 
 function isInsideRoot(root: string, path: string): boolean {
   const pathFromRoot = relative(resolve(root), resolve(path));
@@ -846,6 +865,44 @@ export async function planSensitivePermissionRepair(
     }
   }
   return { items, root: resolve(root) };
+}
+
+/**
+ * Applies only an already-inspected plan. Every repairable file is reopened
+ * with `O_NOFOLLOW` and rechecked before the first chmod, preventing a plan
+ * from being redirected through a symlink or silently applied after mode
+ * drift. The receipt is suitable for the CLI's eventual explicit `--apply`
+ * output; this helper itself has no command or implicit side effect.
+ */
+export async function applySensitivePermissionRepair(
+  plan: SensitivePermissionRepairPlan,
+  fileSystem: SensitivePermissionRepairApplyFs = DEFAULT_PERMISSION_REPAIR_APPLY_FS
+): Promise<SensitivePermissionRepairReceipt> {
+  const repairable = plan.items.filter((item) => item.state === "repairable");
+  if (plan.items.some((item) => item.state === "rejected")) {
+    return { applied: [], rejected: "plan contains a rejected target" };
+  }
+
+  const handles: Array<{ readonly item: SensitivePermissionRepairItem; readonly handle: SensitivePermissionRepairHandle }> = [];
+  try {
+    for (const item of repairable) {
+      const handle = await fileSystem.open(item.path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+      const stat = await handle.stat();
+      const currentMode = stat.mode & 0o777;
+      if (stat.isSymbolicLink() || !stat.isFile() || currentMode !== item.observedMode) {
+        await handle.close();
+        return { applied: [], rejected: `target changed or is unsafe: ${item.label}` };
+      }
+      handles.push({ handle, item });
+    }
+
+    for (const { handle } of handles) {
+      await handle.chmod(0o600);
+    }
+    return { applied: handles.map(({ item }) => item.path) };
+  } finally {
+    await Promise.all(handles.map(({ handle }) => handle.close()));
+  }
 }
 
 /**
