@@ -19,6 +19,8 @@ import { dirname, join } from "node:path";
 import { inspectReadOnlyJsonSource, quarantineCorruptFile, withFileLock, withFileMutationQueue, type ReadOnlySourceInspection } from "@muse/shared";
 
 import { decryptMemoryEnvelope, encryptMemoryEnvelope, isEncryptedMemoryEnvelope } from "./memory-encryption.js";
+import { exactUserMemoryId } from "./memory-user-store-file.js";
+import { normalizeMemoryKey, sanitizeUserMemoryValue } from "./memory-user-store.js";
 
 /** Newest entries kept; bounds the file so a chatty extractor can't grow it without limit. */
 export const MAX_BELIEF_PROVENANCE_ENTRIES = 1_000;
@@ -173,6 +175,31 @@ export interface TemporalBeliefProvenanceEvent {
   readonly invalidatedAt?: string;
   /** Current assertion, current retraction, or an event closed by a later one. */
   readonly temporalState: "active" | "historical" | "invalidated";
+}
+
+/** A closed, inert response choice for a stale-fact reconfirmation draft. */
+export interface StaleFactReconfirmationResponseOption {
+  readonly id: "still-current" | "correct" | "skip";
+  readonly label: string;
+}
+
+/**
+ * Read-only reconfirmation prompt for one exact current memory version. This is
+ * deliberately a draft, not an approval or mutation request: a later owner
+ * control surface must decide whether and how any response changes memory.
+ */
+export interface StaleFactReconfirmationDraft {
+  readonly exactId: string;
+  readonly expectedVersion: number;
+  readonly key: string;
+  readonly kind: "fact";
+  readonly value: string;
+  readonly sourceId: string;
+  readonly sourceAuthority: "auto" | "user";
+  readonly observedAt: string;
+  readonly validFrom: string;
+  readonly question: string;
+  readonly responseOptions: readonly StaleFactReconfirmationResponseOption[];
 }
 
 /** Stable, content-bound locator for one exact provenance event. */
@@ -352,6 +379,138 @@ export function projectTemporalBeliefProvenance(
     || left.validFrom.localeCompare(right.validFrom)
     || left.sourceId.localeCompare(right.sourceId)
   ));
+}
+
+/**
+ * Produce deterministic, mutation-free owner reconfirmation drafts for exact
+ * memory entries that are both currently recall-eligible and stale. The
+ * lifecycle reducer remains the authority for active/eligible state; the
+ * temporal projection supplies the exact still-active provenance event. A
+ * missing, malformed, conflicting, retracted, superseded, fresh, or aging
+ * input is omitted rather than guessed at. The returned response choices have
+ * no action, tool, or write authority.
+ */
+export function projectStaleFactReconfirmationDrafts(
+  userId: string,
+  targets: readonly MemoryConflictTarget[],
+  entries: readonly BeliefProvenance[],
+  opts: {
+    readonly now: number;
+    readonly staleDays: number;
+    readonly normalizeKey: (key: string) => string;
+  }
+): readonly StaleFactReconfirmationDraft[] {
+  if (
+    typeof userId !== "string" || userId.length === 0
+    || !Array.isArray(targets) || !Array.isArray(entries)
+    || !opts || typeof opts !== "object"
+    || !Number.isFinite(opts.now) || !Number.isFinite(opts.staleDays) || opts.staleDays < 0
+    || typeof opts.normalizeKey !== "function"
+  ) return Object.freeze([]);
+
+  if (!targets.every((target) => isExactStaleFactTarget(userId, target))
+    || new Set(targets.map((target) => target.exactId)).size !== targets.length) {
+    return Object.freeze([]);
+  }
+
+  try {
+    const scopedEntries = entries.filter((entry) => entry.userId === userId);
+    if (!scopedEntries.every(isSafeStaleFactProvenanceEntry)) return Object.freeze([]);
+
+    const temporal = projectTemporalBeliefProvenance(userId, entries, { normalizeKey: opts.normalizeKey });
+    if (temporal.length === 0) return Object.freeze([]);
+
+    const lifecycle = projectFactRecallLifecycle(targets, scopedEntries, { normalizeKey: opts.normalizeKey });
+    const drafts: StaleFactReconfirmationDraft[] = [];
+
+    targets.forEach((target, index) => {
+      const decision = lifecycle[index];
+      if (decision?.state !== "active" || decision.eligibility !== "eligible") return;
+
+      const normalizedKey = opts.normalizeKey(target.key);
+      const matchingEntries = scopedEntries.filter((entry) =>
+        entry.kind === target.kind && opts.normalizeKey(entry.key) === normalizedKey
+      );
+      const stale = staleFactKeys(
+        [target.key],
+        deriveFactProvenance(matchingEntries.map((entry) => ({ ...entry, key: normalizedKey }))),
+        { normalizeKey: opts.normalizeKey, now: opts.now, staleDays: opts.staleDays }
+      );
+      if (!stale.has(target.key)) return;
+
+      const activeSources = temporal.filter((event) =>
+        event.kind === target.kind
+        && event.event === "assertion"
+        && event.temporalState === "active"
+        && event.value !== undefined
+        && opts.normalizeKey(event.key) === normalizedKey
+        && canonicalFactRecallValue(event.value) === canonicalFactRecallValue(target.value)
+      );
+      // Equal-time sources can be temporally simultaneous. A later owner UI
+      // must resolve that ambiguity; this draft never chooses one for them.
+      if (activeSources.length !== 1) return;
+      const source = activeSources[0]!;
+      drafts.push(Object.freeze({
+        exactId: target.exactId,
+        expectedVersion: target.version,
+        key: target.key,
+        kind: target.kind,
+        value: target.value,
+        sourceId: source.sourceId,
+        sourceAuthority: source.sourceAuthority,
+        observedAt: source.observedAt,
+        validFrom: source.validFrom,
+        question: `Is this ${target.kind} still current: ${target.key} = ${target.value}?`,
+        responseOptions: Object.freeze([
+          Object.freeze({ id: "still-current", label: "Still current" }),
+          Object.freeze({ id: "correct", label: "Correct it" }),
+          Object.freeze({ id: "skip", label: "Skip" })
+        ])
+      }));
+    });
+
+    return Object.freeze(drafts.sort((left, right) =>
+      left.kind.localeCompare(right.kind)
+      || left.key.localeCompare(right.key)
+      || left.exactId.localeCompare(right.exactId)
+      || left.sourceId.localeCompare(right.sourceId)
+    ));
+  } catch {
+    return Object.freeze([]);
+  }
+}
+
+function isExactStaleFactTarget(userId: string, value: unknown): value is MemoryConflictTarget & { readonly kind: "fact" } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const target = value as Partial<MemoryConflictTarget>;
+  if (typeof target.key !== "string" || target.key.length === 0
+    || target.key !== target.key.trim()
+    || normalizeMemoryKey(target.key) !== target.key
+    || /[\u0000-\u001f\u007f-\u009f]/u.test(target.key)
+    || target.kind !== "fact"
+    || typeof target.value !== "string" || target.value.length === 0
+    || /[\u0000-\u001f\u007f-\u009f]/u.test(target.value)
+    || sanitizeUserMemoryValue(target.value) !== target.value
+    || typeof target.exactId !== "string"
+    || target.exactId !== exactUserMemoryId(userId, "fact", target.key)) return false;
+  return typeof target.value === "string"
+    && typeof target.version === "number"
+    && Number.isSafeInteger(target.version) && target.version >= 1;
+}
+
+function isSafeStaleFactProvenanceEntry(value: unknown): value is BeliefProvenance {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const entry = value as Partial<BeliefProvenance>;
+  if (
+    typeof entry.key !== "string" || entry.key.length === 0
+    || entry.key !== entry.key.trim()
+    || /[\u0000-\u001f\u007f-\u009f]/u.test(entry.key)
+    || typeof entry.value !== "string"
+    || /[\u0000-\u001f\u007f-\u009f]/u.test(entry.value)
+  ) return false;
+  return entry.retraction === true
+    ? entry.value.length === 0
+    : entry.value.length > 0 && sanitizeUserMemoryValue(entry.value) === entry.value;
 }
 
 function compareConflictSources(left: BeliefProvenance, right: BeliefProvenance): number {
