@@ -91,8 +91,10 @@ test("permission gap report covers each public surface deterministically without
       [{ authorityClass: "external-send", name: "email send", surface: "cli" }]
     );
     assert.ok(first.rows.some((row) => row.surface === "cli" && row.name === "approval approve"));
+    assert.ok(first.rows.some((row) => row.surface === "cli" && row.name === "tasks list"));
     assert.ok(first.rows.some((row) => row.surface === "api" && row.name === "GET /api/tasks"));
     assert.ok(first.rows.some((row) => row.surface === "api" && row.name === "POST /api/tasks"));
+    assert.ok(first.rows.some((row) => row.surface === "tool" && row.name === "muse.tasks.list"));
     assert.equal(reportModule.classifyPermissionGapAuthority("tool", "future_actuator"), "unmapped");
     assert.equal(reportModule.classifyPermissionGapAuthority("cli", "email send"), "external-send");
     assert.equal(reportModule.classifyPermissionGapAuthority("cli", "email reply"), "unmapped");
@@ -117,4 +119,33 @@ test("report script is stdout-only JSON", async () => {
   });
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), await reportModule.createPermissionGapReport());
+});
+
+test("task-list quarantine authority is adapter-neutral across CLI, API, Web, and MCP", async () => {
+  const results = reportModule.TASK_LIST_AUTHORITY_PARITY.adapters.map((adapter) =>
+    reportModule.resolveAuthorityParity({
+      ...adapter,
+      effect: reportModule.TASK_LIST_AUTHORITY_PARITY.effect,
+      target: reportModule.TASK_LIST_AUTHORITY_PARITY.target
+    })
+  );
+  assert.deepEqual(
+    results,
+    Array.from({ length: 4 }, () => ({ approval: "not-required", authorityClass: "local-write" }))
+  );
+  assert.equal(new Set(results.map((result) => JSON.stringify(result))).size, 1);
+
+  for (const input of [
+    { effect: "list-with-corrupt-store-quarantine", name: "tasks list", surface: "cli", target: "other-task-store" },
+    { effect: "list", name: "tasks list", surface: "cli", target: "owner-task-store" },
+    { effect: "create", name: "tasks list", surface: "cli", target: "owner-task-store" },
+    { effect: "list-with-corrupt-store-quarantine", name: "tasks add", surface: "cli", target: "owner-task-store" },
+    { effect: "list-with-corrupt-store-quarantine", name: "GET /api/tasks", surface: "web", target: "owner-task-store" },
+    { effect: "list-with-corrupt-store-quarantine", name: "muse.tasks.list", surface: "tool", target: "owner-task-store" }
+  ]) {
+    assert.deepEqual(
+      reportModule.resolveAuthorityParity(input),
+      { approval: "unverified", authorityClass: "unmapped" }
+    );
+  }
 });

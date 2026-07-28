@@ -26,6 +26,41 @@ const EXPLICIT_SURFACE_AUTHORITY = new Map([
   ["cli\u0000email send", "external-send"]
 ]);
 
+export const TASK_LIST_AUTHORITY_PARITY = Object.freeze({
+  adapters: Object.freeze([
+    Object.freeze({ name: "tasks list", surface: "cli" }),
+    Object.freeze({ name: "GET /api/tasks", surface: "api" }),
+    Object.freeze({ name: "GET /api/tasks?status={filter}", surface: "web" }),
+    Object.freeze({ name: "muse.tasks.list", surface: "mcp" })
+  ]),
+  // `readTasks` quarantines malformed JSON by renaming the owner store. The
+  // permission envelope must therefore expose the recoverable local write,
+  // even though the healthy-store path only reads.
+  effect: "list-with-corrupt-store-quarantine",
+  result: Object.freeze({ approval: "not-required", authorityClass: "local-write" }),
+  target: "owner-task-store"
+});
+
+/**
+ * Resolve one adapter-neutral authority contract. A caller must provide the
+ * exact target, effect, surface, and public adapter name; near matches never
+ * inherit a permission or approval result.
+ *
+ * @param {{ readonly target: string; readonly effect: string; readonly surface: string; readonly name: string }} input
+ */
+export function resolveAuthorityParity(input) {
+  if (
+    input.target !== TASK_LIST_AUTHORITY_PARITY.target
+    || input.effect !== TASK_LIST_AUTHORITY_PARITY.effect
+    || !TASK_LIST_AUTHORITY_PARITY.adapters.some(
+      (adapter) => adapter.surface === input.surface && adapter.name === input.name
+    )
+  ) {
+    return { approval: "unverified", authorityClass: "unmapped" };
+  }
+  return TASK_LIST_AUTHORITY_PARITY.result;
+}
+
 /** @typedef {"read" | "local-write" | "process" | "network" | "external-send" | "unmapped"} AuthorityClass */
 /** @typedef {{ readonly surface: "tool" | "cli" | "api" | "mcp"; readonly name: string; readonly authorityClass: AuthorityClass }} PermissionGapRow */
 
