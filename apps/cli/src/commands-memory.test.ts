@@ -1,7 +1,73 @@
 import type { RecallHitRecord } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
-import { formatBeliefWhy, formatConsolidationPlan, promoteRecalledMemories, searchMemoryEntries } from "./commands-memory.js";
+import {
+  formatBeliefWhy,
+  formatConsolidationPlan,
+  formatOwnerForgetPreview,
+  promoteRecalledMemories,
+  searchMemoryEntries
+} from "./commands-memory.js";
+
+describe("formatOwnerForgetPreview", () => {
+  it("states both stores and the provenance exclusion from undo", () => {
+    const output = formatOwnerForgetPreview({
+      affectedStores: [
+        {
+          change: "delete-exact-entry",
+          store: "user-memory",
+          undoCoverage: "covered",
+          writeOrder: "authoritative-first"
+        },
+        {
+          change: "append-forget-retraction",
+          store: "belief-provenance",
+          undoCoverage: "not-covered",
+          writeOrder: "best-effort-after-user-memory"
+        }
+      ],
+      irreversibleBoundaries: [
+        {
+          boundary: "undo-window-expires",
+          consequence: "exact-entry-restore-no-longer-authorized",
+          store: "user-memory"
+        },
+        {
+          boundary: "retraction-appended",
+          consequence: "memory-undo-does-not-remove-retraction-later-explicit-set-may-supersede",
+          store: "belief-provenance"
+        }
+      ],
+      operation: "forget",
+      retention: {
+        currentEntry: "retained-until-confirmed-forget",
+        mutationReceipt: "undo-authority-expires-after-ttl",
+        provenance: "append-only-bounded-history"
+      },
+      target: {
+        exactId: "mem_v1_11111111111111111111111111111111",
+        key: "home_city",
+        kind: "fact",
+        value: "Seoul",
+        version: 3
+      },
+      undo: {
+        excludes: ["belief-provenance-retraction"],
+        maxTtlMs: 2_592_000_000,
+        scope: "exact-memory-entry-only",
+        ttlMs: 86_400_000
+      }
+    });
+
+    expect(output).toContain("Forget preview — no changes made");
+    expect(output).toContain("mem_v1_11111111111111111111111111111111  v3");
+    expect(output).toContain("user-memory: delete this exact entry");
+    expect(output).toContain("belief-provenance: append a forget retraction");
+    expect(output).toContain("not covered by memory undo");
+    expect(output).toContain("exact-memory-entry-only for 24 hours");
+    expect(output).toContain("maximum 720 hours");
+  });
+});
 
 describe("formatBeliefWhy — honest about a key you had Muse FORGET", () => {
   const NOW = Date.parse("2026-06-21T00:00:00Z");

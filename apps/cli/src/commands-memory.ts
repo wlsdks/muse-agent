@@ -24,7 +24,7 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import { isMemoryInjection } from "@muse/agent-core";
-import { beliefProvenanceSourceId, beliefValueTimeline, BeliefProvenanceResolutionError, classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, inspectBeliefProvenanceSource, keysWithActiveRetraction, normalizeMemoryKey, projectMemoryConflictViews, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, UserMemoryOwnerControlError, type BeliefProvenance, type ConsolidationPlan, type MemoryConflictView, type UserMemoryKeepReceipt, type UserMemoryMutationReceipt } from "@muse/memory";
+import { beliefProvenanceSourceId, beliefValueTimeline, BeliefProvenanceResolutionError, classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, inspectBeliefProvenanceSource, keysWithActiveRetraction, normalizeMemoryKey, projectMemoryConflictViews, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, UserMemoryOwnerControlError, type BeliefProvenance, type ConsolidationPlan, type MemoryConflictView, type OwnerMemoryForgetPreview, type UserMemoryKeepReceipt, type UserMemoryMutationReceipt } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
 import { decryptFileAtRest, encryptFileAtRest, readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/stores";
 import type { Command } from "commander";
@@ -119,6 +119,22 @@ function formatKeepReceipt(receipt: UserMemoryKeepReceipt): string {
   return `Kept ${receipt.target.kind} ${receipt.target.key} = ${receipt.target.value} `
     + `(${receipt.target.exactId}, v${receipt.target.version.toString()})\n`
     + `Source receipt: ${receipt.sourceId} · ${receipt.policyEffect}\n`;
+}
+
+export function formatOwnerForgetPreview(preview: OwnerMemoryForgetPreview): string {
+  const ttlHours = preview.undo.ttlMs / 3_600_000;
+  const maxTtlHours = preview.undo.maxTtlMs / 3_600_000;
+  return `Forget preview — no changes made\n`
+    + `${preview.target.exactId}  v${preview.target.version.toString()}  `
+    + `[${preview.target.kind}] ${preview.target.key}: ${preview.target.value}\n`
+    + "Affected stores:\n"
+    + "  user-memory: delete this exact entry (covered by memory undo)\n"
+    + "  belief-provenance: append a forget retraction after the memory write (best effort; not covered by memory undo)\n"
+    + `Undo scope: exact-memory-entry-only for ${ttlHours.toString()} hours `
+    + `(maximum ${maxTtlHours.toString()} hours); excludes belief-provenance-retraction\n`
+    + "Irreversible boundaries:\n"
+    + "  user-memory: restore authority ends when the undo window expires\n"
+    + "  belief-provenance: an appended retraction remains in bounded history; a later explicit set may supersede it\n";
 }
 
 export interface ActionableMemoryConflict extends MemoryConflictView {
@@ -464,15 +480,34 @@ Examples:
 
   memory
     .command("preview")
-    .description("Read-only preview of one exact memory ID before correction or deletion")
+    .description("Read-only preview of one exact memory ID or its full forget scope")
     .argument("<exact-id>", "Exact ID returned by `muse memory inspect`")
+    .option("--operation <operation>", "Preview `entry` or `forget` scope", "entry")
     .option("--user <id>", "User identity (default $MUSE_USER_ID or $USER)")
     .option("--persona <slot>", "Persona slot (work / home / hobby / …)")
     .option("--json", "Print the exact entry")
-    .action(async (exactId: string, options: MemoryCommonOptions) => {
+    .action(async (
+      exactId: string,
+      options: MemoryCommonOptions & { readonly operation?: string }
+    ) => {
       const userId = resolveMemoryUserId(options.user, options.persona);
+      if (options.operation !== "entry" && options.operation !== "forget") {
+        io.stderr("muse memory preview: --operation must be `entry` or `forget`; no changes performed\n");
+        process.exitCode = 2;
+        return;
+      }
       try {
-        const entry = await localMemoryStore().previewOwnerMemory(userId, exactId);
+        const store = localMemoryStore();
+        if (options.operation === "forget") {
+          const preview = await store.previewOwnerMemoryForget(userId, exactId);
+          if (options.json) {
+            helpers.writeOutput(io, preview);
+            return;
+          }
+          io.stdout(formatOwnerForgetPreview(preview));
+          return;
+        }
+        const entry = await store.previewOwnerMemory(userId, exactId);
         if (options.json) {
           helpers.writeOutput(io, entry);
           return;

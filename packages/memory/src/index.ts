@@ -542,6 +542,7 @@ export {
   UserMemoryOwnerControlError,
   type ExactUserMemoryEntry,
   type FileUserMemoryStoreOptions,
+  type OwnerMemoryForgetPreview,
   type UserMemoryEntryKind,
   type UserMemoryInvalidationContext,
   type UserMemoryInvalidationCoordinator,

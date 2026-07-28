@@ -175,6 +175,48 @@ export interface UserMemoryInvalidationCoordinator {
   ): Promise<{ readonly createdAt: string; readonly sourceId: string }>;
 }
 
+export interface OwnerMemoryForgetPreview {
+  readonly affectedStores: readonly [
+    {
+      readonly change: "delete-exact-entry";
+      readonly store: "user-memory";
+      readonly undoCoverage: "covered";
+      readonly writeOrder: "authoritative-first";
+    },
+    {
+      readonly change: "append-forget-retraction";
+      readonly store: "belief-provenance";
+      readonly undoCoverage: "not-covered";
+      readonly writeOrder: "best-effort-after-user-memory";
+    }
+  ];
+  readonly irreversibleBoundaries: readonly [
+    {
+      readonly boundary: "undo-window-expires";
+      readonly consequence: "exact-entry-restore-no-longer-authorized";
+      readonly store: "user-memory";
+    },
+    {
+      readonly boundary: "retraction-appended";
+      readonly consequence: "memory-undo-does-not-remove-retraction-later-explicit-set-may-supersede";
+      readonly store: "belief-provenance";
+    }
+  ];
+  readonly operation: "forget";
+  readonly retention: {
+    readonly currentEntry: "retained-until-confirmed-forget";
+    readonly mutationReceipt: "undo-authority-expires-after-ttl";
+    readonly provenance: "append-only-bounded-history";
+  };
+  readonly target: ExactUserMemoryEntry;
+  readonly undo: {
+    readonly excludes: readonly ["belief-provenance-retraction"];
+    readonly maxTtlMs: typeof MAX_USER_MEMORY_UNDO_TTL_MS;
+    readonly scope: "exact-memory-entry-only";
+    readonly ttlMs: number;
+  };
+}
+
 export class UserMemoryOwnerControlError extends Error {
   readonly code: UserMemoryOwnerControlErrorCode;
 
@@ -704,6 +746,67 @@ export class FileUserMemoryStore implements UserMemoryStore {
       inspected.control,
       exactId
     );
+  }
+
+  /** Read-only, owner-facing scope of an exact forget before confirmation. */
+  async previewOwnerMemoryForget(
+    userId: string,
+    exactId: string,
+    opts: { readonly undoTtlMs?: number } = {}
+  ): Promise<OwnerMemoryForgetPreview> {
+    const undoTtlMs = opts.undoTtlMs ?? DEFAULT_USER_MEMORY_UNDO_TTL_MS;
+    if (
+      !Number.isSafeInteger(undoTtlMs)
+      || undoTtlMs < 1
+      || undoTtlMs > MAX_USER_MEMORY_UNDO_TTL_MS
+    ) {
+      throw new UserMemoryOwnerControlError(
+        "invalid-request",
+        `undo TTL must be between 1 and ${MAX_USER_MEMORY_UNDO_TTL_MS.toString()} milliseconds`
+      );
+    }
+    const target = await this.previewOwnerMemory(userId, exactId);
+    return Object.freeze({
+      affectedStores: Object.freeze([
+        Object.freeze({
+          change: "delete-exact-entry",
+          store: "user-memory",
+          undoCoverage: "covered",
+          writeOrder: "authoritative-first"
+        }),
+        Object.freeze({
+          change: "append-forget-retraction",
+          store: "belief-provenance",
+          undoCoverage: "not-covered",
+          writeOrder: "best-effort-after-user-memory"
+        })
+      ] as const),
+      irreversibleBoundaries: Object.freeze([
+        Object.freeze({
+          boundary: "undo-window-expires",
+          consequence: "exact-entry-restore-no-longer-authorized",
+          store: "user-memory"
+        }),
+        Object.freeze({
+          boundary: "retraction-appended",
+          consequence: "memory-undo-does-not-remove-retraction-later-explicit-set-may-supersede",
+          store: "belief-provenance"
+        })
+      ] as const),
+      operation: "forget",
+      retention: Object.freeze({
+        currentEntry: "retained-until-confirmed-forget",
+        mutationReceipt: "undo-authority-expires-after-ttl",
+        provenance: "append-only-bounded-history"
+      }),
+      target: Object.freeze({ ...target }),
+      undo: Object.freeze({
+        excludes: Object.freeze(["belief-provenance-retraction"] as const),
+        maxTtlMs: MAX_USER_MEMORY_UNDO_TTL_MS,
+        scope: "exact-memory-entry-only",
+        ttlMs: undoTtlMs
+      })
+    });
   }
 
   async correctOwnerMemory(
