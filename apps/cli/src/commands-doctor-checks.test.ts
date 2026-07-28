@@ -11,6 +11,7 @@ import {
   notesIndexHealth,
   permissionModeDriftCheck,
   applySensitivePermissionRepair,
+  inventorySensitiveDirectories,
   planSensitivePermissionRepair,
   privacyRoutingCheck,
   readSensitiveFileModes,
@@ -310,6 +311,163 @@ describe("volatileMountCheck", () => {
 });
 
 describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
+  it("inventories only exact notes/checkpoints directories at expected 0700 without mutation", async () => {
+    const lstat = vi.fn(async (path: string) => ({
+      isDirectory: () => true,
+      isSymbolicLink: () => false,
+      mode: path.endsWith("/notes") ? 0o40755 : 0o40700
+    }));
+
+    const items = await inventorySensitiveDirectories(
+      "/home/test/.muse",
+      { HOME: "/home/test" },
+      undefined,
+      { lstat, realpath: async (path) => path }
+    );
+
+    expect(items).toEqual([
+      {
+        expectedMode: 0o700,
+        id: "notes",
+        observedMode: 0o755,
+        path: "/home/test/.muse/notes",
+        repairCandidate: true,
+        state: "repairable"
+      },
+      {
+        expectedMode: 0o700,
+        id: "checkpoints",
+        observedMode: 0o700,
+        path: "/home/test/.muse/checkpoints",
+        repairCandidate: false,
+        state: "already-owner-only"
+      }
+    ]);
+    expect(lstat).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    {
+      candidates: ["/home/test/.muse/unknown"],
+      env: { HOME: "/home/test" },
+      reason: "allowlist",
+      rootKind: "directory"
+    },
+    {
+      candidates: ["/outside/notes"],
+      env: { HOME: "/home/test", MUSE_NOTES_DIR: "/outside/notes" },
+      reason: "outside",
+      rootKind: "directory"
+    },
+    {
+      candidates: ["/home/test/.muse/notes"],
+      env: { HOME: "/home/test" },
+      reason: "root is a symbolic link",
+      rootKind: "symlink"
+    }
+  ])(
+    "rejects unknown, outside-scope, and symlink-root candidates ($reason)",
+    async ({ candidates, env, reason, rootKind }) => {
+      const items = await inventorySensitiveDirectories(
+        "/home/test/.muse",
+        env,
+        candidates,
+        {
+          lstat: async (path) => ({
+            isDirectory: () => path === "/home/test/.muse" && rootKind !== "symlink",
+            isSymbolicLink: () => path === "/home/test/.muse" && rootKind === "symlink",
+            mode: path === "/home/test/.muse" && rootKind === "symlink" ? 0o120777 : 0o40755
+          }),
+          realpath: async (path) => path
+        }
+      );
+
+      expect(items).toEqual([
+        expect.objectContaining({
+          expectedMode: 0o700,
+          reason: expect.stringContaining(reason),
+          repairCandidate: false,
+          state: "rejected"
+        })
+      ]);
+    }
+  );
+
+  it("rejects an exact target that is itself a symlink", async () => {
+    const items = await inventorySensitiveDirectories(
+      "/home/test/.muse",
+      { HOME: "/home/test" },
+      ["/home/test/.muse/notes"],
+      {
+        lstat: async (path) => ({
+          isDirectory: () => path === "/home/test/.muse",
+          isSymbolicLink: () => path.endsWith("/notes"),
+          mode: path.endsWith("/notes") ? 0o120777 : 0o40700
+        }),
+        realpath: async (path) => path
+      }
+    );
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: "notes",
+        reason: expect.stringContaining("symbolic"),
+        repairCandidate: false,
+        state: "rejected"
+      })
+    ]);
+  });
+
+  it("marks an exact missing directory as non-repairable inventory", async () => {
+    const items = await inventorySensitiveDirectories(
+      "/home/test/.muse",
+      { HOME: "/home/test" },
+      ["/home/test/.muse/checkpoints"],
+      {
+        lstat: async (path) => {
+          if (path.endsWith("/checkpoints")) throw new Error("ENOENT");
+          return { isDirectory: () => true, isSymbolicLink: () => false, mode: 0o40700 };
+        },
+        realpath: async (path) => path
+      }
+    );
+
+    expect(items).toEqual([
+      {
+        expectedMode: 0o700,
+        id: "checkpoints",
+        path: "/home/test/.muse/checkpoints",
+        repairCandidate: false,
+        state: "missing"
+      }
+    ]);
+  });
+
+  it("rejects exact targets when the Muse root traverses a symlinked HOME ancestor", async () => {
+    const items = await inventorySensitiveDirectories(
+      "/alias-home/.muse",
+      { HOME: "/alias-home" },
+      undefined,
+      {
+        lstat: async () => ({
+          isDirectory: () => true,
+          isSymbolicLink: () => false,
+          mode: 0o40755
+        }),
+        realpath: async (path) => path === "/alias-home/.muse"
+          ? "/physical-home/.muse"
+          : path
+      }
+    );
+
+    expect(items).toHaveLength(2);
+    expect(items).toEqual(items.map(() => expect.objectContaining({
+      reason: expect.stringContaining("symbolic-link ancestor"),
+      repairCandidate: false,
+      state: "rejected"
+    })));
+  });
+
   it("revalidates no-follow handles before applying a plan and never touches a rejected target", async () => {
     const plan = {
       items: [

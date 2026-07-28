@@ -1,5 +1,15 @@
 import { isCalibratedEmbedder, resolveRecallConfidentAt } from "@muse/agent-core";
-import { evaluateLocalOnlyPosture, evaluateWebEgressStatus, LOCAL_FIRST_DEFAULT_MODEL, parseBoolean, resolveDefaultModel, resolveVisionModel } from "@muse/autoconfigure";
+import {
+  evaluateLocalOnlyPosture,
+  evaluateWebEgressStatus,
+  LOCAL_FIRST_DEFAULT_MODEL,
+  parseBoolean,
+  resolveCheckpointsDir,
+  resolveDefaultModel,
+  resolveNotesDir,
+  resolveVisionModel,
+  type MuseEnvironment
+} from "@muse/autoconfigure";
 import type { UserMemoryAutoExtractHealthProjection } from "@muse/memory";
 import { resolvePlatformCapabilities } from "@muse/shared";
 import { DEFAULT_BLUETOOTH_OFF_SHORTCUT, DEFAULT_BLUETOOTH_ON_SHORTCUT, DEFAULT_BRIGHTNESS_SHORTCUT, DEFAULT_FOCUS_OFF_SHORTCUT, DEFAULT_FOCUS_ON_SHORTCUT } from "@muse/macos";
@@ -823,11 +833,194 @@ export interface SensitivePermissionRepairReceipt {
   readonly rejected?: string;
 }
 
+export type SensitiveDirectoryInventoryState =
+  | "already-owner-only"
+  | "missing"
+  | "repairable"
+  | "rejected";
+
+export interface SensitiveDirectoryInventoryItem {
+  readonly expectedMode: 0o700;
+  readonly id?: "checkpoints" | "notes";
+  readonly observedMode?: number;
+  readonly path: string;
+  readonly reason?: string;
+  readonly repairCandidate: boolean;
+  readonly state: SensitiveDirectoryInventoryState;
+}
+
+interface SensitiveDirectoryStat {
+  readonly mode: number;
+  isDirectory(): boolean;
+  isSymbolicLink(): boolean;
+}
+
+export interface SensitiveDirectoryInventoryFs {
+  lstat(path: string): Promise<SensitiveDirectoryStat>;
+  realpath(path: string): Promise<string>;
+}
+
 const DEFAULT_PERMISSION_REPAIR_FS: SensitivePermissionRepairFs = { lstat: (path) => fs.lstat(path) };
 const DEFAULT_PERMISSION_REPAIR_APPLY_FS: SensitivePermissionRepairApplyFs = {
   lstat: (path) => fs.lstat(path),
   open: (path, flags) => fs.open(path, flags)
 };
+const DEFAULT_DIRECTORY_INVENTORY_FS: SensitiveDirectoryInventoryFs = {
+  lstat: (path) => fs.lstat(path),
+  realpath: (path) => fs.realpath(path)
+};
+
+/**
+ * Read-only inventory for the first exact sensitive-directory bundle.
+ *
+ * The allowlist is derived from the same public path resolvers used by the
+ * notes and checkpoint stores. A caller may ask to inspect a subset, but an
+ * arbitrary path is never promoted into the allowlist merely because it is
+ * under the Muse root. Overrides outside the exact direct-child root are
+ * reported as rejected rather than silently claimed as Muse-owned.
+ */
+export async function inventorySensitiveDirectories(
+  root: string,
+  env: MuseEnvironment,
+  candidatePaths?: readonly string[],
+  fileSystem: SensitiveDirectoryInventoryFs = DEFAULT_DIRECTORY_INVENTORY_FS
+): Promise<readonly SensitiveDirectoryInventoryItem[]> {
+  const resolvedRoot = resolve(root);
+  const known = [
+    { id: "notes" as const, path: resolve(resolveNotesDir(env)) },
+    { id: "checkpoints" as const, path: resolve(resolveCheckpointsDir(env)) }
+  ];
+  const requestedPaths = candidatePaths?.map((path) => resolve(path))
+    ?? known.map(({ path }) => path);
+
+  let rootState: "missing" | "safe" | "unsafe" = "safe";
+  let rootReason: string | undefined;
+  try {
+    const rootStat = await fileSystem.lstat(resolvedRoot);
+    if (rootStat.isSymbolicLink()) {
+      rootState = "unsafe";
+      rootReason = "the owned Muse root is a symbolic link";
+    } else if (!rootStat.isDirectory()) {
+      rootState = "unsafe";
+      rootReason = "the owned Muse root is not a directory";
+    }
+    if (rootState === "safe" && resolve(await fileSystem.realpath(resolvedRoot)) !== resolvedRoot) {
+      rootState = "unsafe";
+      rootReason = "the owned Muse root traverses a symbolic-link ancestor";
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      try {
+        const lexicalParent = dirname(resolvedRoot);
+        if (resolve(await fileSystem.realpath(lexicalParent)) !== lexicalParent) {
+          rootState = "unsafe";
+          rootReason = "the owned Muse root parent traverses a symbolic-link ancestor";
+        } else {
+          // A not-yet-created Muse root leaves exact targets missing.
+          // Inventory is still useful, but there is nothing to repair.
+          rootState = "missing";
+        }
+      } catch {
+        rootState = "unsafe";
+        rootReason = "the owned Muse root parent could not be inspected";
+      }
+    } else {
+      rootState = "unsafe";
+      rootReason = "the owned Muse root could not be inspected";
+    }
+  }
+
+  const items: SensitiveDirectoryInventoryItem[] = [];
+  for (const path of requestedPaths) {
+    const target = known.find((entry) => entry.path === path);
+    if (!target) {
+      items.push({
+        expectedMode: 0o700,
+        path,
+        reason: "path is not in the exact sensitive-directory allowlist",
+        repairCandidate: false,
+        state: "rejected"
+      });
+      continue;
+    }
+    if (dirname(path) !== resolvedRoot) {
+      items.push({
+        ...target,
+        expectedMode: 0o700,
+        reason: "target is outside the exact direct-child Muse root scope",
+        repairCandidate: false,
+        state: "rejected"
+      });
+      continue;
+    }
+    if (rootState === "unsafe") {
+      items.push({
+        ...target,
+        expectedMode: 0o700,
+        reason: rootReason,
+        repairCandidate: false,
+        state: "rejected"
+      });
+      continue;
+    }
+    if (rootState === "missing") {
+      items.push({
+        ...target,
+        expectedMode: 0o700,
+        repairCandidate: false,
+        state: "missing"
+      });
+      continue;
+    }
+    try {
+      const stat = await fileSystem.lstat(path);
+      const observedMode = stat.mode & 0o777;
+      if (stat.isSymbolicLink()) {
+        items.push({
+          ...target,
+          expectedMode: 0o700,
+          observedMode,
+          reason: "symbolic links are never repair candidates",
+          repairCandidate: false,
+          state: "rejected"
+        });
+      } else if (!stat.isDirectory()) {
+        items.push({
+          ...target,
+          expectedMode: 0o700,
+          observedMode,
+          reason: "target is not a directory",
+          repairCandidate: false,
+          state: "rejected"
+        });
+      } else if (observedMode !== 0o700) {
+        items.push({
+          ...target,
+          expectedMode: 0o700,
+          observedMode,
+          repairCandidate: true,
+          state: "repairable"
+        });
+      } else {
+        items.push({
+          ...target,
+          expectedMode: 0o700,
+          observedMode,
+          repairCandidate: false,
+          state: "already-owner-only"
+        });
+      }
+    } catch {
+      items.push({
+        ...target,
+        expectedMode: 0o700,
+        repairCandidate: false,
+        state: "missing"
+      });
+    }
+  }
+  return items;
+}
 
 function isInsideRoot(root: string, path: string): boolean {
   const pathFromRoot = relative(resolve(root), resolve(path));
