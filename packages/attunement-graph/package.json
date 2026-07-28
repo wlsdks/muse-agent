@@ -21,6 +21,10 @@
     "./continuity-changes": {
       "types": "./dist/continuity-change-query.d.ts",
       "import": "./dist/continuity-change-query.js"
+    },
+    "./continuity-observations": {
+      "types": "./dist/continuity-observation.d.ts",
+      "import": "./dist/continuity-observation.js"
     }
   },
   "scripts": {

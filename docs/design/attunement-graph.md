@@ -49,6 +49,12 @@ bounded exact thread path or a typed abstention. Its checked controlled replay i
 exact full-path coverage from flat `0.75` to graph `1.0` with equal `1.0` change-detection
 precision/recall; vector is not applicable because the projection deliberately carries no
 semantic text. This is component evidence, not organic usefulness or a shipped Capsule.
+AWG-035a adds the portable seam that AWG-030 did not have: a strict
+`/continuity-observations` codec can seal one bounded projection plus its source-accounting
+diagnostics into a domain-separated, content-addressed receipt and verify it after JSON
+round-trip. It independently rechecks the projection digest and exact timestamp-basis
+coverage. The receipt remains `caller-declared-observation`: it proves byte
+self-consistency, not that an external observer witnessed that state or time.
 The reference traversal separately caps returned assertions, considered adjacency
 assertions, visited references, and depth, so a dense seed cannot hide unbounded work behind
 a small output limit.
@@ -95,6 +101,7 @@ Open-source source snapshot:
 | [MOSAIC](https://arxiv.org/abs/2607.16211) | Typed relational memory, save-time neighbor conflict checks, and cheap candidate routing instead of an LLM classifier on every lookup | Its reported benchmark gains are preprint evidence, not a production guarantee. Automatic updates/deletions also conflict with Muse's source authority unless represented as reversible hypotheses. |
 | [Mem0 OSS v2→v3 migration](https://github.com/mem0ai/mem0/blob/main/docs/migration/oss-v2-to-v3.mdx) | Multi-signal retrieval and simpler built-in entity linking | Mem0 removed roughly 4,000 lines of external graph-store paths. Backend breadth can become maintenance weight without product proof. |
 | [LadybugDB](https://github.com/LadybugDB/ladybug) | Embedded/serverless property graph, Node binding, full-text/vector indexes, WAL, ACID transactions, and no required daemon | It is a young community successor to Kùzu, which was archived in October 2025. It is a bake-off candidate, not an architectural dependency. |
+| [SQLite recursive CTE](https://www.sqlite.org/lang_with.html) and [WAL](https://www.sqlite.org/wal.html) | An already-small embedded substrate can traverse bounded trees/graphs and allow readers beside one writer without a graph daemon | It is not a property graph and must not leak SQL into domain operators. If a future adapter enables WAL, Muse must gate a fixed SQLite release: the official WAL page records a rare reset/checkpoint corruption bug fixed in 3.51.3 and backports 3.44.6/3.50.7. |
 | [W3C PROV-O](https://www.w3.org/TR/prov-o/) | Explicit generation, derivation, attribution, primary-source, revision, and invalidation relations | Muse should adopt the semantics it needs, not introduce RDF/OWL as a runtime requirement. |
 
 The strongest common pattern is not “put embeddings in a graph DB.” It is:
@@ -107,6 +114,34 @@ immutable source episode/evidence
   → bounded graph traversal
   → explanation that resolves back to exact sources
 ```
+
+### Observation Episode: the seam between cold truth and warm projection
+
+The missing primitive for a real Capsule was not another memory database. Once an
+authoritative task, note, calendar item, or Continuity record changes, re-running the
+projector cannot reconstruct what Muse saw when the user stopped. Muse therefore treats a
+small **Observation Episode** as a first-class provenance object:
+
+```text
+authoritative state at caller-declared time
+  → exact bounded projection + source-accounting diagnostics
+  → content-addressed Observation Receipt
+  → later current projection
+  → verified change operator
+```
+
+AWG-035a ships only the receipt format and strict codec. It stores graph assertions,
+opaque exact-source references, temporal basis, scope, and diagnostics—not thread titles,
+owner notes, artifact summaries, or provider artifact IDs. The hashes and scope are still
+personal linkage data; a future durable adapter must add explicit retention, forget, export,
+and migration contracts.
+
+AWG-035b remains required to capture this receipt from one raw authoritative observation
+and feed it into the same comparison core as AWG-030. Until then, Muse has a verified
+portable format, not an automatically recorded stop point and not a Continuity Capsule.
+This separation keeps the module deep: callers depend on two codec functions while
+canonicalization, tamper detection, projection validation, privacy bounds, and version
+rejection remain behind the interface.
 
 ## Muse-specific invention: a personal context compiler
 
@@ -349,9 +384,12 @@ No production database is selected in this document.
    support, maintenance health, and license.
 4. Keep a portable assertion export so an abandoned backend can be replaced.
 
-LadybugDB is the current embedded bake-off candidate because it is serverless, exposes a
-Node package, and supports full-text/vector search plus ACID/WAL. Its young-fork risk means
-Muse must be able to delete that adapter without changing domain or query contracts.
+LadybugDB is the current property-graph bake-off candidate because it is serverless, exposes
+a Node package, and supports full-text/vector search plus ACID/WAL. A bounded SQLite adapter
+is the lighter non-property-graph comparator because Muse already targets Node versions with
+`node:sqlite`. Neither is selected. Ladybug's young-fork risk and SQLite's WAL version
+requirements mean Muse must be able to delete either adapter without changing domain or
+query contracts.
 
 ### Lightweight reference profile
 

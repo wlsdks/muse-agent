@@ -55,6 +55,8 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-010** | Reference graph kernel | `@muse/attunement-graph` domain types, invariants, append log, compact in-memory indexes, Activation Subgraph compiler, and conformance tests; no LLM or production DB | completed |
 | **AWG-020** | Exact Continuity projection | Rebuildable projection of thread, artifact links, delivery, outcome, policy version, and source provenance without duplicated authority | completed |
 | **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | completed |
+| **AWG-035a** | Observation Receipt format | Strict content-addressed codec preserves one caller-declared exact projection and source accounting without personal source text | completed |
+| **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | pending |
 | **AWG-040** | Continuity Capsule v1 | User-invoked Capsule renders stopping point, changes, next step, prepared work, expected time, and source drawer | pending |
 | **AWG-050** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
@@ -150,8 +152,38 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
   organic effectiveness, or generic graph superiority.
 - **No authority expansion:** no source I/O, durable adapter, model/embedding call, UI,
   scheduler, policy promotion, permission, or action.
-- **Next eligible slice:** AWG-040 user-invoked Continuity Capsule v1 after fresh source
-  reconciliation and a UI/product contract gate. AWG-050 Shadow timing remains separate.
+- **Then-proposed next slice:** AWG-040. Fresh source reconciliation subsequently found
+  that a changed authoritative store could not reconstruct its prior observation, so
+  AWG-035a/035b became truth-preserving prerequisites instead of guessing inside the UI.
+  AWG-050 Shadow timing remains separate.
+
+## Completed slice: AWG-035a
+
+- **Classification at activation:** `missing`; AWG-030 could compare two simultaneously
+  supplied raw states, but no durable/portable prior projection existed after an
+  authoritative source changed.
+- **Status:** `completed` after the initial PLAN activation and R1 each stopped on executable
+  verification-manifest defects, R2 obtained a fresh PLAN PASS, and a separate fresh
+  completion evaluator passed the implementation with no blocker. The stopped attempts
+  remain in the temporary handoff provenance rather than being rewritten.
+- **Shipped boundary:** pure
+  `@muse/attunement-graph/continuity-observations` library subpath with two functions:
+  seal and verify. The v1 receipt binds caller-declared observation time, exact scope,
+  projection, timestamp basis, prior source-accounting diagnostics, and strict size/work
+  limits with a domain-separated SHA-256 ID.
+- **Truth and privacy boundary:** content addressing proves receipt self-consistency only;
+  it does not prove an external observation, recompute the raw source version, or make the
+  data anonymous. Personal titles, owner notes, artifact summaries, provider IDs, and raw
+  provider artifact IDs are not copied, while opaque hashes/scope remain personal linkage
+  data requiring future retention/forget policy.
+- **No authority expansion:** no source I/O, persistence, migration, model/embedding call,
+  UI/API/CLI, delivery, outcome, policy, permission, scheduler, or action. Core100 030–040
+  contracts remain unchanged.
+- **Verification:** package 7 files / 66 tests, focused adversarial 10/10, changed tests,
+  package/root typechecks, build, ESLint, public ESM import, and independent rehashed-tamper
+  probe passed.
+- **Next eligible slice:** AWG-035b raw observation adapter and receipt→current comparison
+  bridge. AWG-040 remains pending until that truth-preserving seam passes independently.
 
 ## Architecture gates
 
