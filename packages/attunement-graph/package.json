@@ -13,11 +13,18 @@
     "./testing": {
       "types": "./dist/testing.d.ts",
       "import": "./dist/testing.js"
+    },
+    "./continuity": {
+      "types": "./dist/continuity-projection.d.ts",
+      "import": "./dist/continuity-projection.js"
     }
   },
   "scripts": {
     "build": "tsc -b",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@muse/attunement": "workspace:*"
   }
 }

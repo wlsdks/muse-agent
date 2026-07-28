@@ -357,7 +357,11 @@ importers:
         specifier: workspace:*
         version: link:../stores
 
-  packages/attunement-graph: {}
+  packages/attunement-graph:
+    dependencies:
+      '@muse/attunement':
+        specifier: workspace:*
+        version: link:../attunement
 
   packages/auth:
     dependencies:
