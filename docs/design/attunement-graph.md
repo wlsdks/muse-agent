@@ -2,7 +2,7 @@
 title: Attunement Graph Engine — agent-native temporal provenance graph
 audience: [engineering, product, security, agents]
 purpose: Define the modular graph engine that powers Muse's signature Attunement experience
-status: proposed
+status: partial-implementation
 updated: 2026-07-29
 related: [../strategy/attunement.md, attunement.md, ../goals/attunement-wow-graph-roadmap.md]
 ---
@@ -13,10 +13,10 @@ related: [../strategy/attunement.md, attunement.md, ../goals/attunement-wow-grap
 > agent-native graph that can explain how one person's intent, unfinished work, changing
 > circumstances, evidence, collaboration policy, and action authority relate over time.
 
-The target is a dedicated, maintainable `@muse/attunement-graph` module. It is not a generic
-knowledge graph product and it is not a new source of truth for tasks, notes, calendar,
-memory, or Attunement receipts. Those stores remain authoritative. The graph is a
-rebuildable, append-oriented projection that makes relationships and changes queryable.
+The architecture is a dedicated, maintainable `@muse/attunement-graph` module. It is not a
+generic knowledge graph product and it is not a new source of truth for tasks, notes,
+calendar, memory, or Attunement receipts. Those stores remain authoritative. The graph is
+a rebuildable, append-oriented projection that makes relationships and changes queryable.
 
 The engine exists to power three product experiences:
 
@@ -29,6 +29,20 @@ The engine exists to power three product experiences:
 
 The full experience and this engine are roadmap work. Existing graph-like data is a
 substrate, not proof that the engine or experience has shipped.
+
+## Implementation status
+
+**Built, not yet product-integrated:** AWG-010 provides the storage-neutral assertion
+contract, strict temporal/provenance/epistemic invariants, bounded traversal, in-memory
+reference adapter, reusable backend conformance suite, and token-budgeted Activation
+Subgraph compiler in [`packages/attunement-graph`](../../packages/attunement-graph/).
+The reference traversal separately caps returned assertions, considered adjacency
+assertions, visited references, and depth, so a dense seed cannot hide unbounded work behind
+a small output limit.
+
+It has no authoritative-store projector, durable adapter, LLM extraction, runtime
+composition, Shadow delivery, Capsule UI, Policy Card UI, or action authority. The
+Attunement Graph Engine and three signature experiences therefore remain roadmap claims.
 
 ## Why a graph, and where it must beat flat or vector memory
 
@@ -326,7 +340,8 @@ The engine uses hybrid retrieval, but each stage has a distinct job:
 
 1. exact IDs and filters establish user, thread, scope, time, and authority;
 2. lexical/vector retrieval proposes seed evidence;
-3. bounded traversal expands only allowlisted edge types and hop counts;
+3. bounded traversal expands only allowlisted edge types and independently caps candidate
+   work, returned assertions, visited references, and hop count;
 4. deterministic reranking prefers current, direct, strongly sourced paths;
 5. the explanation builder rejects results whose source path cannot be resolved.
 

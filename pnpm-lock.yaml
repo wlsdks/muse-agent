@@ -357,6 +357,8 @@ importers:
         specifier: workspace:*
         version: link:../stores
 
+  packages/attunement-graph: {}
+
   packages/auth:
     dependencies:
       '@muse/db':

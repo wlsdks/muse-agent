@@ -8,6 +8,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the first `@muse/attunement-graph` reference kernel with closed temporal and
+  provenance assertions, atomic/idempotent in-memory storage, compact exact-seed indexes,
+  bounded traversal, derivation-aware forgetting, a reusable backend conformance suite,
+  and a token-budgeted Activation Subgraph compiler. It is not yet wired to authoritative
+  personal stores or any user-facing Attunement experience.
+
 - Defined Muse's signature roadmap as Shadow Muse, Continuity Capsule, and
   Policy Card, backed by a proposed lightweight Attunement Graph Engine and a
   separate research, modularization, storage-bake-off, and dogfood program.
