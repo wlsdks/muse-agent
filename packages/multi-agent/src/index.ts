@@ -28,6 +28,13 @@ export {
   type GoalActionTerminalReceipt
 } from "./goal-action-terminal.js";
 export {
+  assessGoalActionBudget,
+  type GoalActionBudgetDecision,
+  type GoalActionBudgetDimension,
+  type GoalActionBudgetInput,
+  type GoalActionBudgetValues
+} from "./goal-action-budget.js";
+export {
   assessGoalCheckpointResume,
   createGoalCheckpointBinding,
   type GoalCheckpointBinding,
