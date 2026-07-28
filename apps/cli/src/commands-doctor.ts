@@ -11,7 +11,7 @@
  * able to introspect itself.
  */
 
-import { existsSync, promises as fs } from "node:fs";
+import { existsSync, lstatSync, promises as fs } from "node:fs";
 import { formatRelativeTime } from "./human-formatters.js";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
@@ -167,7 +167,7 @@ export function resolveDoctorLocalRuntime(options: DoctorLocalRuntimeOptions = {
   const defaults: DoctorLocalPaths = {
     backgroundFile: doctorPath(env, museHome, "MUSE_BACKGROUND_PROCESSES_FILE", "background-processes.json"),
     beliefProvenanceFile: doctorPath(env, museHome, "MUSE_BELIEF_PROVENANCE_FILE", "belief-provenance.json"),
-    credentialFile: defaultCredentialPath(homeDir),
+    credentialFile: env.MUSE_CREDENTIALS_FILE?.trim() || defaultCredentialPath(homeDir),
     episodeIndexFile: doctorPath(env, museHome, "MUSE_EPISODES_INDEX_FILE", "episodes-index.json"),
     launchAgentFile: "",
     mcpFile: doctorPath(env, museHome, "MUSE_MCP_CONFIG", "mcp.json"),
@@ -236,6 +236,30 @@ function sensitiveFileTargets(runtime: DoctorLocalRuntime, env: MuseEnvironment)
   ];
 }
 
+function sensitiveFileTargetGroups(
+  runtime: DoctorLocalRuntime,
+  env: MuseEnvironment
+): readonly { readonly root: string; readonly targets: readonly SensitiveFileTarget[] }[] {
+  const targets = sensitiveFileTargets(runtime, env);
+  const credential = targets.find(({ label }) => label === "credentials.json")!;
+  const museTargets = targets.filter(({ label }) => label !== "credentials.json");
+  const credentialRoot = join(runtime.homeDir, ".config", "muse");
+  let credentialEntryExists = false;
+  try {
+    lstatSync(credential.path);
+    credentialEntryExists = true;
+  } catch {
+    // Missing credential data needs no repair; lstat (unlike existsSync)
+    // deliberately treats a dangling symlink as an entry that must be rejected.
+  }
+  return [
+    { root: runtime.paths.museHome, targets: museTargets },
+    // A missing credential store needs no repair. Do not manufacture or claim
+    // ownership of an absent ~/.config/muse root merely to make a plan.
+    ...(credentialEntryExists ? [{ root: credentialRoot, targets: [credential] }] : [])
+  ];
+}
+
 
 export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: DoctorCommandHelpers): void {
   program
@@ -285,12 +309,24 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
       if (options.repairPermissions) {
         const runtime = resolveDoctorLocalRuntime(helpers.localRuntime);
         const env = createDoctorEnvironmentView(mergeModelKeysFromFile(runtime.env), runtime);
-        const targets = sensitiveFileTargets(runtime, env);
-        const plan = await planSensitivePermissionRepair(runtime.paths.museHome, targets);
+        const plans = await Promise.all(sensitiveFileTargetGroups(runtime, env).map(({ root, targets }) =>
+          planSensitivePermissionRepair(root, targets)
+        ));
         // Applying is atomic at the plan gate: any rejected target keeps the
         // entire preview visible but prevents a partial permission mutation.
-        const receipt = options.applyPermissionRepair ? await applySensitivePermissionRepair(plan) : undefined;
-        helpers.writeOutput(io, { ...(receipt ? { receipt } : {}), plan });
+        const rejected = plans.some((plan) => plan.items.some((item) => item.state === "rejected"));
+        const receipts = options.applyPermissionRepair && !rejected
+          ? await Promise.all(plans.map((plan) => applySensitivePermissionRepair(plan)))
+          : [];
+        helpers.writeOutput(io, {
+          plans,
+          ...(options.applyPermissionRepair
+            ? {
+                receipts,
+                ...(rejected ? { rejected: "one or more owned-root plans contain a rejected target" } : {})
+              }
+            : {})
+        });
         return;
       }
       // --grounding is a standalone live mode: score the bundled edge corpus on

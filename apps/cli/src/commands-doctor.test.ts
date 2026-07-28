@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -741,14 +741,116 @@ describe("resident daemon truth", () => {
 
     expect(statSync(userMemoryFile).mode & 0o777).toBe(0o644);
     expect(emitted).toEqual([expect.objectContaining({
-      receipt: expect.objectContaining({
-        applied: [],
-        changes: [],
-        planHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
-        rejected: "plan contains a rejected target"
-      })
+      receipts: [],
+      rejected: "one or more owned-root plans contain a rejected target"
     })]);
   });
+
+  it("repairs exact files under Muse and credential roots only after every root plan is safe", async () => {
+    const homeDir = realpathSync(mkdtempSync(join(tmpdir(), "muse-doctor-permission-roots-")));
+    const museHome = join(homeDir, ".muse");
+    const credentialRoot = join(homeDir, ".config", "muse");
+    const userMemoryFile = join(museHome, "user-memory.json");
+    const credentialFile = join(credentialRoot, "credentials.json");
+    mkdirSync(museHome, { recursive: true });
+    mkdirSync(credentialRoot, { recursive: true });
+    writeFileSync(userMemoryFile, "{}");
+    writeFileSync(credentialFile, "{}");
+    chmodSync(userMemoryFile, 0o644);
+    chmodSync(credentialFile, 0o644);
+
+    const emitted: unknown[] = [];
+    const program = new Command();
+    registerDoctorCommand(program, { stderr: () => undefined, stdout: () => undefined }, {
+      apiRequest: async () => {
+        throw new Error("permission repair must not call the API");
+      },
+      localRuntime: {
+        env: { HOME: homeDir, MUSE_HOME: museHome },
+        homeDir
+      },
+      writeOutput: (_io, value) => { emitted.push(value); }
+    });
+
+    await program.parseAsync([
+      "node",
+      "muse",
+      "doctor",
+      "--repair-permissions",
+      "--apply-permission-repair"
+    ], { from: "node" });
+
+    expect(statSync(userMemoryFile).mode & 0o777).toBe(0o600);
+    expect(statSync(credentialFile).mode & 0o777).toBe(0o600);
+    expect(emitted).toEqual([expect.objectContaining({
+      plans: [
+        expect.objectContaining({ root: museHome }),
+        expect.objectContaining({ root: credentialRoot })
+      ],
+      receipts: [
+        expect.objectContaining({ applied: [userMemoryFile] }),
+        expect.objectContaining({ applied: [credentialFile] })
+      ]
+    })]);
+  });
+
+  it.each(["outside-override", "dangling-symlink"] as const)(
+    "keeps every file unchanged for an unsafe credential entry: %s",
+    async (credentialCase) => {
+      const homeDir = realpathSync(mkdtempSync(join(tmpdir(), "muse-doctor-credential-negative-")));
+      const museHome = join(homeDir, ".muse");
+      const credentialRoot = join(homeDir, ".config", "muse");
+      const userMemoryFile = join(museHome, "user-memory.json");
+      const exactCredentialFile = join(credentialRoot, "credentials.json");
+      const outsideCredentialFile = join(homeDir, "outside-credentials.json");
+      mkdirSync(museHome, { recursive: true });
+      mkdirSync(credentialRoot, { recursive: true });
+      writeFileSync(userMemoryFile, "{}");
+      chmodSync(userMemoryFile, 0o644);
+      if (credentialCase === "outside-override") {
+        writeFileSync(outsideCredentialFile, "{}");
+        chmodSync(outsideCredentialFile, 0o644);
+      } else {
+        symlinkSync(join(homeDir, "missing-credential-target"), exactCredentialFile);
+      }
+
+      const emitted: unknown[] = [];
+      const program = new Command();
+      registerDoctorCommand(program, { stderr: () => undefined, stdout: () => undefined }, {
+        apiRequest: async () => {
+          throw new Error("permission repair must not call the API");
+        },
+        localRuntime: {
+          env: {
+            HOME: homeDir,
+            MUSE_HOME: museHome,
+            ...(credentialCase === "outside-override"
+              ? { MUSE_CREDENTIALS_FILE: outsideCredentialFile }
+              : {})
+          },
+          homeDir
+        },
+        writeOutput: (_io, value) => { emitted.push(value); }
+      });
+
+      await program.parseAsync([
+        "node",
+        "muse",
+        "doctor",
+        "--repair-permissions",
+        "--apply-permission-repair"
+      ], { from: "node" });
+
+      expect(statSync(userMemoryFile).mode & 0o777).toBe(0o644);
+      if (credentialCase === "outside-override") {
+        expect(statSync(outsideCredentialFile).mode & 0o777).toBe(0o644);
+      }
+      expect(emitted).toEqual([expect.objectContaining({
+        receipts: [],
+        rejected: "one or more owned-root plans contain a rejected target"
+      })]);
+    }
+  );
 });
 
 describe("local model memory doctor", () => {
