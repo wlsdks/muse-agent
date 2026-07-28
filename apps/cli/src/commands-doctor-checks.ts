@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 
 const execFile = promisify(execFileCallback);
 import { constants as fsConstants, promises as fs } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
 
 /**
@@ -797,6 +797,8 @@ export interface SensitivePermissionRepairPlan {
 }
 
 interface SensitivePermissionRepairStat {
+  readonly dev?: number;
+  readonly ino?: number;
   readonly mode: number;
   isFile(): boolean;
   isSymbolicLink(): boolean;
@@ -832,10 +834,84 @@ function isInsideRoot(root: string, path: string): boolean {
   return pathFromRoot.length > 0 && !pathFromRoot.startsWith(`..${sep}`) && pathFromRoot !== ".." && !isAbsolute(pathFromRoot);
 }
 
+async function inspectOwnedAncestorChain(
+  root: string,
+  path: string,
+  fileSystem: SensitivePermissionRepairFs
+): Promise<"missing" | "nested-target" | "outside-root" | "safe" | "symlink-ancestor"> {
+  const resolvedRoot = resolve(root);
+  const resolvedPath = resolve(path);
+  if (!isInsideRoot(resolvedRoot, resolvedPath)) {
+    return "outside-root";
+  }
+  // The public repair inventory contains exact files immediately under
+  // MUSE_HOME. Refusing deeper paths removes the ancestor traversal surface
+  // entirely instead of trying to win a path-swap race with repeated lstat.
+  if (dirname(resolvedPath) !== resolvedRoot) {
+    return "nested-target";
+  }
+
+  const ancestors = [resolvedRoot];
+  for (const ancestor of ancestors) {
+    try {
+      if ((await fileSystem.lstat(ancestor)).isSymbolicLink()) {
+        return "symlink-ancestor";
+      }
+    } catch {
+      return "missing";
+    }
+  }
+  return "safe";
+}
+
+function sameFileIdentity(
+  handleStat: SensitivePermissionRepairStat,
+  pathStat: SensitivePermissionRepairStat
+): boolean {
+  if (
+    typeof handleStat.dev !== "number"
+    || typeof handleStat.ino !== "number"
+    || typeof pathStat.dev !== "number"
+    || typeof pathStat.ino !== "number"
+  ) {
+    return true;
+  }
+  return handleStat.dev === pathStat.dev && handleStat.ino === pathStat.ino;
+}
+
+async function revalidateOpenedPermissionTarget(
+  root: string,
+  item: SensitivePermissionRepairItem,
+  handle: SensitivePermissionRepairHandle,
+  fileSystem: SensitivePermissionRepairFs
+): Promise<boolean> {
+  const handleStat = await handle.stat();
+  const currentMode = handleStat.mode & 0o777;
+  if (
+    handleStat.isSymbolicLink()
+    || !handleStat.isFile()
+    || currentMode !== item.observedMode
+    || await inspectOwnedAncestorChain(root, item.path, fileSystem) !== "safe"
+  ) {
+    return false;
+  }
+  try {
+    const pathStat = await fileSystem.lstat(item.path);
+    return !pathStat.isSymbolicLink()
+      && pathStat.isFile()
+      && (pathStat.mode & 0o777) === currentMode
+      && sameFileIdentity(handleStat, pathStat)
+      && await inspectOwnedAncestorChain(root, item.path, fileSystem) === "safe";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Builds a non-mutating, exact-file permission repair plan. It never walks a
  * directory: callers supply the sensitive-file inventory, and a target outside
- * the owned Muse root, a symlink, or a non-file is rejected rather than fixed.
+ * the owned Muse root, a symlink in its owned ancestor chain, a final symlink,
+ * or a non-file is rejected rather than fixed.
  */
 export async function planSensitivePermissionRepair(
   root: string,
@@ -844,8 +920,25 @@ export async function planSensitivePermissionRepair(
 ): Promise<SensitivePermissionRepairPlan> {
   const items: SensitivePermissionRepairItem[] = [];
   for (const target of targets) {
-    if (!isInsideRoot(root, target.path)) {
-      items.push({ ...target, reason: "target is outside the owned Muse root", state: "rejected" });
+    const ancestorState = await inspectOwnedAncestorChain(root, target.path, fileSystem);
+    if (
+      ancestorState === "nested-target"
+      || ancestorState === "outside-root"
+      || ancestorState === "symlink-ancestor"
+    ) {
+      items.push({
+        ...target,
+        reason: ancestorState === "outside-root"
+          ? "target is outside the owned Muse root"
+          : ancestorState === "nested-target"
+            ? "permission repair targets must be direct children of the owned Muse root"
+            : "symbolic links are never allowed in the owned ancestor chain",
+        state: "rejected"
+      });
+      continue;
+    }
+    if (ancestorState === "missing") {
+      items.push({ ...target, state: "missing" });
       continue;
     }
     try {
@@ -886,16 +979,23 @@ export async function applySensitivePermissionRepair(
   const handles: Array<{ readonly item: SensitivePermissionRepairItem; readonly handle: SensitivePermissionRepairHandle }> = [];
   try {
     for (const item of repairable) {
+      const ancestorState = await inspectOwnedAncestorChain(plan.root, item.path, fileSystem);
+      if (ancestorState !== "safe") {
+        return { applied: [], rejected: `target ancestor changed or is unsafe (${ancestorState}): ${item.label}` };
+      }
       const handle = await fileSystem.open(item.path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
-      const stat = await handle.stat();
-      const currentMode = stat.mode & 0o777;
-      if (stat.isSymbolicLink() || !stat.isFile() || currentMode !== item.observedMode) {
+      if (!await revalidateOpenedPermissionTarget(plan.root, item, handle, fileSystem)) {
         await handle.close();
         return { applied: [], rejected: `target changed or is unsafe: ${item.label}` };
       }
       handles.push({ handle, item });
     }
 
+    for (const { handle, item } of handles) {
+      if (!await revalidateOpenedPermissionTarget(plan.root, item, handle, fileSystem)) {
+        return { applied: [], rejected: `target changed or is unsafe before chmod: ${item.label}` };
+      }
+    }
     for (const { handle } of handles) {
       await handle.chmod(0o600);
     }

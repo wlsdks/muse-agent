@@ -287,11 +287,9 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
         const env = createDoctorEnvironmentView(mergeModelKeysFromFile(runtime.env), runtime);
         const targets = sensitiveFileTargets(runtime, env);
         const plan = await planSensitivePermissionRepair(runtime.paths.museHome, targets);
-        // An explicitly configured credential file may intentionally live
-        // outside ~/.muse. Keep that target visible as rejected, but do not let
-        // it prevent repair of the separate, exact files we do own.
-        const repairPlan = { ...plan, items: plan.items.filter((item) => item.state !== "rejected") };
-        const receipt = options.applyPermissionRepair ? await applySensitivePermissionRepair(repairPlan) : undefined;
+        // Applying is atomic at the plan gate: any rejected target keeps the
+        // entire preview visible but prevents a partial permission mutation.
+        const receipt = options.applyPermissionRepair ? await applySensitivePermissionRepair(plan) : undefined;
         helpers.writeOutput(io, { ...(receipt ? { receipt } : {}), plan });
         return;
       }

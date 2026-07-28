@@ -327,6 +327,49 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
     expect(chmod).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { path: "/muse/secret.json", reason: "symbolic", symlinkPath: "/muse" },
+    { path: "/muse/linked/secret.json", reason: "direct children", symlinkPath: "/muse/linked" }
+  ])(
+    "rejects unsafe owned path $path before opening the target",
+    async ({ path: targetPath, reason, symlinkPath }) => {
+      const plan = await planSensitivePermissionRepair(
+        "/muse",
+        [{ label: "secret.json", path: targetPath }],
+        {
+          lstat: async (path) => ({
+            isFile: () => path.endsWith("secret.json"),
+            isSymbolicLink: () => path === symlinkPath,
+            mode: path === symlinkPath ? 0o120777 : 0o100644
+          })
+        }
+      );
+      expect(plan.items).toEqual([
+        expect.objectContaining({ label: "secret.json", reason: expect.stringContaining(reason), state: "rejected" })
+      ]);
+
+      const open = vi.fn();
+      const receipt = await applySensitivePermissionRepair({
+        items: [{ label: "secret.json", observedMode: 0o644, path: targetPath, state: "repairable" }],
+        root: "/muse"
+      }, {
+        lstat: async (path) => ({
+          isFile: () => path.endsWith("secret.json"),
+          isSymbolicLink: () => path === symlinkPath,
+          mode: path === symlinkPath ? 0o120777 : 0o100644
+        }),
+        open
+      });
+      expect(receipt).toEqual({
+        applied: [],
+        rejected: `target ancestor changed or is unsafe (${targetPath.includes("/linked/")
+          ? "nested-target"
+          : "symlink-ancestor"}): secret.json`
+      });
+      expect(open).not.toHaveBeenCalled();
+    }
+  );
+
   it("applies 0600 only after every no-follow handle still matches the dry-run mode", async () => {
     const chmod = vi.fn(async () => undefined);
     const result = await applySensitivePermissionRepair({
@@ -338,6 +381,41 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
     });
     expect(result).toEqual({ applied: ["/muse/repair.json"] });
     expect(chmod).toHaveBeenCalledWith(0o600);
+  });
+
+  it("leaves the opened file unchanged when the owned root becomes a symlink during open", async () => {
+    let rootUnsafe = false;
+    const chmod = vi.fn(async () => undefined);
+    const close = vi.fn(async () => undefined);
+    const result = await applySensitivePermissionRepair({
+      items: [{ label: "repair.json", observedMode: 0o644, path: "/muse/repair.json", state: "repairable" }],
+      root: "/muse"
+    }, {
+      lstat: async (path) => ({
+        dev: 1,
+        ino: path === "/muse" ? 1 : 2,
+        isFile: () => path !== "/muse",
+        isSymbolicLink: () => path === "/muse" && rootUnsafe,
+        mode: path === "/muse" && rootUnsafe ? 0o120777 : 0o100644
+      }),
+      open: async () => {
+        rootUnsafe = true;
+        return {
+          chmod,
+          close,
+          stat: async () => ({
+            dev: 1,
+            ino: 2,
+            isFile: () => true,
+            isSymbolicLink: () => false,
+            mode: 0o100644
+          })
+        };
+      }
+    });
+    expect(result).toEqual({ applied: [], rejected: "target changed or is unsafe: repair.json" });
+    expect(chmod).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it("plans only a loose regular file under the exact Muse root", async () => {

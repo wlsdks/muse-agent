@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -702,6 +702,47 @@ describe("resident daemon truth", () => {
       status: deliverySafety.status
     });
     expect(JSON.stringify(emitted)).not.toMatch(/recipient|arguments|userId|PRIVATE/iu);
+  });
+
+  it("refuses the entire public permission repair when the preview contains a rejected target", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-permission-repair-"));
+    const museHome = join(homeDir, ".muse");
+    const outsideActionLog = join(homeDir, "outside-action-log.json");
+    const userMemoryFile = join(museHome, "user-memory.json");
+    mkdirSync(museHome, { recursive: true });
+    writeFileSync(userMemoryFile, "{}");
+    chmodSync(userMemoryFile, 0o644);
+    writeFileSync(outsideActionLog, "{}");
+
+    const emitted: unknown[] = [];
+    const program = new Command();
+    registerDoctorCommand(program, { stderr: () => undefined, stdout: () => undefined }, {
+      apiRequest: async () => {
+        throw new Error("permission repair must not call the API");
+      },
+      localRuntime: {
+        env: {
+          HOME: homeDir,
+          MUSE_ACTION_LOG_FILE: outsideActionLog,
+          MUSE_HOME: museHome
+        },
+        homeDir
+      },
+      writeOutput: (_io, value) => { emitted.push(value); }
+    });
+
+    await program.parseAsync([
+      "node",
+      "muse",
+      "doctor",
+      "--repair-permissions",
+      "--apply-permission-repair"
+    ], { from: "node" });
+
+    expect(statSync(userMemoryFile).mode & 0o777).toBe(0o644);
+    expect(emitted).toEqual([expect.objectContaining({
+      receipt: { applied: [], rejected: "plan contains a rejected target" }
+    })]);
   });
 });
 
