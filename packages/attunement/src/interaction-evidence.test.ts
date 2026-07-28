@@ -23,6 +23,7 @@ import {
   type PersonalThreadKind
 } from "./index.js";
 import { createOrganicContinuityWriteAuthority } from "./evidence-provenance.js";
+import type { AttunementState, ContinuityDelivery, ContinuityInteractionReceipt, PersonalThread } from "./types.js";
 
 function projectionItem(input: {
   readonly completedAt?: string;
@@ -68,6 +69,132 @@ function projectionItem(input: {
 }
 
 describe("Continuity interaction evidence", () => {
+  it("separates eligible organic outcome and receipt coverage with UTC, local dates, and exclusions", async () => {
+    const thread = (id: string, kind: PersonalThreadKind): PersonalThread => ({
+      createdAt: "2026-07-18T00:00:00.000Z",
+      id,
+      kind,
+      links: [],
+      policy: { detail: "standard", nextStep: "direct", suppression: "none", version: 0 },
+      title: id
+    });
+    const delivery = (id: string, threadId: string, evidenceClass: "organic" | "controlled" | "unclassified", outcome?: ContinuityDelivery["outcome"]): ContinuityDelivery => ({
+      evidenceClass,
+      evidenceRefs: [],
+      id,
+      openedAt: "2026-07-18T14:00:00.000Z",
+      ...(outcome ? { outcome } : {}),
+      policyVersion: 0,
+      runId: `run_${id}`,
+      threadId
+    });
+    const receipt = (id: string, threadId: string, evidenceClass: "organic" | "controlled" | "unclassified", completedAt = "2026-07-18T15:30:00.000Z"): ContinuityInteractionReceipt => ({
+      artifactId: `task_${id}`,
+      completedAt,
+      deliveryId: id,
+      doneStateFingerprint: "a".repeat(64),
+      eventId: `event_${id}`,
+      evidenceClass,
+      id: `receipt_${id}`,
+      linkedAt: "2026-07-18T13:00:00.000Z",
+      openStateFingerprint: "b".repeat(64),
+      providerId: "local",
+      recordedAt: completedAt,
+      role: "next-step",
+      runId: `run_${id}`,
+      threadId,
+      transition: "open-to-done"
+    });
+    const organicOutcome = { evidenceClass: "organic" as const, outcome: "used" as const, policyVersion: 0, recordedAt: "2026-07-18T15:30:00.000Z" };
+    const controlledOutcome = { evidenceClass: "controlled" as const, outcome: "ignored" as const, policyVersion: 0, recordedAt: "2026-07-18T15:30:00.000Z" };
+    const state: AttunementState = {
+      deliveries: [
+        delivery("life_outcome_organic", "life", "organic", organicOutcome),
+        delivery("life_outcome_controlled_delivery", "life", "controlled", organicOutcome),
+        delivery("life_receipt_organic", "life", "organic"),
+        delivery("life_receipt_unclassified_delivery", "life", "unclassified"),
+        delivery("work_outcome_controlled", "work", "organic", controlledOutcome),
+        delivery("work_no_outcome", "work", "organic"),
+        delivery("work_receipt_controlled", "work", "organic"),
+        delivery("work_receipt_organic", "work", "organic")
+      ],
+      interactionReceipts: [
+        receipt("life_receipt_organic", "life", "organic"),
+        receipt("life_receipt_unclassified_delivery", "life", "organic"),
+        receipt("work_receipt_controlled", "work", "controlled"),
+        receipt("work_receipt_organic", "work", "organic", "2026-07-19T00:30:00.000Z")
+      ],
+      nextPolicyVersion: 1,
+      resetReceipts: [],
+      schemaVersion: 11,
+      threads: [thread("life", "life"), thread("work", "work")],
+      undoResetReceipts: []
+    };
+
+    const report = await buildContinuityInteractionReport(state, async () => undefined, { timeZone: "Asia/Seoul" });
+
+    expect(report.eligibilityCoverage).toMatchObject({
+      byThreadKind: {
+        life: {
+          exactReceipts: {
+            distinctLocalDates: ["2026-07-19"],
+            distinctUtcDates: ["2026-07-18"],
+            eligibleDeliveryCount: 1,
+            eligibleDeliveryIds: ["life_receipt_organic"],
+            excluded: [{ deliveryId: "life_outcome_controlled_delivery", reason: "delivery evidence is controlled, not organic" }, {
+              deliveryId: "life_outcome_organic", reason: "delivery has no interaction anchor or run id"
+            }, { deliveryId: "life_receipt_unclassified_delivery", reason: "delivery evidence is unclassified, not organic" }]
+          },
+          explicitOutcomes: {
+            distinctLocalDates: ["2026-07-19"],
+            distinctUtcDates: ["2026-07-18"],
+            eligibleDeliveryCount: 1,
+            eligibleDeliveryIds: ["life_outcome_organic"],
+            excluded: [{ deliveryId: "life_outcome_controlled_delivery", reason: "delivery evidence is controlled, not organic" }, {
+              deliveryId: "life_receipt_organic", reason: "delivery has no explicit outcome"
+            }, { deliveryId: "life_receipt_unclassified_delivery", reason: "delivery evidence is unclassified, not organic" }]
+          }
+        },
+        work: {
+          exactReceipts: {
+            distinctLocalDates: ["2026-07-19"],
+            distinctUtcDates: ["2026-07-19"],
+            eligibleDeliveryCount: 1,
+            eligibleDeliveryIds: ["work_receipt_organic"],
+            excluded: [{ deliveryId: "work_no_outcome", reason: "delivery has no interaction anchor or run id" }, {
+              deliveryId: "work_outcome_controlled", reason: "delivery has no interaction anchor or run id"
+            }, { deliveryId: "work_receipt_controlled", reason: "exact receipt evidence is controlled, not organic" }]
+          },
+          explicitOutcomes: {
+            distinctLocalDates: [],
+            distinctUtcDates: [],
+            eligibleDeliveryCount: 0,
+            eligibleDeliveryIds: [],
+            excluded: [{ deliveryId: "work_no_outcome", reason: "delivery has no explicit outcome" }, {
+              deliveryId: "work_outcome_controlled", reason: "explicit outcome evidence is controlled, not organic"
+            }, { deliveryId: "work_receipt_controlled", reason: "delivery has no explicit outcome" }, {
+              deliveryId: "work_receipt_organic", reason: "delivery has no explicit outcome" }]
+          }
+        }
+      },
+      localTimeZone: "Asia/Seoul"
+    });
+    await expect(buildContinuityInteractionReport(state, async () => undefined, { timeZone: "not/a-time-zone" }))
+      .rejects.toThrow(/invalid time zone/iu);
+    await expect(buildContinuityInteractionReport({
+      ...state,
+      deliveries: state.deliveries.map((entry) => entry.id === "life_outcome_organic"
+        ? { ...entry, outcome: { ...organicOutcome, recordedAt: "not-a-timestamp" } }
+        : entry)
+    }, async () => undefined)).rejects.toThrow(/invalid outcome recordedAt timestamp/iu);
+    await expect(buildContinuityInteractionReport({
+      ...state,
+      interactionReceipts: state.interactionReceipts.map((entry) => entry.deliveryId === "work_receipt_controlled"
+        ? { ...entry, completedAt: "not-a-timestamp", recordedAt: "not-a-timestamp" }
+        : entry)
+    }, async () => undefined)).rejects.toThrow(/invalid receipt completedAt timestamp/iu);
+  });
+
   it("counts exact readiness only when both delivery and receipt are organic", () => {
     const organic = projectionItem({
       completedAt: "2026-07-18T00:00:00.001Z",
@@ -388,10 +515,14 @@ describe("Continuity interaction evidence", () => {
     });
     expect(state.deliveries[0]?.outcome).toBeUndefined();
 
+    const attunementBytesBeforeReport = await readFile(attunementFile, "utf8");
+    const taskBytesBeforeReport = await readFile(tasksFile, "utf8");
     const report = await buildContinuityInteractionReport(
       state,
       createLocalContinuityTaskInteractionSourceResolver(tasksFile)
     );
+    expect(await readFile(attunementFile, "utf8")).toBe(attunementBytesBeforeReport);
+    expect(await readFile(tasksFile, "utf8")).toBe(taskBytesBeforeReport);
     expect(report).toMatchObject({
       audit: {
         byThreadKind: { work: { exactInteractions: 1, remainingExactInteractions: 9 } },

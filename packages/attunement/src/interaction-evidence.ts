@@ -55,9 +55,39 @@ export interface ContinuityInteractionAudit {
 export interface ContinuityInteractionReport {
   readonly audit: ContinuityInteractionAudit;
   readonly digest: ContinuityInteractionDigest;
+  readonly eligibilityCoverage: ContinuityEligibilityCoverage;
   readonly interactions: readonly ContinuityInteractionProjectionItem[];
   readonly schemaVersion: 2;
   readonly technicalEvidence: ContinuityInteractionTechnicalEvidenceDigest;
+}
+
+export interface ContinuityEligibilityExclusion {
+  readonly deliveryId: string;
+  readonly reason: string;
+}
+
+export interface ContinuityEligibilitySignalCoverage {
+  readonly distinctLocalDates: readonly string[];
+  readonly distinctUtcDates: readonly string[];
+  readonly eligibleDeliveryCount: number;
+  readonly eligibleDeliveryIds: readonly string[];
+  readonly excluded: readonly ContinuityEligibilityExclusion[];
+}
+
+export interface ContinuityEligibilityKindCoverage {
+  readonly explicitOutcomes: ContinuityEligibilitySignalCoverage;
+  readonly exactReceipts: ContinuityEligibilitySignalCoverage;
+}
+
+/** Read-only coverage for collection monitoring; it never infers feedback or permission. */
+export interface ContinuityEligibilityCoverage {
+  readonly byThreadKind: Readonly<Record<PersonalThreadKind, ContinuityEligibilityKindCoverage>>;
+  readonly localTimeZone: string;
+}
+
+export interface ContinuityInteractionReportOptions {
+  /** IANA zone used only to format deterministic local-day coverage. */
+  readonly timeZone?: string;
 }
 
 export interface ContinuityInteractionTechnicalEvidenceSlice {
@@ -276,7 +306,8 @@ export function buildContinuityInteractionAudit(
 
 export async function buildContinuityInteractionReport(
   state: AttunementState,
-  resolveCurrentTask: ContinuityTaskInteractionSourceResolver
+  resolveCurrentTask: ContinuityTaskInteractionSourceResolver,
+  options: ContinuityInteractionReportOptions = {}
 ): Promise<ContinuityInteractionReport> {
   const interactions = await buildContinuityInteractionProjection(state, resolveCurrentTask);
   const naturalInteractions = interactions.filter((item) =>
@@ -286,10 +317,113 @@ export async function buildContinuityInteractionReport(
   return {
     audit: buildContinuityInteractionAudit(naturalInteractions),
     digest: buildContinuityInteractionDigest(naturalInteractions),
+    eligibilityCoverage: buildContinuityEligibilityCoverage(state, interactions, options.timeZone ?? "UTC"),
     interactions,
     schemaVersion: 2,
     technicalEvidence: buildInteractionTechnicalEvidence(interactions)
   };
+}
+
+function buildContinuityEligibilityCoverage(
+  state: AttunementState,
+  interactions: readonly ContinuityInteractionProjectionItem[],
+  timeZone: string
+): ContinuityEligibilityCoverage {
+  const dateForZone = createDateFormatter(timeZone);
+  const deliveries = new Map(state.deliveries.map((delivery) => [delivery.id, delivery]));
+  const itemsByKind = (kind: PersonalThreadKind): readonly ContinuityInteractionProjectionItem[] =>
+    interactions.filter((item) => item.threadKind === kind);
+  const signal = (
+    kind: PersonalThreadKind,
+    source: "outcome" | "receipt"
+  ): ContinuityEligibilitySignalCoverage => {
+    const eligibleDeliveryIds: string[] = [];
+    const excluded: ContinuityEligibilityExclusion[] = [];
+    const utcDates = new Set<string>();
+    const localDates = new Set<string>();
+    for (const item of itemsByKind(kind)) {
+      const delivery = deliveries.get(item.deliveryId);
+      if (!delivery) throw new Error(`interaction '${item.deliveryId}' has no canonical delivery`);
+      const evidenceClassReason = delivery.evidenceClass === "organic"
+        ? undefined
+        : `delivery evidence is ${delivery.evidenceClass}, not organic`;
+      if (source === "outcome") {
+        const outcome = delivery.outcome;
+        if (outcome) assertTimestamp(outcome.recordedAt, "outcome recordedAt", item.deliveryId);
+        const reason = evidenceClassReason ?? (outcome === undefined
+          ? "delivery has no explicit outcome"
+          : outcome.evidenceClass !== "organic" ? `explicit outcome evidence is ${outcome.evidenceClass}, not organic` : undefined);
+        if (reason) {
+          excluded.push({ deliveryId: item.deliveryId, reason });
+          continue;
+        }
+        const recordedAt = outcome!.recordedAt;
+        eligibleDeliveryIds.push(item.deliveryId);
+        utcDates.add(utcDate(recordedAt, item.deliveryId, "outcome recordedAt"));
+        localDates.add(dateForZone(recordedAt, item.deliveryId, "outcome recordedAt"));
+        continue;
+      }
+
+      const receipt = item.interaction.receipt;
+      if (receipt) assertTimestamp(receipt.completedAt, "receipt completedAt", item.deliveryId);
+      const reason = evidenceClassReason ?? (item.interaction.state !== "exact"
+        ? item.interaction.reason ?? "delivery has no exact interaction receipt"
+        : receipt === undefined
+          ? "delivery has no exact interaction receipt"
+          : receipt.evidenceClass !== "organic" ? `exact receipt evidence is ${receipt.evidenceClass}, not organic` : undefined);
+      if (reason) {
+        excluded.push({ deliveryId: item.deliveryId, reason });
+        continue;
+      }
+      const completedAt = receipt!.completedAt;
+      eligibleDeliveryIds.push(item.deliveryId);
+      utcDates.add(utcDate(completedAt, item.deliveryId, "receipt completedAt"));
+      localDates.add(dateForZone(completedAt, item.deliveryId, "receipt completedAt"));
+    }
+    return {
+      distinctLocalDates: [...localDates].sort(),
+      distinctUtcDates: [...utcDates].sort(),
+      eligibleDeliveryCount: eligibleDeliveryIds.length,
+      eligibleDeliveryIds: eligibleDeliveryIds.sort(),
+      excluded: excluded.sort((left, right) => left.deliveryId.localeCompare(right.deliveryId))
+    };
+  };
+  return {
+    byThreadKind: {
+      life: { exactReceipts: signal("life", "receipt"), explicitOutcomes: signal("life", "outcome") },
+      work: { exactReceipts: signal("work", "receipt"), explicitOutcomes: signal("work", "outcome") }
+    },
+    localTimeZone: timeZone
+  };
+}
+
+function createDateFormatter(timeZone: string): (value: string, deliveryId: string, field: string) => string {
+  let formatter: Intl.DateTimeFormat;
+  try {
+    formatter = new Intl.DateTimeFormat("en-CA", { day: "2-digit", month: "2-digit", timeZone, year: "numeric" });
+  } catch {
+    throw new Error(`continuity eligibility coverage has an invalid time zone '${timeZone}'`);
+  }
+  return (value, deliveryId, field) => {
+    const timestamp = assertTimestamp(value, field, deliveryId);
+    const parts = formatter.formatToParts(new Date(timestamp));
+    const fields = new Map(parts.map((part) => [part.type, part.value]));
+    const year = fields.get("year");
+    const month = fields.get("month");
+    const day = fields.get("day");
+    if (!year || !month || !day) throw new Error(`continuity eligibility coverage could not format ${field} for delivery '${deliveryId}'`);
+    return `${year}-${month}-${day}`;
+  };
+}
+
+function utcDate(value: string, deliveryId: string, field: string): string {
+  return new Date(assertTimestamp(value, field, deliveryId)).toISOString().slice(0, 10);
+}
+
+function assertTimestamp(value: string, field: string, deliveryId: string): number {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) throw new Error(`continuity eligibility coverage has an invalid ${field} timestamp for delivery '${deliveryId}'`);
+  return timestamp;
 }
 
 function buildInteractionTechnicalEvidence(
