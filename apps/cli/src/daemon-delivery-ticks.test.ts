@@ -448,9 +448,12 @@ describe("makeBriefingTick — day-rhythm morning briefing's PUSHED reconfirm qu
       schedule: slot?.kind === "schedule" ? [slot] : [],
       vetoes: slot?.kind === "veto" ? [slot] : []
     };
+    const memory = { facts: {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "u", userModel: model };
     return {
+      createFactIfAbsent: async () => ({ created: false, memory }),
+      createPreferenceIfAbsent: async () => ({ created: false, memory }),
       deleteByUserId: async () => false,
-      findByUserId: async () => ({ facts: {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "u", userModel: model }),
+      findByUserId: async () => memory,
       upsertFact: async () => ({ facts: {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "u" }),
       upsertPreference: async () => ({ facts: {}, preferences: {}, recentTopics: [], updatedAt: new Date(), userId: "u" })
     };
