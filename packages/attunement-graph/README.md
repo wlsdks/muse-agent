@@ -10,6 +10,13 @@ exact versioned provenance, and computes scope-safe snapshot deltas. It never re
 store. Traversal has independent hard caps for result assertions, considered adjacency
 assertions, visited references, and depth; truncation is explicit.
 
+The next planned layer is not arbitrary model-generated graph querying. It is a small,
+versioned set of deterministic personal-temporal operators such as explained change,
+resumption context, policy evidence, forget impact, and bounded decision counterfactuals.
+Each operator must return a content-addressed source path plus completeness, or abstain.
+AWG-030, the first explained-change operator, is currently blocked at its PLAN gate and is
+not exported or claimed as shipped.
+
 It does **not** own authoritative personal data, durable persistence, LLM extraction,
 runtime scheduling, policy promotion, approval, or action execution. Factual task
 interaction receipts are projected only as evidence/correlation, never as user outcomes.

@@ -54,7 +54,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-001** | Product signature and research contract | Canonical wow scenario, honest shipped/roadmap boundary, research-backed graph design, and docs cross-links | completed |
 | **AWG-010** | Reference graph kernel | `@muse/attunement-graph` domain types, invariants, append log, compact in-memory indexes, Activation Subgraph compiler, and conformance tests; no LLM or production DB | completed |
 | **AWG-020** | Exact Continuity projection | Rebuildable projection of thread, artifact links, delivery, outcome, policy version, and source provenance without duplicated authority | completed |
-| **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | pending |
+| **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | blocked |
 | **AWG-040** | Continuity Capsule v1 | User-invoked Capsule renders stopping point, changes, next step, prepared work, expected time, and source drawer | pending |
 | **AWG-050** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
@@ -110,6 +110,25 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
   or edit the memory work currently in progress on local `main`.
 - **Next eligible slice:** AWG-030 explained change query, after fresh source reconciliation
   and a flat exact-lookup baseline contract.
+
+## Blocked activation: AWG-030
+
+- **Classification at activation:** `missing`.
+- **Status:** `blocked` on 2026-07-29 before BUILD. Three fresh PLAN reviews made material
+  progress but exhausted the declared three-review hard cap without a PASS. No AWG-030
+  runtime source was changed.
+- **Resolved in the contract:** caller-declared versioned boundary rather than a false
+  “proven stop”; strict `(boundary, current]` temporal classification; immutable I/O-free
+  projections; bounded source parsing, projection, diff, traversal, and result work;
+  canonical bipartite revision components; deterministic shortest explanation paths; and
+  executable flat/vector/graph qualification.
+- **Last correction after the gate closed:** raw-delta overflow is a typed pre-result
+  budget error, because component-based `candidateCount` does not exist before pairing.
+  It must not fabricate a global abstention count or digest.
+- **Reactivation condition:** a new controller context must reconcile current source,
+  reconstruct this exact contract in a fresh handoff, and obtain an independent PLAN PASS
+  before opening BUILD. Do not duplicate Core100 Continuity UI/store work or treat this
+  blocked design as shipped behavior.
 
 ## Architecture gates
 

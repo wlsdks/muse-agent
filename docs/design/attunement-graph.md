@@ -73,7 +73,8 @@ Open-source source snapshot:
 
 - Graphiti `00b0130bab4544574deb4ea8b1d30ceb82de9c5c` (Apache-2.0);
 - Mem0 `b357a5a1b03c299ec8229c268e63cfac0f7c6566` (Apache-2.0);
-- LadybugDB `a10cecbc76e05f993af6c6f4a57edbbf438bb376` (MIT).
+- LadybugDB `a10cecbc76e05f993af6c6f4a57edbbf438bb376` (MIT);
+- TGMS `6c2d69b084e57abc27ef890e48e21978aea69d2d` (Apache-2.0).
 
 | Reference | Useful mechanism | What Muse should not copy blindly |
 |---|---|---|
@@ -81,6 +82,9 @@ Open-source source snapshot:
 | [Zep / Graphiti paper](https://arxiv.org/html/2501.13956v1) | Episode → entity/fact → community tiers; source lineage; bi-temporal validity; hybrid semantic, keyword, and traversal retrieval | The paper is vendor-authored, some benchmark gains are marginal or category-dependent, and LLM contradiction resolution cannot become Muse's authority. |
 | [Graphiti OSS](https://github.com/getzep/graphiti) | Incremental temporal context graph and a graph-driver interface | Provider-specific queries still leak into domain objects; extraction relies heavily on structured LLM output; current Kùzu support is deprecated. |
 | [Independent 2026 LTM comparison](https://arxiv.org/html/2601.07978) | Reproducible cost, resource, retrieval, and accuracy accounting across vector/graph/hybrid systems | Its LoCoMo/cloud-edge setup is not Muse dogfood. It nevertheless falsifies “graph is automatically better”: Graphiti under-retrieved in that setup. |
+| [TGMS v2](https://arxiv.org/abs/2607.10265) and [OSS](https://github.com/zxf-work/tgms) | A small typed temporal-operator surface, bi-temporal snapshots, cost guards, content-addressed traces, and explicit completeness taint | It is a very new single-author preprint with a co-designed workload; its baseline and performance numbers are not Muse evidence. Muse should adopt the bounded operator discipline, not its claims. |
+| [LongMemEval-V2](https://arxiv.org/abs/2605.12493) | Environment experience needs dynamic-state, workflow, gotcha, and premise memory; file/sandbox evidence gathering can beat conventional RAG | It is a work-in-progress benchmark, and its strongest coding-agent method has high latency. It supports keeping exact source artifacts available, not routing every turn through an expensive agent search. |
+| [MOSAIC](https://arxiv.org/abs/2607.16211) | Typed relational memory, save-time neighbor conflict checks, and cheap candidate routing instead of an LLM classifier on every lookup | Its reported benchmark gains are preprint evidence, not a production guarantee. Automatic updates/deletions also conflict with Muse's source authority unless represented as reversible hypotheses. |
 | [Mem0 OSS v2→v3 migration](https://github.com/mem0ai/mem0/blob/main/docs/migration/oss-v2-to-v3.mdx) | Multi-signal retrieval and simpler built-in entity linking | Mem0 removed roughly 4,000 lines of external graph-store paths. Backend breadth can become maintenance weight without product proof. |
 | [LadybugDB](https://github.com/LadybugDB/ladybug) | Embedded/serverless property graph, Node binding, full-text/vector indexes, WAL, ACID transactions, and no required daemon | It is a young community successor to Kùzu, which was archived in October 2025. It is a bake-off candidate, not an architectural dependency. |
 | [W3C PROV-O](https://www.w3.org/TR/prov-o/) | Explicit generation, derivation, attribution, primary-source, revision, and invalidation relations | Muse should adopt the semantics it needs, not introduce RDF/OWL as a runtime requirement. |
@@ -130,6 +134,30 @@ This creates four agent-native advantages:
    of being flattened into confident prose.
 4. **Inspectable reasoning input:** traces can show the exact graph slice the agent saw
    without exposing the entire personal store.
+
+### Muse's special move: verified personal temporal operators
+
+The differentiator should not be “the model can query a graph.” Arbitrary graph querying
+pushes schema knowledge, cost control, and correctness back into the model. Muse should
+instead expose a small, versioned operator algebra whose results are deterministic,
+bounded, content-addressed, and source-resolvable:
+
+- `changesSince(exactBoundary, thread)` — distinguish world-valid changes from facts Muse
+  learned later, then return an exact explanation path or abstain;
+- `resumeContext(thread, now, tokenBudget)` — compile the smallest sufficient Activation
+  Subgraph for one Continuity Capsule;
+- `policyEvidence(scope, proposedDelta)` — show supporting, contrary, and missing evidence
+  without promoting a policy;
+- `forgetImpact(sourceRef)` — preview which projections and explanations would become
+  unavailable before an authorized source deletion;
+- `decisionCounterfactual(decisionRef)` — compare bounded `silent | digest | offer`
+  alternatives without claiming causal effects.
+
+The LLM chooses an operator and phrases a result. Muse performs identity, time arithmetic,
+path construction, completeness checks, and authority filtering in code. The returned
+trace says not only what was found, but whether the declared bounded evidence domain was
+fully enumerated. This is how the graph improves the agent itself: it turns a large,
+ambiguous memory-search problem into a few inspectable decision primitives.
 
 ### Two logical graph layers
 
@@ -333,6 +361,19 @@ graph server or a general-purpose query language. The reference profile should u
 The intended hot path is exact/time filtering plus one or two bounded hops. Community
 detection, arbitrary multi-hop exploration, and embeddings are opt-in tools for queries
 that prove they need them, not baseline overhead.
+
+The runtime should use three temperatures:
+
+1. **Cold truth:** tasks, notes, calendar, memory, and Attunement receipts remain in their
+   authoritative stores. The graph does not copy their personal text.
+2. **Warm thread projection:** only active or recently requested threads keep compact
+   assertion/time/adjacency indexes; inactive projections are rebuildable and evictable.
+3. **Hot Activation Subgraph:** one request receives a frozen, token-budgeted slice and its
+   completeness/provenance trace, then discards working candidates.
+
+This makes graph cost proportional to the user's active threads and the chosen operator,
+not to the size of their entire digital life. Lexical/vector indexes may nominate seeds,
+but never establish identity, time, truth, policy, or permission.
 
 An embedded third-party engine should replace only the storage adapter after it beats this
 profile. If the reference engine already satisfies the single-user product workload, that
