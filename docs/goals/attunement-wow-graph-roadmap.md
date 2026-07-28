@@ -192,8 +192,14 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
   uses the shared preparation seam once, and seals through the existing codec once.
   Preparation failures become observation-domain errors; unknown internal failures retain
   identity. This is pure manual capture, not source I/O, automatic observation, or storage.
-- **Next eligible slice:** AWG-035b2 receipt→current comparison bridge. AWG-040 remains
-  pending until that truth-preserving seam passes independently.
+- **AWG-035b2a prepared comparison core:** completed — the existing state-to-state query is
+  now a strict raw-input adapter over one internal prepared-observation comparison core.
+  Metadata-only scope/interval checks precede lazy previous projection, exact boundary
+  binding, and lazy current projection. Public exports, error identity and precedence,
+  complete result bytes/result IDs, work bounds, and benchmark evidence remain unchanged.
+  This is reusable truth-operator groundwork, not a public receipt comparison function.
+- **Next eligible slice:** AWG-035b2b public receipt→current comparison bridge. AWG-040
+  remains pending until that truth-preserving seam passes independently.
 
 ## Architecture gates
 

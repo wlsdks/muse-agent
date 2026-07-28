@@ -60,6 +60,8 @@ Muse can now also seal an exact projected stopping point as a bounded,
 content-addressed **Observation Receipt** without copying its personal source text.
 The same library subpath can purely capture one caller-supplied raw Continuity snapshot
 through the shared projector and return that receipt without source I/O or persistence.
+The existing state-to-state query now delegates to one reusable internal prepared-observation
+comparison core; a public receipt-to-current bridge is still pending.
 That receipt is caller-declared integrity input for the future Capsule—not proof of an
 external observation, automatic stop-point detection, persistence, or the Capsule itself.
 See the separate [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).

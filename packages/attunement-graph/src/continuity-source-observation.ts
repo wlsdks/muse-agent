@@ -22,7 +22,7 @@ interface SourceAccounting extends ContinuityDataInspection {
   readonly sourceRecords: number;
 }
 
-interface PreparedContinuitySourceObservation {
+export interface PreparedContinuitySourceObservation {
   readonly diagnostics: {
     readonly descriptorsInspected: number;
     readonly projectedAssertions: number;

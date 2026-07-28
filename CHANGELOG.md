@@ -8,6 +8,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Extracted the existing Continuity state-to-state change algorithm behind one internal
+  prepared-observation comparison core. The public query is now a strict raw adapter while
+  scope/interval validation, lazy projection order, boundary binding, bounded temporal/path
+  explanation, and deterministic result construction have one reusable owner. Public
+  exports, result/error bytes and IDs, error precedence, and benchmark evidence are
+  unchanged; the public receipt-to-current bridge remains pending.
+
 - Added pure `captureContinuityObservation` to the existing observation subpath and
   refactored raw Continuity preparation behind one internal, memoized parse/account/project
   seam shared with the explained-change query. Capture accepts one caller-supplied raw

@@ -1,7 +1,7 @@
 import type {
   ContinuityChangePathStep,
   ContinuityChangeTemporalBasis
-} from "./continuity-change-query.js";
+} from "./continuity-change-contracts.js";
 import type {
   ContinuityGraphProjection,
   ContinuityProjectionScope

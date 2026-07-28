@@ -1,6 +1,8 @@
 import { CONTINUITY_CHANGE_LIMITS } from "./continuity-change-semantics.js";
 import type { ContinuityProjectionScope } from "./continuity-projection.js";
 
+export { CONTINUITY_CHANGE_LIMITS };
+
 export type ContinuityChangeQueryErrorCode =
   | "INVALID_INPUT"
   | "SOURCE_BUDGET_EXCEEDED"
