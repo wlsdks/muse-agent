@@ -200,6 +200,10 @@ function repairStartsFromAbsence(snapshot: ResidentDaemonRepairSnapshot): boolea
       : false;
 }
 
+function hasVersionedBackupEligibleArtifact(snapshot: ResidentDaemonRepairSnapshot): boolean {
+  return snapshot.autostart.kind === "darwin" && snapshot.autostart.artifact.state === "valid";
+}
+
 export function buildResidentDaemonRepairPlan(input: {
   readonly env: NodeJS.ProcessEnv;
   readonly now: Date;
@@ -208,13 +212,14 @@ export function buildResidentDaemonRepairPlan(input: {
   const target = repairTarget(input.env, input.snapshot);
   const healthy = input.snapshot.health.status === "healthy";
   const missingArtifact = repairStartsFromAbsence(input.snapshot);
+  const backupEligibleArtifact = hasVersionedBackupEligibleArtifact(input.snapshot);
   const unsafeProcessTargets = input.snapshot.processes.some((process) =>
     process.role !== "resident" || !process.matchesLaunchdPid
   ) || input.snapshot.processes.filter((process) => process.role === "resident").length > 1;
   const disposition: RepairDisposition = target.platform === "unmanaged"
     || input.snapshot.desired.state === "invalid"
     || unsafeProcessTargets
-    || (!healthy && !missingArtifact)
+    || (!healthy && !missingArtifact && !backupEligibleArtifact)
     ? "blocked"
     : healthy
       ? "no-op"
@@ -228,12 +233,12 @@ export function buildResidentDaemonRepairPlan(input: {
           ...input.snapshot.health.reasonCodes,
           "daemon-repair-process-targets-require-manual-stop"
         ])]
-      : !healthy && !missingArtifact
+      : !healthy && !missingArtifact && !backupEligibleArtifact
         ? [...new Set([
             ...input.snapshot.health.reasonCodes,
             "daemon-repair-requires-versioned-backup"
           ])]
-    : healthy
+      : healthy
       ? []
       : [...input.snapshot.health.reasonCodes];
   const canonicalReasonCodes = [...new Set(reasonCodes)].sort();

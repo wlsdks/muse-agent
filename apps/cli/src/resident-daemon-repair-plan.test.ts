@@ -296,7 +296,7 @@ describe("resident daemon repair plan", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("blocks replacement of an existing artifact until Task021 provides versioned backup", () => {
+  it("repairs a valid existing artifact through Task021's versioned backup transaction", () => {
     const plan = buildResidentDaemonRepairPlan({
       env: { HOME: "/Users/owner" },
       now: NOW,
@@ -304,11 +304,10 @@ describe("resident daemon repair plan", () => {
     });
 
     expect(plan).toMatchObject({
-      disposition: "blocked",
-      reasonCodes: expect.arrayContaining(["daemon-repair-requires-versioned-backup"]),
-      steps: []
+      disposition: "repairable",
+      reasonCodes: expect.arrayContaining(["daemon-heartbeat-stale"]),
+      steps: [expect.objectContaining({ id: "reinstall-autostart", reversible: true })]
     });
-    expect(JSON.stringify(plan)).not.toMatch(/restore the previous|previous scheduled task/iu);
   });
 
   it("does not call a missing plist an absent service while launchd or a process still exists", () => {
