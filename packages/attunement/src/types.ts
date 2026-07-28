@@ -110,6 +110,8 @@ export interface PersonalThread {
 
 export interface ContinuityOutcomeRecord {
   readonly evidenceClass: ContinuityEvidenceClass;
+  /** Optional exact owner-authored context; never inferred from behavior or sentiment. */
+  readonly ownerNote?: string;
   readonly outcome: ContinuityOutcome;
   readonly policyVersion: number;
   readonly recordedAt: string;

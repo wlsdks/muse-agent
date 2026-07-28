@@ -12,5 +12,5 @@ export const CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST = [
   "muse.tasks.list", "muse.tasks.search", "muse.tasks.add", "muse.tasks.complete", "muse.tasks.update",
   "muse.calendar.providers", "muse.calendar.list", "muse.calendar.availability", "muse.calendar.conflicts", "muse.calendar.add", "muse.calendar.update",
   "muse.reminders.list", "muse.reminders.search", "muse.reminders.add", "muse.reminders.snooze",
-  "muse.continuity.thread.create", "muse.continuity.task.link", "muse.continuity.pack.open"
+  "muse.continuity.thread.create", "muse.continuity.task.link", "muse.continuity.pack.open", "muse.continuity.delivery.outcome"
 ] as const;

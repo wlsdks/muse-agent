@@ -53,6 +53,10 @@ export interface AttunementStoreOptions extends ContinuityEvidenceWriteOptions {
   readonly now?: () => Date;
 }
 
+export interface RecordContinuityOutcomeOptions extends AttunementStoreOptions {
+  readonly ownerNote?: string;
+}
+
 export interface CreateThreadInput {
   readonly kind: PersonalThreadKind;
   readonly title: string;
@@ -210,6 +214,14 @@ function isEvidenceClass(value: unknown): boolean {
   return isOneOf(value, CONTINUITY_EVIDENCE_CLASSES);
 }
 
+function isOwnerNote(value: unknown): value is string {
+  return typeof value === "string"
+    && value.length > 0
+    && value === value.trim()
+    && Array.from(value).length <= 500
+    && !/[\u0000-\u001F\u007F]/u.test(value);
+}
+
 function isDelivery(value: unknown, requireEvidenceClass = false, schemaVersion = 11): value is ContinuityDelivery {
   if (!isRecord(value)
     || !Array.isArray(value.evidenceRefs)
@@ -227,6 +239,7 @@ function isDelivery(value: unknown, requireEvidenceClass = false, schemaVersion 
   return isRecord(value.outcome)
     && isOneOf(value.outcome.outcome, OUTCOMES)
     && (requireEvidenceClass ? isEvidenceClass(value.outcome.evidenceClass) : value.outcome.evidenceClass === undefined || isEvidenceClass(value.outcome.evidenceClass))
+    && (value.outcome.ownerNote === undefined || isOwnerNote(value.outcome.ownerNote))
     && isSafeVersion(value.outcome.policyVersion)
     && isNonEmptyString(value.outcome.recordedAt);
 }
@@ -743,9 +756,14 @@ export async function recordContinuityOutcome(
   deliveryId: string,
   outcome: ContinuityOutcome,
   activePolicyWriteGate: ActiveAttunementPolicyWriteGate,
-  options: AttunementStoreOptions = {}
+  options: RecordContinuityOutcomeOptions = {}
 ): Promise<{ readonly applied: boolean; readonly delivery: ContinuityDelivery; readonly policy: PersonalThread["policy"] }> {
   if (!OUTCOMES.includes(outcome)) throw new AttunementStoreError("outcome must be used, adjusted, ignored, or rejected");
+  if (options.ownerNote !== undefined && !isOwnerNote(options.ownerNote)) {
+    throw new AttunementStoreError(
+      "owner note must be 1-500 characters with no surrounding whitespace or control characters"
+    );
+  }
   return runActiveAttunementPolicyMutation(activePolicyWriteGate, () =>
     mutate<{ readonly applied: boolean; readonly delivery: ContinuityDelivery; readonly policy: PersonalThread["policy"] }>(file, (state) => {
       const deliveryIndex = state.deliveries.findIndex((candidate) => candidate.id === deliveryId);
@@ -756,6 +774,9 @@ export async function recordContinuityOutcome(
         if (delivery.outcome.outcome !== outcome) {
           throw new AttunementStoreError(`delivery '${deliveryId}' already recorded outcome '${delivery.outcome.outcome}'; outcomes cannot be overwritten`);
         }
+        if (delivery.outcome.ownerNote !== options.ownerNote) {
+          throw new AttunementStoreError(`delivery '${deliveryId}' owner note cannot be added, removed, or overwritten`);
+        }
         return { changed: false, result: { applied: false, delivery, policy: thread.policy }, state };
       }
       const version = state.nextPolicyVersion;
@@ -764,6 +785,7 @@ export async function recordContinuityOutcome(
         ...delivery,
         outcome: {
           evidenceClass: resolveContinuityEvidenceClass(options),
+          ...(options.ownerNote ? { ownerNote: options.ownerNote } : {}),
           outcome,
           policyVersion: version,
           recordedAt: nowIso(options)
@@ -787,7 +809,7 @@ export function recordProductionAuthorizedContinuityOutcome(
   deliveryId: string,
   outcome: ContinuityOutcome,
   activePolicyWriteGate: ActiveAttunementPolicyWriteGate,
-  options: Omit<AttunementStoreOptions, "evidenceAuthority" | "evidenceClass"> = {}
+  options: Omit<RecordContinuityOutcomeOptions, "evidenceAuthority" | "evidenceClass"> = {}
 ): ReturnType<typeof recordContinuityOutcome> {
   return recordContinuityOutcome(file, deliveryId, outcome, activePolicyWriteGate, {
     ...options,

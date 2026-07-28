@@ -20,7 +20,8 @@ import {
 } from "@muse/attunement";
 import {
   openProductionAuthorizedContinuityPack,
-  prepareProductionAuthorizedContinuityTaskCompletionInteraction
+  prepareProductionAuthorizedContinuityTaskCompletionInteraction,
+  recordProductionAuthorizedContinuityOutcome
 } from "@muse/attunement/host";
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { createCalendarMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createHistoryMcpServer, createMathMcpServer, createMessagingMcpServer, createNotesMcpServer, createNotesRegistryMcpServer, createPatternsMcpServer, createProactiveMcpServer, createRemindersMcpServer, createStatusMcpServer, createTasksMcpServer, createTasksRegistryMcpServer, createSearchMcpServer, createWebReadMcpServer, type MessageApprovalGate } from "@muse/domain-tools";
@@ -38,6 +39,8 @@ import {
   createContinuityPackPreviewTool,
   type ContinuityPackToolDeps
 } from "./continuity-pack-tools.js";
+import { createContinuityOutcomeTool } from "./continuity-outcome-tool.js";
+import { createQualificationLearningWriteGate } from "./qualification-learning-active-skill-write-gate.js";
 import { resolveWeaknessesFile } from "./provider-paths.js";
 import type { MuseEnvironment } from "./index.js";
 
@@ -142,9 +145,20 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
             resolveExactArtifact
           )
         };
+        const policyWriteGate = createQualificationLearningWriteGate(env);
         return [
           createContinuityPackPreviewTool(packDeps),
-          createContinuityPackOpenTool(packDeps)
+          createContinuityPackOpenTool(packDeps),
+          createContinuityOutcomeTool({
+            recordOutcome: (deliveryId, outcome, ownerNote) =>
+              recordProductionAuthorizedContinuityOutcome(
+                deps.attunementFile!,
+                deliveryId,
+                outcome,
+                policyWriteGate,
+                ownerNote ? { ownerNote } : {}
+              )
+          })
         ];
       })()
     : [];
