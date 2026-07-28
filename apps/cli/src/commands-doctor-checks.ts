@@ -796,6 +796,8 @@ export async function readSensitiveFileModes(
 export type SensitivePermissionRepairState = "already-owner-only" | "missing" | "repairable" | "rejected";
 
 export interface SensitivePermissionRepairItem extends SensitiveFileTarget {
+  readonly observedDev?: number;
+  readonly observedIno?: number;
   readonly observedMode?: number;
   readonly state: SensitivePermissionRepairState;
   readonly reason?: string;
@@ -805,6 +807,13 @@ export interface SensitivePermissionRepairPlan {
   readonly items: readonly SensitivePermissionRepairItem[];
   readonly planHash?: string;
   readonly root: string;
+  readonly rootIdentity?: SensitivePermissionRepairRootIdentity;
+}
+
+export interface SensitivePermissionRepairRootIdentity {
+  readonly dev: number;
+  readonly ino: number;
+  readonly realpath: string;
 }
 
 interface SensitivePermissionRepairStat {
@@ -817,6 +826,7 @@ interface SensitivePermissionRepairStat {
 
 export interface SensitivePermissionRepairFs {
   lstat(path: string): Promise<SensitivePermissionRepairStat>;
+  realpath(path: string): Promise<string>;
 }
 
 interface SensitivePermissionRepairHandle {
@@ -871,10 +881,14 @@ export interface SensitiveDirectoryInventoryFs {
   realpath(path: string): Promise<string>;
 }
 
-const DEFAULT_PERMISSION_REPAIR_FS: SensitivePermissionRepairFs = { lstat: (path) => fs.lstat(path) };
+const DEFAULT_PERMISSION_REPAIR_FS: SensitivePermissionRepairFs = {
+  lstat: (path) => fs.lstat(path),
+  realpath: (path) => fs.realpath(path)
+};
 const DEFAULT_PERMISSION_REPAIR_APPLY_FS: SensitivePermissionRepairApplyFs = {
   lstat: (path) => fs.lstat(path),
-  open: (path, flags) => fs.open(path, flags)
+  open: (path, flags) => fs.open(path, flags),
+  realpath: (path) => fs.realpath(path)
 };
 const DEFAULT_DIRECTORY_INVENTORY_FS: SensitiveDirectoryInventoryFs = {
   lstat: (path) => fs.lstat(path),
@@ -1083,6 +1097,33 @@ function sameFileIdentity(
   return handleStat.dev === pathStat.dev && handleStat.ino === pathStat.ino;
 }
 
+function matchesPlannedIdentity(
+  stat: SensitivePermissionRepairStat,
+  planned: { readonly dev?: number; readonly ino?: number }
+): boolean {
+  return typeof stat.dev === "number"
+    && typeof stat.ino === "number"
+    && typeof planned.dev === "number"
+    && typeof planned.ino === "number"
+    && stat.dev === planned.dev
+    && stat.ino === planned.ino;
+}
+
+async function rootMatchesPlan(
+  plan: SensitivePermissionRepairPlan,
+  fileSystem: SensitivePermissionRepairFs
+): Promise<boolean> {
+  if (!plan.rootIdentity) return false;
+  try {
+    const stat = await fileSystem.lstat(plan.root);
+    if (stat.isSymbolicLink() || !matchesPlannedIdentity(stat, plan.rootIdentity)) return false;
+    const physical = resolve(await fileSystem.realpath(plan.root));
+    return physical === plan.rootIdentity.realpath;
+  } catch {
+    return false;
+  }
+}
+
 async function revalidateOpenedPermissionTarget(
   root: string,
   item: SensitivePermissionRepairItem,
@@ -1095,6 +1136,7 @@ async function revalidateOpenedPermissionTarget(
     handleStat.isSymbolicLink()
     || !handleStat.isFile()
     || currentMode !== item.observedMode
+    || !matchesPlannedIdentity(handleStat, { dev: item.observedDev, ino: item.observedIno })
     || await inspectOwnedAncestorChain(root, item.path, fileSystem) !== "safe"
   ) {
     return false;
@@ -1105,6 +1147,7 @@ async function revalidateOpenedPermissionTarget(
       && pathStat.isFile()
       && (pathStat.mode & 0o777) === currentMode
       && sameFileIdentity(handleStat, pathStat)
+      && matchesPlannedIdentity(pathStat, { dev: item.observedDev, ino: item.observedIno })
       && await inspectOwnedAncestorChain(root, item.path, fileSystem) === "safe";
   } catch {
     return false;
@@ -1123,7 +1166,31 @@ export async function planSensitivePermissionRepair(
   fileSystem: SensitivePermissionRepairFs = DEFAULT_PERMISSION_REPAIR_FS
 ): Promise<SensitivePermissionRepairPlan> {
   const items: SensitivePermissionRepairItem[] = [];
+  const resolvedRoot = resolve(root);
+  let rootIdentity: SensitivePermissionRepairRootIdentity | undefined;
+  let rootRejection: string | undefined;
+  try {
+    const rootStat = await fileSystem.lstat(resolvedRoot);
+    const rootRealpath = resolve(await fileSystem.realpath(resolvedRoot));
+    if (rootStat.isSymbolicLink()) {
+      rootRejection = "owned Muse root is a symbolic link";
+    } else if (
+      typeof rootStat.dev !== "number"
+      || typeof rootStat.ino !== "number"
+      || rootRealpath !== resolvedRoot
+    ) {
+      rootRejection = "owned Muse root identity or physical path is unsafe";
+    } else {
+      rootIdentity = { dev: rootStat.dev, ino: rootStat.ino, realpath: rootRealpath };
+    }
+  } catch {
+    rootRejection = "owned Muse root identity could not be inspected";
+  }
   for (const target of targets) {
+    if (rootRejection) {
+      items.push({ ...target, reason: rootRejection, state: "rejected" });
+      continue;
+    }
     const ancestorState = await inspectOwnedAncestorChain(root, target.path, fileSystem);
     if (
       ancestorState === "nested-target"
@@ -1152,16 +1219,18 @@ export async function planSensitivePermissionRepair(
         items.push({ ...target, observedMode, reason: "symbolic links are never repaired", state: "rejected" });
       } else if (!stat.isFile()) {
         items.push({ ...target, observedMode, reason: "target is not a regular file", state: "rejected" });
+      } else if (typeof stat.dev !== "number" || typeof stat.ino !== "number") {
+        items.push({ ...target, observedMode, reason: "target identity is unavailable", state: "rejected" });
       } else if ((observedMode & 0o077) !== 0) {
-        items.push({ ...target, observedMode, state: "repairable" });
+        items.push({ ...target, observedDev: stat.dev, observedIno: stat.ino, observedMode, state: "repairable" });
       } else {
-        items.push({ ...target, observedMode, state: "already-owner-only" });
+        items.push({ ...target, observedDev: stat.dev, observedIno: stat.ino, observedMode, state: "already-owner-only" });
       }
     } catch {
       items.push({ ...target, state: "missing" });
     }
   }
-  const plan = { items, root: resolve(root) };
+  const plan = { items, root: resolvedRoot, ...(rootIdentity ? { rootIdentity } : {}) };
   return { ...plan, planHash: hashSensitivePermissionRepairPlan(plan) };
 }
 
@@ -1171,17 +1240,20 @@ export async function planSensitivePermissionRepair(
  * still binding every field that can affect the preview or apply decision.
  */
 export function hashSensitivePermissionRepairPlan(
-  plan: Pick<SensitivePermissionRepairPlan, "items" | "root">
+  plan: Pick<SensitivePermissionRepairPlan, "items" | "root" | "rootIdentity">
 ): string {
   return sha256Hex(JSON.stringify({
     items: plan.items.map((item) => ({
       label: item.label,
+      observedDev: item.observedDev ?? null,
+      observedIno: item.observedIno ?? null,
       observedMode: item.observedMode ?? null,
       path: resolve(item.path),
       reason: item.reason ?? null,
       state: item.state
     })),
     root: resolve(plan.root),
+    rootIdentity: plan.rootIdentity ?? null,
     version: 1
   }));
 }
@@ -1199,6 +1271,9 @@ export async function applySensitivePermissionRepair(
 ): Promise<SensitivePermissionRepairReceipt> {
   const planHash = hashSensitivePermissionRepairPlan(plan);
   const repairable = plan.items.filter((item) => item.state === "repairable");
+  if (!await rootMatchesPlan(plan, fileSystem)) {
+    return { applied: [], changes: [], planHash, rejected: "plan root identity is missing or changed" };
+  }
   if (plan.items.some((item) => item.state === "rejected")) {
     return { applied: [], changes: [], planHash, rejected: "plan contains a rejected target" };
   }
@@ -1209,6 +1284,9 @@ export async function applySensitivePermissionRepair(
   try {
     receipt = await (async (): Promise<SensitivePermissionRepairReceipt> => {
       for (const item of repairable) {
+        if (!await rootMatchesPlan(plan, fileSystem)) {
+          return { applied: [], changes: [], planHash, rejected: "plan root identity changed before open" };
+        }
         const ancestorState = await inspectOwnedAncestorChain(plan.root, item.path, fileSystem);
         if (ancestorState !== "safe") {
           return {
@@ -1220,13 +1298,19 @@ export async function applySensitivePermissionRepair(
         }
         const handle = await fileSystem.open(item.path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
         handles.push({ handle, item });
-        if (!await revalidateOpenedPermissionTarget(plan.root, item, handle, fileSystem)) {
+        if (
+          !await rootMatchesPlan(plan, fileSystem)
+          || !await revalidateOpenedPermissionTarget(plan.root, item, handle, fileSystem)
+        ) {
           return { applied: [], changes: [], planHash, rejected: `target changed or is unsafe: ${item.label}` };
         }
       }
 
       for (const { handle, item } of handles) {
-        if (!await revalidateOpenedPermissionTarget(plan.root, item, handle, fileSystem)) {
+        if (
+          !await rootMatchesPlan(plan, fileSystem)
+          || !await revalidateOpenedPermissionTarget(plan.root, item, handle, fileSystem)
+        ) {
           return {
             applied: [],
             changes: [],

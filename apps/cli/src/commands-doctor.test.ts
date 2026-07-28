@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -705,7 +705,7 @@ describe("resident daemon truth", () => {
   });
 
   it("refuses the entire public permission repair when the preview contains a rejected target", async () => {
-    const homeDir = mkdtempSync(join(tmpdir(), "muse-doctor-permission-repair-"));
+    const homeDir = realpathSync(mkdtempSync(join(tmpdir(), "muse-doctor-permission-repair-")));
     const museHome = join(homeDir, ".muse");
     const outsideActionLog = join(homeDir, "outside-action-log.json");
     const userMemoryFile = join(museHome, "user-memory.json");

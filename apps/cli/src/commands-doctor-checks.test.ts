@@ -312,6 +312,19 @@ describe("volatileMountCheck", () => {
 });
 
 describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
+  const rootIdentity = { dev: 1, ino: 1, realpath: "/muse" };
+  const repairItem = (
+    label: string,
+    ino = 2
+  ) => ({
+    label,
+    observedDev: 1,
+    observedIno: ino,
+    observedMode: 0o644,
+    path: `/muse/${label}`,
+    state: "repairable" as const
+  });
+
   it("inventories only exact notes/checkpoints directories at expected 0700 without mutation", async () => {
     const lstat = vi.fn(async (path: string) => ({
       isDirectory: () => true,
@@ -472,15 +485,17 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
   it("revalidates no-follow handles before applying a plan and never touches a rejected target", async () => {
     const plan = {
       items: [
-        { label: "repair.json", observedMode: 0o644, path: "/muse/repair.json", state: "repairable" as const },
+        repairItem("repair.json"),
         { label: "outside.json", path: "/elsewhere/outside.json", reason: "outside", state: "rejected" as const }
       ],
-      root: "/muse"
+      root: "/muse",
+      rootIdentity
     };
     const chmod = vi.fn(async () => undefined);
     const result = await applySensitivePermissionRepair(plan, {
-      lstat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }),
-      open: async () => ({ chmod, close: async () => undefined, stat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }) })
+      lstat: async (path) => ({ dev: 1, ino: path === "/muse" ? 1 : 2, isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }),
+      open: async () => ({ chmod, close: async () => undefined, stat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }) }),
+      realpath: async (path) => path
     });
     expect(result).toEqual(expect.objectContaining({
       applied: [],
@@ -502,10 +517,13 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
         [{ label: "secret.json", path: targetPath }],
         {
           lstat: async (path) => ({
+            dev: 1,
+            ino: path === "/muse" ? 1 : 2,
             isFile: () => path.endsWith("secret.json"),
             isSymbolicLink: () => path === symlinkPath,
             mode: path === symlinkPath ? 0o120777 : 0o100644
-          })
+          }),
+          realpath: async (path) => path
         }
       );
       expect(plan.items).toEqual([
@@ -514,23 +532,27 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
 
       const open = vi.fn();
       const receipt = await applySensitivePermissionRepair({
-        items: [{ label: "secret.json", observedMode: 0o644, path: targetPath, state: "repairable" }],
-        root: "/muse"
+        items: [{ ...repairItem("secret.json"), path: targetPath }],
+        root: "/muse",
+        rootIdentity
       }, {
         lstat: async (path) => ({
+          dev: 1,
+          ino: path === "/muse" ? 1 : 2,
           isFile: () => path.endsWith("secret.json"),
           isSymbolicLink: () => path === symlinkPath,
           mode: path === symlinkPath ? 0o120777 : 0o100644
         }),
-        open
+        open,
+        realpath: async (path) => path
       });
       expect(receipt).toEqual({
         applied: [],
         changes: [],
         planHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
-        rejected: `target ancestor changed or is unsafe (${targetPath.includes("/linked/")
-          ? "nested-target"
-          : "symlink-ancestor"}): secret.json`
+        rejected: targetPath.includes("/linked/")
+          ? "target ancestor changed or is unsafe (nested-target): secret.json"
+          : "plan root identity is missing or changed"
       });
       expect(open).not.toHaveBeenCalled();
     }
@@ -542,11 +564,13 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
       mode = 0o100000 | nextMode;
     });
     const result = await applySensitivePermissionRepair({
-      items: [{ label: "repair.json", observedMode: 0o644, path: "/muse/repair.json", state: "repairable" }],
-      root: "/muse"
+      items: [repairItem("repair.json")],
+      root: "/muse",
+      rootIdentity
     }, {
-      lstat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode }),
-      open: async () => ({ chmod, close: async () => undefined, stat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode }) })
+      lstat: async (path) => ({ dev: 1, ino: path === "/muse" ? 1 : 2, isFile: () => true, isSymbolicLink: () => false, mode }),
+      open: async () => ({ chmod, close: async () => undefined, stat: async () => ({ dev: 1, ino: 2, isFile: () => true, isSymbolicLink: () => false, mode }) }),
+      realpath: async (path) => path
     });
     expect(result).toEqual({
       applied: ["/muse/repair.json"],
@@ -568,12 +592,15 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
     ]);
     const result = await applySensitivePermissionRepair({
       items: [
-        { label: "a.json", observedMode: 0o644, path: "/muse/a.json", state: "repairable" },
-        { label: "b.json", observedMode: 0o644, path: "/muse/b.json", state: "repairable" }
+        repairItem("a.json", 2),
+        repairItem("b.json", 3)
       ],
-      root: "/muse"
+      root: "/muse",
+      rootIdentity
     }, {
       lstat: async (path) => ({
+        dev: 1,
+        ino: path === "/muse" ? 1 : path.endsWith("/a.json") ? 2 : 3,
         isFile: () => path !== "/muse",
         isSymbolicLink: () => false,
         mode: modes.get(path) ?? 0o40700
@@ -585,11 +612,14 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
         },
         close: async () => undefined,
         stat: async () => ({
+          dev: 1,
+          ino: path.endsWith("/a.json") ? 2 : 3,
           isFile: () => true,
           isSymbolicLink: () => false,
           mode: modes.get(path)!
         })
-      })
+      }),
+      realpath: async (path) => path
     });
 
     expect(result).toEqual({
@@ -610,18 +640,20 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
   it("records an unverified change instead of losing the receipt when post-chmod stat fails", async () => {
     let chmodCompleted = false;
     const result = await applySensitivePermissionRepair({
-      items: [{ label: "repair.json", observedMode: 0o644, path: "/muse/repair.json", state: "repairable" }],
-      root: "/muse"
+      items: [repairItem("repair.json")],
+      root: "/muse",
+      rootIdentity
     }, {
-      lstat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }),
+      lstat: async (path) => ({ dev: 1, ino: path === "/muse" ? 1 : 2, isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }),
       open: async () => ({
         chmod: async () => { chmodCompleted = true; },
         close: async () => undefined,
         stat: async () => {
           if (chmodCompleted) throw new Error("injected stat failure");
-          return { isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 };
+          return { dev: 1, ino: 2, isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 };
         }
-      })
+      }),
+      realpath: async (path) => path
     });
 
     expect(result).toEqual({
@@ -639,15 +671,17 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
   it("preserves a verified receipt and reports descriptor cleanup failure", async () => {
     let mode = 0o100644;
     const result = await applySensitivePermissionRepair({
-      items: [{ label: "repair.json", observedMode: 0o644, path: "/muse/repair.json", state: "repairable" }],
-      root: "/muse"
+      items: [repairItem("repair.json")],
+      root: "/muse",
+      rootIdentity
     }, {
-      lstat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode }),
+      lstat: async (path) => ({ dev: 1, ino: path === "/muse" ? 1 : 2, isFile: () => true, isSymbolicLink: () => false, mode }),
       open: async () => ({
         chmod: async (nextMode) => { mode = 0o100000 | nextMode; },
         close: async () => { throw new Error("injected close failure"); },
-        stat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode })
-      })
+        stat: async () => ({ dev: 1, ino: 2, isFile: () => true, isSymbolicLink: () => false, mode })
+      }),
+      realpath: async (path) => path
     });
 
     expect(result).toEqual({
@@ -668,8 +702,9 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
     const chmod = vi.fn(async () => undefined);
     const close = vi.fn(async () => undefined);
     const result = await applySensitivePermissionRepair({
-      items: [{ label: "repair.json", observedMode: 0o644, path: "/muse/repair.json", state: "repairable" }],
-      root: "/muse"
+      items: [repairItem("repair.json")],
+      root: "/muse",
+      rootIdentity
     }, {
       lstat: async (path) => ({
         dev: 1,
@@ -691,7 +726,8 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
             mode: 0o100644
           })
         };
-      }
+      },
+      realpath: async (path) => path
     });
     expect(result).toEqual({
       applied: [],
@@ -716,9 +752,16 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
       {
         lstat: async (path) => {
           if (path.endsWith("missing.json")) throw new Error("ENOENT");
-          if (path.endsWith("link.json")) return { isFile: () => false, isSymbolicLink: () => true, mode: 0o120777 };
-          return { isFile: () => true, isSymbolicLink: () => false, mode: path.endsWith("loose.json") ? 0o100644 : 0o100600 };
-        }
+          if (path.endsWith("link.json")) return { dev: 1, ino: 5, isFile: () => false, isSymbolicLink: () => true, mode: 0o120777 };
+          return {
+            dev: 1,
+            ino: path === "/muse" ? 1 : path.endsWith("loose.json") ? 2 : 3,
+            isFile: () => true,
+            isSymbolicLink: () => false,
+            mode: path.endsWith("loose.json") ? 0o100644 : 0o100600
+          };
+        },
+        realpath: async (path) => path
       }
     );
 
@@ -738,6 +781,104 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
         ? { ...item, observedMode: 0o600 }
         : item)
     })).not.toBe(plan.planHash);
+    expect(hashSensitivePermissionRepairPlan({
+      ...plan,
+      items: plan.items.map((item, index) => index === 0
+        ? { ...item, observedIno: (item.observedIno ?? 0) + 1 }
+        : item)
+    })).not.toBe(plan.planHash);
+  });
+
+  it("rejects a Muse root reached through a symlinked parent before planning repair", async () => {
+    const plan = await planSensitivePermissionRepair(
+      "/alias-home/.muse",
+      [{ label: "secret.json", path: "/alias-home/.muse/secret.json" }],
+      {
+        lstat: async (path) => ({
+          dev: 1,
+          ino: path.endsWith("/.muse") ? 1 : 2,
+          isFile: () => path.endsWith(".json"),
+          isSymbolicLink: () => false,
+          mode: path.endsWith(".json") ? 0o100644 : 0o40700
+        }),
+        realpath: async (path) => path === "/alias-home/.muse" ? "/physical-home/.muse" : path
+      }
+    );
+
+    expect(plan.items).toEqual([
+      expect.objectContaining({
+        reason: expect.stringContaining("physical path"),
+        state: "rejected"
+      })
+    ]);
+  });
+
+  it("rejects same-mode file and root identity swaps before chmod", async () => {
+    const fileChmod = vi.fn(async () => undefined);
+    const swappedFile = await applySensitivePermissionRepair({
+      items: [repairItem("repair.json")],
+      root: "/muse",
+      rootIdentity
+    }, {
+      lstat: async (path) => ({
+        dev: 1,
+        ino: path === "/muse" ? 1 : 99,
+        isFile: () => path !== "/muse",
+        isSymbolicLink: () => false,
+        mode: path === "/muse" ? 0o40700 : 0o100644
+      }),
+      open: async () => ({
+        chmod: fileChmod,
+        close: async () => undefined,
+        stat: async () => ({
+          dev: 1,
+          ino: 99,
+          isFile: () => true,
+          isSymbolicLink: () => false,
+          mode: 0o100644
+        })
+      }),
+      realpath: async (path) => path
+    });
+    expect(swappedFile).toEqual(expect.objectContaining({
+      applied: [],
+      rejected: "target changed or is unsafe: repair.json"
+    }));
+    expect(fileChmod).not.toHaveBeenCalled();
+
+    const rootChmod = vi.fn(async () => undefined);
+    const open = vi.fn(async () => ({
+      chmod: rootChmod,
+      close: async () => undefined,
+      stat: async () => ({
+        dev: 1,
+        ino: 2,
+        isFile: () => true,
+        isSymbolicLink: () => false,
+        mode: 0o100644
+      })
+    }));
+    const swappedRoot = await applySensitivePermissionRepair({
+      items: [repairItem("repair.json")],
+      root: "/muse",
+      rootIdentity
+    }, {
+      lstat: async (path) => ({
+        dev: 1,
+        ino: path === "/muse" ? 77 : 2,
+        isFile: () => path !== "/muse",
+        isSymbolicLink: () => false,
+        mode: path === "/muse" ? 0o40700 : 0o100644
+      }),
+      open,
+      realpath: async (path) => path
+    });
+    expect(swappedRoot).toEqual(expect.objectContaining({
+      applied: [],
+      rejected: "plan root identity is missing or changed"
+    }));
+    expect(open).not.toHaveBeenCalled();
+    expect(rootChmod).not.toHaveBeenCalled();
   });
 
   it("flags a file drifted to 644 (world/group-readable)", async () => {
