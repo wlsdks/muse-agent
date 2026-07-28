@@ -22,21 +22,27 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 const SURFACE_ORDER = ["tool", "cli", "api", "mcp"];
+const EXPLICIT_SURFACE_AUTHORITY = new Map([
+  ["cli\u0000email send", "external-send"]
+]);
 
 /** @typedef {"read" | "local-write" | "process" | "network" | "external-send" | "unmapped"} AuthorityClass */
 /** @typedef {{ readonly surface: "tool" | "cli" | "api" | "mcp"; readonly name: string; readonly authorityClass: AuthorityClass }} PermissionGapRow */
 
 /**
- * The one existing taxonomy applies only to the advertised actuator tools.
- * Other public surfaces are intentionally reported as `unmapped` until a
- * future task assigns an exact authority class.
+ * Reuse only exact, reviewed classifications: the advertised actuator matrix
+ * plus individually closed public-surface tuples. Every other surface remains
+ * `unmapped`; names, route shapes, and coarse risk labels are never heuristics.
  *
  * @param {"tool" | "cli" | "api" | "mcp"} surface
  * @param {string} name
  * @returns {AuthorityClass}
  */
 export function classifyPermissionGapAuthority(surface, name) {
-  return surface === "tool" ? (classifyActuatorPermission(name) ?? "unmapped") : "unmapped";
+  if (surface === "tool") {
+    return classifyActuatorPermission(name) ?? "unmapped";
+  }
+  return EXPLICIT_SURFACE_AUTHORITY.get(`${surface}\u0000${name}`) ?? "unmapped";
 }
 
 /** @param {readonly PermissionGapRow[]} rows */
@@ -113,11 +119,11 @@ export async function createPermissionGapReport(options = {}) {
       surface: "cli"
     })),
     ...COMMAND_STUBS.flatMap((command) => [{
-      authorityClass: "unmapped",
+      authorityClass: classifyPermissionGapAuthority("cli", command.name),
       name: command.name,
       surface: "cli"
     }, ...command.subcommands.map((subcommand) => ({
-      authorityClass: "unmapped",
+      authorityClass: classifyPermissionGapAuthority("cli", `${command.name} ${subcommand}`),
       name: `${command.name} ${subcommand}`,
       surface: "cli"
     }))]),

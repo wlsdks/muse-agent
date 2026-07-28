@@ -61,7 +61,12 @@ test("permission gap report covers each public surface deterministically without
     const seen = new Set();
     for (const row of first.rows) {
       assert.ok(["read", "local-write", "process", "network", "external-send", "unmapped"].includes(row.authorityClass));
-      assert.ok(row.authorityClass === "unmapped" || row.surface === "tool", "only existing actuator classifications may be reused");
+      assert.ok(
+        row.authorityClass === "unmapped"
+          || row.surface === "tool"
+          || (row.surface === "cli" && row.name === "email send" && row.authorityClass === "external-send"),
+        "only existing actuator classifications and the exact email-send closure may be mapped"
+      );
       const key = `${row.surface}\u0000${row.name}`;
       assert.ok(!seen.has(key), `duplicate report row: ${key}`);
       seen.add(key);
@@ -81,10 +86,16 @@ test("permission gap report covers each public surface deterministically without
     for (const [name, authorityClass] of Object.entries(ACTUATOR_PERMISSION_MATRIX)) {
       assert.equal(toolRows.find((row) => row.name === name)?.authorityClass, authorityClass);
     }
-    assert.ok(first.rows.filter((row) => row.surface !== "tool").every((row) => row.authorityClass === "unmapped"));
+    assert.deepEqual(
+      first.rows.filter((row) => row.surface !== "tool" && row.authorityClass !== "unmapped"),
+      [{ authorityClass: "external-send", name: "email send", surface: "cli" }]
+    );
     assert.ok(first.rows.some((row) => row.surface === "cli" && row.name === "approval approve"));
     assert.equal(reportModule.classifyPermissionGapAuthority("tool", "future_actuator"), "unmapped");
-    assert.equal(reportModule.classifyPermissionGapAuthority("cli", "email_send"), "unmapped");
+    assert.equal(reportModule.classifyPermissionGapAuthority("cli", "email send"), "external-send");
+    assert.equal(reportModule.classifyPermissionGapAuthority("cli", "email reply"), "unmapped");
+    assert.equal(reportModule.classifyPermissionGapAuthority("cli", "Email send"), "unmapped");
+    assert.equal(reportModule.classifyPermissionGapAuthority("mcp", "email send"), "unmapped");
 
     const sorted = [...first.rows].sort((left, right) =>
       ["tool", "cli", "api", "mcp"].indexOf(left.surface) - ["tool", "cli", "api", "mcp"].indexOf(right.surface)
