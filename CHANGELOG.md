@@ -8,6 +8,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Refactored Continuity observation preparation behind one internal, memoized
+  parse/account/project seam shared by the existing explained-change query and the
+  upcoming receipt capture adapter. The public query, error constructor identity,
+  validation precedence, diagnostics, and result bytes remain unchanged; no capture,
+  persistence, or new public subpath is shipped by this slice.
+
 - Added `@muse/attunement-graph/continuity-changes`, the first verified
   personal-temporal operator. It compares two exact Continuity observations through a
   version-bound caller boundary, normalizes no-op re-observation, distinguishes

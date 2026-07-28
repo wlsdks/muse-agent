@@ -136,12 +136,15 @@ owner notes, artifact summaries, or provider artifact IDs. The hashes and scope 
 personal linkage data; a future durable adapter must add explicit retention, forget, export,
 and migration contracts.
 
-AWG-035b remains required to capture this receipt from one raw authoritative observation
-and feed it into the same comparison core as AWG-030. Until then, Muse has a verified
-portable format, not an automatically recorded stop point and not a Continuity Capsule.
-This separation keeps the module deep: callers depend on two codec functions while
+AWG-035b is now partially built. The existing state-to-state query and the future capture
+adapter share one internal raw-observation preparation seam for strict parsing, source
+accounting, and exactly one deterministic projection. The public capture adapter and the
+receipt-to-current comparison bridge remain required. Until those land, Muse has a
+verified portable format and a non-duplicating internal boundary—not an automatically
+recorded stop point and not a Continuity Capsule. This separation keeps the module deep:
+public callers still depend only on the existing query and codec surfaces while
 canonicalization, tamper detection, projection validation, privacy bounds, and version
-rejection remain behind the interface.
+rejection remain behind them.
 
 ## Muse-specific invention: a personal context compiler
 

@@ -1,10 +1,8 @@
 import { createHash } from "node:crypto";
 
 import {
-  ContinuityProjectionError,
   continuityThreadGraphRef,
   diffContinuityProjections,
-  projectContinuityState,
   type ContinuityGraphProjection,
   type ContinuityProjectionInput,
   type ContinuityProjectionScope
@@ -19,6 +17,17 @@ import {
   isContinuityNoOp,
   sameContinuityScope
 } from "./continuity-change-semantics.js";
+import {
+  continuityCanonicalInstant,
+  continuityDataObject,
+  continuityDataString,
+  inspectContinuityData,
+  parseContinuityProjectionScope,
+  queryError
+} from "./continuity-change-primitives.js";
+import {
+  prepareContinuitySourceObservation
+} from "./continuity-source-observation.js";
 import type {
   GraphAssertion,
   GraphDirection,
@@ -28,32 +37,17 @@ import type {
 import { evidenceRefKey } from "./validation.js";
 
 export { CONTINUITY_CHANGE_LIMITS } from "./continuity-change-semantics.js";
+export {
+  ContinuityChangeQueryError
+} from "./continuity-change-primitives.js";
+export type {
+  ContinuityChangeQueryErrorCode
+} from "./continuity-change-primitives.js";
 
 export const CONTINUITY_CHANGE_QUERY_VERSION =
   "continuity-change-query-v1" as const;
 export const CONTINUITY_PROJECTION_BOUNDARY_NAMESPACE =
   "muse.attunement.continuity-projection" as const;
-
-export type ContinuityChangeQueryErrorCode =
-  | "INVALID_INPUT"
-  | "SOURCE_BUDGET_EXCEEDED"
-  | "RAW_DELTA_BUDGET_EXCEEDED";
-
-export class ContinuityChangeQueryError extends Error {
-  readonly code: ContinuityChangeQueryErrorCode;
-  readonly details: Readonly<Record<string, number | string>>;
-
-  constructor(
-    code: ContinuityChangeQueryErrorCode,
-    message: string,
-    details: Readonly<Record<string, number | string>> = {}
-  ) {
-    super(message);
-    this.name = "ContinuityChangeQueryError";
-    this.code = code;
-    this.details = Object.freeze({ ...details });
-  }
-}
 
 export interface ContinuityChangeBoundary {
   readonly authority: "caller-declared-observation";
@@ -149,199 +143,21 @@ export interface ExplainedContinuityChangeResult {
   readonly status: ContinuityChangeStatus;
 }
 
-interface Inspection {
-  readonly descriptors: number;
-  readonly stringBytes: number;
-}
-
-interface SourceAccounting extends Inspection {
-  readonly sourceRecords: number;
-}
-
-function queryError(
-  code: ContinuityChangeQueryErrorCode,
-  message: string,
-  details: Readonly<Record<string, number | string>> = {}
-): never {
-  throw new ContinuityChangeQueryError(code, message, details);
-}
-
-function utf8Bytes(value: string): number {
-  return Buffer.byteLength(value, "utf8");
-}
-
-function inspectData(
-  value: unknown,
-  label: string,
-  maxDescriptors: number = CONTINUITY_CHANGE_LIMITS.maxDescriptors,
-  maxStringBytes: number = CONTINUITY_CHANGE_LIMITS.maxAggregateStringBytes
-): Inspection {
-  let descriptors = 0;
-  let stringBytes = 0;
-  const active = new WeakSet<object>();
-
-  const countString = (text: string): void => {
-    const bytes = utf8Bytes(text);
-    if (bytes > CONTINUITY_CHANGE_LIMITS.maxStringBytes) {
-      queryError("SOURCE_BUDGET_EXCEEDED", `${label} contains an oversized string`, {
-        bytes,
-        limit: CONTINUITY_CHANGE_LIMITS.maxStringBytes
-      });
-    }
-    stringBytes += bytes;
-    if (stringBytes > maxStringBytes) {
-      queryError("SOURCE_BUDGET_EXCEEDED", `${label} exceeds its string-byte budget`, {
-        bytes: stringBytes,
-        limit: maxStringBytes
-      });
-    }
-  };
-
-  const visit = (current: unknown, depth: number): void => {
-    if (typeof current === "string") {
-      countString(current);
-      return;
-    }
-    if (
-      current === null
-      || typeof current === "boolean"
-      || typeof current === "number"
-      || current === undefined
-    ) {
-      return;
-    }
-    if (typeof current !== "object") {
-      queryError("INVALID_INPUT", `${label} must contain only plain data`);
-    }
-    if (depth > CONTINUITY_CHANGE_LIMITS.maxNestingDepth) {
-      queryError("SOURCE_BUDGET_EXCEEDED", `${label} exceeds its nesting budget`, {
-        depth,
-        limit: CONTINUITY_CHANGE_LIMITS.maxNestingDepth
-      });
-    }
-    const object = current as object;
-    if (active.has(object)) {
-      queryError("INVALID_INPUT", `${label} must not contain cycles`);
-    }
-    const prototype = Object.getPrototypeOf(object);
-    if (
-      !Array.isArray(object)
-      && prototype !== Object.prototype
-      && prototype !== null
-    ) {
-      queryError("INVALID_INPUT", `${label} must contain only plain objects and arrays`);
-    }
-    active.add(object);
-    const keys = Reflect.ownKeys(object);
-    for (const key of keys) {
-      if (typeof key !== "string") {
-        queryError("INVALID_INPUT", `${label} must not contain symbol keys`);
-      }
-      countString(key);
-      descriptors += 1;
-      if (descriptors > maxDescriptors) {
-        queryError("SOURCE_BUDGET_EXCEEDED", `${label} exceeds its descriptor budget`, {
-          descriptors,
-          limit: maxDescriptors
-        });
-      }
-      const descriptor = Object.getOwnPropertyDescriptor(object, key);
-      if (!descriptor || !("value" in descriptor)) {
-        queryError("INVALID_INPUT", `${label} must not contain accessors`);
-      }
-      visit(descriptor.value, depth + 1);
-    }
-    active.delete(object);
-  };
-
-  visit(value, 0);
-  return Object.freeze({ descriptors, stringBytes });
-}
-
-function dataObject(
-  value: unknown,
-  label: string,
-  allowed: readonly string[],
-  required: readonly string[] = allowed
-): Readonly<Record<string, unknown>> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    queryError("INVALID_INPUT", `${label} must be a plain object`);
-  }
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    queryError("INVALID_INPUT", `${label} must be a plain object`);
-  }
-  const keys = Reflect.ownKeys(value);
-  if (keys.some((key) => typeof key !== "string")) {
-    queryError("INVALID_INPUT", `${label} must not contain symbol keys`);
-  }
-  const names = keys as string[];
-  if (
-    names.some((key) => !allowed.includes(key))
-    || required.some((key) => !names.includes(key))
-  ) {
-    queryError("INVALID_INPUT", `${label} has missing or unknown fields`);
-  }
-  const output: Record<string, unknown> = {};
-  for (const name of names) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, name);
-    if (!descriptor || !("value" in descriptor)) {
-      queryError("INVALID_INPUT", `${label}.${name} must be a data property`);
-    }
-    output[name] = descriptor.value;
-  }
-  return output;
-}
-
-function dataArray(value: unknown, label: string): readonly unknown[] {
-  if (!Array.isArray(value)) queryError("INVALID_INPUT", `${label} must be an array`);
-  return value;
-}
-
-function dataString(value: unknown, label: string): string {
-  if (typeof value !== "string") queryError("INVALID_INPUT", `${label} must be text`);
-  return value;
-}
-
-function canonicalInstant(value: unknown, label: string): string {
-  const text = dataString(value, label);
-  const date = new Date(text);
-  if (!Number.isFinite(date.getTime()) || date.toISOString() !== text) {
-    queryError("INVALID_INPUT", `${label} must be a canonical ISO instant`);
-  }
-  return text;
-}
-
-function parseScope(value: unknown, label: string): ContinuityProjectionScope {
-  const record = dataObject(value, label, ["sourceId", "threadId"]);
-  const sourceId = dataString(record.sourceId, `${label}.sourceId`);
-  const threadId = dataString(record.threadId, `${label}.threadId`);
-  return Object.freeze({ sourceId, threadId });
-}
-
-function parseProjectionInput(value: unknown, label: string): ContinuityProjectionInput {
-  const record = dataObject(value, label, ["scope", "sourceObservedAt", "state"]);
-  return Object.freeze({
-    scope: parseScope(record.scope, `${label}.scope`),
-    sourceObservedAt: canonicalInstant(
-      record.sourceObservedAt,
-      `${label}.sourceObservedAt`
-    ),
-    state: record.state
-  });
-}
-
 function parseEvidenceRef(value: unknown, label: string): GraphEvidenceRef {
-  const record = dataObject(value, label, ["id", "namespace", "version"]);
+  const record = continuityDataObject(value, label, [
+    "id",
+    "namespace",
+    "version"
+  ]);
   return Object.freeze({
-    id: dataString(record.id, `${label}.id`),
-    namespace: dataString(record.namespace, `${label}.namespace`),
-    version: dataString(record.version, `${label}.version`)
+    id: continuityDataString(record.id, `${label}.id`),
+    namespace: continuityDataString(record.namespace, `${label}.namespace`),
+    version: continuityDataString(record.version, `${label}.version`)
   });
 }
 
 function parseBoundary(value: unknown): ContinuityChangeBoundary {
-  const record = dataObject(value, "boundary", [
+  const record = continuityDataObject(value, "boundary", [
     "authority",
     "observedAt",
     "schemaVersion",
@@ -356,177 +172,14 @@ function parseBoundary(value: unknown): ContinuityChangeBoundary {
   }
   return Object.freeze({
     authority: "caller-declared-observation" as const,
-    observedAt: canonicalInstant(record.observedAt, "boundary.observedAt"),
+    observedAt: continuityCanonicalInstant(
+      record.observedAt,
+      "boundary.observedAt"
+    ),
     schemaVersion: 1 as const,
-    scope: parseScope(record.scope, "boundary.scope"),
+    scope: parseContinuityProjectionScope(record.scope, "boundary.scope"),
     sourceRef: parseEvidenceRef(record.sourceRef, "boundary.sourceRef")
   });
-}
-
-function readField(value: unknown, key: string, label: string): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    queryError("INVALID_INPUT", `${label} must be a plain object`);
-  }
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) {
-    queryError("INVALID_INPUT", `${label} must be a plain object`);
-  }
-  const descriptor = Object.getOwnPropertyDescriptor(value, key);
-  if (!descriptor || !("value" in descriptor)) {
-    queryError("INVALID_INPUT", `${label}.${key} must be a data property`);
-  }
-  return descriptor.value;
-}
-
-function countSource(input: ContinuityProjectionInput, label: string): SourceAccounting {
-  const inspection = inspectData(input.state, `${label}.state`);
-  const state = dataObject(
-    input.state,
-    `${label}.state`,
-    [
-      "deliveries",
-      "interactionReceipts",
-      "nextPolicyVersion",
-      "resetReceipts",
-      "schemaVersion",
-      "threads",
-      "undoResetReceipts"
-    ]
-  );
-  const threads = dataArray(state.threads, `${label}.state.threads`);
-  const deliveries = dataArray(state.deliveries, `${label}.state.deliveries`);
-  const interactions = dataArray(
-    state.interactionReceipts,
-    `${label}.state.interactionReceipts`
-  );
-  const resets = dataArray(state.resetReceipts, `${label}.state.resetReceipts`);
-  const undos = dataArray(
-    state.undoResetReceipts,
-    `${label}.state.undoResetReceipts`
-  );
-  let links = 0;
-  let selectedLinks = 0;
-  for (const [index, thread] of threads.entries()) {
-    const threadLabel = `${label}.state.threads[${index.toString()}]`;
-    const threadId = readField(thread, "id", threadLabel);
-    const threadLinks = dataArray(readField(thread, "links", threadLabel), `${threadLabel}.links`);
-    links += threadLinks.length;
-    if (threadId === input.scope.threadId) selectedLinks += threadLinks.length;
-  }
-  let evidenceRefs = 0;
-  let selectedDeliveries = 0;
-  let selectedEvidenceRefs = 0;
-  for (const [index, delivery] of deliveries.entries()) {
-    const deliveryLabel = `${label}.state.deliveries[${index.toString()}]`;
-    const deliveryThread = readField(delivery, "threadId", deliveryLabel);
-    const refs = dataArray(
-      readField(delivery, "evidenceRefs", deliveryLabel),
-      `${deliveryLabel}.evidenceRefs`
-    );
-    evidenceRefs += refs.length;
-    if (deliveryThread === input.scope.threadId) {
-      selectedDeliveries += 1;
-      selectedEvidenceRefs += refs.length;
-    }
-  }
-  const selectedInteractions = interactions.filter((item, index) =>
-    readField(item, "threadId", `${label}.state.interactionReceipts[${index.toString()}]`)
-      === input.scope.threadId
-  ).length;
-  const selectedResets = resets.filter((item, index) =>
-    readField(item, "threadId", `${label}.state.resetReceipts[${index.toString()}]`)
-      === input.scope.threadId
-  ).length;
-  const selectedUndos = undos.filter((item, index) =>
-    readField(item, "threadId", `${label}.state.undoResetReceipts[${index.toString()}]`)
-      === input.scope.threadId
-  ).length;
-  const sourceRecords =
-    threads.length
-    + links
-    + deliveries.length
-    + evidenceRefs
-    + interactions.length
-    + resets.length
-    + undos.length;
-  const checks: readonly [number, number, string][] = [
-    [threads.length, CONTINUITY_CHANGE_LIMITS.maxThreads, "threads"],
-    [links, CONTINUITY_CHANGE_LIMITS.maxLinks, "links"],
-    [deliveries.length, CONTINUITY_CHANGE_LIMITS.maxSourceDeliveries, "deliveries"],
-    [evidenceRefs, CONTINUITY_CHANGE_LIMITS.maxEvidenceRefs, "evidence refs"],
-    [interactions.length, CONTINUITY_CHANGE_LIMITS.maxInteractions, "interactions"],
-    [resets.length, CONTINUITY_CHANGE_LIMITS.maxResets, "resets"],
-    [undos.length, CONTINUITY_CHANGE_LIMITS.maxUndos, "undos"],
-    [sourceRecords, CONTINUITY_CHANGE_LIMITS.maxSourceRecords, "source records"],
-    [selectedLinks, CONTINUITY_CHANGE_LIMITS.maxSelectedLinks, "selected links"],
-    [
-      selectedDeliveries,
-      CONTINUITY_CHANGE_LIMITS.maxSelectedDeliveries,
-      "selected deliveries"
-    ],
-    [
-      selectedEvidenceRefs,
-      CONTINUITY_CHANGE_LIMITS.maxSelectedEvidenceRefs,
-      "selected evidence refs"
-    ],
-    [
-      selectedInteractions,
-      CONTINUITY_CHANGE_LIMITS.maxSelectedInteractions,
-      "selected interactions"
-    ],
-    [selectedResets, CONTINUITY_CHANGE_LIMITS.maxSelectedResets, "selected resets"],
-    [selectedUndos, CONTINUITY_CHANGE_LIMITS.maxSelectedUndos, "selected undos"]
-  ];
-  for (const [actual, limit, name] of checks) {
-    if (actual > limit) {
-      queryError("SOURCE_BUDGET_EXCEEDED", `${label} exceeds ${name} budget`, {
-        actual,
-        limit
-      });
-    }
-  }
-  return Object.freeze({ ...inspection, sourceRecords });
-}
-
-function project(
-  input: ContinuityProjectionInput,
-  accounting: SourceAccounting
-): {
-  readonly accounting: ContinuityChangeObservationDiagnostics;
-  readonly projection: ContinuityGraphProjection;
-} {
-  try {
-    const projection = projectContinuityState(input);
-    if (
-      projection.assertions.length
-      > CONTINUITY_CHANGE_LIMITS.maxProjectionAssertions
-    ) {
-      queryError("SOURCE_BUDGET_EXCEEDED", "projection exceeds query budget", {
-        actual: projection.assertions.length,
-        limit: CONTINUITY_CHANGE_LIMITS.maxProjectionAssertions
-      });
-    }
-    return Object.freeze({
-      accounting: Object.freeze({
-        descriptorsInspected: accounting.descriptors,
-        projectedAssertions: projection.assertions.length,
-        sourceRecordsInspected: accounting.sourceRecords,
-        stringBytesInspected: accounting.stringBytes
-      }),
-      projection
-    });
-  } catch (cause) {
-    if (cause instanceof ContinuityChangeQueryError) throw cause;
-    if (cause instanceof ContinuityProjectionError) {
-      if (cause.code === "PROJECTION_LIMIT") {
-        queryError("SOURCE_BUDGET_EXCEEDED", cause.message, {
-          causeCode: cause.code
-        });
-      }
-      queryError("INVALID_INPUT", cause.message, { causeCode: cause.code });
-    }
-    throw cause;
-  }
 }
 
 function canonicalValue(value: unknown): unknown {
@@ -577,13 +230,13 @@ function statusFor(answered: number, abstained: number): ContinuityChangeStatus 
 export function explainContinuityChanges(
   input: unknown
 ): ExplainedContinuityChangeResult {
-  inspectData(
+  inspectContinuityData(
     input,
     "continuity change input",
     CONTINUITY_CHANGE_LIMITS.maxDescriptors * 2 + 128,
     CONTINUITY_CHANGE_LIMITS.maxAggregateStringBytes * 2 + 16_384
   );
-  const envelope = dataObject(input, "continuity change input", [
+  const envelope = continuityDataObject(input, "continuity change input", [
     "boundary",
     "current",
     "previous",
@@ -592,25 +245,24 @@ export function explainContinuityChanges(
   if (envelope.schemaVersion !== 1) {
     queryError("INVALID_INPUT", "continuity change input.schemaVersion must be 1");
   }
-  const previousInput = parseProjectionInput(envelope.previous, "previous");
-  const currentInput = parseProjectionInput(envelope.current, "current");
+  const previous = prepareContinuitySourceObservation(
+    envelope.previous,
+    "previous"
+  );
+  const current = prepareContinuitySourceObservation(envelope.current, "current");
   const boundary = parseBoundary(envelope.boundary);
   if (
-    !sameContinuityScope(previousInput.scope, currentInput.scope)
-    || !sameContinuityScope(previousInput.scope, boundary.scope)
+    !sameContinuityScope(previous.input.scope, current.input.scope)
+    || !sameContinuityScope(previous.input.scope, boundary.scope)
   ) {
     queryError("INVALID_INPUT", "previous, current, and boundary scopes must match");
   }
   if (
-    previousInput.sourceObservedAt !== boundary.observedAt
-    || instant(currentInput.sourceObservedAt) < instant(boundary.observedAt)
+    previous.input.sourceObservedAt !== boundary.observedAt
+    || instant(current.input.sourceObservedAt) < instant(boundary.observedAt)
   ) {
     queryError("INVALID_INPUT", "boundary observation interval is invalid");
   }
-  const previousAccounting = countSource(previousInput, "previous");
-  const currentAccounting = countSource(currentInput, "current");
-  const previous = project(previousInput, previousAccounting);
-  const current = project(currentInput, currentAccounting);
   const expectedBoundaryRef: GraphEvidenceRef = {
     id: previous.projection.sourceVersion,
     namespace: CONTINUITY_PROJECTION_BOUNDARY_NAMESPACE,
@@ -622,8 +274,8 @@ export function explainContinuityChanges(
 
   const base = {
     boundary,
-    current: observationRef(currentInput, current.projection),
-    previous: observationRef(previousInput, previous.projection),
+    current: observationRef(current.input, current.projection),
+    previous: observationRef(previous.input, previous.projection),
     queryVersion: CONTINUITY_CHANGE_QUERY_VERSION,
     schemaVersion: 1 as const,
     scope: previous.projection.scope
@@ -643,22 +295,26 @@ export function explainContinuityChanges(
     candidateCount,
     complete,
     consideredAssertions,
-    current: current.accounting,
+    current: current.diagnostics,
     diffComparedAssertions:
       previous.projection.assertions.length + current.projection.assertions.length,
     embeddingCalls: 0 as const,
     maxDepthReached,
     modelCalls: 0 as const,
-    previous: previous.accounting,
+    previous: previous.diagnostics,
     rawDeltaCount,
     visitedRefs
   });
 
   const inconsistent = [
     ...previous.projection.assertions
-      .filter((item) => instant(item.recordedAt) > instant(previousInput.sourceObservedAt)),
+      .filter((item) =>
+        instant(item.recordedAt) > instant(previous.input.sourceObservedAt)
+      ),
     ...current.projection.assertions
-      .filter((item) => instant(item.recordedAt) > instant(currentInput.sourceObservedAt))
+      .filter((item) =>
+        instant(item.recordedAt) > instant(current.input.sourceObservedAt)
+      )
   ].map((item) => item.id).sort();
 
   if (isContinuityNoOp(previous.projection, current.projection)) {
@@ -734,7 +390,7 @@ export function explainContinuityChanges(
     .filter((item) =>
       unchangedIds.has(item.id)
       && !appendedIds.has(item.id)
-      && continuitySupportEligible(item, currentInput.sourceObservedAt)
+      && continuitySupportEligible(item, current.input.sourceObservedAt)
     )
     .sort((a, b) => a.id.localeCompare(b.id));
   const tree = buildContinuityPathTree(
@@ -795,7 +451,7 @@ export function explainContinuityChanges(
     const basis = classifyContinuityTemporal(
       assertion,
       boundary.observedAt,
-      currentInput.sourceObservedAt
+      current.input.sourceObservedAt
     );
     if (!basis) {
       abstentions.push(Object.freeze({
