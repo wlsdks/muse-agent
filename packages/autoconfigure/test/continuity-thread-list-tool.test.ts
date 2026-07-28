@@ -28,7 +28,7 @@ describe("normal-chat continuity thread list tool", () => {
     });
     const before = await readFile(file);
     const assembly = createMuseRuntimeAssembly({
-      env: { MUSE_ATTUNEMENT_FILE: file }
+      env: { HOME: directory, MUSE_ATTUNEMENT_FILE: file }
     });
     const matching = assembly.toolRegistry.list().filter(
       (tool) => tool.definition.name === "muse.continuity.threads.list"
