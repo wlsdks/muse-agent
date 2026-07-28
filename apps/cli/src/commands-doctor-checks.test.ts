@@ -10,6 +10,7 @@ import {
   messagingConfigCheck,
   notesIndexHealth,
   permissionModeDriftCheck,
+  planSensitivePermissionRepair,
   privacyRoutingCheck,
   readSensitiveFileModes,
   recallCalibrationCheck,
@@ -308,6 +309,35 @@ describe("volatileMountCheck", () => {
 });
 
 describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
+  it("plans only a loose regular file under the exact Muse root", async () => {
+    const plan = await planSensitivePermissionRepair(
+      "/muse",
+      [
+        { label: "loose.json", path: "/muse/loose.json" },
+        { label: "clean.json", path: "/muse/clean.json" },
+        { label: "missing.json", path: "/muse/missing.json" },
+        { label: "outside.json", path: "/elsewhere/outside.json" },
+        { label: "link.json", path: "/muse/link.json" }
+      ],
+      {
+        lstat: async (path) => {
+          if (path.endsWith("missing.json")) throw new Error("ENOENT");
+          if (path.endsWith("link.json")) return { isFile: () => false, isSymbolicLink: () => true, mode: 0o120777 };
+          return { isFile: () => true, isSymbolicLink: () => false, mode: path.endsWith("loose.json") ? 0o100644 : 0o100600 };
+        }
+      }
+    );
+
+    expect(plan.items.map((item) => [item.label, item.state])).toEqual([
+      ["loose.json", "repairable"],
+      ["clean.json", "already-owner-only"],
+      ["missing.json", "missing"],
+      ["outside.json", "rejected"],
+      ["link.json", "rejected"]
+    ]);
+    expect(plan.items.find((item) => item.label === "link.json")?.reason).toContain("symbolic");
+  });
+
   it("flags a file drifted to 644 (world/group-readable)", async () => {
     const results = await readSensitiveFileModes(
       [{ label: "recall-hits.json", path: "/fake/recall-hits.json" }],

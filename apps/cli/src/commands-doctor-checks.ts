@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 
 const execFile = promisify(execFileCallback);
 import { promises as fs } from "node:fs";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
 
 /**
@@ -780,6 +781,71 @@ export async function readSensitiveFileModes(
     }
   }
   return results;
+}
+
+export type SensitivePermissionRepairState = "already-owner-only" | "missing" | "repairable" | "rejected";
+
+export interface SensitivePermissionRepairItem extends SensitiveFileTarget {
+  readonly observedMode?: number;
+  readonly state: SensitivePermissionRepairState;
+  readonly reason?: string;
+}
+
+export interface SensitivePermissionRepairPlan {
+  readonly items: readonly SensitivePermissionRepairItem[];
+  readonly root: string;
+}
+
+interface SensitivePermissionRepairStat {
+  readonly mode: number;
+  isFile(): boolean;
+  isSymbolicLink(): boolean;
+}
+
+export interface SensitivePermissionRepairFs {
+  lstat(path: string): Promise<SensitivePermissionRepairStat>;
+}
+
+const DEFAULT_PERMISSION_REPAIR_FS: SensitivePermissionRepairFs = { lstat: (path) => fs.lstat(path) };
+
+function isInsideRoot(root: string, path: string): boolean {
+  const pathFromRoot = relative(resolve(root), resolve(path));
+  return pathFromRoot.length > 0 && !pathFromRoot.startsWith(`..${sep}`) && pathFromRoot !== ".." && !isAbsolute(pathFromRoot);
+}
+
+/**
+ * Builds a non-mutating, exact-file permission repair plan. It never walks a
+ * directory: callers supply the sensitive-file inventory, and a target outside
+ * the owned Muse root, a symlink, or a non-file is rejected rather than fixed.
+ */
+export async function planSensitivePermissionRepair(
+  root: string,
+  targets: readonly SensitiveFileTarget[],
+  fileSystem: SensitivePermissionRepairFs = DEFAULT_PERMISSION_REPAIR_FS
+): Promise<SensitivePermissionRepairPlan> {
+  const items: SensitivePermissionRepairItem[] = [];
+  for (const target of targets) {
+    if (!isInsideRoot(root, target.path)) {
+      items.push({ ...target, reason: "target is outside the owned Muse root", state: "rejected" });
+      continue;
+    }
+    try {
+      const stat = await fileSystem.lstat(target.path);
+      const observedMode = stat.mode & 0o777;
+      if (stat.isSymbolicLink()) {
+        items.push({ ...target, observedMode, reason: "symbolic links are never repaired", state: "rejected" });
+      } else if (!stat.isFile()) {
+        items.push({ ...target, observedMode, reason: "target is not a regular file", state: "rejected" });
+      } else if ((observedMode & 0o077) !== 0) {
+        items.push({ ...target, observedMode, state: "repairable" });
+      } else {
+        items.push({ ...target, observedMode, state: "already-owner-only" });
+      }
+    } catch {
+      items.push({ ...target, state: "missing" });
+    }
+  }
+  return { items, root: resolve(root) };
 }
 
 /**
