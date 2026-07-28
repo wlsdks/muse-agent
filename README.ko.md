@@ -29,6 +29,29 @@ Muse는 업무만 처리하는 비서가 아니라, 한 사람의 삶과 일을 
 
 > **지금 동작하는 것:** 개인 기억, 출처가 붙는 회상, 로컬 개인 저장소, 승인과 보호 장치가 있는 도구·브라우저 행동, 실행 기록, 체크포인트, 명시적으로 시작하는 Personal Continuity 경로. 자세한 범위는 [제품 계약](docs/strategy/attunement.md)과 [구현 계획](docs/goals/attunement-implementation-plan.md)에서 확인할 수 있습니다.
 
+## 우리가 만들 Muse의 “와!” 순간
+
+숙소 후보 세 곳을 비교하다 멈춘 뒤 항공편 시간이 바뀌고, 한 숙소의 취소 기한이
+내일로 다가왔으며, 일정 사이에 18분이 생겼다고 해보겠습니다. Muse는 변경점만
+준비하고, 왜 지금인지와 연결한 출처를 보여 주며, 누르면 어디까지 실행되는지
+밝힌 뒤 후보 하나를 보류할지 묻습니다.
+
+사용자가 “지금 말고 저녁에”라고 하면 숨은 전역 선호로 저장하지 않습니다. 이
+여행 thread에만 적용할 협업 규칙을 눈에 보이는 카드로 제안합니다.
+
+- **Shadow Muse** — 먼저 방해하거나 행동하지 않고, 말할 때와 침묵할 때를 배웁니다.
+- **Continuity Capsule** — 멈춘 지점, 이후 변경점, 근거, 다음 단계, 준비된 작업,
+  예상 시간을 복원합니다.
+- **Policy Card** — Muse가 나와 협업하는 법에 대해 배울 내용을 근거와 함께 보여
+  주고 시험 적용·수정·거절·되돌리기를 제공합니다.
+
+> **Muse는 앱을 기억하지 않고, 내가 이어가려던 상태를 기억합니다.**
+
+이것은 대표 로드맵이며 아직 출시된 기능이라는 뜻이 아닙니다. 기반은 단순한
+외부 graph DB가 아니라, 가벼운 에이전트 전용 시간·출처 그래프이자 personal
+context compiler인 [Attunement Graph Engine](docs/design/attunement-graph.md)입니다.
+별도 실행 순서는 [wow + graph 로드맵](docs/goals/attunement-wow-graph-roadmap.md)에 있습니다.
+
 <p align="center"><img src="docs/images/web-home.png" alt="Muse 콘솔 홈 화면" width="860" /></p>
 
 ---
@@ -152,7 +175,9 @@ pnpm smoke:live
 
 - [Attunement 제품 계약](docs/strategy/attunement.md)
 - [Attunement 구조와 현재 부족한 점](docs/design/attunement.md)
+- [Attunement Graph Engine](docs/design/attunement-graph.md)
 - [Attunement 구현 계획](docs/goals/attunement-implementation-plan.md)
+- [Attunement wow + graph 로드맵](docs/goals/attunement-wow-graph-roadmap.md)
 - [시스템 지도](docs/SYSTEM-MAP.md)
 - [검증된 기능 목록](docs/feature-catalog/INDEX.md)
 - [근거 색인](docs/benchmarks/EVIDENCE.md)

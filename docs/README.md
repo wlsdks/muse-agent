@@ -2,8 +2,8 @@
 title: Muse 문서 안내 (인덱스)
 audience: [기획자, 개발자, AI 에이전트]
 purpose: Muse 문서 집합의 단일 진입점 — 어떤 문서가 무엇을 담는지
-updated: 2026-07-13
-related: [strategy/attunement.md, SYSTEM-MAP.md, FEATURES.md]
+updated: 2026-07-29
+related: [strategy/attunement.md, design/attunement-graph.md, goals/attunement-wow-graph-roadmap.md, SYSTEM-MAP.md, FEATURES.md]
 ---
 
 # Muse 문서 안내
@@ -21,7 +21,7 @@ Muse 문서는 "필요한 것만, 짧게, 잘 분리해서" 유지합니다. 처
 5. [`SYSTEM-MAP.md`](SYSTEM-MAP.md) — 기능 구조 한 장
 6. [`grounding-gate.md`](grounding-gate.md) — 신뢰 바닥선(그라운딩 게이트)을 한 흐름으로
 7. [`FEATURES.md`](FEATURES.md) → [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md) — 기능 상세 + 전수 검증 증거
-8. 그다음 깊이: [`design/attunement.md`](design/attunement.md) · [`goals/attunement-implementation-plan.md`](goals/attunement-implementation-plan.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
+8. 그다음 깊이: [`design/attunement.md`](design/attunement.md) · [`design/attunement-graph.md`](design/attunement-graph.md) · [`goals/attunement-implementation-plan.md`](goals/attunement-implementation-plan.md) · [`goals/attunement-wow-graph-roadmap.md`](goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
 
 ## 제품을 이해하려면
 
@@ -29,7 +29,9 @@ Muse 문서는 "필요한 것만, 짧게, 잘 분리해서" 유지합니다. 처
 |---|---|---|
 | **[strategy/attunement.md](strategy/attunement.md)** | Muse의 wedge, 사용자 순간, current/experimental/roadmap 경계 | 제품·설계·개발 모두 |
 | **[design/attunement.md](design/attunement.md)** | 구현된 Slice A와 후속 Observe의 privacy·closed-loop 기술 계약 | 개발·보안·AI 에이전트 |
+| **[design/attunement-graph.md](design/attunement-graph.md)** | agent-native 시간·출처 그래프와 personal context compiler의 모듈 계약·연구 근거 | 제품·개발·보안 |
 | **[goals/attunement-implementation-plan.md](goals/attunement-implementation-plan.md)** | 의존성 순서의 vertical slices, gate, kill criterion | 실행·평가 담당 |
+| **[goals/attunement-wow-graph-roadmap.md](goals/attunement-wow-graph-roadmap.md)** | Shadow Muse·Capsule·Policy Card·Graph Engine의 별도 장기 실행 순서 | 실행·평가 담당 |
 | **[SYSTEM-MAP.md](SYSTEM-MAP.md)** | Muse 기능을 한눈에 보는 구조 지도 (말로만, 빠른 파악용) | 기획·개발 모두 / 처음 보는 사람 |
 | **[glossary.md](glossary.md)** | Muse 전용 용어의 단일 정의 (용어마다 한 줄 + 어디 사는지) | 처음 보는 사람 / AI 에이전트 |
 | **[grounding-gate.md](grounding-gate.md)** | 신뢰 바닥선인 그라운딩 게이트가 질문 하나를 어떻게 처리하나 — 흐름 + 워크드 예시 | 핵심 동작을 이해하려는 사람 / AI 에이전트 |
@@ -48,7 +50,7 @@ Muse 문서는 "필요한 것만, 짧게, 잘 분리해서" 유지합니다. 처
 
 [`design/`](design/) 폴더에는 개별 기능의 설계 노트가 한 주제당 한 파일로 들어 있습니다. 대부분은 **이미 출시된 기능의 설계 근거(왜 그렇게 만들었나)** 기록이고, [background-review-engine](design/background-review-engine.md)이 현재 진행 중인 설계입니다. 기능의 "무엇"은 위 제품 문서를, "왜"는 여기를 보세요:
 
-- Attunement: [architecture and data contract](design/attunement.md), [implementation slices](goals/attunement-implementation-plan.md), [continuity-timing-loop](design/continuity-timing-loop.md)
+- Attunement: [architecture and data contract](design/attunement.md), [graph engine](design/attunement-graph.md), [implementation slices](goals/attunement-implementation-plan.md), [wow + graph roadmap](goals/attunement-wow-graph-roadmap.md), [continuity-timing-loop](design/continuity-timing-loop.md)
 - 기억·인지: [episodic-memory](design/episodic-memory.md), [proactive-surfacing](design/proactive-surfacing.md), [pattern-detection](design/pattern-detection.md), [context-engineering-roadmap](design/context-engineering-roadmap.md)
 - 능동·후속: [agent-self-followup](design/agent-self-followup.md), [reminder-firing](design/reminder-firing.md), [background-review-engine](design/background-review-engine.md)
 - 채널·음성: [messaging](design/messaging.md), [line-webhook](design/line-webhook.md), [voice-mode](design/voice-mode.md), [phase-d-chat-stream-routing](design/phase-d-chat-stream-routing.md)

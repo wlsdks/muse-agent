@@ -285,6 +285,24 @@ Muse가 지시 없이 스스로 움직이는, 가장 자비스다운 영역입�
 준비·연락하려던 사람·읽던 글처럼 남아 있는 삶의 주제를 이어주는
 **Personal Continuity(삶의 맥락 이어주기)**입니다.
 
+### 대표 “와!” 경험 (roadmap)
+
+여행 준비를 이어갈 때 Muse는 단순 알림 대신 “어디서 멈췄는지, 그 뒤 무엇이
+달라졌는지, 왜 지금인지, 어떤 자료를 연결했는지, 누르면 어디까지 실행되는지”를
+한 Capsule로 보여 주는 것을 목표로 합니다. “지금 말고 저녁에”라는 반응은 숨은
+전역 선호가 아니라 해당 thread에만 적용할 Policy Card 제안이 됩니다.
+
+- **Shadow Muse** — 먼저 개입하지 않고 제안·침묵 후보와 실제 복귀를 비교합니다.
+- **Continuity Capsule** — 멈춘 지점·변경점·근거·다음 단계·준비된 작업·예상 시간을 복원합니다.
+- **Policy Card** — 배운 협업 규칙의 근거와 범위를 보여 주고 시험·수정·거절·되돌리기를 제공합니다.
+- **Attunement Graph Engine** — 기존 store 위에서 시간·관계·출처·정책을 연결하고, 한 turn에 필요한
+  작은 Activation Subgraph만 만드는 proposed 에이전트 전용 모듈입니다.
+
+핵심 문장: **Muse는 앱을 기억하지 않고, 내가 이어가려던 상태를 기억합니다.**
+세부 제품 계약과 모듈 설계는 [Attunement](strategy/attunement.md),
+[Attunement Graph](design/attunement-graph.md), [별도 실행 로드맵](goals/attunement-wow-graph-roadmap.md)을
+따릅니다. 이 항목들은 아직 출시 기능이 아닙니다.
+
 첫 흐름: **사용자가 삶의 주제 선택 → 맥락 묶음 준비 → 사용 여부 기록 → 다음 묶음 개선.**
 관찰·리듬 분석·반복 불편 발견은 이 흐름의 가치를 확인한 뒤 타이밍을 개선하는 후속 slice입니다.
 

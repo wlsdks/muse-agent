@@ -4,12 +4,15 @@
 > (last substantive entry 2026-06-13); no new L-entries are being appended. Rival deltas
 > now flow through the scout-rivals skill into `docs/goals/rival-watch.md`.
 
-> **Current product direction (2026-07-13): Attunement.** Muse is being built to learn
-> how to fit help into one person's daily life and work. The first vertical is Personal
-> Continuity: restore a user-chosen unfinished thread from explicitly linked context,
-> offer one safe next step, and improve the next pack from the outcome. See
-> [the product contract](attunement.md) and
-> [implementation plan](../goals/attunement-implementation-plan.md).
+> **Current product direction (2026-07-29): Attunement.** Muse's signature roadmap is
+> Shadow Muse → Continuity Capsule → Policy Card: learn when to stay quiet, restore the
+> state the user intended to continue, and make collaboration learning visible, scoped,
+> and reversible. A procedural skill improves how an agent performs a task; an Attunement
+> Policy improves how Muse collaborates with this person. The proposed Attunement Graph
+> Engine connects time, relationship, provenance, policy, and authority as a lightweight
+> personal context compiler. See [the product contract](attunement.md),
+> [graph design](../design/attunement-graph.md), and
+> [separate execution roadmap](../goals/attunement-wow-graph-roadmap.md).
 >
 > The L1–L7 entries below are a historical, evidence-oriented trust ledger. They remain
 > valuable foundations—grounding, privacy enforcement, correction, tamper evidence, and

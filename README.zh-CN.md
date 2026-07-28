@@ -22,6 +22,27 @@ Muse 不只是办公助手，而是面向一个人的生活与工作的持续型
 
 > **现在已经可用：** 个人记忆、有来源依据的召回、本地个人数据存储、受保护的工具与浏览器操作、追踪、检查点，以及第一条由用户明确触发的 Personal Continuity 路径。产品边界见 [Attunement 产品契约](docs/strategy/attunement.md)，交付顺序见 [实施计划](docs/goals/attunement-implementation-plan.md)。
 
+## 我们正在打造的 Muse“惊喜时刻”
+
+假设你在比较三个住宿选项时停了下来。之后航班时间发生变化，其中一家住宿的
+取消期限临近明天，而你的日程中刚好出现了18分钟空档。Muse 只准备变化部分，
+解释为什么是现在，列出每一项准确来源，并说明点击后会执行到哪一步，再询问是否
+暂时保留一个候选。
+
+如果你选择“现在不要，晚上再说”，Muse 不会把它悄悄写成全局偏好，而会提出一条
+只适用于这次旅行 thread、可试用、编辑、拒绝和回滚的协作规则。
+
+- **Shadow Muse** — 在打扰或行动之前，先学习何时开口、何时保持安静。
+- **Continuity Capsule** — 恢复中断点、后续变化、证据、下一步、已准备工作和预计时间。
+- **Policy Card** — 展示 Muse 想如何更好地与你协作，以及证据、范围和可逆控制。
+
+> **Muse 记住的不是应用，而是你原本想继续推进的状态。**
+
+这是标志性的路线图，并不表示已经交付。它的基础不是简单接入第三方 graph DB，
+而是轻量、面向智能体的时间与来源图谱兼 personal context compiler：
+[Attunement Graph Engine](docs/design/attunement-graph.md)。执行顺序见
+[wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)。
+
 <p align="center"><img src="docs/images/web-home.png" alt="Muse 控制台首页" width="860" /></p>
 
 ---
@@ -143,7 +164,9 @@ pnpm smoke:live
 
 - [Attunement 产品契约](docs/strategy/attunement.md)
 - [Attunement 架构与当前缺口](docs/design/attunement.md)
+- [Attunement Graph Engine](docs/design/attunement-graph.md)
 - [Attunement 实施计划](docs/goals/attunement-implementation-plan.md)
+- [Attunement wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)
 - [系统地图](docs/SYSTEM-MAP.md)
 - [已验证功能目录](docs/feature-catalog/INDEX.md)
 - [证据索引](docs/benchmarks/EVIDENCE.md)

@@ -2,8 +2,8 @@
 title: Muse 용어집 (Glossary)
 audience: [AI 에이전트, 개발자, 기획자]
 purpose: Muse 전용 용어의 단일 정의 — 처음 보는 에이전트가 grep 없이 이해하도록
-updated: 2026-07-13
-related: [strategy/attunement.md, SYSTEM-MAP.md, grounding-gate.md, feature-catalog/INDEX.md]
+updated: 2026-07-29
+related: [strategy/attunement.md, design/attunement-graph.md, SYSTEM-MAP.md, grounding-gate.md, feature-catalog/INDEX.md]
 ---
 
 # Muse 용어집
@@ -16,6 +16,16 @@ Muse 문서·코드·커밋에서 반복되는 **Muse-고유 용어**의 정의.
 
 - **Attunement (조율)** — 나에 대한 정보만 외우는 것이 아니라, 내 삶에 잘 맞게 돕는 법을 배우는 제품 방향.
   언제 조용히 있고 어떤 도움이 잘 맞는지 결과를 보며 개선한다. 전체 흐름은 **roadmap**이다.
+- **Shadow Muse (그림자 Muse)** — 실제로 방해하거나 행동하기 전에 `silent|digest|offer` 후보와
+  근거, 제한된 반사실, 사용자의 실제 복귀를 기록해 타이밍을 배우는 **roadmap** 계층.
+- **Continuity Capsule (이어가기 캡슐)** — 기존 Continuity Pack의 목표 제품 형태. 멈춘 지점,
+  이후 변경점, 정확한 근거, 다음 단계, 준비된 작업, 예상 시간을 한 번에 보여준다(**roadmap**).
+- **Policy Card (정책 카드)** — Muse가 이 사람과 협업하는 방식을 어떻게 바꾸려는지 근거·범위와
+  함께 보여 주고 시험 적용·수정·거절·되돌리기를 제공하는 **roadmap** 표면.
+- **Attunement Graph Engine** — 기존 개인 store를 대체하지 않는 재생성 가능한 시간·출처 그래프.
+  한 turn에 필요한 관계만 Activation Subgraph로 컴파일하는 에이전트 전용 모듈(**proposed**).
+- **Activation Subgraph** — 현재 thread, 변경점, 근거, 정책, 권한 경계만 token budget 안에 담아
+  에이전트에 전달하는 짧은 수명 그래프. 전체 개인 그래프나 chain-of-thought가 아니다.
 - **Observe (관찰 설정)** — 무엇을 수집하는지 보고, 멈추고, 확인하고, 지울 수 있게 하는 화면과
   명령(**roadmap**). 키 입력과 연속 화면 녹화는 기본 수집 대상이 아니다.
 - **Personal Rhythm Model (개인 생활 리듬 모델)** — 앱에 머문 시간과 활동 전환처럼 최소한의 기록으로
