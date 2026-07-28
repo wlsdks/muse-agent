@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "continuity-change-v1",
+  "dataOrigin": "immutable-controlled-synthetic-generator-spec",
+  "generatorVersion": "continuity-change-generator-v2",
+  "semanticPayloadAvailable": false,
+  "cases": [
+    {
+      "id": "direct-add",
+      "fixture": "direct-add",
+      "metricEligible": true,
+      "expected": {
+        "eligibleChangeIds": [
+          "muse-continuity-assertion:c1479ca7b449ad4383a0f470ed12176a992dbaec3bb1b81f3b14c1b9d38cdc3f"
+        ],
+        "flatAbstentionCodes": [],
+        "flatStatus": "complete",
+        "graphAbstentionCodes": [],
+        "graphStatus": "complete",
+        "paths": {
+          "muse-continuity-assertion:c1479ca7b449ad4383a0f470ed12176a992dbaec3bb1b81f3b14c1b9d38cdc3f": [
+            "muse-continuity-assertion:c1479ca7b449ad4383a0f470ed12176a992dbaec3bb1b81f3b14c1b9d38cdc3f"
+          ]
+        }
+      }
+    },
+    {
+      "id": "safe-revision",
+      "fixture": "safe-revision",
+      "metricEligible": true,
+      "expected": {
+        "eligibleChangeIds": [
+          "muse-continuity-assertion:dd39dfe06192639770c39d8251977aad2cbee3c5bd2263fdd12fa181fab2d144"
+        ],
+        "flatAbstentionCodes": [],
+        "flatStatus": "complete",
+        "graphAbstentionCodes": [],
+        "graphStatus": "complete",
+        "paths": {
+          "muse-continuity-assertion:dd39dfe06192639770c39d8251977aad2cbee3c5bd2263fdd12fa181fab2d144": [
+            "muse-continuity-assertion:dd39dfe06192639770c39d8251977aad2cbee3c5bd2263fdd12fa181fab2d144"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ambiguous-revision",
+      "fixture": "ambiguous-revision",
+      "metricEligible": true,
+      "expected": {
+        "eligibleChangeIds": [],
+        "flatAbstentionCodes": [
+          "AMBIGUOUS_REVISION",
+          "OUTSIDE_INTERVAL",
+          "OUTSIDE_INTERVAL"
+        ],
+        "flatStatus": "abstained",
+        "graphAbstentionCodes": [
+          "AMBIGUOUS_REVISION",
+          "OUTSIDE_INTERVAL",
+          "OUTSIDE_INTERVAL"
+        ],
+        "graphStatus": "abstained",
+        "paths": {}
+      }
+    },
+    {
+      "id": "multi-hop-interaction",
+      "fixture": "multi-hop-interaction",
+      "metricEligible": true,
+      "expected": {
+        "eligibleChangeIds": [
+          "muse-continuity-assertion:73b320d0f84b28db5117bae0517d0f9cc8c523a1a1e35f676b72cfda8d1105c5",
+          "muse-continuity-assertion:9753fcd39e699edc1d2b717a886e0ef0bd3c7f31d054c95ec1ad6fa2cd5c6f92"
+        ],
+        "flatAbstentionCodes": [
+          "FLAT_NON_DIRECT"
+        ],
+        "flatStatus": "partial",
+        "graphAbstentionCodes": [],
+        "graphStatus": "complete",
+        "paths": {
+          "muse-continuity-assertion:73b320d0f84b28db5117bae0517d0f9cc8c523a1a1e35f676b72cfda8d1105c5": [
+            "muse-continuity-assertion:73b320d0f84b28db5117bae0517d0f9cc8c523a1a1e35f676b72cfda8d1105c5"
+          ],
+          "muse-continuity-assertion:9753fcd39e699edc1d2b717a886e0ef0bd3c7f31d054c95ec1ad6fa2cd5c6f92": [
+            "muse-continuity-assertion:b5433b847cfc584259cc874d1a61a814275faa439f4d9be4b89800baa43ac5f5",
+            "muse-continuity-assertion:9753fcd39e699edc1d2b717a886e0ef0bd3c7f31d054c95ec1ad6fa2cd5c6f92"
+          ]
+        }
+      }
+    },
+    {
+      "id": "no-op-reset-reobservation",
+      "fixture": "no-op-reset-reobservation",
+      "metricEligible": true,
+      "expected": {
+        "eligibleChangeIds": [],
+        "flatAbstentionCodes": [],
+        "flatStatus": "no-change",
+        "graphAbstentionCodes": [],
+        "graphStatus": "no-change",
+        "paths": {}
+      }
+    },
+    {
+      "id": "pure-removal",
+      "fixture": "pure-removal",
+      "metricEligible": true,
+      "expected": {
+        "eligibleChangeIds": [],
+        "flatAbstentionCodes": [
+          "REMOVAL_TIME_UNKNOWN"
+        ],
+        "flatStatus": "abstained",
+        "graphAbstentionCodes": [
+          "REMOVAL_TIME_UNKNOWN"
+        ],
+        "graphStatus": "abstained",
+        "paths": {}
+      }
+    },
+    {
+      "id": "recorded-later-backfill",
+      "fixture": "recorded-later-backfill",
+      "metricEligible": true,
+      "expected": {
+        "eligibleChangeIds": [],
+        "flatAbstentionCodes": [
+          "OUTSIDE_INTERVAL",
+          "OUTSIDE_INTERVAL"
+        ],
+        "flatStatus": "abstained",
+        "graphAbstentionCodes": [
+          "OUTSIDE_INTERVAL",
+          "OUTSIDE_INTERVAL"
+        ],
+        "graphStatus": "abstained",
+        "paths": {}
+      }
+    },
+    {
+      "id": "output-budget",
+      "fixture": "output-budget",
+      "metricEligible": false,
+      "expected": {
+        "eligibleChangeIds": [
+          "muse-continuity-assertion:0102d25ad23066e099c8e1946793d13e018df9ed26709fd823315fb85ea75dc5",
+          "muse-continuity-assertion:036748f6ee9746212730be96c5b4fb9a266dfe21ba8697b0272c16fbf997decc",
+          "muse-continuity-assertion:0439527bad8793ed23919eb4b49f898a1d644f16dbf25b5a571c769c433bae9e",
+          "muse-continuity-assertion:07744517cfb8a2aae6430261f4f23f5ef5a87248f18a29e94402c1abb30ccc4b",
+          "muse-continuity-assertion:14e65aa89572a31a05aaad0979beddde877fbe8d45cf9acb16f3c79f8cafa619",
+          "muse-continuity-assertion:1eb597be0cd0d47ee6b326e6825520a988665a62c7bbe6ff69d99a562fa7bdc5",
+          "muse-continuity-assertion:1ec8cf6699cda2471d8b61c0aa4b64cadd83f16a0f8d36558126c43f0dfeaf7b",
+          "muse-continuity-assertion:2b06dcc0dbb5751b8251ae9fbd3d5edc83371205e8c1049fbf21b0b23ef4174e",
+          "muse-continuity-assertion:3bef9e0662b460053fa42561f1d508d10af6f17c036cbe69bb2fe72c7f826026",
+          "muse-continuity-assertion:4436948203ee206372ce7d579c95b600159210a56402dbe3f780ab854a009621",
+          "muse-continuity-assertion:48172380c9f29d95c5d5766279998457304d1912fdab4b89caef8a9105fa1e14",
+          "muse-continuity-assertion:4cbe3e2f094b1100798e0ee6d6d3ba20c0244aad7229f1e0e84b53896e7e6183",
+          "muse-continuity-assertion:50a34045ee25f63e3674a7c68e633bc3055a40c5b4691c14154300f352928443",
+          "muse-continuity-assertion:5174b0d7b861f63f33951be21972325953057bd522c2b68a5b4c3729773c76f2",
+          "muse-continuity-assertion:546350e595dd95c8f3cd3804e9bd75f5e0d991001aaabdd514558a32e92620e1",
+          "muse-continuity-assertion:686370d8fe6edf157dc2c17bd7e87c2269c7f40a17afa43b5f1e6b45b46dd79c",
+          "muse-continuity-assertion:6b55795006ab8462db45e315c32ba34bead67fd4ed939b267a0fc65f8855415d",
+          "muse-continuity-assertion:6c7d5aeb0ef190522e514041c63a7b7dfd7034dfc3487fa6aa8ea45b2eae7c45",
+          "muse-continuity-assertion:6e4685ac0b0e546547b46be6132668dd174decafc1446e5d0eb58200326a3ddc",
+          "muse-continuity-assertion:70b5012da5ebac49fb92876a7bc7c88c5cd18a660fb655c994779a09de5404d1",
+          "muse-continuity-assertion:802b9f4934fe6e8393a4ecbbcc832c81786b439d761955e237ecb6fddc80fe98",
+          "muse-continuity-assertion:8fe146e57840120fa2f31f03f91b6c112853aab997df1f4599fcb0779166408d",
+          "muse-continuity-assertion:ac3bd351174b35bf6a9a07160d812c6e7092503a5ee260fdd363c397edbc6eac",
+          "muse-continuity-assertion:c7632cf81a639f73990605f257d24d24d828bdcb46d8ef41f1270762f9d8c91a",
+          "muse-continuity-assertion:cb8eb58f96a1a6e4161d43d20e9e6ef2aada6becdad84df7e7541bc1a0cb8748",
+          "muse-continuity-assertion:d6c73b7c4cc2cfc6f0bbadea104c7d3a778dd5dffb173728d7f626bc9e76e021",
+          "muse-continuity-assertion:da0cf36da6ea3833ea3ddd9b29cd54370b642ff30effff37515c4b3efacd3458",
+          "muse-continuity-assertion:e67b1d6612fbc20bd27d119fd1f485712564e63fb13249b6a641dbf69c948b29",
+          "muse-continuity-assertion:eef9bf4578983bc5472862b90a2cfe7328119bd528874eab70081c114a107a45",
+          "muse-continuity-assertion:f2018b3e106f631bfa0dc230c53457f863f3d87631058532416aa1d8a75f3c06",
+          "muse-continuity-assertion:f36f1b5ffb2ec48e3b5d56875db64c89328594b14e9800994d283b1cfc19b09b",
+          "muse-continuity-assertion:fa6aa404b51824a69c87b456d65517daeb04ac95aba0e4e5c047d52aeca8cf78",
+          "muse-continuity-assertion:fe49a542564db226c74a1f6cd98081a73caa6a82be4c977d6c558b2b77f0d802"
+        ],
+        "flatAbstentionCodes": [
+          "OUTPUT_BUDGET_EXCEEDED"
+        ],
+        "flatStatus": "abstained",
+        "graphAbstentionCodes": [
+          "OUTPUT_BUDGET_EXCEEDED"
+        ],
+        "graphStatus": "abstained",
+        "paths": {}
+      }
+    },
+    {
+      "id": "visited-ref-budget",
+      "fixture": "visited-ref-budget",
+      "metricEligible": false,
+      "expected": {
+        "eligibleChangeIds": [
+          "muse-continuity-assertion:1e48be910bbfd747f4b5a948b57efee2cdfc2d18faf4f70ffa063a75455182c9"
+        ],
+        "flatAbstentionCodes": [
+          "REMOVAL_TIME_UNKNOWN"
+        ],
+        "flatStatus": "partial",
+        "graphAbstentionCodes": [
+          "VISITED_REF_BUDGET_EXCEEDED"
+        ],
+        "graphStatus": "abstained",
+        "paths": {}
+      }
+    }
+  ]
+}

@@ -8,6 +8,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added `@muse/attunement-graph/continuity-changes`, the first verified
+  personal-temporal operator. It compares two exact Continuity observations through a
+  version-bound caller boundary, normalizes no-op re-observation, distinguishes
+  world-valid from learned-after changes, conservatively pairs revisions, and returns one
+  bounded source-bearing path or a typed abstention. A checked nine-family controlled
+  replay records equal 1.0 flat/graph detection precision and recall, with exact full-path
+  coverage 1.0 for graph versus 0.75 for flat; no model or embedding calls are made.
+
 - Added the first `@muse/attunement-graph` reference kernel with closed temporal and
   provenance assertions, atomic/idempotent in-memory storage, compact exact-seed indexes,
   bounded traversal, derivation-aware forgetting, a reusable backend conformance suite,

@@ -54,7 +54,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-001** | Product signature and research contract | Canonical wow scenario, honest shipped/roadmap boundary, research-backed graph design, and docs cross-links | completed |
 | **AWG-010** | Reference graph kernel | `@muse/attunement-graph` domain types, invariants, append log, compact in-memory indexes, Activation Subgraph compiler, and conformance tests; no LLM or production DB | completed |
 | **AWG-020** | Exact Continuity projection | Rebuildable projection of thread, artifact links, delivery, outcome, policy version, and source provenance without duplicated authority | completed |
-| **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | blocked |
+| **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | completed |
 | **AWG-040** | Continuity Capsule v1 | User-invoked Capsule renders stopping point, changes, next step, prepared work, expected time, and source drawer | pending |
 | **AWG-050** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
@@ -111,7 +111,7 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
 - **Next eligible slice:** AWG-030 explained change query, after fresh source reconciliation
   and a flat exact-lookup baseline contract.
 
-## Blocked activation: AWG-030
+## Prior blocked activation: AWG-030
 
 - **Classification at activation:** `missing`.
 - **Status:** `blocked` on 2026-07-29 before BUILD. Three fresh PLAN reviews made material
@@ -129,6 +129,29 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
   reconstruct this exact contract in a fresh handoff, and obtain an independent PLAN PASS
   before opening BUILD. Do not duplicate Core100 Continuity UI/store work or treat this
   blocked design as shipped behavior.
+
+## Completed slice: AWG-030
+
+- **Classification at reactivation:** `missing`; current source still ended at the
+  AWG-020 projection and the separate Core100 work owned no equivalent pure graph query.
+- **Status:** `completed` after a fresh controller rebuilt the contract, a fresh
+  independent PLAN evaluator passed review 2/2, and a separate fresh completion evaluator
+  passed after two bounded correction rounds. The earlier blocked activation remains above
+  as provenance rather than being rewritten.
+- **Shipped boundary:** pure `@muse/attunement-graph/continuity-changes` library subpath;
+  unknown-input/source/projection/diff/traversal/output budgets; authoritative no-op replay
+  normalization; strict temporal truth table; conservative revision components; exact
+  source-bearing paths; typed abstention; content-addressed deterministic results.
+- **Controlled qualification:** nine immutable generated-synthetic families, seven in
+  semantic metric denominators. Flat and graph both recorded `1.0` detection
+  precision/recall and `1.0` exact path precision; graph exact full-path coverage was
+  `1.0` versus flat `0.75`. Vector was `not-applicable`/not run because AWG-020 contains
+  no semantic text. This proves controlled relational path assembly only, not user wow,
+  organic effectiveness, or generic graph superiority.
+- **No authority expansion:** no source I/O, durable adapter, model/embedding call, UI,
+  scheduler, policy promotion, permission, or action.
+- **Next eligible slice:** AWG-040 user-invoked Continuity Capsule v1 after fresh source
+  reconciliation and a UI/product contract gate. AWG-050 Shadow timing remains separate.
 
 ## Architecture gates
 

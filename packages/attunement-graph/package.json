@@ -17,9 +17,14 @@
     "./continuity": {
       "types": "./dist/continuity-projection.d.ts",
       "import": "./dist/continuity-projection.js"
+    },
+    "./continuity-changes": {
+      "types": "./dist/continuity-change-query.d.ts",
+      "import": "./dist/continuity-change-query.js"
     }
   },
   "scripts": {
+    "benchmark:continuity-changes": "pnpm build && node scripts/benchmark-continuity-changes.mjs",
     "build": "tsc -b",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"

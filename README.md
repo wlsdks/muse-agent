@@ -47,12 +47,15 @@ a hidden global preference. That experience has three parts:
 
 > **Muse does not remember apps; it remembers the state you intended to continue.**
 
-This is the signature roadmap, not a shipped claim. It is powered by the proposed,
-lightweight [Attunement Graph Engine](docs/design/attunement-graph.md): an agent-native
+The full signature experience remains a roadmap, not a shipped claim. Its first
+library-level substrates now live in the partially implemented, lightweight
+[Attunement Graph Engine](docs/design/attunement-graph.md): an agent-native
 temporal/provenance graph and personal context compiler, not merely a third-party graph DB.
 Its intended advantage is a small set of bounded, verified personal-temporal operators:
 the model asks what changed, what evidence supports a policy, or what forgetting would
 invalidate; Muse computes the exact path, completeness, and authority boundary in code.
+The first `changesSince`-style operator is shipped as an I/O-free library contract; no
+Capsule UI, automatic timing, durable graph, or action authority is implied.
 See the separate [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse console home — model chip, integrations, and what Muse has learned" width="860" /></p>

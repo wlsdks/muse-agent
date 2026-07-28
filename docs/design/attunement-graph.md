@@ -41,11 +41,19 @@ links, delivery evidence, explicit outcomes, policy versions/revisions, and fact
 interaction evidence become content-addressed assertions with scope-safe deltas. The
 authoritative store and projector share one I/O-free `unknown → AttunementState` parser;
 the graph never reads or owns the file.
+AWG-030 adds the first verified personal-temporal operator: an isolated
+`/continuity-changes` query over two immutable observations and one caller-declared,
+version-bound boundary. It normalizes identical-source re-observation, classifies
+world-valid versus learned-after changes, conservatively pairs revisions, and returns one
+bounded exact thread path or a typed abstention. Its checked controlled replay improves
+exact full-path coverage from flat `0.75` to graph `1.0` with equal `1.0` change-detection
+precision/recall; vector is not applicable because the projection deliberately carries no
+semantic text. This is component evidence, not organic usefulness or a shipped Capsule.
 The reference traversal separately caps returned assertions, considered adjacency
 assertions, visited references, and depth, so a dense seed cannot hide unbounded work behind
 a small output limit.
 
-It has no runtime projection composition, durable adapter, LLM extraction, Shadow
+It has no application/runtime composition, durable adapter, LLM extraction, Shadow
 delivery, Capsule UI, Policy Card UI, or action authority. The Attunement Graph Engine and
 three signature experiences therefore remain roadmap claims.
 

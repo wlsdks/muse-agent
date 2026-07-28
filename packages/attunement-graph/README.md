@@ -4,18 +4,23 @@ Storage-neutral reference kernel for Muse's Attunement Graph Engine.
 
 This package currently owns closed graph semantics, assertion validation, bounded traversal,
 an in-memory conformance adapter, the Activation Subgraph compiler, and a pure per-thread
-Continuity projection. The projection accepts unknown state through the same I/O-free
+Continuity projection, and the first verified personal-temporal operator. The projection
+accepts unknown state through the same I/O-free
 parser used by the authoritative Attunement store, emits content-addressed assertions with
 exact versioned provenance, and computes scope-safe snapshot deltas. It never reads the
 store. Traversal has independent hard caps for result assertions, considered adjacency
 assertions, visited references, and depth; truncation is explicit.
 
-The next planned layer is not arbitrary model-generated graph querying. It is a small,
-versioned set of deterministic personal-temporal operators such as explained change,
-resumption context, policy evidence, forget impact, and bounded decision counterfactuals.
-Each operator must return a content-addressed source path plus completeness, or abstain.
-AWG-030, the first explained-change operator, is currently blocked at its PLAN gate and is
-not exported or claimed as shipped.
+`@muse/attunement-graph/continuity-changes` now compares two exact observations inside a
+caller-declared, version-bound interval. It normalizes no-op re-observation, distinguishes
+world-valid changes from facts learned later, pairs only unambiguous revisions, builds one
+bounded deterministic thread path, and returns typed abstentions instead of inventing
+removal time or incomplete explanations. Unknown-input parsing, projection, diff,
+traversal, output, model calls, and embedding calls are all explicitly bounded/accounted.
+
+Future operators—resumption context, policy evidence, forget impact, and bounded decision
+counterfactuals—remain roadmap work. They must follow the same content-addressed source
+path plus completeness-or-abstention contract, not arbitrary model-generated graph queries.
 
 It does **not** own authoritative personal data, durable persistence, LLM extraction,
 runtime scheduling, policy promotion, approval, or action execution. Factual task
@@ -30,6 +35,7 @@ adapter must pass `runAttunementGraphStoreConformance` from
 ```bash
 pnpm --filter @muse/attunement-graph typecheck
 pnpm --filter @muse/attunement-graph test
+pnpm --filter @muse/attunement-graph benchmark:continuity-changes
 ```
 
 Architecture and roadmap:
