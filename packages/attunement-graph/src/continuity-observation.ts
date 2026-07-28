@@ -12,6 +12,13 @@ import {
 import type {
   ContinuityChangeObservationDiagnostics
 } from "./continuity-change-query.js";
+import {
+  ContinuityChangeQueryError,
+  type ContinuityChangeQueryErrorCode
+} from "./continuity-change-primitives.js";
+import {
+  prepareContinuitySourceObservation
+} from "./continuity-source-observation.js";
 import type {
   GraphAssertion,
   GraphEvidenceRef
@@ -37,6 +44,15 @@ export type ContinuityObservationErrorCode =
   | "INVALID_RECEIPT"
   | "BUDGET_EXCEEDED"
   | "INTEGRITY_MISMATCH";
+
+const PREPARATION_ERROR_CODE = {
+  INVALID_INPUT: "INVALID_INPUT",
+  RAW_DELTA_BUDGET_EXCEEDED: "INVALID_INPUT",
+  SOURCE_BUDGET_EXCEEDED: "BUDGET_EXCEEDED"
+} as const satisfies Record<
+  ContinuityChangeQueryErrorCode,
+  ContinuityObservationErrorCode
+>;
 
 export class ContinuityObservationError extends Error {
   readonly code: ContinuityObservationErrorCode;
@@ -685,6 +701,31 @@ export function sealContinuityObservation(
   });
   assertReceiptBytes(receipt);
   return receipt;
+}
+
+export function captureContinuityObservation(
+  input: unknown
+): ContinuityObservationReceipt {
+  try {
+    const prepared = prepareContinuitySourceObservation(
+      input,
+      "observation source"
+    );
+    return sealContinuityObservation({
+      schemaVersion: 1,
+      authority: "caller-declared-observation",
+      observedAt: prepared.input.sourceObservedAt,
+      projection: prepared.projection,
+      diagnostics: prepared.diagnostics
+    });
+  } catch (cause) {
+    if (!(cause instanceof ContinuityChangeQueryError)) throw cause;
+    throw new ContinuityObservationError(
+      PREPARATION_ERROR_CODE[cause.code],
+      cause.message,
+      cause.details
+    );
+  }
 }
 
 export function verifyContinuityObservation(

@@ -56,7 +56,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-020** | Exact Continuity projection | Rebuildable projection of thread, artifact links, delivery, outcome, policy version, and source provenance without duplicated authority | completed |
 | **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | completed |
 | **AWG-035a** | Observation Receipt format | Strict content-addressed codec preserves one caller-declared exact projection and source accounting without personal source text | completed |
-| **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | partial — shared preparation seam completed |
+| **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | partial — pure capture completed; comparison pending |
 | **AWG-040** | Continuity Capsule v1 | User-invoked Capsule renders stopping point, changes, next step, prepared work, expected time, and source drawer | pending |
 | **AWG-050** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
@@ -187,9 +187,13 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
   current. It preserves strict parsing, all source budgets, diagnostics, projection error
   mapping, public error identity, validation precedence, and complete result/error bytes.
   It adds no package subpath, source I/O, persistence, or user-facing capture claim.
-- **Next eligible slice:** AWG-035b1b public raw observation capture adapter, followed by
-  the receipt→current comparison bridge. AWG-040 remains pending until those
-  truth-preserving seams pass independently.
+- **AWG-035b1b raw capture adapter:** completed — the existing observation subpath exposes
+  `captureContinuityObservation`, which accepts one caller-supplied raw projection input,
+  uses the shared preparation seam once, and seals through the existing codec once.
+  Preparation failures become observation-domain errors; unknown internal failures retain
+  identity. This is pure manual capture, not source I/O, automatic observation, or storage.
+- **Next eligible slice:** AWG-035b2 receipt→current comparison bridge. AWG-040 remains
+  pending until that truth-preserving seam passes independently.
 
 ## Architecture gates
 

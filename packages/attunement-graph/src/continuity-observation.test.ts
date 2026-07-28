@@ -4,12 +4,19 @@ import type { AttunementState } from "@muse/attunement";
 import { describe, expect, it } from "vitest";
 
 import {
+  captureContinuityObservation,
   CONTINUITY_OBSERVATION_FORMAT_VERSION,
   ContinuityObservationError,
   sealContinuityObservation,
   verifyContinuityObservation,
   type ContinuityObservationReceipt
 } from "./continuity-observation.js";
+import {
+  ContinuityChangeQueryError
+} from "./continuity-change-primitives.js";
+import {
+  prepareContinuitySourceObservation
+} from "./continuity-source-observation.js";
 import {
   projectContinuityState,
   type ContinuityGraphProjection
@@ -90,6 +97,14 @@ function projection(): ContinuityGraphProjection {
   });
 }
 
+function rawObservation(state: unknown = sourceFixture()): Record<string, unknown> {
+  return {
+    scope: { sourceId: "default", threadId: "thread_trip" },
+    sourceObservedAt: OBSERVED_AT,
+    state
+  };
+}
+
 function input(value: ContinuityGraphProjection = projection()): Record<string, unknown> {
   return {
     schemaVersion: 1,
@@ -155,6 +170,107 @@ function expectObservationError(
 }
 
 describe("Continuity Observation Receipt", () => {
+  it("captures one raw observation through the exact manual prepare-to-seal path", () => {
+    const raw = rawObservation();
+    const before = clone(raw);
+    const prepared = prepareContinuitySourceObservation(
+      raw,
+      "observation source"
+    );
+    const manual = sealContinuityObservation({
+      schemaVersion: 1,
+      authority: "caller-declared-observation",
+      observedAt: prepared.input.sourceObservedAt,
+      projection: prepared.projection,
+      diagnostics: prepared.diagnostics
+    });
+    const captured = captureContinuityObservation(raw);
+
+    expect(captured).toStrictEqual(manual);
+    expect(JSON.stringify(captured)).toBe(JSON.stringify(manual));
+    expect(captured.receiptId).toBe(manual.receiptId);
+    expect(captureContinuityObservation(raw)).toStrictEqual(captured);
+    expect(verifyContinuityObservation(clone(captured))).toStrictEqual(captured);
+    expect(raw).toStrictEqual(before);
+    expect(captured.diagnostics.projectedAssertions).toBe(
+      captured.projection.assertions.length
+    );
+    const serialized = JSON.stringify(captured);
+    for (const sentinel of SENTINELS) expect(serialized).not.toContain(sentinel);
+  });
+
+  it("maps eager and lazy preparation failures without leaking query errors", () => {
+    const assertMapped = (
+      raw: unknown,
+      materialize: (prepared: ReturnType<
+        typeof prepareContinuitySourceObservation
+      >) => unknown,
+      expectedCode: ContinuityObservationError["code"]
+    ): void => {
+      let sourceError: ContinuityChangeQueryError | undefined;
+      try {
+        const prepared = prepareContinuitySourceObservation(
+          raw,
+          "observation source"
+        );
+        materialize(prepared);
+      } catch (cause) {
+        expect(cause).toBeInstanceOf(ContinuityChangeQueryError);
+        sourceError = cause as ContinuityChangeQueryError;
+      }
+      expect(sourceError).toBeDefined();
+
+      const mapped = expectObservationError(
+        () => captureContinuityObservation(raw),
+        [expectedCode]
+      );
+      expect(mapped.constructor).toBe(ContinuityObservationError);
+      expect(mapped.message).toBe(sourceError?.message);
+      expect(mapped.details).toStrictEqual(sourceError?.details);
+      expect(mapped).not.toBeInstanceOf(ContinuityChangeQueryError);
+    };
+
+    assertMapped({}, () => undefined, "INVALID_INPUT");
+
+    const base = sourceFixture();
+    const overflow = {
+      ...base,
+      threads: Array.from({ length: 129 }, (_, index) => ({
+        ...clone(base.threads[0]),
+        id: `thread_${index.toString()}`
+      }))
+    };
+    assertMapped(
+      rawObservation(overflow),
+      (prepared) => prepared.projection,
+      "BUDGET_EXCEEDED"
+    );
+  });
+
+  it("rejects capture metadata injection and rethrows unknown failures by identity", () => {
+    expectObservationError(
+      () => captureContinuityObservation({
+        ...rawObservation(),
+        diagnostics: { projectedAssertions: 0 }
+      }),
+      ["INVALID_INPUT"]
+    );
+
+    const sentinel = new Error("internal sentinel");
+    const throwingState = new Proxy(sourceFixture(), {
+      getPrototypeOf() {
+        throw sentinel;
+      }
+    });
+    try {
+      captureContinuityObservation(rawObservation(throwingState));
+    } catch (cause) {
+      expect(cause).toBe(sentinel);
+      return;
+    }
+    throw new Error("expected unknown capture failure");
+  });
+
   it("seals a deterministic caller-declared receipt and survives JSON round-trip", () => {
     const receipt = sealContinuityObservation(input());
     expect(receipt.formatVersion).toBe(CONTINUITY_OBSERVATION_FORMAT_VERSION);

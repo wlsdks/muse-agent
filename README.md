@@ -58,8 +58,10 @@ The first `changesSince`-style operator is shipped as an I/O-free library contra
 Capsule UI, automatic timing, durable graph, or action authority is implied.
 Muse can now also seal an exact projected stopping point as a bounded,
 content-addressed **Observation Receipt** without copying its personal source text.
+The same library subpath can purely capture one caller-supplied raw Continuity snapshot
+through the shared projector and return that receipt without source I/O or persistence.
 That receipt is caller-declared integrity input for the future Capsule—not proof of an
-external observation, persistence, or the Capsule itself.
+external observation, automatic stop-point detection, persistence, or the Capsule itself.
 See the separate [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse console home — model chip, integrations, and what Muse has learned" width="860" /></p>

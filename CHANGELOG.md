@@ -8,11 +8,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
-- Refactored Continuity observation preparation behind one internal, memoized
-  parse/account/project seam shared by the existing explained-change query and the
-  upcoming receipt capture adapter. The public query, error constructor identity,
-  validation precedence, diagnostics, and result bytes remain unchanged; no capture,
-  persistence, or new public subpath is shipped by this slice.
+- Added pure `captureContinuityObservation` to the existing observation subpath and
+  refactored raw Continuity preparation behind one internal, memoized parse/account/project
+  seam shared with the explained-change query. Capture accepts one caller-supplied raw
+  snapshot, projects once, and seals through the existing receipt codec; it performs no
+  source I/O, automatic observation, persistence, or Capsule behavior. The existing query,
+  seal, and verify contracts remain unchanged.
 
 - Added `@muse/attunement-graph/continuity-changes`, the first verified
   personal-temporal operator. It compares two exact Continuity observations through a
