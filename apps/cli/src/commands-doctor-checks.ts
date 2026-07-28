@@ -11,7 +11,7 @@ import {
   type MuseEnvironment
 } from "@muse/autoconfigure";
 import type { UserMemoryAutoExtractHealthProjection } from "@muse/memory";
-import { resolvePlatformCapabilities } from "@muse/shared";
+import { resolvePlatformCapabilities, sha256Hex } from "@muse/shared";
 import { DEFAULT_BLUETOOTH_OFF_SHORTCUT, DEFAULT_BLUETOOTH_ON_SHORTCUT, DEFAULT_BRIGHTNESS_SHORTCUT, DEFAULT_FOCUS_OFF_SHORTCUT, DEFAULT_FOCUS_ON_SHORTCUT } from "@muse/macos";
 import type { DevFixableWeakness } from "@muse/stores";
 import { execFile as execFileCallback } from "node:child_process";
@@ -803,6 +803,7 @@ export interface SensitivePermissionRepairItem extends SensitiveFileTarget {
 
 export interface SensitivePermissionRepairPlan {
   readonly items: readonly SensitivePermissionRepairItem[];
+  readonly planHash?: string;
   readonly root: string;
 }
 
@@ -830,7 +831,17 @@ export interface SensitivePermissionRepairApplyFs extends SensitivePermissionRep
 
 export interface SensitivePermissionRepairReceipt {
   readonly applied: readonly string[];
+  readonly changes: readonly SensitivePermissionModeChange[];
+  readonly cleanupFailures?: readonly string[];
+  readonly planHash: string;
   readonly rejected?: string;
+}
+
+export interface SensitivePermissionModeChange {
+  readonly afterMode?: number;
+  readonly beforeMode: number;
+  readonly path: string;
+  readonly verification: "unverified" | "verified";
 }
 
 export type SensitiveDirectoryInventoryState =
@@ -1150,7 +1161,29 @@ export async function planSensitivePermissionRepair(
       items.push({ ...target, state: "missing" });
     }
   }
-  return { items, root: resolve(root) };
+  const plan = { items, root: resolve(root) };
+  return { ...plan, planHash: hashSensitivePermissionRepairPlan(plan) };
+}
+
+/**
+ * Hashes the complete immutable repair intent in input order. The versioned,
+ * fixed-key projection avoids depending on incidental object key order while
+ * still binding every field that can affect the preview or apply decision.
+ */
+export function hashSensitivePermissionRepairPlan(
+  plan: Pick<SensitivePermissionRepairPlan, "items" | "root">
+): string {
+  return sha256Hex(JSON.stringify({
+    items: plan.items.map((item) => ({
+      label: item.label,
+      observedMode: item.observedMode ?? null,
+      path: resolve(item.path),
+      reason: item.reason ?? null,
+      state: item.state
+    })),
+    root: resolve(plan.root),
+    version: 1
+  }));
 }
 
 /**
@@ -1164,38 +1197,108 @@ export async function applySensitivePermissionRepair(
   plan: SensitivePermissionRepairPlan,
   fileSystem: SensitivePermissionRepairApplyFs = DEFAULT_PERMISSION_REPAIR_APPLY_FS
 ): Promise<SensitivePermissionRepairReceipt> {
+  const planHash = hashSensitivePermissionRepairPlan(plan);
   const repairable = plan.items.filter((item) => item.state === "repairable");
   if (plan.items.some((item) => item.state === "rejected")) {
-    return { applied: [], rejected: "plan contains a rejected target" };
+    return { applied: [], changes: [], planHash, rejected: "plan contains a rejected target" };
   }
 
   const handles: Array<{ readonly item: SensitivePermissionRepairItem; readonly handle: SensitivePermissionRepairHandle }> = [];
+  let receipt: SensitivePermissionRepairReceipt | undefined;
+  let applyError: unknown;
   try {
-    for (const item of repairable) {
-      const ancestorState = await inspectOwnedAncestorChain(plan.root, item.path, fileSystem);
-      if (ancestorState !== "safe") {
-        return { applied: [], rejected: `target ancestor changed or is unsafe (${ancestorState}): ${item.label}` };
+    receipt = await (async (): Promise<SensitivePermissionRepairReceipt> => {
+      for (const item of repairable) {
+        const ancestorState = await inspectOwnedAncestorChain(plan.root, item.path, fileSystem);
+        if (ancestorState !== "safe") {
+          return {
+            applied: [],
+            changes: [],
+            planHash,
+            rejected: `target ancestor changed or is unsafe (${ancestorState}): ${item.label}`
+          };
+        }
+        const handle = await fileSystem.open(item.path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+        handles.push({ handle, item });
+        if (!await revalidateOpenedPermissionTarget(plan.root, item, handle, fileSystem)) {
+          return { applied: [], changes: [], planHash, rejected: `target changed or is unsafe: ${item.label}` };
+        }
       }
-      const handle = await fileSystem.open(item.path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
-      if (!await revalidateOpenedPermissionTarget(plan.root, item, handle, fileSystem)) {
-        await handle.close();
-        return { applied: [], rejected: `target changed or is unsafe: ${item.label}` };
-      }
-      handles.push({ handle, item });
-    }
 
-    for (const { handle, item } of handles) {
-      if (!await revalidateOpenedPermissionTarget(plan.root, item, handle, fileSystem)) {
-        return { applied: [], rejected: `target changed or is unsafe before chmod: ${item.label}` };
+      for (const { handle, item } of handles) {
+        if (!await revalidateOpenedPermissionTarget(plan.root, item, handle, fileSystem)) {
+          return {
+            applied: [],
+            changes: [],
+            planHash,
+            rejected: `target changed or is unsafe before chmod: ${item.label}`
+          };
+        }
       }
-    }
-    for (const { handle } of handles) {
-      await handle.chmod(0o600);
-    }
-    return { applied: handles.map(({ item }) => item.path) };
-  } finally {
-    await Promise.all(handles.map(({ handle }) => handle.close()));
+      const changes: SensitivePermissionModeChange[] = [];
+      for (const { handle, item } of handles) {
+        try {
+          await handle.chmod(0o600);
+        } catch {
+          return {
+            applied: changes
+              .filter(({ afterMode, verification }) => verification === "verified" && afterMode === 0o600)
+              .map(({ path }) => path),
+            changes,
+            planHash,
+            rejected: `chmod failed before changing target: ${item.label}`
+          };
+        }
+        try {
+          changes.push({
+            afterMode: (await handle.stat()).mode & 0o777,
+            beforeMode: item.observedMode!,
+            path: item.path,
+            verification: "verified"
+          });
+        } catch {
+          changes.push({
+            beforeMode: item.observedMode!,
+            path: item.path,
+            verification: "unverified"
+          });
+          return {
+            applied: changes
+              .filter(({ afterMode, verification }) => verification === "verified" && afterMode === 0o600)
+              .map(({ path }) => path),
+            changes,
+            planHash,
+            rejected: `target mode could not be verified after chmod: ${item.label}`
+          };
+        }
+        if (changes.at(-1)?.afterMode !== 0o600) {
+          return {
+            applied: changes
+              .filter(({ afterMode, verification }) => verification === "verified" && afterMode === 0o600)
+              .map(({ path }) => path),
+            changes,
+            planHash,
+            rejected: `target did not reach owner-only mode after chmod: ${item.label}`
+          };
+        }
+      }
+      const applied = changes
+        .filter(({ afterMode, verification }) => verification === "verified" && afterMode === 0o600)
+        .map(({ path }) => path);
+      return { applied, changes, planHash };
+    })();
+  } catch (error) {
+    applyError = error;
   }
+
+  const closeResults = await Promise.allSettled(handles.map(({ handle }) => handle.close()));
+  const cleanupFailures = closeResults.flatMap((result, index) =>
+    result.status === "rejected" ? [handles[index]!.item.label] : []
+  );
+  if (receipt) {
+    return cleanupFailures.length > 0 ? { ...receipt, cleanupFailures } : receipt;
+  }
+  throw applyError;
 }
 
 /**

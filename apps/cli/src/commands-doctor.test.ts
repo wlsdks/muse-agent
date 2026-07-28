@@ -741,7 +741,12 @@ describe("resident daemon truth", () => {
 
     expect(statSync(userMemoryFile).mode & 0o777).toBe(0o644);
     expect(emitted).toEqual([expect.objectContaining({
-      receipt: { applied: [], rejected: "plan contains a rejected target" }
+      receipt: expect.objectContaining({
+        applied: [],
+        changes: [],
+        planHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        rejected: "plan contains a rejected target"
+      })
     })]);
   });
 });

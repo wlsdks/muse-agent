@@ -11,6 +11,7 @@ import {
   notesIndexHealth,
   permissionModeDriftCheck,
   applySensitivePermissionRepair,
+  hashSensitivePermissionRepairPlan,
   inventorySensitiveDirectories,
   planSensitivePermissionRepair,
   privacyRoutingCheck,
@@ -481,7 +482,12 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
       lstat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }),
       open: async () => ({ chmod, close: async () => undefined, stat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }) })
     });
-    expect(result).toEqual({ applied: [], rejected: "plan contains a rejected target" });
+    expect(result).toEqual(expect.objectContaining({
+      applied: [],
+      changes: [],
+      planHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      rejected: "plan contains a rejected target"
+    }));
     expect(chmod).not.toHaveBeenCalled();
   });
 
@@ -520,6 +526,8 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
       });
       expect(receipt).toEqual({
         applied: [],
+        changes: [],
+        planHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
         rejected: `target ancestor changed or is unsafe (${targetPath.includes("/linked/")
           ? "nested-target"
           : "symlink-ancestor"}): secret.json`
@@ -529,16 +537,130 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
   );
 
   it("applies 0600 only after every no-follow handle still matches the dry-run mode", async () => {
-    const chmod = vi.fn(async () => undefined);
+    let mode = 0o100644;
+    const chmod = vi.fn(async (nextMode: number) => {
+      mode = 0o100000 | nextMode;
+    });
+    const result = await applySensitivePermissionRepair({
+      items: [{ label: "repair.json", observedMode: 0o644, path: "/muse/repair.json", state: "repairable" }],
+      root: "/muse"
+    }, {
+      lstat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode }),
+      open: async () => ({ chmod, close: async () => undefined, stat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode }) })
+    });
+    expect(result).toEqual({
+      applied: ["/muse/repair.json"],
+      changes: [{
+        afterMode: 0o600,
+        beforeMode: 0o644,
+        path: "/muse/repair.json",
+        verification: "verified"
+      }],
+      planHash: expect.stringMatching(/^[0-9a-f]{64}$/u)
+    });
+    expect(chmod).toHaveBeenCalledWith(0o600);
+  });
+
+  it("returns a receipt for earlier successful files when a later chmod fails", async () => {
+    const modes = new Map([
+      ["/muse/a.json", 0o100644],
+      ["/muse/b.json", 0o100644]
+    ]);
+    const result = await applySensitivePermissionRepair({
+      items: [
+        { label: "a.json", observedMode: 0o644, path: "/muse/a.json", state: "repairable" },
+        { label: "b.json", observedMode: 0o644, path: "/muse/b.json", state: "repairable" }
+      ],
+      root: "/muse"
+    }, {
+      lstat: async (path) => ({
+        isFile: () => path !== "/muse",
+        isSymbolicLink: () => false,
+        mode: modes.get(path) ?? 0o40700
+      }),
+      open: async (path) => ({
+        chmod: async (nextMode) => {
+          if (path.endsWith("/b.json")) throw new Error("injected chmod failure");
+          modes.set(path, 0o100000 | nextMode);
+        },
+        close: async () => undefined,
+        stat: async () => ({
+          isFile: () => true,
+          isSymbolicLink: () => false,
+          mode: modes.get(path)!
+        })
+      })
+    });
+
+    expect(result).toEqual({
+      applied: ["/muse/a.json"],
+      changes: [{
+        afterMode: 0o600,
+        beforeMode: 0o644,
+        path: "/muse/a.json",
+        verification: "verified"
+      }],
+      planHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      rejected: "chmod failed before changing target: b.json"
+    });
+    expect(modes.get("/muse/a.json")! & 0o777).toBe(0o600);
+    expect(modes.get("/muse/b.json")! & 0o777).toBe(0o644);
+  });
+
+  it("records an unverified change instead of losing the receipt when post-chmod stat fails", async () => {
+    let chmodCompleted = false;
     const result = await applySensitivePermissionRepair({
       items: [{ label: "repair.json", observedMode: 0o644, path: "/muse/repair.json", state: "repairable" }],
       root: "/muse"
     }, {
       lstat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }),
-      open: async () => ({ chmod, close: async () => undefined, stat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 }) })
+      open: async () => ({
+        chmod: async () => { chmodCompleted = true; },
+        close: async () => undefined,
+        stat: async () => {
+          if (chmodCompleted) throw new Error("injected stat failure");
+          return { isFile: () => true, isSymbolicLink: () => false, mode: 0o100644 };
+        }
+      })
     });
-    expect(result).toEqual({ applied: ["/muse/repair.json"] });
-    expect(chmod).toHaveBeenCalledWith(0o600);
+
+    expect(result).toEqual({
+      applied: [],
+      changes: [{
+        beforeMode: 0o644,
+        path: "/muse/repair.json",
+        verification: "unverified"
+      }],
+      planHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      rejected: "target mode could not be verified after chmod: repair.json"
+    });
+  });
+
+  it("preserves a verified receipt and reports descriptor cleanup failure", async () => {
+    let mode = 0o100644;
+    const result = await applySensitivePermissionRepair({
+      items: [{ label: "repair.json", observedMode: 0o644, path: "/muse/repair.json", state: "repairable" }],
+      root: "/muse"
+    }, {
+      lstat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode }),
+      open: async () => ({
+        chmod: async (nextMode) => { mode = 0o100000 | nextMode; },
+        close: async () => { throw new Error("injected close failure"); },
+        stat: async () => ({ isFile: () => true, isSymbolicLink: () => false, mode })
+      })
+    });
+
+    expect(result).toEqual({
+      applied: ["/muse/repair.json"],
+      changes: [{
+        afterMode: 0o600,
+        beforeMode: 0o644,
+        path: "/muse/repair.json",
+        verification: "verified"
+      }],
+      cleanupFailures: ["repair.json"],
+      planHash: expect.stringMatching(/^[0-9a-f]{64}$/u)
+    });
   });
 
   it("leaves the opened file unchanged when the owned root becomes a symlink during open", async () => {
@@ -571,7 +693,12 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
         };
       }
     });
-    expect(result).toEqual({ applied: [], rejected: "target changed or is unsafe: repair.json" });
+    expect(result).toEqual({
+      applied: [],
+      changes: [],
+      planHash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      rejected: "target changed or is unsafe: repair.json"
+    });
     expect(chmod).not.toHaveBeenCalled();
     expect(close).toHaveBeenCalledOnce();
   });
@@ -603,6 +730,14 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
       ["link.json", "rejected"]
     ]);
     expect(plan.items.find((item) => item.label === "link.json")?.reason).toContain("symbolic");
+    expect(plan.planHash).toMatch(/^[0-9a-f]{64}$/u);
+    expect(plan.planHash).toBe(hashSensitivePermissionRepairPlan(plan));
+    expect(hashSensitivePermissionRepairPlan({
+      ...plan,
+      items: plan.items.map((item, index) => index === 0
+        ? { ...item, observedMode: 0o600 }
+        : item)
+    })).not.toBe(plan.planHash);
   });
 
   it("flags a file drifted to 644 (world/group-readable)", async () => {
