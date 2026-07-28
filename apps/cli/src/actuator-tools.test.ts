@@ -12,7 +12,7 @@ import type { JsonObject } from "@muse/shared";
 import { ToolRegistry } from "@muse/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildActuatorTools, buildBrowserTools, buildCliPendingApprovalStager, buildContactsApprovalGate, buildEmailApprovalGate, buildFsWriteApprovalGate, buildMessagingApprovalGate, buildWebApprovalGate, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
+import { buildActuatorTools, buildBrowserTools, buildCliPendingApprovalStager, buildContactsApprovalGate, buildEmailApprovalGate, buildFsWriteApprovalGate, buildMessagingApprovalGate, buildWebApprovalGate, classifyActuatorPermission, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
 import type { ProgramIO } from "./program.js";
 
 describe("buildMessagingApprovalGate — draft-first, fail-closed in non-TTY", () => {
@@ -347,6 +347,57 @@ describe.sequential("buildActuatorTools — ambient Home Assistant local-only fl
 });
 
 describe("summarizeActuators — armed-state visibility + config hints", () => {
+  it("assigns every advertised actuator exactly one explicit permission class", () => {
+    const summaries = [
+      summarizeActuators(env(), fakeIo()),
+      summarizeActuators(env({ MUSE_MACOS_ACTUATORS: "1" }), fakeIo()),
+      summarizeActuators(env({ MUSE_WINDOWS_ACTUATORS: "1" }), fakeIo()),
+      summarizeActuators(env({
+        MUSE_GMAIL_TOKEN: "tok",
+        MUSE_HOMEASSISTANT_TOKEN: "ha",
+        MUSE_HOMEASSISTANT_URL: "http://ha.local:8123",
+        MUSE_MACOS_ACTUATORS: "1",
+        MUSE_WINDOWS_ACTUATORS: "1"
+      }), fakeIo())
+    ];
+    const advertised = new Set(summaries.flatMap((summary) => [
+      ...summary.armed,
+      ...summary.unavailable.map((item) => item.name)
+    ]));
+
+    for (const name of advertised) {
+      expect(classifyActuatorPermission(name), `${name} must have one explicit permission class`).toBeDefined();
+    }
+
+    expect(Object.fromEntries([...advertised].sort().map((name) => [name, classifyActuatorPermission(name)]))).toEqual({
+      email_forward: "external-send",
+      email_reply: "external-send",
+      email_send: "external-send",
+      home_action: "network",
+      mac_app_open: "process",
+      mac_app_read: "read",
+      mac_clipboard_set: "local-write",
+      mac_contacts_write: "local-write",
+      mac_media_control: "process",
+      mac_message_send: "external-send",
+      mac_observe: "read",
+      mac_say: "process",
+      mac_screen_read: "read",
+      mac_screenshot: "read",
+      mac_shortcut_run: "process",
+      mac_spotlight_search: "read",
+      mac_system_set: "process",
+      web_action: "network",
+      win_app_open: "process",
+      win_app_read: "read",
+      win_clipboard_set: "local-write",
+      win_media_control: "process",
+      win_say: "process",
+      win_screenshot: "read",
+      win_system_set: "process"
+    });
+  });
+
   it("arms only web_action with no provider env, with hints for the rest", () => {
     const summary = summarizeActuators(env(), fakeIo());
     expect(summary.armed).toEqual(["web_action"]);

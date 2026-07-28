@@ -77,6 +77,49 @@ export interface ActuatorSummary {
 }
 
 /**
+ * The authority boundary for every actuator that this CLI can advertise.
+ *
+ * `risk` controls the generic tool-approval gate. This matrix answers the
+ * complementary question that Task 073 needs: what kind of authority does a
+ * named actuator actually exercise? It is deliberately a closed record rather
+ * than a prefix heuristic, so a newly advertised actuator cannot silently
+ * inherit a weaker class.
+ */
+export type ActuatorPermissionClass = "read" | "local-write" | "process" | "network" | "external-send";
+
+export const ACTUATOR_PERMISSION_MATRIX = {
+  email_forward: "external-send",
+  email_reply: "external-send",
+  email_send: "external-send",
+  home_action: "network",
+  mac_app_open: "process",
+  mac_app_read: "read",
+  mac_clipboard_set: "local-write",
+  mac_contacts_write: "local-write",
+  mac_media_control: "process",
+  mac_message_send: "external-send",
+  mac_observe: "read",
+  mac_say: "process",
+  mac_screen_read: "read",
+  mac_screenshot: "read",
+  mac_shortcut_run: "process",
+  mac_spotlight_search: "read",
+  mac_system_set: "process",
+  web_action: "network",
+  win_app_open: "process",
+  win_app_read: "read",
+  win_clipboard_set: "local-write",
+  win_media_control: "process",
+  win_say: "process",
+  win_screenshot: "read",
+  win_system_set: "process"
+} as const satisfies Readonly<Record<string, ActuatorPermissionClass>>;
+
+export function classifyActuatorPermission(name: string): ActuatorPermissionClass | undefined {
+  return ACTUATOR_PERMISSION_MATRIX[name as keyof typeof ACTUATOR_PERMISSION_MATRIX];
+}
+
+/**
  * Which actuators `--actuators` arms for a given env, and how to arm
  * the rest. Kept in lockstep with `buildActuatorTools` (a test asserts
  * the armed set equals the built tool names) so the banner never claims
