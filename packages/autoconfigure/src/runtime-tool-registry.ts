@@ -76,6 +76,7 @@ export interface RuntimeToolRegistryDeps {
   readonly getContextReferenceLoopbackTools: () => readonly MuseTool[];
   readonly loopback: {
     readonly notes: readonly MuseTool[];
+    readonly continuity: readonly MuseTool[];
     readonly notesRegistry: readonly MuseTool[];
     readonly calendar: readonly MuseTool[];
     readonly tasks: readonly MuseTool[];
@@ -115,6 +116,7 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     loopback
   } = deps;
   const notesLoopbackTools = loopback.notes;
+  const continuityLoopbackTools = loopback.continuity;
   const notesRegistryLoopbackTools = loopback.notesRegistry;
   const calendarLoopbackTools = loopback.calendar;
   const tasksLoopbackTools = loopback.tasks;
@@ -323,6 +325,7 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     () => loopbackMcpTools,
     () => getContextReferenceLoopbackTools(),
     () => notesLoopbackTools,
+    () => continuityLoopbackTools,
     () => notesRegistryLoopbackTools,
     () => calendarLoopbackTools,
     () => tasksLoopbackTools,

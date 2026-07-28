@@ -14,9 +14,14 @@
  */
 
 import {
+  createLocalExactArtifactResolver,
+  readPreparedContinuityPack,
   retryContinuityTaskCompletionInteractions
 } from "@muse/attunement";
-import { prepareProductionAuthorizedContinuityTaskCompletionInteraction } from "@muse/attunement/host";
+import {
+  openProductionAuthorizedContinuityPack,
+  prepareProductionAuthorizedContinuityTaskCompletionInteraction
+} from "@muse/attunement/host";
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { createCalendarMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createHistoryMcpServer, createMathMcpServer, createMessagingMcpServer, createNotesMcpServer, createNotesRegistryMcpServer, createPatternsMcpServer, createProactiveMcpServer, createRemindersMcpServer, createStatusMcpServer, createTasksMcpServer, createTasksRegistryMcpServer, createSearchMcpServer, createWebReadMcpServer, type MessageApprovalGate } from "@muse/domain-tools";
 import { mirrorNoteToApple, mirrorReminderToApple } from "@muse/macos";
@@ -28,6 +33,11 @@ import { isInteractiveWebEgressAllowed } from "@muse/model";
 import type { ModelProvider } from "@muse/model";
 
 import { parseBoolean, parseInteger } from "./env-parsers.js";
+import {
+  createContinuityPackOpenTool,
+  createContinuityPackPreviewTool,
+  type ContinuityPackToolDeps
+} from "./continuity-pack-tools.js";
 import { resolveWeaknessesFile } from "./provider-paths.js";
 import type { MuseEnvironment } from "./index.js";
 
@@ -70,6 +80,7 @@ export interface LoopbackToolsDeps {
 
 export interface LoopbackToolsBundle {
   readonly notes: readonly MuseTool[];
+  readonly continuity: readonly MuseTool[];
   readonly notesRegistry: readonly MuseTool[];
   readonly calendar: readonly MuseTool[];
   readonly tasks: readonly MuseTool[];
@@ -111,6 +122,31 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
           ? { mirror: (note) => mirrorNoteToApple(note, { env }) }
           : {})
       }))
+    : [];
+  const continuity: readonly MuseTool[] = deps.attunementFile
+    ? (() => {
+        const resolveExactArtifact = createLocalExactArtifactResolver({
+          notesDir: deps.notesDir,
+          remindersFile: deps.remindersFile,
+          tasksFile: deps.tasksFile
+        });
+        const packDeps: ContinuityPackToolDeps = {
+          openPack: (threadId) => openProductionAuthorizedContinuityPack(
+            deps.attunementFile!,
+            threadId,
+            resolveExactArtifact
+          ),
+          previewPack: (threadId) => readPreparedContinuityPack(
+            deps.attunementFile!,
+            threadId,
+            resolveExactArtifact
+          )
+        };
+        return [
+          createContinuityPackPreviewTool(packDeps),
+          createContinuityPackOpenTool(packDeps)
+        ];
+      })()
     : [];
 
   // Notes registry MCP surface (`muse.notes-multi`): only registered
@@ -293,6 +329,7 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
 
   return {
     calendar,
+    continuity,
     episodes,
     followups,
     history,
