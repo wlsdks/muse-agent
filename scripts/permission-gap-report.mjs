@@ -109,6 +109,23 @@ function defaultReportEnv() {
   };
 }
 
+/**
+ * Runtime composition eagerly ensures the configured notes directory exists.
+ * The permission report only needs the resulting public tool/route catalogs,
+ * so point that composition-only path at an already-existing neutral directory
+ * without changing the caller's environment or owner filesystem.
+ *
+ * @param {Record<string, string | undefined>} env
+ */
+function readOnlyCompositionEnv(env) {
+  const compositionEnv = Object.create(env);
+  Object.defineProperty(compositionEnv, "MUSE_NOTES_DIR", {
+    enumerable: true,
+    value: tmpdir()
+  });
+  return compositionEnv;
+}
+
 /** @param {ReturnType<typeof createApiServerOptions>} serverOptions */
 async function apiRows(serverOptions) {
   const server = buildServer({
@@ -138,7 +155,7 @@ async function apiRows(serverOptions) {
 export async function createPermissionGapReport(options = {}) {
   const env = options.env ?? defaultReportEnv();
   const serverOptions = createApiServerOptions({
-    env,
+    env: readOnlyCompositionEnv(env),
     localOnlyOverride: true
   });
   /** @type {PermissionGapRow[]} */

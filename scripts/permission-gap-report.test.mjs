@@ -38,15 +38,16 @@ test("permission gap report covers each public surface deterministically without
   await writeFile(ownerStore, initial);
 
   try {
-    const env = {
+    const env = Object.freeze({
       HOME: directory,
       MUSE_CHANNEL_OWNERS_FILE: ownerStore,
       MUSE_HOME: join(directory, ".muse"),
       MUSE_LOCAL_ONLY: "true",
-      MUSE_NOTES_DIR: directory,
+      MUSE_NOTES_DIR: join(directory, "notes"),
       MUSE_SCHEDULER_CRON_ENABLED: "false",
       MUSE_USER_MEMORY_AUTO_EXTRACT: "false"
-    };
+    });
+    const beforeEnv = JSON.stringify(env);
     const before = digest(await readFile(ownerStore));
     const beforeTree = await snapshotTree(directory);
     const first = await reportModule.createPermissionGapReport({ env });
@@ -56,6 +57,7 @@ test("permission gap report covers each public surface deterministically without
 
     assert.equal(after, before, "generating the report must not change the disposable owner store");
     assert.deepEqual(afterTree, beforeTree, "generating the report must not create or change any disposable HOME artifact");
+    assert.equal(JSON.stringify(env), beforeEnv, "generating the report must not mutate the caller's environment");
     assert.deepEqual(second, first, "the report must be deterministic");
 
     const seen = new Set();
@@ -78,7 +80,10 @@ test("permission gap report covers each public surface deterministically without
 
     const toolRows = first.rows.filter((row) => row.surface === "tool");
     const expectedToolNames = new Set([
-      ...createApiServerOptions({ env, localOnlyOverride: true }).toolCatalogProvider().map((tool) => tool.name),
+      ...createApiServerOptions({
+        env: { ...env, MUSE_NOTES_DIR: directory },
+        localOnlyOverride: true
+      }).toolCatalogProvider().map((tool) => tool.name),
       ...Object.keys(ACTUATOR_PERMISSION_MATRIX)
     ]);
     assert.deepEqual(new Set(toolRows.map((row) => row.name)), expectedToolNames);
