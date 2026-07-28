@@ -1,12 +1,12 @@
 # Muse
 
 **Product goal: Muse learns how one user lives and works, and gets better at when and how to help.**
-Attunement is the product north star: personal thread → Continuity Pack → outcome → adaptation.
-Optional Observe may later improve timing through rhythm and friction evidence. The complete loop
-is ROADMAP, not a shipped claim — memory, pattern, proactivity, browser, trace, and checkpoint
-features are substrates; never relabel them as end-to-end Attunement. The first vertical is
-Personal Continuity: a user-chosen unfinished life or work thread, initially backed by Muse-local
-artifacts and optional browser history. Work Resumption is one specialized mode, not the product
+Attunement is the product north star: Shadow Muse → Continuity Capsule → visible Policy Card.
+The lightweight Attunement Graph is a rebuildable temporal/provenance projection and personal
+context compiler; existing stores remain authoritative. The complete loop is ROADMAP, not a shipped
+claim — memory, pattern, proactivity, browser, trace, and checkpoint features are substrates. The
+first vertical remains user-chosen Personal Continuity with exact Muse-local artifacts and optional
+browser history. Work Resumption is one specialized mode, not the product
 boundary.
 
 Provider/MCP-neutrality, local-first ownership, deterministic grounding, correction, and

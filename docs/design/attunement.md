@@ -3,8 +3,8 @@ title: Attunement architecture and data contract
 audience: [engineering, product, security, agents]
 purpose: Define the closed loop, privacy boundary, and implementation seams for Attunement
 status: partial-implementation
-updated: 2026-07-22
-related: [../strategy/attunement.md, ../goals/attunement-implementation-plan.md, ../privacy-and-data.md]
+updated: 2026-07-29
+related: [../strategy/attunement.md, attunement-graph.md, ../goals/attunement-implementation-plan.md, ../goals/attunement-wow-graph-roadmap.md, ../privacy-and-data.md]
 ---
 
 # Attunement architecture and data contract
@@ -37,6 +37,23 @@ opt-in category observation (O1 collection only)
 Slice A makes no LLM call. A later LLM may phrase an explanation or summarize an already
 linked pack; it does not decide affiliation, consent, retention, interruption budgets,
 evidence sufficiency, or action approval.
+
+## Signature-experience architecture
+
+The roadmap experience has three consumers of the existing Attunement loop:
+
+- **Shadow Muse** observes only within explicit consent and records decisions without
+  delivery or action.
+- **Continuity Capsule** turns exact linked state plus verified changes into a richer,
+  user-invoked resumption surface.
+- **Policy Card** proposes a scoped, reversible policy delta; it never hides learning in a
+  prompt or silently widens observation or authority.
+
+Their shared relationship/time/provenance layer is the proposed
+[`@muse/attunement-graph`](attunement-graph.md) module. Existing stores remain authoritative;
+the graph is a rebuildable projection. It must keep user assertions, source observations,
+deterministic derivations, and model hypotheses distinct, and it must never convert
+correlation into outcome, causality, or permission.
 
 ## Reusable current seams
 

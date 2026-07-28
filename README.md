@@ -29,6 +29,29 @@ The first proof point is **Personal Continuity**. You choose a life or work thre
 
 > **What works today:** personal memory, grounded recall, local personal stores, guarded tools and browser actions, traces, checkpoints, and the first explicit Personal Continuity path. See the [product contract](docs/strategy/attunement.md) and [implementation plan](docs/goals/attunement-implementation-plan.md).
 
+## The Muse moment we are building
+
+You stopped while comparing three places to stay. Since then, the flight changed, one
+cancellation deadline moved close, and an 18-minute gap opened in your day. Muse prepares
+only the changes, explains why now, cites every source, shows exactly how far an action
+would go, and asks whether to hold one option.
+
+If you answer “this evening instead,” Muse proposes a visible rule scoped to that trip—not
+a hidden global preference. That experience has three parts:
+
+- **Shadow Muse** learns when to help or stay quiet before it interrupts.
+- **Continuity Capsule** restores the stopping point, changes, evidence, next step,
+  prepared work, and expected time.
+- **Policy Card** shows what Muse proposes to learn about collaborating with you, with
+  evidence and trial/edit/reject/rollback controls.
+
+> **Muse does not remember apps; it remembers the state you intended to continue.**
+
+This is the signature roadmap, not a shipped claim. It is powered by the proposed,
+lightweight [Attunement Graph Engine](docs/design/attunement-graph.md): an agent-native
+temporal/provenance graph and personal context compiler, not merely a third-party graph DB.
+See the separate [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).
+
 <p align="center"><img src="docs/images/web-home.png" alt="Muse console home — model chip, integrations, and what Muse has learned" width="860" /></p>
 
 ---
@@ -152,7 +175,9 @@ pnpm smoke:live
 
 - [Attunement product contract](docs/strategy/attunement.md)
 - [Attunement architecture and current gaps](docs/design/attunement.md)
+- [Attunement Graph Engine](docs/design/attunement-graph.md)
 - [Attunement implementation plan](docs/goals/attunement-implementation-plan.md)
+- [Attunement wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)
 - [Personal-agent qualification](docs/development/personal-agent-qualification.md)
 - [System map](docs/SYSTEM-MAP.md)
 - [Verified feature catalog](docs/feature-catalog/INDEX.md)

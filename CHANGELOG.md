@@ -8,6 +8,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Defined Muse's signature roadmap as Shadow Muse, Continuity Capsule, and
+  Policy Card, backed by a proposed lightweight Attunement Graph Engine and a
+  separate research, modularization, storage-bake-off, and dogfood program.
+  These documents explicitly remain roadmap contracts rather than shipped
+  capability claims.
+
 - Added model-aware context admission for physical local inference calls.
   Ollama now exposes one promise-cached configured/probed context-window
   authority shared by generation and streaming; Muse clamps its owner admission

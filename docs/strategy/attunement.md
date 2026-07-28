@@ -3,8 +3,8 @@ title: Muse Attunement — product contract
 audience: [product, design, engineering, agents]
 purpose: Define Muse's product wedge without claiming roadmap capabilities are shipped
 status: north-star
-updated: 2026-07-22
-related: [../design/attunement.md, ../goals/attunement-implementation-plan.md, ../privacy-and-data.md]
+updated: 2026-07-29
+related: [../design/attunement.md, ../design/attunement-graph.md, ../goals/attunement-implementation-plan.md, ../goals/attunement-wow-graph-roadmap.md, ../privacy-and-data.md]
 ---
 
 # Muse Attunement
@@ -45,6 +45,53 @@ This is more specific than memory, personalization, or proactivity:
 - **Attunement** learns the collaboration policy: when to stay quiet, when to surface,
   what form of help fits, how far to act, and whether the intervention helped the person's
   life or work.
+
+## The signature Muse moment
+
+The target experience is not a generic reminder. Imagine that the user stopped while
+planning a trip:
+
+> “Last time, you stopped while comparing three lodging options. Since then, your flight
+> time changed, and one saved property's cancellation deadline is tomorrow. You have an
+> 18-minute gap now, and in similar short gaps you previously preferred a change-only
+> comparison. Shall I summarize only what changed and put one option on hold?”
+
+The surface also shows:
+
+- why Muse chose this moment;
+- which exact sources it connected;
+- what changed since the user stopped;
+- how far the proposed action would go before another confirmation;
+- “do not show this at this timing again.”
+
+If the user chooses “not now—this evening,” Muse does not quietly turn that into a global
+preference. It proposes a visible, scoped policy:
+
+> “For this thread, should I suggest life planning during your evening review rather than
+> between work blocks?”
+
+This is built from three product mechanisms:
+
+1. **Shadow Muse** learns first without interrupting or acting. It records candidate offers,
+   reasons for silence, bounded counterfactual timing, the user's actual return, and the
+   reconstruction work a prepared Capsule might have saved.
+2. **Continuity Capsule** is the product form of a richer Continuity Pack: the exact stopping
+   point, changes since then, needed sources, one next step, a prepared draft/action, and
+   expected time.
+3. **Policy Card** makes learning inspectable: the proposed collaboration rule, evidence,
+   scope, and controls to trial, edit, reject, or roll back it.
+
+> **Muse does not remember apps; it remembers the state you intended to continue.**
+>
+> **Muse는 앱을 기억하지 않고, 내가 이어가려던 상태를 기억한다.**
+
+A procedural skill teaches an agent how to do a task better. An Attunement Policy teaches
+Muse how to collaborate with this person better.
+
+These three mechanisms and the underlying
+[Attunement Graph Engine](../design/attunement-graph.md) are target architecture, not a
+shipped claim. Their dependency-ordered work lives in the
+[wow + graph roadmap](../goals/attunement-wow-graph-roadmap.md).
 
 ## The compounding loop
 
@@ -95,7 +142,7 @@ improve its timing; they are not prerequisites for testing whether the pack is u
 |---|---|
 | **Available now** | Provider-neutral runtime; local personal stores; user memory; grounded recall; guarded browser control; traces/checkpoints; Personal Continuity Slice A; and Observe O1: explicit consent for one exact thread, category/time/duration-only local sessions, inspect/pause/resume/forget, and one fenced app-only collector. O1 performs no hypothesis, policy, delivery, model call, send, or action. Packs remain user-invoked with four explicit outcomes and a narrow display-policy update. |
 | **Experimental substrates** | Pattern suggestions, proactive surfacing, background review, and self-followup. They contribute signals or delivery paths, but are not an Attunement loop. |
-| **Roadmap** | More Continuity source adapters, Observe hypothesis/correction controls, Personal Rhythm Model, Friction Discovery, usefulness qualification, and timing-aware help. Exact browsing context and O1 category collection do not themselves ship proactive timing. |
+| **Roadmap** | Shadow Muse, Continuity Capsule, Policy Card, Attunement Graph Engine, more Continuity source adapters, Observe hypothesis/correction controls, Personal Rhythm Model, Friction Discovery, usefulness qualification, and timing-aware help. Exact browsing context and O1 category collection do not themselves ship proactive timing. |
 
 ## What Continuity, Muse Work, and Observe mean
 

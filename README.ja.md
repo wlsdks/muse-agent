@@ -22,6 +22,27 @@ Muse は仕事専用のアシスタントではなく、一人の生活と仕事
 
 > **現在利用できるもの:** パーソナルメモリ、根拠付きリコール、ローカルの個人用ストア、ガード付きツール／ブラウザー操作、トレース、チェックポイント、そして明示的に開始する Personal Continuity の最初の経路。詳しくは [Attunement のプロダクト契約](docs/strategy/attunement.md) と [実装計画](docs/goals/attunement-implementation-plan.md) を参照してください。
 
+## Muse が目指す「驚きの瞬間」
+
+宿泊先を三つ比較している途中で止まり、その後フライト時刻が変わり、一つの
+キャンセル期限が明日に迫り、予定の間に18分できたとします。Muse は変更点だけを
+準備し、「なぜ今か」、正確な根拠、操作がどこまで進むかを示してから、候補を一つ
+保留するか尋ねます。
+
+「今ではなく今晩」と答えた場合、隠れた全体設定にはしません。その旅行 thread
+だけに適用する協働ルールを、試用・編集・拒否・ロールバック可能なカードとして提案します。
+
+- **Shadow Muse** — 邪魔や実行をする前に、話す時と黙る時を学びます。
+- **Continuity Capsule** — 中断地点、変化、根拠、次の一歩、準備済み作業、所要時間を復元します。
+- **Policy Card** — Muse がこの人との協働方法について学ぶ提案と根拠、適用範囲、操作を示します。
+
+> **Muse はアプリではなく、あなたが続けようとしていた状態を記憶します。**
+
+これは代表的なロードマップであり、実装済みという主張ではありません。基盤は単なる
+外部 graph DB ではなく、軽量な時間・来歴グラフ兼 personal context compiler である
+[Attunement Graph Engine](docs/design/attunement-graph.md) です。実行順序は
+[wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md) を参照してください。
+
 <p align="center"><img src="docs/images/web-home.png" alt="Muse コンソールのホーム画面" width="860" /></p>
 
 ---
@@ -143,7 +164,9 @@ pnpm smoke:live
 
 - [Attunement のプロダクト契約](docs/strategy/attunement.md)
 - [Attunement のアーキテクチャと現在の gap](docs/design/attunement.md)
+- [Attunement Graph Engine](docs/design/attunement-graph.md)
 - [Attunement 実装計画](docs/goals/attunement-implementation-plan.md)
+- [Attunement wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)
 - [システムマップ](docs/SYSTEM-MAP.md)
 - [検証済み feature catalog](docs/feature-catalog/INDEX.md)
 - [エビデンス索引](docs/benchmarks/EVIDENCE.md)

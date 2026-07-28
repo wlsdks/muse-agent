@@ -18,6 +18,16 @@ substrates. Product contract:
 [`docs/strategy/attunement.md`](docs/strategy/attunement.md). Implementation:
 [`docs/goals/attunement-implementation-plan.md`](docs/goals/attunement-implementation-plan.md).
 
+Muse's signature roadmap is **Shadow Muse → Continuity Capsule → Policy Card**:
+learn when to stay quiet, restore the state the user intended to continue, and
+make every proposed collaboration policy visible and reversible. The proposed
+`@muse/attunement-graph` is a lightweight agent-native temporal/provenance
+graph and personal context compiler beneath that experience, not a generic
+graph-DB claim. Existing personal stores remain authoritative; the graph is a
+rebuildable projection. Contract:
+[`docs/design/attunement-graph.md`](docs/design/attunement-graph.md). Program:
+[`docs/goals/attunement-wow-graph-roadmap.md`](docs/goals/attunement-wow-graph-roadmap.md).
+
 - Guard is fail-close. Hook is fail-open.
 - Tool output is untrusted.
 - Tool loops have explicit limits and timeouts.
