@@ -30,11 +30,22 @@ import type { ProgramIO } from "./program.js";
 type Env = Record<string, string | undefined>;
 
 export interface PrivacyStore {
+  /** Current at-rest format, or unsupported when this store has no encryption path. */
+  readonly encryption: "encrypted" | "not-created" | "plaintext" | "unsupported";
   readonly name: string;
   readonly path: string;
   readonly exists: boolean;
   readonly encryptable: boolean;
   readonly encrypted: boolean;
+  /** No current personal-store backup embeds a machine-readable backup schema. */
+  readonly backupVersion: number | null;
+  readonly backupSupport: "plaintext-snapshot-unversioned" | "unsupported";
+  readonly keyState: "explicit" | "host-fallback" | "not-applicable";
+  /**
+   * Decrypt reverses the current format but does not select/validate/restore a
+   * backup artifact. Keep that distinct from true backup restore support.
+   */
+  readonly restoreSupport: "format-reversal-only" | "unsupported";
   /** The command to encrypt this store, when it is encryptable but still plaintext. */
   readonly encryptCommand?: string;
 }
@@ -93,19 +104,27 @@ export function resolvePrivacyStorePaths(
  * not-created (never a false "plaintext"). No decryption, no key needed.
  */
 export async function collectPrivacyPosture(env: Env, runtime: PrivacyPostureRuntime = {}): Promise<PrivacyPosture> {
+  const explicitKey = Boolean(env.MUSE_MEMORY_KEY?.trim());
   const stores = await Promise.all(storeDefs(env, runtime).map(async (def) => {
     const exists = existsSync(def.path);
     const encrypted = exists && def.encryptable ? await isFileEncryptedAtRest(def.path).catch(() => false) : false;
     return {
+      backupSupport: def.encryptable ? "plaintext-snapshot-unversioned" as const : "unsupported" as const,
+      backupVersion: null,
+      encryption: def.encryptable
+        ? (!exists ? "not-created" as const : encrypted ? "encrypted" as const : "plaintext" as const)
+        : "unsupported" as const,
       encryptable: def.encryptable,
       encrypted,
       exists,
+      keyState: def.encryptable ? (explicitKey ? "explicit" as const : "host-fallback" as const) : "not-applicable" as const,
       name: def.name,
       path: def.path,
+      restoreSupport: def.encryptable ? "format-reversal-only" as const : "unsupported" as const,
       ...(def.encryptCommand ? { encryptCommand: def.encryptCommand } : {})
     };
   }));
-  return { anyEncrypted: stores.some((store) => store.encrypted), explicitKey: Boolean(env.MUSE_MEMORY_KEY?.trim()), stores };
+  return { anyEncrypted: stores.some((store) => store.encrypted), explicitKey, stores };
 }
 
 /** Human-readable privacy report. Pure. */

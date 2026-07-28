@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -25,9 +25,18 @@ describe("collectPrivacyPosture — inventory each store's at-rest state + key p
     };
     const posture = await collectPrivacyPosture(env);
     const contactsStore = posture.stores.find((s) => s.name === "contacts")!;
-    expect(contactsStore).toMatchObject({ encryptable: true, encrypted: false, exists: true });
+    expect(contactsStore).toMatchObject({
+      backupSupport: "plaintext-snapshot-unversioned",
+      backupVersion: null,
+      encryptable: true,
+      encrypted: false,
+      encryption: "plaintext",
+      exists: true,
+      keyState: "host-fallback",
+      restoreSupport: "format-reversal-only"
+    });
     const episodes = posture.stores.find((s) => s.name === "episodes")!;
-    expect(episodes).toMatchObject({ exists: false, encrypted: false });
+    expect(episodes).toMatchObject({ encryption: "not-created", exists: false, encrypted: false });
     expect(posture.explicitKey).toBe(false); // no MUSE_MEMORY_KEY
   });
 
@@ -38,7 +47,11 @@ describe("collectPrivacyPosture — inventory each store's at-rest state + key p
     await encryptFileAtRest(contacts, { MUSE_MEMORY_KEY: "s3cret-strong-key" });
     expect(await isFileEncryptedAtRest(contacts)).toBe(true); // sanity: the helper sees it encrypted
     const posture = await collectPrivacyPosture({ HOME: dir, MUSE_CONTACTS_FILE: contacts, MUSE_MEMORY_KEY: "s3cret-strong-key" });
-    expect(posture.stores.find((s) => s.name === "contacts")!.encrypted).toBe(true);
+    expect(posture.stores.find((s) => s.name === "contacts")).toMatchObject({
+      encrypted: true,
+      encryption: "encrypted",
+      keyState: "explicit"
+    });
     expect(posture.anyEncrypted).toBe(true);
     expect(posture.explicitKey).toBe(true);
   });
@@ -49,7 +62,32 @@ describe("collectPrivacyPosture — inventory each store's at-rest state + key p
       const store = posture.stores.find((s) => s.name === name)!;
       expect(store.encryptable).toBe(false);
       expect(store.encrypted).toBe(false);
+      expect(store).toMatchObject({
+        backupSupport: "unsupported",
+        backupVersion: null,
+        encryption: "unsupported",
+        keyState: "not-applicable",
+        restoreSupport: "unsupported"
+      });
     }
+  });
+
+  it("is read-only over a disposable HOME and never exposes the key value", async () => {
+    const dir = tmpHome();
+    const contacts = join(dir, "contacts.json");
+    writeFileSync(contacts, JSON.stringify({ contacts: [] }), "utf8");
+    const beforeNames = readdirSync(dir).sort();
+    const beforeBytes = readFileSync(contacts);
+
+    const report = await collectPrivacyPosture({
+      HOME: dir,
+      MUSE_CONTACTS_FILE: contacts,
+      MUSE_MEMORY_KEY: "do-not-print-this-key"
+    });
+
+    expect(readdirSync(dir).sort()).toEqual(beforeNames);
+    expect(readFileSync(contacts)).toEqual(beforeBytes);
+    expect(JSON.stringify(report)).not.toContain("do-not-print-this-key");
   });
 });
 
@@ -66,8 +104,8 @@ describe("formatPrivacyPosture", () => {
       anyEncrypted: true,
       explicitKey: false,
       stores: [
-        { encryptCommand: "muse contacts encrypt", encryptable: true, encrypted: false, exists: true, name: "contacts", path: "/c" },
-        { encryptable: true, encrypted: true, exists: true, name: "user-memory", path: "/m" }
+        { backupSupport: "plaintext-snapshot-unversioned", backupVersion: null, encryptCommand: "muse contacts encrypt", encryptable: true, encrypted: false, encryption: "plaintext", exists: true, keyState: "host-fallback", name: "contacts", path: "/c", restoreSupport: "format-reversal-only" },
+        { backupSupport: "plaintext-snapshot-unversioned", backupVersion: null, encryptable: true, encrypted: true, encryption: "encrypted", exists: true, keyState: "host-fallback", name: "user-memory", path: "/m", restoreSupport: "format-reversal-only" }
       ]
     }));
     expect(out).toContain("⚠️  contacts");
@@ -78,7 +116,7 @@ describe("formatPrivacyPosture", () => {
   });
 
   it("reports a strong key when MUSE_MEMORY_KEY is explicit, and 'nothing encrypted' otherwise", () => {
-    expect(formatPrivacyPosture(base({ anyEncrypted: true, explicitKey: true, stores: [{ encryptable: true, encrypted: true, exists: true, name: "contacts", path: "/c" }] })))
+    expect(formatPrivacyPosture(base({ anyEncrypted: true, explicitKey: true, stores: [{ backupSupport: "plaintext-snapshot-unversioned", backupVersion: null, encryptable: true, encrypted: true, encryption: "encrypted", exists: true, keyState: "explicit", name: "contacts", path: "/c", restoreSupport: "format-reversal-only" }] })))
       .toContain("explicit MUSE_MEMORY_KEY");
     expect(formatPrivacyPosture(base({ anyEncrypted: false }))).toContain("Nothing is encrypted yet");
   });
@@ -87,7 +125,18 @@ describe("formatPrivacyPosture", () => {
 describe("atRestDoctorCheck — surface the at-rest posture in `muse doctor`", () => {
   const posture = (over: Partial<PrivacyPosture>): PrivacyPosture => ({ anyEncrypted: false, explicitKey: false, stores: [], ...over });
   const store = (over: Partial<import("./commands-privacy.js").PrivacyStore> & { name: string }) =>
-    ({ encryptable: true, encrypted: false, exists: true, path: `/${over.name}`, ...over });
+    ({
+      backupSupport: "plaintext-snapshot-unversioned" as const,
+      backupVersion: null,
+      encryptable: true,
+      encrypted: false,
+      encryption: "plaintext" as const,
+      exists: true,
+      keyState: "host-fallback" as const,
+      path: `/${over.name}`,
+      restoreSupport: "format-reversal-only" as const,
+      ...over
+    });
 
   it("WARNs when an existing encryptable store is plaintext", () => {
     const c = atRestDoctorCheck(posture({ stores: [store({ encrypted: false, name: "contacts" }), store({ encrypted: true, name: "memory" })] }));
