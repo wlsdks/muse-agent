@@ -39,6 +39,7 @@ const HELP_FLAGS = new Set(["--help", "-h"]);
 const PREFLIGHT_FLAG = "--preflight";
 const ADMISSION_FLAG = "--admit";
 const EXECUTE_FLAG = "--execute";
+const AXIS_FLAG = "--axis";
 
 export const CAPABILITIES = Object.freeze([
   { id: "tool-selection-arguments", battery: "eval-tool-selection.mjs", required: true, repeats: 3 },
@@ -98,6 +99,7 @@ const REPORT_REASON_CODES = new Set([
   "missing-completion",
   "missing-skip-evidence",
   "model-missing",
+  "not-selected",
   "ollama-unreachable",
   "orchestration-invariant-failed",
   "regression",
@@ -132,6 +134,38 @@ function failedRow(capability, durationMs, reason, executed = 0) {
     reason,
     durationMs,
   };
+}
+
+function unverifiedRow(capability, reason) {
+  return {
+    id: capability.id,
+    required: capability.required,
+    status: "unverified",
+    requested: capability.repeats,
+    executed: 0,
+    reason,
+    durationMs: 0,
+  };
+}
+
+export function selectCapabilityAxes(args, capabilities = CAPABILITIES) {
+  const axisIndexes = args.flatMap((arg, index) => arg === AXIS_FLAG ? [index] : []);
+  if (axisIndexes.length === 0) return { ok: true, axes: capabilities };
+  if (axisIndexes.length > 1) return { ok: false, reason: "duplicate-axis-selection" };
+  const axisId = args[axisIndexes[0] + 1];
+  if (!axisId || axisId.startsWith("--")) return { ok: false, reason: "missing-axis-id" };
+  const axis = capabilities.find((capability) => capability.id === axisId);
+  return axis
+    ? { ok: true, axes: [axis], selectedAxis: axisId }
+    : { ok: false, reason: "unknown-axis-id" };
+}
+
+function completeCapabilityRows(rows, selectedCapabilities) {
+  const selected = new Set(selectedCapabilities.map((capability) => capability.id));
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return CAPABILITIES.map((capability) => selected.has(capability.id)
+    ? (byId.get(capability.id) ?? failedRow(capability, 0, "missing-completion"))
+    : unverifiedRow(capability, "not-selected"));
 }
 
 /** Convert a child-process result into a privacy-safe, fail-closed row. */
@@ -286,8 +320,8 @@ function printHumanReport(report, stdout) {
 
 function printUsage(stdout) {
   stdout.write(
-    "Usage: pnpm eval:agent -- [--preflight | --admit | --execute --confirm-idle --budget-minutes <minutes>] [--json]\n\n"
-    + "Runs the full 11-axis local capability gate (builds fresh artifacts and may load local models).\n"
+    "Usage: pnpm eval:agent -- [--preflight | --admit | --execute --confirm-idle --budget-minutes <minutes>] [--axis <id>] [--json]\n\n"
+    + "Runs the full 11-axis local capability gate by default and may load local models; --axis selects exactly one known axis.\n"
     + "Use --preflight to inspect its static requirements and resource budget without builds, probes, model calls, or writes.\n"
     + "Use --admit with --confirm-idle and --budget-minutes to check live local readiness without builds, probes, model calls, or writes.\n"
     + "Use --execute with the same owner confirmation and sufficient budget to start the full gate.\n"
@@ -349,7 +383,8 @@ function printPreflight(preflight, stdout) {
 }
 
 export function createCapabilityExecutionAdmissionForArgs(args, dependencies = {}) {
-  const preflight = createCapabilityPreflight();
+  const selection = selectCapabilityAxes(args);
+  const preflight = createCapabilityPreflight(selection.ok ? selection.axes : CAPABILITIES);
   const request = parseCapabilityExecutionRequest(args);
   let snapshot;
   try {
@@ -357,20 +392,24 @@ export function createCapabilityExecutionAdmissionForArgs(args, dependencies = {
   } catch {
     snapshot = undefined;
   }
-  return createCapabilityExecutionAdmission({
+  const admission = createCapabilityExecutionAdmission({
     matrixId: preflight.matrixId,
     requiredBudgetMinutes: preflight.resourceBudget.hardSequentialTimeoutMinutes,
     request,
     snapshot,
   });
+  return selection.ok
+    ? admission
+    : { ...admission, reasons: [selection.reason, ...admission.reasons], status: "defer" };
 }
 
 function printAdmission(admission, stdout) {
   stdout.write("\n=== eval:agent execution admission (read only) ===\n" + describeCapabilityExecutionAdmission(admission) + "\n");
   if (admission.status === "defer") {
+    const budget = admission.requiredBudgetMinutes.toString();
     stdout.write(
-      "next: inspect with --admit --confirm-idle --budget-minutes 990; "
-      + "start only with --execute --confirm-idle --budget-minutes 990.\n"
+      `next: inspect with --admit --confirm-idle --budget-minutes ${budget}; `
+      + `start only with --execute --confirm-idle --budget-minutes ${budget}.\n`
     );
   }
 }
@@ -392,8 +431,25 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     return undefined;
   }
   const json = args.includes("--json");
+  const selection = selectCapabilityAxes(args);
   if (args.includes(PREFLIGHT_FLAG)) {
-    const preflight = createCapabilityPreflight();
+    if (!selection.ok) {
+      const failure = {
+        version: 1,
+        matrixId: CAPABILITY_MATRIX_ID,
+        mode: "axis-selection",
+        qualification: "unverified",
+        sideEffects: "none",
+        status: "defer",
+        reasons: [selection.reason],
+        availableAxes: CAPABILITIES.map((capability) => capability.id),
+      };
+      if (json) stdout.write(`${JSON.stringify(failure)}\n`);
+      else stdout.write(`eval:agent deferred — ${selection.reason}\n`);
+      process.exitCode = 1;
+      return failure;
+    }
+    const preflight = createCapabilityPreflight(selection.axes);
     if (json) stdout.write(`${JSON.stringify(preflight)}\n`);
     else printPreflight(preflight, stdout);
     return preflight;
@@ -410,6 +466,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
   if (admissionRequested || !executionRequested || admission.status !== "admit") {
     return emitAdmission(admission, { json, stdout });
   }
+  const selectedCapabilities = selection.ok ? selection.axes : CAPABILITIES;
   const captureSource = dependencies.captureSource
     ?? (() => captureGitSourceSnapshot({ repoRoot: REPO_ROOT }));
   const runTypeScriptBuild = dependencies.runTypeScriptBuild
@@ -436,6 +493,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     return finishBuildFailure(typeScriptBuild.reason, {
       captureArtifacts,
       captureSource,
+      capabilities: selectedCapabilities,
       dependencies,
       evidenceAttempt,
       json,
@@ -451,6 +509,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     return finishBuildFailure(runnerBuild.reason ?? "runner-build-failed", {
       captureArtifacts,
       captureSource,
+      capabilities: selectedCapabilities,
       dependencies,
       evidenceAttempt,
       json,
@@ -465,7 +524,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
   const artifactsAfterBuild = safeArtifactSnapshot(() => captureArtifacts(runnerPath));
   const rows = [];
 
-  for (const capability of CAPABILITIES) {
+  for (const capability of selectedCapabilities) {
     const startedAt = now();
     if (json) {
       stderr.write(`eval:agent running ${capability.id}\n`);
@@ -504,7 +563,8 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     artifactsAfterBuild,
     artifactsAtEnd,
   };
-  const report = createCapabilityReport(applyProvenanceGate(rows, provenance), {
+  const completeRows = completeCapabilityRows(rows, selectedCapabilities);
+  const report = createCapabilityReport(applyProvenanceGate(completeRows, provenance), {
     generatedAt: generatedAt(now),
     provenance,
   });
@@ -516,7 +576,10 @@ function finishBuildFailure(reason, context) {
   const sourceAtEnd = safeSourceSnapshot(context.captureSource);
   const artifactsAfterBuild = { count: 0, status: "unknown" };
   const artifactsAtEnd = { count: 0, status: "unknown" };
-  const rows = CAPABILITIES.map((capability) => failedRow(capability, 0, reason));
+  const rows = completeCapabilityRows(
+    context.capabilities.map((capability) => failedRow(capability, 0, reason)),
+    context.capabilities,
+  );
   const report = createCapabilityReport(rows, {
     generatedAt: generatedAt(context.now),
     provenance: {

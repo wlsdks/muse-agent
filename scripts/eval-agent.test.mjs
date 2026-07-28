@@ -22,6 +22,7 @@ import {
   createCapabilityReport,
   main,
   persistCapabilityReport,
+  selectCapabilityAxes,
 } from "./eval-agent.mjs";
 import { inspectCapabilityEvidence } from "./eval-agent-evidence.mjs";
 import { completionLine, skipLine } from "./eval-skip.mjs";
@@ -103,6 +104,20 @@ test("capability matrix is stable, ordered, and uses strict pass^3 where require
       { id: "edit-run-verify", required: false, repeats: 3 },
       { id: "browser-terminal-task", required: false, repeats: 3 },
     ]
+  );
+});
+
+test("axis selector accepts exactly one known id and rejects empty, unknown, or duplicate selection", () => {
+  assert.deepEqual(
+    selectCapabilityAxes(["--axis", "plan-quality"]),
+    { ok: true, axes: [CAPABILITIES[1]], selectedAxis: "plan-quality" }
+  );
+  assert.deepEqual(selectCapabilityAxes(["--axis"]), { ok: false, reason: "missing-axis-id" });
+  assert.deepEqual(selectCapabilityAxes(["--axis", "--json"]), { ok: false, reason: "missing-axis-id" });
+  assert.deepEqual(selectCapabilityAxes(["--axis", "not-an-axis"]), { ok: false, reason: "unknown-axis-id" });
+  assert.deepEqual(
+    selectCapabilityAxes(["--axis", "plan-quality", "--axis", "tool-selection-arguments"]),
+    { ok: false, reason: "duplicate-axis-selection" }
   );
 });
 
@@ -205,6 +220,95 @@ test("preflight JSON is privacy-safe plan-only output and does not write a repor
   assert.equal(preflight.qualification, "unverified");
   assert.equal(Object.hasOwn(preflight, "provenance"), false);
   assert.doesNotMatch(stdout, /prompt|payload|private|secret/iu);
+});
+
+test("single-axis preflight selects exactly one known axis and uses only its budget", () => {
+  let stdout = "";
+  const noSideEffects = () => { throw new Error("single-axis preflight must not mutate"); };
+  const preflight = main(["--preflight", "--axis", "plan-quality", "--json"], {
+    beginAttempt: noSideEffects,
+    buildRunnerArtifact: noSideEffects,
+    captureArtifacts: noSideEffects,
+    captureSource: noSideEffects,
+    readResourceSnapshot: noSideEffects,
+    runTypeScriptBuild: noSideEffects,
+    spawn: noSideEffects,
+    stdout: { write: (chunk) => { stdout += chunk; } },
+  });
+  assert.equal(preflight.axes.length, 1);
+  assert.equal(preflight.axes[0].id, "plan-quality");
+  assert.equal(preflight.resourceBudget.batteryProcesses, 1);
+  assert.equal(preflight.resourceBudget.hardSequentialTimeoutMinutes, 90);
+  assert.deepEqual(JSON.parse(stdout), preflight);
+});
+
+test("invalid axis selection fails before preflight build, spawn, or evidence writes", () => {
+  let sideEffects = 0;
+  const previousExitCode = process.exitCode;
+  const noSideEffects = () => {
+    sideEffects += 1;
+    throw new Error("invalid axis must stop before side effects");
+  };
+  const cases = [
+    { args: ["--preflight", "--axis", "--json"], reason: "missing-axis-id" },
+    { args: ["--preflight", "--axis", "not-an-axis", "--json"], reason: "unknown-axis-id" },
+    {
+      args: ["--preflight", "--axis", "plan-quality", "--axis", "tool-selection-arguments", "--json"],
+      reason: "duplicate-axis-selection",
+    },
+  ];
+  for (const scenario of cases) {
+    let stdout = "";
+    const result = main(scenario.args, {
+      beginAttempt: noSideEffects,
+      buildRunnerArtifact: noSideEffects,
+      captureArtifacts: noSideEffects,
+      captureSource: noSideEffects,
+      runTypeScriptBuild: noSideEffects,
+      spawn: noSideEffects,
+      stdout: { write: (chunk) => { stdout += chunk; } },
+      writeReport: noSideEffects,
+    });
+    assert.equal(result.status, "defer");
+    assert.deepEqual(result.reasons, [scenario.reason]);
+    assert.deepEqual(JSON.parse(stdout), result);
+  }
+  process.exitCode = previousExitCode;
+  assert.equal(sideEffects, 0);
+});
+
+test("single-axis execution runs only the selected battery and cannot pass the full aggregate", () => {
+  let stdout = "";
+  let invocations = 0;
+  const previousExitCode = process.exitCode;
+  const report = main(
+    ["--json", "--execute", "--axis", "plan-quality", "--confirm-idle", "--budget-minutes", "90"],
+    verifiedPipeline({
+      spawn: (_command, _args, options) => {
+        invocations += 1;
+        const requested = Number(options.env.MUSE_EVAL_REPEAT);
+        return {
+          status: 0,
+          signal: null,
+          stdout: completionLine({ status: "passed", requested, executed: requested }),
+          stderr: "",
+        };
+      },
+      stdout: { write: (chunk) => { stdout += chunk; } },
+      stderr: { write: () => {} },
+    })
+  );
+  process.exitCode = previousExitCode;
+  assert.equal(invocations, 1);
+  assert.equal(report.status, "unverified");
+  assert.deepEqual(report.counts, { passed: 1, failed: 0, unverified: 10, total: 11 });
+  assert.equal(report.capabilities.find((row) => row.id === "plan-quality")?.status, "passed");
+  assert.ok(
+    report.capabilities
+      .filter((row) => row.id !== "plan-quality")
+      .every((row) => row.status === "unverified" && row.reason === "not-selected")
+  );
+  assert.deepEqual(JSON.parse(stdout), report);
 });
 
 test("preflight constructor remains a static manifest with no configured-machine readiness claim", () => {
