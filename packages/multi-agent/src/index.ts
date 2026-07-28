@@ -15,6 +15,10 @@ export {
   type ActiveGoalPlan,
   type GoalPlanActivationRequirements
 } from "./goal-plan-activation.js";
+export {
+  selectNextReadyGoalAction,
+  type GoalActionReadiness
+} from "./goal-action-selector.js";
 export { defaultBoardFile, FileAgentTaskBoard, readBoard, writeBoard } from "./board-store.js";
 export { dispatchNextTask, resolveReview, type DispatchResult, type TaskExecutionResult, type TaskExecutor } from "./dispatch-board.js";
 export type { HandoffPart, ParsedHandoffPart, ParsedWorkerResult, WorkerHandoff } from "./worker-result.js";
