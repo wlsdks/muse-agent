@@ -164,6 +164,8 @@ packages/
                       message integrity, context transforms
   attunement/         Personal Continuity threads, exact source links,
                       delivery/outcome receipts, display-policy reducer
+  attunement-graph/   Storage-neutral temporal/provenance graph kernel,
+                      bounded traversal + Activation Subgraph compiler
   model/              ModelProvider interface + provider wire adapters
   tools/              tool registry, MCP adapter, built-in tools
   policy/             approval, permissions, guardrails

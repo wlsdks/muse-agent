@@ -52,7 +52,7 @@ The program is not done when Muse has a graph database. It is done when:
 | ID | Slice | Exit gate | Status |
 |---|---|---|---|
 | **AWG-001** | Product signature and research contract | Canonical wow scenario, honest shipped/roadmap boundary, research-backed graph design, and docs cross-links | completed |
-| **AWG-010** | Reference graph kernel | `@muse/attunement-graph` domain types, invariants, append log, compact in-memory indexes, Activation Subgraph compiler, and conformance tests; no LLM or production DB | pending |
+| **AWG-010** | Reference graph kernel | `@muse/attunement-graph` domain types, invariants, append log, compact in-memory indexes, Activation Subgraph compiler, and conformance tests; no LLM or production DB | completed |
 | **AWG-020** | Exact Continuity projection | Rebuildable projection of thread, artifact links, delivery, outcome, policy version, and source provenance without duplicated authority | pending |
 | **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | pending |
 | **AWG-040** | Continuity Capsule v1 | User-invoked Capsule renders stopping point, changes, next step, prepared work, expected time, and source drawer | pending |
@@ -65,6 +65,26 @@ The program is not done when Muse has a graph database. It is done when:
 Raw numbering does not activate work. Before each BUILD slice, inspect current source and
 classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `monitoring`,
 `blocked`, `deferred`, `rejected`, or `superseded`. Implement only the missing delta.
+
+## Active slice: AWG-010
+
+- **Classification at activation:** `missing` — current Attunement stores provided authoritative exact
+  links and receipts, but no storage-neutral graph kernel or Activation Subgraph compiler.
+- **Status:** `completed` — focused and changed-scope gates pass; a fresh independent
+  evaluator passed after two bounded correction rounds.
+- **Maker:** Codex root session, Sol-class persistence/architecture slice, inherited
+  reasoning.
+- **Evaluator:** fresh `gpt-5.6-sol` with high reasoning.
+- **Selection reason:** this slice defines a future persistence boundary and public module
+  semantics, while remaining isolated from disk formats, database SDKs, and runtime wiring.
+- **Escalation trigger:** stop if completion requires a durable format, migration,
+  cross-process coordination, authoritative-store mutation, runtime action authority, or
+  edits in another roadmap's active source area.
+- **Acceptance:** atomic/idempotent append; strict temporal/provenance/epistemic invariants;
+  bounded deterministic traversal; token-budgeted Activation Subgraph; conformance and
+  adversarial tests; no LLM, production database, or store projection.
+- **Next eligible slice:** AWG-020 exact Continuity projection, after fresh source
+  reconciliation with the core roadmap.
 
 ## Architecture gates
 
