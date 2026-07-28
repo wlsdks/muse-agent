@@ -18,6 +18,9 @@ const acceptanceSlice = {
   verificationCommands: ['node --test harness/runner/'],
   evidenceAccounting: 'one deterministic fixture',
   rollback: 'revert this slice',
+  activeBudgetMinutes: 20,
+  commandTimeoutMinutes: 12,
+  validationMinutes: 6,
 };
 
 test('snapshot round-trips through serialize/deserialize; invalid is rejected', () => {

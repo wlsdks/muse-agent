@@ -19,6 +19,11 @@ export const STATES = ['REQUESTED', 'PLANNED', 'BUILT', 'EVALUATED', 'DONE', 'BL
 // array.
 const TEXT_FIELDS = ['what', 'why', 'evidenceAccounting', 'rollback'];
 const LIST_FIELDS = ['passCriteria', 'outOfScope', 'verificationCommands'];
+export const ACTIVATION_BUDGET_LIMITS = Object.freeze({
+  activeBudgetMinutes: 20,
+  commandTimeoutMinutes: 12,
+  validationMinutes: 6,
+});
 
 function hasText(value) {
   return typeof value === 'string' && value.trim().length > 0;
@@ -42,6 +47,12 @@ export function planGate(acceptanceSlice) {
   for (const field of LIST_FIELDS) {
     if (!hasTextList(acceptanceSlice[field])) {
       return { ok: false, reason: `${field} missing, empty, or blank (fail-closed)` };
+    }
+  }
+  for (const [field, limit] of Object.entries(ACTIVATION_BUDGET_LIMITS)) {
+    const value = acceptanceSlice[field];
+    if (!Number.isSafeInteger(value) || value <= 0 || value > limit) {
+      return { ok: false, reason: `${field} missing, invalid, or over ${limit} minutes (fail-closed)` };
     }
   }
   return { ok: true };

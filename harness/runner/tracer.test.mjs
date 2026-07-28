@@ -15,6 +15,9 @@ const VALID_PLAN = JSON.stringify({
   verificationCommands: ['node --test harness/runner/'],
   evidenceAccounting: 'one deterministic fixture',
   rollback: 'revert this slice',
+  activeBudgetMinutes: 20,
+  commandTimeoutMinutes: 12,
+  validationMinutes: 6,
 });
 
 test('every event carries a correlation id (runId) and a monotonic seq', () => {

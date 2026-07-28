@@ -14,6 +14,9 @@ const slice = (overrides = {}) => ({
   verificationCommands: ['node --test harness/runner/'],
   evidenceAccounting: 'one deterministic example fixture',
   rollback: 'revert the task slice',
+  activeBudgetMinutes: 20,
+  commandTimeoutMinutes: 12,
+  validationMinutes: 6,
   ...overrides,
 });
 
@@ -53,6 +56,22 @@ test('deny: every missing or blank acceptance-slice field at the plan gate', () 
     assert.match(result.reason, new RegExp(field));
   }
   assert.equal(advance('REQUESTED', 'plan', {}).state, 'BLOCKED');
+});
+
+test('deny: missing, non-numeric, or over-limit activation budgets at the plan gate', () => {
+  const invalid = {
+    activeBudgetMinutes: [undefined, '20', 0, 20.1, 21, Number.POSITIVE_INFINITY],
+    commandTimeoutMinutes: [undefined, '12', 0, 12.1, 13, Number.NaN],
+    validationMinutes: [undefined, '6', 0, 6.1, 7, Number.NEGATIVE_INFINITY],
+  };
+  for (const [field, values] of Object.entries(invalid)) {
+    for (const value of values) {
+      const result = advance('REQUESTED', 'plan', { acceptanceSlice: slice({ [field]: value }) });
+      assert.equal(result.state, 'BLOCKED', `${field}=${String(value)} must fail closed`);
+      assert.match(result.reason, new RegExp(field));
+    }
+  }
+  assert.equal(planGate(slice()).ok, true, 'exact 20/12/6 limits must pass');
 });
 
 test('deny: complete without an evaluator PASS (unevaluated merge)', () => {

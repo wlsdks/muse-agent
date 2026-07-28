@@ -14,6 +14,9 @@ const VALID_PLAN = JSON.stringify({
   verificationCommands: ['node --test harness/runner/'],
   evidenceAccounting: 'one deterministic fixture',
   rollback: 'revert this subtask',
+  activeBudgetMinutes: 20,
+  commandTimeoutMinutes: 12,
+  validationMinutes: 6,
 });
 
 // Fake agent set. `subtasks` is the decomposition JSON; `failAt` makes the

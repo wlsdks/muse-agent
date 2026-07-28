@@ -15,6 +15,9 @@ const plan = (overrides = {}) => JSON.stringify({
   verificationCommands: ['node --test harness/runner/'],
   evidenceAccounting: 'one deterministic fixture',
   rollback: 'revert this slice',
+  activeBudgetMinutes: 20,
+  commandTimeoutMinutes: 12,
+  validationMinutes: 6,
   ...overrides,
 });
 

@@ -54,6 +54,9 @@ related: [team-roles.md, role-prompts.md, ../README.md]
 ## 2. 검증·근거·복구
 
 - **검증 명령 (`verificationCommands`):** <평가자가 그대로 재실행할 명령/관찰>
+- **Active budget (`activeBudgetMinutes`):** <양의 정수, 최대 20>
+- **단일 명령 timeout (`commandTimeoutMinutes`):** <양의 정수, 최대 12>
+- **검증 budget (`validationMinutes`):** <양의 정수, 최대 6>
 - **PLAN-review budget:** <시간/비용 cap; raw PLAN FAIL 횟수와 분리>
 - **BUILD↔EVAL budget:** <수정 반복 횟수/시간/비용 cap; PLAN 카운터와 분리>
 - **진전 판정:** `material-progress | no-progress` — material progress는 이전 blocker를 닫거나

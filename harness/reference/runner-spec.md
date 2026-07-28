@@ -71,7 +71,7 @@ related: [../core/team-roles.md, ../core/handoff-template.md, ../core/role-promp
 - **이 스펙이 정의하는 것**: 그 강제·자동 끼움·게이트 통과를 **러너가** 하는 계약.
 - **이제 된 것(2026-05-31)**: 최소 **코드 러너**가 이 계약을 강제합니다 — [`runner/`](../runner/)의
   `harness-runner.mjs`(의존성 0)가 상태기계·계획/완료/권한 게이트를 결정론 코드로 거부하고,
-  `conformance.test.mjs`가 §7 거부 매트릭스를 **13/13 통과**(`node --test "harness/runner/*.test.mjs"`). 즉
+  전체 runner test가 §7 거부 매트릭스를 포함해 **69/69 통과**(`node --test "harness/runner/*.test.mjs"`). 즉
   게이트가 "지시"에서 "코드 강제"로 올라갔습니다.
 - **아직 아닌 것**: 러너를 실제 오케스트레이션 런타임(프로세스 스폰·도구 배선)에 붙이는 것은 호스트
   몫 — 이 러너는 그 위에서 전이 허용을 판정하는 게이트 코어입니다.
@@ -84,7 +84,7 @@ related: [../core/team-roles.md, ../core/handoff-template.md, ../core/role-promp
 
 | 스펙 게이트/규약 | 요구 행동 | 결속된 실측 증거 |
 |---|---|---|
-| 계획 게이트 — 빈 slice 거부 | WHAT·WHY·PASS·범위 밖·검증 명령·근거 회계·rollback 중 하나라도 비면 다음 단계로 못 감 | G10 빈 기준 → "검증 불가" **pass^5**(추측 통과 0) + runner field-by-field conformance |
+| 계획 게이트 — 불완전 slice 거부 | WHAT·WHY·PASS·범위 밖·검증 명령·근거 회계·rollback 또는 active/command/validation 분 예산 중 하나라도 없거나 예산이 20/12/6 상한을 넘으면 다음 단계로 못 감 | G10 빈 기준 → "검증 불가" **pass^5**(추측 통과 0) + runner field-by-field conformance |
 | 완료 게이트 — 틀린 빌드 FAIL | 기준 위반 산출물은 PASS 안 됨 | G8 null 빌드 → **pass^10** FAIL · G9 올바른 빌드 → pass^5 PASS |
 | 외부전송 게이트(HITL) | 자동 전송 금지·draft-first | 권한 실측: outbound→approve·은행→refuse([permission-matrix §4.5](../core/permission-matrix.md)) |
 
@@ -97,6 +97,7 @@ related: [../core/team-roles.md, ../core/handoff-template.md, ../core/role-promp
 |---|---|---|
 | 단계 건너뛰기 | PLAN 없이 BUILD 요청 | 거부, 상태 유지 |
 | 빈 acceptance slice | 필수 필드 하나라도 누락/공백인 계획 게이트 | 전이 거부 + 필드 사유 로그 |
+| 무제한 activation | `activeBudgetMinutes`·`commandTimeoutMinutes`·`validationMinutes` 누락/비정수/0/20·12·6 초과 | 전이 거부 + 해당 budget field 사유 로그 |
 | 미평가 머지 | 평가 PASS 없이 DONE 요청 | 거부(완료 게이트) |
 | 자기 채점 | BUILD와 같은 인스턴스가 EVAL | 거부(만든 자≠판정하는 자) |
 | 손상된 양식 | 상태 로그 파손/알 수 없는 상태 | 진행 금지 + 사람 개입 |

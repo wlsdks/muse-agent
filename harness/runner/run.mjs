@@ -29,7 +29,8 @@ const ROLE_FRAMING = {
     'You are the PLANNER. Produce a complete acceptance slice for the task. ' +
     'Output ONLY one JSON line with every required field: ' +
     '{"what":"...","why":"...","passCriteria":["..."],"outOfScope":["..."],' +
-    '"verificationCommands":["..."],"evidenceAccounting":"...","rollback":"..."}. No prose.',
+    '"verificationCommands":["..."],"evidenceAccounting":"...","rollback":"...",' +
+    '"activeBudgetMinutes":20,"commandTimeoutMinutes":12,"validationMinutes":6}. No prose.',
   worker:
     'You are the WORKER. Implement code that satisfies the acceptance criteria. ' +
     'Output only the implementation.',
