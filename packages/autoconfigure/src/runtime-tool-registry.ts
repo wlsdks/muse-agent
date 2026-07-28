@@ -9,11 +9,11 @@
  */
 
 import { createCachingEmbedder } from "@muse/agent-core";
-import { createPersonalThread, readAttunementState } from "@muse/attunement";
+import { createPersonalThread, linkArtifact, readAttunementState } from "@muse/attunement";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { withChromeDevToolsRisk, withOfficialMcpRisk, type McpManager } from "@muse/mcp";
 import { createHistorySearchTool, readBrowsingStore, type HistoryRecord } from "@muse/recall";
-import { addContact, defaultBackgroundProcessesFile, defaultConversationsFile, FileConversationStore, queryContacts, readActionLog, readBackgroundProcesses, readEpisodes, readFollowups, readObjectives, readReminders, readTasks, removeContact, resolveUpcomingBirthdays } from "@muse/stores";
+import { addContact, defaultBackgroundProcessesFile, defaultConversationsFile, FileConversationStore, queryContacts, readActionLog, readBackgroundProcesses, readEpisodes, readFollowups, readObjectives, readReminders, readTaskByIdStrict, readTasks, removeContact, resolveUpcomingBirthdays } from "@muse/stores";
 import { collectDatedNotes, createBackgroundListTool, createBrowsingSearchTool, createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createEmailReadMessageTool, createEmailReadTool, createEmailSearchTool, createFeedsSearchTool, createHomeEntitiesTool, createHomeStateTool, createObjectivesListTool, createOnThisDayTool, createRecentActionsTool, createRememberFactTool, createUpcomingBirthdaysTool, createWeatherTool, createWorldTimeTool, GmailEmailProvider, isHomeAssistantLocalOnlyEffective, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
 import type { UserMemoryStore } from "@muse/memory";
 import { isLocalOnlyEnabled } from "@muse/model";
@@ -23,6 +23,12 @@ import { createRunToolPlanTool, type MuseTool } from "@muse/tools";
 import { createOllamaEmbedder, recordFactRecallHits } from "./context-engineering-builders.js";
 import { createContinuityThreadCreateTool } from "./continuity-thread-create-tool.js";
 import { createContinuityThreadListTool } from "./continuity-thread-list-tool.js";
+import {
+  createContinuityTaskLinkPreviewTool,
+  createContinuityTaskLinkTool,
+  type ContinuityTaskLinkProposal,
+  type ContinuityTaskLinkToolDeps
+} from "./continuity-task-link-tools.js";
 import { readEpisodeKnowledgeEntries } from "./episodes-knowledge-source.js";
 import { parseBoolean } from "./env-parsers.js";
 import { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
@@ -258,6 +264,54 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
       createEmailSearchTool({ searcher: provider })
     ];
   })();
+  const continuityTaskLinkDeps: ContinuityTaskLinkToolDeps = {
+    readTask: (taskId) => readTaskByIdStrict(tasksFile, taskId),
+    readThread: async (threadId) =>
+      (await readAttunementState(resolveAttunementFile(env))).threads.find(
+        (thread) => thread.id === threadId
+      ),
+    linkTask: async (proposal: ContinuityTaskLinkProposal) => {
+      const result = await linkArtifact(
+        resolveAttunementFile(env),
+        {
+          artifactId: proposal.taskId,
+          artifactType: "task",
+          providerId: "local",
+          role: proposal.role,
+          threadId: proposal.threadId
+        },
+        {
+          validateArtifact: async (candidate) => {
+            if (
+              candidate.artifactType !== "task"
+              || candidate.providerId !== "local"
+              || candidate.artifactId !== proposal.taskId
+            ) {
+              throw new Error("continuity task link validator received a non-exact task");
+            }
+            const task = await readTaskByIdStrict(tasksFile, candidate.artifactId);
+            if (!task || task.id !== proposal.taskId || task.title !== proposal.expectedTitle) {
+              throw new Error("continuity task changed after preview; preview it again");
+            }
+            return candidate;
+          }
+        }
+      );
+      if (result.link.artifactType !== "task" || result.link.providerId !== "local") {
+        throw new Error("continuity task link returned a non-local task artifact");
+      }
+      return {
+        created: result.created,
+        link: {
+          artifactId: result.link.artifactId,
+          artifactType: result.link.artifactType,
+          providerId: result.link.providerId,
+          role: result.link.role,
+          threadId: result.link.threadId
+        }
+      };
+    }
+  };
 
   // PTC: the ONE multi-call orchestrator (run_tool_plan), intercepted in AgentRuntime and run
   // through the gated path so a multi-step task lands in ONE inference. Gated with the ambient
@@ -303,6 +357,10 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     () => [createContinuityThreadCreateTool({
       createThread: (input) => createPersonalThread(resolveAttunementFile(env), input)
     })],
+    () => [
+      createContinuityTaskLinkPreviewTool(continuityTaskLinkDeps),
+      createContinuityTaskLinkTool(continuityTaskLinkDeps)
+    ],
     () => [createRememberFactTool({ store: userMemoryStore })],
     () => [createObjectivesListTool({ objectives: () => readObjectives(resolveObjectivesFile(env)) })],
     () => [createRecentActionsTool({ actions: () => readActionLog(resolveActionLogFile(env)) })],
