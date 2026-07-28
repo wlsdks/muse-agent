@@ -2,6 +2,14 @@ import type { AgentRunResult } from "@muse/agent-core";
 export { createWorkerResult, parseHandoffPart, parseWorkerResult, validateWorkerHandoff } from "./worker-result.js";
 export { addTask, DEFAULT_BOARD_MAX_DEPTH, expandTaskIntoSubtasks, lastFailureReason, latestOutput, nextReadyTask, reclaimStaleTasks, recordTaskRun, removeTask, resolveBoardMaxDepth, retryTask, staleInProgressTasks, taskDepsMet, tasksFromSubtasks, transitionTask, type AgentTask, type TaskRun, type TaskStatus } from "./task-board.js";
 export { parallelDecomposePrompt, parseParallelPlan, planParallelSubtasks, type ParallelDecomposeDeps } from "./parallel-decompose.js";
+export {
+  createGoalDecompositionDraft,
+  reviseGoalDecompositionDraft,
+  type GoalDecompositionDraft,
+  type GoalDecompositionDraftEdits,
+  type GoalDecompositionDraftOptions,
+  type GoalDecompositionDraftSubtask
+} from "./goal-decomposition-draft.js";
 export { defaultBoardFile, FileAgentTaskBoard, readBoard, writeBoard } from "./board-store.js";
 export { dispatchNextTask, resolveReview, type DispatchResult, type TaskExecutionResult, type TaskExecutor } from "./dispatch-board.js";
 export type { HandoffPart, ParsedHandoffPart, ParsedWorkerResult, WorkerHandoff } from "./worker-result.js";
