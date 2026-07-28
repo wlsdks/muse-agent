@@ -150,6 +150,31 @@ export interface MemoryConflictView {
   readonly target: MemoryConflictTarget;
 }
 
+/**
+ * One provenance event projected as a bounded temporal interval. This is a
+ * read-only view: it does not select a recall winner or aggregate confidence.
+ */
+export interface TemporalBeliefProvenanceEvent {
+  /** Stable, content-bound locator for this exact provenance event. */
+  readonly sourceId: string;
+  /** Normalized key used to group events into one temporal history. */
+  readonly key: string;
+  readonly kind: "fact" | "preference";
+  /** Retractions deliberately carry no value into the projection. */
+  readonly event: "assertion" | "retraction";
+  readonly value?: string;
+  /** `user` is direct user authority; `auto` is an inferred entry. */
+  readonly sourceAuthority: "auto" | "user";
+  /** When this exact event was observed and recorded. */
+  readonly observedAt: string;
+  /** Start of this event's validity interval. */
+  readonly validFrom: string;
+  /** First strictly later event for the same normalized key and kind. */
+  readonly invalidatedAt?: string;
+  /** Current assertion, current retraction, or an event closed by a later one. */
+  readonly temporalState: "active" | "historical" | "invalidated";
+}
+
 /** Stable, content-bound locator for one exact provenance event. */
 export function beliefProvenanceSourceId(entry: BeliefProvenance): string {
   const digest = createHash("sha256")
@@ -233,6 +258,99 @@ export function projectMemoryConflictViews(
     left.target.kind.localeCompare(right.target.kind)
     || left.target.key.localeCompare(right.target.key)
     || left.target.exactId.localeCompare(right.target.exactId)
+  ));
+}
+
+/**
+ * Project one user's append-only provenance events into temporal intervals.
+ * Events sharing a timestamp remain simultaneous: only a strictly later event
+ * closes an interval, so this view cannot introduce an arbitrary winner for an
+ * equal-time conflict. Malformed scoped input fails closed as an empty view.
+ */
+export function projectTemporalBeliefProvenance(
+  userId: string,
+  entries: readonly BeliefProvenance[],
+  opts: { readonly normalizeKey?: (key: string) => string } = {}
+): readonly TemporalBeliefProvenanceEvent[] {
+  if (typeof userId !== "string" || userId.length === 0
+    || !Array.isArray(entries) || !opts || typeof opts !== "object") return Object.freeze([]);
+  const suppliedNormalizeKey = opts.normalizeKey;
+  if (suppliedNormalizeKey !== undefined && typeof suppliedNormalizeKey !== "function") return Object.freeze([]);
+  const normalizeKey = suppliedNormalizeKey ?? ((key: string): string => key);
+  const normalized: Array<{
+    readonly entry: BeliefProvenance;
+    readonly key: string;
+    readonly sourceId: string;
+    readonly timestamp: number;
+  }> = [];
+
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return Object.freeze([]);
+    const rawUserId = (entry as { readonly userId?: unknown }).userId;
+    // A clearly scoped event owned by somebody else cannot corrupt or erase
+    // this user's read model. Missing/invalid/ambiguous ownership still fails
+    // closed through the full validator below.
+    if (typeof rawUserId === "string" && rawUserId.length > 0 && rawUserId !== userId) continue;
+    // Do not expose a partial history when a malformed event could be a later
+    // correction/retraction. `isBeliefProvenance` also validates learnedAt.
+    if (!isBeliefProvenance(entry)) return Object.freeze([]);
+    let key: string;
+    try {
+      key = normalizeKey(entry.key);
+    } catch {
+      return Object.freeze([]);
+    }
+    if (typeof key !== "string" || key.length === 0) return Object.freeze([]);
+    const timestamp = Date.parse(entry.learnedAt);
+    if (!Number.isFinite(timestamp)) return Object.freeze([]);
+    normalized.push(Object.freeze({
+      entry,
+      key,
+      sourceId: beliefProvenanceSourceId(entry),
+      timestamp
+    }));
+  }
+
+  const byIdentity = new Map<string, typeof normalized>();
+  for (const event of normalized) {
+    const identity = factRecallIdentity(event.entry.kind, event.key);
+    const group = byIdentity.get(identity) ?? [];
+    group.push(event);
+    byIdentity.set(identity, group);
+  }
+
+  const projection: TemporalBeliefProvenanceEvent[] = [];
+  for (const group of byIdentity.values()) {
+    const latestTimestamp = Math.max(...group.map((event) => event.timestamp));
+    for (const event of group) {
+      const next = group
+        .filter((candidate) => candidate.timestamp > event.timestamp)
+        .sort((left, right) => left.timestamp - right.timestamp || left.sourceId.localeCompare(right.sourceId))[0];
+      const isLatest = event.timestamp === latestTimestamp;
+      const temporalState = !isLatest
+        ? "historical"
+        : event.entry.retraction === true
+          ? "invalidated"
+          : "active";
+      projection.push(Object.freeze({
+        event: event.entry.retraction === true ? "retraction" : "assertion",
+        ...(next ? { invalidatedAt: next.entry.learnedAt } : {}),
+        key: event.key,
+        kind: event.entry.kind,
+        observedAt: event.entry.learnedAt,
+        sourceAuthority: event.entry.source ?? "auto",
+        sourceId: event.sourceId,
+        temporalState,
+        validFrom: event.entry.learnedAt,
+        ...(event.entry.retraction === true ? {} : { value: event.entry.value })
+      }));
+    }
+  }
+  return Object.freeze(projection.sort((left, right) =>
+    left.kind.localeCompare(right.kind)
+    || left.key.localeCompare(right.key)
+    || left.validFrom.localeCompare(right.validFrom)
+    || left.sourceId.localeCompare(right.sourceId)
   ));
 }
 
