@@ -4090,7 +4090,7 @@ describe("cli program", () => {
     // does NOT fire (only per-claim semantic screen catches it).
     const grounded = "Mina owns the pricing roadmap.";
     const fabricated = "The q3 project failed.";
-    const answer = `${grounded} ${fabricated}`;
+    const answer = `${grounded} [from ownership.md] ${fabricated} [from ownership.md]`;
 
     const saved = {
       HOME: process.env.HOME,

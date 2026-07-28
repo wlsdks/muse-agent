@@ -331,12 +331,21 @@ export async function runGroundingVerdict(params: {
             const evidenceTexts = scoredMatches.map((m) => m.text);
             let suspectClaims: ReadonlySet<string> | undefined;
             if (!options.verifyClaims) {
+              // `[from …]` is attribution metadata, not part of the claim whose
+              // semantic support we are screening. Keep the original claim for
+              // the later surgical drop, but embed its content alone so a valid
+              // citation prefix cannot mask an otherwise unsupported sentence.
+              const screenTexts = claimsToCheck.map((claim) => claim
+                .replace(/\[[^\]]*\]/gu, " ")
+                .replace(/\s+/gu, " ")
+                .trim());
               const screens = await screenClaimsBySemanticSupport(
-                claimsToCheck,
+                screenTexts,
                 evidenceTexts,
                 (t) => embed(t, embedModel)
               );
-              suspectClaims = new Set(screens.filter((s) => s.suspect).map((s) => s.claim));
+              suspectClaims = new Set(screens
+                .flatMap((screen, index) => screen.suspect ? [claimsToCheck[index]!] : []));
             }
             const refinement = await verifyGroundingPerClaim(verdictAnswer, scoredMatches, query, reverify, { suspectClaims, reverifySamples: 3 });
             if (refinement.dropped > 0) {
