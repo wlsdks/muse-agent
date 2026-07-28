@@ -7,7 +7,11 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./host": { "types": "./dist/host.d.ts", "import": "./dist/host.js" }
+    "./host": { "types": "./dist/host.d.ts", "import": "./dist/host.js" },
+    "./state-validation": {
+      "types": "./dist/state-validation.d.ts",
+      "import": "./dist/state-validation.js"
+    }
   },
   "scripts": { "build": "tsc -b", "test": "vitest run", "typecheck": "tsc -p tsconfig.json --noEmit" },
   "dependencies": {

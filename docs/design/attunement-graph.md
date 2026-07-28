@@ -36,13 +36,18 @@ substrate, not proof that the engine or experience has shipped.
 contract, strict temporal/provenance/epistemic invariants, bounded traversal, in-memory
 reference adapter, reusable backend conformance suite, and token-budgeted Activation
 Subgraph compiler in [`packages/attunement-graph`](../../packages/attunement-graph/).
+AWG-020 adds a pure, lazy per-thread projection of validated Continuity state: artifact
+links, delivery evidence, explicit outcomes, policy versions/revisions, and factual
+interaction evidence become content-addressed assertions with scope-safe deltas. The
+authoritative store and projector share one I/O-free `unknown → AttunementState` parser;
+the graph never reads or owns the file.
 The reference traversal separately caps returned assertions, considered adjacency
 assertions, visited references, and depth, so a dense seed cannot hide unbounded work behind
 a small output limit.
 
-It has no authoritative-store projector, durable adapter, LLM extraction, runtime
-composition, Shadow delivery, Capsule UI, Policy Card UI, or action authority. The
-Attunement Graph Engine and three signature experiences therefore remain roadmap claims.
+It has no runtime projection composition, durable adapter, LLM extraction, Shadow
+delivery, Capsule UI, Policy Card UI, or action authority. The Attunement Graph Engine and
+three signature experiences therefore remain roadmap claims.
 
 ## Why a graph, and where it must beat flat or vector memory
 

@@ -11,5 +11,10 @@
   ],
   "exclude": [
     "dist"
+  ],
+  "references": [
+    {
+      "path": "../attunement"
+    }
   ]
 }

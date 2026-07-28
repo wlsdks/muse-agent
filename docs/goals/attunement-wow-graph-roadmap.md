@@ -53,7 +53,7 @@ The program is not done when Muse has a graph database. It is done when:
 |---|---|---|---|
 | **AWG-001** | Product signature and research contract | Canonical wow scenario, honest shipped/roadmap boundary, research-backed graph design, and docs cross-links | completed |
 | **AWG-010** | Reference graph kernel | `@muse/attunement-graph` domain types, invariants, append log, compact in-memory indexes, Activation Subgraph compiler, and conformance tests; no LLM or production DB | completed |
-| **AWG-020** | Exact Continuity projection | Rebuildable projection of thread, artifact links, delivery, outcome, policy version, and source provenance without duplicated authority | pending |
+| **AWG-020** | Exact Continuity projection | Rebuildable projection of thread, artifact links, delivery, outcome, policy version, and source provenance without duplicated authority | completed |
 | **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | pending |
 | **AWG-040** | Continuity Capsule v1 | User-invoked Capsule renders stopping point, changes, next step, prepared work, expected time, and source drawer | pending |
 | **AWG-050** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
@@ -66,7 +66,7 @@ Raw numbering does not activate work. Before each BUILD slice, inspect current s
 classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `monitoring`,
 `blocked`, `deferred`, `rejected`, or `superseded`. Implement only the missing delta.
 
-## Active slice: AWG-010
+## Completed slice: AWG-010
 
 - **Classification at activation:** `missing` — current Attunement stores provided authoritative exact
   links and receipts, but no storage-neutral graph kernel or Activation Subgraph compiler.
@@ -85,6 +85,31 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
   adversarial tests; no LLM, production database, or store projection.
 - **Next eligible slice:** AWG-020 exact Continuity projection, after fresh source
   reconciliation with the core roadmap.
+
+## Completed slice: AWG-020
+
+- **Classification at activation:** `missing` — the kernel can validate, store, forget,
+  traverse, and compile assertions, while current Continuity state remains an exact
+  authoritative substrate with no graph projection.
+- **Status:** `completed` — focused/root checks pass and the fresh independent evaluator
+  passed after two bounded correction rounds.
+- **Maker:** Codex root session, Sol-class provenance/architecture slice, inherited
+  reasoning.
+- **Evaluator:** fresh `gpt-5.6-sol` with high reasoning.
+- **Selection reason:** this slice defines the one-way boundary between an on-disk
+  authoritative store and a disposable graph projection. It changes no persisted source
+  format and grants no runtime authority.
+- **Escalation trigger:** stop if completion requires reading or mutating personal stores
+  inside the graph package, changing the Attunement schema, adding a production database,
+  inferring outcomes, or editing another roadmap's active source area.
+- **Acceptance:** pure deterministic projection; exact versioned source references;
+  content-addressed replay; deletion/forget delta; rebuild/delta equivalence; interaction
+  receipts never promoted to outcomes; cross-scope and cross-thread fail-close tests.
+- **Core-roadmap overlap:** none found in current source. This slice shares the I/O-free
+  Attunement state parser at runtime and imports its domain types, but does not read a store
+  or edit the memory work currently in progress on local `main`.
+- **Next eligible slice:** AWG-030 explained change query, after fresh source reconciliation
+  and a flat exact-lookup baseline contract.
 
 ## Architecture gates
 
