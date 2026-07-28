@@ -17,6 +17,25 @@ export interface CommandStub {
   readonly subcommands: readonly string[];
 }
 
+/**
+ * Commands registered eagerly by `createProgram`, alongside the lazy manifest
+ * below. Keep this list synchronized with the eager registration assertion in
+ * `command-manifest.drift.test.ts` so consumers can inventory the complete
+ * public CLI surface without loading every command handler.
+ */
+export const EAGER_COMMAND_NAMES = [
+  "config-path",
+  "spec",
+  "tui",
+  "chat",
+  "runtime",
+  "loopback",
+  "snapshot",
+  "context",
+  "completion",
+  "help"
+] as const;
+
 export const COMMAND_STUBS: readonly CommandStub[] = [
   {
     "name": "actions",

@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
 import { COMMAND_LOADERS, LOADER_BY_NAME } from "./command-loaders.js";
-import { COMMAND_STUBS } from "./command-manifest.js";
+import { COMMAND_STUBS, EAGER_COMMAND_NAMES } from "./command-manifest.js";
 import { createProgram, type ProgramIO } from "./program.js";
 
 /**
@@ -96,10 +96,9 @@ describe("command manifest drift guard", () => {
   });
 
   it("createProgram registers every stub plus the eager inline commands (no command lost)", () => {
-    const eager = ["config-path", "spec", "tui", "chat", "runtime", "loopback", "snapshot", "context", "completion", "help"];
     const program = createProgram(stubIo);
     const registered = program.commands.map((c) => c.name()).filter((n): n is string => Boolean(n) && n !== "*");
-    const expected = [...eager, ...COMMAND_STUBS.map((s) => s.name)].sort();
+    const expected = [...EAGER_COMMAND_NAMES, ...COMMAND_STUBS.map((s) => s.name)].sort();
     expect([...new Set(registered)].sort()).toEqual(expected);
   });
 });
