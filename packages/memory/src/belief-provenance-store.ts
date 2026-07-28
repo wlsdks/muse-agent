@@ -52,9 +52,15 @@ export interface BeliefProvenance {
    * the user deleted. A later non-retraction event (a deliberate re-`set`) clears it.
    */
   readonly retraction?: boolean;
+  /**
+   * `true` when the owner marks a fact as no longer current while retaining
+   * the flat value and append-only history. Unlike `retraction`, this is not a
+   * forget/delete instruction.
+   */
+  readonly invalidation?: boolean;
   /** Exact, idempotent owner choice made from the actionable conflict view. */
   readonly ownerResolution?: {
-    readonly action: "keep";
+    readonly action: "invalidate" | "keep";
     readonly exactId: string;
     readonly expectedVersion: number;
     readonly requestId: string;
@@ -90,7 +96,7 @@ export interface BeliefProvenanceSourceSnapshot {
 
 export const FACT_RECALL_LIFECYCLE_POLICY_V1 = "muse.fact-recall-lifecycle.v1";
 
-export type FactRecallState = "active" | "superseded" | "disputed" | "deleted";
+export type FactRecallState = "active" | "superseded" | "disputed" | "deleted" | "invalidated";
 export type FactRecallEligibility = "eligible" | "uncertain" | "ineligible";
 
 export interface FactRecallCandidate {
@@ -116,6 +122,7 @@ export interface FactRecallDecision {
     | "auto-values-conflict"
     | "newer-authoritative-value"
     | "active-retraction"
+    | "active-invalidation"
     | "equal-authority-conflict"
     | "malformed-history"
     | "authority-unavailable";
@@ -131,6 +138,7 @@ export interface MemoryConflictTarget {
 }
 
 export interface MemoryConflictSource {
+  readonly invalidation: boolean;
   readonly learnedAt: string;
   readonly retraction: boolean;
   readonly sessionId?: string;
@@ -162,8 +170,8 @@ export interface TemporalBeliefProvenanceEvent {
   /** Normalized key used to group events into one temporal history. */
   readonly key: string;
   readonly kind: "fact" | "preference";
-  /** Retractions deliberately carry no value into the projection. */
-  readonly event: "assertion" | "retraction";
+  /** Retractions and invalidations deliberately carry no value into the projection. */
+  readonly event: "assertion" | "invalidation" | "retraction";
   readonly value?: string;
   /** `user` is direct user authority; `auto` is an inferred entry. */
   readonly sourceAuthority: "auto" | "user";
@@ -204,19 +212,21 @@ export interface StaleFactReconfirmationDraft {
 
 /** Stable, content-bound locator for one exact provenance event. */
 export function beliefProvenanceSourceId(entry: BeliefProvenance): string {
+  const identity = [
+    entry.userId,
+    entry.kind,
+    entry.key,
+    entry.value,
+    entry.learnedAt,
+    entry.sessionId ?? null,
+    entry.evidenceExcerpt ?? null,
+    entry.source ?? "auto",
+    entry.retraction === true,
+    ...(entry.invalidation === true ? [true] : []),
+    entry.ownerResolution ?? null
+  ];
   const digest = createHash("sha256")
-    .update(JSON.stringify([
-      entry.userId,
-      entry.kind,
-      entry.key,
-      entry.value,
-      entry.learnedAt,
-      entry.sessionId ?? null,
-      entry.evidenceExcerpt ?? null,
-      entry.source ?? "auto",
-      entry.retraction === true,
-      entry.ownerResolution ?? null
-    ]))
+    .update(JSON.stringify(identity))
     .digest("hex")
     .slice(0, 32);
   return `bps_v1_${digest}`;
@@ -249,19 +259,20 @@ export function projectMemoryConflictViews(
     const group = byIdentity.get(factRecallIdentity(target.kind, normalizeKey(target.key))) ?? [];
     const distinctValues = new Set(
       group
-        .filter((entry) => entry.retraction !== true)
+        .filter((entry) => !isBeliefTerminalMarker(entry))
         .map((entry) => canonicalFactRecallValue(entry.value))
     );
     if (decision.state === "active" || (distinctValues.size < 2 && decision.state !== "deleted")) return;
     const sources = [...group]
       .sort(compareConflictSources)
       .map((entry): MemoryConflictSource => Object.freeze({
+        invalidation: entry.invalidation === true,
         learnedAt: entry.learnedAt,
         retraction: entry.retraction === true,
         ...(entry.sessionId ? { sessionId: entry.sessionId } : {}),
         source: entry.source ?? "auto",
         sourceId: beliefProvenanceSourceId(entry),
-        ...(entry.retraction === true ? {} : { value: entry.value })
+        ...(isBeliefTerminalMarker(entry) ? {} : { value: entry.value })
       }));
     const authoritative = decision.reason === "newer-authoritative-value"
       ? authoritativeConflictEntry(group)
@@ -273,7 +284,9 @@ export function projectMemoryConflictViews(
         reason: decision.reason,
         ...(authoritative ? { sourceId: beliefProvenanceSourceId(authoritative) } : {}),
         state: decision.state,
-        ...(decision.state === "deleted" || decision.reason === "equal-authority-conflict"
+        ...(decision.state === "deleted"
+          || decision.state === "invalidated"
+          || decision.reason === "equal-authority-conflict"
           ? {}
           : { value: authoritative?.value ?? target.value })
       }),
@@ -356,11 +369,15 @@ export function projectTemporalBeliefProvenance(
       const isLatest = event.timestamp === latestTimestamp;
       const temporalState = !isLatest
         ? "historical"
-        : event.entry.retraction === true
+        : isBeliefTerminalMarker(event.entry)
           ? "invalidated"
           : "active";
       projection.push(Object.freeze({
-        event: event.entry.retraction === true ? "retraction" : "assertion",
+        event: event.entry.retraction === true
+          ? "retraction"
+          : event.entry.invalidation === true
+            ? "invalidation"
+            : "assertion",
         ...(next ? { invalidatedAt: next.entry.learnedAt } : {}),
         key: event.key,
         kind: event.entry.kind,
@@ -369,7 +386,7 @@ export function projectTemporalBeliefProvenance(
         sourceId: event.sourceId,
         temporalState,
         validFrom: event.entry.learnedAt,
-        ...(event.entry.retraction === true ? {} : { value: event.entry.value })
+        ...(isBeliefTerminalMarker(event.entry) ? {} : { value: event.entry.value })
       }));
     }
   }
@@ -508,7 +525,7 @@ function isSafeStaleFactProvenanceEntry(value: unknown): value is BeliefProvenan
     || typeof entry.value !== "string"
     || /[\u0000-\u001f\u007f-\u009f]/u.test(entry.value)
   ) return false;
-  return entry.retraction === true
+  return entry.retraction === true || entry.invalidation === true
     ? entry.value.length === 0
     : entry.value.length > 0 && sanitizeUserMemoryValue(entry.value) === entry.value;
 }
@@ -527,8 +544,8 @@ function authoritativeConflictEntry(group: readonly BeliefProvenance[]): BeliefP
     .filter((entry) => Number.isFinite(Date.parse(entry.learnedAt)))
     .sort(compareConflictSources);
   return [...ordered].reverse().find((entry) =>
-    entry.retraction !== true && entry.source === "user"
-  ) ?? [...ordered].reverse().find((entry) => entry.retraction !== true);
+    !isBeliefTerminalMarker(entry) && entry.source === "user"
+  ) ?? [...ordered].reverse().find((entry) => !isBeliefTerminalMarker(entry));
 }
 
 /** Exact inspection for a status read model; supports encrypted stores without quarantine or rewrite. */
@@ -704,20 +721,22 @@ export function projectFactRecallLifecycle(
     if (malformed) {
       return group.some(({ entry }) => entry.retraction === true)
         ? freezeFactRecallDecision(candidate, "deleted", "ineligible", "malformed-history")
+        : group.some(({ entry }) => entry.invalidation === true)
+          ? freezeFactRecallDecision(candidate, "invalidated", "ineligible", "malformed-history")
         : freezeFactRecallDecision(candidate, "disputed", "uncertain", "malformed-history");
     }
 
     const ordered = [...group].sort(compareFactRecallEvents);
-    const latestRetraction = [...ordered].reverse().find(({ entry }) => entry.retraction === true);
+    const latestTerminal = [...ordered].reverse().find(({ entry }) => isBeliefTerminalMarker(entry));
     const latestExplicitUser = [...ordered].reverse().find(({ entry }) =>
-      entry.retraction !== true && entry.source === "user"
+      !isBeliefTerminalMarker(entry) && entry.source === "user"
     );
     const latestExplicitTimestamp = latestExplicitUser?.timestamp;
     if (latestExplicitTimestamp !== undefined) {
       const tiedExplicitValues = new Set(ordered
         .filter(({ entry, timestamp }) =>
           timestamp === latestExplicitTimestamp
-          && entry.retraction !== true
+          && !isBeliefTerminalMarker(entry)
           && entry.source === "user"
         )
         .map(({ entry }) => canonicalFactRecallValue(entry.value)));
@@ -731,18 +750,22 @@ export function projectFactRecallLifecycle(
       }
     }
     if (
-      latestRetraction
-      && (!latestExplicitUser || latestExplicitUser.timestamp <= latestRetraction.timestamp)
+      latestTerminal
+      && (!latestExplicitUser || latestExplicitUser.timestamp <= latestTerminal.timestamp)
     ) {
-      return freezeFactRecallDecision(candidate, "deleted", "ineligible", "active-retraction");
+      return latestTerminal.entry.retraction === true
+        ? freezeFactRecallDecision(candidate, "deleted", "ineligible", "active-retraction")
+        : freezeFactRecallDecision(candidate, "invalidated", "ineligible", "active-invalidation");
     }
 
-    const nonRetractions = ordered.filter(({ entry }) => entry.retraction !== true);
-    const authoritative = latestExplicitUser ?? nonRetractions[nonRetractions.length - 1];
+    const assertions = ordered.filter(({ entry }) => !isBeliefTerminalMarker(entry));
+    const authoritative = latestExplicitUser ?? assertions[assertions.length - 1];
     if (!authoritative) {
-      return freezeFactRecallDecision(candidate, "deleted", "ineligible", "active-retraction");
+      return latestTerminal?.entry.retraction === true
+        ? freezeFactRecallDecision(candidate, "deleted", "ineligible", "active-retraction")
+        : freezeFactRecallDecision(candidate, "invalidated", "ineligible", "active-invalidation");
     }
-    const distinctValues = new Set(nonRetractions.map(({ entry }) => canonicalFactRecallValue(entry.value)));
+    const distinctValues = new Set(assertions.map(({ entry }) => canonicalFactRecallValue(entry.value)));
     if (!latestExplicitUser && distinctValues.size > 1) {
       return freezeFactRecallDecision(candidate, "disputed", "uncertain", "auto-values-conflict");
     }
@@ -757,6 +780,10 @@ export function projectFactRecallLifecycle(
 
 function factRecallIdentity(kind: "fact" | "preference", key: string): string {
   return `${kind}\u0000${key}`;
+}
+
+function isBeliefTerminalMarker(entry: BeliefProvenance): boolean {
+  return entry.retraction === true || entry.invalidation === true;
 }
 
 function canonicalFactRecallValue(value: string): string {
@@ -799,7 +826,7 @@ export function deriveFactProvenance(entries: readonly BeliefProvenance[]): read
   for (const e of entries) {
     // Retraction markers carry no value — exclude them from value/count aggregation
     // so a forget doesn't pollute confirmCount / distinctValueCount / latest value.
-    if (e.retraction === true) continue;
+    if (isBeliefTerminalMarker(e)) continue;
     const group = byKey.get(e.key);
     if (group) group.push(e);
     else byKey.set(e.key, [e]);
@@ -1162,7 +1189,7 @@ export interface BeliefValueStep {
  */
 export function beliefValueTimeline(entries: readonly BeliefProvenance[], key: string): readonly BeliefValueStep[] {
   const sorted = entries
-    .filter((e) => e.key === key && e.retraction !== true)
+    .filter((e) => e.key === key && !isBeliefTerminalMarker(e))
     .slice()
     .sort((a, b) => Date.parse(a.learnedAt) - Date.parse(b.learnedAt));
   const out: BeliefValueStep[] = [];
@@ -1366,6 +1393,87 @@ export class FileBeliefProvenanceStore implements BeliefProvenanceStore {
     });
   }
 
+  async recordOwnerInvalidation(input: {
+    readonly createdAt: string;
+    readonly exactId: string;
+    readonly expectedVersion: number;
+    readonly key: string;
+    readonly requestId: string;
+    readonly userId: string;
+  }): Promise<BeliefProvenance> {
+    if (
+      typeof input.userId !== "string" || input.userId.length === 0
+      || typeof input.key !== "string" || input.key.length === 0
+      || input.key !== input.key.trim()
+      || normalizeMemoryKey(input.key) !== input.key
+      || /[\u0000-\u001f\u007f-\u009f]/u.test(input.key)
+      || input.exactId !== exactUserMemoryId(input.userId, "fact", input.key)
+      || !Number.isSafeInteger(input.expectedVersion)
+      || input.expectedVersion < 1
+      || input.requestId.trim().length < 8
+      || input.requestId.length > 128
+      || /[\u0000-\u001f\u007f]/u.test(input.requestId)
+      || !Number.isFinite(Date.parse(input.createdAt))
+    ) {
+      throw new BeliefProvenanceResolutionError("invalid-request", "invalid owner fact invalidation");
+    }
+    return this.serializeWrite(async () => {
+      const inspection = await inspectBeliefProvenanceSource(this.file, this.env);
+      const existing = inspection.result === "absent"
+        ? []
+        : inspection.result === "available" && inspection.value.excludedCount === 0
+          ? inspection.value.entries
+          : undefined;
+      if (!existing) {
+        throw new BeliefProvenanceResolutionError(
+          "invalid-request",
+          "belief provenance authority is unreadable or contains excluded records"
+        );
+      }
+      const replay = existing.find((entry) =>
+        entry.userId === input.userId
+        && entry.ownerResolution?.requestId === input.requestId
+      );
+      if (replay) {
+        const resolution = replay.ownerResolution!;
+        if (
+          replay.key !== input.key
+          || replay.kind !== "fact"
+          || replay.value !== ""
+          || replay.invalidation !== true
+          || replay.retraction === true
+          || resolution.action !== "invalidate"
+          || resolution.exactId !== input.exactId
+          || resolution.expectedVersion !== input.expectedVersion
+        ) {
+          throw new BeliefProvenanceResolutionError(
+            "request-reused",
+            "invalidation request ID was already used for a different memory target or version"
+          );
+        }
+        return replay;
+      }
+      const entry: BeliefProvenance = {
+        invalidation: true,
+        key: input.key,
+        kind: "fact",
+        learnedAt: input.createdAt,
+        ownerResolution: {
+          action: "invalidate",
+          exactId: input.exactId,
+          expectedVersion: input.expectedVersion,
+          requestId: input.requestId
+        },
+        source: "user",
+        userId: input.userId,
+        value: ""
+      };
+      const next = [...existing, entry].slice(-MAX_BELIEF_PROVENANCE_ENTRIES);
+      await writeBeliefProvenance(this.file, next, this.env);
+      return entry;
+    });
+  }
+
   private async serializeWrite<T>(operation: () => Promise<T>): Promise<T> {
     return withFileMutationQueue(this.file, () => withFileLock(this.file, operation));
   }
@@ -1395,6 +1503,7 @@ function provenanceEventIdentity(entry: BeliefProvenance): string {
     entry.evidenceExcerpt ?? null,
     entry.source ?? null,
     entry.retraction ?? false,
+    ...(entry.invalidation === true ? [true] : []),
     null
   ]);
 }
@@ -1415,10 +1524,17 @@ function isBeliefProvenance(value: unknown): value is BeliefProvenance {
   if (e.evidenceExcerpt !== undefined && typeof e.evidenceExcerpt !== "string") return false;
   if (e.source !== undefined && e.source !== "auto" && e.source !== "user") return false;
   if (e.retraction !== undefined && typeof e.retraction !== "boolean") return false;
+  if (e.invalidation !== undefined && typeof e.invalidation !== "boolean") return false;
+  if (e.retraction === true && e.invalidation === true) return false;
+  if (
+    e.invalidation === true
+    && (e.kind !== "fact" || e.value !== "" || e.source !== "user")
+  ) return false;
+  if (e.invalidation === true && e.ownerResolution === undefined) return false;
   if (e.ownerResolution !== undefined) {
     const resolution = e.ownerResolution;
     if (!resolution || typeof resolution !== "object") return false;
-    if (resolution.action !== "keep") return false;
+    if (resolution.action !== "keep" && resolution.action !== "invalidate") return false;
     if (!/^mem_v1_[a-f0-9]{32}$/u.test(resolution.exactId)) return false;
     if (!Number.isSafeInteger(resolution.expectedVersion) || resolution.expectedVersion < 1) return false;
     if (
@@ -1427,7 +1543,15 @@ function isBeliefProvenance(value: unknown): value is BeliefProvenance {
       || resolution.requestId.length > 128
       || /[\u0000-\u001f\u007f]/u.test(resolution.requestId)
     ) return false;
-    if (e.source !== "user" || e.retraction === true) return false;
+    if (e.source !== "user") return false;
+    if (
+      resolution.action === "keep"
+      && (e.retraction === true || e.invalidation === true)
+    ) return false;
+    if (
+      resolution.action === "invalidate"
+      && (e.kind !== "fact" || e.invalidation !== true || e.retraction === true || e.value !== "")
+    ) return false;
   }
   return true;
 }

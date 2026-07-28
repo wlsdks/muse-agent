@@ -150,6 +150,31 @@ export interface UserMemoryKeepCoordinator {
   ): Promise<{ readonly createdAt: string; readonly sourceId: string }>;
 }
 
+export interface UserMemoryInvalidationReceipt {
+  readonly action: "invalidate";
+  readonly createdAt: string;
+  readonly exactId: string;
+  readonly expectedVersion: number;
+  readonly key: string;
+  readonly requestId: string;
+  readonly sourceId: string;
+  readonly status: "applied";
+}
+
+export interface UserMemoryInvalidationContext {
+  readonly createdAt: string;
+  readonly expectedVersion: number;
+  readonly requestId: string;
+  readonly target: ExactUserMemoryEntry & { readonly kind: "fact" };
+  readonly userId: string;
+}
+
+export interface UserMemoryInvalidationCoordinator {
+  record(
+    context: UserMemoryInvalidationContext
+  ): Promise<{ readonly createdAt: string; readonly sourceId: string }>;
+}
+
 export class UserMemoryOwnerControlError extends Error {
   readonly code: UserMemoryOwnerControlErrorCode;
 
@@ -887,6 +912,81 @@ export class FileUserMemoryStore implements UserMemoryStore {
         { raw: current.raw }
       );
       return structuredClone(applied);
+    }));
+  }
+
+  /**
+   * Invalidate one exact fact without deleting or rewriting the flat memory
+   * entry. The provenance append runs while the exact-target lock is held, so
+   * stale versions cannot become owner-authoritative invalidations.
+   */
+  async invalidateOwnerFact(
+    userId: string,
+    input: {
+      readonly exactId: string;
+      readonly expectedVersion: number;
+      readonly requestId: string;
+    },
+    coordinator: UserMemoryInvalidationCoordinator
+  ): Promise<UserMemoryInvalidationReceipt> {
+    validateMutationInput(input);
+    if (input.requestId.length > 128 || /[\u0000-\u001f\u007f]/u.test(input.requestId)) {
+      throw new UserMemoryOwnerControlError(
+        "invalid-request",
+        "invalidation request ID must be 8-128 printable characters"
+      );
+    }
+    return this.serializeWrite(async () => this.withFileLock(async () => {
+      const { file: data } = await this.read();
+      const stored = data.users[userId];
+      if (!stored) {
+        if (!/^mem_v1_[a-f0-9]{32}$/u.test(input.exactId)) {
+          throw new UserMemoryOwnerControlError("exact-id-required", "memory invalidation requires an exact ID");
+        }
+        throw new UserMemoryOwnerControlError("not-found", "exact memory entry was not found");
+      }
+      const control = ownerControlForUser(stored.ownerControl, userId);
+      assertNoPendingKeep(control);
+      const target = requireExactEntry(
+        { ...storedToMemory(stored), userId },
+        control,
+        input.exactId
+      );
+      if (target.kind !== "fact") {
+        throw new UserMemoryOwnerControlError("invalid-request", "only an exact fact can be invalidated");
+      }
+      if (target.version !== input.expectedVersion) {
+        throw new UserMemoryOwnerControlError(
+          "conflict",
+          `memory version changed: expected ${input.expectedVersion.toString()}, current ${target.version.toString()}`
+        );
+      }
+      const persisted = await coordinator.record({
+        createdAt: this.now().toISOString(),
+        expectedVersion: target.version,
+        requestId: input.requestId,
+        target: { ...target, kind: "fact" },
+        userId
+      });
+      if (
+        !/^bps_v1_[a-f0-9]{32}$/u.test(persisted.sourceId)
+        || !Number.isFinite(Date.parse(persisted.createdAt))
+      ) {
+        throw new UserMemoryOwnerControlError(
+          "corrupt-control-state",
+          "invalidation provenance writer returned an invalid source receipt"
+        );
+      }
+      return {
+        action: "invalidate",
+        createdAt: persisted.createdAt,
+        exactId: target.exactId,
+        expectedVersion: target.version,
+        key: target.key,
+        requestId: input.requestId,
+        sourceId: persisted.sourceId,
+        status: "applied"
+      };
     }));
   }
 
