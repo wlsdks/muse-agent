@@ -34,6 +34,10 @@ export {
   type GoalCheckpointBindingInput,
   type GoalCheckpointResumeDecision
 } from "./goal-checkpoint-binding.js";
+export {
+  inspectGoalCheckpointResume,
+  type GoalCheckpointInspection
+} from "./goal-checkpoint-inspection.js";
 export { defaultBoardFile, FileAgentTaskBoard, readBoard, writeBoard } from "./board-store.js";
 export { dispatchNextTask, resolveReview, type DispatchResult, type TaskExecutionResult, type TaskExecutor } from "./dispatch-board.js";
 export type { HandoffPart, ParsedHandoffPart, ParsedWorkerResult, WorkerHandoff } from "./worker-result.js";
