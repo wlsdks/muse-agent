@@ -39,12 +39,13 @@ rival-watch가 다음 정찰의 시작점을 기억한다.**
   행 추가. `prompt-system.md`는 루프 종료 후에도 진안-직접 모드로 계속 쓰이는 활성 저널이다.
 - `attunement-implementation-plan.md`, `attunement-slice-b-safety-contract.md` —
   사람-지시 설계/계획 문서 (마감된 계획 문서는 삭제한다 — 잔여 항목은 backlog 레코드로)
-- `personal-agent-productization-roadmap.md` — 2026-07-25 현재 qualification에서 시작해
-  resident runtime, delivery safety, organic Attunement evidence, 제한된 자동화, 첫 배포 이후
-  memory/domain/computer/communication/learning/device/plugin 운영까지 잇는 300-task 장기
-  사람-지시 프로그램 지도. 번호는 stable ID이며 current-source dedupe 후 BUILD/EVIDENCE lane의
-  authoritative order와 GPT-5.6 Luna/Terra/Sol 위험도별 실행 정책으로 진행한다
-  (Task 300의 successor/종료 결정 뒤 교체하고 git history만 보존)
+- `personal-agent-core-100-roadmap.md` — **현재 권위 실행 문서.** 2026-07-28 source reconciliation
+  기준으로 이미 닫힌 작업을 제외하고, daily provider-neutral personal agent에 필요한 남은 핵심을
+  100개의 active-wall-clock 20분 이하 slice로 재구성했다. 다음 task, lane, gate, 모델 선택은 이
+  문서를 따른다.
+- `personal-agent-productization-roadmap.md` — 300-task legacy 요구사항과 stable ID를 찾는
+  역사 참조. 새 BUILD/EVIDENCE activation에는 사용하지 않으며, Core100 `legacyRefs`의 상세
+  rationale이 필요할 때만 해당 구간을 읽는다.
 
 ## goals 밖의 기록성(축적형) 문서 — 지도 완결용 (2026-07-17 전수조사)
 

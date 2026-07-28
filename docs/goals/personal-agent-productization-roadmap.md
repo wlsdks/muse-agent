@@ -2,9 +2,10 @@
 title: Muse personal-agent productization roadmap
 audience: [owner, product, engineering, evaluation]
 purpose: Move Muse from an advanced engineering alpha to a qualified, useful, evidence-backed daily personal agent
-status: active
-updated: 2026-07-25
+status: historical-reference
+updated: 2026-07-28
 related:
+  - personal-agent-core-100-roadmap.md
   - personal-agent-acceptance-plan.md
   - daily-use-hardening-plan.md
   - attunement-implementation-plan.md
@@ -16,6 +17,12 @@ related:
 ---
 
 # Muse personal-agent productization roadmap
+
+> **2026-07-28 owner-directed replan:** 새 작업 activation과 다음 작업 선택은
+> [`personal-agent-core-100-roadmap.md`](personal-agent-core-100-roadmap.md)가 권위 문서다.
+> 이 300-task 문서는 완료된 source를 재구현하지 않기 위한 legacy 요구사항과 ID 이력으로만
+> 유지한다. 특히 990분 worst-case의 Task 059–060은 실행하지 않고 Core100의 bounded
+> qualification shard 004–010으로 대체한다.
 
 ## 목적
 
