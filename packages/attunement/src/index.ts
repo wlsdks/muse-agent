@@ -36,7 +36,12 @@ export {
   type OpenPreparedContinuityPack
 } from "./continuity-preparation.js";
 export {
+  buildContinuityOutcomeReasonProjection,
   prepareContinuityReview,
+  type ContinuityOutcomeReasonExclusion,
+  type ContinuityOutcomeReasonItem,
+  type ContinuityOutcomeReasonProjection,
+  type ContinuityOwnerReason,
   type ContinuityReview,
   type ContinuityReviewEvidence,
   type ContinuityReviewItem

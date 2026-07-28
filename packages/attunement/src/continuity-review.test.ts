@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AttunementStoreError,
   baselinePolicy,
+  buildContinuityOutcomeReasonProjection,
   prepareContinuityReview,
   type ArtifactLink,
   type AttunementState
@@ -56,6 +57,148 @@ function state(): AttunementState {
 }
 
 describe("prepareContinuityReview", () => {
+  it("projects only exact owner-authored reasons for organic negative outcomes", () => {
+    const current = state();
+    const base = current.deliveries[0]!;
+    const deliveries: AttunementState["deliveries"] = [
+      {
+        ...base,
+        id: "delivery_adjusted_owner",
+        outcome: {
+          evidenceClass: "organic",
+          outcome: "adjusted",
+          ownerNote: "The source was right, but the summary was too long.",
+          policyVersion: 1,
+          recordedAt: "2026-07-17T08:05:00.000Z"
+        }
+      },
+      {
+        ...base,
+        id: "delivery_rejected_inferred",
+        outcome: {
+          evidenceClass: "organic",
+          modelInferredReason: "The model guessed that timing was bad.",
+          outcome: "rejected",
+          policyVersion: 2,
+          recordedAt: "2026-07-17T08:06:00.000Z"
+        } as NonNullable<AttunementState["deliveries"][number]["outcome"]> & {
+          readonly modelInferredReason: string;
+        }
+      },
+      {
+        ...base,
+        id: "delivery_ignored_controlled",
+        outcome: {
+          evidenceClass: "controlled",
+          outcome: "ignored",
+          ownerNote: "Fixture note",
+          policyVersion: 3,
+          recordedAt: "2026-07-17T08:07:00.000Z"
+        }
+      },
+      {
+        ...base,
+        id: "delivery_used_owner",
+        outcome: {
+          evidenceClass: "organic",
+          outcome: "used",
+          ownerNote: "This was helpful.",
+          policyVersion: 4,
+          recordedAt: "2026-07-17T08:08:00.000Z"
+        }
+      },
+      {
+        ...base,
+        id: "delivery_unknown_outcome",
+        outcome: {
+          evidenceClass: "organic",
+          outcome: "helpful",
+          ownerNote: "Forged outcome.",
+          policyVersion: 5,
+          recordedAt: "2026-07-17T08:09:00.000Z"
+        } as unknown as NonNullable<AttunementState["deliveries"][number]["outcome"]>
+      },
+      {
+        ...base,
+        id: "delivery_object_note",
+        outcome: {
+          evidenceClass: "organic",
+          outcome: "rejected",
+          ownerNote: { model: "guess" },
+          policyVersion: 6,
+          recordedAt: "2026-07-17T08:10:00.000Z"
+        } as unknown as NonNullable<AttunementState["deliveries"][number]["outcome"]>
+      },
+      {
+        ...base,
+        evidenceClass: "unclassified",
+        id: "delivery_unclassified",
+        outcome: {
+          evidenceClass: "organic",
+          outcome: "ignored",
+          ownerNote: "Must remain technical-only.",
+          policyVersion: 7,
+          recordedAt: "2026-07-17T08:11:00.000Z"
+        }
+      },
+      {
+        ...base,
+        id: "delivery_pending",
+        outcome: undefined
+      }
+    ];
+    const input = { ...current, deliveries };
+    const before = JSON.stringify(input);
+
+    const projection = buildContinuityOutcomeReasonProjection(input);
+
+    expect(JSON.stringify(input)).toBe(before);
+    expect(projection).toEqual({
+      excluded: [
+        {
+          deliveryId: "delivery_ignored_controlled",
+          reason: "outcome evidence is controlled, not organic"
+        },
+        {
+          deliveryId: "delivery_object_note",
+          reason: "owner-authored reason is invalid"
+        },
+        {
+          deliveryId: "delivery_pending",
+          reason: "delivery has no explicit outcome"
+        },
+        {
+          deliveryId: "delivery_rejected_inferred",
+          reason: "negative outcome has no owner-authored reason"
+        },
+        {
+          deliveryId: "delivery_unclassified",
+          reason: "delivery evidence is unclassified, not organic"
+        },
+        {
+          deliveryId: "delivery_unknown_outcome",
+          reason: "outcome value is invalid"
+        },
+        {
+          deliveryId: "delivery_used_owner",
+          reason: "used is not a negative outcome"
+        }
+      ],
+      ownerAuthoredReasons: [{
+        deliveryId: "delivery_adjusted_owner",
+        outcome: "adjusted",
+        reason: {
+          source: "owner-authored",
+          text: "The source was right, but the summary was too long."
+        },
+        recordedAt: "2026-07-17T08:05:00.000Z",
+        thread: { id: "thread_work", kind: "work", title: "Resume Muse" }
+      }],
+      schemaVersion: 1
+    });
+    expect(JSON.stringify(projection)).not.toContain("model guessed");
+  });
+
   it("ignores non-organic deliveries and marks mixed feedback as technical-only rather than actionable", async () => {
     const current = state();
     const pending = current.deliveries[1]!;

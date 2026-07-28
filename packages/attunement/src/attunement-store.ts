@@ -214,7 +214,7 @@ function isEvidenceClass(value: unknown): boolean {
   return isOneOf(value, CONTINUITY_EVIDENCE_CLASSES);
 }
 
-function isOwnerNote(value: unknown): value is string {
+export function isContinuityOwnerNote(value: unknown): value is string {
   return typeof value === "string"
     && value.length > 0
     && value === value.trim()
@@ -239,7 +239,7 @@ function isDelivery(value: unknown, requireEvidenceClass = false, schemaVersion 
   return isRecord(value.outcome)
     && isOneOf(value.outcome.outcome, OUTCOMES)
     && (requireEvidenceClass ? isEvidenceClass(value.outcome.evidenceClass) : value.outcome.evidenceClass === undefined || isEvidenceClass(value.outcome.evidenceClass))
-    && (value.outcome.ownerNote === undefined || isOwnerNote(value.outcome.ownerNote))
+    && (value.outcome.ownerNote === undefined || isContinuityOwnerNote(value.outcome.ownerNote))
     && isSafeVersion(value.outcome.policyVersion)
     && isNonEmptyString(value.outcome.recordedAt);
 }
@@ -759,7 +759,7 @@ export async function recordContinuityOutcome(
   options: RecordContinuityOutcomeOptions = {}
 ): Promise<{ readonly applied: boolean; readonly delivery: ContinuityDelivery; readonly policy: PersonalThread["policy"] }> {
   if (!OUTCOMES.includes(outcome)) throw new AttunementStoreError("outcome must be used, adjusted, ignored, or rejected");
-  if (options.ownerNote !== undefined && !isOwnerNote(options.ownerNote)) {
+  if (options.ownerNote !== undefined && !isContinuityOwnerNote(options.ownerNote)) {
     throw new AttunementStoreError(
       "owner note must be 1-500 characters with no surrounding whitespace or control characters"
     );
