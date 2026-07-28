@@ -35,6 +35,16 @@ export {
   type GoalActionBudgetValues
 } from "./goal-action-budget.js";
 export {
+  projectGoalProgress,
+  type GoalActionProgress,
+  type GoalActionProgressStatus,
+  type GoalProgressEvidence,
+  type GoalProgressObservation,
+  type GoalProgressObservationKind,
+  type GoalProgressProjection,
+  type VerifiedGoalEffectReceipt
+} from "./goal-progress-projection.js";
+export {
   assessGoalCheckpointResume,
   createGoalCheckpointBinding,
   type GoalCheckpointBinding,
