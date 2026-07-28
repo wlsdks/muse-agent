@@ -9,15 +9,23 @@ import {
 import {
   CONTINUITY_CHANGE_LIMITS
 } from "./continuity-change-semantics.js";
-import type {
-  ContinuityChangeObservationDiagnostics
-} from "./continuity-change-query.js";
+import {
+  comparePreparedContinuityObservations,
+  type PreparedContinuityComparisonObservation
+} from "./continuity-change-comparison.js";
+import {
+  CONTINUITY_PROJECTION_BOUNDARY_NAMESPACE,
+  type ContinuityChangeBoundary,
+  type ContinuityChangeObservationDiagnostics,
+  type ExplainedContinuityChangeResult
+} from "./continuity-change-contracts.js";
 import {
   ContinuityChangeQueryError,
   type ContinuityChangeQueryErrorCode
 } from "./continuity-change-primitives.js";
 import {
-  prepareContinuitySourceObservation
+  prepareContinuitySourceObservation,
+  type PreparedContinuitySourceObservation
 } from "./continuity-source-observation.js";
 import type {
   GraphAssertion,
@@ -48,6 +56,15 @@ export type ContinuityObservationErrorCode =
 const PREPARATION_ERROR_CODE = {
   INVALID_INPUT: "INVALID_INPUT",
   RAW_DELTA_BUDGET_EXCEEDED: "INVALID_INPUT",
+  SOURCE_BUDGET_EXCEEDED: "BUDGET_EXCEEDED"
+} as const satisfies Record<
+  ContinuityChangeQueryErrorCode,
+  ContinuityObservationErrorCode
+>;
+
+const COMPARISON_ERROR_CODE = {
+  INVALID_INPUT: "INVALID_INPUT",
+  RAW_DELTA_BUDGET_EXCEEDED: "BUDGET_EXCEEDED",
   SOURCE_BUDGET_EXCEEDED: "BUDGET_EXCEEDED"
 } as const satisfies Record<
   ContinuityChangeQueryErrorCode,
@@ -95,6 +112,12 @@ interface InspectionBudget {
 
 interface ParseContext {
   readonly invalidCode: "INVALID_INPUT" | "INVALID_RECEIPT";
+}
+
+interface ReceiptComparisonEnvelope {
+  readonly current: unknown;
+  readonly previousReceipt: unknown;
+  readonly schemaVersion: unknown;
 }
 
 function fail(
@@ -229,6 +252,43 @@ function dataRecord(
     fail(context.invalidCode, `${label} is missing a required field`);
   }
   return record;
+}
+
+function receiptComparisonEnvelope(value: unknown): ReceiptComparisonEnvelope {
+  const label = "receipt comparison input";
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    fail("INVALID_INPUT", `${label} must be an object`);
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    fail("INVALID_INPUT", `${label} must be a plain object`);
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.some((key) => typeof key !== "string")) {
+    fail("INVALID_INPUT", `${label} must not contain symbol fields`);
+  }
+  const allowed = ["current", "previousReceipt", "schemaVersion"] as const;
+  if ((keys as string[]).some((key) => !allowed.includes(
+    key as (typeof allowed)[number]
+  ))) {
+    fail("INVALID_INPUT", `${label} contains an unknown field`);
+  }
+  if (allowed.some((key) => !keys.includes(key))) {
+    fail("INVALID_INPUT", `${label} is missing a required field`);
+  }
+  const descriptors: PropertyDescriptorMap = {};
+  for (const key of keys as string[]) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !("value" in descriptor)) {
+      fail("INVALID_INPUT", `${label} fields must be data properties`);
+    }
+    descriptors[key] = descriptor;
+  }
+  return Object.freeze({
+    current: descriptors.current?.value,
+    previousReceipt: descriptors.previousReceipt?.value,
+    schemaVersion: descriptors.schemaVersion?.value
+  });
 }
 
 function dataArray(
@@ -759,4 +819,74 @@ export function verifyContinuityObservation(
     fail("INTEGRITY_MISMATCH", "receiptId does not bind the observation receipt");
   }
   return receipt;
+}
+
+function receiptComparisonObservation(
+  receipt: ContinuityObservationReceipt
+): PreparedContinuityComparisonObservation {
+  return Object.freeze({
+    diagnostics: receipt.diagnostics,
+    projection: receipt.projection,
+    scope: receipt.projection.scope,
+    sourceObservedAt: receipt.observedAt
+  });
+}
+
+function currentComparisonObservation(
+  prepared: PreparedContinuitySourceObservation
+): PreparedContinuityComparisonObservation {
+  return Object.freeze({
+    get diagnostics() {
+      return prepared.diagnostics;
+    },
+    get projection() {
+      return prepared.projection;
+    },
+    scope: prepared.input.scope,
+    sourceObservedAt: prepared.input.sourceObservedAt
+  });
+}
+
+function receiptComparisonBoundary(
+  receipt: ContinuityObservationReceipt
+): ContinuityChangeBoundary {
+  return Object.freeze({
+    authority: "caller-declared-observation",
+    observedAt: receipt.observedAt,
+    schemaVersion: 1,
+    scope: receipt.projection.scope,
+    sourceRef: Object.freeze({
+      id: receipt.projection.sourceVersion,
+      namespace: CONTINUITY_PROJECTION_BOUNDARY_NAMESPACE,
+      version: receipt.projection.projectionVersion
+    })
+  });
+}
+
+export function explainContinuityChangesFromReceipt(
+  input: unknown
+): ExplainedContinuityChangeResult {
+  const envelope = receiptComparisonEnvelope(input);
+  if (envelope.schemaVersion !== 1) {
+    fail("INVALID_INPUT", "receipt comparison input.schemaVersion must be 1");
+  }
+  const receipt = verifyContinuityObservation(envelope.previousReceipt);
+  try {
+    const current = prepareContinuitySourceObservation(
+      envelope.current,
+      "current"
+    );
+    return comparePreparedContinuityObservations(
+      receiptComparisonObservation(receipt),
+      currentComparisonObservation(current),
+      receiptComparisonBoundary(receipt)
+    );
+  } catch (cause) {
+    if (!(cause instanceof ContinuityChangeQueryError)) throw cause;
+    throw new ContinuityObservationError(
+      COMPARISON_ERROR_CODE[cause.code],
+      cause.message,
+      cause.details
+    );
+  }
 }

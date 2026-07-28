@@ -7,6 +7,7 @@ import {
   captureContinuityObservation,
   CONTINUITY_OBSERVATION_FORMAT_VERSION,
   ContinuityObservationError,
+  explainContinuityChangesFromReceipt,
   sealContinuityObservation,
   verifyContinuityObservation,
   type ContinuityObservationReceipt
@@ -23,6 +24,7 @@ import {
 } from "./continuity-projection.js";
 
 const OBSERVED_AT = "2026-07-29T08:00:00.000Z";
+const CURRENT_AT = "2026-07-29T10:00:00.000Z";
 const HASH_DOMAIN = "muse.attunement.continuity-observation.v1\0";
 const RECEIPT_PREFIX = "muse-continuity-observation:v1:sha256:";
 
@@ -169,6 +171,17 @@ function expectObservationError(
   throw new Error("expected ContinuityObservationError");
 }
 
+function compareReceiptCurrent(
+  receipt: ContinuityObservationReceipt,
+  current: unknown
+): ReturnType<typeof explainContinuityChangesFromReceipt> {
+  return explainContinuityChangesFromReceipt({
+    schemaVersion: 1,
+    previousReceipt: receipt,
+    current
+  });
+}
+
 describe("Continuity Observation Receipt", () => {
   it("captures one raw observation through the exact manual prepare-to-seal path", () => {
     const raw = rawObservation();
@@ -269,6 +282,163 @@ describe("Continuity Observation Receipt", () => {
       return;
     }
     throw new Error("expected unknown capture failure");
+  });
+
+  it("verifies the prior receipt before touching current source state", () => {
+    const tampered = clone(captureContinuityObservation(rawObservation()));
+    (tampered as unknown as Record<string, unknown>).observedAt = CURRENT_AT;
+    let currentTraps = 0;
+    const throwingCurrent = new Proxy({}, {
+      get() {
+        currentTraps += 1;
+        throw new Error("current get trap");
+      },
+      getOwnPropertyDescriptor() {
+        currentTraps += 1;
+        throw new Error("current descriptor trap");
+      },
+      ownKeys() {
+        currentTraps += 1;
+        throw new Error("current ownKeys trap");
+      }
+    });
+    expectObservationError(
+      () => explainContinuityChangesFromReceipt({
+        schemaVersion: 1,
+        previousReceipt: tampered,
+        current: throwingCurrent
+      }),
+      ["INTEGRITY_MISMATCH"]
+    );
+    expect(currentTraps).toBe(0);
+
+    const sentinel = new ContinuityObservationError(
+      "BUDGET_EXCEEDED",
+      "receipt sentinel"
+    );
+    const throwingReceipt = new Proxy(tampered, {
+      getPrototypeOf() {
+        throw sentinel;
+      }
+    });
+    try {
+      explainContinuityChangesFromReceipt({
+        schemaVersion: 1,
+        previousReceipt: throwingReceipt,
+        current: throwingCurrent
+      });
+    } catch (cause) {
+      expect(cause).toBe(sentinel);
+      expect(currentTraps).toBe(0);
+      return;
+    }
+    throw new Error("expected receipt sentinel");
+  });
+
+  it("copies only top-level envelope data descriptors without invoking accessors", () => {
+    const receipt = captureContinuityObservation(rawObservation());
+    let accessorCalls = 0;
+    const envelope = {
+      schemaVersion: 1,
+      previousReceipt: receipt
+    } as Record<string, unknown>;
+    Object.defineProperty(envelope, "current", {
+      enumerable: true,
+      get() {
+        accessorCalls += 1;
+        return rawObservation();
+      }
+    });
+    expectObservationError(
+      () => explainContinuityChangesFromReceipt(envelope),
+      ["INVALID_INPUT"]
+    );
+    expect(accessorCalls).toBe(0);
+  });
+
+  it("maps current preparation and comparison failures into observation errors", () => {
+    const receipt = captureContinuityObservation(rawObservation());
+    const compare = (current: unknown): unknown =>
+      explainContinuityChangesFromReceipt({
+        schemaVersion: 1,
+        previousReceipt: receipt,
+        current
+      });
+
+    expectObservationError(() => compare({}), ["INVALID_INPUT"]);
+
+    const crowdedBase = sourceFixture();
+    const crowded = {
+      ...crowdedBase,
+      threads: Array.from({ length: 129 }, (_, index) => ({
+        ...clone(crowdedBase.threads[0]),
+        id: `thread_${index.toString()}`
+      }))
+    };
+    const crowdedCurrent = rawObservation(crowded);
+    crowdedCurrent.sourceObservedAt = CURRENT_AT;
+    expectObservationError(
+      () => compare(crowdedCurrent),
+      ["BUDGET_EXCEEDED"]
+    );
+
+    expectObservationError(
+      () => compare({
+        ...rawObservation(),
+        scope: { sourceId: "default", threadId: "thread_other" },
+        sourceObservedAt: CURRENT_AT
+      }),
+      ["INVALID_INPUT"]
+    );
+    expectObservationError(
+      () => compare({
+        ...rawObservation(),
+        sourceObservedAt: "2026-07-29T07:59:59.999Z"
+      }),
+      ["INVALID_INPUT"]
+    );
+  });
+
+  it("preserves unknown current failures and leaves inputs unchanged", () => {
+    const receipt = captureContinuityObservation(rawObservation());
+    const receiptBefore = JSON.stringify(receipt);
+    const current = rawObservation();
+    current.sourceObservedAt = CURRENT_AT;
+    const currentBefore = clone(current);
+    const result = explainContinuityChangesFromReceipt({
+      schemaVersion: 1,
+      previousReceipt: receipt,
+      current
+    });
+
+    expect(current).toStrictEqual(currentBefore);
+    expect(JSON.stringify(receipt)).toBe(receiptBefore);
+    expect(Object.isFrozen(receipt)).toBe(true);
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(Object.isFrozen(result.boundary)).toBe(true);
+    expect(Object.isFrozen(result.boundary.sourceRef)).toBe(true);
+    expect(result.previous).toStrictEqual({
+      projectionVersion: receipt.projection.projectionVersion,
+      sourceObservedAt: receipt.observedAt,
+      sourceVersion: receipt.projection.sourceVersion
+    });
+    expect(result.diagnostics.previous).toStrictEqual(receipt.diagnostics);
+    const serialized = JSON.stringify(result);
+    for (const sentinel of SENTINELS) expect(serialized).not.toContain(sentinel);
+
+    const sentinel = new Error("current internal sentinel");
+    const throwingState = new Proxy(sourceFixture(), {
+      getPrototypeOf() {
+        throw sentinel;
+      }
+    });
+    try {
+      compareReceiptCurrent(receipt, rawObservation(throwingState));
+    } catch (cause) {
+      expect(cause).toBe(sentinel);
+      return;
+    }
+    throw new Error("expected current internal sentinel");
   });
 
   it("seals a deterministic caller-declared receipt and survives JSON round-trip", () => {

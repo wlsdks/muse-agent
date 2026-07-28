@@ -61,7 +61,9 @@ content-addressed **Observation Receipt** without copying its personal source te
 The same library subpath can purely capture one caller-supplied raw Continuity snapshot
 through the shared projector and return that receipt without source I/O or persistence.
 The existing state-to-state query now delegates to one reusable internal prepared-observation
-comparison core; a public receipt-to-current bridge is still pending.
+comparison core. The observation subpath can also verify that receipt, derive its exact
+boundary, project one caller-supplied current snapshot, and return the same explained-change
+result as the raw state-to-state query.
 That receipt is caller-declared integrity input for the future Capsule—not proof of an
 external observation, automatic stop-point detection, persistence, or the Capsule itself.
 See the separate [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).

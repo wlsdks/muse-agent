@@ -8,12 +8,21 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added pure `explainContinuityChangesFromReceipt` to the existing Continuity observation
+  subpath. It verifies one prior Observation Receipt before touching caller-supplied current
+  state, derives the receipt-bound scope/time/source boundary, projects current exactly once,
+  and delegates to the shared prepared comparison core. Controlled no-op, addition, revision,
+  and abstention cases are byte-identical to the raw state-to-state result; accessor/Proxy
+  precedence, error mapping, privacy, mutation, and budget behavior fail closed. This remains
+  a manual I/O-free library bridge, not persistence, automatic stop detection, Capsule UI,
+  timing policy, or action authority.
+
 - Extracted the existing Continuity state-to-state change algorithm behind one internal
   prepared-observation comparison core. The public query is now a strict raw adapter while
   scope/interval validation, lazy projection order, boundary binding, bounded temporal/path
   explanation, and deterministic result construction have one reusable owner. Public
   exports, result/error bytes and IDs, error precedence, and benchmark evidence are
-  unchanged; the public receipt-to-current bridge remains pending.
+  unchanged.
 
 - Added pure `captureContinuityObservation` to the existing observation subpath and
   refactored raw Continuity preparation behind one internal, memoized parse/account/project

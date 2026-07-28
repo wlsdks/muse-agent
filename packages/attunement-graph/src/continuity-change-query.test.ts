@@ -9,6 +9,11 @@ import {
   explainContinuityChanges
 } from "./continuity-change-query.js";
 import {
+  captureContinuityObservation,
+  ContinuityObservationError,
+  explainContinuityChangesFromReceipt
+} from "./continuity-observation.js";
+import {
   projectContinuityState,
   type ContinuityProjectionInput
 } from "./continuity-projection.js";
@@ -104,6 +109,20 @@ function query(
   };
 }
 
+function explainWithReceiptParity(
+  input: ReturnType<typeof query>
+): ReturnType<typeof explainContinuityChanges> {
+  const rawResult = explainContinuityChanges(input);
+  const receiptResult = explainContinuityChangesFromReceipt({
+    schemaVersion: 1,
+    previousReceipt: captureContinuityObservation(input.previous),
+    current: input.current
+  });
+  expect(JSON.stringify(receiptResult)).toBe(JSON.stringify(rawResult));
+  expect(receiptResult.resultId).toBe(rawResult.resultId);
+  return rawResult;
+}
+
 function inputWithCurrentState(raw: unknown): Mutable<ReturnType<typeof query>> {
   const input = structuredClone(
     query(state(), state())
@@ -135,7 +154,7 @@ describe("explained Continuity changes", () => {
     const current = structuredClone(previous);
     current.threads[0]?.links.push(link());
 
-    const first = explainContinuityChanges(query(previous, current));
+    const first = explainWithReceiptParity(query(previous, current));
     const replay = explainContinuityChanges(query(previous, current));
 
     expect(first).toEqual(replay);
@@ -212,7 +231,7 @@ describe("explained Continuity changes", () => {
     };
     previous.nextPolicyVersion = 2;
 
-    const result = explainContinuityChanges(
+    const result = explainWithReceiptParity(
       query(previous, structuredClone(previous))
     );
 
@@ -270,7 +289,7 @@ describe("explained Continuity changes", () => {
       transition: "open-to-done"
     });
 
-    const result = explainContinuityChanges(query(previous, current));
+    const result = explainWithReceiptParity(query(previous, current));
 
     expect(result.status).toBe("abstained");
     expect(result.abstentions.map((item) => item.code).sort())
@@ -292,7 +311,7 @@ describe("explained Continuity changes", () => {
     const current = structuredClone(previous);
     current.threads[0]!.links[0] = link("2026-07-29T09:00:00.000Z");
 
-    const result = explainContinuityChanges(query(previous, current));
+    const result = explainWithReceiptParity(query(previous, current));
 
     expect(result.status).toBe("complete");
     expect(result.changes).toHaveLength(1);
@@ -1070,10 +1089,19 @@ describe("explained Continuity changes", () => {
         threadId: THREAD_ID
       });
     }
-    expect(() => explainContinuityChanges(query(previous, current)))
+    const rawInput = query(previous, current);
+    expect(() => explainContinuityChanges(rawInput))
       .toThrowError(expect.objectContaining({
         code: "RAW_DELTA_BUDGET_EXCEEDED"
       }));
+    expect(() => explainContinuityChangesFromReceipt({
+      schemaVersion: 1,
+      previousReceipt: captureContinuityObservation(rawInput.previous),
+      current: rawInput.current
+    })).toThrowError(expect.objectContaining({
+      code: "BUDGET_EXCEEDED",
+      constructor: ContinuityObservationError
+    }));
   });
 
   it("exports a stable typed query error", () => {

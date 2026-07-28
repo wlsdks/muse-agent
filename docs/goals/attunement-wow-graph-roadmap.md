@@ -56,7 +56,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-020** | Exact Continuity projection | Rebuildable projection of thread, artifact links, delivery, outcome, policy version, and source provenance without duplicated authority | completed |
 | **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | completed |
 | **AWG-035a** | Observation Receipt format | Strict content-addressed codec preserves one caller-declared exact projection and source accounting without personal source text | completed |
-| **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | partial — pure capture completed; comparison pending |
+| **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | completed |
 | **AWG-040** | Continuity Capsule v1 | User-invoked Capsule renders stopping point, changes, next step, prepared work, expected time, and source drawer | pending |
 | **AWG-050** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
@@ -198,8 +198,14 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
   binding, and lazy current projection. Public exports, error identity and precedence,
   complete result bytes/result IDs, work bounds, and benchmark evidence remain unchanged.
   This is reusable truth-operator groundwork, not a public receipt comparison function.
-- **Next eligible slice:** AWG-035b2b public receipt→current comparison bridge. AWG-040
-  remains pending until that truth-preserving seam passes independently.
+- **AWG-035b2b receipt→current bridge:** completed — the existing observation subpath
+  verifies the prior receipt before touching current state, derives its exact
+  scope/time/source boundary, projects current once, and delegates to the shared core.
+  Controlled no-op, addition, revision, and abstention outputs are byte-identical to the
+  raw query. This is still a pure manual library surface with no source I/O, persistence,
+  automatic stop detection, Capsule/UI, timing policy, or action authority.
+- **Next eligible slice:** AWG-040 Continuity Capsule v1, beginning with a pure
+  receipt→current Capsule assembly contract before any UI or automatic delivery.
 
 ## Architecture gates
 

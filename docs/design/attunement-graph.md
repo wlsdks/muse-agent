@@ -136,7 +136,8 @@ owner notes, artifact summaries, or provider artifact IDs. The hashes and scope 
 personal linkage data; a future durable adapter must add explicit retention, forget, export,
 and migration contracts.
 
-AWG-035b is now partially built. The existing state-to-state query and the public pure
+AWG-035b is now built at the pure library boundary. The existing state-to-state query and
+the public pure
 capture adapter share one internal raw-observation preparation seam for strict parsing,
 source accounting, and exactly one deterministic projection. A caller can provide one raw
 Continuity snapshot and receive the existing content-addressed receipt; Muse still does no
@@ -144,9 +145,12 @@ source I/O, automatic observation, or persistence. The state-to-state query now 
 both lazy source observations to one internal prepared comparison core. That core validates
 scope and observation interval before materialization, binds the previous projection to the
 caller boundary before reading current truth, then owns all bounded temporal/path comparison
-and deterministic result construction. The public receipt-to-current adapter remains
-required. Until that lands, Muse has a verified portable stopping-point input—not an
-automatically recorded stop point and not a Continuity Capsule. This separation keeps the
+and deterministic result construction. The public observation subpath now verifies one
+prior receipt before touching current source state, derives its exact boundary without
+caller repetition, projects current once, and returns the same result bytes and result ID
+as the raw query across controlled semantic families. Muse therefore has a verified
+portable stop-to-current truth operator—not an automatically recorded stop point and not a
+Continuity Capsule. This separation keeps the
 module deep: public callers depend only on the query and observation surfaces while
 canonicalization, tamper detection, projection validation, privacy bounds, version
 rejection, and comparison semantics remain behind them.
