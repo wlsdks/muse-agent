@@ -27,6 +27,13 @@ export {
   type GoalActionTerminalKind,
   type GoalActionTerminalReceipt
 } from "./goal-action-terminal.js";
+export {
+  assessGoalCheckpointResume,
+  createGoalCheckpointBinding,
+  type GoalCheckpointBinding,
+  type GoalCheckpointBindingInput,
+  type GoalCheckpointResumeDecision
+} from "./goal-checkpoint-binding.js";
 export { defaultBoardFile, FileAgentTaskBoard, readBoard, writeBoard } from "./board-store.js";
 export { dispatchNextTask, resolveReview, type DispatchResult, type TaskExecutionResult, type TaskExecutor } from "./dispatch-board.js";
 export type { HandoffPart, ParsedHandoffPart, ParsedWorkerResult, WorkerHandoff } from "./worker-result.js";
