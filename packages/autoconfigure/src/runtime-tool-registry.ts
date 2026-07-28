@@ -9,6 +9,7 @@
  */
 
 import { createCachingEmbedder } from "@muse/agent-core";
+import { readAttunementState } from "@muse/attunement";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { withChromeDevToolsRisk, withOfficialMcpRisk, type McpManager } from "@muse/mcp";
 import { createHistorySearchTool, readBrowsingStore, type HistoryRecord } from "@muse/recall";
@@ -20,6 +21,7 @@ import { createSchedulerTools, DynamicScheduler } from "@muse/scheduler";
 import { createRunToolPlanTool, type MuseTool } from "@muse/tools";
 
 import { createOllamaEmbedder, recordFactRecallHits } from "./context-engineering-builders.js";
+import { createContinuityThreadListTool } from "./continuity-thread-list-tool.js";
 import { readEpisodeKnowledgeEntries } from "./episodes-knowledge-source.js";
 import { parseBoolean } from "./env-parsers.js";
 import { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
@@ -27,6 +29,7 @@ import { buildHistoryRecords } from "./history-records-provider.js";
 import { createNotesKnowledgeSearchTool } from "./knowledge-corpus.js";
 import {
   resolveActionLogFile,
+  resolveAttunementFile,
   resolveContactsFile,
   resolveFeedsFile,
   resolveBrowsingFile,
@@ -293,6 +296,9 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
       ? [createWeatherTool(env.MUSE_WEATHER_LOCATION?.trim() ? { defaultLocation: env.MUSE_WEATHER_LOCATION.trim() } : {})]
       : [],
     () => [createWorldTimeTool()],
+    () => [createContinuityThreadListTool({
+      readThreads: async () => (await readAttunementState(resolveAttunementFile(env))).threads
+    })],
     () => [createRememberFactTool({ store: userMemoryStore })],
     () => [createObjectivesListTool({ objectives: () => readObjectives(resolveObjectivesFile(env)) })],
     () => [createRecentActionsTool({ actions: () => readActionLog(resolveActionLogFile(env)) })],
