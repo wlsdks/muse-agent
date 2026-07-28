@@ -15,7 +15,7 @@ import { existsSync, promises as fs } from "node:fs";
 import { formatRelativeTime } from "./human-formatters.js";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
-import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, memoryAutoExtractHealthCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, probeOllamaPromptCache, promptCacheHealth, platformPostureCheck, privacyRoutingCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
+import { applySensitivePermissionRepair, backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, memoryAutoExtractHealthCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, planSensitivePermissionRepair, probeOllamaPromptCache, promptCacheHealth, platformPostureCheck, privacyRoutingCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
 import { readProactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
 import { readDayRhythmDoctorCheck } from "./commands-doctor-day-rhythm.js";
 export { dayRhythmDoctorCheck } from "./commands-doctor-day-rhythm.js";
@@ -223,6 +223,19 @@ export function formatDoctorSummaryLine(snapshot: DoctorSummary, now: Date = new
   return `[${status}] ${summary}${label ? ` — ${label}` : ""}${stamp ? ` (${stamp})` : ""}`;
 }
 
+function sensitiveFileTargets(runtime: DoctorLocalRuntime, env: MuseEnvironment): SensitiveFileTarget[] {
+  return [
+    { label: "user-memory.json", path: join(runtime.paths.museHome, "user-memory.json") },
+    { label: "action-log.json", path: resolveActionLogFile(env) },
+    { label: "recall-hits.json", path: resolveRecallHitsFile(env) },
+    { label: "contacts.json", path: resolveContactsFile(env) },
+    { label: "reflections.json", path: resolveReflectionsFile(env) },
+    { label: "weaknesses.json", path: resolveWeaknessesFile(env) },
+    { label: "belief-provenance.json", path: runtime.paths.beliefProvenanceFile },
+    { label: "credentials.json", path: runtime.paths.credentialFile }
+  ];
+}
+
 
 export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: DoctorCommandHelpers): void {
   program
@@ -231,6 +244,8 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
     .option("--full", "Emit the full JSON report instead of the one-line summary")
     .option("--json", "Emit JSON even for the summary form")
     .option("--local", "Probe local-only signals (skip the API daemon)")
+    .option("--repair-permissions", "Preview exact owner-only sensitive-store permission repairs (no changes)")
+    .option("--apply-permission-repair", "Apply the owner-only permission repair plan (requires --repair-permissions)")
     .option("--grounding", "Score the bundled faithfulness + false-refusal corpus on the local model and print the two rates")
     .option("--weaknesses", "Show the Whetstone weakness ledger — what Muse has noticed it can't answer / didn't actually do")
     .option("--run-outcomes", "Show technical grounding diagnostics over canonical unique .muse/runs logs (not personal usefulness)")
@@ -249,6 +264,8 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
         readonly full?: boolean;
         readonly json?: boolean;
         readonly local?: boolean;
+        readonly repairPermissions?: boolean;
+        readonly applyPermissionRepair?: boolean;
         readonly grounding?: boolean;
         readonly weaknesses?: boolean;
         readonly runOutcomes?: boolean;
@@ -262,6 +279,22 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
       },
       command: Command
     ) => {
+      if (options.applyPermissionRepair && !options.repairPermissions) {
+        throw new Error("--apply-permission-repair requires --repair-permissions so the exact plan is explicit");
+      }
+      if (options.repairPermissions) {
+        const runtime = resolveDoctorLocalRuntime(helpers.localRuntime);
+        const env = createDoctorEnvironmentView(mergeModelKeysFromFile(runtime.env), runtime);
+        const targets = sensitiveFileTargets(runtime, env);
+        const plan = await planSensitivePermissionRepair(runtime.paths.museHome, targets);
+        // An explicitly configured credential file may intentionally live
+        // outside ~/.muse. Keep that target visible as rejected, but do not let
+        // it prevent repair of the separate, exact files we do own.
+        const repairPlan = { ...plan, items: plan.items.filter((item) => item.state !== "rejected") };
+        const receipt = options.applyPermissionRepair ? await applySensitivePermissionRepair(repairPlan) : undefined;
+        helpers.writeOutput(io, { ...(receipt ? { receipt } : {}), plan });
+        return;
+      }
       // --grounding is a standalone live mode: score the bundled edge corpus on
       // the local model and print the two rates. Skips (exit 0) when Ollama is
       // down; a required live skip is unverified (exit 4), never a false pass.
@@ -790,16 +823,7 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
   // Sensitive-file permission drift — generalizes the live finding
   // (recall-hits.json found at 644) to every store Muse writes 0600 by
   // default. The path list is resolved from this local-doctor runtime once.
-  const sensitiveTargets: SensitiveFileTarget[] = [
-    { label: "user-memory.json", path: join(muse_home, "user-memory.json") },
-    { label: "action-log.json", path: resolveActionLogFile(env) },
-    { label: "recall-hits.json", path: resolveRecallHitsFile(env) },
-    { label: "contacts.json", path: resolveContactsFile(env) },
-    { label: "reflections.json", path: resolveReflectionsFile(env) },
-    { label: "weaknesses.json", path: resolveWeaknessesFile(env) },
-    { label: "belief-provenance.json", path: runtime.paths.beliefProvenanceFile }
-  ];
-  sensitiveTargets.push({ label: "credentials.json", path: runtime.paths.credentialFile });
+  const sensitiveTargets = sensitiveFileTargets(runtime, env);
   checks.push(permissionModeDriftCheck(await readSensitiveFileModes(sensitiveTargets)));
 
   // Tool-result-cap advisory — a `MUSE_MAX_TOOL_OUTPUT_CHARS` set too low
