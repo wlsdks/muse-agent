@@ -8,6 +8,19 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified private AWG-050a1 scoped proof-document settlement
+  adapter. It admits hostile caller-nominated documents through AWG-045a, validates
+  scope/snapshot/freshness coherence and locally closed proofs, maps exact candidates and
+  costs into AWG-045b, then materializes only admitted retained canonical document bytes
+  behind the selected ledger with exact LF, UTF-8 byte, and token-hint accounting. Results
+  remain explicitly partial or abstained, never prove current-world absence, grant no
+  action authority, and expose no public package entrypoint. The package passed 167 tests
+  three consecutive times, three standalone verifiers, TS7 package/root typechecks, build,
+  changed tests, lint, an 8,192/8,193 proof-source boundary probe, and a fresh independent
+  Sol/xhigh completion gate. AWG-050a remains partial: nomination/traversal, authoritative
+  snapshot freshness, persistence, Capsule runtime composition, Shadow, Policy, and
+  dogfood qualification are not implemented.
+
 - Added the independently verified AWG-045b deterministic candidate-settlement ledger.
   The package-private reducer snapshots hostile requests through AWG-045a, settles one core
   plus at most 255 optionals through fixed depth/considered/visited/assertion/token/byte

@@ -455,6 +455,13 @@ and product-query gates pass.
 This keeps the product unique while delegating filesystem correctness to a mature storage
 layer. The in-memory implementation remains the executable semantic oracle.
 
+The implementation language is also an Adapter decision, not a product identity. TypeScript
+remains the semantic oracle while it is fast enough and keeps the verified contracts closest
+to Muse's runtime. Rust or another native implementation is allowed only after profiling
+finds a real bottleneck or isolation/recovery need, and only when it reproduces canonical
+bytes, content IDs, settlement modes/reasons/counters, context bytes, and fault vectors
+byte-for-byte. No FFI or sidecar is added merely because a native rewrite sounds faster.
+
 ### Custom segmented log plus in-memory indexes
 
 It is attractive for control and small installs, but rejected as the default durable path.
@@ -582,10 +589,13 @@ Do not build the database first.
    Mandatory-overhead failure selects a new logical ledger through the monotone lattice
    `normal → core-only → abstain → invalid-input`; diagnostics describe only the selected
    ledger, never discarded speculative attempts.
-3. **AWG-050a — semantic hardening integration:** scoped snapshots, explicit scope membership,
-   freshness, typed completeness, proof-closed bundles, hard byte budgets, and adversarial
-   cross-thread/high-degree tests. Pure and in-memory. It consumes both verified 045
-   kernels rather than reimplementing their rules.
+3. **AWG-050a — semantic hardening integration:** split into bounded private seams.
+   **AWG-050a1 is complete:** hostile caller-nominated scoped proof documents pass through
+   AWG-045a, exact local proof/freshness validation, AWG-045b settlement, and byte-exact
+   context materialization without a public export or completeness claim. **AWG-050a2**
+   still owns content-addressed bounded nomination/traversal and scoped coverage;
+   **AWG-050a3** still owns authoritative snapshot/freshness Provider composition and
+   verified Continuity `resumeContext`. Pure and in-memory until those semantics pass.
 4. **AWG-050b — Shadow decision receipt:** `silent | digest | offer`, bounded reason and
    counterfactual, later return timing; no sending, action, or chain-of-thought storage.
 5. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
@@ -600,13 +610,13 @@ Do not build the database first.
 9. **AWG-090 — qualification:** controlled scenarios followed by repeated local dogfood;
    usefulness, reconstruction cost, policy correction, and silence quality stay separate.
 
-AWG-045a and AWG-045b are independently verified and landed as package-private kernels
-with no public export or v1 codec change. AWG-050a is now eligible for a fresh integration
-PLAN—not BUILD. Two earlier AWG-050a PLAN activations closed before BUILD after exposing a
-frozen-array descriptor contradiction and non-unique core/fallback accounting; the verified
-045 kernels now close those prerequisite contracts. AWG-050a source changes still require
-a new integration PLAN PASS. Persistence is explicitly out of scope until the Shadow and
-Policy workloads make the backend requirements real.
+AWG-045a, AWG-045b, and the bounded AWG-050a1 integration seam are independently verified
+and landed as package-private kernels with no public export or v1 codec change. AWG-050a1
+proves deterministic admission → local proof validation → candidate settlement → exact
+context bytes, but it accepts only caller-nominated finite documents and therefore remains
+non-authoritative and incomplete. AWG-050a2 nomination/traversal is the next eligible PLAN;
+AWG-050a3 Provider composition follows. Persistence is explicitly out of scope until the
+Shadow and Policy workloads make the backend requirements real.
 
 Core semantic and persistence PLAN work uses `gpt-5.6-sol` at `ultra` or `xhigh`;
 implementation begins only from a bounded accepted handoff, and completion uses a fresh
