@@ -871,6 +871,8 @@ export interface SensitiveDirectoryInventoryItem {
 }
 
 interface SensitiveDirectoryStat {
+  readonly dev?: number;
+  readonly ino?: number;
   readonly mode: number;
   isDirectory(): boolean;
   isSymbolicLink(): boolean;
@@ -879,6 +881,26 @@ interface SensitiveDirectoryStat {
 export interface SensitiveDirectoryInventoryFs {
   lstat(path: string): Promise<SensitiveDirectoryStat>;
   realpath(path: string): Promise<string>;
+}
+
+interface SensitiveDirectoryPermissionRepairHandle {
+  chmod(mode: number): Promise<void>;
+  close(): Promise<void>;
+  stat(): Promise<SensitiveDirectoryStat>;
+}
+
+export interface SensitiveDirectoryPermissionRepairApplyFs extends SensitiveDirectoryInventoryFs {
+  open(path: string, flags: number): Promise<SensitiveDirectoryPermissionRepairHandle>;
+}
+
+export interface SensitiveDirectoryPermissionRepairReceipt {
+  readonly afterMode?: number;
+  readonly beforeMode?: number;
+  readonly changed: boolean | "unknown";
+  readonly cleanupFailures?: readonly ("root" | "target")[];
+  readonly path?: string;
+  readonly rejected?: string;
+  readonly verification: "unverified" | "verified";
 }
 
 const DEFAULT_PERMISSION_REPAIR_FS: SensitivePermissionRepairFs = {
@@ -892,6 +914,11 @@ const DEFAULT_PERMISSION_REPAIR_APPLY_FS: SensitivePermissionRepairApplyFs = {
 };
 const DEFAULT_DIRECTORY_INVENTORY_FS: SensitiveDirectoryInventoryFs = {
   lstat: (path) => fs.lstat(path),
+  realpath: (path) => fs.realpath(path)
+};
+const DEFAULT_DIRECTORY_PERMISSION_REPAIR_APPLY_FS: SensitiveDirectoryPermissionRepairApplyFs = {
+  lstat: (path) => fs.lstat(path),
+  open: (path, flags) => fs.open(path, flags),
   realpath: (path) => fs.realpath(path)
 };
 
@@ -1045,6 +1072,210 @@ export async function inventorySensitiveDirectories(
     }
   }
   return items;
+}
+
+function hasExactDirectoryIdentity(
+  stat: SensitiveDirectoryStat
+): stat is SensitiveDirectoryStat & { readonly dev: number; readonly ino: number } {
+  return typeof stat.dev === "number" && typeof stat.ino === "number";
+}
+
+function sameDirectoryIdentity(left: SensitiveDirectoryStat, right: SensitiveDirectoryStat): boolean {
+  return hasExactDirectoryIdentity(left)
+    && hasExactDirectoryIdentity(right)
+    && left.dev === right.dev
+    && left.ino === right.ino;
+}
+
+function safeDirectoryStat(stat: SensitiveDirectoryStat): boolean {
+  return stat.isDirectory() && !stat.isSymbolicLink() && hasExactDirectoryIdentity(stat);
+}
+
+async function directoryRepairBindingStillMatches(
+  root: string,
+  target: string,
+  rootIdentity: SensitiveDirectoryStat,
+  targetIdentity: SensitiveDirectoryStat,
+  rootHandle: SensitiveDirectoryPermissionRepairHandle,
+  targetHandle: SensitiveDirectoryPermissionRepairHandle,
+  fileSystem: SensitiveDirectoryPermissionRepairApplyFs
+): Promise<boolean> {
+  try {
+    const [rootPathStat, rootHandleStat, targetPathStat, targetHandleStat, rootRealpath, targetRealpath] =
+      await Promise.all([
+        fileSystem.lstat(root),
+        rootHandle.stat(),
+        fileSystem.lstat(target),
+        targetHandle.stat(),
+        fileSystem.realpath(root),
+        fileSystem.realpath(target)
+      ]);
+    return safeDirectoryStat(rootPathStat)
+      && safeDirectoryStat(rootHandleStat)
+      && sameDirectoryIdentity(rootIdentity, rootPathStat)
+      && sameDirectoryIdentity(rootIdentity, rootHandleStat)
+      && (rootPathStat.mode & 0o777) === (rootIdentity.mode & 0o777)
+      && (rootHandleStat.mode & 0o777) === (rootIdentity.mode & 0o777)
+      && resolve(rootRealpath) === root
+      && safeDirectoryStat(targetPathStat)
+      && safeDirectoryStat(targetHandleStat)
+      && sameDirectoryIdentity(targetIdentity, targetPathStat)
+      && sameDirectoryIdentity(targetIdentity, targetHandleStat)
+      && (targetPathStat.mode & 0o777) === (targetIdentity.mode & 0o777)
+      && (targetHandleStat.mode & 0o777) === (targetIdentity.mode & 0o777)
+      && resolve(targetRealpath) === target;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Applies one exact sensitive-directory repair through an opened directory
+ * descriptor. It never enumerates or traverses children. Both the owned root
+ * and target identities are revalidated immediately before `fchmod`, so a
+ * path, symlink, identity, mode, or scope swap fails closed without changing
+ * the replacement path.
+ */
+export async function applySensitiveDirectoryPermissionRepair(
+  root: string,
+  env: MuseEnvironment,
+  id: "checkpoints" | "notes",
+  fileSystem: SensitiveDirectoryPermissionRepairApplyFs = DEFAULT_DIRECTORY_PERMISSION_REPAIR_APPLY_FS
+): Promise<SensitiveDirectoryPermissionRepairReceipt> {
+  const resolvedRoot = resolve(root);
+  const target = id === "notes"
+    ? resolve(resolveNotesDir(env))
+    : id === "checkpoints"
+      ? resolve(resolveCheckpointsDir(env))
+      : undefined;
+  if (!target) {
+    return { changed: false, rejected: "unknown sensitive-directory id", verification: "unverified" };
+  }
+  if (dirname(target) !== resolvedRoot) {
+    return {
+      changed: false,
+      path: target,
+      rejected: "target is outside the exact direct-child Muse root scope",
+      verification: "unverified"
+    };
+  }
+
+  let rootHandle: SensitiveDirectoryPermissionRepairHandle | undefined;
+  let targetHandle: SensitiveDirectoryPermissionRepairHandle | undefined;
+  let receipt: SensitiveDirectoryPermissionRepairReceipt;
+  let beforeMode: number | undefined;
+  let chmodStarted = false;
+  let chmodCompleted = false;
+  const cleanupFailures: ("root" | "target")[] = [];
+  try {
+    const rootIdentity = await fileSystem.lstat(resolvedRoot);
+    if (!safeDirectoryStat(rootIdentity) || resolve(await fileSystem.realpath(resolvedRoot)) !== resolvedRoot) {
+      return {
+        changed: false,
+        path: target,
+        rejected: "owned Muse root identity or physical path is unsafe",
+        verification: "unverified"
+      };
+    }
+    rootHandle = await fileSystem.open(
+      resolvedRoot,
+      fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0) | (fsConstants.O_NOFOLLOW ?? 0)
+    );
+    const targetIdentity = await fileSystem.lstat(target);
+    beforeMode = targetIdentity.mode & 0o777;
+    if (!safeDirectoryStat(targetIdentity) || resolve(await fileSystem.realpath(target)) !== target) {
+      return {
+        beforeMode,
+        changed: false,
+        path: target,
+        rejected: "target identity or physical path is unsafe",
+        verification: "unverified"
+      };
+    }
+    targetHandle = await fileSystem.open(
+      target,
+      fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0) | (fsConstants.O_NOFOLLOW ?? 0)
+    );
+    if (!await directoryRepairBindingStillMatches(
+      resolvedRoot,
+      target,
+      rootIdentity,
+      targetIdentity,
+      rootHandle,
+      targetHandle,
+      fileSystem
+    )) {
+      return {
+        beforeMode,
+        changed: false,
+        path: target,
+        rejected: "root or target changed before directory permission repair",
+        verification: "unverified"
+      };
+    }
+    if (beforeMode === 0o700) {
+      return {
+        afterMode: 0o700,
+        beforeMode,
+        changed: false,
+        path: target,
+        verification: "verified"
+      };
+    }
+
+    chmodStarted = true;
+    await targetHandle.chmod(0o700);
+    chmodCompleted = true;
+    const after = await targetHandle.stat();
+    const pathAfter = await fileSystem.lstat(target);
+    if (
+      !safeDirectoryStat(after)
+      || !safeDirectoryStat(pathAfter)
+      || !sameDirectoryIdentity(targetIdentity, after)
+      || !sameDirectoryIdentity(targetIdentity, pathAfter)
+      || (after.mode & 0o777) !== 0o700
+      || (pathAfter.mode & 0o777) !== 0o700
+    ) {
+      return {
+        beforeMode,
+        changed: true,
+        path: target,
+        rejected: "target mode or identity could not be verified after chmod",
+        verification: "unverified"
+      };
+    }
+    receipt = {
+      afterMode: 0o700,
+      beforeMode,
+      changed: true,
+      path: target,
+      verification: "verified"
+    };
+  } catch {
+    receipt = {
+      ...(beforeMode === undefined ? {} : { beforeMode }),
+      changed: chmodCompleted ? true : chmodStarted ? "unknown" : false,
+      path: target,
+      rejected: chmodCompleted
+        ? "target mode could not be verified after chmod"
+        : chmodStarted
+          ? "directory permission change outcome is unknown"
+          : "directory permission repair failed before a verified change",
+      verification: "unverified"
+    };
+  } finally {
+    if (targetHandle) {
+      await targetHandle.close().catch(() => {
+        cleanupFailures.push("target");
+      });
+    }
+    if (rootHandle) {
+      await rootHandle.close().catch(() => {
+        cleanupFailures.push("root");
+      });
+    }
+  }
+  return cleanupFailures.length > 0 ? { ...receipt, cleanupFailures } : receipt;
 }
 
 function isInsideRoot(root: string, path: string): boolean {

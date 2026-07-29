@@ -1,3 +1,6 @@
+import { chmod, mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,6 +13,7 @@ import {
   messagingConfigCheck,
   notesIndexHealth,
   permissionModeDriftCheck,
+  applySensitiveDirectoryPermissionRepair,
   applySensitivePermissionRepair,
   hashSensitivePermissionRepairPlan,
   inventorySensitiveDirectories,
@@ -480,6 +484,212 @@ describe("readSensitiveFileModes + permissionModeDriftCheck", () => {
       repairCandidate: false,
       state: "rejected"
     })));
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "repairs one exact directory through its descriptor without traversing children",
+    async () => {
+      const fixtureHome = await mkdtemp(join(tmpdir(), "muse-directory-repair-"));
+      const home = await realpath(fixtureHome);
+      const root = join(home, ".muse");
+      const notes = join(root, "notes");
+      const child = join(notes, "unchanged.txt");
+      await mkdir(notes, { mode: 0o755, recursive: true });
+      await chmod(root, 0o700);
+      await chmod(notes, 0o755);
+      await writeFile(child, "private\n", { mode: 0o640 });
+      const childBefore = (await stat(child)).mode & 0o777;
+
+      try {
+        await expect(applySensitiveDirectoryPermissionRepair(
+          root,
+          { HOME: home, MUSE_NOTES_DIR: notes },
+          "notes"
+        )).resolves.toEqual({
+          afterMode: 0o700,
+          beforeMode: 0o755,
+          changed: true,
+          path: notes,
+          verification: "verified"
+        });
+        expect((await stat(notes)).mode & 0o777).toBe(0o700);
+        expect((await stat(child)).mode & 0o777).toBe(childBefore);
+      } finally {
+        await rm(fixtureHome, { force: true, recursive: true });
+      }
+    }
+  );
+
+  it("rejects an outside override before opening a directory", async () => {
+    const open = vi.fn();
+    await expect(applySensitiveDirectoryPermissionRepair(
+      "/home/test/.muse",
+      { HOME: "/home/test", MUSE_NOTES_DIR: "/outside/notes" },
+      "notes",
+      {
+        lstat: vi.fn(),
+        open,
+        realpath: vi.fn()
+      }
+    )).resolves.toEqual({
+      changed: false,
+      path: "/outside/notes",
+      rejected: "target is outside the exact direct-child Muse root scope",
+      verification: "unverified"
+    });
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("rejects a target identity swap before descriptor chmod", async () => {
+    let targetIno = 2;
+    const chmodTarget = vi.fn(async () => undefined);
+    const closeRoot = vi.fn(async () => undefined);
+    const closeTarget = vi.fn(async () => undefined);
+    const directoryStat = (ino: number, mode: number) => ({
+      dev: 1,
+      ino,
+      isDirectory: () => true,
+      isSymbolicLink: () => false,
+      mode
+    });
+
+    const receipt = await applySensitiveDirectoryPermissionRepair(
+      "/home/test/.muse",
+      { HOME: "/home/test", MUSE_NOTES_DIR: "/home/test/.muse/notes" },
+      "notes",
+      {
+        lstat: async (path) => path.endsWith("/notes")
+          ? directoryStat(targetIno, 0o40755)
+          : directoryStat(1, 0o40700),
+        open: async (path) => {
+          if (path.endsWith("/notes")) {
+            targetIno = 99;
+            return {
+              chmod: chmodTarget,
+              close: closeTarget,
+              stat: async () => directoryStat(2, 0o40755)
+            };
+          }
+          return {
+            chmod: vi.fn(),
+            close: closeRoot,
+            stat: async () => directoryStat(1, 0o40700)
+          };
+        },
+        realpath: async (path) => path
+      }
+    );
+
+    expect(receipt).toEqual({
+      beforeMode: 0o755,
+      changed: false,
+      path: "/home/test/.muse/notes",
+      rejected: "root or target changed before directory permission repair",
+      verification: "unverified"
+    });
+    expect(chmodTarget).not.toHaveBeenCalled();
+    expect(closeRoot).toHaveBeenCalledOnce();
+    expect(closeTarget).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a same-identity mode swap before descriptor chmod", async () => {
+    let targetMode = 0o40755;
+    let targetOpened = false;
+    const chmodTarget = vi.fn(async () => undefined);
+    const directoryStat = (ino: number, mode: number) => ({
+      dev: 1,
+      ino,
+      isDirectory: () => true,
+      isSymbolicLink: () => false,
+      mode
+    });
+
+    const receipt = await applySensitiveDirectoryPermissionRepair(
+      "/home/test/.muse",
+      { HOME: "/home/test", MUSE_NOTES_DIR: "/home/test/.muse/notes" },
+      "notes",
+      {
+        lstat: async (path) => path.endsWith("/notes")
+          ? directoryStat(2, targetMode)
+          : directoryStat(1, 0o40700),
+        open: async (path) => {
+          if (path.endsWith("/notes")) {
+            targetOpened = true;
+            targetMode = 0o40711;
+            return {
+              chmod: chmodTarget,
+              close: async () => undefined,
+              stat: async () => directoryStat(2, targetMode)
+            };
+          }
+          return {
+            chmod: vi.fn(),
+            close: async () => undefined,
+            stat: async () => directoryStat(1, 0o40700)
+          };
+        },
+        realpath: async (path) => path
+      }
+    );
+
+    expect(targetOpened).toBe(true);
+    expect(receipt).toEqual({
+      beforeMode: 0o755,
+      changed: false,
+      path: "/home/test/.muse/notes",
+      rejected: "root or target changed before directory permission repair",
+      verification: "unverified"
+    });
+    expect(chmodTarget).not.toHaveBeenCalled();
+  });
+
+  it("does not deny a completed chmod when post-change verification throws", async () => {
+    let mode = 0o40755;
+    let chmodCompleted = false;
+    const directoryStat = (ino: number, currentMode: number) => ({
+      dev: 1,
+      ino,
+      isDirectory: () => true,
+      isSymbolicLink: () => false,
+      mode: currentMode
+    });
+
+    const receipt = await applySensitiveDirectoryPermissionRepair(
+      "/home/test/.muse",
+      { HOME: "/home/test", MUSE_NOTES_DIR: "/home/test/.muse/notes" },
+      "notes",
+      {
+        lstat: async (path) => {
+          if (path.endsWith("/notes") && chmodCompleted) throw new Error("injected post-chmod lstat failure");
+          return path.endsWith("/notes")
+            ? directoryStat(2, mode)
+            : directoryStat(1, 0o40700);
+        },
+        open: async (path) => path.endsWith("/notes")
+          ? {
+              chmod: async () => {
+                mode = 0o40700;
+                chmodCompleted = true;
+              },
+              close: async () => undefined,
+              stat: async () => directoryStat(2, mode)
+            }
+          : {
+              chmod: vi.fn(),
+              close: async () => undefined,
+              stat: async () => directoryStat(1, 0o40700)
+            },
+        realpath: async (path) => path
+      }
+    );
+
+    expect(receipt).toEqual({
+      beforeMode: 0o755,
+      changed: true,
+      path: "/home/test/.muse/notes",
+      rejected: "target mode could not be verified after chmod",
+      verification: "unverified"
+    });
   });
 
   it("revalidates no-follow handles before applying a plan and never touches a rejected target", async () => {
