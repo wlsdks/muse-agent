@@ -77,9 +77,15 @@ Attunement file and mints a process-local, content-addressed snapshot capture. I
 serializable receipt proves integrity only; exact Provider provenance belongs to the
 in-process capture, freshness remains `unassessed`, and missing data never becomes an
 absence claim. This closes the first real-source boundary for the Agent Graph without
-making the graph read files or depend on an external Graph DB. Projection into graph
-evidence, runtime/Capsule wiring, durable authority, and user-visible behavior remain
-roadmap work.
+making the graph read files or depend on an external Graph DB.
+The private Agent Graph seam can now verify that exact process-local mint before reading
+state, independently recompute its bytes and digest, project it into a verified Continuity
+Observation Receipt, and compile receipt-bound graph evidence with truthful Provider
+snapshot provenance. It never fabricates a graph commit or generation: a single read is
+explicitly `unassessed`, which forces downstream settlement to abstain while still
+preserving exact evidence links and bounded nomination accounting. This is process-local
+engine substrate, not a public API, durable graph, current-freshness proof, Capsule/runtime
+wiring, action authority, or user-visible behavior.
 See the separate [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse console home — model chip, integrations, and what Muse has learned" width="860" /></p>

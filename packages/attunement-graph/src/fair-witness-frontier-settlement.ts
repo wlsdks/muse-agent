@@ -16,6 +16,12 @@ import type {
   GraphAssertion,
   GraphPredicate
 } from "./types.js";
+import {
+  GraphSnapshotProvenanceError,
+  assertGraphSnapshotFreshnessPair,
+  type GraphDeclaredFreshnessV1,
+  type GraphSnapshotProvenanceV1
+} from "./graph-snapshot-provenance.js";
 
 const RECEIPT_SPEC = Object.freeze({
   hashDomain: "muse.attunement-graph.fair-witness-frontier-receipt.v1",
@@ -32,26 +38,8 @@ type Scope = Readonly<{
   readonly sourceId: string;
   readonly threadId: string;
 }>;
-type Snapshot = Readonly<{
-  readonly authority: "caller-declared-read-snapshot";
-  readonly commitHash: string;
-  readonly commitSequence: number;
-  readonly generationId: string;
-}>;
-type Freshness =
-  | Readonly<{
-      readonly assessedAt: string;
-      readonly observedAt: string;
-      readonly status: "fresh" | "stale";
-    }>
-  | Readonly<{
-      readonly reasonId:
-        | "corrupt-snapshot"
-        | "future-version"
-        | "incomplete-rebuild"
-        | "caller-unavailable";
-      readonly status: "rebuilding" | "unavailable";
-    }>;
+type Snapshot = GraphSnapshotProvenanceV1;
+type Freshness = GraphDeclaredFreshnessV1;
 type Budget = Readonly<{
   readonly maxAssertions: number;
   readonly maxConsideredAssertions: number;
@@ -126,6 +114,8 @@ type CoverageReason =
   | "bounded-witness-pool-only"
   | "caller-declared-snapshot"
   | "caller-declared-freshness"
+  | "provider-capture-snapshot-integrity-only"
+  | "freshness-unassessed"
   | "source-authority-not-independently-verified"
   | "focus-predicate-lane-mapping-v1"
   | "core-not-admitted"
@@ -460,12 +450,18 @@ function captureReceipt(
 }
 
 function coverage(
-  status: FairWitnessFrontierReceiptV1["status"]
+  status: FairWitnessFrontierReceiptV1["status"],
+  snapshot: Snapshot,
+  freshness: Freshness
 ): FairWitnessFrontierReceiptV1["coverage"] {
   const reasons: CoverageReason[] = [
     "bounded-witness-pool-only",
-    "caller-declared-snapshot",
-    "caller-declared-freshness",
+    snapshot.authority === "receipt-integrity-only"
+      ? "provider-capture-snapshot-integrity-only"
+      : "caller-declared-snapshot",
+    ...(freshness.status === "unassessed"
+      ? ["freshness-unassessed" as const]
+      : ["caller-declared-freshness" as const]),
     "source-authority-not-independently-verified",
     "focus-predicate-lane-mapping-v1"
   ];
@@ -487,6 +483,12 @@ function verifyComposition(
   receipt: FairWitnessFrontierReceiptV1,
   settlement: ScopedProofDocumentSettlementResultV1
 ): void {
+  try {
+    assertGraphSnapshotFreshnessPair(input.snapshot, input.declaredFreshness, "/snapshot", "/declaredFreshness");
+  } catch (cause) {
+    if (cause instanceof GraphSnapshotProvenanceError) internal("snapshot-freshness-pair-postcondition-failed");
+    throw cause;
+  }
   const dispositions = receipt.dispositions;
   const nominationIds = dispositions.map((item) => item.nominationId);
   const candidateIds = dispositions.map((item) => item.candidateId);
@@ -666,7 +668,7 @@ export function settleFairWitnessFrontier(
   const body: Record<string, unknown> = {
     coreCandidateId: core.candidateId,
     coreDocumentId: core.documentId,
-    coverage: coverage(status),
+    coverage: coverage(status, input.snapshot, input.declaredFreshness),
     dispositions,
     metrics: metrics(dispositions, attemptedCandidates, settlementInvocations),
     orderId: order.orderId,

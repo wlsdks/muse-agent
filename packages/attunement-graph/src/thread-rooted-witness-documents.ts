@@ -29,6 +29,14 @@ import {
   normalizeGraphAssertion,
   normalizeGraphQueryPlan
 } from "./validation.js";
+import {
+  GraphSnapshotProvenanceError,
+  assertGraphSnapshotFreshnessPair,
+  parseGraphDeclaredFreshness,
+  parseGraphSnapshotProvenance,
+  type GraphDeclaredFreshnessV1,
+  type GraphSnapshotProvenanceV1
+} from "./graph-snapshot-provenance.js";
 
 const REQUEST_SPEC = Object.freeze({
   hashDomain: "muse.attunement-graph.thread-rooted-witness-request.v1",
@@ -57,32 +65,13 @@ const CONTROL = /[\u0000-\u001F\u007F]/u;
 const REQUEST_ID = /^muse-thread-rooted-witness-request:sha256:[0-9a-f]{64}$/u;
 const RECEIPT_ID = /^muse-thread-rooted-witness-receipt:sha256:[0-9a-f]{64}$/u;
 const SOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const GENERATION_ID = /^[a-z][a-z0-9._:-]{0,95}$/u;
 const MAX_ASSERTIONS = 256;
 const MAX_MEMBERSHIPS = 32;
 const MAX_OPTIONALS = 255;
 
 type Scope = Readonly<{ readonly sourceId: string; readonly threadId: string }>;
-type Snapshot = Readonly<{
-  readonly authority: "caller-declared-read-snapshot";
-  readonly commitHash: string;
-  readonly commitSequence: number;
-  readonly generationId: string;
-}>;
-type Freshness =
-  | Readonly<{
-      readonly assessedAt: string;
-      readonly observedAt: string;
-      readonly status: "fresh" | "stale";
-    }>
-  | Readonly<{
-      readonly reasonId:
-        | "corrupt-snapshot"
-        | "future-version"
-        | "incomplete-rebuild"
-        | "caller-unavailable";
-      readonly status: "rebuilding" | "unavailable";
-    }>;
+type Snapshot = GraphSnapshotProvenanceV1;
+type Freshness = GraphDeclaredFreshnessV1;
 type Budget = Readonly<{
   readonly maxAssertions: number;
   readonly maxConsideredAssertions: number;
@@ -128,6 +117,8 @@ export type ThreadRootedWitnessReceiptV1 = Readonly<{
     readonly canAssertCurrentWorldAbsence: false;
     readonly reasons: readonly (
       | "caller-declared-snapshot"
+      | "provider-capture-snapshot-integrity-only"
+      | "freshness-unassessed"
       | "bounded-result-only"
       | "traversal-truncated"
       | "nomination-excluded"
@@ -329,63 +320,45 @@ function sameScope(left: Scope, right: Scope): boolean {
 }
 
 function snapshot(value: unknown, path: string): Snapshot {
-  const root = record(
-    value,
-    ["authority", "commitHash", "commitSequence", "generationId"],
-    [],
-    path
-  );
-  if (root.authority !== "caller-declared-read-snapshot") {
-    fail("invalid-enum", child(path, "authority"));
+  try { return parseGraphSnapshotProvenance(value, path); }
+  catch (cause) {
+    if (cause instanceof GraphSnapshotProvenanceError) {
+      const reason = cause.details.reason === "invalid-field-set"
+        || cause.details.reason === "invalid-container"
+        ? cause.details.reason
+        : cause.details.reason === "invalid-literal"
+          ? "invalid-enum"
+          : cause.details.reason === "invalid-safe-integer"
+            ? "invalid-number"
+            : "invalid-string";
+      fail(reason, cause.details.path);
+    }
+    throw cause;
   }
-  const commitHash = text(root.commitHash, child(path, "commitHash"), 71);
-  if (!/^sha256:[0-9a-f]{64}$/u.test(commitHash)) {
-    fail("invalid-string", child(path, "commitHash"));
-  }
-  const generationId = text(root.generationId, child(path, "generationId"), 96);
-  if (!GENERATION_ID.test(generationId)) {
-    fail("invalid-string", child(path, "generationId"));
-  }
-  return freezeRecord({
-    authority: "caller-declared-read-snapshot" as const,
-    commitHash,
-    commitSequence: safeInteger(root.commitSequence, child(path, "commitSequence")),
-    generationId
-  });
 }
 
 function freshness(value: unknown, path: string): Freshness {
-  const base = record(value, ["status"], ["assessedAt", "observedAt", "reasonId"], path);
-  if (base.status === "fresh" || base.status === "stale") {
-    const exact = record(value, ["status", "assessedAt", "observedAt"], [], path);
-    const assessedAt = instant(exact.assessedAt, child(path, "assessedAt"));
-    const observedAt = instant(exact.observedAt, child(path, "observedAt"));
-    if (instantEpoch(assessedAt) < instantEpoch(observedAt)) {
-      fail("invalid-order", child(path, "assessedAt"));
+  try { return parseGraphDeclaredFreshness(value, path); }
+  catch (cause) {
+    if (cause instanceof GraphSnapshotProvenanceError) {
+      const reason = cause.details.reason === "invalid-field-set"
+        || cause.details.reason === "invalid-container"
+        || cause.details.reason === "invalid-instant"
+        || cause.details.reason === "invalid-order"
+        ? cause.details.reason
+        : "invalid-enum";
+      fail(reason, cause.details.path);
     }
-    return freezeRecord({
-      assessedAt,
-      observedAt,
-      status: base.status
-    });
+    throw cause;
   }
-  if (base.status === "rebuilding" || base.status === "unavailable") {
-    const exact = record(value, ["status", "reasonId"], [], path);
-    const reasons = [
-      "corrupt-snapshot",
-      "future-version",
-      "incomplete-rebuild",
-      "caller-unavailable"
-    ] as const;
-    if (!reasons.includes(exact.reasonId as (typeof reasons)[number])) {
-      fail("invalid-enum", child(path, "reasonId"));
-    }
-    return freezeRecord({
-      reasonId: exact.reasonId as (typeof reasons)[number],
-      status: base.status
-    });
+}
+
+function snapshotFreshnessPair(snapshotValue: Snapshot, freshnessValue: Freshness): void {
+  try { assertGraphSnapshotFreshnessPair(snapshotValue, freshnessValue, "/snapshot", "/declaredFreshness"); }
+  catch (cause) {
+    if (cause instanceof GraphSnapshotProvenanceError) fail("snapshot-freshness-mismatch", cause.details.path);
+    throw cause;
   }
-  fail("invalid-enum", child(path, "status"));
 }
 
 function budget(value: unknown, path: string): Budget {
@@ -540,7 +513,9 @@ function document(
   const body: Record<string, unknown> = {
     authority: {
       action: "no-authority-granted",
-      freshness: "caller-declared-not-verified",
+      freshness: requestedSnapshot.authority === "receipt-integrity-only"
+        ? "provider-capture-freshness-unassessed"
+        : "caller-declared-not-verified",
       nomination: "caller-declared-non-exhaustive"
     },
     declaredFreshness: requestedFreshness,
@@ -728,6 +703,7 @@ export function compileThreadRootedWitnessDocuments(
   const requestedScope = scope(root.scope, "/scope");
   const requestedSnapshot = snapshot(root.snapshot, "/snapshot");
   const requestedFreshness = freshness(root.declaredFreshness, "/declaredFreshness");
+  snapshotFreshnessPair(requestedSnapshot, requestedFreshness);
   const plan = normalizedPlan(root.query);
   if (
     plan.seeds.length !== 1
@@ -966,7 +942,10 @@ export function compileThreadRootedWitnessDocuments(
     : "abstained" as const;
   const excluded = dispositions.some((item) => item.status === "excluded");
   const reasons: ThreadRootedWitnessReceiptV1["coverage"]["reasons"][number][] = [
-    "caller-declared-snapshot",
+    requestedSnapshot.authority === "receipt-integrity-only"
+      ? "provider-capture-snapshot-integrity-only"
+      : "caller-declared-snapshot",
+    ...(requestedFreshness.status === "unassessed" ? ["freshness-unassessed" as const] : []),
     result.truncated ? "traversal-truncated" : "bounded-result-only"
   ];
   if (excluded) reasons.push("nomination-excluded");

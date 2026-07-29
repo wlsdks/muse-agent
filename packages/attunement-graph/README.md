@@ -27,9 +27,14 @@ runtime scheduling, policy promotion, approval, or action execution. Factual tas
 interaction receipts are projected only as evidence/correlation, never as user outcomes.
 The configured-local snapshot Provider therefore lives behind
 `@muse/attunement/host`, while its I/O-free receipt and process-local mint verifiers live
-behind `@muse/attunement/continuity-snapshots`. The graph package will consume only a
-verified minted capture in the next binding seam; it still never reads the Attunement
-file itself.
+behind `@muse/attunement/continuity-snapshots`. A package-private composition seam now
+accepts only that exact verified mint, independently rechecks the normalized-state
+bytes/digest, creates and verifies a Continuity Observation Receipt, and feeds truthful
+Provider provenance plus `unassessed` freshness into receipt-bound graph evidence.
+Unassessed freshness forces abstention; the seam preserves exact receipt links and bounded
+nomination overflow accounting without inventing a graph commit, generation, durable
+authority, or absence proof. It has no root export and the graph still never reads the
+Attunement file itself.
 The adapter is exposed from `@muse/attunement-graph/continuity`, so importing the kernel
 root does not eagerly load Attunement validation or personal-store dependencies.
 

@@ -8,6 +8,26 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added independently verified, package-private **provider-bound Agent Graph evidence**.
+  Muse now accepts only an
+  exact process-minted configured-local Attunement capture, verifies the mint before state
+  access, independently recomputes normalized bytes and digest, creates and verifies one
+  Continuity Observation Receipt, and composes it through the existing receipt-bound graph
+  compiler. A dedicated snapshot grammar preserves Provider receipt provenance without
+  inventing a graph commit or generation; the only truthful single-read freshness state is
+  `unassessed`, which forces downstream settlement to abstain. Exactly one thread-scoped
+  core and at most 255 deterministic change/support nominations are retained, while every
+  overflow assertion is conserved by count and a content digest. The private binding
+  receipt links Provider, observation, graph evidence, scope, budget, and nomination
+  accounting without serializing personal state or claiming current-world absence,
+  durable authority, permission, or action safety. Ten focused Provider-bound tests, all
+  243 Agent Graph tests, all 323 Attunement tests, both package typechecks/builds,
+  repository TS7 fast typecheck, changed tests, full workspace check, six standalone
+  verifiers, changed-file lint, diff checks, and a fresh Sol/high completion gate pass. No
+  public export, persistence, runtime/API/UI path, Capsule `resumeContext`, Shadow
+  behavior, external graph database, current-freshness proof, or user-visible wow is
+  introduced.
+
 - Added the independently verified **provider-observed configured-local Attunement
   snapshot**, the first real-source boundary for Muse's agent-native graph. A trusted-host
   Provider now opens one configured local Attunement file, reads no more than 4 MiB plus

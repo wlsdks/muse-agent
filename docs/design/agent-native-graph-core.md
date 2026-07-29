@@ -609,9 +609,14 @@ Do not build the database first.
    of its configured local Attunement file, produces a whole-state content-addressed
    capture, and separates process-local mint provenance from serializable receipt
    integrity. Freshness remains `unassessed`; missing scope does not establish absence.
-   **AWG-050a3b** still owns verified capture → graph projection/Observation Receipt →
-   receipt-bound evidence composition. Verified Continuity `resumeContext` remains a
-   later 050a3 seam. Pure and in-memory until those semantics pass.
+   **AWG-050a3b is independently verified as a private process-local seam:** it verifies
+   the mint
+   before state access, independently checks normalized bytes/digest, produces and verifies
+   the Continuity Observation Receipt, derives bounded nominations, and composes the
+   existing receipt-bound evidence path under truthful Provider snapshot provenance.
+   `unassessed` freshness forces settlement abstention rather than an invented graph
+   generation or current-world claim. Verified freshness comparison and Continuity
+   `resumeContext` remain later 050a3 seams. Pure and in-memory until those semantics pass.
 4. **AWG-050b — Shadow decision receipt:** `silent | digest | offer`, bounded reason and
    counterfactual, later return timing; no sending, action, or chain-of-thought storage.
 5. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
@@ -626,17 +631,19 @@ Do not build the database first.
 9. **AWG-090 — qualification:** controlled scenarios followed by repeated local dogfood;
    usefulness, reconstruction cost, policy correction, and silence quality stay separate.
 
-AWG-045a, AWG-045b, AWG-050a1, AWG-050a2a, AWG-050a2b1, and AWG-050a2b2 are independently
-verified and landed as package-private kernels with no public export or v1 codec change.
+AWG-045a, AWG-045b, AWG-050a1, AWG-050a2a, AWG-050a2b1, AWG-050a2b2, AWG-050a2c,
+AWG-050a3a, and AWG-050a3b are independently verified bounded kernels or trusted-host
+seams with
+no Provider-bound graph root export or existing v1 codec expansion.
 Together they now prove deterministic hostile admission → exact thread-rooted witness
 traversal → local proof validation → focus-derived lane → fair opportunity order → bounded
-subset feasibility → exact context bytes. This is an end-to-end claim only over the finite,
-caller-declared witness pool and actual six-axis budget; it is not a source-truth,
-causality, completeness, or user-value claim. The compiler still reports partial coverage
-and makes no authoritative freshness, absence, permission, or action claim. AWG-050a3
-now has a verified configured-local Provider capture boundary, but the capture-to-graph
-binding is the next eligible PLAN. Persistence is explicitly out of scope
-until the Shadow and Policy workloads make the backend requirements real.
+subset feasibility → exact context bytes → verified process-local Provider mint →
+observation and receipt-bound graph evidence. This is an end-to-end claim only over one
+bounded configured-local capture and its finite evidence pool; it is not current
+freshness, causality, completeness, persistence, or user value. The Provider-bound path
+reports abstention and makes no authoritative absence, permission, or action claim.
+Persistence remains explicitly out of scope until freshness, Shadow, and Policy workloads
+make the backend requirements real.
 
 Core semantic and persistence PLAN work uses `gpt-5.6-sol` at `ultra` or `xhigh`;
 implementation begins only from a bounded accepted handoff, and completion uses a fresh

@@ -4,6 +4,11 @@ import {
   CanonicalImmutableEnvelopeError,
   canonicalizeImmutableEnvelope
 } from "./canonical-immutable-envelope.js";
+import {
+  GraphSnapshotProvenanceError,
+  parseGraphSnapshotProvenance,
+  type GraphSnapshotProvenanceV1
+} from "./graph-snapshot-provenance.js";
 
 const REQUEST_SPEC = Object.freeze({
   hashDomain: "muse.attunement-graph.fair-frontier-bundle-order-request.v1",
@@ -35,12 +40,7 @@ type Scope = Readonly<{
   readonly sourceId: string;
   readonly threadId: string;
 }>;
-type Snapshot = Readonly<{
-  readonly authority: "caller-declared-read-snapshot";
-  readonly commitHash: string;
-  readonly commitSequence: number;
-  readonly generationId: string;
-}>;
+type Snapshot = GraphSnapshotProvenanceV1;
 type Seed = Readonly<{ readonly id: string; readonly kind: "thread" }>;
 type Opportunity = Readonly<{
   readonly bundleId: string;
@@ -122,8 +122,6 @@ export class FairFrontierBundleOrderError extends Error {
 const RAW = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
 const SOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const GENERATION_ID = /^[a-z][a-z0-9._:-]{0,95}$/u;
-const COMMIT_HASH = /^sha256:[0-9a-f]{64}$/u;
 const REQUEST_ID = /^muse-fair-frontier-request:sha256:[0-9a-f]{64}$/u;
 const ORDER_ID = /^muse-fair-frontier-order:sha256:[0-9a-f]{64}$/u;
 const BUNDLE_ID = /^muse-scoped-proof-document:sha256:[0-9a-f]{64}$/u;
@@ -189,17 +187,6 @@ function text(value: unknown, path: string, maximum = 512): string {
   return value;
 }
 
-function safeInteger(value: unknown, path: string): number {
-  if (
-    typeof value !== "number"
-    || !Number.isSafeInteger(value)
-    || value < 0
-  ) {
-    fail("invalid-number", path);
-  }
-  return value;
-}
-
 function instant(value: unknown, path: string): string {
   const parsed = text(value, path, 64);
   const timestamp = Date.parse(parsed);
@@ -223,32 +210,25 @@ function scope(value: unknown, path: string): Scope {
 }
 
 function snapshot(value: unknown, path: string): Snapshot {
-  const root = record(
-    value,
-    ["authority", "generationId", "commitSequence", "commitHash"],
-    [],
-    path
-  );
-  if (root.authority !== "caller-declared-read-snapshot") {
-    fail("invalid-snapshot-authority", child(path, "authority"));
+  try { return parseGraphSnapshotProvenance(value, path); }
+  catch (cause) {
+    if (cause instanceof GraphSnapshotProvenanceError) {
+      const reason = cause.details.reason === "invalid-container"
+        || cause.details.reason === "invalid-field-set"
+        ? cause.details.reason
+        : cause.details.reason === "invalid-safe-integer"
+          ? "invalid-number"
+          : cause.details.reason === "invalid-id"
+            && cause.details.path.endsWith("/generationId")
+            ? "invalid-generation-id"
+            : cause.details.reason === "invalid-digest"
+              && cause.details.path.endsWith("/commitHash")
+              ? "invalid-commit-hash"
+              : "invalid-snapshot-authority";
+      fail(reason, cause.details.path);
+    }
+    throw cause;
   }
-  const generationId = text(root.generationId, child(path, "generationId"), 96);
-  if (!GENERATION_ID.test(generationId)) {
-    fail("invalid-generation-id", child(path, "generationId"));
-  }
-  const commitHash = text(root.commitHash, child(path, "commitHash"), 71);
-  if (!COMMIT_HASH.test(commitHash)) {
-    fail("invalid-commit-hash", child(path, "commitHash"));
-  }
-  return Object.freeze({
-    authority: "caller-declared-read-snapshot" as const,
-    commitHash,
-    commitSequence: safeInteger(
-      root.commitSequence,
-      child(path, "commitSequence")
-    ),
-    generationId
-  });
 }
 
 function seed(value: unknown, requestedScope: Scope, path: string): Seed {

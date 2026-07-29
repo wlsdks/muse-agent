@@ -19,6 +19,18 @@ const SNAPSHOT = {
   commitSequence: 7,
   generationId: "generation-7"
 } as const;
+const PROVIDER_SNAPSHOT = {
+  authority: "receipt-integrity-only",
+  kind: "process-local-provider-capture",
+  providerReceiptId: `muse-local-attunement-snapshot:sha256:${"b".repeat(64)}`,
+  providerId: "muse.local-attunement-store",
+  providerVersion: "muse.local-attunement-snapshot-provider.v1",
+  stateDigest: `sha256:${"c".repeat(64)}`,
+  normalizedStateBytes: 42,
+  captureCompletedAt: NOW,
+  mintVerification: "verified-in-composing-process",
+  mintVerificationSurvivesSerialization: false
+} as const;
 
 function assertion(
   id: string,
@@ -170,6 +182,27 @@ function copy<T>(value: T): T {
 }
 
 describe("compileThreadRootedWitnessDocuments", () => {
+  it("forces settlement abstention for an unassessed provider capture without inventing graph commits", () => {
+    const result = compileThreadRootedWitnessDocuments({
+      ...request(),
+      snapshot: PROVIDER_SNAPSHOT,
+      declaredFreshness: {
+        status: "unassessed",
+        reasonId: "single-read-no-head-revalidation"
+      }
+    });
+    expect(result.status).toBe("abstained");
+    expect(result.receipt.coverage.reasons.slice(0, 3)).toEqual([
+      "provider-capture-snapshot-integrity-only",
+      "freshness-unassessed",
+      "bounded-result-only"
+    ]);
+    expect(result.settlement?.status).toBe("abstained");
+    expect(result.settlement).toMatchObject({
+      completeness: { reasons: ["freshness-unassessed", "mandatory-proof-not-admitted", "settlement-abstained"] }
+    });
+  });
+
   it("builds exact thread-rooted proof documents and delegates settlement once", () => {
     const input = request();
     (input.boundedResult.assertions[1]!.assertion as unknown as {

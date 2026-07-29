@@ -26,6 +26,14 @@ import {
 } from "./fair-witness-frontier-settlement.js";
 import { InMemoryAttunementGraphStore } from "./in-memory-store.js";
 import {
+  GraphSnapshotProvenanceError,
+  assertGraphSnapshotFreshnessPair,
+  parseGraphDeclaredFreshness,
+  parseGraphSnapshotProvenance,
+  type GraphDeclaredFreshnessV1,
+  type GraphSnapshotProvenanceV1
+} from "./graph-snapshot-provenance.js";
+import {
   ThreadRootedWitnessDocumentsError,
   type ThreadRootedWitnessCompilationV1,
   type ThreadRootedWitnessDisposition,
@@ -72,8 +80,6 @@ const ACTIVATION_EVIDENCE_ID =
 const RECEIPT_ID =
   /^muse-receipt-bound-graph-evidence-receipt:sha256:[0-9a-f]{64}$/u;
 const SOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const GENERATION_ID = /^[a-z][a-z0-9._:-]{0,95}$/u;
-const COMMIT_HASH = /^sha256:[0-9a-f]{64}$/u;
 const NOMINATION_ID = /^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$/u;
 const ACTUAL_SEED_ID = /^muse-continuity-thread:[0-9a-f]{64}$/u;
 const CONTROL = /[\u0000-\u001F\u007F]/u;
@@ -81,27 +87,8 @@ const MAX_OPTIONALS = 255;
 const RAW = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
 
-type SnapshotV1 = Readonly<{
-  readonly authority: "caller-declared-read-snapshot";
-  readonly commitHash: string;
-  readonly commitSequence: number;
-  readonly generationId: string;
-}>;
-
-type FreshnessV1 =
-  | Readonly<{
-      readonly assessedAt: string;
-      readonly observedAt: string;
-      readonly status: "fresh" | "stale";
-    }>
-  | Readonly<{
-      readonly reasonId:
-        | "corrupt-snapshot"
-        | "future-version"
-        | "incomplete-rebuild"
-        | "caller-unavailable";
-      readonly status: "rebuilding" | "unavailable";
-    }>;
+type SnapshotV1 = GraphSnapshotProvenanceV1;
+type FreshnessV1 = GraphDeclaredFreshnessV1;
 
 type LegacyBudgetV1 = Readonly<{
   readonly maxAssertions: number;
@@ -191,6 +178,7 @@ export type ActivationEvidenceV1 = Readonly<{
 type CoverageReason =
   | "caller-declared-observation"
   | "source-authority-unverified"
+  | "freshness-unassessed"
   | "bounded-activation-only"
   | "legacy-payload-budget-only"
   | "non-authoritative-compatibility-scope"
@@ -565,86 +553,13 @@ function scope(value: unknown, path: string): ContinuityProjectionScope {
 }
 
 function snapshot(value: unknown, path: string): SnapshotV1 {
-  const root = record(
-    value,
-    ["authority", "commitHash", "commitSequence", "generationId"],
-    [],
-    path,
-    "invalid-snapshot"
-  );
-  if (
-    root.authority !== "caller-declared-read-snapshot"
-    || typeof root.commitHash !== "string"
-    || !COMMIT_HASH.test(root.commitHash)
-    || typeof root.generationId !== "string"
-    || !GENERATION_ID.test(root.generationId)
-    || !Number.isSafeInteger(root.commitSequence)
-    || (root.commitSequence as number) < 0
-  ) {
-    invalid("invalid-snapshot", path);
-  }
-  return freezeRecord({
-    authority: "caller-declared-read-snapshot" as const,
-    commitHash: root.commitHash,
-    commitSequence: root.commitSequence as number,
-    generationId: root.generationId
-  });
+  try { return parseGraphSnapshotProvenance(value, path); }
+  catch (cause) { if (cause instanceof GraphSnapshotProvenanceError) invalid("invalid-snapshot", cause.details.path); throw cause; }
 }
 
 function freshness(value: unknown, path: string): FreshnessV1 {
-  const root = record(
-    value,
-    ["status"],
-    ["assessedAt", "observedAt", "reasonId"],
-    path,
-    "invalid-freshness"
-  );
-  if (root.status === "fresh" || root.status === "stale") {
-    const exactRoot = record(
-      value,
-      ["status", "assessedAt", "observedAt"],
-      [],
-      path,
-      "invalid-freshness"
-    );
-    const assessedAt = instant(
-      exactRoot.assessedAt,
-      child(path, "assessedAt"),
-      "invalid-freshness"
-    );
-    const observedAt = instant(
-      exactRoot.observedAt,
-      child(path, "observedAt"),
-      "invalid-freshness"
-    );
-    if (Date.parse(assessedAt) < Date.parse(observedAt)) {
-      invalid("invalid-freshness", child(path, "assessedAt"));
-    }
-    return freezeRecord({ assessedAt, observedAt, status: root.status });
-  }
-  if (root.status === "rebuilding" || root.status === "unavailable") {
-    const exactRoot = record(
-      value,
-      ["status", "reasonId"],
-      [],
-      path,
-      "invalid-freshness"
-    );
-    const reasons = [
-      "corrupt-snapshot",
-      "future-version",
-      "incomplete-rebuild",
-      "caller-unavailable"
-    ] as const;
-    if (!reasons.includes(exactRoot.reasonId as (typeof reasons)[number])) {
-      invalid("invalid-freshness", child(path, "reasonId"));
-    }
-    return freezeRecord({
-      reasonId: exactRoot.reasonId as (typeof reasons)[number],
-      status: root.status
-    });
-  }
-  invalid("invalid-freshness", child(path, "status"));
+  try { return parseGraphDeclaredFreshness(value, path); }
+  catch (cause) { if (cause instanceof GraphSnapshotProvenanceError) invalid("invalid-freshness", cause.details.path); throw cause; }
 }
 
 function legacyBudget(value: unknown, path: string): LegacyBudgetV1 {
@@ -1264,6 +1179,12 @@ export async function compileReceiptBoundGraphEvidence(
   input: unknown
 ): Promise<ReceiptBoundGraphEvidenceV1> {
   const requested = parseRequest(input);
+  try {
+    assertGraphSnapshotFreshnessPair(requested.snapshot, requested.freshness, "/snapshot", "/declaredFreshness");
+  } catch (cause) {
+    if (cause instanceof GraphSnapshotProvenanceError) invalid("invalid-freshness", cause.details.path);
+    throw cause;
+  }
   const receipt = verifyReceipt(requested.receiptInput);
   if (!exact(requested.scope, receipt.projection.scope)) {
     dependency("scope-receipt-mismatch", "/scope");
@@ -1497,6 +1418,7 @@ export async function compileReceiptBoundGraphEvidence(
   const reasons: CoverageReason[] = [
     "caller-declared-observation",
     "source-authority-unverified",
+    ...(requested.freshness.status === "unassessed" ? ["freshness-unassessed" as const] : []),
     "bounded-activation-only",
     "legacy-payload-budget-only",
     "non-authoritative-compatibility-scope"

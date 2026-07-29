@@ -63,7 +63,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-040** | Continuity Capsule v1 | User-invoked, library-only Capsule renders the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer | in progress (`AWG-040b/c` verified library-only; application integration and exact-stop capture pending) |
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
-| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` settlement, `050a2a` exact thread-rooted witnesses, `050a2b1` fair opportunity ordering, `050a2b2` witness-derived fair context admission, `050a2c` receipt-bound Agent Graph evidence compilation, and `050a3a` configured-local Provider capture independently verified; Provider→graph binding `050a3b` pending) |
+| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` settlement, `050a2a` exact thread-rooted witnesses, `050a2b1` fair opportunity ordering, `050a2b2` witness-derived fair context admission, `050a2c` receipt-bound Agent Graph evidence compilation, `050a3a` configured-local Provider capture, and `050a3b` provider-bound Agent Graph evidence independently verified; head revalidation and verified `resumeContext` pending) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-070** | Storage bake-off | Prove the Muse-owned local default first; compare PostgreSQL and at most one embedded candidate only as optional Adapters on correctness, cost, recovery, portability, and maintenance | pending |
@@ -74,7 +74,7 @@ Raw numbering does not activate work. Before each BUILD slice, inspect current s
 classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `monitoring`,
 `blocked`, `deferred`, `rejected`, or `superseded`. Implement only the missing delta.
 
-## Next eligible activation: AWG-050a3b Provider-to-graph binding PLAN
+## Next eligible activation after AWG-050a3b
 
 Independent Sol-class architecture reviews converged on a semantic prerequisite before the
 Shadow ledger or durable database:
@@ -126,20 +126,62 @@ Shadow ledger or durable database:
   exact Provider provenance is bound to the in-process minted object, freshness remains
   `unassessed`, and missing scope abstains without asserting absence. File I/O remains
   outside `@muse/attunement-graph`.
-- **AWG-050a3b (next PLAN):** verify the minted capture before state access, recompute its
-  bytes/digest, bind its exact scope into the existing graph projection and Observation
-  Receipt, then feed only that verified result to receipt-bound Agent Graph evidence.
-  Later 050a3 seams own actual freshness comparison and verified Continuity
-  `resumeContext`; this slice must not absorb them.
+- **AWG-050a3b (completed private integration):** the private composer verifies the minted
+  capture
+  before state access, recomputes its bytes/digest, binds its exact scope into the existing
+  graph projection and Observation Receipt, and feeds only that verified result to
+  receipt-bound Agent Graph evidence. The shared grammar represents Provider provenance
+  without inventing a graph commit or generation; `unassessed` freshness forces
+  settlement abstention. Focused, package, workspace, verifier, and independent completion
+  gates pass.
 
 The full decision and dissent are in
 [Muse Agent-Native Graph Core](../design/agent-native-graph-core.md). Those earlier
 fail-closed findings produced AWG-045a/045b and the now verified
 AWG-050a1/050a2a/050a2b1/050a2b2/050a2c seams rather than being bypassed. The Provider
 capture is a trusted host seam, while the graph compiler remains private deterministic
-substrate. Neither is shipped `resumeContext` or user-visible wow. AWG-050a3b remains
-closed to source changes until a new bounded PLAN passes. AWG-050b then owns the actual
-Shadow `silent | digest | offer` decision receipt and counterfactual.
+substrate. Neither is shipped `resumeContext` or user-visible wow. After AWG-050a3b passes
+and lands, the next eligible 050a3 PLAN is an exact head-revalidation/freshness seam; it
+must compare bounded observations rather than upgrading a single read. AWG-050b then owns
+the actual Shadow `silent | digest | offer` decision receipt and counterfactual.
+
+## Completed slice: AWG-050a3b
+
+- **Product meaning:** call this capability **provider-bound Agent Graph evidence**. Muse
+  can bind one exact configured-local process mint through a verified Continuity
+  Observation into its own bounded graph-evidence path without an external graph database.
+- **Classification at activation:** `missing` — Provider capture and receipt-bound Graph
+  compilation existed separately, but no seam could prove that the graph input was the
+  exact process-minted configured-local state.
+- **Status:** `completed private integration`. It has no root export, persistence,
+  runtime/API/UI composition, Capsule `resumeContext`, Shadow decision, current-freshness
+  proof, or action authority.
+- **Truth boundary:** the composer verifies the mint before state access, independently
+  recomputes normalized bytes/digest, creates and verifies the Observation Receipt, and
+  uses a dedicated Provider snapshot grammar. It never maps a Provider digest to a graph
+  commit/generation. A single read is `unassessed`, so the downstream result must abstain.
+- **Bounds and conservation:** exactly one `SCOPED_TO` assertion becomes core; at most 255
+  sorted non-model assertions become change/support nominations. Every overflow assertion
+  is conserved by count and a deterministic digest, and existing six-axis graph budgets
+  remain authoritative.
+- **Privacy and authority:** normalized personal state is parsed once inside the private
+  process seam and never serialized into Graph or binding receipts. Errors are stable and
+  bounded. Receipts assert integrity links only, not current-world absence, durable
+  Provider authority, permission, or action safety.
+- **Maker and evaluator:** Codex root/high implemented the bounded source/test/document
+  slice after Sol/high PLAN and impact gates; a fresh separate `gpt-5.6-sol`/high context
+  inspected the complete tracked and untracked diff and issued `COMPLETION PASS` with no
+  blockers.
+- **Acceptance evidence:** 10 focused Provider-bound tests, 86 tests across the seven
+  changed Graph contracts, all 243 Agent Graph tests, and all 323 Attunement tests pass.
+  Both packages typecheck/build; repository TS7 fast typecheck, changed tests, full
+  workspace check, changed-file lint, six standalone verifiers, diff checks, fresh
+  CodeGraph, and the independent completion gate pass. The overflow fixture proves exact
+  `1 core + 85 change + 170 support + 15 omitted` conservation and fixes the omitted-ID
+  digest as a regression oracle.
+- **Rollback:** delete the private Provider-bound source/test/verifier, remove the shared
+  Provider provenance grammar and restore the five consumers to legacy snapshot grammar.
+  No public API, migration, persisted state, or user-data cleanup is involved.
 
 ## Completed slice: AWG-050a3a
 

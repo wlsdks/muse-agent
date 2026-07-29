@@ -17,6 +17,14 @@ import {
   instantEpoch,
   normalizeGraphAssertion
 } from "./validation.js";
+import {
+  GraphSnapshotProvenanceError,
+  assertGraphSnapshotFreshnessPair,
+  parseGraphDeclaredFreshness,
+  parseGraphSnapshotProvenance,
+  type GraphDeclaredFreshnessV1,
+  type GraphSnapshotProvenanceV1
+} from "./graph-snapshot-provenance.js";
 
 const REQUEST_SPEC = Object.freeze({
   hashDomain: "muse.attunement-graph.scoped-proof-document-settlement-request.v1",
@@ -33,8 +41,6 @@ const CONTROL = /[\u0000-\u001F\u007F]/u;
 const REQUEST_ID = /^muse-scoped-proof-request:sha256:[0-9a-f]{64}$/u;
 const DOCUMENT_ID = /^muse-scoped-proof-document:sha256:[0-9a-f]{64}$/u;
 const SOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const GENERATION_ID = /^[a-z][a-z0-9._:-]{0,95}$/u;
-const COMMIT_HASH = /^sha256:[0-9a-f]{64}$/u;
 const RAW = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
 const MAX_PROOF_ASSERTIONS = 64;
 const MAX_ASSERTION_SOURCE_REFS = 128;
@@ -101,21 +107,21 @@ export class ScopedProofDocumentSettlementError extends Error {
 }
 
 type Scope = Readonly<{ readonly sourceId: string; readonly threadId: string }>;
-type Snapshot = Readonly<{ readonly authority: "caller-declared-read-snapshot"; readonly generationId: string; readonly commitSequence: number; readonly commitHash: string }>;
-type Freshness = Readonly<{ readonly status: "fresh" | "stale"; readonly observedAt: string; readonly assessedAt: string }> | Readonly<{ readonly status: "rebuilding" | "unavailable"; readonly reasonId: "corrupt-snapshot" | "future-version" | "incomplete-rebuild" | "caller-unavailable" }>;
+type Snapshot = GraphSnapshotProvenanceV1;
+type Freshness = GraphDeclaredFreshnessV1;
 type LocalReason = "proof-path-disconnected" | "proof-source-unclosed" | "proof-duplicate-assertion" | "proof-duplicate-path";
 type LocalStatus = Readonly<{ readonly status: "eligible" }> | Readonly<{ readonly status: "rejected"; readonly reasonId: LocalReason }>;
 type Direction = "outgoing" | "incoming";
 type Step = Readonly<{ readonly assertionId: string; readonly direction: Direction }>;
 type ScopedAssertion = Readonly<{ readonly assertion: GraphAssertion; readonly memberships: readonly Scope[] }>;
 type Proof = Readonly<{ readonly assertions: readonly ScopedAssertion[]; readonly paths: readonly (readonly Step[])[]; readonly sourceRefs: readonly GraphEvidenceRef[] }>;
-type Authority = Readonly<{ readonly nomination: "caller-declared-non-exhaustive"; readonly freshness: "caller-declared-not-verified"; readonly action: "no-authority-granted" }>;
+type Authority = Readonly<{ readonly nomination: "caller-declared-non-exhaustive"; readonly freshness: "caller-declared-not-verified" | "provider-capture-freshness-unassessed"; readonly action: "no-authority-granted" }>;
 type Document = Readonly<{ readonly schemaVersion: 1; readonly documentVersion: "muse.scoped-proof-document.v1"; readonly documentId: string; readonly kind: "core" | "change" | "support"; readonly scope: Scope; readonly snapshot: Snapshot; readonly declaredFreshness: Freshness; readonly observedAt: string; readonly semanticPriority: 0 | 1 | 2; readonly proof: Proof; readonly authority: Authority }>;
 type Candidate = Readonly<{ readonly document: Document; readonly localStatus: LocalStatus; readonly retainedCanonicalJson: string; readonly retainedCanonicalByteLength: number; readonly candidateId: string; readonly forcedFreshness: boolean }>;
 type Budget = Readonly<{ readonly maxDepth: number; readonly maxConsideredAssertions: number; readonly maxVisitedRefs: number; readonly maxAssertions: number; readonly maxEstimatedTokens: number; readonly maxOutputBytes: number }>;
 
 type CompletenessPartial = Readonly<{ readonly status: "partial"; readonly canAssertAbsenceWithinSnapshot: false; readonly canAssertCurrentWorldAbsence: false; readonly reasons: readonly ("nomination-not-exhaustive" | "freshness-not-authoritative" | "candidate-not-admitted")[] }>;
-type CompletenessAbstained = Readonly<{ readonly status: "abstained"; readonly canAssertAbsenceWithinSnapshot: false; readonly canAssertCurrentWorldAbsence: false; readonly reasons: readonly ("freshness-unavailable" | "mandatory-proof-not-admitted" | "settlement-abstained")[] }>;
+type CompletenessAbstained = Readonly<{ readonly status: "abstained"; readonly canAssertAbsenceWithinSnapshot: false; readonly canAssertCurrentWorldAbsence: false; readonly reasons: readonly ("freshness-unavailable" | "freshness-unassessed" | "mandatory-proof-not-admitted" | "settlement-abstained")[] }>;
 export type ScopedProofDocumentSettlementResultV1 =
   | Readonly<{ readonly status: "partial"; readonly resultId: string; readonly scope: Scope; readonly snapshot: Snapshot; readonly declaredFreshness: Freshness; readonly completeness: CompletenessPartial; readonly settlement: BoundedSettlementResult; readonly documents: readonly Document[]; readonly contextStream: string }>
   | Readonly<{ readonly status: "abstained"; readonly resultId: string; readonly scope: Scope; readonly snapshot: Snapshot; readonly declaredFreshness: Freshness; readonly completeness: CompletenessAbstained; readonly settlement: BoundedSettlementResult; readonly contextStream: string }>
@@ -165,31 +171,45 @@ function scope(value: unknown, path: string): Scope {
   return freezeRecord({ sourceId, threadId: text(root.threadId, child(path, "threadId"), 256) });
 }
 function snapshot(value: unknown, path: string): Snapshot {
-  const root = record(value, ["authority", "generationId", "commitSequence", "commitHash"], [], path);
-  if (root.authority !== "caller-declared-read-snapshot") invalid("invalid-enum", child(path, "authority"));
-  if (typeof root.generationId !== "string" || !GENERATION_ID.test(root.generationId)) invalid("invalid-string", child(path, "generationId"));
-  if (typeof root.commitHash !== "string" || !COMMIT_HASH.test(root.commitHash)) invalid("invalid-string", child(path, "commitHash"));
-  return freezeRecord({ authority: "caller-declared-read-snapshot" as const, generationId: root.generationId, commitSequence: number(root.commitSequence, child(path, "commitSequence")), commitHash: root.commitHash });
+  try { return parseGraphSnapshotProvenance(value, path); }
+  catch (cause) {
+    if (cause instanceof GraphSnapshotProvenanceError) {
+      const reason = cause.details.reason === "invalid-container"
+        || cause.details.reason === "invalid-field-set"
+        ? cause.details.reason
+        : cause.details.reason === "invalid-safe-integer"
+          ? "invalid-number"
+          : cause.details.reason === "invalid-literal"
+            ? "invalid-enum"
+            : "invalid-string";
+      invalid(reason, cause.details.path);
+    }
+    throw cause;
+  }
 }
 function freshness(value: unknown, path: string): Freshness {
-  const root = record(value, ["status"], ["observedAt", "assessedAt", "reasonId"], path);
-  if (root.status === "fresh" || root.status === "stale") {
-    if (!Object.hasOwn(root, "observedAt") || !Object.hasOwn(root, "assessedAt") || Object.hasOwn(root, "reasonId")) invalid("invalid-field-set", path);
-    const observedAt = instant(root.observedAt, child(path, "observedAt")); const assessedAt = instant(root.assessedAt, child(path, "assessedAt"));
-    if (instantEpoch(assessedAt) < instantEpoch(observedAt)) invalid("invalid-order", child(path, "assessedAt"));
-    return freezeRecord({ status: root.status, observedAt, assessedAt });
+  try { return parseGraphDeclaredFreshness(value, path); }
+  catch (cause) {
+    if (cause instanceof GraphSnapshotProvenanceError) {
+      const reason = cause.details.reason === "invalid-container"
+        || cause.details.reason === "invalid-field-set"
+        || cause.details.reason === "invalid-instant"
+        || cause.details.reason === "invalid-order"
+        ? cause.details.reason
+        : "invalid-enum";
+      invalid(reason, cause.details.path);
+    }
+    throw cause;
   }
-  if (root.status === "rebuilding" || root.status === "unavailable") {
-    if (!Object.hasOwn(root, "reasonId") || Object.hasOwn(root, "observedAt") || Object.hasOwn(root, "assessedAt")) invalid("invalid-field-set", path);
-    if (root.reasonId !== "corrupt-snapshot" && root.reasonId !== "future-version" && root.reasonId !== "incomplete-rebuild" && root.reasonId !== "caller-unavailable") invalid("invalid-enum", child(path, "reasonId"));
-    return freezeRecord({ status: root.status, reasonId: root.reasonId as "corrupt-snapshot" | "future-version" | "incomplete-rebuild" | "caller-unavailable" });
-  }
-  invalid("invalid-enum", child(path, "status"));
+}
+function snapshotFreshnessPair(snapshotValue: Snapshot, freshnessValue: Freshness): void {
+  try { assertGraphSnapshotFreshnessPair(snapshotValue, freshnessValue, "/snapshot", "/declaredFreshness"); }
+  catch (cause) { if (cause instanceof GraphSnapshotProvenanceError) invalid("freshness-mismatch", cause.details.path); throw cause; }
 }
 function authority(value: unknown, path: string): Authority {
   const root = record(value, ["nomination", "freshness", "action"], [], path);
-  if (root.nomination !== "caller-declared-non-exhaustive" || root.freshness !== "caller-declared-not-verified" || root.action !== "no-authority-granted") invalid("invalid-enum", path);
-  return freezeRecord({ nomination: "caller-declared-non-exhaustive" as const, freshness: "caller-declared-not-verified" as const, action: "no-authority-granted" as const });
+  if (root.nomination !== "caller-declared-non-exhaustive" || (root.freshness !== "caller-declared-not-verified" && root.freshness !== "provider-capture-freshness-unassessed") || root.action !== "no-authority-granted") invalid("invalid-enum", path);
+  return freezeRecord({ nomination: "caller-declared-non-exhaustive" as const, freshness: root.freshness, action: "no-authority-granted" as const });
 }
 function evidence(value: unknown, path: string): GraphEvidenceRef {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -347,14 +367,21 @@ function parsedDocument(value: Record<string, unknown>, requestScope: Scope, req
   const actualSnapshot = snapshot(value.snapshot, child(owner, "snapshot")); if (!equal(actualSnapshot, requestSnapshot)) invalid("snapshot-mismatch", child(owner, "snapshot"));
   const actualFreshness = freshness(value.declaredFreshness, child(owner, "declaredFreshness")); if (!equal(actualFreshness, requestFreshness)) invalid("freshness-mismatch", child(owner, "declaredFreshness"));
   const observedAt = instant(value.observedAt, child(owner, "observedAt")); if ((requestFreshness.status === "fresh" || requestFreshness.status === "stale") && instantEpoch(observedAt) > instantEpoch(requestFreshness.observedAt)) invalid("freshness-mismatch", child(owner, "observedAt"));
-  return freezeRecord({ schemaVersion: 1 as const, documentVersion: "muse.scoped-proof-document.v1" as const, documentId: value.documentId, kind, scope: actualScope, snapshot: actualSnapshot, declaredFreshness: actualFreshness, observedAt, semanticPriority: expectedPriority as 0 | 1 | 2, proof: proof(value.proof, requestScope, child(owner, "proof")), authority: authority(value.authority, child(owner, "authority")) });
+  const parsedAuthority = authority(value.authority, child(owner, "authority"));
+  const expectedAuthorityFreshness = requestSnapshot.authority === "receipt-integrity-only"
+    ? "provider-capture-freshness-unassessed"
+    : "caller-declared-not-verified";
+  if (parsedAuthority.freshness !== expectedAuthorityFreshness) {
+    invalid("freshness-mismatch", child(child(owner, "authority"), "freshness"));
+  }
+  return freezeRecord({ schemaVersion: 1 as const, documentVersion: "muse.scoped-proof-document.v1" as const, documentId: value.documentId, kind, scope: actualScope, snapshot: actualSnapshot, declaredFreshness: actualFreshness, observedAt, semanticPriority: expectedPriority as 0 | 1 | 2, proof: proof(value.proof, requestScope, child(owner, "proof")), authority: parsedAuthority });
 }
 function candidate(raw: unknown, role: "core" | "optional", index: number | undefined, requestScope: Scope, requestSnapshot: Snapshot, requestFreshness: Freshness): Candidate {
   const base = role === "core" ? "/core" : `/optionals/${index!.toString()}`; const root = record(raw, ["document", "localStatus"], [], base); const owner = `${base}/document`;
   const captured = captureDocument(root.document, owner, `${owner}/documentId`);
   const document = parsedDocument(captured.body, requestScope, requestSnapshot, requestFreshness, owner);
   if ((role === "core" && document.kind !== "core") || (role === "optional" && document.kind === "core")) invalid("invalid-document-kind", `${owner}/kind`);
-  const derived = localFailure(document.proof); const status = localStatus(root.localStatus, derived, `${base}/localStatus`); const forcedFreshness = role === "core" && (requestFreshness.status === "rebuilding" || requestFreshness.status === "unavailable");
+  const derived = localFailure(document.proof); const status = localStatus(root.localStatus, derived, `${base}/localStatus`); const forcedFreshness = role === "core" && (requestFreshness.status === "rebuilding" || requestFreshness.status === "unavailable" || requestFreshness.status === "unassessed");
   const digest = document.documentId.slice(-64); return freezeRecord({ document, localStatus: status, retainedCanonicalJson: captured.canonicalJson, retainedCanonicalByteLength: captured.canonicalByteLength, candidateId: `${role}:${digest}`, forcedFreshness });
 }
 function budget(value: unknown): Budget { const root = record(value, ["maxDepth", "maxConsideredAssertions", "maxVisitedRefs", "maxAssertions", "maxEstimatedTokens", "maxOutputBytes"], [], "/budget"); return freezeRecord({ maxDepth: number(root.maxDepth, "/budget/maxDepth"), maxConsideredAssertions: number(root.maxConsideredAssertions, "/budget/maxConsideredAssertions"), maxVisitedRefs: number(root.maxVisitedRefs, "/budget/maxVisitedRefs"), maxAssertions: number(root.maxAssertions, "/budget/maxAssertions"), maxEstimatedTokens: number(root.maxEstimatedTokens, "/budget/maxEstimatedTokens"), maxOutputBytes: number(root.maxOutputBytes, "/budget/maxOutputBytes") }); }
@@ -363,7 +390,7 @@ function cost(document: Document, bytes: number): Record<string, number> {
   const outputBytes = 1 + bytes; return { assertions: new Set(document.proof.assertions.map((item) => item.assertion.id)).size, consideredAssertions: document.proof.assertions.length, depth: Math.max(...document.proof.paths.map((path) => path.length)), estimatedTokens: Math.ceil(outputBytes / 4), outputBytes, visitedRefs: endpoints.size };
 }
 function inventory(core: Candidate, optionals: readonly Candidate[], value: Budget): Record<string, unknown> {
-  const semantic = (item: Candidate): string | undefined => item.forcedFreshness ? "semantic:freshness-unavailable" : item.localStatus.status === "rejected" ? `semantic:${item.localStatus.reasonId}` : undefined;
+  const semantic = (item: Candidate): string | undefined => item.forcedFreshness ? `semantic:${item.document.declaredFreshness.status === "unassessed" ? "freshness-unassessed" : "freshness-unavailable"}` : item.localStatus.status === "rejected" ? `semantic:${item.localStatus.reasonId}` : undefined;
   const entry = (item: Candidate, role: "core" | "optional", rank: number): Record<string, unknown> => { const reason = semantic(item); return { candidateId: item.candidateId, cost: reason === undefined ? cost(item.document, item.retainedCanonicalByteLength) : { assertions: 0, consideredAssertions: 0, depth: 0, estimatedTokens: 0, outputBytes: 0, visitedRefs: 0 }, preflight: reason === undefined ? { status: "eligible" } : { status: "rejected", reasonId: reason }, rank, role }; };
   const eligible = optionals.filter((item) => semantic(item) === undefined).sort((left, right) => left.document.semanticPriority - right.document.semanticPriority || instantEpoch(right.document.observedAt) - instantEpoch(left.document.observedAt) || RAW(left.document.documentId, right.document.documentId));
   const ranks = new Map(eligible.map((item, index) => [item.candidateId, index]));
@@ -428,7 +455,7 @@ export function compileScopedProofDocumentSettlement(input: unknown): ScopedProo
   const root = captureRequest(input);
   const request = record(root, ["schemaVersion", "operatorVersion", "scope", "snapshot", "declaredFreshness", "core", "optionals", "budget"], ["requestId"], "");
   if (request.schemaVersion !== 1) invalid("invalid-schema-version", "/schemaVersion"); if (request.operatorVersion !== "muse.scoped-proof-document-settlement.v1") invalid("invalid-operator-version", "/operatorVersion"); if (typeof request.requestId !== "string" || !REQUEST_ID.test(request.requestId)) invalid("invalid-request-id", "/requestId");
-  const requestScope = scope(request.scope, "/scope"); const requestSnapshot = snapshot(request.snapshot, "/snapshot"); const requestFreshness = freshness(request.declaredFreshness, "/declaredFreshness"); const requestBudget = budget(request.budget);
+  const requestScope = scope(request.scope, "/scope"); const requestSnapshot = snapshot(request.snapshot, "/snapshot"); const requestFreshness = freshness(request.declaredFreshness, "/declaredFreshness"); snapshotFreshnessPair(requestSnapshot, requestFreshness); const requestBudget = budget(request.budget);
   const raws = array(request.optionals, 256, "/optionals");
   if (raws.length > 255) invalid("too-many-optionals", "/optionals");
   const core = candidate(request.core, "core", undefined, requestScope, requestSnapshot, requestFreshness);
@@ -458,7 +485,7 @@ export function compileScopedProofDocumentSettlement(input: unknown): ScopedProo
   }
   const lookup = new Map<string, Candidate>([core, ...optionals].map((item) => [item.candidateId, item])); const produced = materialize(settled, lookup);
   if (settled.ledger.mode === "abstain") {
-    if (produced.documents.length !== 0 || produced.contextStream !== settled.canonicalJson) internal("materialization-postcondition-failed"); const coreEntry = settled.ledger.entries.find((entry) => entry.role === "core"); if (!coreEntry) internal("materialization-postcondition-failed"); const reasons: ("freshness-unavailable" | "mandatory-proof-not-admitted" | "settlement-abstained")[] = []; if (core.forcedFreshness && coreEntry.terminalState === "rejected") reasons.push("freshness-unavailable"); if (coreEntry.terminalState !== "admitted") reasons.push("mandatory-proof-not-admitted"); reasons.push("settlement-abstained"); const result = freezeTree(freezeRecord({ status: "abstained" as const, resultId: settled.ledger.ledgerId, scope: requestScope, snapshot: requestSnapshot, declaredFreshness: requestFreshness, completeness: freezeRecord({ status: "abstained" as const, canAssertAbsenceWithinSnapshot: false as const, canAssertCurrentWorldAbsence: false as const, reasons: freezeArray(reasons) }), settlement: settled, contextStream: settled.canonicalJson })); if (!deepFrozen(result)) internal("materialization-postcondition-failed"); return result;
+    if (produced.documents.length !== 0 || produced.contextStream !== settled.canonicalJson) internal("materialization-postcondition-failed"); const coreEntry = settled.ledger.entries.find((entry) => entry.role === "core"); if (!coreEntry) internal("materialization-postcondition-failed"); const reasons: ("freshness-unavailable" | "freshness-unassessed" | "mandatory-proof-not-admitted" | "settlement-abstained")[] = []; if (core.forcedFreshness && coreEntry.terminalState === "rejected") reasons.push(requestFreshness.status === "unassessed" ? "freshness-unassessed" : "freshness-unavailable"); if (coreEntry.terminalState !== "admitted") reasons.push("mandatory-proof-not-admitted"); reasons.push("settlement-abstained"); const result = freezeTree(freezeRecord({ status: "abstained" as const, resultId: settled.ledger.ledgerId, scope: requestScope, snapshot: requestSnapshot, declaredFreshness: requestFreshness, completeness: freezeRecord({ status: "abstained" as const, canAssertAbsenceWithinSnapshot: false as const, canAssertCurrentWorldAbsence: false as const, reasons: freezeArray(reasons) }), settlement: settled, contextStream: settled.canonicalJson })); if (!deepFrozen(result)) internal("materialization-postcondition-failed"); return result;
   }
   const reasons: ("nomination-not-exhaustive" | "freshness-not-authoritative" | "candidate-not-admitted")[] = ["nomination-not-exhaustive", "freshness-not-authoritative"]; if (settled.ledger.entries.some((entry) => entry.terminalState !== "admitted")) reasons.push("candidate-not-admitted"); const result = freezeTree(freezeRecord({ status: "partial" as const, resultId: settled.ledger.ledgerId, scope: requestScope, snapshot: requestSnapshot, declaredFreshness: requestFreshness, completeness: freezeRecord({ status: "partial" as const, canAssertAbsenceWithinSnapshot: false as const, canAssertCurrentWorldAbsence: false as const, reasons: freezeArray(reasons) }), settlement: settled, documents: produced.documents, contextStream: produced.contextStream })); if (!deepFrozen(result)) internal("materialization-postcondition-failed"); return result;
 }

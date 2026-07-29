@@ -3,7 +3,7 @@ title: Attunement Graph Engine — agent-native temporal provenance graph
 audience: [engineering, product, security, agents]
 purpose: Define the modular graph engine that powers Muse's signature Attunement experience
 status: partial-implementation
-updated: 2026-07-29
+updated: 2026-07-30
 related: [../strategy/attunement.md, attunement.md, agent-native-graph-core.md, ../goals/attunement-wow-graph-roadmap.md]
 ---
 
@@ -59,8 +59,18 @@ Attunement file and mints a process-local capture. A narrow I/O-free verificatio
 separates serializable receipt integrity from exact in-process Provider provenance,
 exposes the complete normalized state only as a non-enumerable immutable string, and
 labels freshness `unassessed`. Missing source or thread availability abstains without an
-absence claim. Binding this capture into graph projection and the existing receipt-bound
-evidence compiler is the next seam; no runtime or Capsule consumes it yet.
+absence claim.
+The independently verified package-private Provider-bound composition now verifies that
+mint before state access,
+independently recomputes its bytes and digest, produces and verifies one exact Continuity
+Observation Receipt, derives the opaque thread core plus at most 255 deterministic
+optionals, and invokes the existing receipt-bound evidence compiler. Provider provenance
+has its own grammar rather than impersonating a graph commit or generation. A single
+capture is always `unassessed`; that pairing forces graph settlement to abstain while its
+receipts still bind the exact source scope, observation, evidence, budget, retained
+nominations, and digest-counted overflow. The module is private and process-local. No
+runtime, Capsule, durable store, current-freshness comparison, or action path consumes it
+yet.
 AWG-030 adds the first verified personal-temporal operator: an isolated
 `/continuity-changes` query over two immutable observations and one caller-declared,
 version-bound boundary. It normalizes identical-source re-observation, classifies
