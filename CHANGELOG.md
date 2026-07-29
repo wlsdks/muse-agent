@@ -8,6 +8,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Fixed the package-private Provider-head Graph binding verifier so its nomination
+  accounting follows the actual derivation contract: exactly one core plus at most 255
+  retained change/support optionals. The verifier had incorrectly reused the
+  32-assertion settlement budget and therefore rejected otherwise valid receipts with more
+  than 31 optionals. Canonical boundary probes now accept 32 and exactly 255, reject 256,
+  and retain safe-integer plus omitted-count/digest-shape checks. Receipt bytes, authority,
+  derivation, exports, runtime behavior, and persistence are unchanged.
+
 - Added independently verified, package-private **provider-owned bounded head
   revalidation**. One configured-local Provider instance validates a required
   `1..30_000 ms` span before either read, captures the same scope sequentially, and mints

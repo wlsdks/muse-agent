@@ -44,6 +44,7 @@ const THREAD_SEED_ID = /^muse-continuity-thread:[0-9a-f]{64}$/u;
 const OMITTED_DIGEST =
   /^muse-provider-bound-omitted-assertion-ids:sha256:[0-9a-f]{64}$/u;
 const SOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const MAX_RETAINED_PROVIDER_OPTIONALS = 255;
 
 type HeadSnapshot = Extract<
   GraphSnapshotProvenanceV1,
@@ -547,7 +548,7 @@ function verifyClosedGraphFields(
   );
   if (
     core !== 1
-    || core + change + support > PROVIDER_BOUND_GRAPH_EVIDENCE_BUDGET.maxAssertions
+    || change + support > MAX_RETAINED_PROVIDER_OPTIONALS
     || (
       omitted === 0
         ? nominations.omittedAssertionIdsDigest !== null

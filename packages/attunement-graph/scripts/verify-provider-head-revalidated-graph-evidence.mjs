@@ -2,13 +2,23 @@ import {
   createLocalAttunementSnapshotProviderForTesting
 } from "../../attunement/dist/local-attunement-snapshot-provider.js";
 import {
-  compileHeadRevalidatedProviderBoundGraphEvidence
+  compileHeadRevalidatedProviderBoundGraphEvidence,
+  verifyProviderHeadRevalidatedGraphBindingReceipt
 } from "../dist/provider-head-revalidated-graph-evidence.js";
+import {
+  canonicalizeImmutableEnvelope
+} from "../dist/canonical-immutable-envelope.js";
 
 const SUBJECT_AT = "2026-07-30T00:00:00.000Z";
 const SCOPE = Object.freeze({
   sourceId: "provider-head-verifier",
   threadId: "thread_provider_head_verifier"
+});
+const RECEIPT_SPEC = Object.freeze({
+  hashDomain:
+    "muse.attunement-graph.provider-head-revalidated-graph-evidence-receipt.v1",
+  idField: "receiptId",
+  idPrefix: "muse-provider-head-revalidated-graph-evidence:sha256:"
 });
 
 function invariant(condition, message) {
@@ -17,6 +27,25 @@ function invariant(condition, message) {
       `provider head-revalidated graph evidence verification failed: ${message}`
     );
   }
+}
+
+function nominationMutation(receipt, change, support) {
+  const body = JSON.parse(JSON.stringify(receipt));
+  delete body.receiptId;
+  body.nominations = {
+    core: 1,
+    change,
+    support,
+    omitted: 0,
+    omittedAssertionIdsDigest: null
+  };
+  return JSON.parse(JSON.stringify(
+    canonicalizeImmutableEnvelope(
+      body,
+      "external-mutable",
+      RECEIPT_SPEC
+    ).envelope
+  ));
 }
 
 function state(title = "Private verifier canary") {
@@ -90,6 +119,21 @@ invariant(
   && fresh.evidence.receipt.canAssertDurableProviderAuthority === false,
   "false-continuity authority claims"
 );
+invariant(
+  verifyProviderHeadRevalidatedGraphBindingReceipt(
+    nominationMutation(fresh.evidence.receipt, 128, 127)
+  ).nominations.change === 128,
+  "255 retained optionals must verify"
+);
+let nominationOverflowRejected = false;
+try {
+  verifyProviderHeadRevalidatedGraphBindingReceipt(
+    nominationMutation(fresh.evidence.receipt, 128, 128)
+  );
+} catch {
+  nominationOverflowRejected = true;
+}
+invariant(nominationOverflowRejected, "256 retained optionals must reject");
 
 const changed = await compose(
   [

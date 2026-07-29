@@ -24,6 +24,43 @@ const RECEIPT_SPEC = Object.freeze({
   idField: "receiptId",
   idPrefix: "muse-provider-head-revalidated-graph-evidence:sha256:"
 } as const);
+const OMITTED_DIGEST =
+  `muse-provider-bound-omitted-assertion-ids:sha256:${"a".repeat(64)}`;
+
+function rehashWithNominations(
+  receipt: unknown,
+  nominations: Readonly<{
+    readonly core: number;
+    readonly change: number;
+    readonly support: number;
+    readonly omitted: number;
+    readonly omittedAssertionIdsDigest: string | null;
+  }>
+): unknown {
+  const body = JSON.parse(JSON.stringify(receipt)) as Record<string, unknown>;
+  delete body.receiptId;
+  body.nominations = nominations;
+  const coverage = body.coverage as {
+    reasons: string[];
+  };
+  coverage.reasons = coverage.reasons.filter(
+    (reason) => reason !== "nomination-capacity-bounded"
+  );
+  if (nominations.omitted > 0) {
+    coverage.reasons.splice(
+      coverage.reasons.indexOf("graph-settlement-partial"),
+      0,
+      "nomination-capacity-bounded"
+    );
+  }
+  return JSON.parse(JSON.stringify(
+    canonicalizeImmutableEnvelope(
+      body,
+      "external-mutable",
+      RECEIPT_SPEC
+    ).envelope
+  ));
+}
 
 function state(title = "Private head graph canary") {
   return parseAttunementState({
@@ -308,5 +345,118 @@ describe("provider head-revalidated Graph evidence", () => {
     expect(() =>
       verifyProviderHeadRevalidatedGraphBindingReceipt(hashValid)
     ).toThrowError(ProviderHeadRevalidatedGraphEvidenceError);
+  });
+
+  it("accepts the retained nomination boundary independently of settlement assertions", async () => {
+    const source = await fixture({});
+    const artifact = await source.provider.captureHeadRevalidation(
+      source.scope,
+      { maxCaptureSpanMs: 25 }
+    );
+    const result =
+      await compileHeadRevalidatedProviderBoundGraphEvidence(artifact);
+
+    for (const nominations of [
+      {
+        core: 1,
+        change: 32,
+        support: 0,
+        omitted: 0,
+        omittedAssertionIdsDigest: null
+      },
+      {
+        core: 1,
+        change: 128,
+        support: 127,
+        omitted: 0,
+        omittedAssertionIdsDigest: null
+      },
+      {
+        core: 1,
+        change: 32,
+        support: 0,
+        omitted: 1,
+        omittedAssertionIdsDigest: OMITTED_DIGEST
+      }
+    ] as const) {
+      expect(verifyProviderHeadRevalidatedGraphBindingReceipt(
+        rehashWithNominations(result.receipt, nominations)
+      ).nominations).toEqual(nominations);
+    }
+  });
+
+  it("rejects invalid retained counts and omitted digest relationships", async () => {
+    const source = await fixture({});
+    const artifact = await source.provider.captureHeadRevalidation(
+      source.scope,
+      { maxCaptureSpanMs: 25 }
+    );
+    const result =
+      await compileHeadRevalidatedProviderBoundGraphEvidence(artifact);
+    const invalid = [
+      {
+        core: 0,
+        change: 0,
+        support: 0,
+        omitted: 0,
+        omittedAssertionIdsDigest: null
+      },
+      {
+        core: 1,
+        change: 128,
+        support: 128,
+        omitted: 0,
+        omittedAssertionIdsDigest: null
+      },
+      {
+        core: 1,
+        change: -1,
+        support: 0,
+        omitted: 0,
+        omittedAssertionIdsDigest: null
+      },
+      {
+        core: 1,
+        change: 1.5,
+        support: 0,
+        omitted: 0,
+        omittedAssertionIdsDigest: null
+      },
+      {
+        core: 1,
+        change: Number.MAX_SAFE_INTEGER + 1,
+        support: 0,
+        omitted: 0,
+        omittedAssertionIdsDigest: null
+      },
+      {
+        core: 1,
+        change: 0,
+        support: 0,
+        omitted: 0,
+        omittedAssertionIdsDigest: OMITTED_DIGEST
+      },
+      {
+        core: 1,
+        change: 0,
+        support: 0,
+        omitted: 1,
+        omittedAssertionIdsDigest: null
+      },
+      {
+        core: 1,
+        change: 0,
+        support: 0,
+        omitted: 1,
+        omittedAssertionIdsDigest: "invalid-digest"
+      }
+    ];
+    for (const nominations of invalid) {
+      expect(() =>
+        verifyProviderHeadRevalidatedGraphBindingReceipt(
+          rehashWithNominations(result.receipt, nominations)
+        )
+      ).toThrow();
+    }
   });
 });
