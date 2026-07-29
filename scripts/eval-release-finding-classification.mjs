@@ -94,6 +94,15 @@ export function classifyReleaseFindingSlice({
   if (canonicalJson(findings) !== canonicalJson(prior.findings)) throw classificationError();
   const tupleSetHash = sha256(Buffer.from(JSON.stringify(findings), "utf8"));
   if (tupleSetHash !== prior.bijection.tupleSetHash) throw classificationError();
+  if (!relevantPathsUnchanged(
+    spawn,
+    root.real,
+    prior.source.head,
+    source.head,
+    findings.map((finding) => finding.path),
+  )) {
+    throw classificationError();
+  }
 
   const oppositeScope = scope === "candidate" ? "source" : "candidate";
   const opposite = release.findings
@@ -388,6 +397,47 @@ function compareFinding(left, right) {
     || left.line - right.line
     || compareText(left.ruleId, right.ruleId)
     || compareText(left.matchHash, right.matchHash);
+}
+
+function relevantPathsUnchanged(spawn, root, priorHead, currentHead, paths) {
+  if (priorHead === currentHead) return true;
+  const uniquePaths = [...new Set(paths)].sort(compareText);
+  if (uniquePaths.length === 0 || uniquePaths.some((path) => !safeRelativePath(path))) return false;
+  const ancestry = spawn(
+    "git",
+    ["merge-base", "--is-ancestor", priorHead, currentHead],
+    {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", LC_ALL: "C" },
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 30_000,
+    },
+  );
+  if (ancestry?.status !== 0 || ancestry.signal !== null || ancestry.error) return false;
+  const result = spawn(
+    "git",
+    [
+      "--literal-pathspecs",
+      "diff",
+      "--quiet",
+      "--no-ext-diff",
+      priorHead,
+      currentHead,
+      "--",
+      ...uniquePaths,
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", LC_ALL: "C" },
+      maxBuffer: 16 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 30_000,
+    },
+  );
+  return result?.status === 0 && result.signal === null && !result.error;
 }
 
 function captureCurrentSource(root, spawn) {

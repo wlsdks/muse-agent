@@ -123,7 +123,7 @@ function priorClassification(release, verdict = "false-positive") {
   };
 }
 
-function fixture() {
+function fixture(findingPath = "fixture.txt") {
   const root = mkdtempSync(join(tmpdir(), "muse-release-classification-"));
   const remote = mkdtempSync(join(tmpdir(), "muse-release-classification-remote-"));
   git(root, ["init", "-q"]);
@@ -138,7 +138,7 @@ function fixture() {
     "fixture roadmap\n",
     "utf8",
   );
-  writeFileSync(join(root, "fixture.txt"), `${matchedValue}\n`, "utf8");
+  writeFileSync(join(root, findingPath), `${matchedValue}\n`, "utf8");
   git(root, ["add", "."]);
   git(root, ["commit", "-qm", "fixture"]);
   git(root, ["remote", "add", "origin", remote]);
@@ -154,7 +154,7 @@ function fixture() {
     repoRoot: root,
     now: () => new Date("2026-07-29T00:01:00.000Z"),
   });
-  return { candidate, matchedValue, release, releasePath, remote, root };
+  return { candidate, findingPath, matchedValue, release, releasePath, remote, root };
 }
 
 test("carries forward exactly one hash-only tuple slice while keeping the release gate red", () => {
@@ -332,10 +332,150 @@ test("tuple, provenance, schema, source cleanliness, and filesystem drift fail c
     );
     assert.deepEqual(readFileSync(current.candidate), candidateBefore);
 
-    writeFileSync(join(current.root, "fixture.txt"), "dirty\n", "utf8");
+    writeFileSync(join(current.root, current.findingPath), "dirty\n", "utf8");
     assert.throws(() => run(), /release-finding-classification-failed/u);
     assert.throws(
       () => run({ ruleId: "unknown-safe-rule" }),
+      /release-finding-classification-failed/u,
+    );
+  } finally {
+    rmSync(current.root, { force: true, recursive: true });
+    rmSync(current.remote, { force: true, recursive: true });
+  }
+});
+
+test("refuses to reuse a verdict when a relevant path changed after the prior commit", () => {
+  const current = fixture();
+  try {
+    const prior = priorClassification(current.release);
+    const priorPath = join(current.root, ".evidence", "prior-path-drift.json");
+    const outputPath = join(current.root, ".evidence", "current-path-drift.json");
+    writeCanonical(priorPath, prior);
+
+    writeFileSync(
+      join(current.root, current.findingPath),
+      `${current.matchedValue}\nmetadata changed after the finding\n`,
+      "utf8",
+    );
+    git(current.root, ["add", current.findingPath]);
+    git(current.root, ["commit", "-qm", "change relevant path without moving finding"]);
+    git(current.root, ["push", "-q", "origin", "HEAD:main"]);
+    git(current.root, ["archive", "--format=tar", `--output=${current.candidate}`, "HEAD"]);
+    const release = evaluateReleaseEvidence({
+      candidatePath: current.candidate,
+      outputPath: current.releasePath,
+      repoRoot: current.root,
+      now: () => new Date("2026-07-29T00:03:00.000Z"),
+    });
+    assert.deepEqual(
+      release.findings
+        .filter((finding) => finding.ruleId === "private-key-header" && finding.scope === "candidate")
+        .map(({ line, matchHash, path, ruleId }) => ({ path, line, ruleId, matchHash })),
+      prior.findings,
+    );
+
+    assert.throws(
+      () => classifyReleaseFindingSlice({
+        candidatePath: current.candidate,
+        outputPath,
+        priorClassificationPath: priorPath,
+        releaseEvidencePath: current.releasePath,
+        repoRoot: current.root,
+        ruleId: "private-key-header",
+        scope: "candidate",
+      }),
+      /release-finding-classification-failed/u,
+    );
+  } finally {
+    rmSync(current.root, { force: true, recursive: true });
+    rmSync(current.remote, { force: true, recursive: true });
+  }
+});
+
+test("refuses to reuse a verdict from a non-ancestor commit with identical tuples", () => {
+  const current = fixture();
+  try {
+    const prior = priorClassification(current.release);
+    const priorPath = join(current.root, ".evidence", "prior-sibling.json");
+    const outputPath = join(current.root, ".evidence", "current-sibling.json");
+    writeCanonical(priorPath, prior);
+
+    const tree = git(current.root, ["rev-parse", "HEAD^{tree}"]);
+    const sibling = git(current.root, ["commit-tree", tree, "-m", "sibling root"]);
+    git(current.root, ["switch", "-qc", "sibling", sibling]);
+    git(current.root, ["push", "-qu", "origin", "HEAD:sibling"]);
+    git(current.root, ["archive", "--format=tar", `--output=${current.candidate}`, "HEAD"]);
+    const release = evaluateReleaseEvidence({
+      candidatePath: current.candidate,
+      outputPath: current.releasePath,
+      repoRoot: current.root,
+      now: () => new Date("2026-07-29T00:04:00.000Z"),
+    });
+    assert.deepEqual(
+      release.findings
+        .filter((finding) => finding.ruleId === "private-key-header" && finding.scope === "candidate")
+        .map(({ line, matchHash, path, ruleId }) => ({ path, line, ruleId, matchHash })),
+      prior.findings,
+    );
+
+    assert.throws(
+      () => classifyReleaseFindingSlice({
+        candidatePath: current.candidate,
+        outputPath,
+        priorClassificationPath: priorPath,
+        releaseEvidencePath: current.releasePath,
+        repoRoot: current.root,
+        ruleId: "private-key-header",
+        scope: "candidate",
+      }),
+      /release-finding-classification-failed/u,
+    );
+  } finally {
+    rmSync(current.root, { force: true, recursive: true });
+    rmSync(current.remote, { force: true, recursive: true });
+  }
+});
+
+test("treats finding paths as literal Git paths when checking reuse", () => {
+  const current = fixture(":(literal)fixture.txt");
+  try {
+    const prior = priorClassification(current.release);
+    const priorPath = join(current.root, ".evidence", "prior-pathspec.json");
+    const outputPath = join(current.root, ".evidence", "current-pathspec.json");
+    writeCanonical(priorPath, prior);
+
+    writeFileSync(
+      join(current.root, current.findingPath),
+      `${current.matchedValue}\nmetadata changed after the finding\n`,
+      "utf8",
+    );
+    git(current.root, ["add", "."]);
+    git(current.root, ["commit", "-qm", "change pathspec-shaped relevant path"]);
+    git(current.root, ["push", "-q", "origin", "HEAD:main"]);
+    git(current.root, ["archive", "--format=tar", `--output=${current.candidate}`, "HEAD"]);
+    const release = evaluateReleaseEvidence({
+      candidatePath: current.candidate,
+      outputPath: current.releasePath,
+      repoRoot: current.root,
+      now: () => new Date("2026-07-29T00:05:00.000Z"),
+    });
+    assert.deepEqual(
+      release.findings
+        .filter((finding) => finding.ruleId === "private-key-header" && finding.scope === "candidate")
+        .map(({ line, matchHash, path, ruleId }) => ({ path, line, ruleId, matchHash })),
+      prior.findings,
+    );
+
+    assert.throws(
+      () => classifyReleaseFindingSlice({
+        candidatePath: current.candidate,
+        outputPath,
+        priorClassificationPath: priorPath,
+        releaseEvidencePath: current.releasePath,
+        repoRoot: current.root,
+        ruleId: "private-key-header",
+        scope: "candidate",
+      }),
       /release-finding-classification-failed/u,
     );
   } finally {
