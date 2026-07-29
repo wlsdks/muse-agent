@@ -18,7 +18,6 @@ vi.mock("@muse/attunement/continuity-snapshots", async () =>
 const SOURCE_ID = "provider-head-graph-test";
 const THREAD_ID = "thread_provider_head_graph";
 const SUBJECT_AT = "2026-07-30T00:00:00.000Z";
-const HEAD_AT = "2026-07-30T00:00:00.025Z";
 const RECEIPT_SPEC = Object.freeze({
   hashDomain:
     "muse.attunement-graph.provider-head-revalidated-graph-evidence-receipt.v1",
