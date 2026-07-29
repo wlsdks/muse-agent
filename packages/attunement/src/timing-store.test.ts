@@ -130,6 +130,102 @@ describe("thread-scoped continuity timing store", () => {
     ]);
   });
 
+  it("turns rejected timing feedback into a bounded rollback proposal without policy mutation", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(file, { consentVersion: 1, threadId: "thread_work" }, knownThread, options);
+    const candidate = await evaluateTimingSession(file, session.id, options);
+    const before = await readTimingState(file);
+    let policyMutationAttempts = 0;
+    const result = await recordTimingFeedbackImpl(
+      file,
+      candidate.id,
+      "rejected",
+      {
+        run: () => {
+          policyMutationAttempts += 1;
+          throw new Error("rejected feedback must not enter the active-policy mutation gate");
+        }
+      },
+      options
+    );
+
+    expect(result).toMatchObject({
+      applied: false,
+      feedback: {
+        candidateId: candidate.id,
+        outcome: "rejected",
+        resultingCooldownMs: before.sessions[0]!.policy.offerCooldownMs,
+        resultingPolicyVersion: before.sessions[0]!.policy.version,
+        rollbackProposal: {
+          baseCooldownMs: before.sessions[0]!.policy.offerCooldownMs,
+          basePolicyVersion: before.sessions[0]!.policy.version,
+          boundary: {
+            actionScope: "not-expanded",
+            permission: "unchanged",
+            recipient: "unchanged",
+            source: "unchanged"
+          },
+          candidateId: candidate.id,
+          proposedCooldownMs: 24 * 60 * 60_000,
+          reason: "negative-outcome-rejected",
+          scope: "thread-display-timing",
+          sessionId: session.id,
+          threadId: session.threadId
+        }
+      },
+      session
+    });
+    expect(policyMutationAttempts).toBe(0);
+    const after = await readTimingState(file);
+    expect(after.sessions).toEqual(before.sessions);
+    expect(after.candidates).toEqual(before.candidates);
+    expect(after.observations).toEqual(before.observations);
+    expect(after.feedback).toEqual([result.feedback]);
+
+    const raw = await readFile(file, "utf8");
+    const replay = await recordTimingFeedbackImpl(
+      file,
+      candidate.id,
+      "rejected",
+      { run: () => { throw new Error("replay must not enter mutation gate"); } },
+      options
+    );
+    expect(replay).toEqual(result);
+    expect(await readFile(file, "utf8")).toBe(raw);
+
+    const missingProposal = JSON.parse(raw) as { feedback: Array<{ rollbackProposal?: unknown }> };
+    delete missingProposal.feedback[0]!.rollbackProposal;
+    await writeFile(file, JSON.stringify(missingProposal));
+    await expect(readTimingState(file)).rejects.toBeInstanceOf(AttunementStoreError);
+
+    const reboundBase = JSON.parse(raw) as {
+      feedback: Array<{
+        resultingCooldownMs: number;
+        resultingPolicyVersion: number;
+        rollbackProposal?: {
+          baseCooldownMs: number;
+          basePolicyVersion: number;
+        };
+      }>;
+    };
+    reboundBase.feedback[0]!.resultingCooldownMs = 60 * 60_000;
+    reboundBase.feedback[0]!.resultingPolicyVersion = 1;
+    reboundBase.feedback[0]!.rollbackProposal!.baseCooldownMs = 60 * 60_000;
+    reboundBase.feedback[0]!.rollbackProposal!.basePolicyVersion = 1;
+    await writeFile(file, JSON.stringify(reboundBase));
+    await expect(readTimingState(file)).rejects.toBeInstanceOf(AttunementStoreError);
+
+    const tampered = JSON.parse(raw) as { feedback: Array<{ rollbackProposal?: { boundary: { actionScope: string } } }> };
+    tampered.feedback[0]!.rollbackProposal!.boundary.actionScope = "expanded";
+    await writeFile(file, JSON.stringify(tampered));
+    await expect(readTimingState(file)).rejects.toBeInstanceOf(AttunementStoreError);
+
+    const weakened = JSON.parse(raw) as { feedback: Array<{ rollbackProposal?: { proposedCooldownMs: number } }> };
+    weakened.feedback[0]!.rollbackProposal!.proposedCooldownMs = 1;
+    await writeFile(file, JSON.stringify(weakened));
+    await expect(readTimingState(file)).rejects.toBeInstanceOf(AttunementStoreError);
+  });
+
   it("reads legacy rule-v1 candidates without rewriting their bytes", async () => {
     const { file, options } = fixture();
     const session = await startTimingSession(file, { consentVersion: 1, threadId: "thread_work" }, knownThread, options);
@@ -145,13 +241,57 @@ describe("thread-scoped continuity timing store", () => {
         ruleVersion: 1,
         sessionId: session.id,
         threadId: session.threadId
+      }],
+      schemaVersion: 1
+    };
+    const raw = `${JSON.stringify(legacy, null, 2)}\n`;
+    await writeFile(file, raw);
+
+    expect(await readTimingState(file)).toEqual({ ...legacy, schemaVersion: 2 });
+    expect(await readFile(file, "utf8")).toBe(raw);
+  });
+
+  it("migrates a schema-v1 rejected receipt to an explicit legacy marker", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(file, { consentVersion: 1, threadId: "thread_work" }, knownThread, options);
+    const candidate = await evaluateTimingSession(file, session.id, options);
+    const state = await readTimingState(file);
+    const legacy = {
+      ...state,
+      feedback: [{
+        candidateId: candidate.id,
+        outcome: "rejected",
+        recordedAt: "2026-07-15T09:00:00.000Z",
+        resultingCooldownMs: 24 * 60 * 60_000,
+        resultingPolicyVersion: 1,
+        sessionId: session.id,
+        threadId: session.threadId
+      }],
+      schemaVersion: 1,
+      sessions: [{
+        ...session,
+        policy: {
+          ...session.policy,
+          offerCooldownMs: 24 * 60 * 60_000,
+          version: 1
+        }
       }]
     };
     const raw = `${JSON.stringify(legacy, null, 2)}\n`;
     await writeFile(file, raw);
 
-    expect(await readTimingState(file)).toEqual(legacy);
+    expect((await readTimingState(file)).feedback[0]).toMatchObject({
+      candidateId: candidate.id,
+      legacyUnproposedRejection: true,
+      outcome: "rejected"
+    });
     expect(await readFile(file, "utf8")).toBe(raw);
+
+    await pauseTimingSession(file, session.id, options);
+    expect(await readTimingState(file)).toMatchObject({
+      feedback: [{ legacyUnproposedRejection: true }],
+      schemaVersion: 2
+    });
   });
 
   it("forgets every receipt for a session", async () => {
@@ -166,7 +306,7 @@ describe("thread-scoped continuity timing store", () => {
     await evaluateTimingSession(file, session.id, options);
     const deleted = await forgetTimingSession(file, session.id);
     expect(deleted).toEqual({ deletedCandidates: 1, deletedFeedback: 0, deletedObservations: 1 });
-    expect(await readTimingState(file)).toEqual({ candidates: [], feedback: [], observations: [], schemaVersion: 1, sessions: [] });
+    expect(await readTimingState(file)).toEqual({ candidates: [], feedback: [], observations: [], schemaVersion: 2, sessions: [] });
   });
 
   it("fails closed when persisted state contains a raw desktop field", async () => {
@@ -184,7 +324,7 @@ describe("thread-scoped continuity timing store", () => {
         threadId: "thread_work",
         windowTitle: "secret document"
       }],
-      schemaVersion: 1,
+      schemaVersion: 2,
       sessions: []
     }));
     await expect(readTimingState(file)).rejects.toBeInstanceOf(AttunementStoreError);

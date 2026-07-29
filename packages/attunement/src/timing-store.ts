@@ -121,13 +121,35 @@ export interface TimingFeedback {
   readonly resultingPolicyVersion: number;
   readonly sessionId: string;
   readonly threadId: string;
+  readonly rollbackProposal?: TimingRollbackProposal;
+  /** Added only while reading a schema-v1 rejected receipt that predates
+   * rollback proposals. Fresh schema-v2 feedback never writes this marker. */
+  readonly legacyUnproposedRejection?: true;
+}
+
+export interface TimingRollbackProposal {
+  readonly baseCooldownMs: number;
+  readonly basePolicyVersion: number;
+  readonly boundary: {
+    readonly actionScope: "not-expanded";
+    readonly permission: "unchanged";
+    readonly recipient: "unchanged";
+    readonly source: "unchanged";
+  };
+  readonly candidateId: string;
+  readonly createdAt: string;
+  readonly proposedCooldownMs: number;
+  readonly reason: "negative-outcome-rejected";
+  readonly scope: "thread-display-timing";
+  readonly sessionId: string;
+  readonly threadId: string;
 }
 
 export interface TimingState {
   readonly candidates: readonly TimingCandidate[];
   readonly feedback: readonly TimingFeedback[];
   readonly observations: readonly TimingObservation[];
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly sessions: readonly ThreadTimingSession[];
 }
 
@@ -158,7 +180,7 @@ const EMPTY_STATE: TimingState = {
   candidates: [],
   feedback: [],
   observations: [],
-  schemaVersion: 1,
+  schemaVersion: 2,
   sessions: []
 };
 
@@ -295,6 +317,9 @@ export async function recordTimingFeedback(
   if (!["used", "adjusted", "ignored", "rejected"].includes(outcome)) {
     throw new AttunementStoreError("timing feedback must be used, adjusted, ignored, or rejected");
   }
+  if (outcome === "rejected") {
+    return recordRejectedTimingFeedbackProposal(file, candidateId, options);
+  }
   return runActiveAttunementPolicyMutation(activePolicyWriteGate, () =>
     mutateTimingState<{ readonly applied: boolean; readonly feedback: TimingFeedback; readonly session: ThreadTimingSession }>(file, options, (state) => {
       const candidate = state.candidates.find((entry) => entry.id === candidateId);
@@ -326,6 +351,57 @@ export async function recordTimingFeedback(
       };
     })
   );
+}
+
+function recordRejectedTimingFeedbackProposal(
+  file: string,
+  candidateId: string,
+  options: TimingStoreOptions
+): Promise<{ readonly applied: false; readonly feedback: TimingFeedback; readonly session: ThreadTimingSession }> {
+  return mutateTimingState(file, options, (state) => {
+    const candidate = state.candidates.find((entry) => entry.id === candidateId);
+    if (!candidate) throw new AttunementStoreError(`no timing candidate with id '${candidateId}'`);
+    const session = requireSession(state, candidate.sessionId);
+    const existing = state.feedback.find((entry) => entry.candidateId === candidate.id);
+    if (existing) {
+      if (existing.outcome !== "rejected") {
+        throw new AttunementStoreError(`timing candidate '${candidateId}' already has immutable feedback '${existing.outcome}'`);
+      }
+      return { changed: false, result: { applied: false, feedback: existing, session }, state };
+    }
+    const recordedAt = nowIso(options);
+    const feedback: TimingFeedback = {
+      candidateId: candidate.id,
+      outcome: "rejected",
+      recordedAt,
+      resultingCooldownMs: session.policy.offerCooldownMs,
+      resultingPolicyVersion: session.policy.version,
+      rollbackProposal: {
+        baseCooldownMs: session.policy.offerCooldownMs,
+        basePolicyVersion: session.policy.version,
+        boundary: {
+          actionScope: "not-expanded",
+          permission: "unchanged",
+          recipient: "unchanged",
+          source: "unchanged"
+        },
+        candidateId: candidate.id,
+        createdAt: recordedAt,
+        proposedCooldownMs: MAX_COOLDOWN_MS,
+        reason: "negative-outcome-rejected",
+        scope: "thread-display-timing",
+        sessionId: session.id,
+        threadId: session.threadId
+      },
+      sessionId: session.id,
+      threadId: session.threadId
+    };
+    return {
+      changed: true,
+      result: { applied: false, feedback, session },
+      state: { ...state, feedback: trim([...state.feedback, feedback], MAX_FEEDBACK) }
+    };
+  });
 }
 
 export function inspectTimingSession(state: TimingState, sessionId: string): {
@@ -380,14 +456,15 @@ function decideTiming(
   return decision("offer", "stable-focus-category-boundary");
 }
 
-function policyForTimingOutcome(policy: TimingPolicy, outcome: ContinuityOutcome): TimingPolicy {
+function policyForTimingOutcome(
+  policy: TimingPolicy,
+  outcome: Exclude<ContinuityOutcome, "rejected">
+): TimingPolicy {
   const cooldown = outcome === "used"
     ? policy.offerCooldownMs
     : outcome === "adjusted"
       ? Math.min(MAX_COOLDOWN_MS, policy.offerCooldownMs + 30 * 60_000)
-      : outcome === "ignored"
-        ? Math.min(MAX_COOLDOWN_MS, policy.offerCooldownMs * 2)
-        : MAX_COOLDOWN_MS;
+      : Math.min(MAX_COOLDOWN_MS, policy.offerCooldownMs * 2);
   return { ...policy, offerCooldownMs: Math.max(MIN_COOLDOWN_MS, cooldown), version: policy.version + 1 };
 }
 
@@ -419,13 +496,50 @@ async function writeTimingState(file: string, state: TimingState): Promise<void>
 }
 
 function parseTimingState(value: unknown): TimingState {
-  if (!isExactRecord(value, ["candidates", "feedback", "observations", "schemaVersion", "sessions"]) || value.schemaVersion !== 1 || !Array.isArray(value.sessions) || !Array.isArray(value.observations) || !Array.isArray(value.candidates) || !Array.isArray(value.feedback)
-    || !value.sessions.every(isSession) || !value.observations.every(isObservation) || !value.candidates.every(isCandidate) || !value.feedback.every(isFeedback)) {
-    throw new AttunementStoreError("timing state is malformed or uses an unsupported schema");
+  if (isTimingStateShape(value, 2, isFeedback)) {
+    const state = value as unknown as TimingState;
+    validateTimingStateRelationships(state);
+    return state;
   }
-  const state = value as unknown as TimingState;
-  validateTimingStateRelationships(state);
-  return state;
+  if (isTimingStateShape(value, 1, isLegacyFeedback)) {
+    const legacy = value as {
+      readonly candidates: readonly TimingCandidate[];
+      readonly feedback: readonly TimingFeedback[];
+      readonly observations: readonly TimingObservation[];
+      readonly sessions: readonly ThreadTimingSession[];
+    };
+    const migrated: TimingState = {
+      candidates: legacy.candidates,
+      feedback: legacy.feedback.map((entry) =>
+        entry.outcome === "rejected" && entry.rollbackProposal === undefined
+          ? { ...entry, legacyUnproposedRejection: true as const }
+          : entry
+      ),
+      observations: legacy.observations,
+      schemaVersion: 2,
+      sessions: legacy.sessions
+    };
+    validateTimingStateRelationships(migrated);
+    return migrated;
+  }
+  throw new AttunementStoreError("timing state is malformed or uses an unsupported schema");
+}
+
+function isTimingStateShape(
+  value: unknown,
+  schemaVersion: 1 | 2,
+  feedbackValidator: (entry: unknown) => boolean
+): value is Record<string, unknown> {
+  return isExactRecord(value, ["candidates", "feedback", "observations", "schemaVersion", "sessions"])
+    && value.schemaVersion === schemaVersion
+    && Array.isArray(value.sessions)
+    && Array.isArray(value.observations)
+    && Array.isArray(value.candidates)
+    && Array.isArray(value.feedback)
+    && value.sessions.every(isSession)
+    && value.observations.every(isObservation)
+    && value.candidates.every(isCandidate)
+    && value.feedback.every(feedbackValidator);
 }
 
 /** File JSON is untrusted: preserve the graph invariants that TypeScript types cannot enforce at runtime. */
@@ -456,6 +570,33 @@ function validateTimingStateRelationships(state: TimingState): void {
     const session = sessions.get(entry.sessionId);
     const candidate = candidates.get(entry.candidateId);
     if (!feedbackCandidateIds.add(entry.candidateId) || !session || !candidate || session.threadId !== entry.threadId || candidate.sessionId !== entry.sessionId || candidate.threadId !== entry.threadId) {
+      throwInconsistentTimingRelationships();
+    }
+    const proposal = entry.rollbackProposal;
+    if (
+      proposal
+      && (
+        proposal.basePolicyVersion > session.policy.version
+        || (
+          proposal.basePolicyVersion === session.policy.version
+          && proposal.baseCooldownMs !== session.policy.offerCooldownMs
+        )
+      )
+    ) {
+      throwInconsistentTimingRelationships();
+    }
+    if (
+      entry.legacyUnproposedRejection
+      && (
+        entry.resultingPolicyVersion < 1
+        || entry.resultingCooldownMs !== MAX_COOLDOWN_MS
+        || entry.resultingPolicyVersion > session.policy.version
+        || (
+          entry.resultingPolicyVersion === session.policy.version
+          && entry.resultingCooldownMs !== session.policy.offerCooldownMs
+        )
+      )
+    ) {
       throwInconsistentTimingRelationships();
     }
   }
@@ -524,9 +665,97 @@ function counterfactualActionForDecision(decision: TimingDecision): TimingCounte
 }
 
 function isFeedback(value: unknown): value is TimingFeedback {
-  return isExactRecord(value, ["candidateId", "outcome", "recordedAt", "resultingCooldownMs", "resultingPolicyVersion", "sessionId", "threadId"]) && isNonEmptyString(value.candidateId) && isNonEmptyString(value.sessionId) && isNonEmptyString(value.threadId) && isNonEmptyString(value.recordedAt)
-    && isIso(value.recordedAt) && ["used", "adjusted", "ignored", "rejected"].includes(value.outcome as string) && isPositiveSafeInteger(value.resultingCooldownMs)
+  const baseKeys = ["candidateId", "outcome", "recordedAt", "resultingCooldownMs", "resultingPolicyVersion", "sessionId", "threadId"];
+  const hasProposal = isExactRecord(value, [...baseKeys, "rollbackProposal"]);
+  const hasLegacyMarker = isExactRecord(value, [...baseKeys, "legacyUnproposedRejection"]);
+  const exact = isExactRecord(value, baseKeys) || hasProposal || hasLegacyMarker;
+  if (!exact) return false;
+  const entry = value as Record<string, unknown>;
+  if (!isNonEmptyString(entry.candidateId) || !isNonEmptyString(entry.sessionId) || !isNonEmptyString(entry.threadId) || !isNonEmptyString(entry.recordedAt)
+    || !isIso(entry.recordedAt) || !["used", "adjusted", "ignored", "rejected"].includes(entry.outcome as string) || !isPositiveSafeInteger(entry.resultingCooldownMs)
+    || !isNonNegativeSafeInteger(entry.resultingPolicyVersion)) {
+    return false;
+  }
+  if (entry.outcome !== "rejected") return !hasProposal && !hasLegacyMarker;
+  if (hasLegacyMarker) {
+    return entry.legacyUnproposedRejection === true && !("rollbackProposal" in entry);
+  }
+  const proposal = entry.rollbackProposal;
+  return hasProposal
+    && isTimingRollbackProposal(proposal)
+    && proposal.candidateId === entry.candidateId
+    && proposal.sessionId === entry.sessionId
+    && proposal.threadId === entry.threadId
+    && proposal.createdAt === entry.recordedAt
+    && proposal.baseCooldownMs === entry.resultingCooldownMs
+    && proposal.basePolicyVersion === entry.resultingPolicyVersion;
+}
+
+function isLegacyFeedback(value: unknown): value is TimingFeedback {
+  const baseKeys = ["candidateId", "outcome", "recordedAt", "resultingCooldownMs", "resultingPolicyVersion", "sessionId", "threadId"];
+  if (isExactRecord(value, baseKeys)) {
+    return isFeedbackBase(value)
+      && (
+        value.outcome !== "rejected"
+        || (
+          value.resultingCooldownMs === MAX_COOLDOWN_MS
+          && typeof value.resultingPolicyVersion === "number"
+          && value.resultingPolicyVersion >= 1
+        )
+      );
+  }
+  if (!isExactRecord(value, [...baseKeys, "rollbackProposal"]) || !isFeedbackBase(value)) {
+    return false;
+  }
+  return value.outcome === "rejected"
+    && isTimingRollbackProposal(value.rollbackProposal)
+    && value.rollbackProposal.candidateId === value.candidateId
+    && value.rollbackProposal.sessionId === value.sessionId
+    && value.rollbackProposal.threadId === value.threadId
+    && value.rollbackProposal.createdAt === value.recordedAt
+    && value.rollbackProposal.baseCooldownMs === value.resultingCooldownMs
+    && value.rollbackProposal.basePolicyVersion === value.resultingPolicyVersion;
+}
+
+function isFeedbackBase(value: Record<string, unknown>): boolean {
+  return isNonEmptyString(value.candidateId)
+    && isNonEmptyString(value.sessionId)
+    && isNonEmptyString(value.threadId)
+    && isNonEmptyString(value.recordedAt)
+    && isIso(value.recordedAt)
+    && ["used", "adjusted", "ignored", "rejected"].includes(value.outcome as string)
+    && isPositiveSafeInteger(value.resultingCooldownMs)
     && isNonNegativeSafeInteger(value.resultingPolicyVersion);
+}
+
+function isTimingRollbackProposal(value: unknown): value is TimingRollbackProposal {
+  return isExactRecord(value, [
+    "baseCooldownMs",
+    "basePolicyVersion",
+    "boundary",
+    "candidateId",
+    "createdAt",
+    "proposedCooldownMs",
+    "reason",
+    "scope",
+    "sessionId",
+    "threadId"
+  ])
+    && isPositiveSafeInteger(value.baseCooldownMs)
+    && isNonNegativeSafeInteger(value.basePolicyVersion)
+    && isExactRecord(value.boundary, ["actionScope", "permission", "recipient", "source"])
+    && value.boundary.actionScope === "not-expanded"
+    && value.boundary.permission === "unchanged"
+    && value.boundary.recipient === "unchanged"
+    && value.boundary.source === "unchanged"
+    && isNonEmptyString(value.candidateId)
+    && isNonEmptyString(value.createdAt)
+    && isIso(value.createdAt)
+    && value.proposedCooldownMs === MAX_COOLDOWN_MS
+    && value.reason === "negative-outcome-rejected"
+    && value.scope === "thread-display-timing"
+    && isNonEmptyString(value.sessionId)
+    && isNonEmptyString(value.threadId);
 }
 
 function validateObservationInput(input: RecordTimingObservationInput): void {
