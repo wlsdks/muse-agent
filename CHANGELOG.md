@@ -8,6 +8,21 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified private exact thread-rooted graph witness compiler.
+  Hostile caller input is admitted separately from its normalized semantic request
+  identity, then one exact Continuity thread seeds a bounded, deterministic traversal over
+  scope-, time-, direction-, and supersession-valid assertions. The compiler emits only
+  locally closed proof documents for the existing settlement seam, chooses equal-length
+  paths by raw field order, records every optional nomination that was excluded, and
+  abstains when the core path is unavailable. Its receipts always say coverage is partial
+  and never claim snapshot/world absence, source authority, current freshness, permission,
+  or action authority. Seven focused tests, all 174 package tests, standalone literal
+  receipt verification, package/root typechecks, build, changed tests, lint, hostile
+  accessor probes, and a fresh independent Sol/high completion gate passed. This remains a
+  package-private in-memory operator: fair high-degree frontier coverage, authoritative
+  snapshot/freshness Providers, persistence, runtime composition, UI, Shadow Muse, Policy
+  Cards, and dogfood qualification are still pending.
+
 - Added the independently verified private AWG-050a1 scoped proof-document settlement
   adapter. It admits hostile caller-nominated documents through AWG-045a, validates
   scope/snapshot/freshness coherence and locally closed proofs, maps exact candidates and

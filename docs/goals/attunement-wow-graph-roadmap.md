@@ -63,7 +63,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-040** | Continuity Capsule v1 | User-invoked, library-only Capsule renders the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer | in progress (`AWG-040b/c` verified library-only; application integration and exact-stop capture pending) |
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
-| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` independently verified private seam; `050a2/3` pending) |
+| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` settlement and `050a2a` exact thread-rooted witness compiler independently verified; fair frontier `050a2b` and Providers `050a3` pending) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-070** | Storage bake-off | Prove the Muse-owned local default first; compare PostgreSQL and at most one embedded candidate only as optional Adapters on correctness, cost, recovery, portability, and maintenance | pending |
@@ -74,7 +74,7 @@ Raw numbering does not activate work. Before each BUILD slice, inspect current s
 classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `monitoring`,
 `blocked`, `deferred`, `rejected`, or `superseded`. Implement only the missing delta.
 
-## Next eligible activation: AWG-050a2 bounded nomination/traversal PLAN
+## Next eligible activation: AWG-050a2b fair frontier nomination/coverage PLAN
 
 Independent Sol-class architecture reviews converged on a semantic prerequisite before the
 Shadow ledger or durable database:
@@ -93,20 +93,58 @@ Shadow ledger or durable database:
   proof closure, deterministic candidate settlement, and retained canonical context-byte
   materialization. All outputs remain partial or abstained and grant no absence,
   freshness, action, traversal-coverage, or source-authority claim.
-- **AWG-050a2 (next PLAN):** design content-addressed bounded nomination/traversal that
-  produces the finite proof documents consumed by 050a1, measures high-degree fairness and
-  recall, and can state exact scoped coverage without upgrading it to current-world
+- **AWG-050a2a (completed private seam):** one exact Continuity thread now seeds
+  content-addressed bounded witness traversal. The compiler selects deterministic shortest
+  paths over valid assertions, emits locally closed proof documents consumed by 050a1,
+  accounts for excluded optional nominations, and abstains when the core witness cannot be
+  produced. Coverage remains explicitly partial; caller-declared snapshot/freshness facts
+  are validated but not independently observed.
+- **AWG-050a2b (next PLAN):** design fair frontier nomination and measurable coverage for
+  high-degree graphs so a crowded neighborhood cannot starve important evidence. It must
+  define what finite scoped coverage can be stated without upgrading it to snapshot/world
   completeness. This does not open BUILD by itself.
 - **AWG-050a3 (after 050a2):** compose authoritative snapshot/freshness Providers and the
   verified Continuity observation/change/Capsule `resumeContext` grammar.
 
 The full decision and dissent are in
 [Muse Agent-Native Graph Core](../design/agent-native-graph-core.md). Those earlier
-fail-closed findings produced AWG-045a/045b and the now verified AWG-050a1 seam rather than
-being bypassed. This is still private deterministic substrate, not shipped `resumeContext`
-or user-visible wow. AWG-050a2 remains closed to source changes until a new bounded PLAN
-passes. AWG-050b then owns the actual Shadow `silent | digest | offer` decision receipt and
-counterfactual.
+fail-closed findings produced AWG-045a/045b and the now verified AWG-050a1/050a2a seams
+rather than being bypassed. This is still private deterministic substrate, not shipped
+`resumeContext` or user-visible wow. AWG-050a2b remains closed to source changes until a
+new bounded PLAN passes. AWG-050b then owns the actual Shadow
+`silent | digest | offer` decision receipt and counterfactual.
+
+## Completed slice: AWG-050a2a
+
+- **Product meaning:** Muse can start at one exact Continuity thread and compile the
+  shortest deterministic, source-linked graph witnesses that explain the bounded work
+  around it. This is the first Muse-owned thread-rooted graph operator, not a complete
+  graph database or user-visible feature. `AWG-050a2a` is an internal ledger ID; product
+  updates should call this capability **exact thread-rooted graph witnesses**.
+- **Classification at activation:** `missing` — 050a1 could settle already nominated
+  proof documents, but Muse could not derive those documents from an exact thread seed.
+- **Status:** `completed private seam` — the implementation, adversarial probes, focused
+  tests, package regression, standalone verifier, and independent completion gate pass.
+- **Maker:** Codex root controller, Sol-class semantic-integrity BUILD with inherited
+  reasoning, after one bounded Terra/high worker attempt produced no source edits.
+- **Evaluator:** fresh `gpt-5.6-sol` with high reasoning and a separate read-only context.
+- **Selection reason:** path determinism, hostile admission, temporal truth, and absence
+  boundaries are graph semantic-integrity work; the implementation remains a pure,
+  package-private TypeScript operator with no persistence or runtime effect.
+- **Escalation trigger:** stop if the slice requires a public export, store mutation,
+  authoritative snapshot claim, persistence/backend choice, runtime/API/UI composition,
+  action authority, or weakening partial/abstained truth rules.
+- **Acceptance:** exact thread seed and scope; normalized semantic request identity;
+  deterministic shortest witness paths with raw-field tie order; closed proof documents;
+  optional exclusion accounting; core-unavailable abstention; hostile accessor/prototype/
+  alias/cycle/sparse/unsafe-number rejection; strict scope, time, direction, supersession,
+  freshness, and six-axis bounds; deeply frozen content-addressed output; partial-only
+  coverage and no absence, freshness, source-authority, permission, or action claim.
+- **Evidence:** 7/7 focused tests, 174/174 package tests, package and root typechecks,
+  package build, changed tests, standalone literal receipt verifier, lint, diff check, and
+  fresh independent Sol/high adversarial PASS.
+- **Rollback:** delete the three private source/test/verifier files; there is no export,
+  migration, stored data, or runtime cleanup.
 
 ## Completed slice: AWG-010
 
