@@ -28,7 +28,7 @@ import { inspectCapabilityEvidence } from "./eval-agent-evidence.mjs";
 import { completionLine, skipLine } from "./eval-skip.mjs";
 
 const stochastic = CAPABILITIES[0];
-const EXECUTE_ARGS = ["--execute", "--confirm-idle", "--budget-minutes", "990"];
+const EXECUTE_ARGS = ["--execute", "--confirm-idle", "--budget-minutes", "132"];
 const HEALTHY_RESOURCE_SNAPSHOT = {
   cpuCount: 8,
   freeMemoryBytes: 8 * 1024 * 1024 * 1024,
@@ -193,8 +193,8 @@ test("preflight is a static 11-axis plan and never enters the full evaluation pi
   assert.deepEqual(preflight.axes.map(({ id, repeats, required }) => ({ id, repeats, required })), CAPABILITIES.map(({ id, repeats, required }) => ({ id, repeats, required })));
   assert.deepEqual(preflight.resourceBudget, {
     batteryProcesses: 11,
-    hardSequentialTimeoutMinutes: 990,
-    perBatteryTimeoutMinutes: 90,
+    hardSequentialTimeoutMinutes: 132,
+    perBatteryTimeoutMinutes: 12,
     requestedTrials: 29,
   });
   assert.match(stdout, /capability preflight \(plan only\)/u);
@@ -238,7 +238,7 @@ test("single-axis preflight selects exactly one known axis and uses only its bud
   assert.equal(preflight.axes.length, 1);
   assert.equal(preflight.axes[0].id, "plan-quality");
   assert.equal(preflight.resourceBudget.batteryProcesses, 1);
-  assert.equal(preflight.resourceBudget.hardSequentialTimeoutMinutes, 90);
+  assert.equal(preflight.resourceBudget.hardSequentialTimeoutMinutes, 12);
   assert.deepEqual(JSON.parse(stdout), preflight);
 });
 
@@ -277,12 +277,12 @@ test("invalid axis selection fails before preflight build, spawn, or evidence wr
   assert.equal(sideEffects, 0);
 });
 
-test("single-axis execution runs only the selected battery and cannot pass the full aggregate", () => {
+test("single-axis execution runs only the selected battery and cannot pass the full aggregate", async () => {
   let stdout = "";
   let invocations = 0;
   const previousExitCode = process.exitCode;
-  const report = main(
-    ["--json", "--execute", "--axis", "plan-quality", "--confirm-idle", "--budget-minutes", "90"],
+  const report = await main(
+    ["--json", "--execute", "--axis", "plan-quality", "--confirm-idle", "--budget-minutes", "12"],
     verifiedPipeline({
       spawn: (_command, _args, options) => {
         invocations += 1;
@@ -347,7 +347,7 @@ test("execution admission is read-only, requires owner confirmation and a full d
     assert.deepEqual(JSON.parse(stdout), refused);
 
     const admitted = createCapabilityExecutionAdmissionForArgs(
-      ["--admit", "--confirm-idle", "--budget-minutes", "990"],
+      ["--admit", "--confirm-idle", "--budget-minutes", "132"],
       { readResourceSnapshot: () => HEALTHY_RESOURCE_SNAPSHOT }
     );
     assert.equal(admitted.status, "admit");
@@ -360,7 +360,7 @@ test("execution admission is read-only, requires owner confirmation and a full d
 test("execution is refused before the build pipeline on missing intent, pressure, or invalid OS observations", () => {
   const scenarios = [
     { args: ["--json"], reason: "execution-intent-required", snapshot: HEALTHY_RESOURCE_SNAPSHOT },
-    { args: ["--json", "--execute", "--confirm-idle", "--budget-minutes", "989"], reason: "insufficient-time-budget", snapshot: HEALTHY_RESOURCE_SNAPSHOT },
+    { args: ["--json", "--execute", "--confirm-idle", "--budget-minutes", "131"], reason: "insufficient-time-budget", snapshot: HEALTHY_RESOURCE_SNAPSHOT },
     { args: ["--json", "--execute", "--confirm-idle", "--budget-minutes", "1e100"], reason: "invalid-owner-budget", snapshot: HEALTHY_RESOURCE_SNAPSHOT },
     { args: ["--json", ...EXECUTE_ARGS], reason: "low-free-memory", snapshot: { ...HEALTHY_RESOURCE_SNAPSHOT, freeMemoryBytes: 1 } },
     { args: ["--json", ...EXECUTE_ARGS], reason: "cpu-load", snapshot: { ...HEALTHY_RESOURCE_SNAPSHOT, load1: 4 } },
@@ -473,6 +473,10 @@ test("spawn errors, signals, non-zero exits, and contradictory pass markers fail
     classifyCapabilityResult(stochastic, result("", { error: new Error("secret spawn details") })).reason,
     "spawn-error"
   );
+  assert.equal(
+    classifyCapabilityResult(stochastic, result("", { spawnError: true, status: null })).reason,
+    "spawn-error"
+  );
   assert.equal(classifyCapabilityResult(stochastic, result("", { status: null, signal: "SIGTERM" })).reason, "signal");
   const nonZero = classifyCapabilityResult(stochastic, result(passed, { status: 2 }));
   assert.equal(nonZero.reason, "exit-nonzero");
@@ -570,18 +574,16 @@ test("marker mutation: fail and environmental skip cannot be mistaken for pass",
   );
 });
 
-test("--json keeps stdout JSON-only, redirects safe progress, and enforces repeat env", () => {
+test("--json keeps stdout JSON-only, redirects safe progress, and enforces repeat env", async () => {
   let stdout = "";
   let stderr = "";
   let clock = 0;
   const repeats = [];
-  const timeouts = [];
-  const killSignals = [];
-  const fakeSpawn = (_command, _args, options) => {
+  const deadlines = [];
+  const fakeRunProcess = (_command, _args, options) => {
     const requested = Number(options.env.MUSE_EVAL_REPEAT);
     repeats.push(requested);
-    timeouts.push(options.timeout);
-    killSignals.push(options.killSignal);
+    deadlines.push(options.deadlineMs);
     return {
       status: 0,
       signal: null,
@@ -590,8 +592,8 @@ test("--json keeps stdout JSON-only, redirects safe progress, and enforces repea
     };
   };
 
-  const report = main(["--json", ...EXECUTE_ARGS], verifiedPipeline({
-    spawn: fakeSpawn,
+  const report = await main(["--json", ...EXECUTE_ARGS], verifiedPipeline({
+    runProcess: fakeRunProcess,
     stdout: { write: (chunk) => { stdout += chunk; } },
     stderr: { write: (chunk) => { stderr += chunk; } },
     now: () => clock++,
@@ -599,15 +601,41 @@ test("--json keeps stdout JSON-only, redirects safe progress, and enforces repea
 
   assert.deepEqual(JSON.parse(stdout), report);
   assert.deepEqual(repeats, [3, 3, 3, 3, 3, 1, 1, 3, 3, 3, 3]);
-  assert.equal(timeouts.length, CAPABILITIES.length);
-  assert.ok(timeouts.every((timeout) => timeout === 90 * 60 * 1000));
-  assert.deepEqual(killSignals, Array(CAPABILITIES.length).fill("SIGKILL"));
+  assert.equal(deadlines.length, CAPABILITIES.length);
+  assert.ok(deadlines.every((deadline) => deadline === 12 * 60 * 1000));
   assert.doesNotMatch(stdout, /PRIVATE_CHILD|eval:agent running/u);
   assert.doesNotMatch(stderr, /PRIVATE_CHILD/u);
   assert.match(stderr, /eval:agent running tool-selection-arguments/u);
 });
 
-test("default orchestration binds every battery to one freshly built source and runner artifact", () => {
+test("an async process-runner rejection becomes terminal privacy-safe spawn failure evidence", async () => {
+  let stdout = "";
+  const previousExitCode = process.exitCode;
+  try {
+    process.exitCode = undefined;
+    const report = await main(
+      ["--json", "--execute", "--axis", "plan-quality", "--confirm-idle", "--budget-minutes", "12"],
+      verifiedPipeline({
+        runProcess: async () => {
+          throw new Error("/Users/private-owner/process-control-failed");
+        },
+        stderr: { write: () => {} },
+        stdout: { write: (chunk) => { stdout += chunk; } },
+      })
+    );
+
+    const row = report.capabilities.find((capability) => capability.id === "plan-quality");
+    assert.equal(row?.status, "failed");
+    assert.equal(row?.reason, "spawn-error");
+    assert.equal(process.exitCode, 1);
+    assert.deepEqual(JSON.parse(stdout), report);
+    assert.doesNotMatch(stdout, /Users|private-owner|process-control-failed/u);
+  } finally {
+    process.exitCode = previousExitCode;
+  }
+});
+
+test("default orchestration binds every battery to one freshly built source and runner artifact", async () => {
   const order = [];
   const runnerPaths = [];
   const sourceSnapshots = [
@@ -620,7 +648,7 @@ test("default orchestration binds every battery to one freshly built source and 
     { count: 41, digest: "a".repeat(64), status: "ok" },
   ];
 
-  const report = main(["--json", ...EXECUTE_ARGS], {
+  const report = await main(["--json", ...EXECUTE_ARGS], {
     buildRunnerArtifact: () => {
       order.push("runner-build");
       return { ok: true, runnerPath: "/fixed/private/muse-runner" };
@@ -683,7 +711,7 @@ test("default orchestration binds every battery to one freshly built source and 
   });
 });
 
-test("a failed forced TypeScript build records a terminal failed attempt without replacing prior canonical evidence", () => {
+test("a failed forced TypeScript build records a terminal failed attempt without replacing prior canonical evidence", async () => {
   const dir = mkdtempSync(join(tmpdir(), "muse-agent-build-failure-"));
   const reportPath = join(dir, "latest.json");
   writeOwnerJson(reportPath, { status: "passed", version: 1 });
@@ -692,7 +720,7 @@ test("a failed forced TypeScript build records a terminal failed attempt without
   let batteryRuns = 0;
   try {
     process.exitCode = undefined;
-    const report = main(["--json", ...EXECUTE_ARGS], {
+    const report = await main(["--json", ...EXECUTE_ARGS], {
       buildRunnerArtifact: () => {
         throw new Error("runner build must not run after TypeScript failure");
       },
@@ -728,7 +756,7 @@ test("a failed forced TypeScript build records a terminal failed attempt without
   }
 });
 
-test("source drift or runtime artifact mutation cannot retain a passing report", () => {
+test("source drift or runtime artifact mutation cannot retain a passing report", async () => {
   const previousExitCode = process.exitCode;
   const run = ({ artifacts, sources }) => main(["--json", ...EXECUTE_ARGS], verifiedPipeline({
     captureArtifacts: () => artifacts.shift(),
@@ -749,7 +777,7 @@ test("source drift or runtime artifact mutation cannot retain a passing report",
 
   try {
     process.exitCode = undefined;
-    const sourceDrift = run({
+    const sourceDrift = await run({
       artifacts: [
         { count: 41, digest: "a".repeat(64), status: "ok" },
         { count: 41, digest: "a".repeat(64), status: "ok" },
@@ -764,7 +792,7 @@ test("source drift or runtime artifact mutation cannot retain a passing report",
     assert.ok(sourceDrift.capabilities.every((row) => row.reason === "source-provenance-unverified"));
 
     process.exitCode = undefined;
-    const artifactMutation = run({
+    const artifactMutation = await run({
       artifacts: [
         { count: 41, digest: "a".repeat(64), status: "ok" },
         { count: 41, digest: "b".repeat(64), status: "ok" },
@@ -782,11 +810,11 @@ test("source drift or runtime artifact mutation cannot retain a passing report",
   }
 });
 
-test("invalid source and artifact probe payloads are reduced to path-free unknown provenance", () => {
+test("invalid source and artifact probe payloads are reduced to path-free unknown provenance", async () => {
   const previousExitCode = process.exitCode;
   try {
     process.exitCode = undefined;
-    const report = main(["--json", ...EXECUTE_ARGS], verifiedPipeline({
+    const report = await main(["--json", ...EXECUTE_ARGS], verifiedPipeline({
       captureArtifacts: () => ({
         count: 1,
         digest: "/Users/private-owner/secret-runner",
@@ -850,7 +878,7 @@ test("report persistence rejects parent symlink redirects without touching exter
   }
 });
 
-test("a failed canonical replace preserves the prior pass while the current attempt remains running", () => {
+test("a failed canonical replace preserves the prior pass while the current attempt remains running", async () => {
   const allowedRoot = mkdtempSync(join(tmpdir(), "muse-agent-report-failure-"));
   const reportPath = join(allowedRoot, "nested", "latest.json");
   mkdirSync(join(allowedRoot, "nested"), { recursive: true });
@@ -876,7 +904,7 @@ test("a failed canonical replace preserves the prior pass while the current atte
     const previousExitCode = process.exitCode;
     try {
       process.exitCode = undefined;
-      const report = main(["--json", ...EXECUTE_ARGS], verifiedPipeline({
+      const report = await main(["--json", ...EXECUTE_ARGS], verifiedPipeline({
         now: () => 0,
         spawn: (_command, _args, options) => {
           const requested = Number(options.env.MUSE_EVAL_REPEAT);
@@ -904,13 +932,13 @@ test("a failed canonical replace preserves the prior pass while the current atte
   }
 });
 
-test("a required environmental skip makes the strict aggregate process exit nonzero", () => {
+test("a required environmental skip makes the strict aggregate process exit nonzero", async () => {
   let stdout = "";
   let invocation = 0;
   const previousExitCode = process.exitCode;
   try {
     process.exitCode = undefined;
-    const report = main(["--json", ...EXECUTE_ARGS], verifiedPipeline({
+    const report = await main(["--json", ...EXECUTE_ARGS], verifiedPipeline({
       spawn: (_command, _args, options) => {
         const capability = CAPABILITIES[invocation++];
         assert.ok(capability);

@@ -7,7 +7,6 @@
  * copies prompts, model output, or tool payloads into the report.
  */
 
-import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,9 +28,13 @@ import {
   DEFAULT_CAPABILITY_REPORT_PATH,
   finalizeCapabilityEvidenceAttempt,
 } from "./eval-agent-evidence.mjs";
+import {
+  MAX_EVAL_PROCESS_DEADLINE_MS,
+  runBoundedEvalProcess,
+} from "./eval-agent-process.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const CAPABILITY_TIMEOUT_MS = 90 * 60 * 1000;
+const CAPABILITY_DEADLINE_MS = MAX_EVAL_PROCESS_DEADLINE_MS;
 const REPO_ROOT = resolve(here, "..");
 export const CAPABILITY_MATRIX_ID = "muse-agent-capability-v1";
 
@@ -171,7 +174,7 @@ function completeCapabilityRows(rows, selectedCapabilities) {
 /** Convert a child-process result into a privacy-safe, fail-closed row. */
 export function classifyCapabilityResult(capability, child) {
   const durationMs = Math.max(0, Math.round(child.durationMs ?? 0));
-  if (child.error) {
+  if (child.error || child.spawnError === true) {
     return failedRow(capability, durationMs, "spawn-error");
   }
   if (child.signal) {
@@ -354,8 +357,8 @@ export function createCapabilityPreflight(capabilities = CAPABILITIES) {
     requiredBeforeRun: PREFLIGHT_REQUIRED_BEFORE_RUN,
     resourceBudget: {
       batteryProcesses: axes.length,
-      hardSequentialTimeoutMinutes: (axes.length * CAPABILITY_TIMEOUT_MS) / 60_000,
-      perBatteryTimeoutMinutes: CAPABILITY_TIMEOUT_MS / 60_000,
+      hardSequentialTimeoutMinutes: (axes.length * CAPABILITY_DEADLINE_MS) / 60_000,
+      perBatteryTimeoutMinutes: CAPABILITY_DEADLINE_MS / 60_000,
       requestedTrials,
     },
     summary: {
@@ -422,7 +425,6 @@ function emitAdmission(admission, { json, stdout }) {
 }
 
 export function main(args = process.argv.slice(2), dependencies = {}) {
-  const spawn = dependencies.spawn ?? spawnSync;
   const stdout = dependencies.stdout ?? process.stdout;
   const stderr = dependencies.stderr ?? process.stderr;
   const now = dependencies.now ?? Date.now;
@@ -475,7 +477,12 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     ?? (() => buildAndPublishRunner({ repoRoot: REPO_ROOT }));
   const captureArtifacts = dependencies.captureArtifacts
     ?? ((runnerPath) => captureRuntimeArtifacts({ repoRoot: REPO_ROOT, runnerPath }));
+  const runProcess = dependencies.runProcess
+    ?? (dependencies.spawn
+      ? async (command, childArgs, options) => dependencies.spawn(command, childArgs, options)
+      : runBoundedEvalProcess);
 
+  return (async () => {
   let evidenceAttempt;
   try {
     evidenceAttempt = dependencies.beginAttempt?.();
@@ -531,17 +538,25 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     } else {
       stdout.write(`\n=== eval:agent → ${capability.id} ===\n`);
     }
-    const child = spawn(process.execPath, [join(here, capability.battery)], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        MUSE_EVAL_REPEAT: String(capability.repeats),
-        MUSE_RUNNER_PATH: runnerPath,
-      },
-      killSignal: "SIGKILL",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: CAPABILITY_TIMEOUT_MS,
-    });
+    let child;
+    try {
+      child = await runProcess(process.execPath, [join(here, capability.battery)], {
+        deadlineMs: CAPABILITY_DEADLINE_MS,
+        env: {
+          ...process.env,
+          MUSE_EVAL_REPEAT: String(capability.repeats),
+          MUSE_RUNNER_PATH: runnerPath,
+        },
+      });
+    } catch {
+      child = {
+        signal: null,
+        spawnError: true,
+        status: null,
+        stderr: "",
+        stdout: "",
+      };
+    }
     const withDuration = { ...child, durationMs: now() - startedAt };
     if (!json) {
       stdout.write(child.stdout ?? "");
@@ -569,6 +584,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     provenance,
   });
   return emitReport(report, { dependencies, evidenceAttempt, json, stderr, stdout });
+  })();
 }
 
 function finishBuildFailure(reason, context) {
@@ -726,7 +742,7 @@ function sanitizeProvenance(provenance) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main(process.argv.slice(2), {
+  await main(process.argv.slice(2), {
     beginAttempt: () => beginCapabilityEvidenceAttempt({ allowedRoot: REPO_ROOT }),
     finishAttempt: (attempt, report) => finalizeCapabilityEvidenceAttempt(attempt, report),
   });
