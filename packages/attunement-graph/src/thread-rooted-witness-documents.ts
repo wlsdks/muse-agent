@@ -10,9 +10,12 @@ import {
   settleFairWitnessFrontier
 } from "./fair-witness-frontier-settlement.js";
 import { AttunementGraphError } from "./error.js";
+import {
+  findThreadRootedWitnessPath,
+  type ThreadRootedWitnessPathStep
+} from "./thread-rooted-witness-path.js";
 import type {
   GraphAssertion,
-  GraphDirection,
   GraphEvidenceRef,
   GraphNodeKind,
   GraphQueryPlan,
@@ -97,13 +100,6 @@ type Nomination = Readonly<{
   readonly kind: "core" | "change" | "support";
   readonly nominationId: string;
   readonly observedAt: string;
-}>;
-type Direction = "outgoing" | "incoming";
-type PathStep = Readonly<{
-  readonly assertion: GraphAssertion;
-  readonly direction: Direction;
-  readonly from: GraphRef;
-  readonly to: GraphRef;
 }>;
 
 export type ThreadRootedWitnessDisposition =
@@ -518,76 +514,9 @@ function assertionMatchesPlan(assertion: GraphAssertion, plan: GraphQueryPlan): 
     && (!assertion.validTo || validAt < instantEpoch(assertion.validTo));
 }
 
-function directions(
-  assertion: GraphAssertion,
-  planDirection: GraphDirection
-): readonly PathStep[] {
-  const output: PathStep[] = [];
-  if (planDirection !== "incoming") {
-    output.push(freezeRecord({
-      assertion,
-      direction: "outgoing" as const,
-      from: assertion.subject,
-      to: assertion.object
-    }));
-  }
-  if (planDirection !== "outgoing") {
-    output.push(freezeRecord({
-      assertion,
-      direction: "incoming" as const,
-      from: assertion.object,
-      to: assertion.subject
-    }));
-  }
-  return output;
-}
-
-function findPath(
-  seed: GraphRef,
-  targetAssertionId: string,
-  assertions: readonly GraphAssertion[],
-  direction: GraphDirection,
-  maxDepth: number
-): readonly PathStep[] | undefined {
-  const adjacency = new Map<string, PathStep[]>();
-  for (const assertion of assertions) {
-    for (const step of directions(assertion, direction)) {
-      const key = graphRefKey(step.from);
-      const list = adjacency.get(key);
-      if (list) list.push(step);
-      else adjacency.set(key, [step]);
-    }
-  }
-  for (const steps of adjacency.values()) {
-    steps.sort((left, right) =>
-      RAW(left.assertion.id, right.assertion.id)
-      || RAW(left.direction, right.direction)
-    );
-  }
-  const queue: { readonly path: readonly PathStep[]; readonly ref: GraphRef }[] = [{
-    path: [],
-    ref: seed
-  }];
-  const visitedDepth = new Map([[graphRefKey(seed), 0]]);
-  for (let index = 0; index < queue.length; index += 1) {
-    const entry = queue[index];
-    if (!entry || entry.path.length >= maxDepth) continue;
-    for (const step of adjacency.get(graphRefKey(entry.ref)) ?? []) {
-      if (entry.path.some((part) => part.assertion.id === step.assertion.id)) continue;
-      const nextPath = [...entry.path, step];
-      if (step.assertion.id === targetAssertionId) return freezeArray(nextPath);
-      const nextKey = graphRefKey(step.to);
-      const depth = nextPath.length;
-      const previousDepth = visitedDepth.get(nextKey);
-      if (previousDepth !== undefined && previousDepth <= depth) continue;
-      visitedDepth.set(nextKey, depth);
-      queue.push({ path: nextPath, ref: step.to });
-    }
-  }
-  return undefined;
-}
-
-function unionSources(path: readonly PathStep[]): readonly GraphEvidenceRef[] {
+function unionSources(
+  path: readonly ThreadRootedWitnessPathStep[]
+): readonly GraphEvidenceRef[] {
   return freezeArray(
     [...new Map(path.flatMap((step) =>
       step.assertion.sourceRefs.map((source) => [evidenceRefKey(source), source] as const)
@@ -599,7 +528,7 @@ function unionSources(path: readonly PathStep[]): readonly GraphEvidenceRef[] {
 
 function document(
   nominationValue: Nomination,
-  path: readonly PathStep[],
+  path: readonly ThreadRootedWitnessPathStep[],
   requestedScope: Scope,
   requestedSnapshot: Snapshot,
   requestedFreshness: Freshness
@@ -762,7 +691,7 @@ function dispositionReason(
   all: ReadonlyMap<string, ScopedAssertion>,
   planEligible: ReadonlyMap<string, ScopedAssertion>,
   scopeEligible: ReadonlyMap<string, ScopedAssertion>,
-  rootedPath: readonly PathStep[] | undefined
+  rootedPath: readonly ThreadRootedWitnessPathStep[] | undefined
 ): Extract<ThreadRootedWitnessDisposition, { status: "excluded" }>["reason"] | undefined {
   if (!all.has(nominationValue.assertionId)) return "not-in-bounded-result";
   if (!planEligible.has(nominationValue.assertionId)) return "not-plan-eligible";
@@ -934,7 +863,13 @@ export function compileThreadRootedWitnessDocuments(
   const eligibleAssertions = [...scopeEligible.values()].map((item) => item.assertion);
   const paths = new Map(nominations.map((item) => [
     item.nominationId,
-    findPath(seed, item.assertionId, eligibleAssertions, plan.direction, plan.maxDepth)
+    findThreadRootedWitnessPath(
+      seed,
+      item.assertionId,
+      eligibleAssertions,
+      plan.direction,
+      plan.maxDepth
+    )
   ]));
   const documents = new Map<string, Record<string, unknown>>();
   const dispositions: ThreadRootedWitnessDisposition[] = [];
