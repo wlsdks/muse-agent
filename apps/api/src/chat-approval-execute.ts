@@ -102,6 +102,7 @@ export async function executeChatApproval(opts: {
    */
   readonly requestUserId?: string;
   readonly now?: () => Date;
+  readonly signal?: AbortSignal;
 }): Promise<ChatApprovalExecuteResult> {
   const id = opts.id.trim();
   let executionFailed = false;
@@ -111,6 +112,7 @@ export async function executeChatApproval(opts: {
     file: opts.pendingFile,
     id,
     now: opts.now,
+    signal: opts.signal,
     prepare: async (snapshot) => {
       const route = resolveThirdPartySendRoute(snapshot.tool, snapshot.arguments);
       if (route.kind === "unbound") {
@@ -126,7 +128,10 @@ export async function executeChatApproval(opts: {
       return {
         execute: async () => {
           try {
-            const output = await tool.execute(snapshot.arguments as JsonObject, { runId: `chat-approve-${snapshot.id}` });
+            const output = await tool.execute(snapshot.arguments as JsonObject, {
+              runId: `chat-approve-${snapshot.id}`,
+              ...(opts.signal ? { signal: opts.signal } : {})
+            });
             return opts.acquisition === "recover-stale-claim"
               ? normalizeLocalTaskMutationOutcome(snapshot.tool, output)
               : output;

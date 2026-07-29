@@ -12,7 +12,7 @@ import {
 } from "./pending-approval-store.js";
 
 export type PendingApprovalPreparation =
-  | { readonly kind: "execute"; readonly execute: () => Promise<unknown> }
+  | { readonly kind: "execute"; readonly execute: (signal?: AbortSignal) => Promise<unknown> }
   | { readonly kind: "decline"; readonly detail: string }
   | { readonly kind: "unknown"; readonly detail: string };
 
@@ -57,6 +57,7 @@ export interface CompletePendingApprovalOptions {
   readonly actor: PendingApprovalActor;
   readonly acquisition?: PendingApprovalAcquisition;
   readonly prepare: (snapshot: PendingApproval) => Promise<PendingApprovalPreparation>;
+  readonly signal?: AbortSignal;
   readonly now?: () => Date;
   readonly operations?: PendingApprovalCoordinatorOperations;
 }
@@ -113,10 +114,17 @@ export async function completePendingApproval(options: CompletePendingApprovalOp
 
   const snapshot = claim.approvalSnapshot;
   let preparation: PendingApprovalPreparation;
-  try {
-    preparation = await options.prepare(snapshot);
-  } catch (cause) {
-    preparation = { detail: `preparation failed: ${message(cause)}`, kind: "decline" };
+  if (options.signal?.aborted) {
+    preparation = { detail: "approval execution cancelled before effect", kind: "decline" };
+  } else {
+    try {
+      preparation = await options.prepare(snapshot);
+    } catch (cause) {
+      preparation = { detail: `preparation failed: ${message(cause)}`, kind: "decline" };
+    }
+    if (options.signal?.aborted && preparation.kind === "execute") {
+      preparation = { detail: "approval execution cancelled before effect", kind: "decline" };
+    }
   }
 
   if (preparation.kind === "decline") {
@@ -162,12 +170,18 @@ export async function completePendingApproval(options: CompletePendingApprovalOp
   if (preparation.kind === "unknown") {
     return finalize("unknown", preparation.detail, false);
   }
+  if (options.signal?.aborted) {
+    return finalize("unknown", "approval execution cancelled after effect admission", true);
+  }
 
   let output: unknown;
   try {
-    output = await preparation.execute();
+    output = await preparation.execute(options.signal);
   } catch (cause) {
-    return finalize("unknown", `execution failed: ${message(cause)}`, true);
+    const detail = options.signal?.aborted
+      ? `approval execution cancelled after effect admission: ${message(cause)}`
+      : `execution failed: ${message(cause)}`;
+    return finalize("unknown", detail, true);
   }
   return classifyPendingApprovalToolOutcome(output) === "succeeded"
     ? finalize("succeeded", undefined, true, output)

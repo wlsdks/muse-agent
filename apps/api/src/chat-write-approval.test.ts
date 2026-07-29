@@ -441,6 +441,30 @@ describe("executeChatApproval confirm-execute", () => {
     expect(calls).toBe(1);
   });
 
+  it("threads the approval cancellation signal into the selected tool context", async () => {
+    await recordPendingApproval(pendingFile, pendingEntry({ id: "signal-context", tool: "muse.tasks.add" }));
+    const controller = new AbortController();
+    let observedSignal: AbortSignal | undefined;
+    const tool: MuseTool = {
+      definition: { description: "test", inputSchema: {}, name: "muse.tasks.add", risk: "write" },
+      execute(_args, context) {
+        observedSignal = context.signal;
+        return { performed: true };
+      }
+    };
+
+    const out = await executeChatApproval({
+      id: "signal-context",
+      pendingFile,
+      resolveTool: () => tool,
+      signal: controller.signal
+    });
+
+    expect(out.statusCode).toBe(200);
+    expect(out.body).toMatchObject({ ran: true, state: "succeeded" });
+    expect(observedSignal).toBe(controller.signal);
+  });
+
   it("finalize CAS loser returns 500 with the actual durable state and replay never re-executes", async () => {
     await recordPendingApproval(pendingFile, pendingEntry({ id: "finalize-loser", tool: "muse.tasks.add" }));
     const { tool, calls } = recordingTool("muse.tasks.add", { ok: true });

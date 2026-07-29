@@ -643,6 +643,38 @@ describe("approvePendingApproval — re-run completion", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("threads the approval cancellation signal into the selected tool context", async () => {
+    const f = file();
+    await recordPendingApproval(f, webEntry({
+      arguments: { title: "Buy milk" },
+      id: "signal-context",
+      risk: "write",
+      tool: "muse.tasks.add"
+    }));
+    const controller = new AbortController();
+    let observedSignal: AbortSignal | undefined;
+    const result = await approvePendingApproval({
+      confirmAction: async () => true,
+      env,
+      executeTool: async (_tool, _arguments, context) => {
+        observedSignal = context.signal;
+        return { performed: true };
+      },
+      id: "signal-context",
+      io: fakeIo(),
+      isInteractive: () => true,
+      pendingFile: f,
+      resolveTool: () => ({
+        definition: { description: "test", inputSchema: {}, name: "muse.tasks.add", risk: "write" },
+        execute: async () => ({ performed: true })
+      }),
+      signal: controller.signal
+    });
+
+    expect(result.status).toBe("ran");
+    expect(observedSignal).toBe(controller.signal);
+  });
+
   it("unknown / expired id → not-found, nothing fired", async () => {
     const f = file();
     await recordPendingApproval(f, webEntry({ createdAt: "2019-01-01T00:00:00.000Z", expiresAt: "2020-01-01T00:00:00.000Z", id: "stale" }));

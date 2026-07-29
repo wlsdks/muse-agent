@@ -26,7 +26,7 @@ import {
 } from "@muse/messaging";
 import { resolveThirdPartySendRoute } from "@muse/agent-core";
 import type { JsonObject } from "@muse/shared";
-import type { MuseTool, ToolExecutionValue } from "@muse/tools";
+import type { MuseTool, MuseToolContext, ToolExecutionValue } from "@muse/tools";
 import { confirm, isCancel } from "@clack/prompts";
 import type { Command } from "commander";
 
@@ -88,6 +88,7 @@ export interface ApprovePendingApprovalOptions {
   /** DNS resolver for the web_action SSRF guard (tests inject a fake public resolver). */
   readonly lookup?: HostLookup;
   readonly now?: () => Date;
+  readonly signal?: AbortSignal;
   readonly acquisition?: PendingApprovalAcquisition;
   readonly coordinatorOperations?: PendingApprovalCoordinatorOperations;
   readonly resolveTool?: (name: string) => MuseTool | undefined;
@@ -95,7 +96,7 @@ export interface ApprovePendingApprovalOptions {
   readonly executeTool?: (
     tool: MuseTool,
     arguments_: JsonObject,
-    context: { readonly runId: string }
+    context: MuseToolContext
   ) => Promise<unknown>;
 }
 
@@ -113,6 +114,7 @@ export async function approvePendingApproval(opts: ApprovePendingApprovalOptions
     id,
     now: opts.now,
     operations: opts.coordinatorOperations,
+    signal: opts.signal,
     prepare: async (snapshot) => {
       const route = resolveThirdPartySendRoute(snapshot.tool, snapshot.arguments);
       if (route.kind === "unbound") {
@@ -142,7 +144,7 @@ export async function approvePendingApproval(opts: ApprovePendingApprovalOptions
         execute: async () => (opts.executeTool ?? ((selected, arguments_, context) => selected.execute(arguments_, context)))(
           tool,
           snapshot.arguments as JsonObject,
-          { runId: `approve-${snapshot.id}` }
+          { runId: `approve-${snapshot.id}`, ...(opts.signal ? { signal: opts.signal } : {}) }
         ),
         kind: "execute"
       };

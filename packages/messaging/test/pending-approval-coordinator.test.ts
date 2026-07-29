@@ -5,7 +5,14 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { completePendingApproval } from "../src/pending-approval-coordinator.js";
-import { CLAIM_RECOVERY_LEASE_MS, claimPendingApproval, recordPendingApproval, type PendingApproval } from "../src/pending-approval-store.js";
+import {
+  CLAIM_RECOVERY_LEASE_MS,
+  beginPendingApprovalExecution,
+  claimPendingApproval,
+  listPendingApprovals,
+  recordPendingApproval,
+  type PendingApproval
+} from "../src/pending-approval-store.js";
 
 let dir: string;
 beforeEach(async () => { dir = await fs.mkdtemp(join(tmpdir(), "pending-coordinator-")); });
@@ -62,6 +69,83 @@ describe("completePendingApproval", () => {
     });
     expect(replay).toEqual({ kind: "conflict", phase: "claim", state: "succeeded" });
     expect(effects).toBe(1);
+  });
+
+  it("durably closes an already-aborted approval before preparation or effect", async () => {
+    const file = join(dir, "cancel-before-effect.json");
+    await recordPendingApproval(file, approval("cancel-before-effect"));
+    const controller = new AbortController();
+    controller.abort();
+    let prepared = 0;
+
+    const result = await completePendingApproval({
+      actor: { surface: "cli" },
+      file,
+      id: "cancel-before-effect",
+      now,
+      prepare: async () => {
+        prepared += 1;
+        return { execute: async () => ({ performed: true }), kind: "execute" };
+      },
+      signal: controller.signal
+    });
+    const replay = await completePendingApproval({
+      actor: { surface: "cli" },
+      file,
+      id: "cancel-before-effect",
+      now,
+      prepare: async () => { throw new Error("replay must not prepare"); }
+    });
+
+    expect(result).toMatchObject({
+      detail: "approval execution cancelled before effect",
+      kind: "denied"
+    });
+    expect(prepared).toBe(0);
+    expect(await listPendingApprovals(file, now)).toEqual([]);
+    expect(replay).toEqual({ kind: "conflict", phase: "claim", state: "denied" });
+  });
+
+  it("settles cancellation after begin as effect-unknown and never executes or replays", async () => {
+    const file = join(dir, "cancel-after-begin.json");
+    await recordPendingApproval(file, approval("cancel-after-begin"));
+    const controller = new AbortController();
+    let effects = 0;
+    const options = {
+      actor: { surface: "cli" as const },
+      file,
+      id: "cancel-after-begin",
+      now,
+      prepare: async () => ({
+        execute: async () => {
+          effects += 1;
+          return { performed: true };
+        },
+        kind: "execute" as const
+      }),
+      signal: controller.signal
+    };
+
+    const result = await completePendingApproval({
+      ...options,
+      operations: {
+        begin: async (...args) => {
+          const begun = await beginPendingApprovalExecution(...args);
+          controller.abort();
+          return begun;
+        }
+      }
+    });
+    const replay = await completePendingApproval(options);
+
+    expect(result).toMatchObject({
+      detail: "approval execution cancelled after effect admission",
+      effectAttempted: true,
+      kind: "unknown"
+    });
+    expect(effects).toBe(0);
+    expect(await listPendingApprovals(file, now)).toEqual([]);
+    expect(replay).toEqual({ kind: "conflict", phase: "claim", state: "unknown" });
   });
 
   it("recovers a stale allowlisted claim and executes only from its immutable snapshot", async () => {

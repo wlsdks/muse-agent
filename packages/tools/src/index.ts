@@ -53,6 +53,7 @@ export interface MuseToolDefinition {
 export interface MuseToolContext {
   readonly runId: string;
   readonly userId?: string;
+  readonly signal?: AbortSignal;
 }
 
 export type ToolExecutionValue = string | JsonValue;
