@@ -470,7 +470,7 @@ describe("stripFabricatedCitations (routes through the hardened enforceAnswerCit
 
 describe("shortCitationRef", () => {
   it("strips the absolute notes-dir prefix so a citation is clean + leaks no home dir", () => {
-    expect(shortCitationRef("/Users/jinan/.muse/notes/wifi_passwords/seoul_office.md")).toBe("wifi_passwords/seoul_office.md");
+    expect(shortCitationRef("/Users/test-user/.muse/notes/wifi_passwords/seoul_office.md")).toBe("wifi_passwords/seoul_office.md");
   });
   it("falls back to the basename for a path with no /notes/ segment", () => {
     expect(shortCitationRef("/var/data/report.md")).toBe("report.md");
@@ -490,9 +490,9 @@ describe("formatChatGroundingBlock", () => {
   });
 
   it("cites a note by its notes-relative path, never the leaked absolute home path", () => {
-    const block = formatChatGroundingBlock([hit({ ref: "/Users/jinan/.muse/notes/wifi_passwords/seoul_office.md" })]);
+    const block = formatChatGroundingBlock([hit({ ref: "/Users/test-user/.muse/notes/wifi_passwords/seoul_office.md" })]);
     expect(block).toContain("[from wifi_passwords/seoul_office.md]");
-    expect(block).not.toContain("/Users/jinan");
+    expect(block).not.toContain("/Users/");
   });
 
   it("returns '' when every hit is below the relevance threshold (refusal floor intact)", () => {

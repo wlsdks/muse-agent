@@ -242,7 +242,7 @@ describe("summarizeDroppedContextInStages (staged CMP-2 aux compaction)", () => 
 
   it("preserves an opaque identifier verbatim across merge + cap", async () => {
     const uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
-    const path = "/Users/jinan/side-project/Muse/packages/memory/src/index.ts";
+    const path = "/Users/test-user/side-project/Muse/packages/memory/src/index.ts";
     let call = 0;
     const summarizer = async () => {
       call += 1;

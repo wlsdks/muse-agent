@@ -259,20 +259,20 @@ describe("episodeIndexHealth", () => {
 
 describe("cloudSyncFolderCheck", () => {
   it("warns when the state dir is under iCloud Drive", () => {
-    const r = cloudSyncFolderCheck("/Users/jinan/Library/Mobile Documents/com~apple~CloudDocs/.muse");
+    const r = cloudSyncFolderCheck("/Users/test-user/Library/Mobile Documents/com~apple~CloudDocs/.muse");
     expect(r.status).toBe("warn");
     expect(r.detail).toContain("iCloud Drive");
     expect(r.detail).toContain("cloud-sync");
   });
 
   it("warns when the state dir is under Dropbox / Google Drive / OneDrive", () => {
-    expect(cloudSyncFolderCheck("/Users/jinan/Dropbox/.muse").status).toBe("warn");
-    expect(cloudSyncFolderCheck("/Users/jinan/Google Drive/.muse").status).toBe("warn");
-    expect(cloudSyncFolderCheck("/Users/jinan/OneDrive/.muse").status).toBe("warn");
+    expect(cloudSyncFolderCheck("/Users/test-user/Dropbox/.muse").status).toBe("warn");
+    expect(cloudSyncFolderCheck("/Users/test-user/Google Drive/.muse").status).toBe("warn");
+    expect(cloudSyncFolderCheck("/Users/test-user/OneDrive/.muse").status).toBe("warn");
   });
 
   it("ok for a normal, non-cloud-synced path", () => {
-    const r = cloudSyncFolderCheck("/Users/jinan/.muse");
+    const r = cloudSyncFolderCheck("/Users/test-user/.muse");
     expect(r.status).toBe("ok");
     expect(r.detail).toContain("local, non-cloud-synced");
   });
