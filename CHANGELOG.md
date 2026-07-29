@@ -8,6 +8,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-045a canonical immutable-envelope kernel. Hostile
+  mutable input and Muse-frozen re-verification rebuild detached, deeply frozen values with
+  identical direct canonical bytes and domain-separated content IDs. The private boundary
+  rejects proxies, accessors, unsupported built-ins/prototypes, aliases, cycles, sparse or
+  extra-key arrays, invalid descriptors, and bounded-budget overflow; captured intrinsic
+  operations keep validation deterministic under process-level monkey-patching. Golden
+  byte/ID vectors, hostile special-key re-admission, public-export probes, and exact
+  rollback checks passed. No v1 codec, public export, persistence, or runtime composition
+  changed; AWG-045b is now the next prerequisite before AWG-050a integration.
+
 - Refined the agent-native graph roadmap after two fail-closed AWG-050a PLAN
   activations. No `resumeContext` source BUILD opened. The design now isolates two
   package-private prerequisites: AWG-045a admits hostile mutable input and re-verifies

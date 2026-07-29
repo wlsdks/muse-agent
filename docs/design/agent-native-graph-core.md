@@ -600,12 +600,13 @@ Do not build the database first.
 9. **AWG-090 — qualification:** controlled scenarios followed by repeated local dogfood;
    usefulness, reconstruction cost, policy correction, and silence quality stay separate.
 
-AWG-045a is the next eligible BUILD candidate and requires a fresh harness PLAN PASS before
-source changes begin. AWG-045b follows under its own gate. Two AWG-050a PLAN activations
-were closed before BUILD: the latest exposed a frozen-array descriptor contradiction and
-non-unique core/fallback accounting. AWG-050a remains blocked until both prerequisites are
-verified and a new integration PLAN passes. Persistence is explicitly out of scope until
-the Shadow and Policy workloads make the backend requirements real.
+AWG-045a is independently verified and shipped as a package-private kernel with no public
+export or v1 codec change. AWG-045b is the next eligible BUILD candidate and requires its
+own fresh harness PLAN PASS before source changes begin. Two AWG-050a PLAN activations were
+closed before BUILD: the latest exposed a frozen-array descriptor contradiction and
+non-unique core/fallback accounting. AWG-050a remains blocked until AWG-045b is verified
+and a new integration PLAN passes. Persistence is explicitly out of scope until the Shadow
+and Policy workloads make the backend requirements real.
 
 Core semantic and persistence PLAN work uses `gpt-5.6-sol` at `ultra` or `xhigh`;
 implementation begins only from a bounded accepted handoff, and completion uses a fresh

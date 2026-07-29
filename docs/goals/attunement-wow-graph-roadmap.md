@@ -61,7 +61,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-035a** | Observation Receipt format | Strict content-addressed codec preserves one caller-declared exact projection and source accounting without personal source text | completed |
 | **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | completed |
 | **AWG-040** | Continuity Capsule v1 | User-invoked, library-only Capsule renders the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer | in progress (`AWG-040b/c` verified library-only; application integration and exact-stop capture pending) |
-| **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | pending |
+| **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | pending |
 | **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, proof-closed `resumeContext`, freshness, typed completeness, and adversarial isolation | blocked (PLAN; BUILD never opened) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
@@ -74,14 +74,15 @@ Raw numbering does not activate work. Before each BUILD slice, inspect current s
 classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `monitoring`,
 `blocked`, `deferred`, `rejected`, or `superseded`. Implement only the missing delta.
 
-## Next eligible activation: AWG-045a
+## Next eligible activation: AWG-045b
 
 Independent Sol-class architecture reviews converged on a semantic prerequisite before the
 Shadow ledger or durable database:
 
-- **AWG-045a:** admit hostile external mutable data and re-verify Muse-frozen output through
-  two exact, uniform descriptor profiles that normalize to the same canonical bytes and ID.
-  Keep the helper package-private and leave every verified v1 codec untouched.
+- **AWG-045a (completed):** hostile external mutable data and Muse-frozen output now pass
+  through two exact, uniform descriptor profiles that normalize to the same canonical bytes
+  and ID. The independently verified helper remains package-private and leaves every v1
+  codec and public export untouched.
 - **AWG-045b:** settle abstract core/optional candidates through one pure ledger. Each
   candidate ends as exactly `admitted`, `rejected`, `failed`, or `skipped`; diagnostics
   describe only the selected logical ledger, and mandatory-overhead fallback is monotone:
@@ -95,7 +96,7 @@ The full decision and dissent are in
 PLAN activations closed without source changes: the latest found that a mutable array-length
 descriptor contradicted frozen-output re-verification, while core work-cap and
 reason-overhead rollback still admitted multiple byte-distinct diagnostics. These are
-architecture findings, not shipped behavior. AWG-050a remains blocked until AWG-045a/b are
+architecture findings, not shipped behavior. AWG-050a remains blocked until AWG-045b is
 verified and a new integration PLAN passes. AWG-050b then owns the actual Shadow
 `silent | digest | offer` decision receipt and counterfactual.
 
