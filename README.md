@@ -94,6 +94,14 @@ mint-before-hidden-state verification, five scope guards, and a closed binding-r
 parser prevent cross-owner, cross-scope, forged-authority, and forged-seed reuse. This is
 still private process-local substrate: it does not prove uninterrupted or current
 freshness, add persistence, or ship the Capsule/Shadow/Policy experience.
+The thread-rooted compiler now also retains its complete bounded pre-settlement witness
+pool behind the exact in-process compilation object. Small content-addressed entries and a
+compact manifest preserve fair order, lane-undetermined evidence, and body-bound focus
+digests without changing the compilation's keys, JSON, receipts, or package exports. This
+prevents a future `resumeContext` from losing valid witnesses merely because an earlier
+settlement did not admit them. It remains private and process-local: previous stopping
+boundary verification, caller-budgeted context compilation, runtime delivery, persistence,
+and the user-visible Capsule are still pending.
 See the separate [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse console home — model chip, integrations, and what Muse has learned" width="860" /></p>

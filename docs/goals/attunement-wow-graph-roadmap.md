@@ -63,7 +63,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-040** | Continuity Capsule v1 | User-invoked, library-only Capsule renders the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer | in progress (`AWG-040b/c` verified library-only; application integration and exact-stop capture pending) |
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
-| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3c` independently verified; verified `resumeContext` pending) |
+| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3d1` independently verified; verified `resumeContext` pending) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-070** | Storage bake-off | Prove the Muse-owned local default first; compare PostgreSQL and at most one embedded candidate only as optional Adapters on correctness, cost, recovery, portability, and maintenance | pending |
@@ -142,6 +142,15 @@ Shadow ledger or durable database:
   assessment boundary. Scope-bound fresh provenance can settle `partial`; stale and
   abstained artifacts contain no Graph document/context fields. This proves neither
   continuous interval stability nor freshness after assessment.
+- **AWG-050a3d1 (completed private prerequisite):** the exact final thread-rooted
+  compilation object now retains the complete bounded pre-settlement witness pool in a
+  process-local exact-identity side registry. Separate content-addressed core/optional
+  entries bind canonical focus bodies and reuse the existing frozen proof
+  document/assertion instances. A compact manifest conserves every fair-ranked and
+  lane-undetermined optional, including candidates not admitted by the earlier settlement,
+  without changing public fields, JSON, receipt/frontier IDs, settlement behavior, or
+  package exports. This is evidence retention for a future resumption compiler, not a
+  previous stopping boundary or `resumeContext`.
 
 The full decision and dissent are in
 [Muse Agent-Native Graph Core](../design/agent-native-graph-core.md). Those earlier
@@ -153,6 +162,33 @@ Its independent completion gate forced per-Provider process ownership,
 shell-before-hidden-state verification, closed Graph binding-receipt semantics, and exact
 scope-derived seed verification before passing. AWG-050b now owns the actual Shadow
 `silent | digest | offer` decision receipt and counterfactual.
+
+## Completed slice: AWG-050a3d1
+
+- **Product meaning:** call this capability **bounded retained witness inventory**. A
+  future resumption compiler can inspect every valid witnessed candidate from the exact
+  compilation, not only documents admitted by its earlier settlement.
+- **Identity and privacy contract:** one module-private `WeakMap` is keyed only by the
+  exact frozen compilation object. Spread, clone, JSON, and proxy identities cannot
+  recover it; no body enters the compact manifest or any public serialization.
+- **Evidence contract:** core and optional entries are separately content-addressed.
+  Focus assertion digests bind canonical bodies, while document IDs bind complete proof
+  documents. The registry reuses the already detached/frozen pre-settlement instances
+  rather than copying or recanonicalizing personal evidence.
+- **Conservation and bound:** every witnessed optional appears exactly once in the fair
+  ranked or raw-ID lane-undetermined partition; excluded nominations remain absent. A
+  controlled boundary retains all 255 optionals with long multibyte IDs while each entry
+  and the compact manifest remain inside canonical envelope limits.
+- **Compatibility:** compilation keys/spread/JSON, enclosing graph-result serialization,
+  old receipt/frontier IDs, settlement/context stream, package exports, runtime,
+  persistence, and authority semantics are unchanged.
+- **Verification:** focused tests `15/15`, Graph `264/264`, changed tests `75/75`, package
+  build/typecheck, TS7 fast typecheck, built-dist verifier, full workspace check, diff
+  checks, mutation-sensitive hash recomputation, and a fresh Sol completion gate pass.
+- **Still not shipped:** previous stopping-boundary capture/verification, a current
+  source/Graph pair resolver, one caller-budgeted `resumeContext` settlement, Capsule
+  delivery, Shadow Muse, Policy Card, durable graph storage, and user-visible wow remain
+  pending.
 
 ## Completed slice: AWG-050a3c
 

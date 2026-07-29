@@ -5,7 +5,8 @@ import { stdout } from "node:process";
 import { URL } from "node:url";
 
 import {
-  compileThreadRootedWitnessDocuments
+  compileThreadRootedWitnessDocuments,
+  getThreadRootedRetainedWitnessInventory
 } from "../dist/thread-rooted-witness-documents.js";
 
 const now = "2026-07-29T10:00:00.000Z";
@@ -172,7 +173,19 @@ function independentPath(assertions, targetId) {
 
 const input = fixture();
 const result = compileThreadRootedWitnessDocuments(input);
+const resultJson = JSON.stringify(result);
 assert.equal(result.status, "partial");
+assert.deepEqual(Object.keys(result), ["frontier", "receipt", "settlement", "status"]);
+assert.equal(
+  resultJson,
+  JSON.stringify({
+    frontier: result.frontier,
+    receipt: result.receipt,
+    settlement: result.settlement,
+    status: result.status
+  })
+);
+assert.equal(resultJson.includes("retained-witness"), false);
 assert.equal(result.receipt.coverage.canAssertAbsenceWithinSnapshot, false);
 assert.equal(result.receipt.coverage.canAssertCurrentWorldAbsence, false);
 assert.equal(result.settlement?.status, "partial");
@@ -213,6 +226,80 @@ assert.equal(
 assert.equal(
   result.receipt.receiptId,
   "muse-thread-rooted-witness-receipt:sha256:15249e146c03b10827b5e7872f8862eb417302226701f78b497b4c0b77734e44"
+);
+const inventory = getThreadRootedRetainedWitnessInventory(result);
+assert.ok(inventory);
+assert.equal(Object.isFrozen(inventory), true);
+assert.equal(Object.isFrozen(inventory.registry.optionals), true);
+assert.equal(inventory.registry.core.entry.role, "core");
+assert.equal(inventory.registry.optionals.length, 1);
+assert.equal(inventory.registry.optionals[0].entry.role, "optional");
+assert.equal(
+  inventory.registry.optionals[0].entry.frontierDisposition.status,
+  "budget-admitted"
+);
+assert.equal(
+  inventory.registry.core.entry.entryId,
+  contentId(
+    inventory.registry.core.entry,
+    "entryId",
+    "muse.attunement-graph.thread-rooted-retained-witness-entry.v1",
+    "muse-thread-rooted-retained-witness-entry:sha256:"
+  )
+);
+assert.equal(
+  inventory.registry.optionals[0].entry.entryId,
+  contentId(
+    inventory.registry.optionals[0].entry,
+    "entryId",
+    "muse.attunement-graph.thread-rooted-retained-witness-entry.v1",
+    "muse-thread-rooted-retained-witness-entry:sha256:"
+  )
+);
+assert.equal(
+  inventory.manifest.manifestId,
+  contentId(
+    inventory.manifest,
+    "manifestId",
+    "muse.attunement-graph.thread-rooted-retained-witness-manifest.v1",
+    "muse-thread-rooted-retained-witness-manifest:sha256:"
+  )
+);
+assert.deepEqual(inventory.manifest.fairOrderedOptionalEntryIds, [
+  inventory.registry.optionals[0].entry.entryId
+]);
+assert.deepEqual(inventory.manifest.laneUndeterminedEntryIds, []);
+assert.equal(
+  inventory.registry.optionals[0].entry.focusAssertionDigest,
+  `sha256:${createHash("sha256")
+    .update(
+      "muse.attunement-graph.thread-rooted-retained-witness-focus-assertion.v1",
+      "utf8"
+    )
+    .update("\0", "utf8")
+    .update(canonical(inventory.registry.optionals[0].focusAssertion), "utf8")
+    .digest("hex")}`
+);
+assert.equal(
+  canonical(
+    inventory.registry.optionals[0].document.proof.assertions.find(
+      (item) => item.assertion.id
+        === inventory.registry.optionals[0].entry.focusAssertionId
+    )?.assertion
+  ),
+  canonical(inventory.registry.optionals[0].focusAssertion)
+);
+assert.equal(
+  inventory.registry.optionals[0].document.proof.paths[0].at(-1)?.assertionId,
+  inventory.registry.optionals[0].entry.focusAssertionId
+);
+assert.equal(
+  getThreadRootedRetainedWitnessInventory(JSON.parse(resultJson)),
+  undefined
+);
+assert.equal(
+  getThreadRootedRetainedWitnessInventory(new Proxy(result, {})),
+  undefined
 );
 
 const tieInput = fixture();
@@ -263,10 +350,12 @@ const packageJson = JSON.parse(await readFile(
 assert.equal(packageJson.exports["./thread-rooted-witness-documents"], undefined);
 const publicIndex = await readFile(new URL("../dist/index.js", import.meta.url), "utf8");
 assert.equal(publicIndex.includes("thread-rooted-witness-documents"), false);
+assert.equal(publicIndex.includes("getThreadRootedRetainedWitnessInventory"), false);
 
 stdout.write(`${JSON.stringify({
   abstainedReceiptId: abstained.receipt.receiptId,
   frontierReceiptId: result.frontier?.receipt.receiptId,
+  manifestId: inventory.manifest.manifestId,
   partialReceiptId: result.receipt.receiptId,
   status: "ok",
   witnessDepth: expectedPath.length

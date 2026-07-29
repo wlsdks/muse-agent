@@ -77,6 +77,15 @@ receipts still bind the exact source scope, observation, evidence, budget, retai
 nominations, and digest-counted overflow. The module is private and process-local. No
 runtime, Capsule, durable store, continuous/current freshness claim, or action path
 consumes it yet.
+The independently verified thread-rooted retained-witness seam now conserves the complete
+bounded pre-settlement pool behind the exact compilation object. It uses separate
+content-addressed core/optional entries, body-bound focus digests, and a compact manifest
+for fair-ranked versus lane-undetermined evidence while reusing the already frozen
+document/assertion instances. The side inventory is process-local and absent from
+enumeration, JSON, receipt IDs, package exports, and settlement semantics. It prevents a
+later resumption compiler from being limited to an earlier admitted subset, but it is not
+itself `resumeContext`: previous-boundary verification, current source resolution,
+caller-budget settlement, and runtime/Capsule delivery remain pending.
 AWG-030 adds the first verified personal-temporal operator: an isolated
 `/continuity-changes` query over two immutable observations and one caller-declared,
 version-bound boundary. It normalizes identical-source re-observation, classifies

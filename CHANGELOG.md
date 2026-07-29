@@ -8,6 +8,24 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added an independently verified, package-private **retained witness inventory** as the
+  final evidence-retention prerequisite for a future `resumeContext`. The thread-rooted
+  compiler now keeps its complete bounded pre-settlement witness pool in a process-local
+  exact-identity `WeakMap`: each core or optional witness has a small
+  content-addressed entry, while a compact manifest preserves fair-rank and
+  lane-undetermined partitions plus domain-separated thread/frontier/order digests.
+  The registry reuses the already detached, frozen proof document and normalized focus
+  assertion instances; focus digests bind assertion bodies rather than trusting
+  caller-chosen assertion IDs. Clones, spreads, JSON round-trips, and proxies cannot
+  recover the inventory, and the existing compilation keys, JSON, receipt/frontier IDs,
+  settlement result, package exports, authority, runtime, and persistence remain
+  unchanged. Controlled boundary coverage retains all 255 optionals with long multibyte
+  IDs. Focused tests `15/15`, all Agent Graph tests `264/264`, changed tests `75/75`,
+  package build/typecheck, TS7 fast typecheck, built-dist verification, full workspace
+  check, diff checks, and a fresh Sol completion gate pass. This is not yet a previous
+  stopping boundary, caller-budgeted `resumeContext`, Capsule delivery, Shadow Muse, or a
+  Policy Card.
+
 - Fixed the package-private Provider-head Graph binding verifier so its nomination
   accounting follows the actual derivation contract: exactly one core plus at most 255
   retained change/support optionals. The verifier had incorrectly reused the

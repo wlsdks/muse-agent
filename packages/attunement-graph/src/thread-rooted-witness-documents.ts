@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   CanonicalImmutableEnvelopeError,
   canonicalizeImmutableEnvelope
@@ -7,6 +9,7 @@ import type {
 } from "./scoped-proof-document-settlement.js";
 import {
   type FairWitnessFrontierCompositionV1,
+  type FairWitnessFrontierDisposition,
   settleFairWitnessFrontier
 } from "./fair-witness-frontier-settlement.js";
 import { continuityThreadGraphRef } from "./continuity-projection.js";
@@ -59,12 +62,34 @@ const DOCUMENT_SPEC = Object.freeze({
   idField: "documentId",
   idPrefix: "muse-scoped-proof-document:sha256:"
 } as const);
+const RETAINED_ENTRY_SPEC = Object.freeze({
+  hashDomain: "muse.attunement-graph.thread-rooted-retained-witness-entry.v1",
+  idField: "entryId",
+  idPrefix: "muse-thread-rooted-retained-witness-entry:sha256:"
+} as const);
+const RETAINED_MANIFEST_SPEC = Object.freeze({
+  hashDomain: "muse.attunement-graph.thread-rooted-retained-witness-manifest.v1",
+  idField: "manifestId",
+  idPrefix: "muse-thread-rooted-retained-witness-manifest:sha256:"
+} as const);
+const FOCUS_ASSERTION_DIGEST_DOMAIN =
+  "muse.attunement-graph.thread-rooted-retained-witness-focus-assertion.v1";
+const THREAD_DISPOSITIONS_DIGEST_DOMAIN =
+  "muse.attunement-graph.thread-rooted-retained-witness-thread-dispositions.v1";
+const FRONTIER_DISPOSITIONS_DIGEST_DOMAIN =
+  "muse.attunement-graph.thread-rooted-retained-witness-frontier-dispositions.v1";
+const FAIR_ORDER_DIGEST_DOMAIN =
+  "muse.attunement-graph.thread-rooted-retained-witness-fair-order.v1";
 
 const RAW = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
 const CONTROL = /[\u0000-\u001F\u007F]/u;
 const REQUEST_ID = /^muse-thread-rooted-witness-request:sha256:[0-9a-f]{64}$/u;
 const RECEIPT_ID = /^muse-thread-rooted-witness-receipt:sha256:[0-9a-f]{64}$/u;
+const RETAINED_ENTRY_ID =
+  /^muse-thread-rooted-retained-witness-entry:sha256:[0-9a-f]{64}$/u;
+const RETAINED_MANIFEST_ID =
+  /^muse-thread-rooted-retained-witness-manifest:sha256:[0-9a-f]{64}$/u;
 const SOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const MAX_ASSERTIONS = 256;
 const MAX_MEMBERSHIPS = 32;
@@ -152,6 +177,98 @@ export type ThreadRootedWitnessCompilationV1 = Readonly<{
   readonly status: "partial" | "abstained";
 }>;
 
+type RetainedWitnessEntryCommonV1 = Readonly<{
+  readonly assertionId: string;
+  readonly candidateId: string;
+  readonly documentId: string;
+  readonly entryId: string;
+  readonly entryVersion:
+    "muse.thread-rooted-retained-witness-entry.v1";
+  readonly focusAssertionDigest: string;
+  readonly focusAssertionId: string;
+  readonly nominationId: string;
+  readonly observedAt: string;
+  readonly schemaVersion: 1;
+}>;
+
+export type ThreadRootedRetainedWitnessCoreEntryV1 =
+  RetainedWitnessEntryCommonV1 & Readonly<{
+    readonly frontierCore: Readonly<{
+      readonly candidateId: string;
+      readonly documentId: string;
+    }>;
+    readonly role: "core";
+  }>;
+
+export type ThreadRootedRetainedWitnessOptionalEntryV1 =
+  RetainedWitnessEntryCommonV1 & Readonly<{
+    readonly frontierDisposition: FairWitnessFrontierDisposition;
+    readonly role: "optional";
+  }>;
+
+export type ThreadRootedRetainedWitnessEntryV1 =
+  | ThreadRootedRetainedWitnessCoreEntryV1
+  | ThreadRootedRetainedWitnessOptionalEntryV1;
+
+export type ThreadRootedRetainedWitnessManifestV1 = Readonly<{
+  readonly coreEntryId: string;
+  readonly counts: Readonly<{
+    readonly excludedThreadNominations: number;
+    readonly fairOrderedOptionals: number;
+    readonly frontierDispositions: number;
+    readonly laneUndeterminedOptionals: number;
+    readonly threadDispositions: number;
+    readonly witnessedOptionals: number;
+  }>;
+  readonly declaredFreshness: Freshness;
+  readonly fairOrderDigest: string;
+  readonly fairOrderedOptionalEntryIds: readonly string[];
+  readonly frontierDispositionsDigest: string;
+  readonly frontierOrderId: string;
+  readonly frontierReceiptId: string;
+  readonly frontierSettlementResultId: string;
+  readonly laneUndeterminedEntryIds: readonly string[];
+  readonly manifestId: string;
+  readonly manifestVersion:
+    "muse.thread-rooted-retained-witness-manifest.v1";
+  readonly requestId: string;
+  readonly schemaVersion: 1;
+  readonly scope: Scope;
+  readonly seed: Readonly<{ readonly id: string; readonly kind: "thread" }>;
+  readonly snapshot: Snapshot;
+  readonly threadDispositionsDigest: string;
+}>;
+
+export type ThreadRootedRetainedWitnessInventoryV1 = Readonly<{
+  readonly manifest: ThreadRootedRetainedWitnessManifestV1;
+  readonly registry: Readonly<{
+    readonly core: Readonly<{
+      readonly document: Readonly<Record<string, unknown>>;
+      readonly entry: ThreadRootedRetainedWitnessCoreEntryV1;
+      readonly focusAssertion: GraphAssertion;
+    }>;
+    readonly optionals: readonly Readonly<{
+      readonly document: Readonly<Record<string, unknown>>;
+      readonly entry: ThreadRootedRetainedWitnessOptionalEntryV1;
+      readonly focusAssertion: GraphAssertion;
+    }>[];
+  }>;
+}>;
+
+const retainedWitnessInventories =
+  new WeakMap<object, ThreadRootedRetainedWitnessInventoryV1>();
+
+/**
+ * Package-private process-local lookup. Intentionally absent from index and
+ * package exports; serialized, cloned, spread, or proxied compilations miss.
+ */
+export function getThreadRootedRetainedWitnessInventory(
+  compilation: unknown
+): ThreadRootedRetainedWitnessInventoryV1 | undefined {
+  if (compilation === null || typeof compilation !== "object") return undefined;
+  return retainedWitnessInventories.get(compilation);
+}
+
 export type ThreadRootedWitnessDocumentsErrorCode =
   | "INVALID_REQUEST"
   | "INTERNAL_POSTCONDITION_FAILED";
@@ -217,6 +334,14 @@ function canonicalValue(value: unknown): string {
   return `{${Object.keys(root).sort(RAW).map((key) =>
     `${JSON.stringify(key)}:${canonicalValue(root[key])}`
   ).join(",")}}`;
+}
+
+function domainDigest(domain: string, value: unknown): string {
+  return `sha256:${createHash("sha256")
+    .update(domain, "utf8")
+    .update("\0", "utf8")
+    .update(canonicalValue(value), "utf8")
+    .digest("hex")}`;
 }
 
 function fail(reason: string, path: string): never {
@@ -607,6 +732,337 @@ function captureReceipt(body: Record<string, unknown>): ThreadRootedWitnessRecei
   }
 }
 
+function captureRetainedEnvelope<T extends Record<string, unknown>>(
+  body: Record<string, unknown>,
+  spec: typeof RETAINED_ENTRY_SPEC | typeof RETAINED_MANIFEST_SPEC,
+  idPattern: RegExp,
+  reason: string
+): T {
+  try {
+    const first = canonicalizeImmutableEnvelope(
+      mutableJson(body),
+      "external-mutable",
+      spec
+    );
+    const second = canonicalizeImmutableEnvelope(
+      first.envelope,
+      "muse-frozen",
+      spec
+    );
+    if (
+      first.contentId !== second.contentId
+      || first.canonicalJson !== second.canonicalJson
+      || first.canonicalByteLength !== second.canonicalByteLength
+      || !idPattern.test(second.contentId)
+    ) {
+      internal(reason);
+    }
+    return second.envelope as T;
+  } catch (cause) {
+    if (cause instanceof ThreadRootedWitnessDocumentsError) throw cause;
+    internal(reason);
+  }
+}
+
+function internalRecord(value: unknown, reason: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    internal(reason);
+  }
+  return value as Record<string, unknown>;
+}
+
+function internalArray(value: unknown, reason: string): readonly unknown[] {
+  if (!Array.isArray(value)) internal(reason);
+  return value;
+}
+
+function assertRetainedFocus(
+  documentValue: Readonly<Record<string, unknown>>,
+  focusAssertion: GraphAssertion,
+  expectedDocumentId: string,
+  expectedFocusAssertionId: string,
+  expectedDigest: string
+): void {
+  if (
+    documentValue.documentId !== expectedDocumentId
+    || focusAssertion.id !== expectedFocusAssertionId
+    || domainDigest(FOCUS_ASSERTION_DIGEST_DOMAIN, focusAssertion)
+      !== expectedDigest
+  ) {
+    internal("retained-focus-link-postcondition-failed");
+  }
+  const proof = internalRecord(
+    documentValue.proof,
+    "retained-focus-proof-postcondition-failed"
+  );
+  const paths = internalArray(
+    proof.paths,
+    "retained-focus-proof-postcondition-failed"
+  );
+  if (paths.length !== 1) {
+    internal("retained-focus-proof-postcondition-failed");
+  }
+  const path = internalArray(
+    paths[0],
+    "retained-focus-proof-postcondition-failed"
+  );
+  const terminal = internalRecord(
+    path.at(-1),
+    "retained-focus-proof-postcondition-failed"
+  );
+  if (terminal.assertionId !== expectedFocusAssertionId) {
+    internal("retained-focus-proof-postcondition-failed");
+  }
+  const proofAssertions = internalArray(
+    proof.assertions,
+    "retained-focus-proof-postcondition-failed"
+  );
+  const focused = proofAssertions
+    .map((item) =>
+      internalRecord(item, "retained-focus-proof-postcondition-failed")
+    )
+    .find((item) =>
+      internalRecord(
+        item.assertion,
+        "retained-focus-proof-postcondition-failed"
+      ).id === expectedFocusAssertionId
+    );
+  if (
+    focused === undefined
+    || canonicalValue(focused.assertion) !== canonicalValue(focusAssertion)
+  ) {
+    internal("retained-focus-proof-postcondition-failed");
+  }
+}
+
+type RetainedCandidateMaterial = Readonly<{
+  readonly document: Readonly<Record<string, unknown>>;
+  readonly focusAssertion: GraphAssertion;
+  readonly nomination: Nomination;
+}>;
+
+function buildRetainedWitnessInventory(value: Readonly<{
+  readonly core: RetainedCandidateMaterial;
+  readonly declaredFreshness: Freshness;
+  readonly frontier: FairWitnessFrontierCompositionV1;
+  readonly optionals: readonly RetainedCandidateMaterial[];
+  readonly requestId: string;
+  readonly scope: Scope;
+  readonly seed: Readonly<{ readonly id: string; readonly kind: "thread" }>;
+  readonly snapshot: Snapshot;
+  readonly threadDispositions: readonly ThreadRootedWitnessDisposition[];
+}>): ThreadRootedRetainedWitnessInventoryV1 {
+  const coreDocumentId = value.core.document.documentId;
+  if (
+    typeof coreDocumentId !== "string"
+    || value.frontier.receipt.coreDocumentId !== coreDocumentId
+    || value.core.nomination.assertionId !== value.core.focusAssertion.id
+  ) {
+    internal("retained-core-link-postcondition-failed");
+  }
+  const coreFocusDigest = domainDigest(
+    FOCUS_ASSERTION_DIGEST_DOMAIN,
+    value.core.focusAssertion
+  );
+  const coreEntry =
+    captureRetainedEnvelope<ThreadRootedRetainedWitnessCoreEntryV1>({
+      assertionId: value.core.nomination.assertionId,
+      candidateId: value.frontier.receipt.coreCandidateId,
+      documentId: coreDocumentId,
+      entryVersion: "muse.thread-rooted-retained-witness-entry.v1",
+      focusAssertionDigest: coreFocusDigest,
+      focusAssertionId: value.core.focusAssertion.id,
+      frontierCore: {
+        candidateId: value.frontier.receipt.coreCandidateId,
+        documentId: value.frontier.receipt.coreDocumentId
+      },
+      nominationId: value.core.nomination.nominationId,
+      observedAt: value.core.nomination.observedAt,
+      role: "core",
+      schemaVersion: 1
+    }, RETAINED_ENTRY_SPEC, RETAINED_ENTRY_ID, "retained-entry-postcondition-failed");
+  assertRetainedFocus(
+    value.core.document,
+    value.core.focusAssertion,
+    coreEntry.documentId,
+    coreEntry.focusAssertionId,
+    coreEntry.focusAssertionDigest
+  );
+
+  const dispositionByNomination = new Map(
+    value.frontier.receipt.dispositions.map((item) => [item.nominationId, item])
+  );
+  const optionalRegistry = [...value.optionals]
+    .sort((left, right) =>
+      RAW(left.nomination.nominationId, right.nomination.nominationId)
+    )
+    .map((item) => {
+      const disposition = dispositionByNomination.get(
+        item.nomination.nominationId
+      );
+      const documentId = item.document.documentId;
+      if (
+        disposition === undefined
+        || typeof documentId !== "string"
+        || disposition.documentId !== documentId
+        || disposition.focusAssertionId !== item.focusAssertion.id
+        || item.nomination.assertionId !== item.focusAssertion.id
+      ) {
+        internal("retained-optional-link-postcondition-failed");
+      }
+      const focusAssertionDigest = domainDigest(
+        FOCUS_ASSERTION_DIGEST_DOMAIN,
+        item.focusAssertion
+      );
+      const entry =
+        captureRetainedEnvelope<ThreadRootedRetainedWitnessOptionalEntryV1>({
+          assertionId: item.nomination.assertionId,
+          candidateId: disposition.candidateId,
+          documentId,
+          entryVersion: "muse.thread-rooted-retained-witness-entry.v1",
+          focusAssertionDigest,
+          focusAssertionId: item.focusAssertion.id,
+          frontierDisposition: disposition,
+          nominationId: item.nomination.nominationId,
+          observedAt: item.nomination.observedAt,
+          role: "optional",
+          schemaVersion: 1
+        }, RETAINED_ENTRY_SPEC, RETAINED_ENTRY_ID, "retained-entry-postcondition-failed");
+      assertRetainedFocus(
+        item.document,
+        item.focusAssertion,
+        entry.documentId,
+        entry.focusAssertionId,
+        entry.focusAssertionDigest
+      );
+      return freezeRecord({
+        document: item.document,
+        entry,
+        focusAssertion: item.focusAssertion
+      });
+    });
+
+  const entryByCandidate = new Map(optionalRegistry.map((item) => [
+    item.entry.candidateId,
+    item.entry
+  ]));
+  const fairOrderedOptionalEntryIds = value.frontier.order.entries.map(
+    (orderEntry, rank) => {
+      const entry = entryByCandidate.get(orderEntry.candidateId);
+      const disposition = value.frontier.receipt.dispositions.find((item) =>
+        item.candidateId === orderEntry.candidateId
+      );
+      if (
+        orderEntry.rank !== rank
+        || entry === undefined
+        || disposition === undefined
+        || disposition.status === "lane-undetermined"
+        || disposition.rank !== rank
+      ) {
+        internal("retained-fair-order-postcondition-failed");
+      }
+      return entry.entryId;
+    }
+  );
+  const laneUndeterminedEntryIds = optionalRegistry
+    .filter((item) =>
+      item.entry.frontierDisposition.status === "lane-undetermined"
+    )
+    .map((item) => item.entry.entryId);
+  const fairSet = new Set(fairOrderedOptionalEntryIds);
+  const laneSet = new Set(laneUndeterminedEntryIds);
+  const entryIds = [coreEntry.entryId, ...optionalRegistry.map((item) =>
+    item.entry.entryId
+  )];
+  const candidateIds = [
+    coreEntry.candidateId,
+    ...optionalRegistry.map((item) => item.entry.candidateId)
+  ];
+  const documentIds = [
+    coreEntry.documentId,
+    ...optionalRegistry.map((item) => item.entry.documentId)
+  ];
+  const witnessedThreadOptionals = value.threadDispositions.filter((item) =>
+    item.role === "optional" && item.status === "witnessed"
+  );
+  if (
+    optionalRegistry.length !== value.frontier.receipt.dispositions.length
+    || optionalRegistry.length !== witnessedThreadOptionals.length
+    || fairSet.size !== fairOrderedOptionalEntryIds.length
+    || laneSet.size !== laneUndeterminedEntryIds.length
+    || [...fairSet].some((id) => laneSet.has(id))
+    || fairSet.size + laneSet.size !== optionalRegistry.length
+    || new Set(entryIds).size !== entryIds.length
+    || new Set(candidateIds).size !== candidateIds.length
+    || new Set(documentIds).size !== documentIds.length
+    || optionalRegistry.some((item) =>
+      !fairSet.has(item.entry.entryId) && !laneSet.has(item.entry.entryId)
+    )
+  ) {
+    internal("retained-inventory-conservation-postcondition-failed");
+  }
+
+  const manifest =
+    captureRetainedEnvelope<ThreadRootedRetainedWitnessManifestV1>({
+      coreEntryId: coreEntry.entryId,
+      counts: {
+        excludedThreadNominations: value.threadDispositions.filter((item) =>
+          item.status === "excluded"
+        ).length,
+        fairOrderedOptionals: fairOrderedOptionalEntryIds.length,
+        frontierDispositions: value.frontier.receipt.dispositions.length,
+        laneUndeterminedOptionals: laneUndeterminedEntryIds.length,
+        threadDispositions: value.threadDispositions.length,
+        witnessedOptionals: optionalRegistry.length
+      },
+      declaredFreshness: value.declaredFreshness,
+      fairOrderDigest: domainDigest(
+        FAIR_ORDER_DIGEST_DOMAIN,
+        value.frontier.order.entries
+      ),
+      fairOrderedOptionalEntryIds,
+      frontierDispositionsDigest: domainDigest(
+        FRONTIER_DISPOSITIONS_DIGEST_DOMAIN,
+        value.frontier.receipt.dispositions
+      ),
+      frontierOrderId: value.frontier.order.orderId,
+      frontierReceiptId: value.frontier.receipt.receiptId,
+      frontierSettlementResultId: value.frontier.settlement.resultId,
+      laneUndeterminedEntryIds,
+      manifestVersion:
+        "muse.thread-rooted-retained-witness-manifest.v1",
+      requestId: value.requestId,
+      schemaVersion: 1,
+      scope: value.scope,
+      seed: value.seed,
+      snapshot: value.snapshot,
+      threadDispositionsDigest: domainDigest(
+        THREAD_DISPOSITIONS_DIGEST_DOMAIN,
+        value.threadDispositions
+      )
+    }, RETAINED_MANIFEST_SPEC, RETAINED_MANIFEST_ID, "retained-manifest-postcondition-failed");
+  const inventory = freezeTree(freezeRecord({
+    manifest,
+    registry: freezeRecord({
+      core: freezeRecord({
+        document: value.core.document,
+        entry: coreEntry,
+        focusAssertion: value.core.focusAssertion
+      }),
+      optionals: freezeArray(optionalRegistry)
+    })
+  })) as ThreadRootedRetainedWitnessInventoryV1;
+  if (
+    manifest.coreEntryId !== inventory.registry.core.entry.entryId
+    || manifest.frontierReceiptId !== value.frontier.receipt.receiptId
+    || manifest.frontierOrderId !== value.frontier.order.orderId
+    || manifest.frontierSettlementResultId !== value.frontier.settlement.resultId
+  ) {
+    internal("retained-manifest-link-postcondition-failed");
+  }
+  return inventory;
+}
+
 function logicalRequestId(value: {
   readonly assertions: readonly ScopedAssertion[];
   readonly budget: Budget;
@@ -925,8 +1381,11 @@ export function compileThreadRootedWitnessDocuments(
   );
   const coreDocument = documents.get(core.nominationId);
   let frontier: FairWitnessFrontierCompositionV1 | undefined;
+  let retainedInventory: ThreadRootedRetainedWitnessInventoryV1 | undefined;
   let settlement: ScopedProofDocumentSettlementResultV1 | undefined;
   if (coreDocument) {
+    const coreFocus = scopeEligible.get(core.assertionId)?.assertion;
+    if (coreFocus === undefined) internal("focus-assertion-postcondition-failed");
     const witnessedOptionals = optionals.flatMap((item) => {
       const witnessDocument = documents.get(item.nominationId);
       const focus = scopeEligible.get(item.assertionId)?.assertion;
@@ -935,6 +1394,7 @@ export function compileThreadRootedWitnessDocuments(
       return [{
         document: witnessDocument,
         focusAssertion: focus,
+        nomination: item,
         nominationId: item.nominationId,
         observedAt: item.observedAt
       }];
@@ -966,6 +1426,21 @@ export function compileThreadRootedWitnessDocuments(
     ) {
       internal("frontier-conservation-postcondition-failed");
     }
+    retainedInventory = buildRetainedWitnessInventory({
+      core: {
+        document: coreDocument,
+        focusAssertion: coreFocus,
+        nomination: core
+      },
+      declaredFreshness: requestedFreshness,
+      frontier,
+      optionals: witnessedOptionals,
+      requestId,
+      scope: requestedScope,
+      seed: { id: seed.id, kind: "thread" },
+      snapshot: requestedSnapshot,
+      threadDispositions: dispositions
+    });
   }
   const status = coreDocument && settlement?.status === "partial"
     ? "partial" as const
@@ -1008,7 +1483,7 @@ export function compileThreadRootedWitnessDocuments(
   if (!RECEIPT_ID.test(receipt.receiptId)) {
     internal("receipt-postcondition-failed");
   }
-  return freezeTree(freezeRecord({
+  const compilation = freezeTree(freezeRecord({
     ...(frontier ? {
       frontier: freezeRecord({
         order: frontier.order,
@@ -1019,4 +1494,8 @@ export function compileThreadRootedWitnessDocuments(
     ...(settlement ? { settlement } : {}),
     status
   })) as ThreadRootedWitnessCompilationV1;
+  if (retainedInventory) {
+    retainedWitnessInventories.set(compilation, retainedInventory);
+  }
+  return compilation;
 }

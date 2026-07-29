@@ -42,6 +42,15 @@ unavailable endpoints never enter Graph compilation. The verifier closes Provide
 ownership, scope, endpoint timing, coverage vocabulary, and the exact scope-derived thread
 seed. It proves neither continuous stability nor freshness after assessment and remains
 absent from the package root, runtime, and persistence surfaces.
+The thread-rooted compiler also keeps a bounded retained-witness inventory in a
+module-private exact-identity `WeakMap`. Individual core/optional entries and a compact
+manifest preserve the complete pre-settlement pool, fair/lane-undetermined partition, and
+body-bound focus digests while reusing the existing frozen document/assertion instances.
+The inventory is available only to the exact in-process compilation object; cloning,
+spreading, JSON serialization, and proxies do not carry it, and existing receipt IDs,
+enumerable fields, JSON, settlement behavior, and package exports are unchanged. This is a
+private prerequisite for a later caller-budgeted resumption operator, not a shipped
+`resumeContext`, persistence layer, or runtime feature.
 The adapter is exposed from `@muse/attunement-graph/continuity`, so importing the kernel
 root does not eagerly load Attunement validation or personal-store dependencies.
 
