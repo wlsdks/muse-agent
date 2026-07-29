@@ -81,7 +81,28 @@ export class ToolCallDeduplicator {
     if (result.status !== "completed") {
       return;
     }
+    this.#store(toolCall, result, mutating);
+  }
 
+  /**
+   * Seed an unanswered mutating call recovered from a checkpoint. The effect
+   * may have happened before the process lost its acknowledgement, so replay
+   * must stop at an explicit reconcile state instead of invoking it again.
+   */
+  recordReconcileRequired(toolCall: ModelToolCall): void {
+    this.#store(toolCall, {
+      id: toolCall.id,
+      name: toolCall.name,
+      output: JSON.stringify({
+        effectSignature: this.buildSignature(toolCall),
+        effectStatus: "unknown",
+        reason: "checkpoint resumed with an unanswered mutating tool call; reconcile the exact effect before retry"
+      }),
+      status: "blocked"
+    }, true);
+  }
+
+  #store(toolCall: ModelToolCall, result: ToolExecutionResult, mutating: boolean): void {
     if (mutating) {
       // Invalidate stale read entries so a subsequent identical read re-executes
       // against the state that the write just changed. Write entries are left

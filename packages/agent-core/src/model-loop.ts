@@ -867,38 +867,83 @@ export async function* executeStreamingModelLoop(
 }
 
 /**
- * Re-seed the tool-call deduplicator from ALREADY-COMPLETED tool calls in the
+ * Re-seed the tool-call deduplicator from checkpointed tool calls in the
  * initial messages, so a RESUMED run (resumeRunInputFromCheckpoint replays the
  * finished tool calls + their results) won't RE-EXECUTE a side-effecting tool — a
  * re-issued identical call returns the cached result instead of sending the message
  * / booking again. The deduplicator is otherwise in-memory and reset on resume,
  * leaving this anti-double-execution guard blind across a crash. A normal (non-
  * resume) run has no completed tool calls in its initial messages, so this is a
- * no-op there. Mutating-ness comes from the tool's risk (write/execute), matching
- * the live path so read-invalidation-on-write is reconstructed identically.
+ * no-op there. An unanswered write/execute call is effect-UNKNOWN: the provider
+ * may have committed it before Muse lost the acknowledgement, so resume seeds a
+ * reconcile-required guard instead of replaying it. Unanswered reads remain
+ * runnable. Mutating-ness comes from the tool's declared risk.
  */
 export function seedDeduplicatorFromHistory(
   deduplicator: ToolCallDeduplicator,
   messages: readonly ModelMessage[],
   tools: readonly ModelTool[] | undefined
 ): void {
-  const outputById = new Map<string, string>();
-  for (const message of messages) {
-    if (message.role === "tool" && message.toolCallId) outputById.set(message.toolCallId, message.content);
+  interface HistoricalToolCall {
+    readonly toolCall: ModelToolCall;
+    readonly mutating: boolean;
+    output?: string;
   }
-  if (outputById.size === 0) return; // no finished tool calls in the history — nothing to reconstruct
+
   const riskByName = new Map((tools ?? []).map((tool) => [tool.name, tool.risk]));
+  const occurrences: HistoricalToolCall[] = [];
+  const pendingById = new Map<string, HistoricalToolCall[]>();
+
   for (const message of messages) {
-    if (message.role !== "assistant" || !message.toolCalls) continue;
-    for (const toolCall of message.toolCalls) {
-      const output = toolCall.id ? outputById.get(toolCall.id) : undefined;
-      if (output === undefined) continue; // an unanswered call (the crash point) — leave it runnable
-      const risk = riskByName.get(toolCall.name);
-      deduplicator.record(
-        toolCall,
-        { id: toolCall.id, name: toolCall.name, output, status: "completed" },
-        risk === "write" || risk === "execute"
-      );
+    if (message.role === "assistant" && message.toolCalls) {
+      for (const toolCall of message.toolCalls) {
+        const risk = riskByName.get(toolCall.name);
+        const occurrence: HistoricalToolCall = {
+          mutating: risk === "write" || risk === "execute",
+          toolCall
+        };
+        occurrences.push(occurrence);
+        const pending = pendingById.get(toolCall.id) ?? [];
+        pending.push(occurrence);
+        pendingById.set(toolCall.id, pending);
+      }
+      continue;
+    }
+
+    if (message.role !== "tool" || !message.toolCallId) continue;
+    const pending = pendingById.get(message.toolCallId);
+    // Pair only an unambiguous result that follows its call. A result before
+    // the call, a reused in-flight ID, or a conflicting tool name must not
+    // convert an uncertain effect into a completed one.
+    if (
+      pending?.length !== 1 ||
+      (message.name !== undefined && message.name !== pending[0]!.toolCall.name)
+    ) {
+      continue;
+    }
+    pending[0]!.output = message.content;
+    pendingById.delete(message.toolCallId);
+  }
+
+  // Seed known completions first. Any unresolved mutating occurrence is then
+  // applied last so effect-unknown dominates a later completed occurrence with
+  // the same canonical signature.
+  for (const occurrence of occurrences) {
+    if (occurrence.output === undefined) continue;
+    deduplicator.record(
+      occurrence.toolCall,
+      {
+        id: occurrence.toolCall.id,
+        name: occurrence.toolCall.name,
+        output: occurrence.output,
+        status: "completed"
+      },
+      occurrence.mutating
+    );
+  }
+  for (const occurrence of occurrences) {
+    if (occurrence.output === undefined && occurrence.mutating) {
+      deduplicator.recordReconcileRequired(occurrence.toolCall);
     }
   }
 }
