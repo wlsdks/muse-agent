@@ -116,7 +116,9 @@ export const ACTUATOR_PERMISSION_MATRIX = {
 } as const satisfies Readonly<Record<string, ActuatorPermissionClass>>;
 
 export function classifyActuatorPermission(name: string): ActuatorPermissionClass | undefined {
-  return ACTUATOR_PERMISSION_MATRIX[name as keyof typeof ACTUATOR_PERMISSION_MATRIX];
+  return Object.hasOwn(ACTUATOR_PERMISSION_MATRIX, name)
+    ? ACTUATOR_PERMISSION_MATRIX[name as keyof typeof ACTUATOR_PERMISSION_MATRIX]
+    : undefined;
 }
 
 /**

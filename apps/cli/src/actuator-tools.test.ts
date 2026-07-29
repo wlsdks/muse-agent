@@ -494,6 +494,13 @@ describe("summarizeActuators — armed-state visibility + config hints", () => {
     });
   });
 
+  it.each(["future_actuator", "constructor", "toString", "__proto__"])(
+    "fails closed for an unknown or inherited actuator name: %s",
+    (name) => {
+      expect(classifyActuatorPermission(name)).toBeUndefined();
+    }
+  );
+
   it("arms only web_action with no provider env, with hints for the rest", () => {
     const summary = summarizeActuators(env(), fakeIo());
     expect(summary.armed).toEqual(["web_action"]);
