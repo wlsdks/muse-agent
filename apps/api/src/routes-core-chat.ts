@@ -8,6 +8,7 @@ import { denyChatApproval } from "./chat-approval-deny.js";
 import { executeChatApproval } from "./chat-approval-execute.js";
 import { getChatApprovalStatus } from "./chat-approval-status.js";
 import { ChatRateLimiter, clientKeyFromRequest } from "./chat-rate-limiter.js";
+import { createHttpRequestAbortScope } from "./http-request-abort.js";
 import {
   createOpenApiDocument,
   getAuthIdentity,
@@ -103,13 +104,19 @@ export function registerChatRoutes(server: FastifyInstance, options: ServerOptio
     if (!enforce(request, reply)) return reply;
     const id = (request.params as { id?: string }).id ?? "";
     const requestUserId = getAuthIdentity(request)?.userId;
-    const result = await executeChatApproval({
-      id,
-      pendingFile: resolvePendingApprovalsFile(options.env ?? {}),
-      ...(requestUserId ? { requestUserId } : {}),
-      ...(options.approvalToolResolver ? { resolveTool: options.approvalToolResolver } : {})
-    });
-    return reply.status(result.statusCode).send(result.body);
+    const abortScope = createHttpRequestAbortScope(request, reply);
+    try {
+      const result = await executeChatApproval({
+        id,
+        pendingFile: resolvePendingApprovalsFile(options.env ?? {}),
+        signal: abortScope.signal,
+        ...(requestUserId ? { requestUserId } : {}),
+        ...(options.approvalToolResolver ? { resolveTool: options.approvalToolResolver } : {})
+      });
+      return reply.status(result.statusCode).send(result.body);
+    } finally {
+      abortScope.dispose();
+    }
   });
   server.get("/api/chat/approvals/:id/status", async (request, reply) => {
     if (!enforce(request, reply)) return reply;
@@ -131,14 +138,20 @@ export function registerChatRoutes(server: FastifyInstance, options: ServerOptio
     }
     const id = (request.params as { id?: string }).id ?? "";
     const requestUserId = getAuthIdentity(request)?.userId;
-    const result = await executeChatApproval({
-      acquisition: "recover-stale-claim",
-      id,
-      pendingFile: resolvePendingApprovalsFile(options.env ?? {}),
-      ...(requestUserId ? { requestUserId } : {}),
-      ...(options.approvalToolResolver ? { resolveTool: options.approvalToolResolver } : {})
-    });
-    return reply.status(result.statusCode).send(result.body);
+    const abortScope = createHttpRequestAbortScope(request, reply);
+    try {
+      const result = await executeChatApproval({
+        acquisition: "recover-stale-claim",
+        id,
+        pendingFile: resolvePendingApprovalsFile(options.env ?? {}),
+        signal: abortScope.signal,
+        ...(requestUserId ? { requestUserId } : {}),
+        ...(options.approvalToolResolver ? { resolveTool: options.approvalToolResolver } : {})
+      });
+      return reply.status(result.statusCode).send(result.body);
+    } finally {
+      abortScope.dispose();
+    }
   });
   // Confirm-deny for a draft-first chat write (outbound-safety fail-close
   // symmetry with approve): clears the pending entry and records a rationale-

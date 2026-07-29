@@ -57,7 +57,9 @@ describe("approval status and stale-claim recovery routes", () => {
     const calls: JsonObject[] = [];
     const tool: MuseTool = {
       definition: { description: "task add", inputSchema: {}, name: "muse.tasks.add", risk: "write" },
-      execute: (args) => {
+      execute: (args, context) => {
+        expect(context.signal).toBeDefined();
+        expect(context.signal?.aborted).toBe(false);
         calls.push(args);
         return { ok: true } as ToolExecutionValue;
       }
