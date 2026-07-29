@@ -562,6 +562,13 @@ export {
   memoryEncryptionSecret,
   type EncryptedMemoryEnvelope
 } from "./memory-encryption.js";
+export {
+  MEMORY_EXPORT_PROVENANCE_SCHEMA,
+  projectMemoryExportProvenanceCompleteness,
+  type MemoryExportProvenanceIssue,
+  type MemoryExportProvenanceLink,
+  type MemoryExportProvenanceReport
+} from "./memory-export-provenance.js";
 
 
 

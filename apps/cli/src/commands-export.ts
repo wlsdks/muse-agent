@@ -18,6 +18,13 @@ import { chmod, mkdir, readdir, readFile, stat, writeFile, unlink } from "node:f
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
+import {
+  FileUserMemoryStore,
+  inspectBeliefProvenanceSource,
+  MEMORY_EXPORT_PROVENANCE_SCHEMA,
+  projectMemoryExportProvenanceCompleteness,
+  type MemoryExportProvenanceReport
+} from "@muse/memory";
 import type { Command } from "commander";
 
 import { encryptExportBuffer } from "./export-crypto.js";
@@ -53,6 +60,7 @@ export const DEFAULT_EXPORT_FILES: readonly string[] = [
   "patterns-fired.json",
   "proactive-history.json",
   "user-memory.json",
+  "belief-provenance.json",
   "contacts.json",
   "feeds.json",
   "objectives.json",
@@ -68,6 +76,8 @@ export const DEFAULT_EXPORT_FILES: readonly string[] = [
   "trust.json",
   "config.json"
 ];
+
+const MEMORY_PROVENANCE_REPORT_FILE = "memory-provenance-report.export.json";
 
 /**
  * Default notes directory under `~/.muse/notes` — overridden by
@@ -95,7 +105,8 @@ function defaultExportOutput(): string {
 export function buildExportReadme(
   includedFiles: readonly string[],
   includedNotesDir: string | undefined,
-  createdAtIso: string
+  createdAtIso: string,
+  memoryProvenance?: MemoryExportProvenanceReport
 ): string {
   const lines: string[] = [];
   lines.push("# Muse export bundle");
@@ -113,6 +124,9 @@ export function buildExportReadme(
   }
   if (includedNotesDir) {
     lines.push(`- \`.muse/notes/\` — full notes tree (from \`${includedNotesDir}\`)`);
+  }
+  if (memoryProvenance) {
+    lines.push(`- \`.muse/${MEMORY_PROVENANCE_REPORT_FILE}\` — memory provenance ${memoryProvenance.complete ? "complete" : "incomplete"}`);
   }
   lines.push("");
   lines.push("## Restore");
@@ -196,10 +210,22 @@ export async function buildMuseExport(args: {
   readonly outputPath: string;
   readonly nowIso?: string;
   readonly passphrase?: string;
+  readonly ownerUserId?: string;
   readonly spawnImpl?: typeof spawn;
-}): Promise<{ readonly outputPath: string; readonly files: readonly string[]; readonly notesIncluded: boolean; readonly encrypted: boolean }> {
+}): Promise<{
+  readonly outputPath: string;
+  readonly files: readonly string[];
+  readonly notesIncluded: boolean;
+  readonly encrypted: boolean;
+  readonly memoryProvenance: MemoryExportProvenanceReport;
+}> {
   const spawnImpl = args.spawnImpl ?? spawn;
   const sources = await collectSources(args.museDir, args.notesDir);
+  const ownerUserId = args.ownerUserId
+    ?? process.env.MUSE_USER_ID?.trim()
+    ?? process.env.USER?.trim()
+    ?? "default";
+  const memoryProvenance = await inspectMemoryExportProvenance(args.museDir, ownerUserId);
 
   // When encrypting, build the tar into a temp sibling of the
   // final output then encrypt+unlink, so a partial failure
@@ -214,11 +240,21 @@ export async function buildMuseExport(args: {
   // archive closes so we don't leave it behind in a real
   // `~/.muse/`. A tiny race window with concurrent muse processes
   // is acceptable for a single-user backup tool.
-  const readme = buildExportReadme(sources.files, sources.notesDir, args.nowIso ?? new Date().toISOString());
+  const readme = buildExportReadme(
+    sources.files,
+    sources.notesDir,
+    args.nowIso ?? new Date().toISOString(),
+    memoryProvenance
+  );
   const readmePath = join(args.museDir, "README.export.md");
+  const provenanceReportPath = join(args.museDir, MEMORY_PROVENANCE_REPORT_FILE);
   await writeFile(readmePath, readme, { encoding: "utf8" });
+  await writeFile(provenanceReportPath, `${JSON.stringify(memoryProvenance, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600
+  });
 
-  const tarEntries: string[] = ["README.export.md", ...sources.files];
+  const tarEntries: string[] = ["README.export.md", MEMORY_PROVENANCE_REPORT_FILE, ...sources.files];
   if (sources.notesDir) {
     // include the basename so the archive path becomes
     // `.muse/notes/...` after the rename trick below.
@@ -277,6 +313,7 @@ export async function buildMuseExport(args: {
     }
   } finally {
     await unlink(readmePath).catch(() => undefined);
+    await unlink(provenanceReportPath).catch(() => undefined);
     if (passphrase) {
       await unlink(tarPath).catch(() => undefined);
     }
@@ -286,8 +323,40 @@ export async function buildMuseExport(args: {
     outputPath: args.outputPath,
     files: sources.files,
     notesIncluded: sources.notesDir !== undefined,
-    encrypted: Boolean(passphrase)
+    encrypted: Boolean(passphrase),
+    memoryProvenance
   };
+}
+
+async function inspectMemoryExportProvenance(
+  museDir: string,
+  userId: string
+): Promise<MemoryExportProvenanceReport> {
+  try {
+    const targets = await new FileUserMemoryStore({
+      file: join(museDir, "user-memory.json")
+    }).inspectOwnerMemory(userId);
+    const inspection = await inspectBeliefProvenanceSource(join(museDir, "belief-provenance.json"));
+    if (inspection.result === "corrupt"
+      || inspection.result === "unreadable"
+      || (inspection.result === "available" && inspection.value.excludedCount > 0)) {
+      return unavailableMemoryProvenanceReport(userId);
+    }
+    const entries = inspection.result === "available" ? inspection.value.entries : [];
+    return projectMemoryExportProvenanceCompleteness(userId, targets, entries);
+  } catch {
+    return unavailableMemoryProvenanceReport(userId);
+  }
+}
+
+function unavailableMemoryProvenanceReport(userId: string): MemoryExportProvenanceReport {
+  return Object.freeze({
+    complete: false,
+    issues: Object.freeze([Object.freeze({ code: "malformed-history" as const })]),
+    links: Object.freeze([]),
+    schemaVersion: MEMORY_EXPORT_PROVENANCE_SCHEMA,
+    userId
+  });
 }
 
 /**
@@ -348,6 +417,7 @@ export function registerExportCommand(program: Command, io: ProgramIO): void {
       });
       io.stdout(`Wrote ${summary.outputPath}${summary.encrypted ? " (encrypted)" : ""}\n`);
       io.stdout(`  ${summary.files.length.toString()} store file(s), notes tree ${summary.notesIncluded ? "included" : "skipped (missing or empty)"}\n`);
+      io.stdout(`  memory provenance ${summary.memoryProvenance.complete ? "complete" : "incomplete"} (${summary.memoryProvenance.issues.length.toString()} issue(s))\n`);
       if (summary.encrypted) {
         io.stdout(`Restore: muse import ${summary.outputPath} --decrypt\n`);
       } else {
@@ -355,4 +425,3 @@ export function registerExportCommand(program: Command, io: ProgramIO): void {
       }
     });
 }
-

@@ -1,11 +1,15 @@
 import { EventEmitter } from "node:events";
-import type { spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { execFileSync, type spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  FileBeliefProvenanceStore,
+  FileUserMemoryStore
+} from "@muse/memory";
 import { buildMuseExport, DEFAULT_EXPORT_FILES } from "./commands-export.js";
 
 interface FakeChild extends EventEmitter {
@@ -54,9 +58,70 @@ describe("muse export — bundles every user-data store, not just some", () => {
   });
 
   it("DEFAULT_EXPORT_FILES lists the recently-added stores", () => {
-    for (const f of ["contacts.json", "feeds.json", "objectives.json", "vetoes.json", "persona.json"]) {
+    for (const f of ["belief-provenance.json", "contacts.json", "feeds.json", "objectives.json", "vetoes.json", "persona.json"]) {
       expect(DEFAULT_EXPORT_FILES).toContain(f);
     }
+  });
+
+  it("bundles a deterministic provenance report and marks unversioned correction history incomplete", async () => {
+    dir = mkdtempSync(join(tmpdir(), "muse-export-provenance-"));
+    const museDir = join(dir, ".muse");
+    mkdirSync(museDir, { recursive: true });
+    const memoryFile = join(museDir, "user-memory.json");
+    const provenanceFile = join(museDir, "belief-provenance.json");
+    const memory = new FileUserMemoryStore({
+      file: memoryFile,
+      now: () => new Date("2026-02-01T00:00:00.000Z")
+    });
+    const provenance = new FileBeliefProvenanceStore(provenanceFile);
+    await memory.upsertFact("owner", "home_city", "Seoul");
+    const exact = (await memory.inspectOwnerMemory("owner"))[0]!;
+    await memory.correctOwnerMemory("owner", {
+      exactId: exact.exactId,
+      expectedVersion: 1,
+      requestId: "correct-home-city-export",
+      value: "Busan"
+    });
+    await provenance.recordMany([
+      {
+        key: "home_city",
+        kind: "fact",
+        learnedAt: "2026-01-01T00:00:00.000Z",
+        source: "user",
+        userId: "owner",
+        value: "Seoul"
+      },
+      {
+        key: "home_city",
+        kind: "fact",
+        learnedAt: "2026-02-01T00:00:00.000Z",
+        source: "user",
+        userId: "owner",
+        value: "Busan"
+      }
+    ]);
+    const beforeMemory = readFileSync(memoryFile, "utf8");
+    const beforeProvenance = readFileSync(provenanceFile, "utf8");
+    const outputPath = join(dir, "backup.tar.gz");
+
+    const out = await buildMuseExport({
+      museDir,
+      notesDir: join(museDir, "notes"),
+      outputPath,
+      ownerUserId: "owner",
+      nowIso: "2026-03-01T00:00:00.000Z"
+    });
+
+    expect(out.memoryProvenance.complete).toBe(false);
+    expect(out.memoryProvenance.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "missing-version-link" }),
+      expect.objectContaining({ code: "missing-current-link" })
+    ]));
+    expect(out.files).toContain("belief-provenance.json");
+    expect(execFileSync("tar", ["-tzf", outputPath], { encoding: "utf8" }))
+      .toContain(".muse/memory-provenance-report.export.json");
+    expect(readFileSync(memoryFile, "utf8")).toBe(beforeMemory);
+    expect(readFileSync(provenanceFile, "utf8")).toBe(beforeProvenance);
   });
 
   it("bundles the canonical local-calendar + messaging-credentials filenames the code actually writes", async () => {
