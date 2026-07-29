@@ -54,10 +54,16 @@ temporal/provenance graph and personal context compiler, not merely a third-part
 Its intended advantage is a small set of bounded, verified personal-temporal operators:
 the model asks what changed, what evidence supports a policy, or what forgetting would
 invalidate; Muse computes the exact path, completeness, and authority boundary in code.
+The [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md) defines the
+proposed next architecture: scope-safe snapshots, proof-closed Working Graphs, typed
+completeness, an immutable logical journal, and a lightweight local storage Adapter with no
+external Graph DB requirement.
 The first `changesSince`-style operator is shipped as an I/O-free library contract; no
 Capsule UI, automatic timing, durable graph, or action authority is implied.
-Muse can now also seal an exact projected stopping point as a bounded,
-content-addressed **Observation Receipt** without copying its personal source text.
+Muse can now also seal one exact caller-declared projected observation as a bounded,
+content-addressed **Observation Receipt** without copying its personal source text. This
+preserves the previous observation's recorded next step; it does not prove the user's exact
+stopping point.
 The same library subpath can purely capture one caller-supplied raw Continuity snapshot
 through the shared projector and return that receipt without source I/O or persistence.
 The existing state-to-state query now delegates to one reusable internal prepared-observation
@@ -192,6 +198,7 @@ pnpm smoke:live
 - [Attunement product contract](docs/strategy/attunement.md)
 - [Attunement architecture and current gaps](docs/design/attunement.md)
 - [Attunement Graph Engine](docs/design/attunement-graph.md)
+- [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md)
 - [Attunement implementation plan](docs/goals/attunement-implementation-plan.md)
 - [Attunement wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)
 - [Personal-agent qualification](docs/development/personal-agent-qualification.md)

@@ -50,6 +50,9 @@ Muse는 업무만 처리하는 비서가 아니라, 한 사람의 삶과 일을 
 이것은 대표 로드맵이며 아직 출시된 기능이라는 뜻이 아닙니다. 기반은 단순한
 외부 graph DB가 아니라, 가벼운 에이전트 전용 시간·출처 그래프이자 personal
 context compiler인 [Attunement Graph Engine](docs/design/attunement-graph.md)입니다.
+scope-safe snapshot, proof-closed Working Graph, 명시적 완전성, 내장형 로컬 저장
+경계는 [Agent-Native Graph Core 청사진](docs/design/agent-native-graph-core.md)에
+기록되어 있습니다.
 별도 실행 순서는 [wow + graph 로드맵](docs/goals/attunement-wow-graph-roadmap.md)에 있습니다.
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse 콘솔 홈 화면" width="860" /></p>
@@ -176,6 +179,7 @@ pnpm smoke:live
 - [Attunement 제품 계약](docs/strategy/attunement.md)
 - [Attunement 구조와 현재 부족한 점](docs/design/attunement.md)
 - [Attunement Graph Engine](docs/design/attunement-graph.md)
+- [Agent-Native Graph Core 청사진](docs/design/agent-native-graph-core.md)
 - [Attunement 구현 계획](docs/goals/attunement-implementation-plan.md)
 - [Attunement wow + graph 로드맵](docs/goals/attunement-wow-graph-roadmap.md)
 - [시스템 지도](docs/SYSTEM-MAP.md)

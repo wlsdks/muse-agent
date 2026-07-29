@@ -4,7 +4,7 @@ audience: [engineering, product, security, agents]
 purpose: Define the modular graph engine that powers Muse's signature Attunement experience
 status: partial-implementation
 updated: 2026-07-29
-related: [../strategy/attunement.md, attunement.md, ../goals/attunement-wow-graph-roadmap.md]
+related: [../strategy/attunement.md, attunement.md, agent-native-graph-core.md, ../goals/attunement-wow-graph-roadmap.md]
 ---
 
 # Attunement Graph Engine
@@ -35,6 +35,12 @@ The engine exists to power three product experiences:
 
 The full experience and this engine are roadmap work. Existing graph-like data is a
 substrate, not proof that the engine or experience has shipped.
+
+The decision-level semantic, snapshot, operator, journal, local-storage, recovery, and
+staged-delivery blueprint is maintained separately in
+[Muse Agent-Native Graph Core](agent-native-graph-core.md). This document defines the
+product engine; the companion blueprint fixes how to build its core without turning a
+database SDK into the architecture.
 
 ## Implementation status
 
@@ -469,6 +475,11 @@ store and create a second composition root.
 ## Storage strategy
 
 No production database is selected in this document.
+
+The current architecture recommendation is a Muse-owned semantic engine over a
+capability-gated embedded transactional substrate, with `node:sqlite` as the first durable
+candidate. That recommendation and its Node/SQLite version gates are not implementation or
+selection evidence; see [the core blueprint](agent-native-graph-core.md).
 
 The flagship Muse experience must remain complete with Muse's own local default graph
 Module. Neo4j, Graphiti, a hosted graph service, or any other external Graph DB may later

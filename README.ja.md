@@ -40,8 +40,10 @@ Muse は仕事専用のアシスタントではなく、一人の生活と仕事
 
 これは代表的なロードマップであり、実装済みという主張ではありません。基盤は単なる
 外部 graph DB ではなく、軽量な時間・来歴グラフ兼 personal context compiler である
-[Attunement Graph Engine](docs/design/attunement-graph.md) です。実行順序は
-[wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md) を参照してください。
+[Attunement Graph Engine](docs/design/attunement-graph.md) です。
+[Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md) が
+scope-safe snapshot、proof-closed Working Graph、完全性、ローカル保存境界を定義し、
+実行順序は [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md) に記録されています。
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse コンソールのホーム画面" width="860" /></p>
 
@@ -165,6 +167,7 @@ pnpm smoke:live
 - [Attunement のプロダクト契約](docs/strategy/attunement.md)
 - [Attunement のアーキテクチャと現在の gap](docs/design/attunement.md)
 - [Attunement Graph Engine](docs/design/attunement-graph.md)
+- [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md)
 - [Attunement 実装計画](docs/goals/attunement-implementation-plan.md)
 - [Attunement wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)
 - [システムマップ](docs/SYSTEM-MAP.md)

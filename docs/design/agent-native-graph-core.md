@@ -1,0 +1,516 @@
+---
+title: Muse Agent-Native Graph Core — semantic engine and local storage blueprint
+audience: [engineering, product, security, agents]
+purpose: Fix the core architecture and staged delivery plan for Muse's built-in graph engine
+status: decision-proposal
+updated: 2026-07-29
+related: [attunement-graph.md, ../goals/attunement-wow-graph-roadmap.md, ../../CONTEXT.md]
+---
+
+# Muse Agent-Native Graph Core
+
+> **Decision:** Muse owns the graph semantics, temporal/provenance model, operator
+> algebra, completeness rules, portable journal, and local lifecycle. A small embedded
+> database may provide transactions and indexes, but it is an internal Adapter—not Muse's
+> graph product, public API, or a requirement for the flagship experience.
+
+This is the implementation blueprint beneath
+[Attunement Graph Engine](attunement-graph.md). It synthesizes independent Sol-class
+architecture reviews, direct source inspection, and current primary-source research. It
+does not claim the durable engine is implemented.
+
+The target is not a smaller Neo4j. It is a graph engine optimized for an AI agent that must
+assemble a small truthful context, reason over change, show its evidence, know when its
+answer is incomplete, and avoid expanding action authority.
+
+## Product-level invariants
+
+The complete Shadow Muse, Continuity Capsule, and Policy Card path must work with Muse
+alone.
+
+- No external Graph DB, graph daemon, graph account, hosted graph service, or graph-specific
+  model/embedding call is required. A configured Muse model may phrase a result, but exact
+  graph operators do not depend on it.
+- Authoritative task, note, calendar, contact, memory, and Attunement stores remain the
+  sources of truth.
+- The Evidence Graph is a disposable, rebuildable projection.
+- The model receives a proof-closed Working Graph, not arbitrary database access.
+- Absence is asserted only when the result carries a valid completeness proof for its exact
+  scope, snapshot, and operator.
+- Graph evidence may inform a proposal; it never grants permission, promotes feedback,
+  infers causality, or authorizes an action.
+- Forget means physical removal from the selected generation and its derived closure, not
+  merely hiding a row from queries.
+
+## Current-state decision
+
+| Area | Classification | Consequence |
+|---|---|---|
+| Assertion ontology, epistemic class, bi-temporal fields, provenance | `verified-current` | Preserve the v1 semantic kernel. |
+| In-memory append/traverse/forget adapter | `verified-current` as a reference adapter | Keep it as the semantic oracle, not as durable storage. |
+| Activation Subgraph v1 | `partial` | It is bounded, but not yet scope-safe or proof-closed enough for flagship decisions. |
+| Continuity projection/change/observation/Capsule Modules | `verified-current` at their documented pure boundaries | Reuse them as the first operator workload; do not reimplement them in a database layer. |
+| Logical append journal and immutable lifecycle | `partial` | Current live insertion order is not a durable append-only history; later retraction needs separate events. |
+| Shadow Muse, Policy Card, runtime composition | `missing` | They remain the next product-shaped workloads. |
+| Durable local engine, recovery, migration, physical forget | `missing` | Do not select or build storage before the v2 semantic contract. |
+
+Two current contracts need explicit correction:
+
+1. `GraphQueryPlan` has no projection scope. An artifact shared by two threads can bridge
+   from one thread to another within two hops.
+2. `GraphAssertion.supersededAt` is immutable assertion content, while append collision
+   rules correctly reject changing the same assertion. Later supersession therefore
+   belongs in a separate immutable lifecycle event.
+
+## Architecture
+
+```text
+authoritative Muse stores
+  ├─ source resolvers
+  ├─ Source Observation Receipt vault
+  │    └─ personal display truth and its own retention policy
+  └─ deterministic projectors
+       └─ Projection Commit
+            └─ Muse Evidence Graph
+                 ├─ logical commit journal
+                 ├─ assertion, scope, time, and provenance indexes
+                 ├─ immutable lifecycle events
+                 ├─ observation receipts and projection heads
+                 └─ scoped read snapshots
+                      └─ versioned operator compiler
+                           ├─ changesSince
+                           ├─ resumeContext
+                           ├─ decisionCounterfactual
+                           ├─ policyEvidence
+                           └─ forgetImpact
+                                └─ proof-closed Working Graph
+                                     └─ value | partial | abstained
+```
+
+The Source Observation Receipt vault and graph storage are intentionally separate. Source
+receipts contain personal display text such as titles, summaries, URLs, locations, and
+relationships. The graph stores exact receipt IDs and bounded relational assertions, not
+those display bodies. A Capsule joins them only through the already verified receipt
+binding contract.
+
+### Deep Modules
+
+`@muse/attunement-graph` should expose product operators and keep general traversal,
+storage queries, SQL, and backend capabilities internal.
+
+- **Projection Module:** validates and commits deterministic deltas against one expected
+  projection head.
+- **Snapshot Module:** opens one immutable generation/commit view and never mixes data from
+  two commits.
+- **Operator Module:** compiles a closed, versioned plan with scope, predicates,
+  epistemic filters, mandatory proof branches, and budgets.
+- **Explanation Module:** resolves every published relation to its exact source references
+  and derivation.
+- **Maintenance Module:** rebuild, verify, export, migrate, compact, and physically forget;
+  it is an admin boundary and never a model tool.
+- **Backend Adapter:** supplies transactions and indexes without defining domain meaning.
+
+Applications remain the composition root. The graph package must not import every personal
+store or become an alternative source authority.
+
+## Core contracts for v2
+
+These shapes are design targets. Exact names may change during a fresh PLAN gate, but the
+semantics may not be weakened.
+
+```ts
+interface GraphScope {
+  readonly sourceId: string;
+  readonly threadId: string;
+}
+
+interface GraphSnapshot {
+  readonly generationId: string;
+  readonly commitSequence: number;
+  readonly commitHash: string;
+}
+
+interface GraphOperatorBudget {
+  readonly maxDepth: number;
+  readonly maxAssertions: number;
+  readonly maxConsideredAssertions: number;
+  readonly maxVisitedRefs: number;
+  readonly maxOutputBytes: number;
+  readonly maxEstimatedTokens: number;
+}
+
+type GraphCompleteness =
+  | {
+      readonly status: "complete";
+      readonly canAssertAbsenceWithinSnapshot: true;
+    }
+  | {
+      readonly status: "partial";
+      readonly canAssertAbsenceWithinSnapshot: false;
+      readonly reasons: readonly GraphIncompletenessReason[];
+    }
+  | {
+      readonly status: "abstained";
+      readonly canAssertAbsenceWithinSnapshot: false;
+      readonly reasons: readonly GraphAbstentionReason[];
+    };
+
+interface GraphOperatorEnvelope {
+  readonly schemaVersion: 1;
+  readonly operatorVersion: string;
+  readonly scope: GraphScope;
+  readonly snapshot: GraphSnapshot;
+  readonly freshness: "fresh" | "stale" | "rebuilding" | "unavailable";
+  readonly resultId: string;
+}
+
+type GraphOperatorResult<T> =
+  | (GraphOperatorEnvelope & {
+      readonly completeness: Extract<GraphCompleteness, { status: "complete" }>;
+      readonly value: T;
+    })
+  | (GraphOperatorEnvelope & {
+      readonly completeness: Extract<GraphCompleteness, { status: "partial" }>;
+      readonly value: T;
+    })
+  | (GraphOperatorEnvelope & {
+      readonly completeness: Extract<GraphCompleteness, { status: "abstained" }>;
+      readonly value?: never;
+    });
+```
+
+An omitted numeric count must not be invented. If bounded work cannot determine an exact
+count, the result records a typed reason and
+`canAssertAbsenceWithinSnapshot: false`. If a mandatory proof bundle cannot fit, the
+operator abstains instead of returning a plausible fragment. Current-world absence may be
+asserted only when completeness is `complete` **and** freshness is `fresh`; snapshot
+completeness never upgrades stale data. `freshness: "unavailable"` always requires
+`status: "abstained"` with no `value`.
+
+`maxEstimatedTokens` is an admission hint, not a safety boundary. Korean and other
+tokenizers can diverge sharply from a UTF-8-byte heuristic, so every operator also has a
+hard canonical byte limit. A future tokenizer Port may improve packing without changing
+the byte gate.
+
+### Scoped snapshots
+
+Every serving query runs inside one `GraphScope` and one immutable `GraphSnapshot`.
+
+- Scope membership is stored explicitly for each assertion.
+- Shared artifacts may belong to multiple scopes, but traversal never crosses membership
+  without a separately authorized multi-scope operator.
+- Projection head, assertions, lifecycle state, and observation receipt are read from the
+  same snapshot.
+- Freshness is part of the returned contract. Corruption, an unsupported future version,
+  or an incomplete rebuild yields `unavailable`, not an empty graph.
+
+### Proof-closed activation
+
+Activation v1 ranks individual assertions after bounded traversal. This can starve a
+high-value path when high-degree or early-insertion neighbors consume the work budget.
+Activation v2 ranks indivisible explanation bundles while the traversal frontier is being
+admitted.
+
+A `resumeContext` bundle contains, as applicable:
+
+- exact thread identity and scope;
+- previous and current next-step bindings;
+- every returned change's complete explanation path;
+- exact source-resolution state;
+- governing policy version and scope;
+- action-authority boundary;
+- contradictions, missing evidence, and freshness state.
+
+Dropping any mandatory member drops the whole bundle. Ranking can choose between complete
+bundles; it cannot publish a change without its proof or a proposed action without its
+authority boundary.
+
+### Versioned operators, not arbitrary graph queries
+
+The model may select a known operator and phrase a verified result. It may not generate
+SQL, Cypher, arbitrary predicates, or unbounded traversal plans.
+
+| Operator | Direct product use | Required negative outcome |
+|---|---|---|
+| `changesSince` | What changed after a receipt-bound boundary? | Typed abstention when time, revision, path, or observation evidence is ambiguous. |
+| `resumeContext` | Smallest sufficient Capsule context | Abstain when mandatory proof does not fit or freshness is unavailable. |
+| `decisionCounterfactual` | Why Shadow Muse spoke or stayed quiet; what bounded alternative existed? | Store reason codes and selected alternatives, never chain-of-thought. |
+| `policyEvidence` | Evidence for a scoped, reversible Policy Card | Never infer a global rule or promote proximity/factual interaction to feedback. |
+| `forgetImpact` | Preview exactly what a source removal invalidates | Never execute deletion or source mutation. |
+
+## Logical journal and projection commits
+
+The durable history is a hash-linked logical journal even if SQLite stores it physically.
+Canonical records are append-only within one retained generation:
+
+```ts
+type GraphJournalRecord =
+  | { readonly kind: "assertion-added"; readonly assertion: GraphAssertion }
+  | {
+      readonly kind: "assertion-retracted";
+      readonly assertionId: string;
+      readonly recordedAt: string;
+      readonly reason: "projection-replaced" | "source-invalidated";
+      readonly sourceRefs: readonly GraphEvidenceRef[];
+    }
+  | {
+      readonly kind: "assertion-superseded";
+      readonly assertionId: string;
+      readonly replacementAssertionId: string;
+      readonly recordedAt: string;
+      readonly sourceRefs: readonly GraphEvidenceRef[];
+    }
+  | { readonly kind: "graph-observation-stored"; readonly receiptId: string }
+  | { readonly kind: "projection-head-moved"; readonly scope: GraphScope };
+```
+
+A projection commit is one transaction:
+
+1. Verify source/graph receipt binding, projection digest, assertion invariants, scope, and
+   every declared resource bound.
+2. Compare-and-swap the expected projection head.
+3. Validate all assertion IDs and fingerprints before mutation.
+4. Append canonical journal records.
+5. Materialize assertions, scope membership, provenance, lifecycle, and adjacency/time
+   indexes.
+6. Store the Graph Observation Receipt.
+7. Move the projection head and commit once.
+
+Replaying the same commit ID with identical bytes is idempotent. Reusing an ID with
+different bytes is a collision and fails closed.
+
+## Lightweight local storage
+
+### Recommended default candidate
+
+Use a Muse-owned schema over capability-gated `node:sqlite` as the first durable candidate.
+SQLite supplies crash consistency, atomic transactions, compact indexes, and a single-file
+local deployment. It does not define graph semantics, expose SQL publicly, or become a
+required external Graph DB.
+
+This is a candidate decision, not implementation authorization:
+
+- Muse currently supports Node `>=22.12`; Node 22.12 requires
+  `--experimental-sqlite`, while Node 22.13 unflags the module. AWG-070 must decide whether
+  to raise the effective durable-engine minimum, ship a capability-gated fallback, or use a
+  different binding.
+- SQLite's official WAL documentation records a rare multi-connection reset/checkpoint
+  corruption bug through 3.51.2, fixed in 3.51.3 with selected backports. Any WAL profile
+  must inspect the bundled SQLite version and fail closed or choose a safe non-WAL mode.
+- Start with one writer. Reader concurrency, checkpoints, durability pragmas, file
+  permissions, and shutdown behavior are explicit conformance inputs.
+- Extension loading remains disabled.
+
+Do not build a custom physical WAL. Muse owns the logical journal; SQLite or another proven
+embedded substrate owns fsync, locking, and crash recovery.
+
+### Candidate physical layout
+
+```text
+~/.muse/attunement-graph/
+  CURRENT
+  graph-<generation-id>.sqlite
+  graph-<generation-id>.sqlite-wal
+  graph-<generation-id>.sqlite-shm
+  quarantine/
+```
+
+The directory and files use owner-only permissions. `CURRENT` points to a fully verified
+generation. Rebuild, migration, compaction, and physical forget create and verify a new
+generation before an atomic pointer swap.
+
+Minimum tables:
+
+- `meta` — engine, journal, assertion, index, and compatibility versions;
+- `commits` and `commit_records` — sequence, hashes, scope, and canonical records;
+- `refs` and `source_refs` — compact interned identifiers;
+- `assertions` — canonical bytes plus extracted hot-path columns;
+- `assertion_sources` and derived dependencies — reverse provenance;
+- `assertion_scopes` — mandatory isolation membership;
+- `assertion_lifecycle` — immutable retraction/supersession;
+- `projection_heads` — version, receipt, freshness, and commit per scope;
+- `graph_observations` — verified relational receipts only.
+
+Canonical assertion bytes remain the export/conformance truth. SQL columns and indexes are
+materializations, not an alternative semantic representation.
+
+### Three-temperature runtime
+
+1. **Cold truth:** authoritative stores and source receipts; no graph-owned copy of personal
+   display text.
+2. **Warm thread projection:** compact indexes for active/recently requested scopes,
+   evictable and rebuildable.
+3. **Hot Working Graph:** one frozen, proof-closed, byte/token-bounded operator result;
+   discarded candidates and private reasoning are not persisted.
+
+This keeps cost proportional to active threads and selected operators, not to the user's
+entire digital life.
+
+## Recovery, migration, and physical forget
+
+- Startup checks format/capability versions, database integrity, journal hash tail,
+  projection heads, and index consistency.
+- Corrupt or future-version state is quarantined and reported `unavailable`; Muse never
+  silently opens an empty graph and claims no change.
+- Index-only migrations rebuild freely. Semantic/journal migrations create a new
+  generation and retain a portable verified export until the replacement passes.
+- Normal compaction may rebuild indexes and remove dead generations. Historical provenance
+  is not pruned until a reviewed retention contract exists.
+- Projection eviction is not privacy forget.
+- Physical forget requires an authoritative disposition receipt, computes the exact
+  dependency closure, rewrites a generation without those records and identifiers,
+  verifies it, swaps `CURRENT`, and deletes the old database plus WAL/SHM files.
+- The removal inventory includes portable exports, quarantined generations, temporary
+  rewrite files, and backups owned by this Module; a retained export is still retained
+  personal data.
+- If old-generation cleanup fails, the receipt reports `pending-physical-deletion`; it must
+  not claim completion.
+
+SQLite documents that ordinary deletion can leave recoverable page content. A generation
+rewrite or verified `VACUUM`/secure-delete policy is therefore part of the privacy gate,
+not an optional optimization.
+
+## Benchmark and qualification matrix
+
+All numbers below are provisional gates to test on recorded reference hardware, not current
+performance claims.
+
+| Path | Initial target |
+|---|---|
+| Warm scoped operator | p95 at or below 50 ms |
+| Cold thread load plus operator | p95 at or below 200 ms |
+| Typical projection commit | p95 at or below 100 ms |
+| Normal startup | p95 at or below 300 ms |
+| Crash reopen/recovery | p95 at or below 2 s |
+| Deterministic rebuild at 100k assertions | at or below 30 s |
+| Baseline engine memory | at or below 64 MiB |
+| One warm-thread cache | at or below 16 MiB |
+| Exact operators | zero model and zero embedding calls |
+
+Every benchmark compares:
+
+- flat exact lookup;
+- the in-memory semantic oracle;
+- the durable candidate;
+- vector/lexical retrieval only where semantic seed nomination is relevant;
+- at most one embedded property-graph candidate.
+
+Required correctness scenarios include cross-thread shared-artifact leakage, high-degree
+starvation, snapshot mixing, missing proof closure, stale projection, crash tails, corrupt
+and future versions, commit collisions, deterministic rebuild, physical forget, Korean
+byte/token divergence, and cross-backend result identity.
+
+Latency never compensates for a wrong source path, temporal answer, scope, completeness
+claim, or authority boundary.
+
+## Research synthesis
+
+Research was refreshed from primary or project-maintained sources on 2026-07-29.
+
+- [Microsoft GraphRAG indexing](https://microsoft.github.io/graphrag/index/overview/)
+  validates useful entity, relationship, claim, community, and vector pipelines, but its
+  standard path is an LLM-based transformation pipeline over unstructured corpora. It is
+  not Muse's hot per-turn engine.
+- [Graphiti](https://github.com/getzep/graphiti) validates temporal validity, episodes,
+  lineage, incremental construction, and hybrid retrieval. Its open-source path still asks
+  users to bring a graph backend and defaults to model/embedding services, so Muse adopts
+  the concepts rather than the dependency topology or authority model.
+- [Mem0's maintained v2-to-v3 migration](https://github.com/mem0ai/mem0/blob/main/docs/migration/oss-v2-to-v3.mdx)
+  removed external graph-store paths and replaced them with built-in entity linking. This
+  is strong maintenance evidence against carrying backend breadth without product proof;
+  Muse still needs directly traversable provenance and temporal operators, so it should
+  not reduce its graph to a ranking boost.
+- [LadybugDB](https://github.com/LadybugDB/ladybug) is an embedded, serverless property
+  graph with Node bindings and serious analytical machinery. That breadth makes it a useful
+  optional bake-off candidate, not the default semantic architecture.
+- [Node SQLite](https://nodejs.org/download/release/v22.12.0/docs/api/sqlite.html),
+  [SQLite WAL](https://www.sqlite.org/wal.html), and
+  [SQLite VACUUM](https://www.sqlite.org/lang_vacuum.html) support a lightweight local
+  candidate while exposing concrete version, concurrency, and deletion requirements that
+  must be gated.
+- [W3C PROV-O](https://www.w3.org/TR/prov-o/) supplies useful meanings for derivation,
+  revision, primary source, generation, invalidation, and provenance bundles. Muse adopts
+  selected semantics without making RDF or OWL a runtime requirement.
+
+Recent preprints may inspire bounded operator and memory designs, but their reported
+benchmarks are not Muse evidence. They cannot select the backend or qualify the product.
+
+### Independent review synthesis
+
+| Review lens | Strongest recommendation | Concern retained in this blueprint |
+|---|---|---|
+| Semantic-core review, Sol ultra | Keep Muse's domain and operator semantics independent; use SQLite only for durability/indexes | Current scope-less traversal and mutable-looking supersession model must be fixed before storage. |
+| Research/architecture critic, Sol xhigh | Use one per-thread in-memory Working Graph over a local durable Adapter; require typed completeness | Ranking after traversal, token estimation, freshness, and physical forget are insufficiently explicit in v1. |
+| Product/maintenance synthesis | Build Shadow and Policy workloads before choosing the durable backend | A generic graph engine or broad backend matrix can consume years without producing the Muse moment. |
+
+The reviews disagreed mainly on how strongly to name SQLite before a bake-off. This
+blueprint names it as the first candidate because it is the smallest credible transactional
+substrate, while withholding selection until capability, recovery, forget, portability,
+and product-query gates pass.
+
+## Alternatives and dissent
+
+### Recommended: Muse semantics over an embedded transactional substrate
+
+This keeps the product unique while delegating filesystem correctness to a mature storage
+layer. The in-memory implementation remains the executable semantic oracle.
+
+### Custom segmented log plus in-memory indexes
+
+It is attractive for control and small installs, but rejected as the default durable path.
+It would make Muse responsible for WAL recovery, fsync semantics, file locking, concurrent
+read snapshots, compaction, migration, and cross-platform failure modes before those
+provide user-visible Attunement value.
+
+### Embedded property graph
+
+Keep one candidate for AWG-070. It wins only if measured product operators justify its
+binary size, query/runtime breadth, binding lifecycle, and maintenance coupling. Cypher
+support alone has no value to Muse.
+
+### PostgreSQL
+
+It can remain an optional conformance Adapter for installations already using it. It cannot
+be required for the local flagship path.
+
+### Raw JSON or NDJSON
+
+Use it as a canonical portable export, not as transactional serving storage.
+
+### Unresolved decisions
+
+- Node 22.12 compatibility strategy for an unflagged SQLite path;
+- exact durability/checkpoint policy after crash and power-loss tests;
+- whether LadybugDB remains healthy enough at AWG-070 to merit the one comparison slot;
+- source-receipt vault retention and encryption policy;
+- measured cache sizes and eviction rhythm from real dogfood;
+- whether any operator benefits enough from lexical/vector seed nomination to pay its cost.
+
+## Staged delivery
+
+Do not build the database first.
+
+1. **AWG-050a — semantic hardening:** scoped snapshots, explicit scope membership,
+   freshness, typed completeness, proof-closed bundles, hard byte budgets, and adversarial
+   cross-thread/high-degree tests. Pure and in-memory.
+2. **AWG-050b — Shadow decision receipt:** `silent | digest | offer`, bounded reason and
+   counterfactual, later return timing; no sending, action, or chain-of-thought storage.
+3. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
+   reject, rollback, and no hidden promotion.
+4. **AWG-070a — backend v2 conformance:** snapshot identity, projection compare-and-swap,
+   restart, crash, corruption, future version, lifecycle, physical-forget fixtures, and
+   byte-identical operator results.
+5. **AWG-070b — storage bake-off:** prototype the capability-gated SQLite candidate and at
+   most one embedded property graph against the oracle and flat baseline.
+6. **AWG-080 — durable engine:** recovery/export/rebuild, generation migration/compaction,
+   authorized physical forget, then local runtime composition.
+7. **AWG-090 — qualification:** controlled scenarios followed by repeated local dogfood;
+   usefulness, reconstruction cost, policy correction, and silence quality stay separate.
+
+AWG-050a is the next eligible BUILD candidate. It must receive a fresh harness PLAN PASS
+before source changes begin. Persistence is explicitly out of scope until the Shadow and
+Policy workloads make the backend requirements real.
+
+Core semantic and persistence PLAN work uses `gpt-5.6-sol` at `ultra` or `xhigh`;
+implementation begins only from a bounded accepted handoff, and completion uses a fresh
+independent Sol context. Maker and evaluator roles may not share context.

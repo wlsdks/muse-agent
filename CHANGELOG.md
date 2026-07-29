@@ -8,6 +8,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the decision-ready Muse Agent-Native Graph Core blueprint. It preserves the
+  in-memory kernel as a semantic oracle, makes scoped snapshots, proof-closed activation,
+  typed completeness, freshness, immutable lifecycle events, and physical forget explicit,
+  and recommends capability-gated SQLite only as the first internal durable candidate.
+  External Graph DBs remain optional Adapters. The document activates no persistence claim;
+  AWG-050a semantic hardening must pass a fresh PLAN gate before BUILD.
+
 - Added AWG-040c's bounded, bilingual Continuity Capsule presentation library surface over
   the verified receipt/compiler dependencies. It is explicit owner-request rendering only:
   authority is `caller-declared-owner-request`, automatic timing is `not-performed`, and

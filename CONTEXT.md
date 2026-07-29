@@ -41,8 +41,15 @@ documents rather than here.
   through an unversioned new rule.
 - The **Evidence Graph** holds rebuildable provenance and temporal assertions. The
   **Working Graph** is an expiring, token-budgeted decision slice.
+- A **Graph Scope** is an explicit `(sourceId, threadId)` membership boundary. A shared
+  artifact never authorizes traversal from one scope into another. A **Graph Snapshot**
+  binds one generation and commit so an operator cannot mix projection heads, assertions,
+  lifecycle state, or receipts from different transactions.
 - An **Activation Subgraph** is the smallest sufficient graph context compiled for one
-  agent decision. The model never receives or queries the whole personal graph by default.
+  agent decision. Its v2 target is a proof-closed bundle: a published change cannot lose
+  its explanation path, policy, source resolution, completeness, freshness, or authority
+  boundary to truncation. The model never receives or queries the whole personal graph by
+  default.
 - **Shadow Muse**, **Continuity Capsule**, and **Policy Card** are the signature product
   surfaces. None may infer permission, usefulness, causality, or feedback from proximity or
   factual interaction.
@@ -91,4 +98,5 @@ Canonical contracts:
 
 - [Attunement strategy](docs/strategy/attunement.md)
 - [Attunement Graph design](docs/design/attunement-graph.md)
+- [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md)
 - [Wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)

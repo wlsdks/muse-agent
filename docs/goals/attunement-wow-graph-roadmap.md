@@ -4,7 +4,7 @@ audience: [product, engineering, agents]
 purpose: Run the signature Muse experience and Attunement Graph as a separate long-lived program
 status: active
 updated: 2026-07-29
-related: [../strategy/attunement.md, ../design/attunement-graph.md, attunement-implementation-plan.md]
+related: [../strategy/attunement.md, ../design/attunement-graph.md, ../design/agent-native-graph-core.md, attunement-implementation-plan.md]
 ---
 
 # Attunement wow + graph roadmap
@@ -61,7 +61,8 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-035a** | Observation Receipt format | Strict content-addressed codec preserves one caller-declared exact projection and source accounting without personal source text | completed |
 | **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | completed |
 | **AWG-040** | Continuity Capsule v1 | User-invoked, library-only Capsule renders the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer | in progress (`AWG-040b/c` verified library-only; application integration and exact-stop capture pending) |
-| **AWG-050** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
+| **AWG-050a** | Graph v2 semantic hardening | Scope-safe immutable snapshots, proof-closed `resumeContext`, freshness, typed completeness, and adversarial isolation; pure/in-memory only | pending |
+| **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-070** | Storage bake-off | Prove the Muse-owned local default first; compare PostgreSQL and at most one embedded candidate only as optional Adapters on correctness, cost, recovery, portability, and maintenance | pending |
 | **AWG-080** | Durable local graph adapter | Selected adapter passes conformance, export/rebuild, corruption, migration, forget, and crash-recovery gates | pending |
@@ -70,6 +71,24 @@ The program is not done when Muse has a graph database. It is done when:
 Raw numbering does not activate work. Before each BUILD slice, inspect current source and
 classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `monitoring`,
 `blocked`, `deferred`, `rejected`, or `superseded`. Implement only the missing delta.
+
+## Next eligible activation: AWG-050a
+
+Independent Sol-class architecture reviews converged on a semantic prerequisite before the
+Shadow ledger or durable database:
+
+- add explicit thread/source scope membership and immutable read-snapshot identity;
+- rank proof-closed explanation bundles instead of trimming individual assertions after
+  traversal;
+- return typed completeness with a separate right to assert absence;
+- surface freshness and hard canonical-byte limits;
+- adversarially reject shared-artifact cross-thread leakage and high-degree starvation;
+- keep the slice pure and in-memory, with no persistence, UI, delivery, or action authority.
+
+The full decision and dissent are in
+[Muse Agent-Native Graph Core](../design/agent-native-graph-core.md). AWG-050a remains a
+candidate until a fresh harness PLAN evaluator passes its exact contract. AWG-050b then owns
+the actual Shadow `silent | digest | offer` decision receipt and counterfactual.
 
 ## Completed slice: AWG-010
 
@@ -158,7 +177,7 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
 - **Then-proposed next slice:** AWG-040. Fresh source reconciliation subsequently found
   that a changed authoritative store could not reconstruct its prior observation, so
   AWG-035a/035b became truth-preserving prerequisites instead of guessing inside the UI.
-  AWG-050 Shadow timing remains separate.
+  AWG-050b Shadow timing remains separate.
 
 ## Completed slice: AWG-035a
 

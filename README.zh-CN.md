@@ -40,8 +40,10 @@ Muse 不只是办公助手，而是面向一个人的生活与工作的持续型
 
 这是标志性的路线图，并不表示已经交付。它的基础不是简单接入第三方 graph DB，
 而是轻量、面向智能体的时间与来源图谱兼 personal context compiler：
-[Attunement Graph Engine](docs/design/attunement-graph.md)。执行顺序见
-[wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)。
+[Attunement Graph Engine](docs/design/attunement-graph.md)。
+[Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md)
+定义 scope-safe snapshot、proof-closed Working Graph、完整性与本地存储边界。
+执行顺序见 [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)。
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse 控制台首页" width="860" /></p>
 
@@ -165,6 +167,7 @@ pnpm smoke:live
 - [Attunement 产品契约](docs/strategy/attunement.md)
 - [Attunement 架构与当前缺口](docs/design/attunement.md)
 - [Attunement Graph Engine](docs/design/attunement-graph.md)
+- [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md)
 - [Attunement 实施计划](docs/goals/attunement-implementation-plan.md)
 - [Attunement wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)
 - [系统地图](docs/SYSTEM-MAP.md)
