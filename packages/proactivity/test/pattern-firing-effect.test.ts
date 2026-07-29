@@ -362,7 +362,7 @@ describe("pattern natural-slot durable effects", () => {
     expect(await readPatternsFired(veto.patternsFiredFile)).toHaveLength(1);
   });
 
-  it("admits one provider call and one effect across two pattern processes", async () => {
+  it("suppresses a repeated pattern across a process burst, restart, and backward clock skew", async () => {
     const p = paths();
     await seedPattern(p.notesDir);
     const input = {
@@ -372,14 +372,35 @@ describe("pattern natural-slot durable effects", () => {
       nowIso: NOW.toISOString(),
       patternsFiredFile: p.patternsFiredFile
     };
-    await Promise.all([
+    const burst = await Promise.all([
       execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)]),
       execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)])
     ]);
-    const calls = existsSync(p.callsFile)
+    const restart = await execFileAsync(
+      process.execPath,
+      ["--import", "tsx", childFixture.pathname, JSON.stringify(input)]
+    );
+    const backwardClock = await execFileAsync(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        childFixture.pathname,
+        JSON.stringify({
+          ...input,
+          nowIso: new Date(NOW.getTime() - 60_000).toISOString()
+        })
+      ]
+    );
+    const summaries = [...burst, restart, backwardClock].map(({ stdout }) =>
+      JSON.parse(stdout.trim()) as { readonly delivered: number }
+    );
+
+    const providerCalls = existsSync(p.callsFile)
       ? readFileSync(p.callsFile, "utf8").trim().split("\n").filter(Boolean)
       : [];
-    expect(calls).toHaveLength(1);
+    expect(summaries.map((summary) => summary.delivered).sort()).toEqual([0, 0, 0, 1]);
+    expect(providerCalls).toHaveLength(1);
     expect(await readOutboundEffects(p.effectFile)).toHaveLength(1);
     expect(await readPatternsFired(p.patternsFiredFile)).toHaveLength(1);
   }, 20_000);
