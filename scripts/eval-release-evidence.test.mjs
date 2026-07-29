@@ -3,7 +3,9 @@ import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
+  mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -18,6 +20,30 @@ import { evaluateReleaseEvidence } from "./eval-release-evidence.mjs";
 
 function git(repoRoot, args) {
   return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();
+}
+
+function replaceTarRegularWithSymlink(candidate, path, target) {
+  const bytes = readFileSync(candidate);
+  let offset = 0;
+  while (offset + 512 <= bytes.length) {
+    const header = bytes.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const name = header.subarray(0, 100).toString("utf8").replace(/\0.*$/u, "");
+    const sizeText = header.subarray(124, 136).toString("ascii").replace(/\0.*$/u, "").trim();
+    const size = Number.parseInt(sizeText || "0", 8);
+    if (name === path) {
+      header[156] = "2".charCodeAt(0);
+      header.fill(0, 157, 257);
+      header.write(target, 157, Math.min(Buffer.byteLength(target), 100), "utf8");
+      header.fill(0x20, 148, 156);
+      const checksum = header.reduce((sum, byte) => sum + byte, 0);
+      header.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148, 8, "ascii");
+      writeFileSync(candidate, bytes);
+      return;
+    }
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  throw new Error(`tar fixture entry not found: ${path}`);
 }
 
 test("binds a git-archive candidate to clean source and emits hashed-only red evidence", () => {
@@ -38,11 +64,18 @@ test("binds a git-archive candidate to clean source and emits hashed-only red ev
     const tree = git(repoRoot, ["rev-parse", "HEAD^{tree}"]);
     git(repoRoot, ["archive", "--format=tar", `--output=${candidate}`, "HEAD"]);
 
+    let archiveExtractions = 0;
+    let entryExtractions = 0;
     const report = evaluateReleaseEvidence({
       candidatePath: candidate,
       now: () => fixedNow,
       outputPath: output,
-      repoRoot
+      repoRoot,
+      spawn: (command, args, options) => {
+        if (command === "tar" && args[0] === "-xf") archiveExtractions += 1;
+        if (command === "tar" && args[0] === "-xOf") entryExtractions += 1;
+        return spawnSync(command, args, options);
+      }
     });
     const repeated = evaluateReleaseEvidence({
       candidatePath: candidate,
@@ -69,6 +102,8 @@ test("binds a git-archive candidate to clean source and emits hashed-only red ev
     assert.equal(report.scans.source.specialEntries, 0);
     assert.equal(report.scans.candidate.specialEntries, 0);
     assert.equal(report.scans.candidate.duplicateEntries, 0);
+    assert.equal(archiveExtractions, 1);
+    assert.equal(entryExtractions, 0);
     assert.equal(report.signatures.commit, "unverified");
     assert.equal(report.signatures.candidateDetached, "absent");
     assert.equal(report.signatures.tagsAtHead.length, 0);
@@ -214,6 +249,111 @@ test("marks a tar candidate with special entries as skipped and red", () => {
     assert.equal(report.scans.candidate.status, "skipped");
     assert.equal(report.scans.candidate.specialEntries, 1);
     assert.ok(report.reasons.includes("scan-skipped"));
+  } finally {
+    rmSync(repoRoot, { force: true, recursive: true });
+  }
+});
+
+test("rejects an actual symlink forged over an expected regular archive member", () => {
+  const repoRoot = mkdtempSync(join(tmpdir(), "muse-release-evidence-forged-link-"));
+  try {
+    git(repoRoot, ["init", "-q"]);
+    git(repoRoot, ["config", "user.email", "fixture@example.invalid"]);
+    git(repoRoot, ["config", "user.name", "Fixture"]);
+    writeFileSync(join(repoRoot, ".gitignore"), "candidate.tar\nreceipt.json\n", "utf8");
+    writeFileSync(join(repoRoot, "regular.txt"), "safe\n", "utf8");
+    git(repoRoot, ["add", "."]);
+    git(repoRoot, ["commit", "-qm", "fixture"]);
+    const candidate = join(repoRoot, "candidate.tar");
+    git(repoRoot, ["archive", "--format=tar", `--output=${candidate}`, "HEAD"]);
+    replaceTarRegularWithSymlink(candidate, "regular.txt", "safe.txt");
+
+    const report = evaluateReleaseEvidence({
+      candidatePath: candidate,
+      outputPath: join(repoRoot, "receipt.json"),
+      repoRoot
+    });
+
+    assert.equal(report.candidate.matchesCurrent, true);
+    assert.equal(report.scans.candidate.status, "skipped");
+    assert.equal(report.scans.candidate.specialEntries, 1);
+    assert.ok(report.reasons.includes("scan-skipped"));
+  } finally {
+    rmSync(repoRoot, { force: true, recursive: true });
+  }
+});
+
+test("rejects an archive directory not derived from the expected Git tree", () => {
+  const repoRoot = mkdtempSync(join(tmpdir(), "muse-release-evidence-extra-directory-"));
+  try {
+    git(repoRoot, ["init", "-q"]);
+    git(repoRoot, ["config", "user.email", "fixture@example.invalid"]);
+    git(repoRoot, ["config", "user.name", "Fixture"]);
+    writeFileSync(
+      join(repoRoot, ".gitignore"),
+      "candidate.tar\nreceipt.json\nextra-dir/\n",
+      "utf8"
+    );
+    writeFileSync(join(repoRoot, "regular.txt"), "safe\n", "utf8");
+    git(repoRoot, ["add", "."]);
+    git(repoRoot, ["commit", "-qm", "fixture"]);
+    const candidate = join(repoRoot, "candidate.tar");
+    git(repoRoot, ["archive", "--format=tar", `--output=${candidate}`, "HEAD"]);
+    mkdirSync(join(repoRoot, "extra-dir"));
+    execFileSync("tar", ["-rf", candidate, "-C", repoRoot, "extra-dir"]);
+
+    const report = evaluateReleaseEvidence({
+      candidatePath: candidate,
+      outputPath: join(repoRoot, "receipt.json"),
+      repoRoot
+    });
+
+    assert.equal(report.candidate.matchesCurrent, true);
+    assert.equal(report.scans.candidate.status, "skipped");
+    assert.equal(report.scans.candidate.specialEntries, 1);
+    assert.ok(report.reasons.includes("scan-skipped"));
+  } finally {
+    rmSync(repoRoot, { force: true, recursive: true });
+  }
+});
+
+test("accepts the package-manager argument separator on the executable path", () => {
+  const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "muse-release-evidence-cli-")));
+  try {
+    git(repoRoot, ["init", "-q"]);
+    git(repoRoot, ["config", "user.email", "fixture@example.invalid"]);
+    git(repoRoot, ["config", "user.name", "Fixture"]);
+    writeFileSync(join(repoRoot, ".gitignore"), "candidate.tar\nreceipt.json\n", "utf8");
+    writeFileSync(join(repoRoot, "safe.txt"), "safe\n", "utf8");
+    git(repoRoot, ["add", "."]);
+    git(repoRoot, ["commit", "-qm", "fixture"]);
+    const candidate = join(repoRoot, "candidate.tar");
+    const output = join(repoRoot, "receipt.json");
+    git(repoRoot, ["archive", "--format=tar", `--output=${candidate}`, "HEAD"]);
+    execFileSync("git", ["check-ignore", "--quiet", "--no-index", "--", "receipt.json"], {
+      cwd: repoRoot
+    });
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(import.meta.dirname, "eval-release-evidence.mjs"),
+        "--",
+        "--package-candidate",
+        candidate,
+        "--output",
+        output
+      ],
+      {
+        cwd: repoRoot,
+        encoding: "utf8"
+      }
+    );
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stderr, "", result.stderr);
+    assert.equal(JSON.parse(readFileSync(output, "utf8")).overall, "red");
+    assert.match(result.stdout, /"overall":"red"/u);
   } finally {
     rmSync(repoRoot, { force: true, recursive: true });
   }

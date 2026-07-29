@@ -4,14 +4,20 @@ import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   lstatSync,
+  mkdtempSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   rmSync,
   writeFileSync
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -43,22 +49,21 @@ export function evaluateReleaseEvidence({
   const root = resolve(repoRoot);
   const candidate = resolve(candidatePath);
   const output = resolve(outputPath);
-  assertRegularNonSymlink(candidate, "candidate boundary is unsafe");
+  const candidateBytes = readBoundedRegularFile(
+    candidate,
+    MAX_CANDIDATE_BYTES,
+    "candidate boundary is unsafe"
+  );
   assertIgnoredOutput({ output, root, spawn });
 
   const source = captureSource(root, spawn);
-  const candidateStat = lstatSync(candidate);
-  if (candidateStat.size > MAX_CANDIDATE_BYTES) {
-    throw new Error("candidate exceeds bounded scan size");
-  }
-  const candidateBytes = readFileSync(candidate);
   const candidateSha256 = sha256(candidateBytes);
   const embeddedCommit = gitTarCommit(candidateBytes, root, spawn);
   const candidateTree = embeddedCommit
     ? runText(spawn, "git", ["rev-parse", `${embeddedCommit}^{tree}`], root).value
     : undefined;
   const sourceScan = scanSourceTree(root, spawn);
-  const candidateScan = scanTar(candidate, root, spawn);
+  const candidateScan = scanTar(candidateBytes, embeddedCommit, root, spawn);
   const combinedFindings = [...sourceScan.findings, ...candidateScan.findings];
   const findings = combinedFindings.slice(0, MAX_FINDINGS).sort(compareFindings);
   const signatures = captureSignatures({ candidate, head: source.head, root, spawn });
@@ -196,72 +201,178 @@ function scanSourceTree(root, spawn) {
   return { bytes, entries, findings, specialEntries, status: skipped ? "skipped" : "complete" };
 }
 
-function scanTar(candidate, root, spawn) {
-  const available = runText(spawn, "tar", ["--version"], root);
-  if (!available.ok) return { ...emptySkippedScan(), tool: "tar-unavailable" };
-  const listed = runText(spawn, "tar", ["-tf", candidate], root);
-  if (!listed.ok) return { ...emptySkippedScan(), tool: "tar" };
-  const paths = listed.value.split(/\r?\n/u).filter(Boolean).sort();
-  const pathCounts = new Map();
-  for (const path of paths) pathCounts.set(path, (pathCounts.get(path) ?? 0) + 1);
-  const findings = [];
-  let skipped = false;
-  let bytes = 0;
-  let duplicateEntries = 0;
-  let entries = 0;
-  let specialEntries = 0;
-  if (paths.length > MAX_ENTRY_COUNT) skipped = true;
-  for (const path of paths.slice(0, MAX_ENTRY_COUNT)) {
-    entries += 1;
-    if ((pathCounts.get(path) ?? 0) !== 1) {
-      duplicateEntries += 1;
-      skipped = true;
-      continue;
-    }
-    if (!safeRelativePath(path.replace(/\/$/u, ""))) {
-      skipped = true;
-      continue;
-    }
-    const described = runText(spawn, "tar", ["-tvf", candidate, "--", path], root);
-    if (!described.ok || described.value.length === 0) {
-      skipped = true;
-      continue;
-    }
-    const entryType = described.value[0];
-    if (entryType === "d" && path.endsWith("/")) continue;
-    if (entryType !== "-") {
-      skipped = true;
-      specialEntries += 1;
-      continue;
-    }
-    const extracted = runBuffer(spawn, "tar", ["-xOf", candidate, "--", path], root);
-    if (
-      !extracted.ok
-      || extracted.value.byteLength > MAX_ENTRY_BYTES
-      || bytes + extracted.value.byteLength > MAX_TOTAL_SCAN_BYTES
-    ) {
-      skipped = true;
-      continue;
-    }
-    bytes += extracted.value.byteLength;
-    const scanned = scanBytes(
-      extracted.value,
-      "candidate",
-      path,
-      MAX_FINDINGS - findings.length
+function scanTar(candidateBytes, embeddedCommit, root, spawn) {
+  const privateRoot = mkdtempSync(join(tmpdir(), "muse-release-scan-"));
+  const candidate = join(privateRoot, "candidate.tar");
+  const extractedRoot = join(privateRoot, "extracted");
+  try {
+    writeFileSync(candidate, candidateBytes, { flag: "wx", mode: 0o600 });
+    mkdirSync(extractedRoot, { mode: 0o700 });
+    const available = runText(spawn, "tar", ["--version"], root);
+    if (!available.ok) return { ...emptySkippedScan(), tool: "tar-unavailable" };
+    if (!embeddedCommit) return { ...emptySkippedScan(), tool: "tar" };
+    const listed = runText(spawn, "tar", ["-tf", candidate], root);
+    if (!listed.ok) return { ...emptySkippedScan(), tool: "tar" };
+    const described = runText(spawn, "tar", ["-tvf", candidate], root);
+    if (!described.ok) return { ...emptySkippedScan(), tool: "tar" };
+    const expectedResult = runBuffer(
+      spawn,
+      "git",
+      ["ls-tree", "-rz", "-r", "--full-tree", embeddedCommit],
+      root
     );
-    findings.push(...scanned.findings);
-    if (scanned.truncated) skipped = true;
+    if (!expectedResult.ok) return { ...emptySkippedScan(), tool: "tar" };
+    const expected = parseGitTree(expectedResult.value);
+    if (!expected) return { ...emptySkippedScan(), tool: "tar" };
+    const paths = listed.value.split(/\r?\n/u).filter(Boolean);
+    const descriptions = described.value.split(/\r?\n/u).filter(Boolean);
+    if (paths.length !== descriptions.length) {
+      return {
+        ...emptySkippedScan(),
+        entries: Math.min(paths.length, MAX_ENTRY_COUNT),
+        tool: "tar"
+      };
+    }
+    const pathCounts = new Map();
+    for (const path of paths) pathCounts.set(path, (pathCounts.get(path) ?? 0) + 1);
+    const allowedDirectories = expectedDirectoryPrefixes(expected.keys());
+    let duplicateEntries = 0;
+    let entries = 0;
+    let specialEntries = 0;
+    const regularPaths = [];
+    const seenExpected = new Set();
+    let structurallySafe = paths.length <= MAX_ENTRY_COUNT;
+    for (const [index, path] of paths.slice(0, MAX_ENTRY_COUNT).entries()) {
+      entries += 1;
+      if ((pathCounts.get(path) ?? 0) !== 1) {
+        duplicateEntries += 1;
+        structurallySafe = false;
+        continue;
+      }
+      if (!safeRelativePath(path.replace(/\/$/u, ""))) {
+        structurallySafe = false;
+        continue;
+      }
+      const actualType = descriptions[index]?.[0];
+      if (actualType === "d" && path.endsWith("/") && allowedDirectories.has(path)) continue;
+      if (actualType !== "-" || path.endsWith("/")) {
+        structurallySafe = false;
+        specialEntries += 1;
+        continue;
+      }
+      const expectedEntry = expected.get(path);
+      if (!expectedEntry) {
+        structurallySafe = false;
+        continue;
+      }
+      seenExpected.add(path);
+      if (
+        expectedEntry.type !== "blob"
+        || (expectedEntry.mode !== "100644" && expectedEntry.mode !== "100755")
+      ) {
+        structurallySafe = false;
+        specialEntries += 1;
+        continue;
+      }
+      regularPaths.push(path);
+    }
+    if ([...expected.keys()].some((path) => !seenExpected.has(path))) structurallySafe = false;
+    if (!structurallySafe) {
+      return {
+        bytes: 0,
+        duplicateEntries,
+        entries,
+        findings: [],
+        specialEntries,
+        status: "skipped",
+        tool: "tar"
+      };
+    }
+    const extracted = runText(
+      spawn,
+      "tar",
+      ["-xf", candidate, "-C", extractedRoot],
+      root
+    );
+    if (!extracted.ok) {
+      return {
+        bytes: 0,
+        duplicateEntries,
+        entries,
+        findings: [],
+        specialEntries,
+        status: "skipped",
+        tool: "tar"
+      };
+    }
+    const findings = [];
+    let bytes = 0;
+    let skipped = false;
+    for (const path of regularPaths) {
+      try {
+        const file = join(extractedRoot, ...path.split("/"));
+        const stat = lstatSync(file);
+        if (
+          !stat.isFile()
+          || stat.isSymbolicLink()
+          || stat.size > MAX_ENTRY_BYTES
+          || bytes + stat.size > MAX_TOTAL_SCAN_BYTES
+        ) {
+          skipped = true;
+          continue;
+        }
+        const content = readFileSync(file);
+        bytes += content.byteLength;
+        const scanned = scanBytes(
+          content,
+          "candidate",
+          path,
+          MAX_FINDINGS - findings.length
+        );
+        findings.push(...scanned.findings);
+        if (scanned.truncated) skipped = true;
+      } catch {
+        skipped = true;
+      }
+    }
+    return {
+      bytes,
+      duplicateEntries,
+      entries,
+      findings,
+      specialEntries,
+      status: skipped ? "skipped" : "complete",
+      tool: "tar"
+    };
+  } finally {
+    rmSync(privateRoot, { force: true, recursive: true });
   }
-  return {
-    bytes,
-    duplicateEntries,
-    entries,
-    findings,
-    specialEntries,
-    status: skipped ? "skipped" : "complete",
-    tool: "tar"
-  };
+}
+
+function parseGitTree(bytes) {
+  const entries = new Map();
+  for (const record of bytes.toString("utf8").split("\0").filter(Boolean)) {
+    const match = /^(?<mode>[0-9]{6}) (?<type>[a-z]+) [a-f0-9]{40,64}\t(?<path>.+)$/u.exec(record);
+    if (!match?.groups || !safeRelativePath(match.groups.path) || entries.has(match.groups.path)) {
+      return undefined;
+    }
+    entries.set(match.groups.path, {
+      mode: match.groups.mode,
+      type: match.groups.type
+    });
+  }
+  return entries;
+}
+
+function expectedDirectoryPrefixes(paths) {
+  const directories = new Set();
+  for (const path of paths) {
+    const segments = path.split("/");
+    for (let index = 1; index < segments.length; index += 1) {
+      directories.add(`${segments.slice(0, index).join("/")}/`);
+    }
+  }
+  return directories;
 }
 
 function scanBytes(bytes, scope, path, remainingFindings) {
@@ -371,6 +482,20 @@ function assertRegularNonSymlink(path, message) {
   if (!isRegularNonSymlink(path)) throw new Error(message);
 }
 
+function readBoundedRegularFile(path, maximumBytes, message) {
+  let descriptor;
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const stat = fstatSync(descriptor);
+    if (!stat.isFile() || stat.size > maximumBytes) throw new Error(message);
+    return readFileSync(descriptor);
+  } catch {
+    throw new Error(message);
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
 function isRegularNonSymlink(path) {
   try {
     const stat = lstatSync(path);
@@ -453,6 +578,7 @@ function parseCli(argv) {
   let outputPath;
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
+    if (flag === "--") continue;
     const value = argv[index + 1];
     if ((flag === "--package-candidate" || flag === "--output") && value && !value.startsWith("--")) {
       if (flag === "--package-candidate") candidatePath = value;
