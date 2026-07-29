@@ -24,7 +24,11 @@ import {
   persistCapabilityReport,
   selectCapabilityAxes,
 } from "./eval-agent.mjs";
-import { inspectCapabilityEvidence } from "./eval-agent-evidence.mjs";
+import {
+  beginCapabilityEvidenceAttempt,
+  finalizeCapabilityEvidenceAttempt,
+  inspectCapabilityEvidence,
+} from "./eval-agent-evidence.mjs";
 import { completionLine, skipLine } from "./eval-skip.mjs";
 
 const stochastic = CAPABILITIES[0];
@@ -309,6 +313,178 @@ test("single-axis execution runs only the selected battery and cannot pass the f
       .every((row) => row.status === "unverified" && row.reason === "not-selected")
   );
   assert.deepEqual(JSON.parse(stdout), report);
+});
+
+test("the persisted aggregate is authoritative for JSON, human output, and exit status", async () => {
+  const previousExitCode = process.exitCode;
+  const run = async (json) => {
+    let stdout = "";
+    process.exitCode = undefined;
+    const result = await main(
+      [
+        ...(json ? ["--json"] : []),
+        "--execute",
+        "--axis",
+        "plan-quality",
+        "--confirm-idle",
+        "--budget-minutes",
+        "12",
+      ],
+      verifiedPipeline({
+        beginAttempt: () => ({ attemptId: "bounded-attempt" }),
+        finishAttempt: (_attempt, current) => createCapabilityReport(
+          current.capabilities.map((row) => row.id === "tool-selection-arguments"
+            ? {
+              durationMs: 10,
+              executed: 3,
+              id: "tool-selection-arguments",
+              requested: 3,
+              required: true,
+              status: "passed",
+            }
+            : row),
+          { generatedAt: current.generatedAt, provenance: current.provenance },
+        ),
+        now: () => 0,
+        spawn: (_command, _args, options) => {
+          const requested = Number(options.env.MUSE_EVAL_REPEAT);
+          return {
+            status: 0,
+            signal: null,
+            stdout: completionLine({ status: "passed", requested, executed: requested }),
+            stderr: "",
+          };
+        },
+        stdout: { write: (chunk) => { stdout += chunk; } },
+        stderr: { write: () => {} },
+      }),
+    );
+    return { result, stdout, exitCode: process.exitCode };
+  };
+
+  try {
+    const json = await run(true);
+    assert.deepEqual(json.result.counts, { passed: 2, failed: 0, unverified: 9, total: 11 });
+    assert.deepEqual(JSON.parse(json.stdout), json.result);
+    assert.equal(json.exitCode, 1);
+
+    const human = await run(false);
+    assert.deepEqual(human.result, json.result);
+    assert.match(human.stdout, /eval:agent UNVERIFIED — 2 pass, 9 unverified, 0 fail/u);
+    assert.equal(human.exitCode, 1);
+  } finally {
+    process.exitCode = previousExitCode;
+  }
+});
+
+test("the production evidence finalizer aggregate is accepted regardless of object key order", async () => {
+  const root = mkdtempSync(join(tmpdir(), "muse-agent-production-finalizer-"));
+  const canonicalReportPath = join(root, "evals", "agent-capability", "latest.json");
+  const previousExitCode = process.exitCode;
+  let stdout = "";
+  try {
+    process.exitCode = undefined;
+    const result = await main(
+      ["--json", "--execute", "--axis", "plan-quality", "--confirm-idle", "--budget-minutes", "12"],
+      verifiedPipeline({
+        beginAttempt: () => beginCapabilityEvidenceAttempt({
+          allowedRoot: root,
+          reportPath: canonicalReportPath,
+        }),
+        finishAttempt: (attempt, current) => finalizeCapabilityEvidenceAttempt(attempt, current),
+        now: () => 0,
+        spawn: (_command, _args, options) => {
+          const requested = Number(options.env.MUSE_EVAL_REPEAT);
+          return {
+            status: 0,
+            signal: null,
+            stdout: completionLine({ status: "passed", requested, executed: requested }),
+            stderr: "",
+          };
+        },
+        stdout: { write: (chunk) => { stdout += chunk; } },
+        stderr: { write: () => {} },
+      }),
+    );
+
+    assert.deepEqual(result.counts, { failed: 0, passed: 1, total: 11, unverified: 10 });
+    assert.deepEqual(JSON.parse(stdout), result);
+    assert.deepEqual(
+      inspectCapabilityEvidence({ allowedRoot: root, reportPath: canonicalReportPath }).artifact.value,
+      result,
+    );
+    assert.equal(process.exitCode, 1);
+  } finally {
+    process.exitCode = previousExitCode;
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("missing, malformed, or throwing finalization can never emit green", async () => {
+  const previousExitCode = process.exitCode;
+  const cases = [
+    { name: "missing", finishAttempt: () => undefined },
+    {
+      name: "malformed",
+      finishAttempt: (_attempt, current) => ({ ...current, privatePayload: "secret" }),
+    },
+    {
+      name: "provenance-drift",
+      finishAttempt: (_attempt, current) => {
+        const source = { revision: "c".repeat(40), tree: "clean" };
+        const artifacts = { count: 41, digest: "d".repeat(64), status: "ok" };
+        return createCapabilityReport(passingRows(), {
+          generatedAt: current.generatedAt,
+          provenance: {
+            sourceBeforeBuild: source,
+            sourceAfterBuild: source,
+            sourceAtEnd: source,
+            artifactsAfterBuild: artifacts,
+            artifactsAtEnd: artifacts,
+          },
+        });
+      },
+    },
+    {
+      name: "throwing",
+      finishAttempt: () => { throw new Error("/Users/private-owner/finalize-failed"); },
+    },
+  ];
+  try {
+    for (const candidate of cases) {
+      let stdout = "";
+      process.exitCode = undefined;
+      const result = await main(
+        ["--json", "--execute", "--axis", "plan-quality", "--confirm-idle", "--budget-minutes", "12"],
+        verifiedPipeline({
+          beginAttempt: () => ({ attemptId: candidate.name }),
+          finishAttempt: candidate.finishAttempt,
+          now: () => 0,
+          spawn: (_command, _args, options) => {
+            const requested = Number(options.env.MUSE_EVAL_REPEAT);
+            return {
+              status: 0,
+              signal: null,
+              stdout: completionLine({ status: "passed", requested, executed: requested }),
+              stderr: "",
+            };
+          },
+          stdout: { write: (chunk) => { stdout += chunk; } },
+          stderr: { write: () => {} },
+        }),
+      );
+      assert.equal(result.status, "failed", candidate.name);
+      assert.ok(
+        result.capabilities.every((row) => row.reason === "report-persistence-failed"),
+        candidate.name,
+      );
+      assert.deepEqual(JSON.parse(stdout), result, candidate.name);
+      assert.doesNotMatch(stdout, /Users|private-owner|finalize-failed|privatePayload|secret/u);
+      assert.equal(process.exitCode, 1, candidate.name);
+    }
+  } finally {
+    process.exitCode = previousExitCode;
+  }
 });
 
 test("preflight constructor remains a static manifest with no configured-machine readiness claim", () => {

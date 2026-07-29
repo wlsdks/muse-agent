@@ -381,6 +381,10 @@ function capabilityReportShapeIsExact(report) {
   return report.status === expectedStatus;
 }
 
+export function isExactCapabilityReport(report) {
+  return capabilityReportShapeIsExact(report);
+}
+
 export function isCanonicalPassingCapabilityReport(report) {
   if (!capabilityReportShapeIsExact(report) || report.status !== "passed") return false;
   if (!exactKeys(report.provenance, ["artifactsAfterBuild", "artifactsAtEnd", "sourceAfterBuild", "sourceAtEnd", "sourceBeforeBuild"])) return false;

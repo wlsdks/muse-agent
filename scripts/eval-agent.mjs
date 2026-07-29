@@ -9,6 +9,7 @@
 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   createCapabilityExecutionAdmission,
@@ -27,6 +28,7 @@ import {
   beginCapabilityEvidenceAttempt,
   DEFAULT_CAPABILITY_REPORT_PATH,
   finalizeCapabilityEvidenceAttempt,
+  isExactCapabilityReport,
 } from "./eval-agent-evidence.mjs";
 import {
   MAX_EVAL_PROCESS_DEADLINE_MS,
@@ -667,7 +669,19 @@ function emitReport(report, { dependencies, evidenceAttempt, json, stdout }) {
   try {
     if (dependencies.finishAttempt) {
       if (!evidenceAttempt) throw new Error("capability evidence attempt missing");
-      dependencies.finishAttempt(evidenceAttempt, report);
+      const finalizedReport = dependencies.finishAttempt(evidenceAttempt, report);
+      const canonicalFinalizedReport = createCapabilityReport(finalizedReport?.capabilities, {
+        generatedAt: finalizedReport?.generatedAt,
+        provenance: finalizedReport?.provenance,
+      });
+      if (
+        !isExactCapabilityReport(finalizedReport)
+        || !isDeepStrictEqual(finalizedReport, canonicalFinalizedReport)
+        || !isDeepStrictEqual(finalizedReport.provenance, report.provenance)
+      ) {
+        throw new Error("capability evidence finalization failed");
+      }
+      emittedReport = canonicalFinalizedReport;
     } else {
       dependencies.writeReport?.(report);
     }
