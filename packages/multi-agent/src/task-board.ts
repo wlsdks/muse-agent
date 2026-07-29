@@ -8,6 +8,8 @@
  * file-backed store + the dispatcher that assigns ready tasks to agents build on it.
  */
 
+import { assessDelegationFanout, type DelegationHandoff } from "./delegation-handoff.js";
+
 export type TaskStatus = "todo" | "in_progress" | "review" | "blocked" | "done" | "failed";
 
 /**
@@ -196,6 +198,8 @@ export function tasksFromSubtasks(
  * - `"parallel"` — INDEPENDENT sub-tasks (no inter-dependencies), all immediately runnable, for
  *   work that doesn't need ordering ("research A / research B / research C"). With cloud
  *   providers these run truly concurrently; on one local model they still run, just serially.
+ *   Parallel mode additionally requires a current `DelegationHandoff` that proves the tasks
+ *   are context-independent, mergeable, effect-free, and have disjoint writable scopes.
  *
  * A no-op if the parent is missing, already decomposed, there's nothing to expand into
  * (<2 sub-tasks isn't a decomposition), or the parent is already AT `maxDepth` (openclaw
@@ -209,11 +213,16 @@ export function expandTaskIntoSubtasks(
   subtasks: readonly { readonly id: string; readonly title: string }[],
   nowIso: string,
   mode: "sequential" | "parallel" = "sequential",
-  maxDepth: number = DEFAULT_BOARD_MAX_DEPTH
+  maxDepth: number = DEFAULT_BOARD_MAX_DEPTH,
+  handoff?: DelegationHandoff
 ): AgentTask[] {
   const parent = tasks.find((t) => t.id === parentId);
   const parentDepth = parent?.depth ?? 0;
   if (!parent || parent.decomposed || subtasks.length < 2 || parentDepth >= maxDepth) return [...tasks];
+  if (mode !== "sequential" && mode !== "parallel") return [...tasks];
+  if (mode === "parallel" && !assessDelegationFanout(handoff, subtasks.map((subtask) => subtask.id), nowIso).ok) {
+    return [...tasks];
+  }
   let board: AgentTask[] = [...tasks];
   subtasks.forEach((sub, i) => {
     const dependsOn = mode === "sequential" && i > 0 ? [subtasks[i - 1]!.id] : [];

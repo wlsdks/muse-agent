@@ -1,5 +1,11 @@
 import type { AgentRunResult } from "@muse/agent-core";
 export { createWorkerResult, parseHandoffPart, parseWorkerResult, validateWorkerHandoff } from "./worker-result.js";
+export {
+  assessDelegationFanout,
+  type DelegationHandoff,
+  type DelegationHandoffAdmission,
+  type DelegationSubtaskHandoff
+} from "./delegation-handoff.js";
 export { addTask, DEFAULT_BOARD_MAX_DEPTH, expandTaskIntoSubtasks, lastFailureReason, latestOutput, nextReadyTask, reclaimStaleTasks, recordTaskRun, removeTask, resolveBoardMaxDepth, retryTask, staleInProgressTasks, taskDepsMet, tasksFromSubtasks, transitionTask, type AgentTask, type TaskRun, type TaskStatus } from "./task-board.js";
 export { parallelDecomposePrompt, parseParallelPlan, planParallelSubtasks, type ParallelDecomposeDeps } from "./parallel-decompose.js";
 export {

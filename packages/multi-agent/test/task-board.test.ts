@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { addTask, DEFAULT_BOARD_MAX_DEPTH, DEFAULT_TASK_RUN_HISTORY_LIMIT, expandTaskIntoSubtasks, lastFailureReason, latestOutput, nextReadyTask, reclaimStaleTasks, recordTaskRun, removeTask, resolveBoardMaxDepth, retryTask, staleInProgressTasks, taskDepsMet, transitionTask, type AgentTask } from "../src/task-board.js";
+import type { DelegationHandoff } from "../src/delegation-handoff.js";
 
 const task = (over: Partial<AgentTask> & { id: string }): AgentTask => ({
   createdAt: "2026-06-28T00:00:00Z",
@@ -169,21 +170,58 @@ describe("resolveBoardMaxDepth — MUSE_BOARD_MAX_DEPTH env parsing", () => {
 
 describe("expandTaskIntoSubtasks — parallel mode (#3, independent sub-tasks)", () => {
   const subs = [{ id: "s1", title: "research A" }, { id: "s2", title: "research B" }, { id: "s3", title: "research C" }];
+  const safeHandoff: DelegationHandoff = {
+    contextIndependent: true,
+    decomposition: "fanout",
+    mergeable: true,
+    objective: "Compare A B C",
+    schemaVersion: 1,
+    sharedState: false,
+    subtasks: subs.map((subtask) => ({
+      allowedToolNames: ["file_read"],
+      dependsOn: [],
+      effectScopes: [],
+      expiresAt: "2026-07-30T00:00:00.000Z",
+      id: subtask.id,
+      input: subtask.title,
+      outputSchema: "plain text",
+      role: "researcher",
+      writablePaths: [`reports/${subtask.id}`]
+    }))
+  };
   it("parallel mode gives each sub-task NO inter-dependency (all immediately runnable)", () => {
-    const board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "compare A B C" }, "t0"), "p", subs, "t1", "parallel");
+    const board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "compare A B C" }, "t0"), "p", subs, "2026-07-29T00:00:00.000Z", "parallel", DEFAULT_BOARD_MAX_DEPTH, safeHandoff);
     expect(board.find((t) => t.id === "s1")!.dependsOn).toEqual([]);
     expect(board.find((t) => t.id === "s2")!.dependsOn).toEqual([]); // NOT chained (vs sequential)
     expect(board.find((t) => t.id === "s3")!.dependsOn).toEqual([]);
     expect(board.find((t) => t.id === "p")!.dependsOn).toEqual(["s1", "s2", "s3"]); // container still waits for all
   });
   it("all parallel sub-tasks are ready at once (a true fan-out, unlike the sequential chain)", () => {
-    const board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "g" }, "t0"), "p", subs, "t1", "parallel");
+    const board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "g" }, "t0"), "p", subs, "2026-07-29T00:00:00.000Z", "parallel", DEFAULT_BOARD_MAX_DEPTH, safeHandoff);
     const ready = board.filter((t) => t.status === "todo" && taskDepsMet(t, board) && !t.decomposed);
     expect(ready.map((t) => t.id).sort()).toEqual(["s1", "s2", "s3"]); // all three runnable now
   });
   it("default mode stays sequential (backward-compatible)", () => {
     const board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "g" }, "t0"), "p", subs, "t1");
     expect(board.find((t) => t.id === "s2")!.dependsOn).toEqual(["s1"]); // chained
+  });
+  it("parallel mode fails closed without a valid handoff", () => {
+    const base = addTask([], { id: "p", title: "g" }, "t0");
+    expect(expandTaskIntoSubtasks(base, "p", subs, "2026-07-29T00:00:00.000Z", "parallel")).toEqual(base);
+    const shared = { ...safeHandoff, sharedState: true };
+    expect(expandTaskIntoSubtasks(base, "p", subs, "2026-07-29T00:00:00.000Z", "parallel", DEFAULT_BOARD_MAX_DEPTH, shared)).toEqual(base);
+  });
+  it("fails closed on an invalid runtime mode instead of treating it as unordered", () => {
+    const base = addTask([], { id: "p", title: "g" }, "t0");
+    expect(expandTaskIntoSubtasks(
+      base,
+      "p",
+      subs,
+      "2026-07-29T00:00:00.000Z",
+      "fanout" as never,
+      DEFAULT_BOARD_MAX_DEPTH,
+      safeHandoff
+    )).toEqual(base);
   });
 });
 

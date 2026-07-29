@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { dispatchNextTask, resolveReview, type TaskExecutor } from "../src/dispatch-board.js";
 import { addTask, expandTaskIntoSubtasks, recordTaskRun, retryTask, tasksFromSubtasks, type AgentTask } from "../src/task-board.js";
+import type { DelegationHandoff } from "../src/delegation-handoff.js";
 
 const ok: TaskExecutor = async () => ({ status: "completed" });
 const fail: TaskExecutor = async () => ({ reason: "boom", status: "failed" });
@@ -73,7 +74,26 @@ describe("dispatchNextTask — a decomposed CONTAINER auto-completes (board-as-h
 describe("dispatchNextTask — a SYNTHESIS (parallel) container combines its sub-task outputs (#3)", () => {
   it("runs the executor over the finished sub-task outputs instead of auto-completing", async () => {
     // parallel expansion → container has synthesize:true; sub-tasks completed WITH outputs
-    let board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "compare A B" }, "t0"), "p", [{ id: "s1", title: "A" }, { id: "s2", title: "B" }], "t1", "parallel");
+    const handoff: DelegationHandoff = {
+      contextIndependent: true,
+      decomposition: "fanout",
+      mergeable: true,
+      objective: "Compare A B",
+      schemaVersion: 1,
+      sharedState: false,
+      subtasks: ["s1", "s2"].map((id) => ({
+        allowedToolNames: ["file_read"],
+        dependsOn: [],
+        effectScopes: [],
+        expiresAt: "2026-07-30T00:00:00.000Z",
+        id,
+        input: `Inspect ${id}`,
+        outputSchema: "plain text",
+        role: "researcher",
+        writablePaths: [`reports/${id}`]
+      }))
+    };
+    let board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "compare A B" }, "t0"), "p", [{ id: "s1", title: "A" }, { id: "s2", title: "B" }], "2026-07-29T00:00:00.000Z", "parallel", 1, handoff);
     board = recordTaskRun(board, "s1", { at: "t2", output: "A is fast", status: "completed" });
     board = recordTaskRun(board, "s2", { at: "t3", output: "B is safe", status: "completed" });
     let seenOutputs: readonly string[] | undefined;

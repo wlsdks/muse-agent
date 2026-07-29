@@ -1,0 +1,137 @@
+import { describe, expect, it } from "vitest";
+
+import { assessDelegationFanout, type DelegationHandoff } from "../src/delegation-handoff.js";
+
+const NOW = "2026-07-29T00:00:00.000Z";
+
+const handoff = (over: Partial<DelegationHandoff> = {}): DelegationHandoff => ({
+  contextIndependent: true,
+  decomposition: "fanout",
+  mergeable: true,
+  objective: "Compare two independent implementations",
+  schemaVersion: 1,
+  sharedState: false,
+  subtasks: [
+    {
+      allowedToolNames: ["file_read"],
+      dependsOn: [],
+      effectScopes: [],
+      expiresAt: "2026-07-30T00:00:00.000Z",
+      id: "s1",
+      input: "Inspect implementation A",
+      outputSchema: "plain-text findings",
+      role: "reader",
+      writablePaths: ["reports/a"]
+    },
+    {
+      allowedToolNames: ["file_read"],
+      dependsOn: [],
+      effectScopes: [],
+      expiresAt: "2026-07-30T00:00:00.000Z",
+      id: "s2",
+      input: "Inspect implementation B",
+      outputSchema: "plain-text findings",
+      role: "reader",
+      writablePaths: ["reports/b"]
+    }
+  ],
+  ...over
+});
+
+describe("delegation handoff fan-out admission", () => {
+  it("accepts and deeply freezes a disjoint, read-only, context-independent handoff", () => {
+    const decision = assessDelegationFanout(handoff(), ["s1", "s2"], NOW);
+    expect(decision.ok).toBe(true);
+    if (!decision.ok) return;
+    expect(Object.isFrozen(decision.handoff)).toBe(true);
+    expect(Object.isFrozen(decision.handoff.subtasks)).toBe(true);
+    expect(Object.isFrozen(decision.handoff.subtasks[0]!.writablePaths)).toBe(true);
+  });
+
+  it.each([
+    ["shared state", { sharedState: true }],
+    ["context dependency", { contextIndependent: false }],
+    ["non-mergeable output", { mergeable: false }]
+  ])("rejects %s", (_label, over) => {
+    expect(assessDelegationFanout(handoff(over), ["s1", "s2"], NOW)).toMatchObject({ ok: false });
+  });
+
+  it("rejects ordered dependencies and declared effects", () => {
+    const ordered = handoff({ subtasks: [
+      handoff().subtasks[0]!,
+      { ...handoff().subtasks[1]!, dependsOn: ["s1"] }
+    ] });
+    expect(assessDelegationFanout(ordered, ["s1", "s2"], NOW)).toMatchObject({ ok: false, reason: expect.stringContaining("ordered") });
+
+    const effectful = handoff({ subtasks: [
+      { ...handoff().subtasks[0]!, effectScopes: ["external-send"] },
+      handoff().subtasks[1]!
+    ] });
+    expect(assessDelegationFanout(effectful, ["s1", "s2"], NOW)).toMatchObject({ ok: false, reason: expect.stringContaining("effects") });
+  });
+
+  it("rejects equal, ancestor, or malformed writable paths", () => {
+    const overlap = handoff({ subtasks: [
+      { ...handoff().subtasks[0]!, writablePaths: ["reports"] },
+      { ...handoff().subtasks[1]!, writablePaths: ["reports/b"] }
+    ] });
+    expect(assessDelegationFanout(overlap, ["s1", "s2"], NOW)).toMatchObject({ ok: false, reason: expect.stringContaining("overlaps") });
+
+    const caseAlias = handoff({ subtasks: [
+      { ...handoff().subtasks[0]!, writablePaths: ["Reports/A"] },
+      { ...handoff().subtasks[1]!, writablePaths: ["reports/a"] }
+    ] });
+    expect(assessDelegationFanout(caseAlias, ["s1", "s2"], NOW)).toMatchObject({ ok: false, reason: expect.stringContaining("overlaps") });
+
+    const traversal = handoff({ subtasks: [
+      { ...handoff().subtasks[0]!, writablePaths: ["../outside"] },
+      handoff().subtasks[1]!
+    ] });
+    expect(assessDelegationFanout(traversal, ["s1", "s2"], NOW)).toMatchObject({ ok: false, reason: expect.stringContaining("workspace-relative") });
+
+    for (const path of ["reports/a:stream", "reports/CON", "reports/file?.txt"]) {
+      const windowsAlias = handoff({ subtasks: [
+        { ...handoff().subtasks[0]!, writablePaths: [path] },
+        handoff().subtasks[1]!
+      ] });
+      expect(assessDelegationFanout(windowsAlias, ["s1", "s2"], NOW)).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining("workspace-relative")
+      });
+    }
+  });
+
+  it("rejects missing fields, expired scopes, and subtask mismatch", () => {
+    const missing = { ...handoff(), objective: undefined };
+    expect(assessDelegationFanout(missing, ["s1", "s2"], NOW)).toMatchObject({ ok: false });
+
+    const expired = handoff({ subtasks: [
+      { ...handoff().subtasks[0]!, expiresAt: NOW },
+      handoff().subtasks[1]!
+    ] });
+    expect(assessDelegationFanout(expired, ["s1", "s2"], NOW)).toMatchObject({ ok: false, reason: expect.stringContaining("expired") });
+    expect(assessDelegationFanout(handoff(), ["s2", "s1"], NOW)).toMatchObject({ ok: false, reason: expect.stringContaining("exactly match") });
+  });
+
+  it("rejects non-canonical, local-zone, and overflow timestamps", () => {
+    for (const expiresAt of [
+      "2026-07-30",
+      "2026-07-30T00:00:00",
+      "2026-07-30T00:00:00+09:00",
+      "2026-02-30T00:00:00.000Z"
+    ]) {
+      const invalid = handoff({ subtasks: [
+        { ...handoff().subtasks[0]!, expiresAt },
+        handoff().subtasks[1]!
+      ] });
+      expect(assessDelegationFanout(invalid, ["s1", "s2"], NOW)).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining("canonical UTC")
+      });
+    }
+    expect(assessDelegationFanout(handoff(), ["s1", "s2"], "2026-07-29")).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining("canonical UTC")
+    });
+  });
+});
