@@ -7,7 +7,8 @@ import {
 } from "@muse/attunement/continuity-source-observations";
 
 import {
-  compileContinuityResumeContext
+  compileContinuityResumeContext,
+  getContinuityResumeContextAudit
 } from "../dist/continuity-resume-context-orchestrator.js";
 import {
   captureContinuityResumeBoundary
@@ -266,8 +267,65 @@ invariant(
     && Object.isFrozen(result.agentContext.supportingFacts),
   "outputs must be frozen"
 );
+const audit = getContinuityResumeContextAudit(result);
+invariant(audit !== undefined, "exact usable result must retrieve audit");
 invariant(
-  result.orchestrationEvidence.frontier.receipt.metrics
+  Object.isFrozen(audit)
+    && JSON.stringify(audit.currentSourceObservationReceipt)
+      === JSON.stringify(currentSourceObservationReceipt)
+    && audit.currentProviderResult === currentProviderResult
+    && JSON.stringify(audit.currentGraphObservationReceipt)
+      === JSON.stringify(currentProviderResult.graphObservationReceipt)
+    && audit.reservation === result.reservation
+    && audit.combinedCost === result.combinedCost,
+  "audit must retain exact frozen orchestration dependencies"
+);
+invariant(
+  !Object.hasOwn(result, "orchestrationEvidence")
+    && !Object.keys(result).includes("currentGraphObservationReceipt"),
+  "enumerable result must not expose raw orchestration evidence"
+);
+for (const copy of [
+  { ...result },
+  JSON.parse(JSON.stringify(result)),
+  structuredClone(result),
+  { result },
+  new Proxy(result, {})
+]) {
+  invariant(
+    getContinuityResumeContextAudit(copy) === undefined,
+    "only the exact result object may retrieve audit"
+  );
+}
+const auditTraps = { get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 };
+const auditHostile = new Proxy({}, {
+  get() {
+    auditTraps.get++;
+    throw new Error("audit get trap");
+  },
+  getOwnPropertyDescriptor() {
+    auditTraps.getOwnPropertyDescriptor++;
+    throw new Error("audit descriptor trap");
+  },
+  ownKeys() {
+    auditTraps.ownKeys++;
+    throw new Error("audit keys trap");
+  }
+});
+const auditRevoked = Proxy.revocable({}, {});
+auditRevoked.revoke();
+for (const value of [null, undefined, auditHostile, auditRevoked.proxy]) {
+  invariant(
+    getContinuityResumeContextAudit(value) === undefined,
+    "non-exact values must not retrieve audit"
+  );
+}
+invariant(
+  Object.values(auditTraps).every((count) => count === 0),
+  "audit lookup must trigger zero hostile or revoked Proxy traps"
+);
+invariant(
+  audit.frontier.receipt.metrics
     .settlementInvocations >= 1,
   "single top-level settlement must retain internal trial metrics"
 );

@@ -137,21 +137,22 @@ export type ContinuityResumeContextPartialV1 = Readonly<{
   readonly witnessStatus: "partial" | "abstained" | "capacity-invalid";
   readonly agentContext: ContinuityResumeAgentContextV1;
   readonly combinedCost?: CombinedReservedResumeCosts;
-  readonly orchestrationEvidence: Readonly<{
-    readonly previous: VerifiedContinuityResumeBoundaryDependencies;
-    readonly currentSourceObservationReceipt:
-      ContinuityScopedSourceObservationReceipt;
-    readonly currentProviderResult:
-      Extract<ProviderHeadRevalidatedGraphEvidenceV1, {
-        readonly status: "partial";
-      }>;
-    readonly currentGraphObservationReceipt: ContinuityObservationReceipt;
-    readonly changeResult: ExplainedContinuityChangeResult;
-    readonly reservation: AdmittedResumeBudgetReservation;
-    readonly inventory: ThreadRootedRetainedWitnessInventoryV1;
-    readonly frontier: FairWitnessFrontierCompositionV1;
-    readonly combinedCost?: CombinedReservedResumeCosts;
-  }>;
+}>;
+
+type ContinuityResumeContextAuditV1 = Readonly<{
+  readonly previous: VerifiedContinuityResumeBoundaryDependencies;
+  readonly currentSourceObservationReceipt:
+    ContinuityScopedSourceObservationReceipt;
+  readonly currentProviderResult:
+    Extract<ProviderHeadRevalidatedGraphEvidenceV1, {
+      readonly status: "partial";
+    }>;
+  readonly currentGraphObservationReceipt: ContinuityObservationReceipt;
+  readonly changeResult: ExplainedContinuityChangeResult;
+  readonly reservation: AdmittedResumeBudgetReservation;
+  readonly inventory: ThreadRootedRetainedWitnessInventoryV1;
+  readonly frontier: FairWitnessFrontierCompositionV1;
+  readonly combinedCost?: CombinedReservedResumeCosts;
 }>;
 
 export type ContinuityResumeContextResultV1 =
@@ -185,6 +186,16 @@ const ZERO_COST = record({
   estimatedTokensV1: 0,
   outputBytes: 0
 }) as ResumeCost6;
+
+const CONTINUITY_RESUME_CONTEXT_AUDITS =
+  new WeakMap<object, ContinuityResumeContextAuditV1>();
+
+export function getContinuityResumeContextAudit(
+  result: unknown
+): ContinuityResumeContextAuditV1 | undefined {
+  if (typeof result !== "object" || result === null) return undefined;
+  return CONTINUITY_RESUME_CONTEXT_AUDITS.get(result);
+}
 
 function record<T extends NullRecord>(value: T): Readonly<T> {
   return Object.freeze(
@@ -683,7 +694,7 @@ export function compileContinuityResumeContext(
   const witnessStatus = frontier.settlement.status === "invalid-input"
     ? "capacity-invalid" as const
     : frontier.settlement.status;
-  const orchestrationEvidence = record({
+  const audit = record({
     previous,
     currentSourceObservationReceipt: currentSource,
     currentProviderResult: provider,
@@ -693,8 +704,8 @@ export function compileContinuityResumeContext(
     inventory,
     frontier,
     ...(combinedCost === undefined ? {} : { combinedCost })
-  });
-  return record({
+  }) as ContinuityResumeContextAuditV1;
+  const result = record({
     schemaVersion: 1 as const,
     status: "partial" as const,
     providerStatus: "partial" as const,
@@ -703,7 +714,8 @@ export function compileContinuityResumeContext(
     reservation,
     witnessStatus,
     agentContext: context,
-    ...(combinedCost === undefined ? {} : { combinedCost }),
-    orchestrationEvidence
+    ...(combinedCost === undefined ? {} : { combinedCost })
   }) as ContinuityResumeContextPartialV1;
+  CONTINUITY_RESUME_CONTEXT_AUDITS.set(result, audit);
+  return result;
 }

@@ -16,7 +16,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   ContinuityResumeContextOrchestratorError,
-  compileContinuityResumeContext
+  compileContinuityResumeContext,
+  getContinuityResumeContextAudit
 } from "./continuity-resume-context-orchestrator.js";
 import {
   captureContinuityResumeBoundary
@@ -27,6 +28,9 @@ import {
 import {
   compileHeadRevalidatedProviderBoundGraphEvidence
 } from "./provider-head-revalidated-graph-evidence.js";
+import {
+  getThreadRootedRetainedWitnessInventory
+} from "./thread-rooted-witness-documents.js";
 
 vi.mock("@muse/attunement/continuity-snapshots", async () =>
   import("../../attunement/src/continuity-snapshots.js")
@@ -327,6 +331,7 @@ describe("continuity resume-context orchestrator", () => {
     });
     expect(Object.hasOwn(result, "orchestrationEvidence")).toBe(false);
     expect(Object.hasOwn(result, "currentGraphObservationReceipt")).toBe(false);
+    expect(getContinuityResumeContextAudit(result)).toBeUndefined();
   });
 
   it("rejects copied minted Provider results before previous dependency work", async () => {
@@ -401,6 +406,9 @@ describe("continuity resume-context orchestrator", () => {
   it("settles an exact current no-change pair once into minimal agent context", async () => {
     const currentProviderResult = await currentProvider();
     expect(currentProviderResult.status).toBe("partial");
+    if (currentProviderResult.status !== "partial") {
+      throw new Error("partial Provider required");
+    }
     const currentSourceObservationReceipt =
       captureScopedContinuitySourceObservation({
         observedAt: CURRENT_AT,
@@ -408,9 +416,10 @@ describe("continuity resume-context orchestrator", () => {
         scope: { sourceId: SOURCE_ID, threadId: THREAD_ID }
       });
 
+    const dependencies = previousDependencies();
     const result = compileContinuityResumeContext({
       schemaVersion: 1,
-      ...previousDependencies(),
+      ...dependencies,
       currentProviderResult,
       currentSourceObservationReceipt,
       budget: BUDGET
@@ -425,43 +434,53 @@ describe("continuity resume-context orchestrator", () => {
       }
     });
     if (result.status !== "partial") throw new Error("partial required");
+    const audit = getContinuityResumeContextAudit(result);
+    if (audit === undefined) throw new Error("exact result audit required");
     expect(Object.keys(result.agentContext)).toEqual([
       "resumeContextFacts",
       "supportingFacts",
       "contextStream"
     ]);
     expect(
-      result.orchestrationEvidence.frontier.receipt.metrics.settlementInvocations
+      audit.frontier.receipt.metrics.settlementInvocations
     ).toBeGreaterThanOrEqual(1);
+    expect(audit.previous.boundary).toEqual(dependencies.boundary);
+    expect(audit.currentSourceObservationReceipt).toEqual(currentSourceObservationReceipt);
+    expect(audit.currentProviderResult).toBe(currentProviderResult);
+    expect(audit.currentGraphObservationReceipt)
+      .toEqual(currentProviderResult.graphObservationReceipt);
+    expect(audit.reservation).toBe(result.reservation);
+    expect(audit.combinedCost).toBe(result.combinedCost);
+    expect(Object.isFrozen(audit)).toBe(true);
     expect(result.combinedCost?.settlementCost).toEqual({
       depth:
-        result.orchestrationEvidence.frontier.settlement.status === "partial"
-          ? result.orchestrationEvidence.frontier.settlement.settlement.ledger
+        audit.frontier.settlement.status === "partial"
+          ? audit.frontier.settlement.settlement.ledger
             .counters.maxDepth
           : -1,
       consideredAssertions:
-        result.orchestrationEvidence.frontier.settlement.status === "partial"
-          ? result.orchestrationEvidence.frontier.settlement.settlement.ledger
+        audit.frontier.settlement.status === "partial"
+          ? audit.frontier.settlement.settlement.ledger
             .counters.consideredAssertions
           : -1,
       visitedRefs:
-        result.orchestrationEvidence.frontier.settlement.status === "partial"
-          ? result.orchestrationEvidence.frontier.settlement.settlement.ledger
+        audit.frontier.settlement.status === "partial"
+          ? audit.frontier.settlement.settlement.ledger
             .counters.visitedRefs
           : -1,
       assertions:
-        result.orchestrationEvidence.frontier.settlement.status === "partial"
-          ? result.orchestrationEvidence.frontier.settlement.settlement.ledger
+        audit.frontier.settlement.status === "partial"
+          ? audit.frontier.settlement.settlement.ledger
             .counters.selectedAssertions
           : -1,
       estimatedTokensV1:
-        result.orchestrationEvidence.frontier.settlement.status === "partial"
-          ? result.orchestrationEvidence.frontier.settlement.settlement
+        audit.frontier.settlement.status === "partial"
+          ? audit.frontier.settlement.settlement
             .estimatedTokens
           : -1,
       outputBytes:
-        result.orchestrationEvidence.frontier.settlement.status === "partial"
-          ? result.orchestrationEvidence.frontier.settlement.settlement
+        audit.frontier.settlement.status === "partial"
+          ? audit.frontier.settlement.settlement
             .totalOutputBytes
           : -1
     });
@@ -568,6 +587,7 @@ describe("continuity resume-context orchestrator", () => {
         firstViolatedAxis: costAxis,
         mandatoryCost: mandatory
       });
+      expect(getContinuityResumeContextAudit(result)).toBeUndefined();
     }
   });
 
@@ -610,14 +630,121 @@ describe("continuity resume-context orchestrator", () => {
       agentContext: { supportingFacts: [] }
     });
     if (result.status !== "partial") throw new Error("partial required");
+    const audit = getContinuityResumeContextAudit(result);
+    if (audit === undefined) throw new Error("exact result audit required");
     expect(Object.hasOwn(result, "combinedCost")).toBe(false);
     expect(Object.hasOwn(
-      result.orchestrationEvidence.frontier.settlement,
+      audit.frontier.settlement,
       "settlement"
     )).toBe(false);
     expect(result.agentContext.contextStream).toBe(
       `${JSON.stringify(result.agentContext.resumeContextFacts)}\n`
     );
+  });
+
+  it("keeps audit capability exact, frozen, and outside enumerable results", async () => {
+    const currentProviderResult = await currentProvider();
+    if (currentProviderResult.status !== "partial") {
+      throw new Error("partial Provider required");
+    }
+    const currentSourceObservationReceipt =
+      captureScopedContinuitySourceObservation({
+        observedAt: CURRENT_AT,
+        pack: pack(),
+        scope: { sourceId: SOURCE_ID, threadId: THREAD_ID }
+      });
+    const result = compileContinuityResumeContext({
+      schemaVersion: 1,
+      ...previousDependencies(),
+      currentProviderResult,
+      currentSourceObservationReceipt,
+      budget: BUDGET
+    });
+    if (result.status !== "partial") throw new Error("partial required");
+    const audit = getContinuityResumeContextAudit(result);
+    if (audit === undefined) throw new Error("exact result audit required");
+
+    expect(Object.hasOwn(result, "orchestrationEvidence")).toBe(false);
+    const forbidden = new Set([
+      "previous",
+      "currentSourceObservationReceipt",
+      "currentProviderResult",
+      "currentGraphObservationReceipt",
+      "changeResult",
+      "inventory",
+      "frontier",
+      "receipt",
+      "ledger",
+      "manifest",
+      "proof",
+      "settlement",
+      "documents",
+      "dispositions",
+      "sourceRefs",
+      "derivation",
+      "assertionId"
+    ]);
+    const pending: unknown[] = [result];
+    const seen = new Set<object>();
+    while (pending.length > 0) {
+      const value = pending.pop();
+      if (value === null || typeof value !== "object" || seen.has(value)) {
+        continue;
+      }
+      seen.add(value);
+      for (const [key, nested] of Object.entries(value)) {
+        expect(forbidden.has(key)).toBe(false);
+        pending.push(nested);
+      }
+    }
+
+    for (const copy of [
+      { ...result },
+      JSON.parse(JSON.stringify(result)),
+      structuredClone(result),
+      { result },
+      new Proxy(result, {})
+    ]) {
+      expect(getContinuityResumeContextAudit(copy)).toBeUndefined();
+    }
+    const traps = { get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 };
+    const hostile = new Proxy({}, {
+      get() {
+        traps.get++;
+        throw new Error("audit get trap must not run");
+      },
+      getOwnPropertyDescriptor() {
+        traps.getOwnPropertyDescriptor++;
+        throw new Error("audit descriptor trap must not run");
+      },
+      ownKeys() {
+        traps.ownKeys++;
+        throw new Error("audit keys trap must not run");
+      }
+    });
+    const revoked = Proxy.revocable({}, {});
+    revoked.revoke();
+    for (const value of [null, undefined, hostile, revoked.proxy]) {
+      expect(getContinuityResumeContextAudit(value)).toBeUndefined();
+    }
+    expect(traps).toEqual({ get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 });
+    expect(audit.inventory).toBe(
+      getThreadRootedRetainedWitnessInventory(
+        currentProviderResult.graphEvidence.legacyCompilation
+      )
+    );
+
+    const auditPending: unknown[] = [audit];
+    const auditSeen = new Set<object>();
+    while (auditPending.length > 0) {
+      const value = auditPending.pop();
+      if (value === null || typeof value !== "object" || auditSeen.has(value)) {
+        continue;
+      }
+      auditSeen.add(value);
+      expect(Object.isFrozen(value)).toBe(true);
+      auditPending.push(...Object.values(value));
+    }
   });
 
   it("deep-freezes provenance-free agent context with canonical prototypes", async () => {
@@ -674,12 +801,18 @@ describe("continuity resume-context orchestrator", () => {
     }
   });
 
-  it("contains one top-level settlement call and no old disposition admission dependency", () => {
+  it("contains one audit map/set, one top-level settlement, and no root export", () => {
     const source = readFileSync(
       new URL("./continuity-resume-context-orchestrator.ts", import.meta.url),
       "utf8"
     );
+    const index = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+    expect(source.match(/new WeakMap<object, ContinuityResumeContextAuditV1>/gu))
+      .toHaveLength(1);
+    expect(source.match(/CONTINUITY_RESUME_CONTEXT_AUDITS\.set\(result, audit\)/gu))
+      .toHaveLength(1);
     expect(source.match(/settleFairWitnessFrontier\(\{/gu)).toHaveLength(1);
+    expect(index).not.toMatch(/continuity-resume-context-orchestrator/u);
     const supportingBody = source.slice(
       source.indexOf("function supportingFacts("),
       source.indexOf("function settlementCost(")
