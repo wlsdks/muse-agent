@@ -26,6 +26,23 @@ export type TimingAppCategory = (typeof TIMING_APP_CATEGORIES)[number];
 export const TIMING_DECISIONS = ["silent", "digest", "offer"] as const;
 export type TimingDecision = (typeof TIMING_DECISIONS)[number];
 
+export const TIMING_COUNTERFACTUAL_ACTIONS = [
+  "stay-silent",
+  "queue-digest",
+  "present-offer"
+] as const;
+export type TimingCounterfactualAction = (typeof TIMING_COUNTERFACTUAL_ACTIONS)[number];
+
+export const TIMING_DECISION_REASONS = [
+  "session-paused",
+  "no-observation",
+  "focus-block-too-short",
+  "no-category-boundary",
+  "offer-cooldown-active",
+  "stable-focus-category-boundary"
+] as const;
+export type TimingDecisionReason = (typeof TIMING_DECISION_REASONS)[number];
+
 export const TIMING_SESSION_STATUSES = ["active", "paused"] as const;
 export type TimingSessionStatus = (typeof TIMING_SESSION_STATUSES)[number];
 
@@ -63,16 +80,38 @@ export interface TimingObservation {
   readonly threadId: string;
 }
 
-export interface TimingCandidate {
+interface TimingCandidateBase {
   readonly createdAt: string;
   readonly decision: TimingDecision;
   readonly evidenceObservationIds: readonly string[];
   readonly id: string;
   readonly reason: string;
-  readonly ruleVersion: 1;
   readonly sessionId: string;
   readonly threadId: string;
 }
+
+/** Schema-v1 compatibility shape. New decisions are never written this way. */
+export interface LegacyTimingCandidate extends TimingCandidateBase {
+  readonly ruleVersion: 1;
+}
+
+/**
+ * Bounded live-behaviour counterfactual for a shadow-only decision. It records
+ * what the timing reducer would have surfaced at this instant, not reasoning
+ * traces, raw desktop content, authority, or permission.
+ */
+export interface TimingCounterfactual {
+  readonly action: TimingCounterfactualAction;
+  readonly evaluatedAt: string;
+}
+
+export interface ShadowTimingCandidate extends TimingCandidateBase {
+  readonly counterfactual: TimingCounterfactual;
+  readonly reason: TimingDecisionReason;
+  readonly ruleVersion: 2;
+}
+
+export type TimingCandidate = LegacyTimingCandidate | ShadowTimingCandidate;
 
 export interface TimingFeedback {
   readonly candidateId: string;
@@ -314,13 +353,17 @@ function decideTiming(
   const latest = observations.at(-1);
   const prior = observations.at(-2);
   const evidenceObservationIds = latest ? prior ? [prior.id, latest.id] : [latest.id] : [];
-  const decision = (decision: TimingDecision, reason: string): TimingCandidate => ({
+  const decision = (decision: TimingDecision, reason: TimingDecisionReason): ShadowTimingCandidate => ({
+    counterfactual: {
+      action: counterfactualActionForDecision(decision),
+      evaluatedAt: createdAt
+    },
     createdAt,
     decision,
     evidenceObservationIds,
     id,
     reason,
-    ruleVersion: 1,
+    ruleVersion: 2,
     sessionId: session.id,
     threadId: session.threadId
   });
@@ -447,9 +490,37 @@ function isObservation(value: unknown): value is TimingObservation {
 }
 
 function isCandidate(value: unknown): value is TimingCandidate {
-  return isExactRecord(value, ["createdAt", "decision", "evidenceObservationIds", "id", "reason", "ruleVersion", "sessionId", "threadId"]) && isNonEmptyString(value.id) && isNonEmptyString(value.sessionId) && isNonEmptyString(value.threadId)
-    && isNonEmptyString(value.createdAt) && isIso(value.createdAt) && isNonEmptyString(value.reason) && value.ruleVersion === 1
-    && TIMING_DECISIONS.includes(value.decision as TimingDecision) && Array.isArray(value.evidenceObservationIds) && value.evidenceObservationIds.every(isNonEmptyString);
+  const baseKeys = ["createdAt", "decision", "evidenceObservationIds", "id", "reason", "ruleVersion", "sessionId", "threadId"];
+  const exact = isExactRecord(value, baseKeys)
+    || isExactRecord(value, [...baseKeys, "counterfactual"]);
+  if (!exact || !isNonEmptyString(value.id) || !isNonEmptyString(value.sessionId) || !isNonEmptyString(value.threadId)
+    || !isNonEmptyString(value.createdAt) || !isIso(value.createdAt) || !isNonEmptyString(value.reason)
+    || !TIMING_DECISIONS.includes(value.decision as TimingDecision)
+    || !Array.isArray(value.evidenceObservationIds) || !value.evidenceObservationIds.every(isNonEmptyString)) {
+    return false;
+  }
+  if (value.ruleVersion === 1) return !("counterfactual" in value);
+  return value.ruleVersion === 2
+    && TIMING_DECISION_REASONS.includes(value.reason as TimingDecisionReason)
+    && "counterfactual" in value
+    && isTimingCounterfactual(value.counterfactual)
+    && value.counterfactual.action === counterfactualActionForDecision(value.decision as TimingDecision)
+    && value.counterfactual.evaluatedAt === value.createdAt;
+}
+
+function isTimingCounterfactual(value: unknown): value is TimingCounterfactual {
+  return isExactRecord(value, ["action", "evaluatedAt"])
+    && TIMING_COUNTERFACTUAL_ACTIONS.includes(value.action as TimingCounterfactualAction)
+    && isNonEmptyString(value.evaluatedAt)
+    && isIso(value.evaluatedAt);
+}
+
+function counterfactualActionForDecision(decision: TimingDecision): TimingCounterfactualAction {
+  return decision === "offer"
+    ? "present-offer"
+    : decision === "digest"
+      ? "queue-digest"
+      : "stay-silent";
 }
 
 function isFeedback(value: unknown): value is TimingFeedback {
