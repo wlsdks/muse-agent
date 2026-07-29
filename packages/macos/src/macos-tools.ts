@@ -262,7 +262,7 @@ export function createMacMessageSendTool(deps: MacMessageSendToolDeps): MuseTool
           to: {
             description:
               "An EXPLICIT recipient the user gave: a phone number ('+14155551212') or an iMessage email " +
-              "('jane@icloud.com'). Leave empty when you only have a name — use `recipientName` instead.",
+              "('jane@example.com'). Leave empty when you only have a name — use `recipientName` instead.",
             type: "string"
           }
         },
@@ -306,7 +306,7 @@ export function createMacMessageSendTool(deps: MacMessageSendToolDeps): MuseTool
       // `to` is reported back for clarification — fail-closed, no send fires.
       if (to.length === 0) {
         return {
-          detail: "Who should I message? Give me a phone number or iMessage email (e.g. +14155551212 or jane@icloud.com) and I'll show you the draft before sending.",
+          detail: "Who should I message? Give me a phone number or iMessage email (e.g. +14155551212 or jane@example.com) and I'll show you the draft before sending.",
           reason: "needs-recipient",
           sent: false
         };

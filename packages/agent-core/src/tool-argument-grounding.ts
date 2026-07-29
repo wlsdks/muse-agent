@@ -36,7 +36,7 @@ export interface ToolArgumentGrounding {
  * protects against false DROPS, but for an email/handle the failure that
  * matters is the false KEEP: the local part / handle body is usually the
  * contact's NAME — which IS in the utterance — so a fabricated
- * `bob@gmail.com` invented from "밥 저장해줘" grounds via the name token
+ * `bob@example.com` invented from "밥 저장해줘" grounds via the name token
  * and gets PERSISTED, later misdirecting an outbound send. For these
  * fields a wrong kept value is worse than a dropped real one (the clarify
  * path recovers a drop; nothing recovers a silently-saved wrong address):

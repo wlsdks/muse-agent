@@ -1310,7 +1310,7 @@ async function buildMacActuatorScenario() {
       { prompt: "지금 클립보드에 뭐 복사돼 있어?", expectTool: "mac_app_read", requireArgs: ["app"], note: "KO read clipboard → mac_app_read (user's language)" },
       { prompt: "지금 화면에 뭐 떠있어?", expectTool: "mac_screen_read", note: "KO describe my screen → mac_screen_read (NOT mac_screenshot — no file wanted)" },
       { prompt: "What does the error dialog on my screen say?", expectTool: "mac_screen_read", note: "EN read an on-screen error → mac_screen_read (NOT mac_screenshot/knowledge_search)" },
-      { prompt: "Text jane@icloud.com that I'll be 10 minutes late.", expectTool: "mac_message_send", requireArgs: ["to", "body"], note: "EN iMessage send → mac_message_send (NOT web_action/email)" },
+      { prompt: "Text jane@example.com that I'll be 10 minutes late.", expectTool: "mac_message_send", requireArgs: ["to", "body"], note: "EN iMessage send → mac_message_send (NOT web_action/email)" },
       { prompt: "+14155551212로 회의 5분 늦는다고 문자 보내줘.", expectTool: "mac_message_send", requireArgs: ["to", "body"], note: "KO iMessage send → mac_message_send (user's language)" },
       { prompt: "Save Ada's number +1 555 0100 as a contact.", expectTool: "mac_contacts_write", requireArgs: ["name"], note: "EN save a new contact → mac_contacts_write (NOT mac_message_send — no message being sent)" },
       { prompt: "지안 번호 010-1234-5678 연락처에 저장해줘.", expectTool: "mac_contacts_write", requireArgs: ["name"], note: "KO save a new contact → mac_contacts_write (user's language)" },

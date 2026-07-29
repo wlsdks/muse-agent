@@ -43,7 +43,7 @@ export const CHAT_GROUNDING_EVAL_CORPUS: GroundingEvalCorpus = {
     { source: "gym.md", text: "Gym membership: 89,000 KRW per month, locker number 214, renews on the 5th." },
     { source: "wifi.md", text: "Home network: wifi SSID is Nest-5G, router admin page at 192.168.0.1." },
     { source: "passport.md", text: "Passport expires 2029-11-03; the number is kept in the safe." },
-    { source: "me.md", text: "My work email is jinan@foundry.io, personal is jinan@gmail.com." }
+    { source: "me.md", text: "My work email is work@example.org, personal is personal@example.com." }
   ],
   cases: [
     // answerable — a faithful answer grounded in a note must NOT be refused
@@ -54,12 +54,12 @@ export const CHAT_GROUNDING_EVAL_CORPUS: GroundingEvalCorpus = {
     { kind: "answerable", query: "what is my wifi network name?", answer: "Your wifi SSID is Nest-5G.", note: "correct identifier must NOT be refused (false-refusal control for the identifier guard)" },
     { kind: "answerable", query: "what is my router admin IP?", answer: "Your router admin page is at 192.168.0.1.", note: "correct IP must NOT be refused (false-refusal control for the IP guard)" },
     { kind: "answerable", query: "when does my passport expire?", answer: "Your passport expires on 2029-11-03.", note: "passport expiry date" },
-    { kind: "answerable", query: "what is my work email?", answer: "Your work email is jinan@foundry.io.", note: "work email" },
+    { kind: "answerable", query: "what is my work email?", answer: "Your work email is work@example.org.", note: "work email" },
 
     // drift — a wrong VALUE the note doesn't contain must be caught (abstained)
     { kind: "drift", query: "what is my monthly rent?", answer: "Your monthly rent is 1,500,000 KRW, due on the 1st.", note: "wrong rent 1,500,000 vs 1,250,000" },
     { kind: "drift", query: "what is my office VPN MTU?", answer: "Your office VPN MTU is 1500 on the wg0 interface.", note: "wrong MTU 1500 vs 1380" },
-    { kind: "drift", query: "what is my work email?", answer: "Your work email is jinan@acme.com.", note: "wrong email domain acme vs foundry.io" },
+    { kind: "drift", query: "what is my work email?", answer: "Your work email is work@example.net.", note: "wrong email domain example.net vs example.org" },
     { kind: "drift", query: "what is my home wifi SSID?", answer: "Your home wifi SSID is Linksys-2G.", note: "wrong SSID (non-numeric identifier) Linksys-2G vs Nest-5G — the string-drift hole the number guard misses" },
     // ABSENT-FACT fabrication: no note holds a pet name / wifi password, so a
     // confident pure-alphabetic answer is invented — verifyGrounding's coverage

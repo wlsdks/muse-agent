@@ -958,7 +958,7 @@ an independent judge.
   a plausible-sounding guess — a Korean paraphrase or an English answer to a
   Korean question is no longer at risk of being screened out of a council.
 - **A fabricated email, handle, birthday or phone number can no longer be saved
-  to a contact.** Previously an invented `bob@gmail.com` was "justified" by the
+  to a contact.** Previously an invented `bob@example.com` was "justified" by the
   name *Bob* appearing in your message, and an invented phone number by any
   stray digits nearby. Each field is now verified against what you actually
   said — the domain for an email, the literal `@handle`, every digit of a phone

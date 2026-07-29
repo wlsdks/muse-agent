@@ -329,7 +329,7 @@ async function presentGmailAppPasswordStep(io: SetupEmailIO, email: string, deps
 async function defaultPromptEmail(): Promise<string | undefined> {
   const value = await text({
     message: t("email.prompt.email"),
-    placeholder: "you@gmail.com",
+    placeholder: "you@example.com",
     validate: (input) => {
       const trimmed = (input ?? "").trim();
       if (trimmed.length === 0) return t("email.prompt.email.required");
@@ -492,4 +492,3 @@ async function runOAuthEmailSetup(io: SetupEmailIO, deps: Partial<SetupEmailDeps
 
   return { ok: true };
 }
-
