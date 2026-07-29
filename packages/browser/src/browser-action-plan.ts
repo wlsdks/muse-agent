@@ -16,33 +16,61 @@ export interface BrowserInspectEvidence {
   readonly url: string;
 }
 
+export interface BrowserClickActionPlan {
+  readonly action: "click";
+  readonly page: Readonly<{
+    observedAt: string;
+    snapshotId: string;
+    source: "browser_read";
+    url: string;
+  }>;
+  readonly planId: string;
+  readonly requiresFreshValidation: true;
+  readonly schemaVersion: typeof BROWSER_ACTION_PLAN_VERSION;
+  readonly target: Readonly<{
+    name: string;
+    ref: number;
+    role: string;
+    url?: string;
+  }>;
+}
+
 export type BrowserActionPlanResult =
   | Readonly<{
       canExecute: false;
-      plan: Readonly<{
-        action: "click";
-        page: Readonly<{
-          observedAt: string;
-          snapshotId: string;
-          source: "browser_read";
-          url: string;
-        }>;
-        planId: string;
-        requiresFreshValidation: true;
-        schemaVersion: typeof BROWSER_ACTION_PLAN_VERSION;
-        target: Readonly<{
-          name: string;
-          ref: number;
-          role: string;
-          url?: string;
-        }>;
-      }>;
+      plan: BrowserClickActionPlan;
       schemaVersion: typeof BROWSER_ACTION_PLAN_VERSION;
       status: "planned";
     }>
   | Readonly<{
       canExecute: false;
       reason: "ambiguous-ref" | "invalid-input" | "unknown-ref";
+      schemaVersion: typeof BROWSER_ACTION_PLAN_VERSION;
+      status: "held";
+    }>;
+
+export type BrowserActionPlanRevalidationResult =
+  | Readonly<{
+      canExecute: false;
+      schemaVersion: typeof BROWSER_ACTION_PLAN_VERSION;
+      status: "current";
+      validation: Readonly<{
+        planId: string;
+        revalidatedAt: string;
+        snapshotId: string;
+        targetRef: number;
+      }>;
+    }>
+  | Readonly<{
+      canExecute: false;
+      reason:
+        | "ambiguous-ref"
+        | "invalid-input"
+        | "stale-generation"
+        | "stale-page"
+        | "stale-target"
+        | "tampered-plan"
+        | "unknown-ref";
       schemaVersion: typeof BROWSER_ACTION_PLAN_VERSION;
       status: "held";
     }>;
@@ -85,9 +113,7 @@ export function projectBrowserClickActionPlan(input: {
       schemaVersion: BROWSER_ACTION_PLAN_VERSION,
       target
     };
-    const planId = createHash("sha256")
-      .update(JSON.stringify(planCore), "utf8")
-      .digest("hex");
+    const planId = hashPlanCore(planCore);
     return Object.freeze({
       canExecute: false,
       plan: Object.freeze({ ...planCore, planId }),
@@ -97,6 +123,132 @@ export function projectBrowserClickActionPlan(input: {
   } catch {
     return held("invalid-input");
   }
+}
+
+/**
+ * Compare a capability-free plan with current inspect evidence for a later
+ * executor boundary. This validates evidence only; it never grants approval or
+ * carries an action callback.
+ *
+ * This pure contract is not yet wired into PuppeteerBrowserController, has no
+ * live DOM mutation observer, and cannot make validation+execution atomic.
+ * A later runtime integration must close that TOCTOU window before claiming
+ * action-time stale-target protection.
+ */
+export function revalidateBrowserClickActionPlan(input: {
+  readonly currentEvidence: BrowserInspectEvidence;
+  readonly plan: BrowserClickActionPlan;
+}): BrowserActionPlanRevalidationResult {
+  try {
+    const root = exactDataRecord(input, ["currentEvidence", "plan"]);
+    if (!root) return heldRevalidation("invalid-input");
+    const parsedPlan = parsePlan(root["plan"]);
+    if (parsedPlan.kind === "invalid") return heldRevalidation("invalid-input");
+    if (parsedPlan.kind === "tampered") return heldRevalidation("tampered-plan");
+    const plan = parsedPlan.plan;
+    if (hashPlanCore({
+      action: plan.action,
+      page: plan.page,
+      requiresFreshValidation: plan.requiresFreshValidation,
+      schemaVersion: plan.schemaVersion,
+      target: plan.target
+    }) !== plan.planId) {
+      return heldRevalidation("tampered-plan");
+    }
+    const current = parseEvidence(root["currentEvidence"]);
+    if (!current) return heldRevalidation("invalid-input");
+    if (current.snapshotId !== plan.page.snapshotId) {
+      return heldRevalidation("stale-generation");
+    }
+    if (current.url !== plan.page.url) {
+      return heldRevalidation("stale-page");
+    }
+    if (Date.parse(current.observedAt) < Date.parse(plan.page.observedAt)) {
+      return heldRevalidation("stale-generation");
+    }
+    const matches = current.elements.filter((element) => element.ref === plan.target.ref);
+    if (matches.length === 0) return heldRevalidation("unknown-ref");
+    if (matches.length !== 1) return heldRevalidation("ambiguous-ref");
+    if (new Set(current.elements.map((element) => element.ref)).size !== current.elements.length) {
+      return heldRevalidation("ambiguous-ref");
+    }
+    if (JSON.stringify(matches[0]) !== JSON.stringify(plan.target)) {
+      return heldRevalidation("stale-target");
+    }
+    return Object.freeze({
+      canExecute: false,
+      schemaVersion: BROWSER_ACTION_PLAN_VERSION,
+      status: "current" as const,
+      validation: Object.freeze({
+        planId: plan.planId,
+        revalidatedAt: current.observedAt,
+        snapshotId: current.snapshotId,
+        targetRef: plan.target.ref
+      })
+    });
+  } catch {
+    return heldRevalidation("invalid-input");
+  }
+}
+
+type ParsedPlan =
+  | { readonly kind: "invalid" }
+  | { readonly kind: "tampered" }
+  | { readonly kind: "valid"; readonly plan: BrowserClickActionPlan };
+
+function parsePlan(value: unknown): ParsedPlan {
+  const record = exactDataRecord(value, [
+    "action",
+    "page",
+    "planId",
+    "requiresFreshValidation",
+    "schemaVersion",
+    "target"
+  ]);
+  if (!record) return { kind: "invalid" };
+  if (
+    record["action"] !== "click"
+    || record["requiresFreshValidation"] !== true
+    || record["schemaVersion"] !== BROWSER_ACTION_PLAN_VERSION
+  ) {
+    return { kind: "tampered" };
+  }
+  const planId = exactSha256(record["planId"]);
+  if (!planId) return { kind: "tampered" };
+  const pageRecord = exactDataRecord(record["page"], [
+    "observedAt",
+    "snapshotId",
+    "source",
+    "url"
+  ]);
+  const target = parseElement(record["target"]);
+  if (!pageRecord || pageRecord["source"] !== "browser_read" || !target) {
+    return { kind: "tampered" };
+  }
+  const observedAt = canonicalInstant(pageRecord["observedAt"]);
+  const snapshotId = exactIdentifier(pageRecord["snapshotId"]);
+  const url = exactWebUrl(pageRecord["url"]);
+  if (!observedAt || !snapshotId || !url) return { kind: "tampered" };
+  return {
+    kind: "valid",
+    plan: {
+      action: "click",
+      page: Object.freeze({
+        observedAt,
+        snapshotId,
+        source: "browser_read",
+        url
+      }),
+      planId,
+      requiresFreshValidation: true,
+      schemaVersion: BROWSER_ACTION_PLAN_VERSION,
+      target
+    }
+  };
+}
+
+function hashPlanCore(value: Omit<BrowserClickActionPlan, "planId">): string {
+  return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 }
 
 function parseEvidence(value: unknown): BrowserInspectEvidence | undefined {
@@ -215,6 +367,10 @@ function exactIdentifier(value: unknown): string | undefined {
   return text && Buffer.byteLength(text, "utf8") <= 256 ? text : undefined;
 }
 
+function exactSha256(value: unknown): string | undefined {
+  return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value) ? value : undefined;
+}
+
 function positiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0
     ? value
@@ -245,6 +401,17 @@ function exactWebUrl(value: unknown): string | undefined {
 function held(
   reason: Extract<BrowserActionPlanResult, { status: "held" }>["reason"]
 ): Extract<BrowserActionPlanResult, { status: "held" }> {
+  return Object.freeze({
+    canExecute: false,
+    reason,
+    schemaVersion: BROWSER_ACTION_PLAN_VERSION,
+    status: "held" as const
+  });
+}
+
+function heldRevalidation(
+  reason: Extract<BrowserActionPlanRevalidationResult, { status: "held" }>["reason"]
+): Extract<BrowserActionPlanRevalidationResult, { status: "held" }> {
   return Object.freeze({
     canExecute: false,
     reason,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   BROWSER_ACTION_PLAN_VERSION,
   projectBrowserClickActionPlan,
+  revalidateBrowserClickActionPlan,
   type BrowserInspectEvidence
 } from "./browser-action-plan.js";
 
@@ -155,5 +156,173 @@ describe("projectBrowserClickActionPlan", () => {
 
   it("exports a stable versioned contract", () => {
     expect(BROWSER_ACTION_PLAN_VERSION).toBe("muse.browser-action-plan/v1");
+  });
+});
+
+describe("revalidateBrowserClickActionPlan", () => {
+  function plan() {
+    const result = projectBrowserClickActionPlan({ evidence: EVIDENCE, ref: 2 });
+    if (result.status !== "planned") throw new Error("expected plan");
+    return result.plan;
+  }
+
+  it("validates exact current generation, page, and target identity without granting execution", () => {
+    const result = revalidateBrowserClickActionPlan({
+      currentEvidence: {
+        ...EVIDENCE,
+        observedAt: "2026-07-29T03:00:01.000Z"
+      },
+      plan: plan()
+    });
+    expect(result).toEqual({
+      canExecute: false,
+      schemaVersion: BROWSER_ACTION_PLAN_VERSION,
+      status: "current",
+      validation: {
+        planId: plan().planId,
+        revalidatedAt: "2026-07-29T03:00:01.000Z",
+        snapshotId: "snapshot-062",
+        targetRef: 2
+      }
+    });
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(result.status === "current" && Object.isFrozen(result.validation)).toBe(true);
+  });
+
+  it.each([
+    [
+      "generation drift",
+      { currentEvidence: { ...EVIDENCE, snapshotId: "snapshot-new" }, plan: plan() },
+      "stale-generation"
+    ],
+    [
+      "page drift",
+      { currentEvidence: { ...EVIDENCE, url: "https://example.com/other" }, plan: plan() },
+      "stale-page"
+    ],
+    [
+      "older observation",
+      {
+        currentEvidence: { ...EVIDENCE, observedAt: "2026-07-29T02:59:59.999Z" },
+        plan: plan()
+      },
+      "stale-generation"
+    ],
+    [
+      "node name drift",
+      {
+        currentEvidence: {
+          ...EVIDENCE,
+          elements: [
+            EVIDENCE.elements[0]!,
+            { ...EVIDENCE.elements[1]!, name: "Delete account" }
+          ]
+        },
+        plan: plan()
+      },
+      "stale-target"
+    ],
+    [
+      "node role drift",
+      {
+        currentEvidence: {
+          ...EVIDENCE,
+          elements: [
+            EVIDENCE.elements[0]!,
+            { ...EVIDENCE.elements[1]!, role: "link" }
+          ]
+        },
+        plan: plan()
+      },
+      "stale-target"
+    ],
+    [
+      "missing node",
+      {
+        currentEvidence: { ...EVIDENCE, elements: [EVIDENCE.elements[0]!] },
+        plan: plan()
+      },
+      "unknown-ref"
+    ],
+    [
+      "duplicate node",
+      {
+        currentEvidence: {
+          ...EVIDENCE,
+          elements: [...EVIDENCE.elements, { ...EVIDENCE.elements[1]! }]
+        },
+        plan: plan()
+      },
+      "ambiguous-ref"
+    ],
+    [
+      "tampered target",
+      {
+        currentEvidence: EVIDENCE,
+        plan: { ...plan(), target: { ...plan().target, name: "Delete account" } }
+      },
+      "tampered-plan"
+    ],
+    [
+      "tampered plan time",
+      {
+        currentEvidence: EVIDENCE,
+        plan: {
+          ...plan(),
+          page: { ...plan().page, observedAt: "2026-07-29T02:59:00.000Z" }
+        }
+      },
+      "tampered-plan"
+    ],
+    [
+      "tampered action",
+      {
+        currentEvidence: EVIDENCE,
+        plan: { ...plan(), action: "type" }
+      },
+      "tampered-plan"
+    ],
+    [
+      "tampered source",
+      {
+        currentEvidence: EVIDENCE,
+        plan: {
+          ...plan(),
+          page: { ...plan().page, source: "browser_look" }
+        }
+      },
+      "tampered-plan"
+    ],
+    [
+      "tampered schema",
+      {
+        currentEvidence: EVIDENCE,
+        plan: { ...plan(), schemaVersion: "muse.browser-action-plan/v2" }
+      },
+      "tampered-plan"
+    ],
+    [
+      "malformed plan hash",
+      {
+        currentEvidence: EVIDENCE,
+        plan: { ...plan(), planId: "not-a-sha256" }
+      },
+      "tampered-plan"
+    ],
+    [
+      "tampered plan with malformed current evidence",
+      {
+        currentEvidence: { ...EVIDENCE, hidden: true },
+        plan: { ...plan(), target: { ...plan().target, name: "Delete account" } }
+      },
+      "tampered-plan"
+    ]
+  ])("holds %s before an executor boundary", (_name, input, reason) => {
+    expect(revalidateBrowserClickActionPlan(input as never)).toEqual({
+      canExecute: false,
+      reason,
+      schemaVersion: BROWSER_ACTION_PLAN_VERSION,
+      status: "held"
+    });
   });
 });
