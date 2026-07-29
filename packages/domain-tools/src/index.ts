@@ -13,6 +13,14 @@ export { ImapSmtpAuthError, ImapSmtpEmailProvider, ImapSmtpNetworkError } from "
 export type { ImapClientFactory, ImapMailboxClient, ImapSmtpEmailProviderConfig, ImapSmtpEmailProviderDeps, SmtpClientFactory, SmtpTransport } from "./email-provider-imap.js";
 export { composeForward, replyEmailWithApproval, replySubject, sendEmailWithApproval } from "./email-send.js";
 export type { EmailApprovalGate } from "./email-send.js";
+export { EMAIL_SEND_IDENTITY_PREVIEW_VERSION, projectEmailSendIdentityPreview } from "./email-send-identity-preview.js";
+export type {
+  EmailAccountAuthority,
+  EmailRecipientAuthority,
+  EmailSendIdentityPreview,
+  EmailSendIdentityPreviewInput,
+  EmailSendIdentityPreviewResult
+} from "./email-send-identity-preview.js";
 export { createEmailForwardTool, createEmailReadMessageTool, createEmailReadTool, createEmailReplyTool, createEmailSearchTool, createEmailSendTool } from "./email-tool.js";
 export { removeRemindersForEvent, rescheduleRemindersForEvent, syncRemindersOnEventDelete } from "./event-reminder-link.js";
 export { createFeedsSearchTool } from "./feeds-search-tool.js";
