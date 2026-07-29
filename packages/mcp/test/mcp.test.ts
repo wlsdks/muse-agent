@@ -5647,7 +5647,7 @@ describe("runDueReminders", () => {
     expect(attempts.length).toBe(1);
   });
 
-  it("breaks out of the retry loop early on non-retryable messaging errors", async () => {
+  it("admits one provider call for a non-retryable messaging error", async () => {
     const { runDueReminders } = await import("@muse/proactivity");
     const { MessagingProviderError } = await import("@muse/messaging");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
@@ -6171,6 +6171,7 @@ describe("runDueProactiveNotices", () => {
     const sent: Array<{ providerId: string; destination: string; text: string }> = [];
     return {
       registry: {
+        has: () => true,
         send: async (providerId: string, message: { destination: string; text: string }) => {
           sent.push({ destination: message.destination, providerId, text: message.text });
           return { destination: message.destination, messageId: "stub", providerId };
@@ -6180,12 +6181,14 @@ describe("runDueProactiveNotices", () => {
     };
   }
 
-  it("retries transient messaging failures with exponential backoff", async () => {
+  it("does not replay a durable messaging attempt after an uncertain provider failure", async () => {
+    const { readOutboundEffects } = await import("@muse/messaging");
     const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
     const dir = mkdtempSync(join(tmpdir(), "muse-proactive-retry-"));
+    const effectFile = join(dir, "outbound-effects.json");
     const sidecarFile = join(dir, "proactive-fired.json");
 
     const fixedNow = new Date("2026-05-12T14:55:00Z");
@@ -6193,9 +6196,11 @@ describe("runDueProactiveNotices", () => {
       { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-retry", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
     ]);
 
-    // First two sends throw, third succeeds.
+    // A legacy retry loop would reach the third call and risk duplicating an
+    // accepted-but-timed-out delivery. Durable effects admit one provider call.
     const attempts: string[] = [];
     const flakyRegistry = {
+      has: () => true,
       send: async (providerId: string, msg: { destination: string; text: string }) => {
         attempts.push(`${providerId}:${msg.destination}`);
         if (attempts.length < 3) {
@@ -6208,14 +6213,18 @@ describe("runDueProactiveNotices", () => {
     const summary = await runDueProactiveNotices({
       calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
       destination: "@me",
+      effectFile,
       messagingRegistry: flakyRegistry as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
       now: () => fixedNow,
       providerId: "telegram",
       sidecarFile
     });
-    expect(summary.fired).toBe(1);
-    expect(summary.errors).toEqual([]);
-    expect(attempts.length).toBe(3);
+    expect(summary.fired).toBe(0);
+    expect(summary.errors.join("\n")).toContain("delivery is unknown");
+    expect(attempts).toEqual(["telegram:@me"]);
+    expect(await readOutboundEffects(effectFile)).toEqual([
+      expect.objectContaining({ state: "unknown" })
+    ]);
   });
 
   it("suppresses the MESSAGING sink during quiet hours (no night-time nag bypass)", async () => {
@@ -6234,6 +6243,7 @@ describe("runDueProactiveNotices", () => {
     ]);
     const sent: string[] = [];
     const registry = {
+      has: () => true,
       send: async (providerId: string, msg: { destination: string; text: string }) => {
         sent.push(`${providerId}:${msg.destination}`);
         return { destination: msg.destination, messageId: "ok", providerId };
@@ -6281,6 +6291,7 @@ describe("runDueProactiveNotices", () => {
     ]);
     const sent: string[] = [];
     const registry = {
+      has: () => true,
       send: async (providerId: string, msg: { destination: string; text: string }) => {
         sent.push(`${providerId}:${msg.destination}`);
         return { destination: msg.destination, messageId: "ok", providerId };
@@ -6301,12 +6312,15 @@ describe("runDueProactiveNotices", () => {
     expect(sent).toEqual(["telegram:@me"]);
   });
 
-  it("gives up after 3 attempts and records failure in history", async () => {
+  it("seals an uncertain durable send without retrying or writing delivery history", async () => {
+    const { readOutboundEffects } = await import("@muse/messaging");
     const { runDueProactiveNotices } = await import("@muse/proactivity");
-    const { mkdtempSync, readFileSync } = await import("node:fs");
+    const { mkdtempSync } = await import("node:fs");
+    const { readProactiveHistory } = await import("@muse/stores");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
     const dir = mkdtempSync(join(tmpdir(), "muse-proactive-retry-fail-"));
+    const effectFile = join(dir, "outbound-effects.json");
     const sidecarFile = join(dir, "proactive-fired.json");
     const historyFile = join(dir, "proactive-history.json");
 
@@ -6317,6 +6331,7 @@ describe("runDueProactiveNotices", () => {
 
     const attempts: number[] = [];
     const alwaysFailing = {
+      has: () => true,
       send: async (_providerId: string, _msg: { destination: string; text: string }) => {
         attempts.push(1);
         throw new Error("upstream 503");
@@ -6326,6 +6341,7 @@ describe("runDueProactiveNotices", () => {
     const summary = await runDueProactiveNotices({
       calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
       destination: "@me",
+      effectFile,
       historyFile,
       messagingRegistry: alwaysFailing as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
       now: () => fixedNow,
@@ -6334,12 +6350,12 @@ describe("runDueProactiveNotices", () => {
     });
     expect(summary.fired).toBe(0);
     expect(summary.errors.length).toBe(1);
-    expect(summary.errors[0]).toContain("upstream 503");
-    expect(attempts.length).toBe(3); // three attempts, then give up
-    // History records the failure so the user can audit.
-    const historyRaw = readFileSync(historyFile, "utf8");
-    expect(historyRaw).toContain("\"status\": \"failed\"");
-    expect(historyRaw).toContain("upstream 503");
+    expect(summary.errors.join("\n")).toContain("delivery is unknown");
+    expect(attempts).toEqual([1]);
+    expect(await readOutboundEffects(effectFile)).toEqual([
+      expect.objectContaining({ state: "unknown" })
+    ]);
+    expect(await readProactiveHistory(historyFile)).toEqual([]);
   });
 
   it("breaks out of the retry loop early on non-retryable messaging errors", async () => {
@@ -6357,10 +6373,11 @@ describe("runDueProactiveNotices", () => {
       { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-401", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
     ]);
 
-    // 401 → MessagingProviderError with retryable=false. The loop
-    // should record one attempt + bail, not burn the full 3.
+    // The durable effect contract admits one provider call regardless of the
+    // provider's retryability classification.
     const attempts: number[] = [];
     const auth401 = {
+      has: () => true,
       send: async (_providerId: string, _msg: { destination: string; text: string }) => {
         attempts.push(1);
         throw new MessagingProviderError("telegram", "UPSTREAM_FAILED", "Telegram 401: invalid token", 401);
@@ -6615,6 +6632,7 @@ describe("runDueProactiveNotices", () => {
       calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
       destination: "@me",
       messagingRegistry: {
+        has: () => true,
         send: async () => { throw new Error("upstream 500"); }
       } as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
       now: () => fixedNow,
@@ -7263,13 +7281,15 @@ describe("runDueProactiveNotices", () => {
     });
   });
 
-  it("appends a failed-row to historyFile when messaging.send throws", async () => {
+  it("keeps uncertain provider failures out of delivered history", async () => {
+    const { readOutboundEffects } = await import("@muse/messaging");
     const { readProactiveHistory } = await import("@muse/stores");
     const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
     const dir = mkdtempSync(join(tmpdir(), "muse-proactive-history-fail-"));
+    const effectFile = join(dir, "outbound-effects.json");
     const sidecarFile = join(dir, "proactive-fired.json");
     const historyFile = join(dir, "proactive-history.json");
 
@@ -7280,8 +7300,10 @@ describe("runDueProactiveNotices", () => {
     const summary = await runDueProactiveNotices({
       calendarRegistry: cal as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
       destination: "@me",
+      effectFile,
       historyFile,
       messagingRegistry: {
+        has: () => true,
         send: async () => { throw new Error("upstream 503"); }
       } as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"],
       now: () => fixedNow,
@@ -7289,16 +7311,12 @@ describe("runDueProactiveNotices", () => {
       sidecarFile
     });
     expect(summary.fired).toBe(0);
+    expect(summary.errors.join("\n")).toContain("delivery is unknown");
     const entries = await readProactiveHistory(historyFile);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({
-      destination: "@me",
-      error: "upstream 503",
-      itemId: "evt-1",
-      providerId: "telegram",
-      status: "failed",
-      title: "Standup"
-    });
+    expect(entries).toEqual([]);
+    expect(await readOutboundEffects(effectFile)).toEqual([
+      expect.objectContaining({ state: "unknown" })
+    ]);
   });
 
   it("readProactiveHistory returns empty + tolerates missing / corrupt files", async () => {
@@ -8239,6 +8257,7 @@ describe("runDuePatternNotices", () => {
     const firedFile = join(root, "patterns-fired.json");
     const sent: Array<{ providerId: string; destination: string; text: string }> = [];
     const fakeRegistry = {
+      has: () => true,
       send: async (providerId: string, message: { destination: string; text: string }) => {
         sent.push({ destination: message.destination, providerId, text: message.text });
         return { destination: message.destination, messageId: "stub", providerId };
@@ -8324,6 +8343,7 @@ describe("runDuePatternNotices", () => {
       patternsFiredFile: firedFile,
       providerId: "telegram",
       registry: {
+        has: () => true,
         send: async () => { throw new Error("upstream 503"); }
       } as unknown as Parameters<typeof runDuePatternNotices>[0]["registry"],
       signals: {
