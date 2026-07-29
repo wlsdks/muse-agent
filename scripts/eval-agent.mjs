@@ -30,6 +30,7 @@ import {
 } from "./eval-agent-evidence.mjs";
 import {
   MAX_EVAL_PROCESS_DEADLINE_MS,
+  MIN_EVAL_PROCESS_DEADLINE_MS,
   runBoundedEvalProcess,
 } from "./eval-agent-process.mjs";
 
@@ -97,6 +98,7 @@ const REPORT_REASON_CODES = new Set([
   "chrome-missing",
   "duplicate-completion",
   "embed-model-missing",
+  "evaluation-deadline-exhausted",
   "exit-nonzero",
   "invalid-completion",
   "missing-completion",
@@ -176,6 +178,9 @@ export function classifyCapabilityResult(capability, child) {
   const durationMs = Math.max(0, Math.round(child.durationMs ?? 0));
   if (child.error || child.spawnError === true) {
     return failedRow(capability, durationMs, "spawn-error");
+  }
+  if (child.deadlineExhausted === true || child.timedOut === true) {
+    return failedRow(capability, durationMs, "evaluation-deadline-exhausted");
   }
   if (child.signal) {
     return failedRow(capability, durationMs, "signal");
@@ -469,20 +474,40 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     return emitAdmission(admission, { json, stdout });
   }
   const selectedCapabilities = selection.ok ? selection.axes : CAPABILITIES;
-  const captureSource = dependencies.captureSource
-    ?? (() => captureGitSourceSnapshot({ repoRoot: REPO_ROOT }));
-  const runTypeScriptBuild = dependencies.runTypeScriptBuild
-    ?? (() => runForcedTypeScriptBuild({ repoRoot: REPO_ROOT }));
-  const buildRunnerArtifact = dependencies.buildRunnerArtifact
-    ?? (() => buildAndPublishRunner({ repoRoot: REPO_ROOT }));
-  const captureArtifacts = dependencies.captureArtifacts
-    ?? ((runnerPath) => captureRuntimeArtifacts({ repoRoot: REPO_ROOT, runnerPath }));
   const runProcess = dependencies.runProcess
     ?? (dependencies.spawn
       ? async (command, childArgs, options) => dependencies.spawn(command, childArgs, options)
       : runBoundedEvalProcess);
+  const captureSource = dependencies.captureSource
+    ?? ((options) => captureGitSourceSnapshot({
+      ...options,
+      repoRoot: REPO_ROOT,
+      runProcess,
+    }));
+  const runTypeScriptBuild = dependencies.runTypeScriptBuild
+    ?? ((options) => runForcedTypeScriptBuild({
+      ...options,
+      repoRoot: REPO_ROOT,
+      runProcess,
+    }));
+  const buildRunnerArtifact = dependencies.buildRunnerArtifact
+    ?? ((options) => buildAndPublishRunner({
+      ...options,
+      repoRoot: REPO_ROOT,
+      runProcess,
+    }));
+  const captureArtifacts = dependencies.captureArtifacts
+    ?? ((runnerPath) => captureRuntimeArtifacts({ repoRoot: REPO_ROOT, runnerPath }));
 
   return (async () => {
+  const monotonicNow = dependencies.monotonicNow ?? (() => performance.now());
+  const executionStartedAt = monotonicNow();
+  const executionBudgetMs = selectedCapabilities.length * CAPABILITY_DEADLINE_MS;
+  const remainingProcessDeadline = () => {
+    const elapsedMs = Math.max(0, Math.ceil(monotonicNow() - executionStartedAt));
+    const remainingMs = Math.min(CAPABILITY_DEADLINE_MS, executionBudgetMs - elapsedMs);
+    return remainingMs >= MIN_EVAL_PROCESS_DEADLINE_MS ? remainingMs : null;
+  };
   let evidenceAttempt;
   try {
     evidenceAttempt = dependencies.beginAttempt?.();
@@ -494,8 +519,15 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     return emitUnpersistedReport(report, { json, stdout });
   }
 
-  const sourceBeforeBuild = safeSourceSnapshot(captureSource);
-  const typeScriptBuild = safeBuildStep(runTypeScriptBuild, "typescript-build-failed");
+  const sourceBeforeBuild = await captureSafeSourceSnapshot(
+    captureSource,
+    remainingProcessDeadline,
+  );
+  const typeScriptBuild = await safeBuildStep(
+    runTypeScriptBuild,
+    "typescript-build-failed",
+    remainingProcessDeadline,
+  );
   if (!typeScriptBuild.ok) {
     return finishBuildFailure(typeScriptBuild.reason, {
       captureArtifacts,
@@ -505,13 +537,18 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
       evidenceAttempt,
       json,
       now,
+      remainingProcessDeadline,
       sourceBeforeBuild,
       stderr,
       stdout,
     });
   }
 
-  const runnerBuild = safeBuildStep(buildRunnerArtifact, "runner-build-failed");
+  const runnerBuild = await safeBuildStep(
+    buildRunnerArtifact,
+    "runner-build-failed",
+    remainingProcessDeadline,
+  );
   if (!runnerBuild.ok || typeof runnerBuild.runnerPath !== "string") {
     return finishBuildFailure(runnerBuild.reason ?? "runner-build-failed", {
       captureArtifacts,
@@ -521,13 +558,17 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
       evidenceAttempt,
       json,
       now,
+      remainingProcessDeadline,
       sourceBeforeBuild,
       stderr,
       stdout,
     });
   }
   const runnerPath = runnerBuild.runnerPath;
-  const sourceAfterBuild = safeSourceSnapshot(captureSource);
+  const sourceAfterBuild = await captureSafeSourceSnapshot(
+    captureSource,
+    remainingProcessDeadline,
+  );
   const artifactsAfterBuild = safeArtifactSnapshot(() => captureArtifacts(runnerPath));
   const rows = [];
 
@@ -539,15 +580,18 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
       stdout.write(`\n=== eval:agent → ${capability.id} ===\n`);
     }
     let child;
+    const deadlineMs = remainingProcessDeadline();
     try {
-      child = await runProcess(process.execPath, [join(here, capability.battery)], {
-        deadlineMs: CAPABILITY_DEADLINE_MS,
-        env: {
-          ...process.env,
-          MUSE_EVAL_REPEAT: String(capability.repeats),
-          MUSE_RUNNER_PATH: runnerPath,
-        },
-      });
+      child = deadlineMs === null
+        ? deadlineExhaustedProcessResult()
+        : await runProcess(process.execPath, [join(here, capability.battery)], {
+          deadlineMs,
+          env: {
+            ...process.env,
+            MUSE_EVAL_REPEAT: String(capability.repeats),
+            MUSE_RUNNER_PATH: runnerPath,
+          },
+        });
     } catch {
       child = {
         signal: null,
@@ -569,7 +613,10 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     }
   }
 
-  const sourceAtEnd = safeSourceSnapshot(captureSource);
+  const sourceAtEnd = await captureSafeSourceSnapshot(
+    captureSource,
+    remainingProcessDeadline,
+  );
   const artifactsAtEnd = safeArtifactSnapshot(() => captureArtifacts(runnerPath));
   const provenance = {
     sourceBeforeBuild,
@@ -587,9 +634,15 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
   })();
 }
 
-function finishBuildFailure(reason, context) {
-  const sourceAfterBuild = safeSourceSnapshot(context.captureSource);
-  const sourceAtEnd = safeSourceSnapshot(context.captureSource);
+async function finishBuildFailure(reason, context) {
+  const sourceAfterBuild = await captureSafeSourceSnapshot(
+    context.captureSource,
+    context.remainingProcessDeadline,
+  );
+  const sourceAtEnd = await captureSafeSourceSnapshot(
+    context.captureSource,
+    context.remainingProcessDeadline,
+  );
   const artifactsAfterBuild = { count: 0, status: "unknown" };
   const artifactsAtEnd = { count: 0, status: "unknown" };
   const rows = completeCapabilityRows(
@@ -637,31 +690,60 @@ function emitUnpersistedReport(report, { json, stdout }) {
   return report;
 }
 
-function safeBuildStep(step, fallbackReason) {
+async function safeBuildStep(step, fallbackReason, remainingProcessDeadline) {
+  const deadlineMs = remainingProcessDeadline();
+  if (deadlineMs === null) return { ok: false, reason: "evaluation-deadline-exhausted" };
   try {
-    const result = step();
+    const result = await step({ deadlineMs, remainingProcessDeadline });
     return result && typeof result === "object" ? result : { ok: false, reason: fallbackReason };
   } catch {
     return { ok: false, reason: fallbackReason };
   }
 }
 
-function safeSourceSnapshot(capture) {
+async function captureSafeSourceSnapshot(capture, remainingProcessDeadline) {
+  const deadlineMs = remainingProcessDeadline();
+  if (deadlineMs === null) return { tree: "unknown" };
   try {
-    const snapshot = capture();
-    if (snapshot?.tree === "clean" || snapshot?.tree === "dirty" || snapshot?.tree === "unknown") {
-      const revision = typeof snapshot.revision === "string" && /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(snapshot.revision)
-        ? snapshot.revision
-        : undefined;
-      return {
-        ...(revision ? { revision } : {}),
-        tree: snapshot.tree === "clean" && !revision ? "unknown" : snapshot.tree,
-      };
-    }
+    const snapshot = await capture({ deadlineMs, remainingProcessDeadline });
+    return sanitizeSourceSnapshot(snapshot);
   } catch {
     // Closed below.
   }
   return { tree: "unknown" };
+}
+
+function safeSourceSnapshot(capture) {
+  try {
+    return sanitizeSourceSnapshot(capture());
+  } catch {
+    return { tree: "unknown" };
+  }
+}
+
+function sanitizeSourceSnapshot(snapshot) {
+  if (snapshot?.tree !== "clean" && snapshot?.tree !== "dirty" && snapshot?.tree !== "unknown") {
+    return { tree: "unknown" };
+  }
+  const revision = typeof snapshot.revision === "string" && /^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(snapshot.revision)
+    ? snapshot.revision
+    : undefined;
+  return {
+    ...(revision ? { revision } : {}),
+    tree: snapshot.tree === "clean" && !revision ? "unknown" : snapshot.tree,
+  };
+}
+
+function deadlineExhaustedProcessResult() {
+  return {
+    deadlineExhausted: true,
+    signal: null,
+    spawnError: false,
+    status: null,
+    stderr: "",
+    stdout: "",
+    timedOut: true,
+  };
 }
 
 function safeArtifactSnapshot(capture) {

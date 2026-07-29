@@ -6,6 +6,8 @@ export const MAX_EVAL_PROCESS_OUTPUT_BYTES = 4 * 1024 * 1024;
 
 const DEFAULT_KILL_GRACE_MS = 250;
 const FINAL_KILL_SETTLE_MS = 50;
+export const MIN_EVAL_PROCESS_DEADLINE_MS =
+  DEFAULT_KILL_GRACE_MS + (2 * FINAL_KILL_SETTLE_MS) + 1;
 
 function positiveInteger(value, name, maximum = Number.MAX_SAFE_INTEGER) {
   if (!Number.isSafeInteger(value) || value <= 0 || value > maximum) {

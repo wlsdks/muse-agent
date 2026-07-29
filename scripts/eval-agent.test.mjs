@@ -477,6 +477,10 @@ test("spawn errors, signals, non-zero exits, and contradictory pass markers fail
     classifyCapabilityResult(stochastic, result("", { spawnError: true, status: null })).reason,
     "spawn-error"
   );
+  assert.equal(
+    classifyCapabilityResult(stochastic, result("", { status: null, timedOut: true })).reason,
+    "evaluation-deadline-exhausted"
+  );
   assert.equal(classifyCapabilityResult(stochastic, result("", { status: null, signal: "SIGTERM" })).reason, "signal");
   const nonZero = classifyCapabilityResult(stochastic, result(passed, { status: 2 }));
   assert.equal(nonZero.reason, "exit-nonzero");
@@ -630,6 +634,145 @@ test("an async process-runner rejection becomes terminal privacy-safe spawn fail
     assert.equal(process.exitCode, 1);
     assert.deepEqual(JSON.parse(stdout), report);
     assert.doesNotMatch(stdout, /Users|private-owner|process-control-failed/u);
+  } finally {
+    process.exitCode = previousExitCode;
+  }
+});
+
+test("a single axis shares one 12-minute deadline across source, builds, and battery", async () => {
+  let elapsedMs = 0;
+  const deadlines = [];
+  const source = { revision: "a".repeat(40), tree: "clean" };
+  const artifact = { count: 41, digest: "a".repeat(64), status: "ok" };
+  const previousExitCode = process.exitCode;
+  try {
+    process.exitCode = undefined;
+    const report = await main(
+      ["--json", "--execute", "--axis", "plan-quality", "--confirm-idle", "--budget-minutes", "12"],
+      {
+        buildRunnerArtifact: async ({ deadlineMs }) => {
+          deadlines.push(["cargo", deadlineMs]);
+          elapsedMs += 4 * 60_000;
+          return { ok: true, runnerPath: "/fixed/private/muse-runner" };
+        },
+        captureArtifacts: () => artifact,
+        captureSource: async ({ deadlineMs }) => {
+          deadlines.push(["source", deadlineMs]);
+          if (deadlines.length === 1) elapsedMs += 60_000;
+          return source;
+        },
+        monotonicNow: () => elapsedMs,
+        readResourceSnapshot: () => HEALTHY_RESOURCE_SNAPSHOT,
+        runProcess: async (_command, _args, options) => {
+          deadlines.push(["battery", options.deadlineMs]);
+          return {
+            signal: null,
+            status: 0,
+            stderr: "",
+            stdout: completionLine({ executed: 3, requested: 3, status: "passed" }),
+          };
+        },
+        runTypeScriptBuild: async ({ deadlineMs }) => {
+          deadlines.push(["typescript", deadlineMs]);
+          elapsedMs += 3 * 60_000;
+          return { ok: true };
+        },
+        stderr: { write: () => {} },
+        stdout: { write: () => {} },
+      },
+    );
+
+    assert.deepEqual(deadlines, [
+      ["source", 12 * 60_000],
+      ["typescript", 11 * 60_000],
+      ["cargo", 8 * 60_000],
+      ["source", 4 * 60_000],
+      ["battery", 4 * 60_000],
+      ["source", 4 * 60_000],
+    ]);
+    assert.equal(report.capabilities.find((row) => row.id === "plan-quality")?.status, "passed");
+  } finally {
+    process.exitCode = previousExitCode;
+  }
+});
+
+test("exhausting the shared deadline before a build fails closed without launching it or a battery", async () => {
+  let elapsedMs = 0;
+  let buildCalls = 0;
+  let batteryCalls = 0;
+  let stdout = "";
+  const previousExitCode = process.exitCode;
+  try {
+    process.exitCode = undefined;
+    const report = await main(
+      ["--json", "--execute", "--axis", "plan-quality", "--confirm-idle", "--budget-minutes", "12"],
+      {
+        buildRunnerArtifact: async () => {
+          buildCalls += 1;
+          return { ok: true, runnerPath: "/fixed/private/muse-runner" };
+        },
+        captureArtifacts: () => ({ count: 41, digest: "a".repeat(64), status: "ok" }),
+        captureSource: async () => {
+          elapsedMs = 12 * 60_000;
+          return { revision: "a".repeat(40), tree: "clean" };
+        },
+        monotonicNow: () => elapsedMs,
+        readResourceSnapshot: () => HEALTHY_RESOURCE_SNAPSHOT,
+        runProcess: async () => {
+          batteryCalls += 1;
+          throw new Error("battery must not run after deadline exhaustion");
+        },
+        runTypeScriptBuild: async () => {
+          buildCalls += 1;
+          return { ok: true };
+        },
+        stderr: { write: () => {} },
+        stdout: { write: (chunk) => { stdout += chunk; } },
+      },
+    );
+
+    assert.equal(report.status, "failed");
+    assert.equal(buildCalls, 0);
+    assert.equal(batteryCalls, 0);
+    assert.ok(report.capabilities.every((row) => (
+      row.reason === "evaluation-deadline-exhausted" || row.reason === "not-selected"
+    )));
+    assert.deepEqual(JSON.parse(stdout), report);
+    assert.equal(process.exitCode, 1);
+  } finally {
+    process.exitCode = previousExitCode;
+  }
+});
+
+test("an async build rejection records only the stable path-free build reason", async () => {
+  let stdout = "";
+  let batteryCalls = 0;
+  const previousExitCode = process.exitCode;
+  try {
+    process.exitCode = undefined;
+    const report = await main(
+      ["--json", "--execute", "--axis", "plan-quality", "--confirm-idle", "--budget-minutes", "12"],
+      verifiedPipeline({
+        runProcess: async () => {
+          batteryCalls += 1;
+          throw new Error("battery must not run after build rejection");
+        },
+        runTypeScriptBuild: async () => {
+          throw new Error("/Users/private-owner/secret-build-path");
+        },
+        stderr: { write: () => {} },
+        stdout: { write: (chunk) => { stdout += chunk; } },
+      }),
+    );
+
+    assert.equal(report.status, "failed");
+    assert.equal(batteryCalls, 0);
+    assert.ok(report.capabilities.every((row) => (
+      row.reason === "typescript-build-failed" || row.reason === "not-selected"
+    )));
+    assert.doesNotMatch(stdout, /Users|private-owner|secret-build-path/u);
+    assert.deepEqual(JSON.parse(stdout), report);
+    assert.equal(process.exitCode, 1);
   } finally {
     process.exitCode = previousExitCode;
   }

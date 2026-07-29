@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
@@ -16,7 +15,12 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-const BUILD_TIMEOUT_MS = 90 * 60 * 1000;
+import {
+  MAX_EVAL_PROCESS_DEADLINE_MS,
+  MIN_EVAL_PROCESS_DEADLINE_MS,
+  runBoundedEvalProcess,
+} from "./eval-agent-process.mjs";
+
 const RUNTIME_EXTENSIONS = new Set([".cjs", ".js", ".json", ".mjs", ".node", ".wasm"]);
 
 export function defaultEvalRunnerPath(repoRoot) {
@@ -24,29 +28,64 @@ export function defaultEvalRunnerPath(repoRoot) {
   return join(repoRoot, ".muse-dev", "evals", "agent-capability", "runtime", executable);
 }
 
-export function captureGitSourceSnapshot({ repoRoot, sourceEnv = process.env, spawn = spawnSync }) {
+export async function captureGitSourceSnapshot({
+  deadlineMs = MAX_EVAL_PROCESS_DEADLINE_MS,
+  now = () => performance.now(),
+  remainingProcessDeadline,
+  repoRoot,
+  runProcess,
+  sourceEnv = process.env,
+  spawn,
+}) {
+  const execute = selectProcessRunner({ runProcess, spawn });
+  const startedAt = now();
+  const remainingDeadline = () => resolveRemainingDeadline({
+    deadlineMs,
+    now,
+    remainingProcessDeadline,
+    startedAt,
+  });
   const env = { ...sourceEnv, GIT_OPTIONAL_LOCKS: "0" };
   const common = {
     cwd: repoRoot,
-    encoding: "utf8",
     env,
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: BUILD_TIMEOUT_MS,
   };
-  const revisionResult = spawn("git", ["--no-optional-locks", "rev-parse", "HEAD"], common);
+  const revisionDeadline = remainingDeadline();
+  if (revisionDeadline === null) return { tree: "unknown" };
+  const revisionResult = await execute(
+    "git",
+    ["--no-optional-locks", "rev-parse", "HEAD"],
+    { ...common, deadlineMs: revisionDeadline },
+  );
   const revision = commandSucceeded(revisionResult) ? revisionResult.stdout.trim() : undefined;
-  const treeResult = spawn(
+  const treeDeadline = remainingDeadline();
+  if (treeDeadline === null) {
+    return { ...(revision ? { revision } : {}), tree: "unknown" };
+  }
+  const treeResult = await execute(
     "git",
     ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=all"],
-    common,
+    { ...common, deadlineMs: treeDeadline },
   );
+  if (remainingDeadline() === null) {
+    return { ...(revision ? { revision } : {}), tree: "unknown" };
+  }
   if (!revision || !commandSucceeded(treeResult)) {
     return { ...(revision ? { revision } : {}), tree: "unknown" };
   }
   return { revision, tree: treeResult.stdout.trim().length === 0 ? "clean" : "dirty" };
 }
 
-export function runForcedTypeScriptBuild({ repoRoot, sourceEnv = process.env, spawn = spawnSync }) {
+export async function runForcedTypeScriptBuild({
+  deadlineMs = MAX_EVAL_PROCESS_DEADLINE_MS,
+  now = () => performance.now(),
+  remainingProcessDeadline,
+  repoRoot,
+  runProcess,
+  sourceEnv = process.env,
+  spawn,
+}) {
+  const startedAt = now();
   try {
     const outputDirectories = validatedTypeScriptOutputDirectories(repoRoot);
     for (const outputDirectory of outputDirectories) {
@@ -56,38 +95,75 @@ export function runForcedTypeScriptBuild({ repoRoot, sourceEnv = process.env, sp
     }
 
     const command = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-    const result = spawn(command, ["exec", "tsc", "-b", "--force", "--pretty", "false"], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      env: sourceEnv,
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: BUILD_TIMEOUT_MS,
+    const execute = selectProcessRunner({ runProcess, spawn });
+    const processDeadlineMs = resolveRemainingDeadline({
+      deadlineMs,
+      now,
+      remainingProcessDeadline,
+      startedAt,
     });
+    if (processDeadlineMs === null) {
+      return { ok: false, reason: "evaluation-deadline-exhausted" };
+    }
+    const result = await execute(command, ["exec", "tsc", "-b", "--force", "--pretty", "false"], {
+      cwd: repoRoot,
+      deadlineMs: processDeadlineMs,
+      env: sourceEnv,
+    });
+    if (resolveRemainingDeadline({
+      deadlineMs,
+      now,
+      remainingProcessDeadline,
+      startedAt,
+    }) === null) {
+      return { ok: false, reason: "evaluation-deadline-exhausted" };
+    }
     return commandSucceeded(result) ? { ok: true } : { ok: false, reason: "typescript-build-failed" };
   } catch {
     return { ok: false, reason: "typescript-build-failed" };
   }
 }
 
-export function buildAndPublishRunner({
+export async function buildAndPublishRunner({
+  deadlineMs = MAX_EVAL_PROCESS_DEADLINE_MS,
+  now = () => performance.now(),
+  remainingProcessDeadline,
   repoRoot,
   runnerPath = defaultEvalRunnerPath(repoRoot),
+  runProcess,
   sourceEnv = process.env,
-  spawn = spawnSync,
+  spawn,
 }) {
+  const startedAt = now();
   const targetDir = mkdtempSync(join(tmpdir(), "muse-eval-runner-"));
   try {
-    const result = spawn(
+    const execute = selectProcessRunner({ runProcess, spawn });
+    const processDeadlineMs = resolveRemainingDeadline({
+      deadlineMs,
+      now,
+      remainingProcessDeadline,
+      startedAt,
+    });
+    if (processDeadlineMs === null) {
+      return { ok: false, reason: "evaluation-deadline-exhausted" };
+    }
+    const result = await execute(
       "cargo",
       ["build", "--locked", "--manifest-path", join(repoRoot, "crates", "runner", "Cargo.toml")],
       {
         cwd: repoRoot,
-        encoding: "utf8",
+        deadlineMs: processDeadlineMs,
         env: { ...sourceEnv, CARGO_TARGET_DIR: targetDir },
-        stdio: ["ignore", "pipe", "pipe"],
-        timeout: BUILD_TIMEOUT_MS,
       },
     );
+    if (resolveRemainingDeadline({
+      deadlineMs,
+      now,
+      remainingProcessDeadline,
+      startedAt,
+    }) === null) {
+      return { ok: false, reason: "evaluation-deadline-exhausted" };
+    }
     if (!commandSucceeded(result)) {
       return { ok: false, reason: "runner-build-failed" };
     }
@@ -309,6 +385,48 @@ function walkRuntimeDirectory(directory, files) {
 
 function commandSucceeded(result) {
   return !result?.error && !result?.signal && result?.status === 0;
+}
+
+function selectProcessRunner({ runProcess, spawn }) {
+  if (typeof runProcess === "function") return runProcess;
+  if (typeof spawn === "function") {
+    return async (command, args, options) => spawn(command, args, options);
+  }
+  return runBoundedEvalProcess;
+}
+
+function boundedRemainingDeadline(totalMs, startedAt, now) {
+  if (
+    !Number.isSafeInteger(totalMs)
+    || totalMs < MIN_EVAL_PROCESS_DEADLINE_MS
+    || totalMs > MAX_EVAL_PROCESS_DEADLINE_MS
+  ) {
+    return null;
+  }
+  const elapsedMs = Math.max(0, Math.ceil(now() - startedAt));
+  const remainingMs = Math.min(MAX_EVAL_PROCESS_DEADLINE_MS, totalMs - elapsedMs);
+  return remainingMs >= MIN_EVAL_PROCESS_DEADLINE_MS ? remainingMs : null;
+}
+
+function resolveRemainingDeadline({
+  deadlineMs,
+  now,
+  remainingProcessDeadline,
+  startedAt,
+}) {
+  const localRemaining = boundedRemainingDeadline(deadlineMs, startedAt, now);
+  if (localRemaining === null || typeof remainingProcessDeadline !== "function") {
+    return localRemaining;
+  }
+  const sharedRemaining = remainingProcessDeadline();
+  if (
+    !Number.isSafeInteger(sharedRemaining)
+    || sharedRemaining < MIN_EVAL_PROCESS_DEADLINE_MS
+    || sharedRemaining > MAX_EVAL_PROCESS_DEADLINE_MS
+  ) {
+    return null;
+  }
+  return Math.min(localRemaining, sharedRemaining);
 }
 
 function unknownArtifact() {

@@ -54,9 +54,11 @@ test("runtime digest binds emitted TS content to an executable owner-only fixed 
   }
 });
 
-test("source and TypeScript probes use no-lock Git and a forced project build", () => {
+test("source and TypeScript probes use no-lock Git and a forced project build", async () => {
   const gitCalls = [];
-  const source = captureGitSourceSnapshot({
+  const source = await captureGitSourceSnapshot({
+    deadlineMs: 7_000,
+    now: () => 0,
     repoRoot: "/workspace",
     sourceEnv: { PATH: "/bin" },
     spawn: (command, args, options) => {
@@ -71,6 +73,8 @@ test("source and TypeScript probes use no-lock Git and a forced project build", 
   assert.ok(gitCalls.every((call) => call.command === "git"));
   assert.ok(gitCalls.every((call) => call.args[0] === "--no-optional-locks"));
   assert.ok(gitCalls.every((call) => call.options.env.GIT_OPTIONAL_LOCKS === "0"));
+  assert.ok(gitCalls.every((call) => call.options.deadlineMs === 7_000));
+  assert.ok(gitCalls.every((call) => !("timeout" in call.options)));
 
   const buildRepo = mkdtempSync(join(tmpdir(), "muse-eval-ts-build-"));
   try {
@@ -84,7 +88,9 @@ test("source and TypeScript probes use no-lock Git and a forced project build", 
     }), "utf8");
 
     let buildCall;
-    const build = runForcedTypeScriptBuild({
+    const build = await runForcedTypeScriptBuild({
+      deadlineMs: 6_000,
+      now: () => 0,
       repoRoot: buildRepo,
       sourceEnv: { PATH: "/bin" },
       spawn: (command, args, options) => {
@@ -96,12 +102,58 @@ test("source and TypeScript probes use no-lock Git and a forced project build", 
     assert.deepEqual(build, { ok: true });
     assert.deepEqual(buildCall.args, ["exec", "tsc", "-b", "--force", "--pretty", "false"]);
     assert.equal(buildCall.options.cwd, buildRepo);
+    assert.equal(buildCall.options.deadlineMs, 6_000);
+    assert.equal("timeout" in buildCall.options, false);
   } finally {
     rmSync(buildRepo, { force: true, recursive: true });
   }
 });
 
-test("TypeScript cleanup rejects escaped or symlinked dist targets before deleting anything", () => {
+test("elapsed synchronous preparation cannot launch a build after its shared deadline", async () => {
+  const repoRoot = mkdtempSync(join(tmpdir(), "muse-eval-build-deadline-"));
+  try {
+    const project = join(repoRoot, "packages", "example");
+    const staleFile = join(project, "dist", "stale.js");
+    mkdirSync(dirname(staleFile), { recursive: true });
+    writeFileSync(staleFile, "stale", "utf8");
+    writeFileSync(join(repoRoot, "tsconfig.json"), JSON.stringify({
+      files: [],
+      references: [{ path: "./packages/example" }],
+    }), "utf8");
+
+    let spawnCalls = 0;
+    const timestamps = [0, 7_000];
+    const typescript = await runForcedTypeScriptBuild({
+      deadlineMs: 6_000,
+      now: () => timestamps.shift() ?? 7_000,
+      repoRoot,
+      spawn: () => {
+        spawnCalls += 1;
+        return { signal: null, status: 0, stderr: "", stdout: "" };
+      },
+    });
+    assert.deepEqual(typescript, { ok: false, reason: "evaluation-deadline-exhausted" });
+    assert.equal(existsSync(staleFile), false);
+    assert.equal(spawnCalls, 0);
+
+    const cargoTimestamps = [0, 7_000];
+    const cargo = await buildAndPublishRunner({
+      deadlineMs: 6_000,
+      now: () => cargoTimestamps.shift() ?? 7_000,
+      repoRoot,
+      spawn: () => {
+        spawnCalls += 1;
+        return { signal: null, status: 0, stderr: "", stdout: "" };
+      },
+    });
+    assert.deepEqual(cargo, { ok: false, reason: "evaluation-deadline-exhausted" });
+    assert.equal(spawnCalls, 0);
+  } finally {
+    rmSync(repoRoot, { force: true, recursive: true });
+  }
+});
+
+test("TypeScript cleanup rejects escaped or symlinked dist targets before deleting anything", async () => {
   for (const unsafeKind of ["escaped-reference", "symlinked-dist"]) {
     const repoRoot = mkdtempSync(join(tmpdir(), "muse-eval-ts-safety-"));
     const outside = mkdtempSync(join(tmpdir(), "muse-eval-ts-outside-"));
@@ -133,7 +185,7 @@ test("TypeScript cleanup rejects escaped or symlinked dist targets before deleti
       chmodSync(runnerPath, 0o700);
 
       let spawnCalls = 0;
-      const result = runForcedTypeScriptBuild({
+      const result = await runForcedTypeScriptBuild({
         repoRoot,
         spawn: () => {
           spawnCalls += 1;
@@ -156,7 +208,7 @@ test("TypeScript cleanup rejects escaped or symlinked dist targets before deleti
   }
 });
 
-test("runner build uses a fresh locked Cargo target and atomically publishes mode 0700", () => {
+test("runner build uses a fresh locked Cargo target and atomically publishes mode 0700", async () => {
   const repoRoot = mkdtempSync(join(tmpdir(), "muse-eval-runner-build-"));
   const runnerPath = defaultEvalRunnerPath(repoRoot);
   let cargoCall;
@@ -164,7 +216,9 @@ test("runner build uses a fresh locked Cargo target and atomically publishes mod
   try {
     mkdirSync(dirname(runnerPath), { recursive: true });
     writeFileSync(runnerPath, "old-runner", "utf8");
-    const result = buildAndPublishRunner({
+    const result = await buildAndPublishRunner({
+      deadlineMs: 5_000,
+      now: () => 0,
       repoRoot,
       runnerPath,
       sourceEnv: { PATH: "/bin" },
@@ -183,6 +237,8 @@ test("runner build uses a fresh locked Cargo target and atomically publishes mod
     assert.equal(cargoCall.command, "cargo");
     assert.ok(cargoCall.args.includes("--locked"));
     assert.ok(cargoCall.args.includes(join(repoRoot, "crates", "runner", "Cargo.toml")));
+    assert.equal(cargoCall.options.deadlineMs, 5_000);
+    assert.equal("timeout" in cargoCall.options, false);
     assert.notEqual(cargoTarget, dirname(runnerPath));
     assert.equal(existsSync(cargoTarget), false);
     assert.equal(readFileSync(runnerPath, "utf8"), "fresh-runner");
@@ -192,7 +248,7 @@ test("runner build uses a fresh locked Cargo target and atomically publishes mod
   }
 });
 
-test("runner parent symlinks cannot redirect fixed publish or artifact qualification", () => {
+test("runner parent symlinks cannot redirect fixed publish or artifact qualification", async () => {
   const repoRoot = mkdtempSync(join(tmpdir(), "muse-eval-runner-symlink-"));
   const outside = mkdtempSync(join(tmpdir(), "muse-eval-runner-outside-"));
   const runnerPath = defaultEvalRunnerPath(repoRoot);
@@ -210,7 +266,7 @@ test("runner parent symlinks cannot redirect fixed publish or artifact qualifica
     mkdirSync(runtimeParent, { recursive: true });
     symlinkSync(outside, dirname(runnerPath), "dir");
 
-    const build = buildAndPublishRunner({
+    const build = await buildAndPublishRunner({
       repoRoot,
       runnerPath,
       spawn: (_command, _args, options) => {
