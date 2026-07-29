@@ -32,7 +32,7 @@ const CAPABILITY_MATRIX = Object.freeze([
   { id: "tool-argument-grounding", required: true, repeats: 3 },
   { id: "computer-task-terminal-edit", required: true, repeats: 3 },
   { id: "adversarial-containment-no-op", required: true, repeats: 3 },
-  { id: "cosine-recall-abstention", required: true, repeats: 1 },
+  { id: "cosine-recall-abstention", required: true, repeats: 3 },
   { id: "multihop-retrieval-lift", required: true, repeats: 1 },
   { id: "orchestration-failure-bounds", required: true, repeats: 3 },
   { id: "channel-conversation-rhythm", required: true, repeats: 3 },

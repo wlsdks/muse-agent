@@ -53,7 +53,7 @@ export const CAPABILITIES = Object.freeze([
   { id: "tool-argument-grounding", battery: "../apps/cli/scripts/verify-tool-arg-grounding.mjs", required: true, repeats: 3 },
   { id: "computer-task-terminal-edit", battery: "eval-computer-task.mjs", required: true, repeats: 3 },
   { id: "adversarial-containment-no-op", battery: "eval-adversarial.mjs", required: true, repeats: 3 },
-  { id: "cosine-recall-abstention", battery: "eval-recall-quality.mjs", required: true, repeats: 1 },
+  { id: "cosine-recall-abstention", battery: "eval-recall-quality.mjs", required: true, repeats: 3 },
   { id: "multihop-retrieval-lift", battery: "verify-multihop.mjs", required: true, repeats: 1 },
   { id: "orchestration-failure-bounds", battery: "verify-orchestration.mjs", required: true, repeats: 3 },
   { id: "channel-conversation-rhythm", battery: "eval-channel-rhythm.mjs", required: true, repeats: 3 },

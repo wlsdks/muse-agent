@@ -29,6 +29,7 @@ import {
   finalizeCapabilityEvidenceAttempt,
   inspectCapabilityEvidence,
 } from "./eval-agent-evidence.mjs";
+import { RECALL_QUALITY_MIN_REPEAT } from "./eval-recall-quality.mjs";
 import { completionLine, skipLine } from "./eval-skip.mjs";
 
 const stochastic = CAPABILITIES[0];
@@ -101,7 +102,7 @@ test("capability matrix is stable, ordered, and uses strict pass^3 where require
       { id: "tool-argument-grounding", required: true, repeats: 3 },
       { id: "computer-task-terminal-edit", required: true, repeats: 3 },
       { id: "adversarial-containment-no-op", required: true, repeats: 3 },
-      { id: "cosine-recall-abstention", required: true, repeats: 1 },
+      { id: "cosine-recall-abstention", required: true, repeats: 3 },
       { id: "multihop-retrieval-lift", required: true, repeats: 1 },
       { id: "orchestration-failure-bounds", required: true, repeats: 3 },
       { id: "channel-conversation-rhythm", required: true, repeats: 3 },
@@ -109,6 +110,37 @@ test("capability matrix is stable, ordered, and uses strict pass^3 where require
       { id: "browser-terminal-task", required: false, repeats: 3 },
     ]
   );
+});
+
+test("recall capability accepts the battery's strict pass^3 completion without poisoning the report", () => {
+  const index = CAPABILITIES.findIndex((capability) => capability.id === "cosine-recall-abstention");
+  const capability = CAPABILITIES[index];
+  assert.ok(capability);
+  assert.equal(capability.repeats, RECALL_QUALITY_MIN_REPEAT);
+
+  const row = classifyCapabilityResult(
+    capability,
+    result(completionLine({
+      status: "passed",
+      requested: RECALL_QUALITY_MIN_REPEAT,
+      executed: RECALL_QUALITY_MIN_REPEAT,
+    }))
+  );
+  assert.deepEqual(row, {
+    id: "cosine-recall-abstention",
+    required: true,
+    status: "passed",
+    requested: 3,
+    executed: 3,
+    durationMs: 17,
+  });
+
+  const rows = passingRows();
+  rows[index] = row;
+  const report = createCapabilityReport(rows);
+  assert.equal(report.status, "passed");
+  assert.equal(report.capabilities[index].status, "passed");
+  assert.notEqual(report.capabilities[index].reason, "report-integrity-failed");
 });
 
 test("axis selector accepts exactly one known id and rejects empty, unknown, or duplicate selection", () => {
@@ -199,7 +231,7 @@ test("preflight is a static 11-axis plan and never enters the full evaluation pi
     batteryProcesses: 11,
     hardSequentialTimeoutMinutes: 132,
     perBatteryTimeoutMinutes: 12,
-    requestedTrials: 29,
+    requestedTrials: 31,
   });
   assert.match(stdout, /capability preflight \(plan only\)/u);
   assert.match(stdout, /qualification: UNVERIFIED/u);
@@ -780,7 +812,7 @@ test("--json keeps stdout JSON-only, redirects safe progress, and enforces repea
   }));
 
   assert.deepEqual(JSON.parse(stdout), report);
-  assert.deepEqual(repeats, [3, 3, 3, 3, 3, 1, 1, 3, 3, 3, 3]);
+  assert.deepEqual(repeats, [3, 3, 3, 3, 3, 3, 1, 3, 3, 3, 3]);
   assert.equal(deadlines.length, CAPABILITIES.length);
   assert.ok(deadlines.every((deadline) => deadline === 12 * 60 * 1000));
   assert.doesNotMatch(stdout, /PRIVATE_CHILD|eval:agent running/u);
