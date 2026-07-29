@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, mkdtempSync, realpathSync, statSync, symlinkSync,
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
 import { analyzeRunOutcomes } from "@muse/proactivity";
 import {
@@ -53,6 +53,14 @@ import {
 } from "./personal-agent-qualification.js";
 import type { WeaknessEntry } from "@muse/stores";
 import { buildLaunchAgentPlist } from "./commands-daemon.js";
+import type {
+  SensitivePermissionRepairPlan,
+  SensitivePermissionRepairReceipt
+} from "./commands-doctor-checks.js";
+
+afterEach(() => {
+  process.exitCode = undefined;
+});
 
 function residentRuntime(overrides: Partial<RuntimeQualificationObservation> = {}): RuntimeQualificationObservation {
   const { health: suppliedHealth, ...observationOverrides } = overrides;
@@ -851,6 +859,229 @@ describe("resident daemon truth", () => {
       })]);
     }
   );
+});
+
+describe("permission repair command terminal state", () => {
+  function harness(options: {
+    readonly credentialEntry?: boolean;
+    readonly plan?: SensitivePermissionRepairPlan;
+    readonly receipt?: SensitivePermissionRepairReceipt;
+  } = {}) {
+    const homeDir = realpathSync(mkdtempSync(join(tmpdir(), "muse-doctor-permission-terminal-")));
+    const museHome = join(homeDir, ".muse");
+    mkdirSync(museHome, { recursive: true });
+    if (options.credentialEntry) {
+      const credentialFile = join(homeDir, ".config", "muse", "credentials.json");
+      mkdirSync(join(homeDir, ".config", "muse"), { recursive: true });
+      writeFileSync(credentialFile, "{}");
+    }
+    const defaultPlan: SensitivePermissionRepairPlan = {
+      items: [{
+        label: "test.json",
+        observedDev: 1,
+        observedIno: 2,
+        observedMode: 0o644,
+        path: join(museHome, "test.json"),
+        state: "repairable"
+      }],
+      root: museHome
+    };
+    const defaultReceipt: SensitivePermissionRepairReceipt = {
+      applied: [join(museHome, "test.json")],
+      changes: [{
+        afterMode: 0o600,
+        beforeMode: 0o644,
+        path: join(museHome, "test.json"),
+        verification: "verified"
+      }],
+      planHash: "test-plan"
+    };
+    const plan = vi.fn(async () => options.plan ?? defaultPlan);
+    const apply = vi.fn(async () => options.receipt ?? defaultReceipt);
+    const emitted: unknown[] = [];
+    const program = new Command();
+    registerDoctorCommand(program, { stderr: () => undefined, stdout: () => undefined }, {
+      apiRequest: async () => {
+        throw new Error("permission repair must not call the API");
+      },
+      localRuntime: {
+        env: { HOME: homeDir, MUSE_HOME: museHome },
+        homeDir
+      },
+      permissionRepair: { apply, plan },
+      writeOutput: (_io, value) => { emitted.push(value); }
+    });
+    return {
+      apply,
+      emitted,
+      plan,
+      run: async (args: readonly string[]) => {
+        process.exitCode = undefined;
+        await program.parseAsync(["node", "muse", "doctor", ...args], { from: "node" });
+        return process.exitCode ?? 0;
+      }
+    };
+  }
+
+  it("keeps preview read-only and successful", async () => {
+    const command = harness();
+    expect(await command.run(["--repair-permissions"])).toBe(0);
+    expect(command.plan).toHaveBeenCalledTimes(1);
+    expect(command.apply).not.toHaveBeenCalled();
+    expect(command.emitted).toEqual([expect.objectContaining({ plans: expect.any(Array) })]);
+  });
+
+  it("requires the explicit paired preview flag before apply", async () => {
+    const command = harness();
+    await expect(command.run(["--apply-permission-repair"]))
+      .rejects.toThrow("--apply-permission-repair requires --repair-permissions");
+    expect(command.plan).not.toHaveBeenCalled();
+    expect(command.apply).not.toHaveBeenCalled();
+  });
+
+  it("reports an unsafe top-level plan as a policy block without mutation", async () => {
+    const command = harness({
+      plan: {
+        items: [{
+          label: "unsafe.json",
+          path: "/outside/unsafe.json",
+          reason: "outside owned root",
+          state: "rejected"
+        }],
+        root: "/isolated"
+      }
+    });
+    expect(await command.run(["--repair-permissions", "--apply-permission-repair"])).toBe(3);
+    expect(command.apply).not.toHaveBeenCalled();
+    expect(command.emitted).toEqual([expect.objectContaining({
+      receipts: [],
+      rejected: "one or more owned-root plans contain a rejected target"
+    })]);
+  });
+
+  it.each([
+    {
+      label: "empty incomplete receipt",
+      receipt: {
+        applied: [],
+        changes: [],
+        planHash: "empty"
+      }
+    },
+    {
+      label: "receipt rejection",
+      receipt: {
+        applied: [],
+        changes: [],
+        planHash: "rejected",
+        rejected: "target changed"
+      }
+    },
+    {
+      label: "unverified change",
+      receipt: {
+        applied: [],
+        changes: [{
+          beforeMode: 0o644,
+          path: "/isolated/test.json",
+          verification: "unverified"
+        }],
+        planHash: "unverified"
+      }
+    },
+    {
+      label: "wrong verified mode",
+      receipt: {
+        applied: ["/isolated/test.json"],
+        changes: [{
+          afterMode: 0o640,
+          beforeMode: 0o644,
+          path: "/isolated/test.json",
+          verification: "verified"
+        }],
+        planHash: "wrong-mode"
+      }
+    },
+    {
+      label: "cleanup failure",
+      receipt: {
+        applied: ["/isolated/test.json"],
+        changes: [{
+          afterMode: 0o600,
+          beforeMode: 0o644,
+          path: "/isolated/test.json",
+          verification: "verified"
+        }],
+        cleanupFailures: ["test.json"],
+        planHash: "cleanup"
+      }
+    }
+  ] as const)("emits the $label receipt and exits unverified", async ({ receipt }) => {
+    const command = harness({ receipt });
+    expect(await command.run(["--repair-permissions", "--apply-permission-repair"])).toBe(4);
+    expect(command.apply).toHaveBeenCalledTimes(1);
+    expect(command.emitted).toEqual([expect.objectContaining({ receipts: [receipt] })]);
+  });
+
+  it("keeps a fully verified owner-only apply successful", async () => {
+    const command = harness();
+    expect(await command.run(["--repair-permissions", "--apply-permission-repair"])).toBe(0);
+    expect(command.apply).toHaveBeenCalledTimes(1);
+    expect(command.emitted).toEqual([expect.objectContaining({
+      receipts: [expect.objectContaining({
+        changes: [expect.objectContaining({ afterMode: 0o600, verification: "verified" })]
+      })]
+    })]);
+  });
+
+  it("accepts an empty receipt when the aligned plan has no repairable items", async () => {
+    const command = harness({
+      plan: {
+        items: [{
+          label: "already-safe.json",
+          path: "/isolated/already-safe.json",
+          state: "already-owner-only"
+        }],
+        root: "/isolated"
+      },
+      receipt: {
+        applied: [],
+        changes: [],
+        planHash: "already-safe"
+      }
+    });
+    expect(await command.run(["--repair-permissions", "--apply-permission-repair"])).toBe(0);
+  });
+
+  it("emits both receipts but exits unverified for a duplicate repairable path across plans", async () => {
+    const duplicatePath = "/isolated/duplicate.json";
+    const receipt = {
+      applied: [duplicatePath],
+      changes: [{
+        afterMode: 0o600,
+        beforeMode: 0o644,
+        path: duplicatePath,
+        verification: "verified" as const
+      }],
+      planHash: "duplicate"
+    };
+    const command = harness({
+      credentialEntry: true,
+      plan: {
+        items: [{
+          label: "duplicate.json",
+          path: duplicatePath,
+          state: "repairable"
+        }],
+        root: "/isolated"
+      },
+      receipt
+    });
+    expect(await command.run(["--repair-permissions", "--apply-permission-repair"])).toBe(4);
+    expect(command.plan).toHaveBeenCalledTimes(2);
+    expect(command.apply).toHaveBeenCalledTimes(2);
+    expect(command.emitted).toEqual([expect.objectContaining({ receipts: [receipt, receipt] })]);
+  });
 });
 
 describe("local model memory doctor", () => {

@@ -4,11 +4,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CLOUD_EGRESS_FIELD_CLASSES,
   CLOUD_PROVIDERS,
+  diagnoseOpenAiCredential,
   cloudPrivacyRoutingGuidance,
+  normalizeOpenAiDiagnosticTimeoutMs,
+  OPENAI_DIAGNOSTIC_MAX_TIMEOUT_MS,
   planCloudEgressPreview,
   planCloudSetup,
   registerSetupCloudCommand,
   renderCloudEgressPreview,
+  renderOpenAiDiagnosticReceipt,
   sanitizeBaseUrlForDisplay,
   type SetupCloudHelpers
 } from "./commands-setup-cloud.js";
@@ -137,6 +141,7 @@ interface CommandHarness {
 
 function commandHarness(options: {
   readonly confirm?: boolean;
+  readonly diagnoseTimeoutMs?: number;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly interactive?: boolean;
 } = {}): CommandHarness {
@@ -153,6 +158,8 @@ function commandHarness(options: {
   } as unknown as ProgramIO;
   const helpers: SetupCloudHelpers = {
     confirmEgress,
+    diagnoseFetch: fetchImpl as unknown as typeof fetch,
+    ...(options.diagnoseTimeoutMs === undefined ? {} : { diagnoseTimeoutMs: options.diagnoseTimeoutMs }),
     env: options.env ?? {},
     isInteractive: () => options.interactive ?? true,
     readConfigStore,
@@ -281,5 +288,177 @@ describe("muse setup cloud — consent, read-only, and zero-request contract", (
     expect(output).toContain("Credential validity is not checked");
     expect(output).not.toContain("export GEMINI_API_KEY");
     expect(output).not.toContain("✅ Ready to configure");
+  });
+});
+
+describe("OpenAI credential diagnostic — bounded, body-blind receipt", () => {
+  it.each([
+    [200, "valid"],
+    [299, "valid"],
+    [401, "invalid"],
+    [403, "invalid"],
+    [408, "unreachable"],
+    [429, "unreachable"],
+    [500, "unreachable"],
+    [503, "unreachable"],
+    [400, "rejected"],
+    [404, "rejected"],
+    [422, "rejected"],
+    [600, "rejected"],
+    [302, "rejected"]
+  ] as const)("classifies HTTP %i as %s without reading or returning the body", async (httpStatus, status) => {
+    const fetchImpl = vi.fn(async () => ({
+      body: "RAW_BODY_SECRET",
+      status: httpStatus
+    }) as unknown as Response);
+    const receipt = await diagnoseOpenAiCredential({
+      credential: "KEY_SECRET",
+      fetchImpl: fetchImpl as unknown as typeof fetch
+    });
+    expect(receipt).toEqual({ httpStatus, requestCount: 1, status });
+    expect(JSON.stringify(receipt)).not.toContain("RAW_BODY_SECRET");
+    expect(JSON.stringify(receipt)).not.toContain("KEY_SECRET");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns missing-credential with request count zero", async () => {
+    const fetchImpl = vi.fn();
+    expect(await diagnoseOpenAiCredential({
+      credential: "  ",
+      fetchImpl: fetchImpl as unknown as typeof fetch
+    })).toEqual({ requestCount: 0, status: "missing-credential" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("maps transport failure and hard timeout to unreachable with exactly one request", async () => {
+    const transportFetch = vi.fn(async () => { throw new Error("RAW_TRANSPORT_SECRET"); });
+    const transport = await diagnoseOpenAiCredential({
+      credential: "key",
+      fetchImpl: transportFetch as unknown as typeof fetch
+    });
+    expect(transport).toEqual({ requestCount: 1, status: "unreachable" });
+    expect(transportFetch).toHaveBeenCalledTimes(1);
+
+    const hangingFetch = vi.fn(() => new Promise<Response>(() => undefined));
+    const timedOut = await diagnoseOpenAiCredential({
+      credential: "key",
+      fetchImpl: hangingFetch as unknown as typeof fetch,
+      timeoutMs: 2
+    });
+    expect(timedOut).toEqual({ requestCount: 1, status: "unreachable" });
+    expect(hangingFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps the diagnostic timeout at five seconds", () => {
+    expect(normalizeOpenAiDiagnosticTimeoutMs(undefined)).toBe(OPENAI_DIAGNOSTIC_MAX_TIMEOUT_MS);
+    expect(normalizeOpenAiDiagnosticTimeoutMs(99_000)).toBe(5_000);
+    expect(normalizeOpenAiDiagnosticTimeoutMs(0)).toBe(1);
+  });
+
+  it("renders only fixed receipt text and the numeric status", () => {
+    const rendered = renderOpenAiDiagnosticReceipt({ httpStatus: 401, requestCount: 1, status: "invalid" });
+    expect(rendered).toBe("OpenAI diagnostic: credential rejected as invalid (HTTP 401).");
+  });
+});
+
+describe("muse setup cloud --provider openai --diagnose", () => {
+  it("missing credential prompts 0, requests 0, and writes 0", async () => {
+    const harness = commandHarness();
+    expect(await harness.run(["--provider", "openai", "--diagnose"])).toBe(1);
+    expect(harness.out.join("")).toContain("missing credential; no request was sent");
+    expect(harness.confirmEgress).not.toHaveBeenCalled();
+    expect(harness.fetchImpl).not.toHaveBeenCalled();
+    expect(harness.readConfigStore).not.toHaveBeenCalled();
+    expect(harness.writeConfigStore).not.toHaveBeenCalled();
+  });
+
+  it("prints the preview before consent, sends one canonical body-free GET, and never writes config", async () => {
+    const harness = commandHarness({ env: { OPENAI_API_KEY: "KEY_SECRET" } });
+    harness.fetchImpl.mockResolvedValueOnce(new Response("RAW_BODY_SECRET", { status: 200 }));
+    harness.confirmEgress.mockImplementationOnce(async () => {
+      expect(harness.out.join("")).toContain("Model data-flow / egress preview");
+      return true;
+    });
+
+    expect(await harness.run(["--provider", "openai", "--diagnose"])).toBeUndefined();
+    expect(harness.fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = harness.fetchImpl.mock.calls[0]!;
+    expect(url).toBe("https://api.openai.com/v1/models");
+    expect(init).toMatchObject({ method: "GET", redirect: "manual" });
+    expect((init as RequestInit).body).toBeUndefined();
+    expect((init as RequestInit).headers).toMatchObject({ authorization: "Bearer KEY_SECRET" });
+    expect(harness.out.join("")).toContain("credential accepted (HTTP 200)");
+    expect([...harness.out, ...harness.err].join("")).not.toContain("KEY_SECRET");
+    expect([...harness.out, ...harness.err].join("")).not.toContain("RAW_BODY_SECRET");
+    expect(harness.readConfigStore).not.toHaveBeenCalled();
+    expect(harness.writeConfigStore).not.toHaveBeenCalled();
+  });
+
+  it("interactive cancel and non-TTY default both request 0/write 0", async () => {
+    const cancelled = commandHarness({ confirm: false, env: { OPENAI_API_KEY: "key" } });
+    expect(await cancelled.run(["--provider", "openai", "--diagnose"])).toBe(1);
+    expect(cancelled.fetchImpl).not.toHaveBeenCalled();
+    expect(cancelled.writeConfigStore).not.toHaveBeenCalled();
+
+    const nonTty = commandHarness({ env: { OPENAI_API_KEY: "key" }, interactive: false });
+    expect(await nonTty.run(["--provider", "openai", "--diagnose"])).toBe(1);
+    expect(nonTty.confirmEgress).not.toHaveBeenCalled();
+    expect(nonTty.fetchImpl).not.toHaveBeenCalled();
+    expect(nonTty.writeConfigStore).not.toHaveBeenCalled();
+  });
+
+  it("local-only and --check conflict both request 0 even with explicit egress acceptance", async () => {
+    const localOnly = commandHarness({
+      env: { MUSE_LOCAL_ONLY: "true", OPENAI_API_KEY: "key" },
+      interactive: false
+    });
+    expect(await localOnly.run(["--provider", "openai", "--diagnose", "--accept-egress"])).toBe(1);
+    expect(localOnly.confirmEgress).not.toHaveBeenCalled();
+    expect(localOnly.fetchImpl).not.toHaveBeenCalled();
+
+    const checkConflict = commandHarness({
+      env: { OPENAI_API_KEY: "key" },
+      interactive: false
+    });
+    expect(await checkConflict.run(["--provider", "openai", "--diagnose", "--check", "--accept-egress"])).toBe(1);
+    expect(checkConflict.confirmEgress).not.toHaveBeenCalled();
+    expect(checkConflict.fetchImpl).not.toHaveBeenCalled();
+    expect(checkConflict.writeConfigStore).not.toHaveBeenCalled();
+  });
+
+  it("--accept-egress allows the one request without prompting", async () => {
+    const harness = commandHarness({
+      env: { MUSE_MODEL_API_KEY: "generic-key" },
+      interactive: false
+    });
+    harness.fetchImpl.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    expect(await harness.run(["--provider", "openai", "--diagnose", "--accept-egress"])).toBeUndefined();
+    expect(harness.confirmEgress).not.toHaveBeenCalled();
+    expect(harness.fetchImpl).toHaveBeenCalledTimes(1);
+    expect(harness.writeConfigStore).not.toHaveBeenCalled();
+  });
+
+  it("refuses other providers and custom/provider overrides without a request", async () => {
+    const other = commandHarness({ env: { GEMINI_API_KEY: "key" } });
+    expect(await other.run(["--provider", "gemini", "--diagnose", "--accept-egress"])).toBe(1);
+    expect(other.fetchImpl).not.toHaveBeenCalled();
+
+    const custom = commandHarness({
+      env: {
+        MUSE_MODEL_BASE_URL: "https://models.example.test/v1",
+        OPENAI_API_KEY: "key"
+      }
+    });
+    expect(await custom.run(["--provider", "openai", "--diagnose", "--accept-egress"])).toBe(1);
+    expect(custom.fetchImpl).not.toHaveBeenCalled();
+
+    const providerOverride = commandHarness({
+      env: {
+        MUSE_MODEL_PROVIDER_ID: "anthropic",
+        OPENAI_API_KEY: "key"
+      }
+    });
+    expect(await providerOverride.run(["--provider", "openai", "--diagnose", "--accept-egress"])).toBe(1);
+    expect(providerOverride.fetchImpl).not.toHaveBeenCalled();
   });
 });

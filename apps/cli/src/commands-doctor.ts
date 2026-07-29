@@ -15,7 +15,7 @@ import { existsSync, lstatSync, promises as fs } from "node:fs";
 import { formatRelativeTime } from "./human-formatters.js";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
-import { applySensitivePermissionRepair, backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, memoryAutoExtractHealthCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, planSensitivePermissionRepair, probeOllamaPromptCache, promptCacheHealth, platformPostureCheck, privacyRoutingCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
+import { applySensitivePermissionRepair, backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, memoryAutoExtractHealthCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, planSensitivePermissionRepair, probeOllamaPromptCache, promptCacheHealth, platformPostureCheck, privacyRoutingCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, type SensitivePermissionRepairPlan, type SensitivePermissionRepairReceipt, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
 import { readProactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
 import { readDayRhythmDoctorCheck } from "./commands-doctor-day-rhythm.js";
 export { dayRhythmDoctorCheck } from "./commands-doctor-day-rhythm.js";
@@ -93,6 +93,11 @@ export interface DoctorCommandHelpers {
   readonly writeOutput: (io: ProgramIO, value: unknown, textField?: string) => void;
   /** Private local-doctor runtime seam used by isolated tests. */
   readonly localRuntime?: DoctorLocalRuntimeOptions;
+  /** Private permission-repair seams for command terminal-state tests. */
+  readonly permissionRepair?: {
+    readonly apply?: typeof applySensitivePermissionRepair;
+    readonly plan?: typeof planSensitivePermissionRepair;
+  };
 }
 
 export interface DoctorLocalPaths {
@@ -309,14 +314,16 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
       if (options.repairPermissions) {
         const runtime = resolveDoctorLocalRuntime(helpers.localRuntime);
         const env = createDoctorEnvironmentView(mergeModelKeysFromFile(runtime.env), runtime);
+        const planPermissionRepair = helpers.permissionRepair?.plan ?? planSensitivePermissionRepair;
+        const applyPermissionRepair = helpers.permissionRepair?.apply ?? applySensitivePermissionRepair;
         const plans = await Promise.all(sensitiveFileTargetGroups(runtime, env).map(({ root, targets }) =>
-          planSensitivePermissionRepair(root, targets)
+          planPermissionRepair(root, targets)
         ));
         // Applying is atomic at the plan gate: any rejected target keeps the
         // entire preview visible but prevents a partial permission mutation.
         const rejected = plans.some((plan) => plan.items.some((item) => item.state === "rejected"));
         const receipts = options.applyPermissionRepair && !rejected
-          ? await Promise.all(plans.map((plan) => applySensitivePermissionRepair(plan)))
+          ? await Promise.all(plans.map((plan) => applyPermissionRepair(plan)))
           : [];
         helpers.writeOutput(io, {
           plans,
@@ -327,6 +334,13 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
               }
             : {})
         });
+        if (options.applyPermissionRepair) {
+          if (rejected) {
+            setCliTerminalState("policy-block");
+          } else if (permissionRepairResultsAreUnverified(plans, receipts)) {
+            setCliTerminalState("unverified");
+          }
+        }
         return;
       }
       // --grounding is a standalone live mode: score the bundled edge corpus on
@@ -465,6 +479,43 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
         ]);
       }
     });
+}
+
+function permissionRepairResultsAreUnverified(
+  plans: readonly SensitivePermissionRepairPlan[],
+  receipts: readonly SensitivePermissionRepairReceipt[]
+): boolean {
+  if (plans.length !== receipts.length) return true;
+  const allExpectedPaths = plans.flatMap((plan) =>
+    plan.items.filter((item) => item.state === "repairable").map((item) => item.path)
+  );
+  const allChangedPaths = receipts.flatMap((receipt) => receipt.changes.map((change) => change.path));
+  const allAppliedPaths = receipts.flatMap((receipt) => receipt.applied);
+  if (!sameUniquePathSet(allExpectedPaths, allChangedPaths)) return true;
+  if (!sameUniquePathSet(allExpectedPaths, allAppliedPaths)) return true;
+  return plans.some((plan, index) => {
+    const receipt = receipts[index]!;
+    if (receipt.rejected !== undefined || (receipt.cleanupFailures?.length ?? 0) > 0) return true;
+
+    const expectedPaths = plan.items
+      .filter((item) => item.state === "repairable")
+      .map((item) => item.path);
+    const changedPaths = receipt.changes.map((change) => change.path);
+    if (!sameUniquePathSet(expectedPaths, changedPaths)) return true;
+    if (!sameUniquePathSet(expectedPaths, receipt.applied)) return true;
+    return receipt.changes.some((change) =>
+      change.verification !== "verified" || change.afterMode !== 0o600
+    );
+  });
+}
+
+function sameUniquePathSet(expected: readonly string[], actual: readonly string[]): boolean {
+  const expectedSet = new Set(expected);
+  const actualSet = new Set(actual);
+  return expectedSet.size === expected.length
+    && actualSet.size === actual.length
+    && expectedSet.size === actualSet.size
+    && [...expectedSet].every((path) => actualSet.has(path));
 }
 
 /**

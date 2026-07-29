@@ -53,6 +53,18 @@ export type { DigestLockOutcome, ProcessLockOutcome, RequiredProcessLockOutcome 
 export { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest } from "./encrypted-file.js";
 export { withFileLock } from "./encrypted-file.js";
 export {
+  createEncryptedFileBackup,
+  EncryptedFileBackupError,
+  restoreEncryptedFileBackup,
+  verifyEncryptedFileBackup
+} from "./encrypted-backup.js";
+export type {
+  CreateEncryptedFileBackupOptions,
+  EncryptedFileBackupSummary,
+  RestoreEncryptedFileBackupOptions,
+  VerifyEncryptedFileBackupOptions
+} from "./encrypted-backup.js";
+export {
   credentialPath,
   defaultCredentialPath,
   deleteEmailImapCredential,
