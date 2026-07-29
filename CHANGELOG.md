@@ -8,6 +8,19 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-045b deterministic candidate-settlement ledger.
+  The package-private reducer snapshots hostile requests through AWG-045a, settles one core
+  plus at most 255 optionals through fixed depth/considered/visited/assertion/token/byte
+  gates, preserves exact work-counter rollback, gives every candidate one terminal state,
+  and selects only fresh `normal → core-only → abstain` logical ledgers, otherwise returning
+  a separate `invalid-input` capacity-error envelope when the minimum abstention cannot fit.
+  Returned canonical values are content-addressed, deeply frozen, re-verifiable, and free
+  of discarded attempt state. A 3,312-case independent BigInt oracle, four base plus 24
+  capacity literals, hostile zero-trap probes, mutation-RED, exact export boundaries, and
+  repeated deterministic gates passed. No public export, v1 codec, graph traversal,
+  persistence, runtime composition, tokenizer, database, or user-facing behavior changed;
+  AWG-050a is eligible only for a fresh integration PLAN.
+
 - Added the independently verified AWG-045a canonical immutable-envelope kernel. Hostile
   mutable input and Muse-frozen re-verification rebuild detached, deeply frozen values with
   identical direct canonical bytes and domain-separated content IDs. The private boundary
@@ -16,16 +29,17 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   operations keep validation deterministic under process-level monkey-patching. Golden
   byte/ID vectors, hostile special-key re-admission, public-export probes, and exact
   rollback checks passed. No v1 codec, public export, persistence, or runtime composition
-  changed; AWG-045b is now the next prerequisite before AWG-050a integration.
+  changed. AWG-045b is now complete, so AWG-050a may enter a fresh integration PLAN but not
+  BUILD without that new gate.
 
 - Refined the agent-native graph roadmap after two fail-closed AWG-050a PLAN
   activations. No `resumeContext` source BUILD opened. The design now isolates two
   package-private prerequisites: AWG-045a admits hostile mutable input and re-verifies
   Muse-frozen output through byte-identical canonical-envelope profiles; AWG-045b settles
   core/optional candidates through one deterministic ledger and monotone
-  `normal → core-only → abstain → invalid-input` fallback. AWG-050a remains blocked until
-  both kernels pass independent gates, preventing frozen-array and budget-accounting
-  ambiguities from becoming public or persistent formats.
+  `normal → core-only → abstain` fallback plus a separate minimum-capacity error envelope.
+  Both kernels have now passed independent gates; AWG-050a may enter a fresh integration
+  PLAN, while BUILD remains closed until that new gate passes.
 
 - Added the decision-ready Muse Agent-Native Graph Core blueprint. It preserves the
   in-memory kernel as a semantic oracle, makes scoped snapshots, proof-closed activation,

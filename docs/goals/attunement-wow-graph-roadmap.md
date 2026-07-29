@@ -62,8 +62,8 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | completed |
 | **AWG-040** | Continuity Capsule v1 | User-invoked, library-only Capsule renders the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer | in progress (`AWG-040b/c` verified library-only; application integration and exact-stop capture pending) |
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
-| **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | pending |
-| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, proof-closed `resumeContext`, freshness, typed completeness, and adversarial isolation | blocked (PLAN; BUILD never opened) |
+| **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
+| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, proof-closed `resumeContext`, freshness, typed completeness, and adversarial isolation | pending fresh integration PLAN (BUILD never opened) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-070** | Storage bake-off | Prove the Muse-owned local default first; compare PostgreSQL and at most one embedded candidate only as optional Adapters on correctness, cost, recovery, portability, and maintenance | pending |
@@ -74,7 +74,7 @@ Raw numbering does not activate work. Before each BUILD slice, inspect current s
 classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `monitoring`,
 `blocked`, `deferred`, `rejected`, or `superseded`. Implement only the missing delta.
 
-## Next eligible activation: AWG-045b
+## Next eligible activation: AWG-050a integration PLAN
 
 Independent Sol-class architecture reviews converged on a semantic prerequisite before the
 Shadow ledger or durable database:
@@ -83,21 +83,23 @@ Shadow ledger or durable database:
   through two exact, uniform descriptor profiles that normalize to the same canonical bytes
   and ID. The independently verified helper remains package-private and leaves every v1
   codec and public export untouched.
-- **AWG-045b:** settle abstract core/optional candidates through one pure ledger. Each
-  candidate ends as exactly `admitted`, `rejected`, `failed`, or `skipped`; diagnostics
-  describe only the selected logical ledger, and mandatory-overhead fallback is monotone:
-  `normal → core-only → abstain → invalid-input`.
-- **AWG-050a integration:** only after both kernels pass their own independent gates, add
-  scope membership, immutable read-snapshot identity, proof-closed bundles, freshness,
-  typed snapshot-only completeness, and adversarial cross-thread/high-degree isolation.
+- **AWG-045b (completed):** the private pure reducer settles abstract core/optional
+  candidates as exactly `admitted`, `rejected`, `failed`, or `skipped`; diagnostics describe
+  only the selected logical ledger. Mandatory-overhead fallback selects fresh
+  `normal → core-only → abstain` ledgers, then returns a separate `invalid-input`
+  capacity-error envelope only when the minimum abstention cannot fit.
+- **AWG-050a integration (next PLAN):** now that both kernels passed their independent
+  gates, design the bounded integration of scope membership, immutable read-snapshot
+  identity, proof-closed bundles, freshness, typed snapshot-only completeness, and
+  adversarial cross-thread/high-degree isolation. This does not open BUILD by itself.
 
 The full decision and dissent are in
 [Muse Agent-Native Graph Core](../design/agent-native-graph-core.md). Two fresh AWG-050a
 PLAN activations closed without source changes: the latest found that a mutable array-length
 descriptor contradicted frozen-output re-verification, while core work-cap and
 reason-overhead rollback still admitted multiple byte-distinct diagnostics. These are
-architecture findings, not shipped behavior. AWG-050a remains blocked until AWG-045b is
-verified and a new integration PLAN passes. AWG-050b then owns the actual Shadow
+architecture findings, not shipped behavior. AWG-045b is now verified; AWG-050a remains
+closed to source changes until a new integration PLAN passes. AWG-050b then owns the actual Shadow
 `silent | digest | offer` decision receipt and counterfactual.
 
 ## Completed slice: AWG-010
