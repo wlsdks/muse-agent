@@ -3,7 +3,7 @@
 Theme: bring Muse to hermes/openclaw-grade PEER on the 4 pure agent capabilities
 they have and Muse is thin/missing on, deterministic-first, while keeping the
 grounding/local moat as the floor. Source: code-level inventory of
-/Users/jinan/ai/hermes-agent + /Users/jinan/ai/openclaw (studied as DATA only —
+$HOME/ai/hermes-agent + $HOME/ai/openclaw (studied as DATA only —
 public IR mechanisms reimplemented on Muse's own primitives, never copied).
 Tier1: LOCAL COMMIT ONLY, never push. Worktree /tmp/muse-capability-parity,
 branch loop/capability-parity.

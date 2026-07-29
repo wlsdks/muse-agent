@@ -1,6 +1,6 @@
 # Domain 02 — Knowledge / RAG / Recall / Notes / Perception
 
-Repo: /Users/jinan/side-project/Muse · Verified 2026-06-14 against `apps/cli/dist/index.js` (live `--help` + read-only runs), codegraph, and test suites.
+Repo: $HOME/side-project/Muse · Verified 2026-06-14 against `apps/cli/dist/index.js` (live `--help` + read-only runs), codegraph, and test suites.
 
 Status legend: ✅ ran live · 🧪 covered by tests · ⬜ code-only (not exercised) · ⚠️ broken/suspicious
 

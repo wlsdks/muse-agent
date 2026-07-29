@@ -1,8 +1,8 @@
 # Competitor Teardown — openclaw & hermes (what they actually do)
 
 > Generated 2026-06-23 by an exhaustive 20-theme source teardown + completeness critic.
-> **442 competitor file-reads** (420 distinct) across `/Users/jinan/ai/openclaw`
-> (TS/JS) and `/Users/jinan/ai/hermes-agent` (Python). Reference-only competitive analysis of
+> **442 competitor file-reads** (420 distinct) across `$HOME/ai/openclaw`
+> (TS/JS) and `$HOME/ai/hermes-agent` (Python). Reference-only competitive analysis of
 > open-source projects; Muse builds its own designs (see `growth-backlog.md`).
 >
 > This document explains **how the two reference agents actually work**, theme by theme, grounded
@@ -22,16 +22,16 @@
 
 ## Notable capabilities the per-theme pass nearly missed (critic sweep)
 
-- **Realtime Voice/Audio Bridge & Agent Consult Runtime** (openclaw) `/Users/jinan/ai/openclaw/src/talk/agent-consult-runtime.ts` — Full realtime voice session consultation with live transcription, session forking decisions, delivery-context routing, and prompt management for voice-driven agent delegation.
-- **Batch Processing & Dataset Generation Pipeline** (hermes) `/Users/jinan/ai/hermes-agent/batch_runner.py` — Parallel multi-worker batch trajectory generation with checkpointing, resume semantics, toolset sampling distributions, and dataset-level statistics aggregation for evaluation.
-- **Voice Recording with Adaptive Silence Detection** (hermes) `/Users/jinan/ai/hermes-agent/tools/voice_mode.py` — Push-to-talk with dip-tolerance silence detection, Termux:API fallback, platform-specific playback (afplay/ffplay/aplay), and Whisper hallucination filtering.
-- **Progressive Tool Deferral (Tool Search Bridge)** (hermes) `/Users/jinan/ai/hermes-agent/tools/tool_search.py` — Stateless deferred-loading bridge tools replace large tool arrays only above context threshold; catalog rebuilt each assembly to prevent drift.
-- **Async Background Delegation with Daemon Executor** (hermes) `/Users/jinan/ai/hermes-agent/tools/async_delegation.py` — Background subagent spawning on daemon threads with completion queue integration and task-source blocks; parent returns immediately without blocking.
-- **Gateway-Side Interactive Clarify Primitive** (hermes) `/Users/jinan/ai/hermes-agent/tools/clarify_gateway.py` — Thread-safe blocking clarify with button UI fallback, text-capture resolution, timeout protection, and module-level state for platform adapters.
-- **Process Registry with Output Buffering & Watch Patterns** (hermes) `/Users/jinan/ai/hermes-agent/tools/process_registry.py` — Background process tracking with rolling buffer, watch-pattern notifications with global circuit-breaker + strike limits, and crash-recovery JSON checkpoint.
-- **Vision Tool with Image Download & Auxiliary Router** (hermes) `/Users/jinan/ai/hermes-agent/tools/vision_tools.py` — Multimodal image analysis via configurable auxiliary router (OpenRouter/Nous/Codex/Anthropic) with download timeout, file-size capping, and temp cleanup.
-- **Web Tools Backend Abstraction (Firecrawl/Exa/Tavily/Parallel)** (hermes) `/Users/jinan/ai/hermes-agent/tools/web_tools.py` — Provider-agnostic search/extract with Nous tool-gateway routing, per-vendor client caching, and plugin-delegated implementations.
-- **Session Search with FTS5, Windowing & Bookends** (hermes) `/Users/jinan/ai/hermes-agent/tools/session_search_tool.py` — Long-term conversation recall via SQLite FTS5 with snippet extraction, ±window scrolling by anchor, and bookend context (first/last 3 turns).
+- **Realtime Voice/Audio Bridge & Agent Consult Runtime** (openclaw) `$HOME/ai/openclaw/src/talk/agent-consult-runtime.ts` — Full realtime voice session consultation with live transcription, session forking decisions, delivery-context routing, and prompt management for voice-driven agent delegation.
+- **Batch Processing & Dataset Generation Pipeline** (hermes) `$HOME/ai/hermes-agent/batch_runner.py` — Parallel multi-worker batch trajectory generation with checkpointing, resume semantics, toolset sampling distributions, and dataset-level statistics aggregation for evaluation.
+- **Voice Recording with Adaptive Silence Detection** (hermes) `$HOME/ai/hermes-agent/tools/voice_mode.py` — Push-to-talk with dip-tolerance silence detection, Termux:API fallback, platform-specific playback (afplay/ffplay/aplay), and Whisper hallucination filtering.
+- **Progressive Tool Deferral (Tool Search Bridge)** (hermes) `$HOME/ai/hermes-agent/tools/tool_search.py` — Stateless deferred-loading bridge tools replace large tool arrays only above context threshold; catalog rebuilt each assembly to prevent drift.
+- **Async Background Delegation with Daemon Executor** (hermes) `$HOME/ai/hermes-agent/tools/async_delegation.py` — Background subagent spawning on daemon threads with completion queue integration and task-source blocks; parent returns immediately without blocking.
+- **Gateway-Side Interactive Clarify Primitive** (hermes) `$HOME/ai/hermes-agent/tools/clarify_gateway.py` — Thread-safe blocking clarify with button UI fallback, text-capture resolution, timeout protection, and module-level state for platform adapters.
+- **Process Registry with Output Buffering & Watch Patterns** (hermes) `$HOME/ai/hermes-agent/tools/process_registry.py` — Background process tracking with rolling buffer, watch-pattern notifications with global circuit-breaker + strike limits, and crash-recovery JSON checkpoint.
+- **Vision Tool with Image Download & Auxiliary Router** (hermes) `$HOME/ai/hermes-agent/tools/vision_tools.py` — Multimodal image analysis via configurable auxiliary router (OpenRouter/Nous/Codex/Anthropic) with download timeout, file-size capping, and temp cleanup.
+- **Web Tools Backend Abstraction (Firecrawl/Exa/Tavily/Parallel)** (hermes) `$HOME/ai/hermes-agent/tools/web_tools.py` — Provider-agnostic search/extract with Nous tool-gateway routing, per-vendor client caching, and plugin-delegated implementations.
+- **Session Search with FTS5, Windowing & Bookends** (hermes) `$HOME/ai/hermes-agent/tools/session_search_tool.py` — Long-term conversation recall via SQLite FTS5 with snippet extraction, ±window scrolling by anchor, and bookend context (first/last 3 turns).
 
 ---
 
@@ -248,7 +248,7 @@ _11 capabilities · 25 files read_
 
 ### Hermes: Three-Tier Build + Fixed Breakpoints
 
-Hermes constructs the system prompt once per session in `/Users/jinan/ai/hermes-agent/agent/system_prompt.py` using a **three-tier architecture**:
+Hermes constructs the system prompt once per session in `$HOME/ai/hermes-agent/agent/system_prompt.py` using a **three-tier architecture**:
 
 1. **Stable tier** (~70% of prompt): identity, tool guidance, skills index, environment probes, model-family operational guidance, active profile name, platform hints. Assembled by build_system_prompt_parts() → stable tier joined once.
 2. **Context tier** (~20%): caller-supplied system_message + context files (AGENTS.md, .cursorrules) discovered via build_context_files_prompt().
@@ -1124,25 +1124,25 @@ _11 capabilities · 12 files read_
 
 ### OpenClaw: Orchestration at the Bridge Layer
 
-OpenClaw's architecture uses **ACP as the orchestration protocol** itself. The core innovation is the **AcpGatewayAgent** (`/Users/jinan/ai/openclaw/src/acp/translator.ts`), which translates ACP protocol requests (newSession, loadSession, prompt) into Gateway RPC calls. This creates a clean **request→response boundary**: each ACP call becomes a discrete Gateway invocation, with **event ledger** (`/Users/jinan/ai/openclaw/src/acp/event-ledger.ts`) recording SessionUpdate events for replay.
+OpenClaw's architecture uses **ACP as the orchestration protocol** itself. The core innovation is the **AcpGatewayAgent** (`$HOME/ai/openclaw/src/acp/translator.ts`), which translates ACP protocol requests (newSession, loadSession, prompt) into Gateway RPC calls. This creates a clean **request→response boundary**: each ACP call becomes a discrete Gateway invocation, with **event ledger** (`$HOME/ai/openclaw/src/acp/event-ledger.ts`) recording SessionUpdate events for replay.
 
 **Event Ledger (Persistent Storage)**:  
 The ledger stores AcpEventLedgerEntry tuples (seq, at, sessionId, sessionKey, runId, update) in SQLite. On reconnect, the ledger is queried by sessionId (or sessionKey if ID is unknown) and replayed in order. Trimming enforces three constraints: max events per session (5k), max sessions (200), max serialized bytes (16MB). The distinctive feature is **completion flag**: sessions marked complete can be replayed atomically; incomplete sessions fallback to Gateway transcript. This dual-path recovery is essential because editor connections drop unpredictably.
 
 **CodexSupervisor (Multi-Endpoint Fan-Out)**:  
-When a single parent agent spawns multiple child agents (via spawn_agent tool), each child runs on a Codex app-server endpoint. The **CodexSupervisor** (`/Users/jinan/ai/openclaw/extensions/codex-supervisor/src/supervisor.ts`) maintains a map of JSON-RPC connections to each endpoint. Session listing happens in two phases: (1) query all loaded threads (live, real-time), (2) merge in stored threads (offline history) from each endpoint. Thread reads support lazy materialization (fall back if turns aren't ready). Turn steering resolves in-progress turnId by checking three sources: full thread.turns, summary API, turns/list endpoint.
+When a single parent agent spawns multiple child agents (via spawn_agent tool), each child runs on a Codex app-server endpoint. The **CodexSupervisor** (`$HOME/ai/openclaw/extensions/codex-supervisor/src/supervisor.ts`) maintains a map of JSON-RPC connections to each endpoint. Session listing happens in two phases: (1) query all loaded threads (live, real-time), (2) merge in stored threads (offline history) from each endpoint. Thread reads support lazy materialization (fall back if turns aren't ready). Turn steering resolves in-progress turnId by checking three sources: full thread.turns, summary API, turns/list endpoint.
 
 **Native Subagent Monitor (Lifecycle Mirroring)**:  
 For nested Codex subagents, the **CodexNativeSubagentMonitor** (`native-subagent-monitor.ts`) listens to Codex notifications and mirrors child completion into parent task runtimes. It maintains two state maps: ParentState (task runtime, delivery tracking) and ChildState (child turns, assistant messages, transcript path). When a child turn completes, the monitor reads the child's transcript JSONL file, finds task_complete/task_failed records, and delivers the completion to the parent via **deliverAgentHarnessTaskCompletion**. Delivery is deduplicated and retried on failure with exponential backoff.
 
 **Policy & Dispatch Control**:  
-ACP availability is gated by policy (`/Users/jinan/ai/openclaw/src/acp/policy.ts`): operators can disable ACP globally, disable only new dispatch (resume still works), or allow only specific agent IDs. This prevents rogue agents from being invoked and allows per-environment controls.
+ACP availability is gated by policy (`$HOME/ai/openclaw/src/acp/policy.ts`): operators can disable ACP globally, disable only new dispatch (resume still works), or allow only specific agent IDs. This prevents rogue agents from being invoked and allows per-environment controls.
 
 ---
 
 ### Hermes: Orchestration via Direct Agent Invocation
 
-Hermes takes the opposite approach: **AIAgent is the orchestration unit**, and ACP is a **transport adapter** on top of it. The **SessionManager** (`/Users/jinan/ai/hermes-agent/acp_adapter/session.py`) maps ACP sessions to in-memory AIAgent instances, persisting session state to SessionDB (~/.hermes/state.db) for durability.
+Hermes takes the opposite approach: **AIAgent is the orchestration unit**, and ACP is a **transport adapter** on top of it. The **SessionManager** (`$HOME/ai/hermes-agent/acp_adapter/session.py`) maps ACP sessions to in-memory AIAgent instances, persisting session state to SessionDB (~/.hermes/state.db) for durability.
 
 **Session Persistence (Dual-Mode Storage)**:  
 SessionState objects (session_id, agent, history, model, cancel_event) live in memory. SessionDB stores the conversation history (messages) as atomically-replaced rows (no partial updates). On process restart, get_session checks memory, then DB-restores if missing. Metadata (cwd, provider, api_mode, base_url) is JSON-serialized into model_config for portability. The distinctive pattern is **atomic message replacement**: a failed mid-transaction write rolls back to the previously persisted conversation, preventing corruption.

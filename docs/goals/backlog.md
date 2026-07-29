@@ -96,7 +96,7 @@ realistic partial hedge. Deeper veracity needs a human/product call, not an auto
 
 ## capability-parity — hermes/openclaw 대비 순수 에이전트 역량 갭 (2026-06-23 gap-scout, 코드레벨 비교)
 
-Theme: Muse를 hermes/openclaw 급 peer로. grounding/local 해자는 floor로 유지하고, 둘 다 가졌는데 Muse가 얇거나 없는 **순수 에이전트 역량 4개**를 결정론-우선으로 메운다. (소스: /Users/jinan/ai/hermes-agent, /Users/jinan/ai/openclaw 코드레벨 인벤토리.)
+Theme: Muse를 hermes/openclaw 급 peer로. grounding/local 해자는 floor로 유지하고, 둘 다 가졌는데 Muse가 얇거나 없는 **순수 에이전트 역량 4개**를 결정론-우선으로 메운다. (소스: $HOME/ai/hermes-agent, $HOME/ai/openclaw 코드레벨 인벤토리.)
 
 > **경쟁사 teardown (그들이 실제로 뭘 하는지)**: [`competitor-teardown.md`](competitor-teardown.md) — 2026-06-23 **20-테마 exhaustive 소스 분석 + completeness critic**이 openclaw/hermes를 **실제 420개 distinct 파일 열어** 작동방식을 해부 (260 capability, 테마별 비교 teardown + 아키텍처 cross-cutting 8 + critic이 놓칠 뻔한 역량 10). "외부 경쟁사가 뭘 하는지" 이해용.
 >

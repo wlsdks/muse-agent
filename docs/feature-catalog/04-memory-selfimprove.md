@@ -6,7 +6,7 @@
 
 Domain owner packages: `packages/memory`, `packages/skills`, `packages/agent-specs`
 Self-improvement engine code also lives in `packages/agent-core` (playbook, reflection-synthesis, correction-distiller, preference-inference) and `packages/mcp` (playbook store, reflections store, weakness ledger, swarm quarantine).
-CLI base used for verification: `node /Users/jinan/side-project/Muse/apps/cli/dist/index.js <cmd> --help </dev/null`
+CLI base used for verification: `node $HOME/side-project/Muse/apps/cli/dist/index.js <cmd> --help </dev/null`
 
 Status legend: ✅ ran live · 🧪 tests-as-evidence · ⬜ code-only · ⚠ broken/suspicious · 🧠 needs local model
 

@@ -1,6 +1,6 @@
 # Catalog 03 — Personal-assistant domain data + daily-life surfaces
 
-Repo: /Users/jinan/side-project/Muse · Date: 2026-06-14 · CLI dist verified present.
+Repo: $HOME/side-project/Muse · Date: 2026-06-14 · CLI dist verified present.
 Verification base: `node apps/cli/dist/index.js <cmd> --help </dev/null` + live read-only runs.
 Status legend: ✅ ran live · 🧪 tests as evidence · ⬜ code-only · ⚠️ broken/suspicious.
 

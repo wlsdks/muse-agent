@@ -1,9 +1,9 @@
 # Domain 07 — Observability / Ops / Infrastructure / Surfaces / Architecture
 
-Catalog + verification. Repo: `/Users/jinan/side-project/Muse`. Date 2026-06-14.
+Catalog + verification. Repo: `$HOME/side-project/Muse`. Date 2026-06-14.
 Verification legend: ✅ ran live · 🧪 has tests · ⬜ code-only · ⚠️ broken/suspect.
 
-CLI base used: `node /Users/jinan/.nvm/.../v24.16.0/bin/node apps/cli/dist/index.js <cmd> --help </dev/null`.
+CLI base used: `node $HOME/.nvm/.../v24.16.0/bin/node apps/cli/dist/index.js <cmd> --help </dev/null`.
 
 ---
 
@@ -65,7 +65,7 @@ CLI base used: `node /Users/jinan/.nvm/.../v24.16.0/bin/node apps/cli/dist/index
 - `serve` (✅ ran live) — the REVERSE direction: runs Muse itself as a local, read-only MCP stdio server for another agent (Claude Code / Cursor / Codex) to connect to. Exactly 3 tools: `muse_recall` (cited grounded Q&A over notes, requires Ollama), `knowledge_search` (deterministic ranked search over notes + remembered facts/preferences, no model required), `user_model_read` (facts/preferences with confidence, never vetoed/forgotten entries). No `--local` needed — self-contained, doesn't need the API server. Live-verified via `apps/cli/scripts/verify-mcp-serve-grounding.mjs`: seeded-note question answered with citation `[from vpn.md]`, absent-info question honestly refused with zero citations.
 
 ### config / config-path — CLI config ✅ ran
-- `config-path` → `/Users/jinan/.config/muse/config.json`. `config show` → `apiUrl=` + `defaultModel=ollama/qwen3:8b`. Subcmds: `show / set / unset`.
+- `config-path` → `$HOME/.config/muse/config.json`. `config show` → `apiUrl=` + `defaultModel=ollama/qwen3:8b`. Subcmds: `show / set / unset`.
 - ⚠️ **DRIFT**: `config show` reports `defaultModel=ollama/qwen3:8b` but `doctor` + `status` report effective default `ollama/gemma4:12b`. The stored config value is stale qwen3:8b; the runtime ignores it (local-only default = gemma4:12b). Cosmetic but confusing.
 
 ### status — JARVIS dashboard ✅ ran

@@ -1,6 +1,6 @@
 # Domain Catalog 06 — Outbound actions & safety + Multi-agent/Swarm + Voice
 
-Repo: /Users/jinan/side-project/Muse · Date: 2026-06-14 · Branch: main
+Repo: $HOME/side-project/Muse · Date: 2026-06-14 · Branch: main
 
 Legend: ✅ ran (read-only live) · 🧪 tests as evidence · ⬜ code-only · ⚠️ broken/suspicious
 

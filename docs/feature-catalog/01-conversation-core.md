@@ -5,7 +5,7 @@ Domain: `packages/agent-core`, `packages/model`, `packages/prompts`, and CLI com
 
 Verification legend: ✅ verified by running · 🧪 has tests · ⬜ code-only · ⚠️ broken/suspicious
 
-Built CLI: `node /Users/jinan/side-project/Muse/apps/cli/dist/index.js` (`--version` → `0.0.0`).
+Built CLI: `node $HOME/side-project/Muse/apps/cli/dist/index.js` (`--version` → `0.0.0`).
 Test-suite health (run this session):
 - `@muse/agent-core` — **184 test files / 2434 tests pass** (`pnpm --filter @muse/agent-core test`)
 - `@muse/model` — **17 files / 299 pass + 5 skipped** (`pnpm --filter @muse/model test`)
