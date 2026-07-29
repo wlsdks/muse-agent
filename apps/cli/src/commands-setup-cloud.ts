@@ -17,10 +17,33 @@ import type { ProgramIO } from "./program.js";
 
 export interface SetupCloudHelpers {
   readonly confirmEgress?: (message: string) => Promise<boolean>;
+  readonly diagnoseFetch?: typeof fetch;
+  readonly diagnoseTimeoutMs?: number;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly isInteractive?: () => boolean;
   readonly readConfigStore: ConfigCommandHelpers["readConfigStore"];
   readonly writeConfigStore: ConfigCommandHelpers["writeConfigStore"];
+}
+
+export const OPENAI_DIAGNOSTIC_MAX_TIMEOUT_MS = 5_000;
+
+export type OpenAiDiagnosticStatus =
+  | "missing-credential"
+  | "valid"
+  | "invalid"
+  | "unreachable"
+  | "rejected";
+
+export interface OpenAiDiagnosticReceipt {
+  readonly httpStatus?: number;
+  readonly requestCount: 0 | 1;
+  readonly status: OpenAiDiagnosticStatus;
+}
+
+interface OpenAiDiagnosticOptions {
+  readonly credential?: string;
+  readonly fetchImpl?: typeof fetch;
+  readonly timeoutMs?: number;
 }
 
 export interface CloudProvider {
@@ -199,6 +222,79 @@ export function renderCloudEgressPreview(preview: CloudEgressPreview): string {
   ].join("\n");
 }
 
+export function normalizeOpenAiDiagnosticTimeoutMs(timeoutMs: number | undefined): number {
+  if (timeoutMs === undefined || !Number.isFinite(timeoutMs)) return OPENAI_DIAGNOSTIC_MAX_TIMEOUT_MS;
+  return Math.min(OPENAI_DIAGNOSTIC_MAX_TIMEOUT_MS, Math.max(1, Math.trunc(timeoutMs)));
+}
+
+/**
+ * One bounded, body-blind credential check against canonical OpenAI. The
+ * receipt intentionally contains only a coarse classification and optional
+ * HTTP status: never the credential, response body, or transport error.
+ */
+export async function diagnoseOpenAiCredential(
+  options: OpenAiDiagnosticOptions
+): Promise<OpenAiDiagnosticReceipt> {
+  const credential = options.credential?.trim();
+  if (!credential) return { requestCount: 0, status: "missing-credential" };
+
+  const openAi = CLOUD_PROVIDERS.find((provider) => provider.id === "openai")!;
+  const endpoint = `${openAi.defaultBaseUrl}/models`;
+  const timeoutMs = normalizeOpenAiDiagnosticTimeoutMs(options.timeoutMs);
+  const controller = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error("diagnostic timeout"));
+    }, timeoutMs);
+  });
+
+  try {
+    const request = Promise.resolve().then(() => (options.fetchImpl ?? fetch)(endpoint, {
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${credential}`
+      },
+      method: "GET",
+      redirect: "manual",
+      signal: controller.signal
+    }));
+    const response = await Promise.race([request, timedOut]);
+    const httpStatus = response.status;
+    if (httpStatus >= 200 && httpStatus <= 299) {
+      return { httpStatus, requestCount: 1, status: "valid" };
+    }
+    if (httpStatus === 401 || httpStatus === 403) {
+      return { httpStatus, requestCount: 1, status: "invalid" };
+    }
+    if (httpStatus === 408 || httpStatus === 429 || (httpStatus >= 500 && httpStatus <= 599)) {
+      return { httpStatus, requestCount: 1, status: "unreachable" };
+    }
+    return { httpStatus, requestCount: 1, status: "rejected" };
+  } catch {
+    return { requestCount: 1, status: "unreachable" };
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
+export function renderOpenAiDiagnosticReceipt(receipt: OpenAiDiagnosticReceipt): string {
+  const suffix = receipt.httpStatus === undefined ? "" : ` (HTTP ${receipt.httpStatus.toString()})`;
+  switch (receipt.status) {
+    case "missing-credential":
+      return "OpenAI diagnostic: missing credential; no request was sent.";
+    case "valid":
+      return `OpenAI diagnostic: credential accepted${suffix}.`;
+    case "invalid":
+      return `OpenAI diagnostic: credential rejected as invalid${suffix}.`;
+    case "unreachable":
+      return `OpenAI diagnostic: endpoint unreachable or temporarily unavailable${suffix}.`;
+    case "rejected":
+      return `OpenAI diagnostic: request rejected${suffix}.`;
+  }
+}
+
 /**
  * Guidance shown after a cloud setup so the user knows privacy-tiered routing exists: with
  * `MUSE_PRIVACY_ROUTING=true`, only context-free requests ride the cloud model — anything
@@ -225,14 +321,17 @@ export function registerSetupCloudCommand(program: Command, io: ProgramIO, helpe
 Examples:
   $ muse setup cloud --provider gemini --check      # report readiness only; don't write config
   $ muse setup cloud --provider gemini              # preview, confirm, then configure interactively
+  $ muse setup cloud --provider openai --diagnose   # one consent-gated credential check; no config write
   $ muse setup cloud --provider openai --model gpt-4o-mini --accept-egress  # explicit scripted consent`)
     .requiredOption("--provider <id>", `Provider: ${CLOUD_PROVIDERS.map((p) => p.id).join(" | ")}`)
     .option("--model <model>", "Model name (provider default if omitted)")
     .option("--check", "Report readiness only; do not write config")
+    .option("--diagnose", "Check an OpenAI credential with one bounded GET; do not write config")
     .option("--accept-egress", "Explicitly accept the displayed cloud-model egress for scripting")
     .action(async (options: {
       readonly acceptEgress?: boolean;
       readonly check?: boolean;
+      readonly diagnose?: boolean;
       readonly model?: string;
       readonly provider: string;
     }) => {
@@ -262,28 +361,57 @@ Examples:
         return;
       }
 
+      if (options.diagnose) {
+        if (options.check) {
+          io.stderr("muse setup cloud: --diagnose cannot be combined with --check; no request was sent.\n");
+          process.exitCode = 1;
+          return;
+        }
+        if (plan.provider.id !== "openai") {
+          io.stderr("muse setup cloud: --diagnose currently supports only --provider openai; no request was sent.\n");
+          process.exitCode = 1;
+          return;
+        }
+        if (preview.activeProviderId !== "openai" || preview.customBaseUrl) {
+          io.stderr("muse setup cloud: --diagnose requires the canonical OpenAI endpoint with no model base URL/provider override; no request was sent.\n");
+          process.exitCode = 1;
+          return;
+        }
+        const credential = resolveOpenAiDiagnosticCredential(env);
+        if (!credential) {
+          io.stdout(`${renderOpenAiDiagnosticReceipt({ requestCount: 0, status: "missing-credential" })}\n`);
+          process.exitCode = 1;
+          return;
+        }
+        const consent = await resolveCloudEgressConsent(options.acceptEgress, helpers,
+          "Send one GET to OpenAI /v1/models using the configured credential?");
+        if (consent !== "accepted") {
+          renderCloudEgressConsentRefusal(io, consent, "OpenAI diagnostic");
+          process.exitCode = 1;
+          return;
+        }
+        const receipt = await diagnoseOpenAiCredential({
+          credential,
+          ...(helpers.diagnoseFetch ? { fetchImpl: helpers.diagnoseFetch } : {}),
+          ...(helpers.diagnoseTimeoutMs === undefined ? {} : { timeoutMs: helpers.diagnoseTimeoutMs })
+        });
+        io.stdout(`${renderOpenAiDiagnosticReceipt(receipt)}\n`);
+        if (receipt.status !== "valid") process.exitCode = 1;
+        return;
+      }
+
       if (options.check) {
         renderCloudSetupReadiness(io, plan, preview, false);
         io.stdout(`\n${cloudPrivacyRoutingGuidance(plan.defaultModel)}`);
         return;
       }
 
-      if (!options.acceptEgress) {
-        const isInteractive = helpers.isInteractive?.() ?? (process.stdin.isTTY === true && process.stdout.isTTY === true);
-        if (!isInteractive) {
-          io.stderr("muse setup cloud: not applied — non-interactive use requires --accept-egress after reviewing the preview.\n");
-          process.exitCode = 1;
-          return;
-        }
-        const confirmEgress = helpers.confirmEgress ?? (async (message: string) => {
-          const answer = await confirm({ initialValue: false, message });
-          return !isCancel(answer) && answer === true;
-        });
-        if (!await confirmEgress("Apply this configuration and allow future model requests to use the displayed endpoint?")) {
-          io.stdout("Cloud setup cancelled; no config was written and no provider request was made.\n");
-          process.exitCode = 1;
-          return;
-        }
+      const consent = await resolveCloudEgressConsent(options.acceptEgress, helpers,
+        "Apply this configuration and allow future model requests to use the displayed endpoint?");
+      if (consent !== "accepted") {
+        renderCloudEgressConsentRefusal(io, consent, "Cloud setup");
+        process.exitCode = 1;
+        return;
       }
 
       const config = await helpers.readConfigStore(io);
@@ -293,6 +421,41 @@ Examples:
       io.stdout("\nLocal remains available; revert anytime with: muse setup local\n");
       io.stdout(`\n${cloudPrivacyRoutingGuidance(plan.defaultModel)}`);
     });
+}
+
+type CloudEgressConsent = "accepted" | "cancelled" | "non-interactive";
+
+async function resolveCloudEgressConsent(
+  acceptedByFlag: boolean | undefined,
+  helpers: SetupCloudHelpers,
+  message: string
+): Promise<CloudEgressConsent> {
+  if (acceptedByFlag) return "accepted";
+  const isInteractive = helpers.isInteractive?.() ?? (process.stdin.isTTY === true && process.stdout.isTTY === true);
+  if (!isInteractive) return "non-interactive";
+  const confirmEgress = helpers.confirmEgress ?? (async (prompt: string) => {
+    const answer = await confirm({ initialValue: false, message: prompt });
+    return !isCancel(answer) && answer === true;
+  });
+  return await confirmEgress(message) ? "accepted" : "cancelled";
+}
+
+function renderCloudEgressConsentRefusal(
+  io: ProgramIO,
+  consent: Exclude<CloudEgressConsent, "accepted">,
+  operation: string
+): void {
+  if (consent === "non-interactive") {
+    io.stderr(`muse setup cloud: ${operation} not run — non-interactive use requires --accept-egress after reviewing the preview.\n`);
+    return;
+  }
+  io.stdout(`${operation} cancelled; no config was written and no provider request was made.\n`);
+}
+
+function resolveOpenAiDiagnosticCredential(
+  env: Readonly<Record<string, string | undefined>>
+): string | undefined {
+  return env.MUSE_MODEL_API_KEY?.trim() || env.OPENAI_API_KEY?.trim() || undefined;
 }
 
 function renderCloudSetupReadiness(
