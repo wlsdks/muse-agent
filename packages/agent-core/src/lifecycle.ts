@@ -68,6 +68,7 @@ export async function recordRunComplete(args: LifecycleRunCompleteArgs): Promise
   }
 
   try {
+    const interrupted = args.execution.finalResponse.id === "interrupted";
     for (const message of args.execution.intermediateMessages) {
       await args.historyStore.appendMessage({
         content: message.content,
@@ -112,7 +113,10 @@ export async function recordRunComplete(args: LifecycleRunCompleteArgs): Promise
         name: toolCall.name,
         risk: args.resolveToolRisk(toolCall.name),
         runId: args.context.runId,
-        status: "queued"
+        // The parent run is being finalized, so no executor will ever dequeue
+        // a tool call left on the final response. Persist it as terminal
+        // `blocked`, not as permanently-actionable `queued`.
+        status: "blocked"
       });
     }
 
@@ -129,7 +133,7 @@ export async function recordRunComplete(args: LifecycleRunCompleteArgs): Promise
       ...(costUsd > 0 ? { costUsd: costUsd.toString() } : {}),
       output: args.execution.finalResponse.output,
       runId: args.context.runId,
-      status: "completed",
+      status: interrupted ? "cancelled" : "completed",
       tokenUsage: usage ? { ...usage } : undefined
     });
   } catch {

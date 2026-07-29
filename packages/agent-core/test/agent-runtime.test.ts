@@ -1585,7 +1585,9 @@ describe("AgentRuntime", () => {
       { definition: { description: "x", inputSchema: { type: "object" }, name: "do_thing", risk: "read" }, execute: executeTool }
     ]);
     const generate = vi.fn(async (request: { model: string }) => ({ id: "r", model: request.model, output: "should not be reached" }));
+    const historyStore = new InMemoryAgentRunHistoryStore();
     const runtime = createAgentRuntime({
+      historyStore,
       maxToolCalls: 3,
       modelProvider: { id: "p", generate, async listModels() { return []; }, async *stream() { /* unused */ } },
       toolRegistry
@@ -1603,6 +1605,11 @@ describe("AgentRuntime", () => {
     expect(result.response.output).toBe("(run interrupted)");
     expect(generate).not.toHaveBeenCalled(); // stopped before the first model call
     expect(executeTool).not.toHaveBeenCalled();
+    expect(await historyStore.findRun("run-aborted")).toMatchObject({
+      output: "(run interrupted)",
+      status: "cancelled"
+    });
+    expect(await historyStore.listToolCalls("run-aborted")).toEqual([]);
   });
 
   it("toolApprovalGate can block an execute-risk call before the executor runs", async () => {
@@ -2910,7 +2917,7 @@ describe("AgentRuntime", () => {
         arguments: { path: "docs/input.md" },
         id: "tool-1",
         name: "read_file",
-        status: "queued"
+        status: "blocked"
       })
     ]);
   });

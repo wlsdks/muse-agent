@@ -108,11 +108,69 @@ describe("lifecycle recorders", () => {
     const tcA = toolCalls.find((c) => c.id === "tc-1");
     expect(tcA?.status).toBe("completed");
     const tcB = toolCalls.find((c) => c.id === "tc-2");
-    expect(tcB?.status).toBe("queued");
+    expect(tcB?.status).toBe("blocked");
 
     const updated = await historyStore.findRun("run-2");
     expect(updated?.status).toBe("completed");
     expect(updated?.output).toBe("final");
+  });
+
+  it("records an interrupted execution as cancelled with only terminal tool rows", async () => {
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    await historyStore.createRun({
+      id: "run-interrupted",
+      input: "u",
+      mode: "react",
+      model: "m",
+      provider: "p",
+      startedAt: new Date(),
+      status: "running"
+    });
+    const execution: ModelLoopExecution = {
+      finalResponse: {
+        id: "interrupted",
+        model: "m",
+        output: "(run interrupted)"
+      },
+      intermediateMessages: [
+        {
+          content: "calling",
+          role: "assistant",
+          toolCalls: [
+            { arguments: {}, id: "a", name: "alpha" },
+            { arguments: {}, id: "b", name: "beta" }
+          ]
+        }
+      ],
+      toolResults: [
+        {
+          result: { id: "a", name: "alpha", output: "settled", status: "completed" },
+          toolCall: { arguments: {}, id: "a", name: "alpha" }
+        },
+        {
+          result: { id: "b", name: "beta", output: "interrupted", status: "blocked" },
+          toolCall: { arguments: {}, id: "b", name: "beta" }
+        }
+      ],
+      toolsUsed: ["alpha", "beta"]
+    };
+
+    await recordRunComplete({
+      context: buildContext({ runId: "run-interrupted" }),
+      execution,
+      historyStore,
+      resolveToolRisk: () => "execute"
+    });
+
+    expect(await historyStore.findRun("run-interrupted")).toMatchObject({
+      output: "(run interrupted)",
+      status: "cancelled"
+    });
+    expect((await historyStore.findRun("run-interrupted"))?.completedAt).toBeDefined();
+    expect((await historyStore.listToolCalls("run-interrupted")).map((call) => call.status))
+      .toEqual(["completed", "blocked"]);
+    expect((await historyStore.listToolCalls("run-interrupted")).some((call) => call.status === "queued"))
+      .toBe(false);
   });
 
   it("recordRunComplete persists costUsd when the model has known pricing", async () => {
