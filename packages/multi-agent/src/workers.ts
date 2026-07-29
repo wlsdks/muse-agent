@@ -3,9 +3,10 @@ import type { ModelMessage } from "@muse/model";
 
 import { runCascade } from "./cascade-run.js";
 import {
-  bindDelegationSubtaskScope,
+  consumeDelegationHandoffLease,
+  inspectDelegationHandoffLease,
   type BoundDelegationSubtaskScope,
-  type DelegationHandoff
+  type DelegationHandoffLease
 } from "./delegation-handoff.js";
 
 export interface AgentWorker {
@@ -25,6 +26,51 @@ export interface AgentWorker {
   readonly scopeExpiresAt?: string;
   canHandle(input: AgentRunInput): number;
   run(input: AgentRunInput): Promise<AgentRunResult>;
+}
+
+interface RuntimeWorkerDelegationRecord {
+  readonly lease: DelegationHandoffLease;
+  state: "ready" | "claimed" | "started";
+}
+
+const runtimeWorkerDelegations = new WeakMap<AgentWorker, RuntimeWorkerDelegationRecord>();
+
+/**
+ * Claim a genuine factory worker immediately before the shared dispatch gate
+ * starts it. The worker's own run method completes this claim, so direct calls
+ * cannot bypass the same one-shot lease.
+ */
+export function claimDelegatedWorkerStart(worker: AgentWorker): BoundDelegationSubtaskScope | undefined {
+  const record = runtimeWorkerDelegations.get(worker);
+  if (!record) return undefined;
+  if (record.state !== "ready") {
+    consumeDelegationHandoffLease(record.lease);
+    throw new Error("delegated runtime worker was already started");
+  }
+  const scope = consumeDelegationHandoffLease(record.lease);
+  record.state = "claimed";
+  return scope;
+}
+
+function startRuntimeWorker(worker: AgentWorker): void {
+  const record = runtimeWorkerDelegations.get(worker);
+  if (!record) return;
+  if (record.state === "claimed") {
+    record.state = "started";
+    return;
+  }
+  if (record.state === "ready") {
+    throw new Error("delegated runtime worker must start through the central dispatch gate");
+  }
+  consumeDelegationHandoffLease(record.lease);
+}
+
+function registerRuntimeWorkerDelegation(
+  worker: AgentWorker,
+  lease: DelegationHandoffLease | undefined
+): void {
+  if (!lease) return;
+  runtimeWorkerDelegations.set(worker, { lease, state: "ready" });
 }
 
 export class NoAgentWorkerError extends Error {
@@ -66,21 +112,15 @@ export interface RuntimeAgentWorkerSpec {
 }
 
 export interface RuntimeAgentWorkerOptions {
-  readonly delegation?: {
-    readonly handoff: DelegationHandoff;
-    readonly nowIso: string;
-    readonly subtaskId: string;
-    readonly workspaceRoot: string;
-  };
+  readonly delegationLease?: DelegationHandoffLease;
   readonly model?: string;
   readonly runtime: AgentRuntime;
   readonly spec: RuntimeAgentWorkerSpec;
 }
 
 function workerScope(options: RuntimeAgentWorkerOptions): BoundDelegationSubtaskScope | undefined {
-  const binding = options.delegation;
-  return binding
-    ? bindDelegationSubtaskScope(binding.handoff, binding.subtaskId, binding.workspaceRoot, binding.nowIso)
+  return options.delegationLease
+    ? inspectDelegationHandoffLease(options.delegationLease)
     : undefined;
 }
 
@@ -120,15 +160,20 @@ export function createRuntimeAgentWorker(options: RuntimeAgentWorkerOptions): Ag
   const { model, runtime, spec } = options;
   const scope = workerScope(options);
   const toolNames = workerToolNames(spec.toolNames, scope);
-  return {
+  const worker: AgentWorker = {
     canHandle: () => 1,
     description: spec.description,
     id: spec.id,
     ...(model ? { model } : {}),
     ...(toolNames !== undefined ? { toolNames: Object.freeze([...toolNames]) } : {}),
     ...(scope ? { writablePaths: scope.writablePaths, scopeExpiresAt: scope.expiresAt } : {}),
-    run: (input) => runtime.run(prepareRuntimeWorkerInput(input, spec))
+    run: (input) => {
+      startRuntimeWorker(worker);
+      return runtime.run(prepareRuntimeWorkerInput(input, spec));
+    }
   };
+  registerRuntimeWorkerDelegation(worker, options.delegationLease);
+  return worker;
 }
 
 export interface CascadeRuntimeAgentWorkerOptions extends Omit<RuntimeAgentWorkerOptions, "model"> {
@@ -142,7 +187,7 @@ export function createCascadeRuntimeAgentWorker(options: CascadeRuntimeAgentWork
   const { confidenceOf, fastModel, heavyModel, runtime, spec } = options;
   const scope = workerScope(options);
   const toolNames = workerToolNames(spec.toolNames, scope);
-  return {
+  const worker: AgentWorker = {
     canHandle: () => 1,
     description: spec.description,
     id: spec.id,
@@ -150,6 +195,7 @@ export function createCascadeRuntimeAgentWorker(options: CascadeRuntimeAgentWork
     ...(toolNames !== undefined ? { toolNames: Object.freeze([...toolNames]) } : {}),
     ...(scope ? { writablePaths: scope.writablePaths, scopeExpiresAt: scope.expiresAt } : {}),
     async run(input) {
+      startRuntimeWorker(worker);
       const baseInput = prepareRuntimeWorkerInput(input, spec, { logprobs: true });
       const outcome = await runCascade<AgentRunResult>({
         confidenceOf,
@@ -160,6 +206,8 @@ export function createCascadeRuntimeAgentWorker(options: CascadeRuntimeAgentWork
       return outcome.result;
     }
   };
+  registerRuntimeWorkerDelegation(worker, options.delegationLease);
+  return worker;
 }
 
 export class RuleBasedAgentWorker implements AgentWorker {

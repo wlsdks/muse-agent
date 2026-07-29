@@ -38,6 +38,23 @@ export interface BoundDelegationSubtaskScope {
   readonly writablePaths: readonly string[];
 }
 
+declare const delegationHandoffLeaseBrand: unique symbol;
+
+/**
+ * Opaque, process-local authority to start exactly one admitted delegated
+ * subtask. Serialization and object cloning deliberately destroy the grant.
+ */
+export interface DelegationHandoffLease {
+  readonly [delegationHandoffLeaseBrand]: true;
+}
+
+interface DelegationHandoffLeaseRecord {
+  consumed: boolean;
+  readonly scope: BoundDelegationSubtaskScope;
+}
+
+const delegationHandoffLeaseRecords = new WeakMap<object, DelegationHandoffLeaseRecord>();
+
 function requiredText(value: unknown, label: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`${label} must be a non-empty string`);
@@ -216,4 +233,47 @@ export function bindDelegationSubtaskScope(
     expiresAt: subtask.expiresAt,
     writablePaths: Object.freeze(subtask.writablePaths.map((path) => resolve(root, path)))
   });
+}
+
+/**
+ * Mint one process-local, one-shot execution lease after handoff admission.
+ * The inspectable handoff remains a proposal; only this opaque token can cross
+ * the worker-start gate.
+ */
+export function createDelegationHandoffLease(
+  handoff: DelegationHandoff,
+  subtaskId: string,
+  workspaceRoot: string,
+  nowIso: string
+): DelegationHandoffLease {
+  const scope = bindDelegationSubtaskScope(handoff, subtaskId, workspaceRoot, nowIso);
+  const lease = Object.freeze({}) as DelegationHandoffLease;
+  delegationHandoffLeaseRecords.set(lease, { consumed: false, scope });
+  return lease;
+}
+
+/** Resolve a genuine unconsumed lease for worker construction without consuming it. */
+export function inspectDelegationHandoffLease(value: unknown): BoundDelegationSubtaskScope {
+  if (!value || typeof value !== "object") {
+    throw new Error("delegation handoff lease is invalid or forged");
+  }
+  const record = delegationHandoffLeaseRecords.get(value);
+  if (!record) throw new Error("delegation handoff lease is invalid or forged");
+  if (record.consumed) throw new Error("delegation handoff lease was already consumed");
+  if (Date.parse(record.scope.expiresAt) <= Date.now()) {
+    throw new Error("delegation handoff lease is expired");
+  }
+  return record.scope;
+}
+
+/**
+ * Atomically consume a genuine lease immediately before worker start.
+ * There is no await between marking it consumed and returning its bound scope.
+ */
+export function consumeDelegationHandoffLease(value: unknown): BoundDelegationSubtaskScope {
+  const scope = inspectDelegationHandoffLease(value);
+  const record = delegationHandoffLeaseRecords.get(value as object);
+  if (!record) throw new Error("delegation handoff lease is invalid or forged");
+  record.consumed = true;
+  return scope;
 }

@@ -8,9 +8,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   createCascadeRuntimeAgentWorker,
+  createDelegationHandoffLease,
   createRuntimeAgentWorker,
   InMemoryBackgroundOrchestrationStore,
   MultiAgentOrchestrator,
+  OrchestrationCancelledError,
   SupervisorAgent
 } from "../src/index.js";
 
@@ -57,7 +59,7 @@ describe("shared runtime delegation workers", () => {
       schemaVersion: 1 as const,
       sharedState: false,
       subtasks: ["s1", "s2"].map((id) => ({
-        allowedToolNames: ["file_read", "file_write"],
+        allowedToolNames: ["file_read", "file_write", "external_send"],
         dependsOn: [],
         effectScopes: [],
         expiresAt: "2099-07-30T00:00:00.000Z",
@@ -68,16 +70,24 @@ describe("shared runtime delegation workers", () => {
         writablePaths: [`reports/${id}`]
       }))
     };
+    const lease = createDelegationHandoffLease(
+      handoff,
+      "s1",
+      "/workspace/muse",
+      "2026-07-29T00:00:00.000Z"
+    );
     const worker = createRuntimeAgentWorker({
-      delegation: {
-        handoff,
-        nowIso: "2026-07-29T00:00:00.000Z",
-        subtaskId: "s1",
-        workspaceRoot: "/workspace/muse"
-      },
+      delegationLease: lease,
       runtime: capture.runtime,
-      spec: { description: "scoped", id: "scoped", toolNames: ["file_write", "forbidden"] }
+      spec: { description: "scoped", id: "scoped", toolNames: ["file_write", "external_send"] }
     });
+
+    expect(() => worker.run({
+      ...input,
+      runId: "run-direct-first",
+      toolExposureAuthority: parentAuthority
+    })).toThrow(/central dispatch gate/u);
+    expect(capture.inputs).toHaveLength(0);
 
     await new MultiAgentOrchestrator({ workers: [worker] }).run({
       ...input,
@@ -89,6 +99,74 @@ describe("shared runtime delegation workers", () => {
       expiresAt: "2099-07-30T00:00:00.000Z",
       writablePaths: ["/workspace/muse/reports/s1"]
     });
+    await expect(new SupervisorAgent({ maxHandoffs: 0, workers: [worker] }).run({
+      ...input,
+      runId: "run-replayed-lease",
+      toolExposureAuthority: parentAuthority
+    })).rejects.toThrow(/already consumed/u);
+    expect(capture.inputs).toHaveLength(1);
+    expect(() => worker.run({ ...input, runId: "run-direct-replay" })).toThrow(/already consumed/u);
+
+    const liveLease = createDelegationHandoffLease(
+      handoff,
+      "s2",
+      "/workspace/muse",
+      "2026-07-29T00:00:00.000Z"
+    );
+    expect(() => createRuntimeAgentWorker({
+      delegationLease: { ...liveLease },
+      runtime: capture.runtime,
+      spec: { description: "forged", id: "forged" }
+    })).toThrow(/invalid or forged/u);
+    expect(capture.inputs).toHaveLength(1);
+  });
+
+  it("does not burn a delegated lease when cancellation wins before worker start", async () => {
+    const capture = captureRuntime();
+    const handoff = {
+      contextIndependent: true,
+      decomposition: "fanout" as const,
+      mergeable: true,
+      objective: "Cancellation lease fixture",
+      schemaVersion: 1 as const,
+      sharedState: false,
+      subtasks: ["s1", "s2"].map((id) => ({
+        allowedToolNames: ["file_read"],
+        dependsOn: [],
+        effectScopes: [],
+        expiresAt: "2099-07-30T00:00:00.000Z",
+        id,
+        input: id,
+        outputSchema: "text",
+        role: "worker",
+        writablePaths: [`reports/${id}`]
+      }))
+    };
+    const worker = createRuntimeAgentWorker({
+      delegationLease: createDelegationHandoffLease(
+        handoff,
+        "s1",
+        "/workspace/muse",
+        "2026-07-29T00:00:00.000Z"
+      ),
+      runtime: capture.runtime,
+      spec: { description: "cancel-safe", id: "cancel-safe" }
+    });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(new SupervisorAgent({ maxHandoffs: 0, workers: [worker] }).run({
+      ...input,
+      runId: "run-cancelled-before-lease",
+      signal: controller.signal
+    })).rejects.toBeInstanceOf(OrchestrationCancelledError);
+    expect(capture.inputs).toHaveLength(0);
+
+    await new SupervisorAgent({ maxHandoffs: 0, workers: [worker] }).run({
+      ...input,
+      runId: "run-after-cancelled-lease"
+    });
+    expect(capture.inputs).toHaveLength(1);
   });
 
   it("fails closed when a custom worker supplies only half of a delegated write scope", async () => {

@@ -3,9 +3,11 @@ export { createWorkerResult, parseHandoffPart, parseWorkerResult, validateWorker
 export {
   assessDelegationFanout,
   bindDelegationSubtaskScope,
+  createDelegationHandoffLease,
   type BoundDelegationSubtaskScope,
   type DelegationHandoff,
   type DelegationHandoffAdmission,
+  type DelegationHandoffLease,
   type DelegationSubtaskHandoff
 } from "./delegation-handoff.js";
 export { addTask, DEFAULT_BOARD_MAX_DEPTH, expandTaskIntoSubtasks, lastFailureReason, latestOutput, nextReadyTask, reclaimStaleTasks, recordTaskRun, removeTask, resolveBoardMaxDepth, retryTask, staleInProgressTasks, taskDepsMet, tasksFromSubtasks, transitionTask, type AgentTask, type TaskRun, type TaskStatus } from "./task-board.js";

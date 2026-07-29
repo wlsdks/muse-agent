@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { assessDelegationFanout, bindDelegationSubtaskScope, type DelegationHandoff } from "../src/delegation-handoff.js";
+import {
+  assessDelegationFanout,
+  bindDelegationSubtaskScope,
+  consumeDelegationHandoffLease,
+  createDelegationHandoffLease,
+  inspectDelegationHandoffLease,
+  type DelegationHandoff
+} from "../src/delegation-handoff.js";
 
 const NOW = "2026-07-29T00:00:00.000Z";
 
@@ -146,5 +153,50 @@ describe("delegation handoff fan-out admission", () => {
     expect(Object.isFrozen(scope.writablePaths)).toBe(true);
     expect(() => bindDelegationSubtaskScope(handoff(), "ghost", "/workspace/muse", NOW)).toThrow(/no subtask/u);
     expect(() => bindDelegationSubtaskScope(handoff(), "s1", "relative", NOW)).toThrow(/absolute/u);
+  });
+
+  it("issues an opaque one-shot lease that rejects spoofing and replay", () => {
+    const future = handoff({
+      subtasks: handoff().subtasks.map((subtask) => ({
+        ...subtask,
+        expiresAt: "2099-07-30T00:00:00.000Z"
+      }))
+    });
+    const lease = createDelegationHandoffLease(future, "s1", "/workspace/muse", NOW);
+
+    expect(inspectDelegationHandoffLease(lease)).toEqual({
+      allowedToolNames: ["file_read"],
+      expiresAt: "2099-07-30T00:00:00.000Z",
+      writablePaths: ["/workspace/muse/reports/a"]
+    });
+    for (const forged of [{}, { ...lease }, JSON.parse(JSON.stringify(lease)) as unknown]) {
+      expect(() => consumeDelegationHandoffLease(forged)).toThrow(/invalid or forged/u);
+    }
+
+    expect(consumeDelegationHandoffLease(lease)).toEqual({
+      allowedToolNames: ["file_read"],
+      expiresAt: "2099-07-30T00:00:00.000Z",
+      writablePaths: ["/workspace/muse/reports/a"]
+    });
+    expect(() => consumeDelegationHandoffLease(lease)).toThrow(/already consumed/u);
+  });
+
+  it("rejects a lease that expires after admission without consuming another lease", () => {
+    const future = handoff({
+      subtasks: handoff().subtasks.map((subtask) => ({
+        ...subtask,
+        expiresAt: "2099-07-30T00:00:00.000Z"
+      }))
+    });
+    const expired = createDelegationHandoffLease(future, "s1", "/workspace/muse", NOW);
+    const live = createDelegationHandoffLease(future, "s2", "/workspace/muse", NOW);
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2099-07-30T00:00:00.000Z"));
+      expect(() => consumeDelegationHandoffLease(expired)).toThrow(/expired/u);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(() => consumeDelegationHandoffLease(live)).not.toThrow();
   });
 });
