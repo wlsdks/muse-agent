@@ -95,6 +95,21 @@ export interface RunDueRemindersSummary {
   readonly outcome?: "lock-held" | "lock-error";
 }
 
+/**
+ * Provider-neutral identity for one exact reminder occurrence. Reminders do
+ * not carry a mutable revision counter, so the canonical due time is the
+ * occurrence generation: recurrence advances it and therefore creates a new
+ * dedup key, while replay of the same occurrence remains byte-identical.
+ */
+export interface ReminderTriggerEnvelope {
+  readonly dedupKey: string;
+  readonly generation: string;
+  readonly occurredAt: string;
+  readonly schemaVersion: 1;
+  readonly source: "reminder";
+  readonly sourceId: string;
+}
+
 export async function runDueReminders(options: RunDueRemindersOptions): Promise<RunDueRemindersSummary> {
   const has = options.registry.has;
   const send = options.registry.send;
@@ -139,7 +154,8 @@ async function runDueRemindersUnderLock(options: RunDueRemindersOptions): Promis
     for (const reminder of due) {
       const providerId = reminder.via?.providerId ?? options.providerId;
       const destination = reminder.via?.destination ?? options.destination;
-      const effectId = reminderOccurrenceEffectId(reminder.id, reminder.dueAt);
+      const trigger = buildReminderTriggerEnvelope(reminder);
+      const effectId = trigger.dedupKey;
       if (
         providerId.trim().length === 0
         || providerId !== providerId.trim()
@@ -248,6 +264,19 @@ async function runDueRemindersUnderLock(options: RunDueRemindersOptions): Promis
 
 export function reminderOccurrenceEffectId(reminderId: string, dueAt: string): string {
   return `reminder:${sha256Hex(JSON.stringify([reminderId, dueAt]))}`;
+}
+
+export function buildReminderTriggerEnvelope(
+  reminder: Pick<PersistedReminder, "dueAt" | "id">
+): ReminderTriggerEnvelope {
+  return {
+    dedupKey: reminderOccurrenceEffectId(reminder.id, reminder.dueAt),
+    generation: reminder.dueAt,
+    occurredAt: reminder.dueAt,
+    schemaVersion: 1,
+    source: "reminder",
+    sourceId: reminder.id
+  };
 }
 
 async function ensureDeliveredHistory(

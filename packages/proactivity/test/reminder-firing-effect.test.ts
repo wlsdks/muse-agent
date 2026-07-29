@@ -31,6 +31,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  buildReminderTriggerEnvelope,
   reminderOccurrenceEffectId,
   runDueReminders
 } from "../src/reminder-firing-loop.js";
@@ -100,6 +101,14 @@ describe("runDueReminders durable occurrence effect", () => {
     })));
 
     expect(summary.delivered).toBe(1);
+    expect(buildReminderTriggerEnvelope(reminder())).toEqual({
+      dedupKey: reminderOccurrenceEffectId("rem-effect-1", DUE_AT),
+      generation: DUE_AT,
+      occurredAt: DUE_AT,
+      schemaVersion: 1,
+      source: "reminder",
+      sourceId: "rem-effect-1"
+    });
     expect(sent).toEqual([
       expect.objectContaining({
         destination: "@owner",
@@ -359,6 +368,12 @@ describe("runDueReminders durable occurrence effect", () => {
       reminderOccurrenceEffectId("rem-effect-1", DUE_AT),
       reminderOccurrenceEffectId("rem-effect-1", afterFirst.dueAt)
     ];
+    const generations = [
+      buildReminderTriggerEnvelope({ dueAt: DUE_AT, id: "rem-effect-1" }),
+      buildReminderTriggerEnvelope(afterFirst)
+    ];
+    expect(generations.map(({ generation }) => generation)).toEqual([DUE_AT, afterFirst.dueAt]);
+    expect(generations.map(({ dedupKey }) => dedupKey)).toEqual(occurrenceEffectIds);
     expect(effects.map(({ binding }) => binding.effectId)).toEqual(occurrenceEffectIds);
     const history = await readReminderHistory(p.historyFile);
     expect(history).toHaveLength(2);
