@@ -615,8 +615,16 @@ Do not build the database first.
    the Continuity Observation Receipt, derives bounded nominations, and composes the
    existing receipt-bound evidence path under truthful Provider snapshot provenance.
    `unassessed` freshness forces settlement abstention rather than an invented graph
-   generation or current-world claim. Verified freshness comparison and Continuity
-   `resumeContext` remain later 050a3 seams. Pure and in-memory until those semantics pass.
+   generation or current-world claim.
+   **AWG-050a3c is independently verified:** a single
+   Provider-owned capability validates a required capture-span bound before I/O, performs
+   two sequential same-instance captures, and mints a process-local classification.
+   Byte-identical normalized endpoints within the bound produce fresh-at-assessment-only,
+   scope-bound Graph provenance; changed, over-span, or unavailable endpoints produce no
+   Graph document/context fields. The subject remains the Graph observation and the head
+   is only the assessment instant. This is not ABA detection, continuous stability,
+   durable source authority, or freshness after assessment. Continuity `resumeContext`
+   remains a later 050a3 seam. Pure and in-memory until those semantics pass.
 4. **AWG-050b — Shadow decision receipt:** `silent | digest | offer`, bounded reason and
    counterfactual, later return timing; no sending, action, or chain-of-thought storage.
 5. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
@@ -632,16 +640,17 @@ Do not build the database first.
    usefulness, reconstruction cost, policy correction, and silence quality stay separate.
 
 AWG-045a, AWG-045b, AWG-050a1, AWG-050a2a, AWG-050a2b1, AWG-050a2b2, AWG-050a2c,
-AWG-050a3a, and AWG-050a3b are independently verified bounded kernels or trusted-host
-seams with
-no Provider-bound graph root export or existing v1 codec expansion.
+AWG-050a3a, AWG-050a3b, and AWG-050a3c are independently verified bounded kernels or
+trusted-host seams. All retain no Provider-bound graph root export or existing v1 codec
+expansion.
 Together they now prove deterministic hostile admission → exact thread-rooted witness
 traversal → local proof validation → focus-derived lane → fair opportunity order → bounded
-subset feasibility → exact context bytes → verified process-local Provider mint →
-observation and receipt-bound graph evidence. This is an end-to-end claim only over one
-bounded configured-local capture and its finite evidence pool; it is not current
-freshness, causality, completeness, persistence, or user value. The Provider-bound path
-reports abstention and makes no authoritative absence, permission, or action claim.
+subset feasibility → exact context bytes → verified process-local Provider ownership →
+bounded two-endpoint assessment → observation and receipt-bound graph evidence. This is an
+end-to-end claim only over one configured-local subject, one bounded head assessment, and
+their finite evidence pool; it is not continuous or current freshness, causality,
+completeness, persistence, or user value. The Provider-bound paths make no authoritative
+absence, permission, or action claim.
 Persistence remains explicitly out of scope until freshness, Shadow, and Policy workloads
 make the backend requirements real.
 

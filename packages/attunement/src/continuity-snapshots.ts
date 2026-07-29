@@ -18,3 +18,13 @@ export {
   type LocalAttunementSnapshotScope,
   type VerifiedMintedLocalAttunementSnapshotCapture
 } from "./local-attunement-snapshot-provider.js";
+
+export {
+  LocalAttunementSnapshotHeadRevalidationError,
+  verifyMintedLocalAttunementSnapshotHeadRevalidation,
+  type LocalAttunementSnapshotHeadRevalidation,
+  type LocalAttunementSnapshotHeadRevalidationErrorCode,
+  type LocalAttunementSnapshotHeadRevalidationErrorReason,
+  type LocalAttunementSnapshotHeadRevalidationReceiptV1,
+  type VerifiedMintedLocalAttunementSnapshotHeadRevalidation
+} from "./local-attunement-snapshot-head-revalidation.js";

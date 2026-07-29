@@ -9,6 +9,7 @@ import {
   type FairWitnessFrontierCompositionV1,
   settleFairWitnessFrontier
 } from "./fair-witness-frontier-settlement.js";
+import { continuityThreadGraphRef } from "./continuity-projection.js";
 import { AttunementGraphError } from "./error.js";
 import {
   findThreadRootedWitnessPath,
@@ -31,7 +32,7 @@ import {
 } from "./validation.js";
 import {
   GraphSnapshotProvenanceError,
-  assertGraphSnapshotFreshnessPair,
+  assertGraphSnapshotFreshnessScopePair,
   parseGraphDeclaredFreshness,
   parseGraphSnapshotProvenance,
   type GraphDeclaredFreshnessV1,
@@ -118,6 +119,8 @@ export type ThreadRootedWitnessReceiptV1 = Readonly<{
     readonly reasons: readonly (
       | "caller-declared-snapshot"
       | "provider-capture-snapshot-integrity-only"
+      | "provider-head-revalidation-snapshot-integrity-only"
+      | "fresh-at-assessment-only"
       | "freshness-unassessed"
       | "bounded-result-only"
       | "traversal-truncated"
@@ -353,8 +356,23 @@ function freshness(value: unknown, path: string): Freshness {
   }
 }
 
-function snapshotFreshnessPair(snapshotValue: Snapshot, freshnessValue: Freshness): void {
-  try { assertGraphSnapshotFreshnessPair(snapshotValue, freshnessValue, "/snapshot", "/declaredFreshness"); }
+function snapshotFreshnessPair(
+  snapshotValue: Snapshot,
+  freshnessValue: Freshness,
+  expectedScope: Scope
+): void {
+  try {
+    assertGraphSnapshotFreshnessScopePair(
+      snapshotValue,
+      freshnessValue,
+      expectedScope,
+      {
+        snapshot: "/snapshot",
+        freshness: "/declaredFreshness",
+        expectedScope: "/scope"
+      }
+    );
+  }
   catch (cause) {
     if (cause instanceof GraphSnapshotProvenanceError) fail("snapshot-freshness-mismatch", cause.details.path);
     throw cause;
@@ -514,7 +532,9 @@ function document(
     authority: {
       action: "no-authority-granted",
       freshness: requestedSnapshot.authority === "receipt-integrity-only"
-        ? "provider-capture-freshness-unassessed"
+        ? requestedSnapshot.kind === "process-local-provider-head-revalidation"
+          ? "provider-head-revalidation-receipt-integrity-only"
+          : "provider-capture-freshness-unassessed"
         : "caller-declared-not-verified",
       nomination: "caller-declared-non-exhaustive"
     },
@@ -703,12 +723,22 @@ export function compileThreadRootedWitnessDocuments(
   const requestedScope = scope(root.scope, "/scope");
   const requestedSnapshot = snapshot(root.snapshot, "/snapshot");
   const requestedFreshness = freshness(root.declaredFreshness, "/declaredFreshness");
-  snapshotFreshnessPair(requestedSnapshot, requestedFreshness);
+  snapshotFreshnessPair(
+    requestedSnapshot,
+    requestedFreshness,
+    requestedScope
+  );
   const plan = normalizedPlan(root.query);
   if (
     plan.seeds.length !== 1
     || plan.seeds[0]?.kind !== "thread"
-    || plan.seeds[0].id !== requestedScope.threadId
+    || plan.seeds[0].id !== (
+      requestedSnapshot.authority === "receipt-integrity-only"
+      && requestedSnapshot.kind
+        === "process-local-provider-head-revalidation"
+        ? continuityThreadGraphRef(requestedScope).id
+        : requestedScope.threadId
+    )
   ) {
     fail("scope-seed-mismatch", "/query/seeds");
   }
@@ -943,9 +973,15 @@ export function compileThreadRootedWitnessDocuments(
   const excluded = dispositions.some((item) => item.status === "excluded");
   const reasons: ThreadRootedWitnessReceiptV1["coverage"]["reasons"][number][] = [
     requestedSnapshot.authority === "receipt-integrity-only"
-      ? "provider-capture-snapshot-integrity-only"
+      ? requestedSnapshot.kind === "process-local-provider-head-revalidation"
+        ? "provider-head-revalidation-snapshot-integrity-only"
+        : "provider-capture-snapshot-integrity-only"
       : "caller-declared-snapshot",
-    ...(requestedFreshness.status === "unassessed" ? ["freshness-unassessed" as const] : []),
+    ...(requestedFreshness.status === "unassessed"
+      ? ["freshness-unassessed" as const]
+      : "basis" in requestedFreshness
+        ? ["fresh-at-assessment-only" as const]
+        : []),
     result.truncated ? "traversal-truncated" : "bounded-result-only"
   ];
   if (excluded) reasons.push("nomination-excluded");

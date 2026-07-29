@@ -35,6 +35,13 @@ Unassessed freshness forces abstention; the seam preserves exact receipt links a
 nomination overflow accounting without inventing a graph commit, generation, durable
 authority, or absence proof. It has no root export and the graph still never reads the
 Attunement file itself.
+An independently verified sibling seam accepts only a process-minted, Provider-owned
+two-endpoint head revalidation. Equal complete normalized endpoints within the declared
+capture span may settle as `fresh-at-assessment` and `partial`; changed, over-span, or
+unavailable endpoints never enter Graph compilation. The verifier closes Provider
+ownership, scope, endpoint timing, coverage vocabulary, and the exact scope-derived thread
+seed. It proves neither continuous stability nor freshness after assessment and remains
+absent from the package root, runtime, and persistence surfaces.
 The adapter is exposed from `@muse/attunement-graph/continuity`, so importing the kernel
 root does not eagerly load Attunement validation or personal-store dependencies.
 

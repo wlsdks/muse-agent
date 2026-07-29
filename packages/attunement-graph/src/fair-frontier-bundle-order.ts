@@ -4,8 +4,10 @@ import {
   CanonicalImmutableEnvelopeError,
   canonicalizeImmutableEnvelope
 } from "./canonical-immutable-envelope.js";
+import { continuityThreadGraphRef } from "./continuity-projection.js";
 import {
   GraphSnapshotProvenanceError,
+  assertGraphSnapshotScope,
   parseGraphSnapshotProvenance,
   type GraphSnapshotProvenanceV1
 } from "./graph-snapshot-provenance.js";
@@ -231,11 +233,22 @@ function snapshot(value: unknown, path: string): Snapshot {
   }
 }
 
-function seed(value: unknown, requestedScope: Scope, path: string): Seed {
+function seed(
+  value: unknown,
+  requestedScope: Scope,
+  requestedSnapshot: Snapshot,
+  path: string
+): Seed {
   const root = record(value, ["kind", "id"], [], path);
   if (root.kind !== "thread") fail("invalid-seed-kind", child(path, "kind"));
   const id = text(root.id, child(path, "id"), 256);
-  if (id !== requestedScope.threadId) fail("scope-seed-mismatch", child(path, "id"));
+  const expectedId =
+    requestedSnapshot.authority === "receipt-integrity-only"
+    && requestedSnapshot.kind
+      === "process-local-provider-head-revalidation"
+      ? continuityThreadGraphRef(requestedScope).id
+      : requestedScope.threadId;
+  if (id !== expectedId) fail("scope-seed-mismatch", child(path, "id"));
   return Object.freeze({ id, kind: "thread" as const });
 }
 
@@ -445,7 +458,23 @@ export function orderFairFrontierBundles(
   }
   const requestedScope = scope(root.scope, "/scope");
   const requestedSnapshot = snapshot(root.snapshot, "/snapshot");
-  const requestedSeed = seed(root.seed, requestedScope, "/seed");
+  try {
+    assertGraphSnapshotScope(requestedSnapshot, requestedScope, {
+      snapshot: "/snapshot",
+      expectedScope: "/scope"
+    });
+  } catch (cause) {
+    if (cause instanceof GraphSnapshotProvenanceError) {
+      fail("scope-mismatch", cause.details.path);
+    }
+    throw cause;
+  }
+  const requestedSeed = seed(
+    root.seed,
+    requestedScope,
+    requestedSnapshot,
+    "/seed"
+  );
   const opportunities = array(root.opportunities, "/opportunities")
     .map((item, index) => opportunity(item, `/opportunities/${index.toString()}`));
   const candidateIds = opportunities.map((item) => item.candidateId);

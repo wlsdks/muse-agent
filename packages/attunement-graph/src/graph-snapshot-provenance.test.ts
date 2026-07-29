@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   GraphSnapshotProvenanceError,
   assertGraphSnapshotFreshnessPair,
+  assertGraphSnapshotFreshnessScopePair,
   parseGraphDeclaredFreshness,
   parseGraphSnapshotProvenance
 } from "./graph-snapshot-provenance.js";
@@ -24,6 +25,48 @@ const providerSnapshot = {
   captureCompletedAt: "2026-07-30T00:00:00.000Z",
   mintVerification: "verified-in-composing-process",
   mintVerificationSurvivesSerialization: false
+};
+const providerScope = {
+  sourceId: "default",
+  threadId: "thread_trip"
+};
+const revalidationReceiptId =
+  `muse-local-attunement-head-revalidation:sha256:${"d".repeat(64)}`;
+const endpoint = {
+  providerReceiptId:
+    `muse-local-attunement-snapshot:sha256:${"e".repeat(64)}`,
+  stateDigest: `sha256:${"f".repeat(64)}`,
+  normalizedStateBytes: 12,
+  captureCompletedAt: "2026-07-30T00:00:00.000Z"
+};
+const headSnapshot = {
+  authority: "receipt-integrity-only",
+  kind: "process-local-provider-head-revalidation",
+  revalidationReceiptId,
+  providerId: "muse.local-attunement-store",
+  providerVersion: "muse.local-attunement-snapshot-provider.v1",
+  providerScope,
+  subject: endpoint,
+  head: {
+    ...endpoint,
+    providerReceiptId:
+      `muse-local-attunement-snapshot:sha256:${"1".repeat(64)}`,
+    captureCompletedAt: "2026-07-30T00:00:00.025Z"
+  },
+  mintVerification:
+    "provider-owned-two-capture-pair-verified-in-composing-process",
+  mintVerificationSurvivesSerialization: false
+};
+const headFreshness = {
+  basis: "provider-head-revalidation",
+  status: "fresh",
+  providerScope,
+  observedAt: "2026-07-30T00:00:00.000Z",
+  assessedAt: "2026-07-30T00:00:00.025Z",
+  captureSpanMs: 25,
+  maxCaptureSpanMs: 25,
+  reasonId: "head-state-matched-within-bound",
+  revalidationReceiptId
 };
 
 function errorOf(operation: () => unknown): GraphSnapshotProvenanceError {
@@ -79,6 +122,56 @@ describe("graph snapshot provenance", () => {
     }, "/snapshot"));
     expect(invalid.code).toBe("INVALID_SNAPSHOT");
     expect(invalid.details.reason).toBe("invalid-literal");
+  });
+
+  it("admits only fresh scope-bound provider head revalidation pairs", () => {
+    const snapshot = parseGraphSnapshotProvenance(
+      headSnapshot,
+      "/snapshot"
+    );
+    const freshness = parseGraphDeclaredFreshness(
+      headFreshness,
+      "/declaredFreshness"
+    );
+    assertGraphSnapshotFreshnessScopePair(
+      snapshot,
+      freshness,
+      providerScope,
+      {
+        snapshot: "/snapshot",
+        freshness: "/declaredFreshness",
+        expectedScope: "/scope"
+      }
+    );
+    expect(snapshot).toEqual(headSnapshot);
+    expect(freshness).toEqual(headFreshness);
+
+    const replay = errorOf(() =>
+      assertGraphSnapshotFreshnessScopePair(
+        snapshot,
+        freshness,
+        { ...providerScope, threadId: "thread_other" },
+        {
+          snapshot: "/snapshot",
+          freshness: "/declaredFreshness",
+          expectedScope: "/scope"
+        }
+      )
+    );
+    expect(replay.details).toEqual({
+      reason: "scope-mismatch",
+      path: "/scope"
+    });
+  });
+
+  it("rejects fabricated provider-basis stale grammar", () => {
+    const error = errorOf(() => parseGraphDeclaredFreshness({
+      ...headFreshness,
+      status: "stale",
+      reasonId: "head-state-changed"
+    }, "/declaredFreshness"));
+    expect(error.code).toBe("INVALID_FRESHNESS");
+    expect(error.details.reason).toBe("invalid-literal");
   });
 
   it("rejects accessors, sparse shapes, and noncanonical instants without leaking causes", () => {

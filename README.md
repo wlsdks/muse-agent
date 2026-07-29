@@ -86,6 +86,14 @@ explicitly `unassessed`, which forces downstream settlement to abstain while sti
 preserving exact evidence links and bounded nomination accounting. This is process-local
 engine substrate, not a public API, durable graph, current-freshness proof, Capsule/runtime
 wiring, action authority, or user-visible behavior.
+Muse now also has an independently verified, Provider-owned **bounded head
+revalidation** seam. The same configured Provider instance captures the subject and then
+its head under an explicit span bound; only exact endpoint equality can become
+`fresh-at-assessment` Graph evidence. Per-Provider process ownership, two-phase
+mint-before-hidden-state verification, five scope guards, and a closed binding-receipt
+parser prevent cross-owner, cross-scope, forged-authority, and forged-seed reuse. This is
+still private process-local substrate: it does not prove uninterrupted or current
+freshness, add persistence, or ship the Capsule/Shadow/Policy experience.
 See the separate [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse console home — model chip, integrations, and what Muse has learned" width="860" /></p>

@@ -8,6 +8,32 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added independently verified, package-private **provider-owned bounded head
+  revalidation**. One configured-local Provider instance validates a required
+  `1..30_000 ms` span before either read, captures the same scope sequentially, and mints
+  a process-local fresh/stale/abstained artifact. Every Provider instance now owns an
+  unexposed process-local token: both capture owner/scope shells must verify before either
+  hidden normalized state is inspected, including later artifact verification. A
+  subject-unavailable one-read
+  abstention claims only a Provider-owned revalidation artifact mint; the two-capture-pair
+  mint literal appears only after a head capture exists. Only exact normalized endpoint equality
+  within the bound enters a separate Graph composer; it keeps the first capture as the
+  observation, records the second only as the assessment instant, binds freshness to the
+  Provider scope, and can settle the existing five-consumer chain as `partial`.
+  Changed, over-span, unavailable, cloned, cross-owner, cross-scope, or fabricated-stale
+  inputs fail
+  closed without Graph document/context materialization. Fresh still grants no absence,
+  current-world, durable Provider, action, permission, or policy authority. Legacy
+  caller-declared and single-capture Provider IDs remain pinned. The serialized Graph
+  binding receipt verifier now closes provider literals, nested field sets, stage/reason/
+  coverage order, freshness/snapshot scope and time cross-links, canonical IDs, and the
+  exact `continuityThreadGraphRef(providerScope)` seed. Adversarial completion evaluation
+  forced the owner, shell-before-hidden, closed-parser, and scope-derived-seed guarantees.
+  Focused tests, both full package suites (332 Attunement and 256 Graph tests), package
+  builds/typechecks, TS7 fast typecheck, changed tests, seven standalone Graph verifiers,
+  diff checks, and the fresh Sol completion gate pass. No root/runtime/API/UI/persistence
+  or external Graph DB surface was added.
+
 - Added independently verified, package-private **provider-bound Agent Graph evidence**.
   Muse now accepts only an
   exact process-minted configured-local Attunement capture, verifies the mint before state

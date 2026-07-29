@@ -27,7 +27,7 @@ import {
 import { InMemoryAttunementGraphStore } from "./in-memory-store.js";
 import {
   GraphSnapshotProvenanceError,
-  assertGraphSnapshotFreshnessPair,
+  assertGraphSnapshotFreshnessScopePair,
   parseGraphDeclaredFreshness,
   parseGraphSnapshotProvenance,
   type GraphDeclaredFreshnessV1,
@@ -177,6 +177,8 @@ export type ActivationEvidenceV1 = Readonly<{
 
 type CoverageReason =
   | "caller-declared-observation"
+  | "provider-head-revalidated-observation-integrity-only"
+  | "fresh-at-assessment-only"
   | "source-authority-unverified"
   | "freshness-unassessed"
   | "bounded-activation-only"
@@ -1180,7 +1182,16 @@ export async function compileReceiptBoundGraphEvidence(
 ): Promise<ReceiptBoundGraphEvidenceV1> {
   const requested = parseRequest(input);
   try {
-    assertGraphSnapshotFreshnessPair(requested.snapshot, requested.freshness, "/snapshot", "/declaredFreshness");
+    assertGraphSnapshotFreshnessScopePair(
+      requested.snapshot,
+      requested.freshness,
+      requested.scope,
+      {
+        snapshot: "/snapshot",
+        freshness: "/declaredFreshness",
+        expectedScope: "/scope"
+      }
+    );
   } catch (cause) {
     if (cause instanceof GraphSnapshotProvenanceError) invalid("invalid-freshness", cause.details.path);
     throw cause;
@@ -1289,6 +1300,13 @@ export async function compileReceiptBoundGraphEvidence(
     sourceId: receipt.projection.scope.sourceId,
     threadId: actualSeed.id
   }) as ContinuityProjectionScope;
+  const headRevalidated =
+    requested.snapshot.authority === "receipt-integrity-only"
+    && requested.snapshot.kind
+      === "process-local-provider-head-revalidation";
+  const legacyScope = headRevalidated
+    ? requested.scope
+    : compatibilityScope;
   const representativeState = representativeNominations(requested.nominations);
   const coreRepresentative = representativeState.representatives
     .find((item) => item.role === "core");
@@ -1303,7 +1321,7 @@ export async function compileReceiptBoundGraphEvidence(
       boundedResult: {
         assertions: activation.assertions.map((assertion) => ({
           assertion,
-          memberships: [compatibilityScope]
+          memberships: [legacyScope]
         })),
         diagnostics: traversal.diagnostics,
         refs: traversal.refs,
@@ -1328,7 +1346,7 @@ export async function compileReceiptBoundGraphEvidence(
       operatorVersion: "muse.thread-rooted-witness-documents.v1",
       query: capturedPlan,
       schemaVersion: 1,
-      scope: compatibilityScope,
+      scope: legacyScope,
       snapshot: requested.snapshot
     }));
   } catch (cause) {
@@ -1416,9 +1434,19 @@ export async function compileReceiptBoundGraphEvidence(
   const linkedActivation = activationEvidence(capturedPlan, traversal, activation);
   const status = legacy.status === "partial" ? "partial" as const : "abstained" as const;
   const reasons: CoverageReason[] = [
-    "caller-declared-observation",
-    "source-authority-unverified",
-    ...(requested.freshness.status === "unassessed" ? ["freshness-unassessed" as const] : []),
+    ...(headRevalidated
+      ? [
+          "provider-head-revalidated-observation-integrity-only" as const,
+          "fresh-at-assessment-only" as const,
+          "source-authority-unverified" as const
+        ]
+      : [
+          "caller-declared-observation" as const,
+          "source-authority-unverified" as const,
+          ...(requested.freshness.status === "unassessed"
+            ? ["freshness-unassessed" as const]
+            : [])
+        ]),
     "bounded-activation-only",
     "legacy-payload-budget-only",
     "non-authoritative-compatibility-scope"

@@ -112,6 +112,43 @@ function assertFairPrefixes(output: FairFrontierBundleOrderV1): void {
 }
 
 describe("orderFairFrontierBundles", () => {
+  it("rejects cross-scope provider-head replay before ordering", () => {
+    const input = request([]);
+    const providerScope = { sourceId: "local", threadId: "trip-plan" };
+    input.snapshot = {
+      authority: "receipt-integrity-only",
+      kind: "process-local-provider-head-revalidation",
+      revalidationReceiptId:
+        `muse-local-attunement-head-revalidation:sha256:${"d".repeat(64)}`,
+      providerId: "muse.local-attunement-store",
+      providerVersion: "muse.local-attunement-snapshot-provider.v1",
+      providerScope,
+      subject: {
+        providerReceiptId:
+          `muse-local-attunement-snapshot:sha256:${"e".repeat(64)}`,
+        stateDigest: `sha256:${"f".repeat(64)}`,
+        normalizedStateBytes: 42,
+        captureCompletedAt: "2026-07-29T10:00:00.000Z"
+      },
+      head: {
+        providerReceiptId:
+          `muse-local-attunement-snapshot:sha256:${"1".repeat(64)}`,
+        stateDigest: `sha256:${"f".repeat(64)}`,
+        normalizedStateBytes: 42,
+        captureCompletedAt: "2026-07-29T10:00:00.000Z"
+      },
+      mintVerification:
+        "provider-owned-two-capture-pair-verified-in-composing-process",
+      mintVerificationSurvivesSerialization: false
+    };
+    input.scope = { ...providerScope, threadId: "trip-other" };
+    const error = errorOf(input);
+    expect(error.details).toEqual({
+      path: "/scope",
+      reason: "scope-mismatch"
+    });
+  });
+
   it("gives every active agent lane one turn before a high-degree lane gets a second", () => {
     const crowded = Array.from({ length: 251 }, (_, index) =>
       opportunity(index, "continuity")

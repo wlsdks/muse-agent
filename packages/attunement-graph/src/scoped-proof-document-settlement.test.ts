@@ -132,6 +132,56 @@ function literalEnvelope(
 }
 
 describe("compileScopedProofDocumentSettlement", () => {
+  it("rejects cross-scope provider-head replay before documents materialize", () => {
+    const providerScope = { ...scope };
+    const revalidationReceiptId =
+      `muse-local-attunement-head-revalidation:sha256:${"d".repeat(64)}`;
+    const endpoint = {
+      providerReceiptId:
+        `muse-local-attunement-snapshot:sha256:${"e".repeat(64)}`,
+      stateDigest: `sha256:${"f".repeat(64)}`,
+      normalizedStateBytes: 42,
+      captureCompletedAt: instant
+    };
+    const providerSnapshot = {
+      authority: "receipt-integrity-only",
+      kind: "process-local-provider-head-revalidation",
+      revalidationReceiptId,
+      providerId: "muse.local-attunement-store",
+      providerVersion: "muse.local-attunement-snapshot-provider.v1",
+      providerScope: { ...providerScope },
+      subject: endpoint,
+      head: {
+        ...endpoint,
+        providerReceiptId:
+          `muse-local-attunement-snapshot:sha256:${"1".repeat(64)}`
+      },
+      mintVerification:
+        "provider-owned-two-capture-pair-verified-in-composing-process",
+      mintVerificationSurvivesSerialization: false
+    };
+    const providerFreshness = {
+      basis: "provider-head-revalidation",
+      status: "fresh",
+      providerScope: { ...providerScope },
+      observedAt: instant,
+      assessedAt: instant,
+      captureSpanMs: 0,
+      maxCaptureSpanMs: 25,
+      reasonId: "head-state-matched-within-bound",
+      revalidationReceiptId
+    };
+    const error = errorOf(request([], {
+      scope: { ...providerScope, threadId: "thread-other" },
+      snapshot: providerSnapshot,
+      declaredFreshness: providerFreshness
+    }));
+    expect(error.details).toEqual({
+      path: "/scope",
+      reason: "freshness-mismatch"
+    });
+  });
+
   it("captures, settles, materializes literal retained documents, and freezes the detached result", () => {
     const input = request([optional(1), optional(2, "support")], {
       scope: { ...scope, threadId: "계속-의도" }

@@ -19,7 +19,7 @@ import {
 } from "./validation.js";
 import {
   GraphSnapshotProvenanceError,
-  assertGraphSnapshotFreshnessPair,
+  assertGraphSnapshotFreshnessScopePair,
   parseGraphDeclaredFreshness,
   parseGraphSnapshotProvenance,
   type GraphDeclaredFreshnessV1,
@@ -115,7 +115,7 @@ type Direction = "outgoing" | "incoming";
 type Step = Readonly<{ readonly assertionId: string; readonly direction: Direction }>;
 type ScopedAssertion = Readonly<{ readonly assertion: GraphAssertion; readonly memberships: readonly Scope[] }>;
 type Proof = Readonly<{ readonly assertions: readonly ScopedAssertion[]; readonly paths: readonly (readonly Step[])[]; readonly sourceRefs: readonly GraphEvidenceRef[] }>;
-type Authority = Readonly<{ readonly nomination: "caller-declared-non-exhaustive"; readonly freshness: "caller-declared-not-verified" | "provider-capture-freshness-unassessed"; readonly action: "no-authority-granted" }>;
+type Authority = Readonly<{ readonly nomination: "caller-declared-non-exhaustive"; readonly freshness: "caller-declared-not-verified" | "provider-capture-freshness-unassessed" | "provider-head-revalidation-receipt-integrity-only"; readonly action: "no-authority-granted" }>;
 type Document = Readonly<{ readonly schemaVersion: 1; readonly documentVersion: "muse.scoped-proof-document.v1"; readonly documentId: string; readonly kind: "core" | "change" | "support"; readonly scope: Scope; readonly snapshot: Snapshot; readonly declaredFreshness: Freshness; readonly observedAt: string; readonly semanticPriority: 0 | 1 | 2; readonly proof: Proof; readonly authority: Authority }>;
 type Candidate = Readonly<{ readonly document: Document; readonly localStatus: LocalStatus; readonly retainedCanonicalJson: string; readonly retainedCanonicalByteLength: number; readonly candidateId: string; readonly forcedFreshness: boolean }>;
 type Budget = Readonly<{ readonly maxDepth: number; readonly maxConsideredAssertions: number; readonly maxVisitedRefs: number; readonly maxAssertions: number; readonly maxEstimatedTokens: number; readonly maxOutputBytes: number }>;
@@ -202,13 +202,28 @@ function freshness(value: unknown, path: string): Freshness {
     throw cause;
   }
 }
-function snapshotFreshnessPair(snapshotValue: Snapshot, freshnessValue: Freshness): void {
-  try { assertGraphSnapshotFreshnessPair(snapshotValue, freshnessValue, "/snapshot", "/declaredFreshness"); }
+function snapshotFreshnessPair(
+  snapshotValue: Snapshot,
+  freshnessValue: Freshness,
+  expectedScope: Scope
+): void {
+  try {
+    assertGraphSnapshotFreshnessScopePair(
+      snapshotValue,
+      freshnessValue,
+      expectedScope,
+      {
+        snapshot: "/snapshot",
+        freshness: "/declaredFreshness",
+        expectedScope: "/scope"
+      }
+    );
+  }
   catch (cause) { if (cause instanceof GraphSnapshotProvenanceError) invalid("freshness-mismatch", cause.details.path); throw cause; }
 }
 function authority(value: unknown, path: string): Authority {
   const root = record(value, ["nomination", "freshness", "action"], [], path);
-  if (root.nomination !== "caller-declared-non-exhaustive" || (root.freshness !== "caller-declared-not-verified" && root.freshness !== "provider-capture-freshness-unassessed") || root.action !== "no-authority-granted") invalid("invalid-enum", path);
+  if (root.nomination !== "caller-declared-non-exhaustive" || (root.freshness !== "caller-declared-not-verified" && root.freshness !== "provider-capture-freshness-unassessed" && root.freshness !== "provider-head-revalidation-receipt-integrity-only") || root.action !== "no-authority-granted") invalid("invalid-enum", path);
   return freezeRecord({ nomination: "caller-declared-non-exhaustive" as const, freshness: root.freshness, action: "no-authority-granted" as const });
 }
 function evidence(value: unknown, path: string): GraphEvidenceRef {
@@ -369,7 +384,9 @@ function parsedDocument(value: Record<string, unknown>, requestScope: Scope, req
   const observedAt = instant(value.observedAt, child(owner, "observedAt")); if ((requestFreshness.status === "fresh" || requestFreshness.status === "stale") && instantEpoch(observedAt) > instantEpoch(requestFreshness.observedAt)) invalid("freshness-mismatch", child(owner, "observedAt"));
   const parsedAuthority = authority(value.authority, child(owner, "authority"));
   const expectedAuthorityFreshness = requestSnapshot.authority === "receipt-integrity-only"
-    ? "provider-capture-freshness-unassessed"
+    ? requestSnapshot.kind === "process-local-provider-head-revalidation"
+      ? "provider-head-revalidation-receipt-integrity-only"
+      : "provider-capture-freshness-unassessed"
     : "caller-declared-not-verified";
   if (parsedAuthority.freshness !== expectedAuthorityFreshness) {
     invalid("freshness-mismatch", child(child(owner, "authority"), "freshness"));
@@ -455,7 +472,7 @@ export function compileScopedProofDocumentSettlement(input: unknown): ScopedProo
   const root = captureRequest(input);
   const request = record(root, ["schemaVersion", "operatorVersion", "scope", "snapshot", "declaredFreshness", "core", "optionals", "budget"], ["requestId"], "");
   if (request.schemaVersion !== 1) invalid("invalid-schema-version", "/schemaVersion"); if (request.operatorVersion !== "muse.scoped-proof-document-settlement.v1") invalid("invalid-operator-version", "/operatorVersion"); if (typeof request.requestId !== "string" || !REQUEST_ID.test(request.requestId)) invalid("invalid-request-id", "/requestId");
-  const requestScope = scope(request.scope, "/scope"); const requestSnapshot = snapshot(request.snapshot, "/snapshot"); const requestFreshness = freshness(request.declaredFreshness, "/declaredFreshness"); snapshotFreshnessPair(requestSnapshot, requestFreshness); const requestBudget = budget(request.budget);
+  const requestScope = scope(request.scope, "/scope"); const requestSnapshot = snapshot(request.snapshot, "/snapshot"); const requestFreshness = freshness(request.declaredFreshness, "/declaredFreshness"); snapshotFreshnessPair(requestSnapshot, requestFreshness, requestScope); const requestBudget = budget(request.budget);
   const raws = array(request.optionals, 256, "/optionals");
   if (raws.length > 255) invalid("too-many-optionals", "/optionals");
   const core = candidate(request.core, "core", undefined, requestScope, requestSnapshot, requestFreshness);

@@ -216,10 +216,45 @@ describe("provider-bound graph evidence", () => {
 
     expect(first.stage).toBe("graph-evidence");
     expect(first.status).toBe("abstained");
+    expect(first.receipt.receiptId).toBe(
+      "muse-provider-bound-graph-evidence:sha256:"
+      + "1251226c4eac2eecc5a276bc578469a46bd0fa11fc2f262f7e9b66e8fa611bd3"
+    );
     expect(second.receipt.receiptId).toBe(first.receipt.receiptId);
     if (first.stage !== "graph-evidence" || source.status !== "available") {
       throw new Error("graph-stage evidence was required");
     }
+    expect({
+      activationEvidenceId: first.graphEvidence.activationEvidence.evidenceId,
+      graphEvidenceReceiptId: first.graphEvidence.receipt.receiptId,
+      legacyFrontierReceiptId:
+        first.graphEvidence.legacyCompilation.frontier?.receipt.receiptId,
+      legacyOrderId:
+        first.graphEvidence.legacyCompilation.frontier?.order.orderId,
+      legacySettlementResultId:
+        first.graphEvidence.legacyCompilation.settlement?.resultId,
+      legacyWitnessReceiptId:
+        first.graphEvidence.legacyCompilation.receipt.receiptId
+    }).toEqual({
+      activationEvidenceId:
+        "muse-receipt-bound-activation-evidence:sha256:"
+        + "cd144471ad2387a2ac9ccc059f52f0fa9d312ac511d596d0a28963aa5defb6c8",
+      graphEvidenceReceiptId:
+        "muse-receipt-bound-graph-evidence-receipt:sha256:"
+        + "e3d798768f615bac542a20336fae0286518e6e6ac97af237c994ce4a259b68c1",
+      legacyFrontierReceiptId:
+        "muse-fair-witness-frontier-receipt:sha256:"
+        + "02cf3be09f47fcbcb99553a8088452c65b286dfe7b7d22af197622c6cb29413a",
+      legacyOrderId:
+        "muse-fair-frontier-order:sha256:"
+        + "8a0cd4ed256937267cfacdb01c8a6aab7ea7e798d8313e2f4aa034ee171a2686",
+      legacySettlementResultId:
+        "muse-candidate-ledger:sha256:"
+        + "87dd265f21d2d124664b7118d8456ddfdb21172e58dde02f369f1f2e0a1ecac2",
+      legacyWitnessReceiptId:
+        "muse-thread-rooted-witness-receipt:sha256:"
+        + "94f397b02cf332230dbeb52b1b5dfbd7e6b15d5d1c1c8ff1f5e3bc0569f8e367"
+    });
     expect(first.providerReceipt.receiptId).toBe(source.receipt.receiptId);
     expect(first.graphObservationReceipt.observedAt).toBe(AT);
     expect(first.graphEvidence.receipt.status).toBe("abstained");

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   FairWitnessFrontierSettlementError,
-  deriveFairWitnessLaneV1
+  deriveFairWitnessLaneV1,
+  settleFairWitnessFrontier
 } from "./fair-witness-frontier-settlement.js";
 import {
   ThreadRootedWitnessDocumentsError,
@@ -161,6 +162,62 @@ function frontier(value: Record<string, any>) {
 }
 
 describe("witness-derived lane mapping", () => {
+  it("rejects cross-scope provider-head replay at direct entry", () => {
+    const providerScope = { ...SCOPE };
+    const revalidationReceiptId =
+      `muse-local-attunement-head-revalidation:sha256:${"d".repeat(64)}`;
+    const endpoint = {
+      providerReceiptId:
+        `muse-local-attunement-snapshot:sha256:${"e".repeat(64)}`,
+      stateDigest: `sha256:${"f".repeat(64)}`,
+      normalizedStateBytes: 42,
+      captureCompletedAt: NOW
+    };
+    const snapshot = {
+      authority: "receipt-integrity-only",
+      kind: "process-local-provider-head-revalidation",
+      revalidationReceiptId,
+      providerId: "muse.local-attunement-store",
+      providerVersion: "muse.local-attunement-snapshot-provider.v1",
+      providerScope,
+      subject: endpoint,
+      head: {
+        ...endpoint,
+        providerReceiptId:
+          `muse-local-attunement-snapshot:sha256:${"1".repeat(64)}`
+      },
+      mintVerification:
+        "provider-owned-two-capture-pair-verified-in-composing-process",
+      mintVerificationSurvivesSerialization: false
+    };
+    const declaredFreshness = {
+      basis: "provider-head-revalidation",
+      status: "fresh",
+      providerScope,
+      observedAt: NOW,
+      assessedAt: NOW,
+      captureSpanMs: 0,
+      maxCaptureSpanMs: 25,
+      reasonId: "head-state-matched-within-bound",
+      revalidationReceiptId
+    };
+    expect(() => settleFairWitnessFrontier({
+      snapshot,
+      declaredFreshness,
+      scope: { ...providerScope, threadId: "thread-other" }
+    } as never)).toThrowError(FairWitnessFrontierSettlementError);
+    try {
+      settleFairWitnessFrontier({
+        snapshot,
+        declaredFreshness,
+        scope: { ...providerScope, threadId: "thread-other" }
+      } as never);
+    } catch (cause) {
+      expect((cause as FairWitnessFrontierSettlementError).details.reason)
+        .toBe("snapshot-freshness-pair-postcondition-failed");
+    }
+  });
+
   it("maps every current graph predicate without turning generic links into intent", () => {
     const expected = new Map<GraphPredicate, ReturnType<typeof deriveFairWitnessLaneV1>>([
       ["LINKED_TO", undefined],

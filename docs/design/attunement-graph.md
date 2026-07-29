@@ -60,6 +60,12 @@ separates serializable receipt integrity from exact in-process Provider provenan
 exposes the complete normalized state only as a non-enumerable immutable string, and
 labels freshness `unassessed`. Missing source or thread availability abstains without an
 absence claim.
+The independently verified head-revalidation sibling is Provider-owned and process-local:
+the same configured Provider captures a subject and head under an explicit span bound,
+verifies both owner/scope shells before either hidden state, and admits only exact endpoint
+equality as `fresh-at-assessment`. Cross-owner, cross-scope, fabricated-stale,
+forged-authority, and forged scope-seed receipts fail closed. This is not continuous
+stability, freshness after assessment, persistence, or action authority.
 The independently verified package-private Provider-bound composition now verifies that
 mint before state access,
 independently recomputes its bytes and digest, produces and verifies one exact Continuity
@@ -69,8 +75,8 @@ has its own grammar rather than impersonating a graph commit or generation. A si
 capture is always `unassessed`; that pairing forces graph settlement to abstain while its
 receipts still bind the exact source scope, observation, evidence, budget, retained
 nominations, and digest-counted overflow. The module is private and process-local. No
-runtime, Capsule, durable store, current-freshness comparison, or action path consumes it
-yet.
+runtime, Capsule, durable store, continuous/current freshness claim, or action path
+consumes it yet.
 AWG-030 adds the first verified personal-temporal operator: an isolated
 `/continuity-changes` query over two immutable observations and one caller-declared,
 version-bound boundary. It normalizes identical-source re-observation, classifies

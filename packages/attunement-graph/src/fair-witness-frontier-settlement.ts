@@ -18,7 +18,7 @@ import type {
 } from "./types.js";
 import {
   GraphSnapshotProvenanceError,
-  assertGraphSnapshotFreshnessPair,
+  assertGraphSnapshotFreshnessScopePair,
   type GraphDeclaredFreshnessV1,
   type GraphSnapshotProvenanceV1
 } from "./graph-snapshot-provenance.js";
@@ -115,6 +115,8 @@ type CoverageReason =
   | "caller-declared-snapshot"
   | "caller-declared-freshness"
   | "provider-capture-snapshot-integrity-only"
+  | "provider-head-revalidation-snapshot-integrity-only"
+  | "fresh-at-assessment-only"
   | "freshness-unassessed"
   | "source-authority-not-independently-verified"
   | "focus-predicate-lane-mapping-v1"
@@ -457,11 +459,15 @@ function coverage(
   const reasons: CoverageReason[] = [
     "bounded-witness-pool-only",
     snapshot.authority === "receipt-integrity-only"
-      ? "provider-capture-snapshot-integrity-only"
+      ? snapshot.kind === "process-local-provider-head-revalidation"
+        ? "provider-head-revalidation-snapshot-integrity-only"
+        : "provider-capture-snapshot-integrity-only"
       : "caller-declared-snapshot",
     ...(freshness.status === "unassessed"
       ? ["freshness-unassessed" as const]
-      : ["caller-declared-freshness" as const]),
+      : "basis" in freshness
+        ? ["fresh-at-assessment-only" as const]
+        : ["caller-declared-freshness" as const]),
     "source-authority-not-independently-verified",
     "focus-predicate-lane-mapping-v1"
   ];
@@ -484,7 +490,16 @@ function verifyComposition(
   settlement: ScopedProofDocumentSettlementResultV1
 ): void {
   try {
-    assertGraphSnapshotFreshnessPair(input.snapshot, input.declaredFreshness, "/snapshot", "/declaredFreshness");
+    assertGraphSnapshotFreshnessScopePair(
+      input.snapshot,
+      input.declaredFreshness,
+      input.scope,
+      {
+        snapshot: "/snapshot",
+        freshness: "/declaredFreshness",
+        expectedScope: "/scope"
+      }
+    );
   } catch (cause) {
     if (cause instanceof GraphSnapshotProvenanceError) internal("snapshot-freshness-pair-postcondition-failed");
     throw cause;
@@ -571,6 +586,20 @@ export type FairWitnessFrontierInput = Readonly<{
 export function settleFairWitnessFrontier(
   input: FairWitnessFrontierInput
 ): FairWitnessFrontierCompositionV1 {
+  try {
+    assertGraphSnapshotFreshnessScopePair(
+      input.snapshot,
+      input.declaredFreshness,
+      input.scope,
+      {
+        snapshot: "/snapshot",
+        freshness: "/declaredFreshness",
+        expectedScope: "/scope"
+      }
+    );
+  } catch {
+    internal("snapshot-freshness-pair-postcondition-failed");
+  }
   const core = coreIdentity(input.coreDocument);
   const prepared = input.optionals.map(prepareCandidate);
   if (

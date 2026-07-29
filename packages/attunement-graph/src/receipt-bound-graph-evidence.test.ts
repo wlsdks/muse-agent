@@ -175,6 +175,50 @@ function request(
   });
 }
 
+function headRevalidatedPair(providerScope = SCOPE) {
+  const revalidationReceiptId =
+    `muse-local-attunement-head-revalidation:sha256:${"d".repeat(64)}`;
+  const endpoint = {
+    providerReceiptId:
+      `muse-local-attunement-snapshot:sha256:${"e".repeat(64)}`,
+    stateDigest: `sha256:${"f".repeat(64)}`,
+    normalizedStateBytes: 42,
+    captureCompletedAt: OBSERVED_AT
+  };
+  const assessedAt = new Date(Date.parse(OBSERVED_AT) + 25).toISOString();
+  return {
+    snapshot: {
+      authority: "receipt-integrity-only",
+      kind: "process-local-provider-head-revalidation",
+      revalidationReceiptId,
+      providerId: "muse.local-attunement-store",
+      providerVersion: "muse.local-attunement-snapshot-provider.v1",
+      providerScope: { ...providerScope },
+      subject: endpoint,
+      head: {
+        ...endpoint,
+        providerReceiptId:
+          `muse-local-attunement-snapshot:sha256:${"1".repeat(64)}`,
+        captureCompletedAt: assessedAt
+      },
+      mintVerification:
+        "provider-owned-two-capture-pair-verified-in-composing-process",
+      mintVerificationSurvivesSerialization: false
+    },
+    freshness: {
+      basis: "provider-head-revalidation",
+      status: "fresh",
+      providerScope: { ...providerScope },
+      observedAt: OBSERVED_AT,
+      assessedAt,
+      captureSpanMs: 25,
+      maxCaptureSpanMs: 25,
+      reasonId: "head-state-matched-within-bound",
+      revalidationReceiptId
+    }
+  };
+}
+
 function expectEvidenceError(
   operation: Promise<unknown>,
   code: ReceiptBoundGraphEvidenceError["code"],
@@ -278,6 +322,20 @@ function projectionWithModelHypothesis(): ContinuityGraphProjection {
 }
 
 describe("receipt-bound Agent Graph evidence compiler", () => {
+  it("rejects cross-scope provider-head replay at direct entry", async () => {
+    const input = request();
+    const pair = headRevalidatedPair();
+    input.snapshot = pair.snapshot;
+    input.declaredFreshness = pair.freshness;
+    input.scope = { ...SCOPE, threadId: "thread_other" };
+    await expectEvidenceError(
+      compileReceiptBoundGraphEvidence(input),
+      "INVALID_INPUT",
+      "invalid-freshness",
+      "/scope"
+    );
+  });
+
   it("remains package-private rather than expanding the public graph surface", () => {
     expect(publicGraphApi).not.toHaveProperty("compileReceiptBoundGraphEvidence");
     expect(publicGraphApi).not.toHaveProperty("ReceiptBoundGraphEvidenceError");

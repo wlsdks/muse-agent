@@ -31,6 +31,44 @@ const PROVIDER_SNAPSHOT = {
   mintVerification: "verified-in-composing-process",
   mintVerificationSurvivesSerialization: false
 } as const;
+const HEAD_REVALIDATION_RECEIPT_ID =
+  `muse-local-attunement-head-revalidation:sha256:${"d".repeat(64)}`;
+const HEAD_PROVIDER_SCOPE = { ...SCOPE };
+const HEAD_ENDPOINT = {
+  providerReceiptId:
+    `muse-local-attunement-snapshot:sha256:${"e".repeat(64)}`,
+  stateDigest: `sha256:${"f".repeat(64)}`,
+  normalizedStateBytes: 42,
+  captureCompletedAt: NOW
+};
+const HEAD_SNAPSHOT = {
+  authority: "receipt-integrity-only",
+  kind: "process-local-provider-head-revalidation",
+  revalidationReceiptId: HEAD_REVALIDATION_RECEIPT_ID,
+  providerId: "muse.local-attunement-store",
+  providerVersion: "muse.local-attunement-snapshot-provider.v1",
+  providerScope: HEAD_PROVIDER_SCOPE,
+  subject: HEAD_ENDPOINT,
+  head: {
+    ...HEAD_ENDPOINT,
+    providerReceiptId:
+      `muse-local-attunement-snapshot:sha256:${"1".repeat(64)}`
+  },
+  mintVerification:
+    "provider-owned-two-capture-pair-verified-in-composing-process",
+  mintVerificationSurvivesSerialization: false
+} as const;
+const HEAD_FRESHNESS = {
+  basis: "provider-head-revalidation",
+  status: "fresh",
+  providerScope: HEAD_PROVIDER_SCOPE,
+  observedAt: NOW,
+  assessedAt: NOW,
+  captureSpanMs: 0,
+  maxCaptureSpanMs: 25,
+  reasonId: "head-state-matched-within-bound",
+  revalidationReceiptId: HEAD_REVALIDATION_RECEIPT_ID
+} as const;
 
 function assertion(
   id: string,
@@ -182,6 +220,24 @@ function copy<T>(value: T): T {
 }
 
 describe("compileThreadRootedWitnessDocuments", () => {
+  it("rejects cross-scope provider-head replay at direct entry", () => {
+    try {
+      compileThreadRootedWitnessDocuments(request({
+        scope: { ...SCOPE, threadId: "thread-other" },
+        snapshot: HEAD_SNAPSHOT,
+        declaredFreshness: HEAD_FRESHNESS
+      }));
+    } catch (cause) {
+      expect(cause).toBeInstanceOf(ThreadRootedWitnessDocumentsError);
+      expect((cause as ThreadRootedWitnessDocumentsError).details).toEqual({
+        path: "/scope",
+        reason: "snapshot-freshness-mismatch"
+      });
+      return;
+    }
+    throw new Error("expected cross-scope rejection");
+  });
+
   it("forces settlement abstention for an unassessed provider capture without inventing graph commits", () => {
     const result = compileThreadRootedWitnessDocuments({
       ...request(),

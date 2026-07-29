@@ -2,9 +2,15 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { isProxy } from "node:util/types";
 
+import {
+  bindProviderOwnedHeadRevalidation
+} from "./local-attunement-snapshot-head-revalidation.js";
 import { parseAttunementState } from "./state-validation.js";
 
 import type { AttunementState } from "./types.js";
+import type {
+  LocalAttunementSnapshotHeadRevalidation
+} from "./local-attunement-snapshot-head-revalidation.js";
 
 export const LOCAL_ATTUNEMENT_SNAPSHOT_PROVIDER_ID =
   "muse.local-attunement-store" as const;
@@ -117,6 +123,10 @@ export interface LocalAttunementSnapshotProvider {
   readonly providerVersion: typeof LOCAL_ATTUNEMENT_SNAPSHOT_PROVIDER_VERSION;
   readonly sourceId: string;
   capture(scope: unknown): Promise<LocalAttunementSnapshotCapture>;
+  captureHeadRevalidation(
+    scope: unknown,
+    options: unknown
+  ): Promise<LocalAttunementSnapshotHeadRevalidation>;
 }
 
 export type LocalAttunementSnapshotProviderErrorCode =
@@ -237,6 +247,8 @@ interface ReceiptParseContext {
 }
 
 const mintedCaptures = new WeakSet<object>();
+const captureOwners = new WeakMap<object, object>();
+const providerOwners = new WeakMap<object, object>();
 
 function boundedPath(path: string): string {
   return Buffer.byteLength(path, "utf8") <= 512 ? path : "<path-too-long>";
@@ -1090,8 +1102,27 @@ export function verifyLocalAttunementSnapshotReceiptIntegrity(
   }) as LocalAttunementSnapshotReceipt;
 }
 
-function captureDescriptors(input: object): Readonly<Record<string, PropertyDescriptor>> {
-  if (isProxy(input) || !mintedCaptures.has(input)) {
+type CaptureShell = Readonly<{
+  readonly capture: LocalAttunementSnapshotCapture;
+  readonly descriptors: Readonly<Record<string, PropertyDescriptor>>;
+  readonly receipt: LocalAttunementSnapshotReceipt;
+}>;
+
+function captureShell(
+  input: unknown,
+  expectedOwner?: object
+): CaptureShell {
+  if (
+    typeof input !== "object"
+    || input === null
+    || Array.isArray(input)
+    || isProxy(input)
+    || !mintedCaptures.has(input)
+    || (
+      expectedOwner !== undefined
+      && captureOwners.get(input) !== expectedOwner
+    )
+  ) {
     receiptFail("UNTRUSTED_CAPTURE", "not-minted", "/");
   }
   const descriptors = Object.getOwnPropertyDescriptors(input);
@@ -1102,16 +1133,6 @@ function captureDescriptors(input: object): Readonly<Record<string, PropertyDesc
       "/"
     );
   }
-  return descriptors;
-}
-
-export function verifyMintedLocalAttunementSnapshotCapture(
-  input: unknown
-): VerifiedMintedLocalAttunementSnapshotCapture {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    receiptFail("UNTRUSTED_CAPTURE", "not-minted", "/");
-  }
-  const descriptors = captureDescriptors(input);
   const status = descriptors.status;
   const provenance = descriptors.provenance;
   const receiptDescriptor = descriptors.receipt;
@@ -1161,29 +1182,10 @@ export function verifyMintedLocalAttunementSnapshotCapture(
       || state.enumerable !== false
       || state.writable !== false
       || state.configurable !== false
-      || typeof state.value !== "string"
     ) {
       receiptFail(
         "UNTRUSTED_CAPTURE",
         "invalid-capture-descriptors",
-        "/normalizedStateJson"
-      );
-    }
-    const bytes = utf8Bytes(state.value);
-    if (
-      bytes > LOCAL_ATTUNEMENT_SNAPSHOT_MAX_NORMALIZED_STATE_BYTES
-      || bytes !== receipt.normalizedStateBytes
-    ) {
-      receiptFail(
-        "UNTRUSTED_CAPTURE",
-        "state-capacity-exceeded",
-        "/normalizedStateJson"
-      );
-    }
-    if (sha256(state.value) !== receipt.stateDigest) {
-      receiptFail(
-        "UNTRUSTED_CAPTURE",
-        "state-digest-mismatch",
         "/normalizedStateJson"
       );
     }
@@ -1207,12 +1209,68 @@ export function verifyMintedLocalAttunementSnapshotCapture(
       "/status"
     );
   }
+  return Object.freeze({
+    capture: input as LocalAttunementSnapshotCapture,
+    descriptors,
+    receipt
+  });
+}
+
+/** Package-private owner shell seam; intentionally absent from export maps. */
+export function verifyMintedLocalAttunementSnapshotCaptureShellForTesting(
+  provider: LocalAttunementSnapshotProvider,
+  input: unknown
+): LocalAttunementSnapshotCapture {
+  const owner = providerOwners.get(provider);
+  if (owner === undefined) {
+    receiptFail("UNTRUSTED_CAPTURE", "not-minted", "/");
+  }
+  return captureShell(input, owner).capture;
+}
+
+export function verifyMintedLocalAttunementSnapshotCapture(
+  input: unknown
+): VerifiedMintedLocalAttunementSnapshotCapture {
+  const shell = captureShell(input);
+  if (shell.capture.status === "available") {
+    const state = shell.descriptors.normalizedStateJson;
+    if (
+      state === undefined
+      || !("value" in state)
+      || typeof state.value !== "string"
+    ) {
+      receiptFail(
+        "UNTRUSTED_CAPTURE",
+        "invalid-capture-descriptors",
+        "/normalizedStateJson"
+      );
+    }
+    const bytes = utf8Bytes(state.value);
+    if (
+      bytes > LOCAL_ATTUNEMENT_SNAPSHOT_MAX_NORMALIZED_STATE_BYTES
+      || bytes !== shell.capture.receipt.normalizedStateBytes
+    ) {
+      receiptFail(
+        "UNTRUSTED_CAPTURE",
+        "state-capacity-exceeded",
+        "/normalizedStateJson"
+      );
+    }
+    if (sha256(state.value) !== shell.capture.receipt.stateDigest) {
+      receiptFail(
+        "UNTRUSTED_CAPTURE",
+        "state-digest-mismatch",
+        "/normalizedStateJson"
+      );
+    }
+  }
   return input as VerifiedMintedLocalAttunementSnapshotCapture;
 }
 
 function mintAvailableCapture(
   receipt: LocalAttunementSnapshotReceiptV1,
-  normalizedStateJson: string
+  normalizedStateJson: string,
+  owner: object
 ): LocalAttunementSnapshotCapture {
   const capture = Object.create(null) as Record<string, unknown>;
   Object.defineProperties(capture, {
@@ -1243,11 +1301,13 @@ function mintAvailableCapture(
   });
   Object.freeze(capture);
   mintedCaptures.add(capture);
+  captureOwners.set(capture, owner);
   return capture as LocalAttunementSnapshotCapture;
 }
 
 function mintAbstainedCapture(
-  receipt: LocalAttunementSnapshotAbstentionReceiptV1
+  receipt: LocalAttunementSnapshotAbstentionReceiptV1,
+  owner: object
 ): LocalAttunementSnapshotCapture {
   const capture = Object.freeze(
     Object.assign(Object.create(null) as Record<string, unknown>, {
@@ -1257,6 +1317,7 @@ function mintAbstainedCapture(
     })
   );
   mintedCaptures.add(capture);
+  captureOwners.set(capture, owner);
   return capture as LocalAttunementSnapshotCapture;
 }
 
@@ -1264,6 +1325,7 @@ async function captureSnapshot(
   file: string,
   sourceId: string,
   dependencies: ProviderDependencies,
+  owner: object,
   input: unknown
 ): Promise<LocalAttunementSnapshotCapture> {
   const scope = parseScope(input, sourceId);
@@ -1294,7 +1356,7 @@ async function captureSnapshot(
         "/receipt"
       );
     }
-    const capture = mintAbstainedCapture(receipt);
+    const capture = mintAbstainedCapture(receipt, owner);
     try {
       verifyMintedLocalAttunementSnapshotCapture(capture);
     } catch {
@@ -1316,7 +1378,7 @@ async function captureSnapshot(
       captureCompletedAt(dependencies.clock),
       "source-capacity-exceeded"
     );
-    const capture = mintAbstainedCapture(receipt);
+    const capture = mintAbstainedCapture(receipt, owner);
     try {
       verifyMintedLocalAttunementSnapshotCapture(capture);
     } catch {
@@ -1334,7 +1396,7 @@ async function captureSnapshot(
       captureCompletedAt(dependencies.clock),
       "requested-scope-unavailable"
     );
-    const capture = mintAbstainedCapture(receipt);
+    const capture = mintAbstainedCapture(receipt, owner);
     try {
       verifyMintedLocalAttunementSnapshotCapture(capture);
     } catch {
@@ -1360,7 +1422,7 @@ async function captureSnapshot(
       "/receipt"
     );
   }
-  const capture = mintAvailableCapture(receipt, normalizedStateJson);
+  const capture = mintAvailableCapture(receipt, normalizedStateJson, owner);
   try {
     verifyMintedLocalAttunementSnapshotCapture(capture);
   } catch {
@@ -1378,6 +1440,7 @@ function createProvider(
   dependenciesOverride?: Partial<ProviderDependencies>
 ): LocalAttunementSnapshotProvider {
   const parsed = parseOptions(options);
+  const owner = Object.freeze(Object.create(null) as object);
   const dependencies: ProviderDependencies = Object.freeze({
     readState: dependenciesOverride?.readState ?? readBoundedAttunementState,
     clock: dependenciesOverride?.clock ?? parsed.clock ?? (() => new Date())
@@ -1387,14 +1450,23 @@ function createProvider(
       parsed.attunementFile,
       parsed.sourceId,
       dependencies,
+      owner,
       scope
     );
-  return Object.freeze({
+  const captureHeadRevalidation = bindProviderOwnedHeadRevalidation(
+    capture,
+    (input) => captureShell(input, owner).capture,
+    verifyMintedLocalAttunementSnapshotCapture
+  );
+  const provider = Object.freeze({
     providerId: LOCAL_ATTUNEMENT_SNAPSHOT_PROVIDER_ID,
     providerVersion: LOCAL_ATTUNEMENT_SNAPSHOT_PROVIDER_VERSION,
     sourceId: parsed.sourceId,
-    capture
+    capture,
+    captureHeadRevalidation
   });
+  providerOwners.set(provider, owner);
+  return provider;
 }
 
 export function createLocalAttunementSnapshotProvider(

@@ -63,7 +63,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-040** | Continuity Capsule v1 | User-invoked, library-only Capsule renders the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer | in progress (`AWG-040b/c` verified library-only; application integration and exact-stop capture pending) |
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
-| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` settlement, `050a2a` exact thread-rooted witnesses, `050a2b1` fair opportunity ordering, `050a2b2` witness-derived fair context admission, `050a2c` receipt-bound Agent Graph evidence compilation, `050a3a` configured-local Provider capture, and `050a3b` provider-bound Agent Graph evidence independently verified; head revalidation and verified `resumeContext` pending) |
+| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3c` independently verified; verified `resumeContext` pending) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-070** | Storage bake-off | Prove the Muse-owned local default first; compare PostgreSQL and at most one embedded candidate only as optional Adapters on correctness, cost, recovery, portability, and maintenance | pending |
@@ -74,7 +74,7 @@ Raw numbering does not activate work. Before each BUILD slice, inspect current s
 classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `monitoring`,
 `blocked`, `deferred`, `rejected`, or `superseded`. Implement only the missing delta.
 
-## Next eligible activation after AWG-050a3b
+## Current 050a3 activation
 
 Independent Sol-class architecture reviews converged on a semantic prerequisite before the
 Shadow ledger or durable database:
@@ -134,16 +134,53 @@ Shadow ledger or durable database:
   without inventing a graph commit or generation; `unassessed` freshness forces
   settlement abstention. Focused, package, workspace, verifier, and independent completion
   gates pass.
+- **AWG-050a3c (completed trusted-host temporal seam):** one Provider instance owns two
+  sequential captures under a caller-required `1..30_000 ms` bound. A process-local mint
+  classifies the pair as fresh, stale, or abstained; only byte-identical normalized
+  endpoints within the bound enter the existing five-consumer Graph chain. The Graph
+  observation remains the subject capture while the head time is recorded only as the
+  assessment boundary. Scope-bound fresh provenance can settle `partial`; stale and
+  abstained artifacts contain no Graph document/context fields. This proves neither
+  continuous interval stability nor freshness after assessment.
 
 The full decision and dissent are in
 [Muse Agent-Native Graph Core](../design/agent-native-graph-core.md). Those earlier
 fail-closed findings produced AWG-045a/045b and the now verified
 AWG-050a1/050a2a/050a2b1/050a2b2/050a2c seams rather than being bypassed. The Provider
-capture is a trusted host seam, while the graph compiler remains private deterministic
-substrate. Neither is shipped `resumeContext` or user-visible wow. After AWG-050a3b passes
-and lands, the next eligible 050a3 PLAN is an exact head-revalidation/freshness seam; it
-must compare bounded observations rather than upgrading a single read. AWG-050b then owns
-the actual Shadow `silent | digest | offer` decision receipt and counterfactual.
+capture and head-revalidation are trusted host seams, while the graph compiler remains
+private deterministic substrate. Neither is shipped `resumeContext` or user-visible wow.
+Its independent completion gate forced per-Provider process ownership,
+shell-before-hidden-state verification, closed Graph binding-receipt semantics, and exact
+scope-derived seed verification before passing. AWG-050b now owns the actual Shadow
+`silent | digest | offer` decision receipt and counterfactual.
+
+## Completed slice: AWG-050a3c
+
+- **Product meaning:** call this capability **provider-owned bounded head
+  revalidation**. The same configured-local Provider instance observes one Continuity
+  subject and then its head under a required `1..30_000 ms` capture-span bound.
+- **Truthful time contract:** equal endpoint state proves only
+  `fresh-at-assessment`. It does not prove uninterrupted stability between reads, detect
+  ABA changes, or claim freshness after the head assessment instant.
+- **Process contract:** an unforgeable per-Provider owner token binds both captures.
+  Revalidation verifies both endpoint mint/owner/scope shells before reading either
+  hidden normalized state. A one-read Provider abstention never claims a two-capture pair.
+- **Graph contract:** only exact byte count, digest, and normalized JSON equality within
+  the bound enters the existing bounded five-consumer chain. The subject remains the
+  observation; the head contributes only the assessment time. Stale or unavailable
+  results produce no Graph document/context fields.
+- **Anti-replay contract:** Provider provenance and freshness are bound to the exact
+  request scope at all five direct consumer entries. The Graph binding verifier closes
+  provider, reason, coverage order, endpoint cross-links, and the exact
+  `continuityThreadGraphRef(providerScope)` seed.
+- **Authority boundary:** fresh can settle `partial`, but still grants no absence,
+  current-world, durable-source, action, permission, or policy-promotion authority.
+- **Verification:** full Attunement and Graph suites, package builds/typechecks, TS7 fast
+  typecheck, changed tests, seven standalone verifiers, fixed legacy IDs, adversarial
+  forged-owner/receipt/seed probes, and a fresh Sol completion gate pass.
+- **Still not shipped:** there is no root/runtime/API/UI/persistence/external Graph DB
+  surface, verified `resumeContext`, Shadow decision runtime, Continuity Capsule delivery,
+  or Policy Card promotion in this slice.
 
 ## Completed slice: AWG-050a3b
 

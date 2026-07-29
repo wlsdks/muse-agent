@@ -74,7 +74,7 @@ export const PROVIDER_BOUND_GRAPH_EVIDENCE_BUDGET = Object.freeze({
 
 type ProviderSnapshot = Extract<
   GraphSnapshotProvenanceV1,
-  { readonly authority: "receipt-integrity-only" }
+  { readonly kind: "process-local-provider-capture" }
 >;
 type ProviderFreshness = Extract<
   GraphDeclaredFreshnessV1,
@@ -283,7 +283,7 @@ export class ProviderGraphBindingReceiptError extends Error {
   }
 }
 
-type DerivedNominations = Readonly<{
+export type DerivedProviderGraphNominations = Readonly<{
   readonly input: readonly Readonly<{
     readonly assertionId: string;
     readonly nominationId: string;
@@ -485,7 +485,7 @@ function nomination(
 function deriveNominations(
   observation: ContinuityObservationReceipt,
   scope: LocalAttunementSnapshotScope
-): DerivedNominations {
+): DerivedProviderGraphNominations {
   const seed = continuityThreadGraphRef(scope);
   const admissible = observation.projection.assertions.filter(
     (assertion) => assertion.epistemicClass !== "model-hypothesis"
@@ -565,12 +565,13 @@ function captureObservation(
 function assertGraphBoundary(
   graph: ReceiptBoundGraphEvidenceV1,
   observation: ContinuityObservationReceipt,
-  provider: LocalAttunementSnapshotReceiptV1
+  provider: LocalAttunementSnapshotReceiptV1,
+  expectedStatus: "partial" | "abstained"
 ): void {
   const seed = continuityThreadGraphRef(provider.scope);
   if (
-    graph.receipt.status !== "abstained"
-    || graph.legacyCompilation.status !== "abstained"
+    graph.receipt.status !== expectedStatus
+    || graph.legacyCompilation.status !== expectedStatus
     || graph.receipt.sourceObservationReceiptId !== observation.receiptId
     || !sameJson(graph.receipt.sourceScope, provider.scope)
     || !exactRef(graph.receipt.actualSeed, seed)
@@ -1351,7 +1352,7 @@ function graphStageReceipt(input: Readonly<{
   readonly provider: LocalAttunementSnapshotReceiptV1;
   readonly observation: ContinuityObservationReceipt;
   readonly graph: ReceiptBoundGraphEvidenceV1;
-  readonly nominations: DerivedNominations;
+  readonly nominations: DerivedProviderGraphNominations;
   readonly snapshot: ProviderSnapshot;
   readonly freshness: ProviderFreshness;
 }>): ProviderGraphBindingReceiptV1 {
@@ -1392,29 +1393,38 @@ function graphStageReceipt(input: Readonly<{
   });
 }
 
-export async function compileProviderBoundGraphEvidence(
-  capture: unknown
-): Promise<ProviderBoundGraphEvidenceV1> {
-  const verified = verifyCapture(capture);
-  if (verified.status === "abstained") {
-    const receipt = providerStageReceipt(verified.receipt);
-    return freezeRecord({
-      status: "abstained" as const,
-      stage: "provider" as const,
-      providerReceipt: verified.receipt,
-      receipt
-    });
+export type ProviderCaptureGraphProjection = Readonly<{
+  readonly provider: LocalAttunementSnapshotReceiptV1;
+  readonly observation: ContinuityObservationReceipt;
+  readonly nominations: DerivedProviderGraphNominations;
+  readonly graph: ReceiptBoundGraphEvidenceV1;
+}>;
+
+/**
+ * Private cross-composer projection seam. The old single-read composer and
+ * the head-revalidated composer share this exact local-state → Graph path so
+ * their only semantic difference is the closed snapshot/freshness pair.
+ */
+export async function projectAvailableProviderCaptureToGraphEvidence(
+  input: Readonly<{
+    readonly capture: unknown;
+    readonly snapshot: GraphSnapshotProvenanceV1;
+    readonly freshness: GraphDeclaredFreshnessV1;
+    readonly expectedStatus: "partial" | "abstained";
+  }>
+): Promise<ProviderCaptureGraphProjection> {
+  const verified = verifyCapture(input.capture);
+  if (verified.status !== "available") {
+    bindingFail("INVALID_CAPTURE", "capture-not-minted", "/capture");
   }
   const source = readAvailableState(verified);
   const provider = verified.receipt;
   const observation = captureObservation(provider, source.state);
   const nominations = deriveNominations(observation, provider.scope);
-  const snapshot = providerSnapshot(provider);
-  const freshness = providerFreshness();
   try {
     assertGraphSnapshotFreshnessPair(
-      snapshot,
-      freshness,
+      input.snapshot,
+      input.freshness,
       "/snapshot",
       "/declaredFreshness"
     );
@@ -1434,8 +1444,8 @@ export async function compileProviderBoundGraphEvidence(
         scope: provider.scope,
         currentGraphObservationReceipt: observation,
         recordedAtOrBefore: provider.captureCompletedAt,
-        snapshot,
-        declaredFreshness: freshness,
+        snapshot: input.snapshot,
+        declaredFreshness: input.freshness,
         nominations: {
           core: nominations.input[0],
           optionals: nominations.input.slice(1)
@@ -1450,12 +1460,42 @@ export async function compileProviderBoundGraphEvidence(
       "/graphEvidence"
     );
   }
-  assertGraphBoundary(graph, observation, provider);
+  assertGraphBoundary(
+    graph,
+    observation,
+    provider,
+    input.expectedStatus
+  );
+  return freezeRecord({ provider, observation, nominations, graph });
+}
+
+export async function compileProviderBoundGraphEvidence(
+  capture: unknown
+): Promise<ProviderBoundGraphEvidenceV1> {
+  const verified = verifyCapture(capture);
+  if (verified.status === "abstained") {
+    const receipt = providerStageReceipt(verified.receipt);
+    return freezeRecord({
+      status: "abstained" as const,
+      stage: "provider" as const,
+      providerReceipt: verified.receipt,
+      receipt
+    });
+  }
+  const provider = verified.receipt;
+  const snapshot = providerSnapshot(provider);
+  const freshness = providerFreshness();
+  const projection = await projectAvailableProviderCaptureToGraphEvidence({
+    capture: verified,
+    snapshot,
+    freshness,
+    expectedStatus: "abstained"
+  });
   const receipt = graphStageReceipt({
     provider,
-    observation,
-    graph,
-    nominations,
+    observation: projection.observation,
+    graph: projection.graph,
+    nominations: projection.nominations,
     snapshot,
     freshness
   });
@@ -1463,8 +1503,8 @@ export async function compileProviderBoundGraphEvidence(
     status: "abstained" as const,
     stage: "graph-evidence" as const,
     providerReceipt: provider,
-    graphObservationReceipt: observation,
-    graphEvidence: graph,
+    graphObservationReceipt: projection.observation,
+    graphEvidence: projection.graph,
     receipt
   });
   return freezeTree(result);
