@@ -417,7 +417,8 @@ function publicApprovalStatus(
   const effectMayHaveOccurred = state === "executing" || state === "unknown" || state === "succeeded";
   const recoveryTool = RECOVERABLE_PENDING_APPROVAL_TOOLS.has(approval.tool);
   const updatedAtMs = execution === undefined ? undefined : Date.parse(execution.updatedAt);
-  const recoverableAtMs = state === "claimed" && recoveryTool && updatedAtMs !== undefined
+  const approvalExpired = Date.parse(approval.expiresAt) <= instantMs;
+  const recoverableAtMs = state === "claimed" && !approvalExpired && recoveryTool && updatedAtMs !== undefined
     ? updatedAtMs + CLAIM_RECOVERY_LEASE_MS
     : undefined;
   return {
@@ -454,7 +455,12 @@ export async function inspectPendingApprovalStatus(
   if (!approval) {
     return { found: false, state: "not-found" };
   }
-  if (Date.parse(approval.expiresAt) <= instantMs) {
+  // Expiry removes unclaimed work from the actionable surface, but it must not
+  // hide a durable execution tombstone. In particular, a process loss after
+  // `begin` leaves `executing` as the owner's only evidence that an external
+  // effect may have occurred. Keep that redacted status inspectable forever;
+  // this does not make it recoverable or grant execution authority.
+  if (execution === undefined && Date.parse(approval.expiresAt) <= instantMs) {
     return { found: false, state: "expired" };
   }
   if (!actorOwnsApproval(actor, approval, execution)) {

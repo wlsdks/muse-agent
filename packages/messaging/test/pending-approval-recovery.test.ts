@@ -102,6 +102,96 @@ describe("inspectPendingApprovalStatus", () => {
     )).toEqual({ found: false, state: "expired" });
   });
 
+  it("keeps an expired executing tombstone owner-visible and non-recoverable without mutating it", async () => {
+    const file = join(dir, "expired-executing-status.json");
+    const claimedAt = new Date("2026-07-18T01:00:00.000Z");
+    await recordPendingApproval(file, approval("expired-executing-status", {
+      expiresAt: "2026-07-18T01:30:00.000Z"
+    }));
+    const claim = await claimPendingApproval(
+      file,
+      "expired-executing-status",
+      { requestUserId: "owner", surface: "api" },
+      () => claimedAt
+    );
+    if (!claim.claimedByThisCall) throw new Error("expected claim");
+    await beginPendingApprovalExecution(
+      file,
+      "expired-executing-status",
+      claim.claimToken,
+      () => new Date("2026-07-18T01:01:00.000Z")
+    );
+    const before = await fs.readFile(file, "utf8");
+
+    const owner = await inspectPendingApprovalStatus(
+      file,
+      "expired-executing-status",
+      { requestUserId: "owner", surface: "api" },
+      () => new Date("2026-07-18T02:00:00.000Z")
+    );
+    const intruder = await inspectPendingApprovalStatus(
+      file,
+      "expired-executing-status",
+      { requestUserId: "intruder", surface: "api" },
+      () => new Date("2026-07-18T02:00:00.000Z")
+    );
+
+    expect(owner).toMatchObject({
+      found: true,
+      status: {
+        effectMayHaveOccurred: true,
+        recoverable: false,
+        state: "executing"
+      }
+    });
+    expect(intruder).toEqual({ found: false, state: "forbidden" });
+    expect(JSON.stringify(owner)).not.toContain("private task payload");
+    expect(JSON.stringify(owner)).not.toContain(claim.claimToken);
+    expect(JSON.stringify(owner)).not.toContain("effectiveUser");
+    expect(JSON.stringify(owner)).not.toContain(file);
+    expect(await fs.readFile(file, "utf8")).toBe(before);
+  });
+
+  it("keeps an expired claimed tombstone visible without falsely advertising recovery", async () => {
+    const file = join(dir, "expired-claimed-status.json");
+    const claimedAt = new Date("2026-07-18T01:00:00.000Z");
+    await recordPendingApproval(file, approval("expired-claimed-status", {
+      expiresAt: "2026-07-18T01:30:00.000Z"
+    }));
+    const claim = await claimPendingApproval(
+      file,
+      "expired-claimed-status",
+      { requestUserId: "owner", surface: "api" },
+      () => claimedAt
+    );
+    if (!claim.claimedByThisCall) throw new Error("expected claim");
+    const before = await fs.readFile(file, "utf8");
+
+    const owner = await inspectPendingApprovalStatus(
+      file,
+      "expired-claimed-status",
+      { requestUserId: "owner", surface: "api" },
+      () => new Date("2026-07-18T02:00:00.000Z")
+    );
+
+    expect(owner).toMatchObject({
+      found: true,
+      status: {
+        effectMayHaveOccurred: false,
+        recoverable: false,
+        state: "claimed"
+      }
+    });
+    expect(owner.found && owner.status).not.toHaveProperty("recoverableAt");
+    expect(await recoverPendingApprovalClaim(
+      file,
+      "expired-claimed-status",
+      { requestUserId: "owner", surface: "api" },
+      () => new Date("2026-07-18T02:00:00.000Z")
+    )).toEqual({ claimedByThisCall: false, state: "expired" });
+    expect(await fs.readFile(file, "utf8")).toBe(before);
+  });
+
   it("marks only executing and effect-attempted terminal states as possibly effected", async () => {
     const claimedAt = () => new Date("2026-07-18T01:00:00.000Z");
     const statusFor = async (id: string) => inspectPendingApprovalStatus(
