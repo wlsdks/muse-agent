@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ObserveCollector } from "./observe-collector.js";
 import { createPersonalThread } from "./attunement-store.js";
-import { startObserveSession } from "./observe-store.js";
+import { OBSERVE_CONSENT_TEMPLATE, OBSERVE_CONSENT_VERSION, startObserveSession } from "./observe-store.js";
 import {
   createObserveActiveAppSource,
   createObserveRunner,
@@ -144,7 +144,7 @@ describe("Observe app-only runtime", () => {
       await createPersonalThread(attunementFile, { kind: "work", title: "Thread" }, { idFactory: () => "a" });
       const attunementAlias = join(directory, "attunement-alias.json");
       await symlink(attunementFile, attunementAlias);
-      await startObserveSession(`${attunementFile}.observe.json`, { acceptVersion: 1, threadId: "thread_a" }, {
+      await startObserveSession(`${attunementFile}.observe.json`, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread_a" }, {
         idFactory: () => "observe_00000000-0000-4000-8000-000000000001",
         now: () => new Date("2026-07-22T00:00:00.000Z")
       });
@@ -184,7 +184,7 @@ describe("Observe app-only runtime", () => {
     const attunementFile = join(directory, "attunement.json");
     await createPersonalThread(attunementFile, { kind: "work", title: "A" }, { idFactory: () => "a" });
     await createPersonalThread(attunementFile, { kind: "work", title: "B" }, { idFactory: () => "b" });
-    await startObserveSession(`${attunementFile}.observe.json`, { acceptVersion: 1, threadId: "thread_a" }, {
+    await startObserveSession(`${attunementFile}.observe.json`, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread_a" }, {
       idFactory: () => "observe_00000000-0000-4000-8000-000000000001",
       now: () => new Date("2026-07-22T00:00:00.000Z")
     });

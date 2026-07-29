@@ -9,6 +9,8 @@ import {
   createLocalExactArtifactResolver,
   createPersonalThread,
   linkArtifact,
+  OBSERVE_CONSENT_TEMPLATE,
+  OBSERVE_CONSENT_VERSION,
   prepareContinuityReview,
   readAttunementState,
   setWorkContinuityThread,
@@ -177,18 +179,21 @@ describe("Observe O1 API", () => {
     const app = server();
     const consent = await app.inject({ method: "GET", url: "/api/attunement/observe/consent" });
     expect(consent.statusCode).toBe(200);
-    expect(consent.json()).toMatchObject({ version: 1 });
+    expect(consent.json()).toMatchObject({
+      grantTemplate: OBSERVE_CONSENT_TEMPLATE,
+      version: OBSERVE_CONSENT_VERSION
+    });
 
     const rejected = await app.inject({
       method: "POST",
-      payload: { acceptVersion: 2, threadId },
+      payload: { acceptVersion: OBSERVE_CONSENT_VERSION, threadId },
       url: "/api/attunement/observe/sessions"
     });
     expect(rejected.statusCode).toBe(400);
 
     const started = await app.inject({
       method: "POST",
-      payload: { acceptVersion: 1, threadId },
+      payload: { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId },
       url: "/api/attunement/observe/sessions"
     });
     expect(started.statusCode).toBe(200);
@@ -206,7 +211,11 @@ describe("Observe O1 API", () => {
 
   it("blocks production thread deletion while Observe history remains", async () => {
     const app = server();
-    await app.inject({ method: "POST", payload: { acceptVersion: 1, threadId }, url: "/api/attunement/observe/sessions" });
+    await app.inject({
+      method: "POST",
+      payload: { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId },
+      url: "/api/attunement/observe/sessions"
+    });
     const response = await app.inject({ method: "POST", url: `/api/attunement/threads/${threadId}/delete` });
     expect(response.statusCode).toBe(409);
     expect((await readAttunementState(attunementFile)).threads).toHaveLength(1);

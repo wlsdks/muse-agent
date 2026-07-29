@@ -82,8 +82,12 @@ export { ActiveAttunementPolicyWriteBlockedError } from "./active-policy-write-g
 export type { ActiveAttunementPolicyWriteGate } from "./active-policy-write-gate.js";
 export {
   OBSERVE_APP_CATEGORIES,
+  OBSERVE_CONSENT_FIELDS,
+  OBSERVE_CONSENT_SOURCE,
+  OBSERVE_CONSENT_TEMPLATE,
   OBSERVE_CONSENT_TERMS,
   OBSERVE_CONSENT_VERSION,
+  OBSERVE_PAUSE_CONTROL,
   ObserveStoreError,
   forgetObserveSession,
   inspectObserveSession,
@@ -93,11 +97,14 @@ export {
 export type {
   ObserveActiveSegment,
   ObserveAppCategory,
+  ObserveConsentField,
+  ObserveConsentGrant,
   ObserveErrorCode,
   ObserveObservation,
   ObserveSession,
   ObserveSessionStatus,
-  ObserveStoreOptions
+  ObserveStoreOptions,
+  StartObserveSessionInput
 } from "./observe-store.js";
 export {
   deletePersonalThreadContinuitySafe,

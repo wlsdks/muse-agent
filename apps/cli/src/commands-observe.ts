@@ -4,14 +4,19 @@ import { resolveAttunementFile } from "@muse/autoconfigure";
 import {
   forgetObserveSession,
   inspectObserveSession,
+  OBSERVE_CONSENT_FIELDS,
+  OBSERVE_CONSENT_SOURCE,
+  OBSERVE_CONSENT_TEMPLATE,
   OBSERVE_CONSENT_TERMS,
   OBSERVE_CONSENT_VERSION,
+  OBSERVE_PAUSE_CONTROL,
   observeStatus,
   pauseObserveSession,
   resolveCanonicalObserveStateFile,
   resumeObserveSessionSafe,
   startObserveSessionSafe
 } from "@muse/attunement";
+import type { ObserveConsentField, ObserveConsentGrant } from "@muse/attunement";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -42,17 +47,64 @@ function parseVersion(value: string): number {
   return parsed;
 }
 
+function parseInteger(value: string, name: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) throw new Error(`${name} must be an integer`);
+  return parsed;
+}
+
+function parseConsent(options: {
+  readonly cadenceMs: string;
+  readonly fields: string;
+  readonly pauseControl: string;
+  readonly retentionDays: string;
+  readonly source: string;
+}): ObserveConsentGrant {
+  const fields = options.fields.split(",").map((field) => field.trim());
+  if (options.source !== OBSERVE_CONSENT_SOURCE
+    || options.pauseControl !== OBSERVE_PAUSE_CONTROL
+    || fields.length !== OBSERVE_CONSENT_FIELDS.length
+    || !OBSERVE_CONSENT_FIELDS.every((field, index) => fields[index] === field)) {
+    throw new Error("Observe consent must use the exact displayed source, fields, and pause control");
+  }
+  return {
+    cadenceMs: parseInteger(options.cadenceMs, "--cadence-ms"),
+    fields: fields as ObserveConsentField[],
+    pauseControl: OBSERVE_PAUSE_CONTROL,
+    retentionDays: parseInteger(options.retentionDays, "--retention-days"),
+    source: OBSERVE_CONSENT_SOURCE
+  };
+}
+
 export function registerObserveCommands(program: Command, io: ProgramIO): void {
   const observe = program.command("observe").description("opt-in, local-only app-category collection for one exact PersonalThread");
 
   observe.command("consent").description("show the exact Observe consent terms").action(() => {
-    write(io, { terms: OBSERVE_CONSENT_TERMS, version: OBSERVE_CONSENT_VERSION });
+    write(io, { grantTemplate: OBSERVE_CONSENT_TEMPLATE, terms: OBSERVE_CONSENT_TERMS, version: OBSERVE_CONSENT_VERSION });
   });
 
   observe.command("start <threadId>")
     .requiredOption("--accept-version <version>", "accept exactly the displayed consent version")
-    .action(async (threadId: string, options: { readonly acceptVersion: string }) => {
-      try { write(io, await startObserveSessionSafe(files(), { acceptVersion: parseVersion(options.acceptVersion), threadId })); }
+    .requiredOption("--source <source>", "accept the displayed Observe source")
+    .requiredOption("--fields <fields>", "accept the displayed comma-separated field list")
+    .requiredOption("--cadence-ms <milliseconds>", "choose collection cadence (10000-300000)")
+    .requiredOption("--retention-days <days>", "choose retention window (1-365)")
+    .requiredOption("--pause-control <command>", "accept the displayed pause control")
+    .action(async (threadId: string, options: {
+      readonly acceptVersion: string;
+      readonly cadenceMs: string;
+      readonly fields: string;
+      readonly pauseControl: string;
+      readonly retentionDays: string;
+      readonly source: string;
+    }) => {
+      try {
+        write(io, await startObserveSessionSafe(files(), {
+          acceptVersion: parseVersion(options.acceptVersion),
+          consent: parseConsent(options),
+          threadId
+        }));
+      }
       catch (cause) { fail(io, cause); }
     });
 

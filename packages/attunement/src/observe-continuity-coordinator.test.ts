@@ -10,7 +10,13 @@ import {
   resumeObserveSessionSafe,
   startObserveSessionSafe
 } from "./observe-continuity-coordinator.js";
-import { forgetObserveSession, pauseObserveSession, readObserveState } from "./observe-store.js";
+import {
+  OBSERVE_CONSENT_TEMPLATE,
+  OBSERVE_CONSENT_VERSION,
+  forgetObserveSession,
+  pauseObserveSession,
+  readObserveState
+} from "./observe-store.js";
 
 const directories: string[] = [];
 const SESSION_ID = "observe_00000000-0000-4000-8000-000000000001";
@@ -33,13 +39,13 @@ describe("Observe and PersonalThread lifecycle coordinator", () => {
   it("starts only against an exact thread and preserves both files on missing thread", async () => {
     const target = await files();
     const thread = await createPersonalThread(target.attunementFile, { kind: "work", title: "Exact work" });
-    await expect(startObserveSessionSafe(target, { acceptVersion: 1, threadId: thread.id }, {
+    await expect(startObserveSessionSafe(target, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: thread.id }, {
       idFactory: () => SESSION_ID,
       now: () => new Date("2026-07-22T00:00:00.000Z")
     })).resolves.toMatchObject({ threadId: thread.id });
     const beforeAttunement = await readFile(target.attunementFile, "utf8");
     const beforeObserve = await readFile(target.observeFile, "utf8");
-    await expect(startObserveSessionSafe(target, { acceptVersion: 1, threadId: "missing" })).rejects.toMatchObject({ code: "not-found" });
+    await expect(startObserveSessionSafe(target, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "missing" })).rejects.toMatchObject({ code: "not-found" });
     expect(await readFile(target.attunementFile, "utf8")).toBe(beforeAttunement);
     expect(await readFile(target.observeFile, "utf8")).toBe(beforeObserve);
   });
@@ -47,7 +53,7 @@ describe("Observe and PersonalThread lifecycle coordinator", () => {
   it("blocks thread deletion until explicit Observe forget", async () => {
     const target = await files();
     const thread = await createPersonalThread(target.attunementFile, { kind: "work", title: "Exact work" });
-    await startObserveSessionSafe(target, { acceptVersion: 1, threadId: thread.id }, {
+    await startObserveSessionSafe(target, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: thread.id }, {
       idFactory: () => SESSION_ID,
       now: () => new Date("2026-07-22T00:00:00.000Z")
     });
@@ -63,7 +69,7 @@ describe("Observe and PersonalThread lifecycle coordinator", () => {
     const target = await files();
     const thread = await createPersonalThread(target.attunementFile, { kind: "work", title: "Exact work" });
     await link(target.attunementFile, target.observeFile);
-    await expect(startObserveSessionSafe(target, { acceptVersion: 1, threadId: thread.id })).rejects.toMatchObject({ code: "invalid" });
+    await expect(startObserveSessionSafe(target, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: thread.id })).rejects.toMatchObject({ code: "invalid" });
   });
 
   it("serializes start/delete, competing resume, and forget/delete races across pass^5", async () => {
@@ -71,7 +77,7 @@ describe("Observe and PersonalThread lifecycle coordinator", () => {
       const startDelete = await files();
       const thread = await createPersonalThread(startDelete.attunementFile, { kind: "work", title: "Race" });
       await Promise.allSettled([
-        startObserveSessionSafe(startDelete, { acceptVersion: 1, threadId: thread.id }, { idFactory: () => SESSION_ID }),
+        startObserveSessionSafe(startDelete, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: thread.id }, { idFactory: () => SESSION_ID }),
         deletePersonalThreadContinuitySafe(startDelete, thread.id)
       ]);
       const afterThreads = (await readAttunementState(startDelete.attunementFile)).threads;
@@ -82,9 +88,9 @@ describe("Observe and PersonalThread lifecycle coordinator", () => {
       const resumeThread = await createPersonalThread(resumes.attunementFile, { kind: "work", title: "Resume" });
       const firstId = "observe_00000000-0000-4000-8000-000000000011";
       const secondId = "observe_00000000-0000-4000-8000-000000000012";
-      await startObserveSessionSafe(resumes, { acceptVersion: 1, threadId: resumeThread.id }, { idFactory: () => firstId });
+      await startObserveSessionSafe(resumes, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: resumeThread.id }, { idFactory: () => firstId });
       await pauseObserveSession(resumes.observeFile, firstId);
-      await startObserveSessionSafe(resumes, { acceptVersion: 1, threadId: resumeThread.id }, { idFactory: () => secondId });
+      await startObserveSessionSafe(resumes, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: resumeThread.id }, { idFactory: () => secondId });
       await pauseObserveSession(resumes.observeFile, secondId);
       const resumeResults = await Promise.allSettled([
         resumeObserveSessionSafe(resumes, firstId),
@@ -95,7 +101,7 @@ describe("Observe and PersonalThread lifecycle coordinator", () => {
 
       const forgetDelete = await files();
       const forgetThread = await createPersonalThread(forgetDelete.attunementFile, { kind: "work", title: "Forget" });
-      await startObserveSessionSafe(forgetDelete, { acceptVersion: 1, threadId: forgetThread.id }, { idFactory: () => SESSION_ID });
+      await startObserveSessionSafe(forgetDelete, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: forgetThread.id }, { idFactory: () => SESSION_ID });
       await Promise.allSettled([
         forgetObserveSession(forgetDelete.observeFile, SESSION_ID),
         deletePersonalThreadContinuitySafe(forgetDelete, forgetThread.id)

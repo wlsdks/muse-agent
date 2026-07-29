@@ -173,8 +173,10 @@ export async function createObserveRunnerFromEnvironment(options: ObserveRunnerE
   const observeFile = `${attunementFile}.observe.json`;
   await options.assertKnownThread(threadId);
   const configuredSession = (await readObserveState(observeFile)).sessions.find((session) => session.id === sessionId);
-  if (configuredSession?.threadId !== threadId || configuredSession.status !== "active" || configuredSession.consentVersion !== 1) {
-    throw new ObserveStoreError("conflict", "configured Observe session does not match the active PersonalThread");
+  if (configuredSession?.threadId !== threadId || configuredSession.status !== "active"
+    || configuredSession.consentVersion !== 2 || configuredSession.consentGrant === null
+    || configuredSession.consentGrant.cadenceMs !== intervalMs) {
+    throw new ObserveStoreError("conflict", "configured Observe session does not match the active consent grant");
   }
   const collector = createObserveCollector({
     attunementFile,

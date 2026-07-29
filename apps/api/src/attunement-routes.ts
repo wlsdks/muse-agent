@@ -1,8 +1,8 @@
 import { realpath } from "node:fs/promises";
 
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, type ArtifactLinkValidator, type ExactArtifactResolver } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TEMPLATE, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, type ArtifactLinkValidator, type ExactArtifactResolver } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
-import type { ContinuityOutcome, OpenPreparedContinuityPack } from "@muse/attunement";
+import type { ContinuityOutcome, ObserveConsentGrant, OpenPreparedContinuityPack } from "@muse/attunement";
 import { createQualificationLearningWriteGate } from "@muse/autoconfigure";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { readExactBrowsingVisit } from "@muse/recall";
@@ -117,7 +117,7 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
 
   server.get("/api/attunement/observe/consent", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    return { terms: OBSERVE_CONSENT_TERMS, version: OBSERVE_CONSENT_VERSION };
+    return { grantTemplate: OBSERVE_CONSENT_TEMPLATE, terms: OBSERVE_CONSENT_TERMS, version: OBSERVE_CONSENT_VERSION };
   });
 
   server.get("/api/attunement/observe/sessions", async (request, reply) => {
@@ -126,11 +126,12 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     catch (cause) { return sendObserveFailure(reply, cause); }
   });
 
-  server.post<{ Body: { readonly acceptVersion?: unknown; readonly threadId?: unknown } }>("/api/attunement/observe/sessions", async (request, reply) => {
+  server.post<{ Body: { readonly acceptVersion?: unknown; readonly consent?: unknown; readonly threadId?: unknown } }>("/api/attunement/observe/sessions", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
     try {
       return await startObserveSessionSafe({ attunementFile: gate.attunementFile }, {
         acceptVersion: request.body?.acceptVersion as number,
+        consent: request.body?.consent as ObserveConsentGrant,
         threadId: request.body?.threadId as string
       }, observeNow);
     } catch (cause) { return sendObserveFailure(reply, cause); }

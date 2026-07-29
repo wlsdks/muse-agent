@@ -6,7 +6,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createObserveCollector } from "./observe-collector.js";
 import { createPersonalThread } from "./attunement-store.js";
-import { pauseObserveSession, readObserveState, startObserveSession } from "./observe-store.js";
+import {
+  OBSERVE_CONSENT_TEMPLATE,
+  OBSERVE_CONSENT_VERSION,
+  pauseObserveSession,
+  readObserveState,
+  startObserveSession
+} from "./observe-store.js";
 
 const directories: string[] = [];
 const SESSION_ID = "observe_00000000-0000-4000-8000-000000000001";
@@ -18,7 +24,7 @@ async function setup(): Promise<{ readonly attunementFile: string; readonly file
   const file = join(directory, "observe.json");
   const attunementFile = join(directory, "attunement.json");
   await createPersonalThread(attunementFile, { kind: "work", title: "Thread" }, { idFactory: () => "a" });
-  await startObserveSession(file, { acceptVersion: 1, threadId: THREAD_ID }, {
+  await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: THREAD_ID }, {
     idFactory: () => SESSION_ID,
     now: () => new Date("2026-07-22T00:00:00.000Z")
   });

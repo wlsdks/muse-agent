@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  OBSERVE_CONSENT_TEMPLATE,
   OBSERVE_CONSENT_VERSION,
   claimObserveLease,
   emptyObserveState,
@@ -14,7 +15,8 @@ import {
   reduceObserveSample,
   resumeObserveSession,
   releaseObserveLease,
-  startObserveSession
+  startObserveSession,
+  writeObserveStateUnlocked
 } from "./observe-store.js";
 
 const directories: string[] = [];
@@ -37,7 +39,7 @@ afterEach(async () => {
 });
 
 describe("Observe O1 strict collection store", () => {
-  it("treats a missing file as the literal empty v1 state", async () => {
+  it("treats a missing file as the literal empty current state", async () => {
     expect(await readObserveState(await storeFile())).toEqual(emptyObserveState());
   });
 
@@ -45,9 +47,17 @@ describe("Observe O1 strict collection store", () => {
     const file = await storeFile();
     const session = await startObserveSession(file, {
       acceptVersion: OBSERVE_CONSENT_VERSION,
+      consent: OBSERVE_CONSENT_TEMPLATE,
       threadId: "thread-a"
     }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
-    expect(session).toMatchObject({ id: SESSION_ID, observedThroughAt: null, status: "active", threadId: "thread-a" });
+    expect(session).toMatchObject({
+      consentGrant: OBSERVE_CONSENT_TEMPLATE,
+      consentVersion: OBSERVE_CONSENT_VERSION,
+      id: SESSION_ID,
+      observedThroughAt: null,
+      status: "active",
+      threadId: "thread-a"
+    });
 
     const paused = await pauseObserveSession(file, SESSION_ID, { now: () => new Date("2026-07-22T00:01:00.000Z") });
     expect(paused.status).toBe("paused");
@@ -61,6 +71,64 @@ describe("Observe O1 strict collection store", () => {
     expect((await readObserveState(file)).sessions).toEqual([]);
   });
 
+  it.each(["source", "fields", "cadenceMs", "retentionDays", "pauseControl"] as const)(
+    "refuses enrollment when explicit consent is missing %s and leaves the store unchanged",
+    async (missing) => {
+      const file = await storeFile();
+      const consent = { ...OBSERVE_CONSENT_TEMPLATE } as Record<string, unknown>;
+      delete consent[missing];
+      await expect(startObserveSession(file, {
+        acceptVersion: OBSERVE_CONSENT_VERSION,
+        consent: consent as never,
+        threadId: "thread-a"
+      })).rejects.toMatchObject({ code: "invalid" });
+      expect(await readObserveState(file)).toEqual(emptyObserveState());
+    }
+  );
+
+  it("preserves legacy active state but blocks collection/resume without inventing consent", async () => {
+    const file = await storeFile();
+    await writeFile(file, `${JSON.stringify({
+      activeSegments: [{
+        appCategory: "writing",
+        lastSeenAt: "2026-07-22T00:00:20.000Z",
+        sessionId: SESSION_ID,
+        startedAt: "2026-07-22T00:00:10.000Z",
+        threadId: "thread-a"
+      }],
+      collectorLease: {
+        claimedAt: "2026-07-22T00:00:15.000Z",
+        collectorFingerprint: "a".repeat(64),
+        expiresAt: "2026-07-22T00:01:00.000Z",
+        fencingToken: 1,
+        sessionId: SESSION_ID
+      },
+      nextFencingToken: 2,
+      observations: [],
+      schemaVersion: 1,
+      sessions: [{
+        consentVersion: 1,
+        createdAt: "2026-07-22T00:00:00.000Z",
+        id: SESSION_ID,
+        observedThroughAt: "2026-07-22T00:00:20.000Z",
+        status: "active",
+        threadId: "thread-a",
+        updatedAt: "2026-07-22T00:00:00.000Z"
+      }]
+    })}\n`);
+    const migrated = await readObserveState(file);
+    expect(migrated).toMatchObject({
+      activeSegments: [],
+      collectorLease: null,
+      observations: [{ durationMs: 10_000, sessionId: SESSION_ID }],
+      schemaVersion: 2,
+      sessions: [{ consentGrant: null, consentVersion: 1, status: "paused" }]
+    });
+    await writeObserveStateUnlocked(file, migrated);
+    expect(await readObserveState(file)).toEqual(migrated);
+    await expect(resumeObserveSession(file, SESSION_ID)).rejects.toThrow("new explicit consent enrollment");
+  });
+
   it("rejects duplicate keys and leaves malformed bytes untouched", async () => {
     const file = await storeFile();
     const malformed = '{"schemaVersion":1,"schemaVersion":1,"sessions":[],"observations":[],"activeSegments":[],"collectorLease":null,"nextFencingToken":1}';
@@ -71,7 +139,7 @@ describe("Observe O1 strict collection store", () => {
 
   it("accepts a valid leaf alias and rejects dangling, invalid UTF-8, and oversized stores", async () => {
     const file = await storeFile();
-    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
+    await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
     const alias = `${file}.alias`;
     await symlink(file, alias);
     expect(await readObserveState(alias)).toEqual(await readObserveState(file));
@@ -86,7 +154,7 @@ describe("Observe O1 strict collection store", () => {
 
   it("records deterministic category transitions without zero-duration evidence", async () => {
     const file = await storeFile();
-    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, {
+    await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread-a" }, {
       idFactory: () => SESSION_ID,
       now: () => new Date("2026-07-22T00:00:00.000Z")
     });
@@ -106,7 +174,7 @@ describe("Observe O1 strict collection store", () => {
   it("closes gaps at lastSeen and caps observations before category handling", async () => {
     const file = await storeFile();
     const generated = [SESSION_ID, OBSERVATION_ID];
-    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, {
+    await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread-a" }, {
       idFactory: () => generated.shift()!,
       now: () => new Date("2026-07-20T00:00:00.000Z")
     });
@@ -121,7 +189,7 @@ describe("Observe O1 strict collection store", () => {
 
   it("closes a real gap only through the last accepted sample", async () => {
     const file = await storeFile();
-    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
+    await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
     await applySample(file, SESSION_ID, "writing", "2026-07-22T00:00:00.000Z");
     await applySample(file, SESSION_ID, "writing", "2026-07-22T00:01:00.000Z");
     await applySample(file, SESSION_ID, "research", "2026-07-22T00:07:00.001Z", { idFactory: () => OBSERVATION_ID });
@@ -133,7 +201,7 @@ describe("Observe O1 strict collection store", () => {
   it("caps a continuously sampled segment at exactly 24 hours", async () => {
     const file = await storeFile();
     const origin = Date.parse("2026-07-20T00:00:00.000Z");
-    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date(origin) });
+    await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date(origin) });
     let state = (reduceObserveSample(await readObserveState(file), SESSION_ID, "building", new Date(origin).toISOString())).state;
     for (let step = 1; step <= 288; step += 1) {
       state = reduceObserveSample(state, SESSION_ID, "building", new Date(origin + step * 5 * 60_000).toISOString(), step === 288 ? { idFactory: () => OBSERVATION_ID } : {}).state;
@@ -146,7 +214,7 @@ describe("Observe O1 strict collection store", () => {
     for (let pass = 0; pass < 10; pass += 1) {
       const left = await storeFile();
       const right = await storeFile();
-      for (const file of [left, right]) await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
+      for (const file of [left, right]) await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
       await applySample(left, SESSION_ID, "writing", "2026-07-22T00:00:00.000Z");
       await applySample(right, SESSION_ID, "writing", "2026-07-22T00:00:00.000Z");
       await applySample(left, SESSION_ID, "writing", "2026-07-22T00:01:00.000Z");
@@ -160,7 +228,7 @@ describe("Observe O1 strict collection store", () => {
 
   it("fences an expired collector takeover and rejects the old owner", async () => {
     const file = await storeFile();
-    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
+    await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
     const first = await claimObserveLease(file, SESSION_ID, "a".repeat(64), 10_000, "2026-07-22T00:00:01.000Z");
     const second = await claimObserveLease(file, SESSION_ID, "b".repeat(64), 10_000, "2026-07-22T00:00:31.000Z");
     expect(second.fencingToken).toBe(first.fencingToken + 1);
@@ -170,7 +238,7 @@ describe("Observe O1 strict collection store", () => {
 
   it("keeps the resume watermark and rejects wall-clock rollback", async () => {
     const file = await storeFile();
-    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
+    await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
     await pauseObserveSession(file, SESSION_ID, { now: () => new Date("2026-07-22T00:01:00.000Z") });
     await resumeObserveSession(file, SESSION_ID, { now: () => new Date("2026-07-22T00:02:00.000Z") });
     const state = await readObserveState(file);
@@ -180,7 +248,7 @@ describe("Observe O1 strict collection store", () => {
   it("retains the newest deterministic tail at the 500/501 observation boundary", async () => {
     const file = await storeFile();
     const origin = Date.parse("2026-07-22T00:00:00.000Z");
-    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date(origin) });
+    await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date(origin) });
     let state = reduceObserveSample(await readObserveState(file), SESSION_ID, "writing", new Date(origin).toISOString()).state;
     for (let index = 1; index <= 501; index += 1) {
       const suffix = index.toString(16).padStart(12, "0");
@@ -196,7 +264,7 @@ describe("Observe O1 strict collection store", () => {
   it("rejects a hostile active segment that reaches the 24-hour bound", async () => {
     const file = await storeFile();
     const origin = "2026-07-20T00:00:00.000Z";
-    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date(origin) });
+    await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date(origin) });
     const state = reduceObserveSample(await readObserveState(file), SESSION_ID, "writing", origin).state;
     const capped = "2026-07-21T00:00:00.000Z";
     const hostile = {
@@ -211,7 +279,7 @@ describe("Observe O1 strict collection store", () => {
   it("keeps exact reducer bytes deterministic across no-prior, zero-age, positive, gap, and cap cases at pass^10", async () => {
     const file = await storeFile();
     const origin = Date.parse("2026-07-20T00:00:00.000Z");
-    await startObserveSession(file, { acceptVersion: 1, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date(origin) });
+    await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date(origin) });
     const empty = await readObserveState(file);
     const zero = reduceObserveSample(empty, SESSION_ID, "writing", new Date(origin).toISOString()).state;
     const positive = reduceObserveSample(zero, SESSION_ID, "writing", new Date(origin + 60_000).toISOString()).state;

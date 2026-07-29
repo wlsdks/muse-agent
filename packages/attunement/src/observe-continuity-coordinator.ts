@@ -17,7 +17,8 @@ import {
   type ObserveSession,
   type ObserveAppCategory,
   type ObserveLeaseAuthority,
-  type ObserveStoreOptions
+  type ObserveStoreOptions,
+  type StartObserveSessionInput
 } from "./observe-store.js";
 import type { AttunementState, PersonalThread } from "./types.js";
 
@@ -78,7 +79,7 @@ export async function recordObserveSampleSafe(
 
 export async function startObserveSessionSafe(
   files: ObserveContinuityFiles,
-  input: { readonly acceptVersion: number; readonly threadId: string },
+  input: StartObserveSessionInput,
   options: ObserveStoreOptions = {}
 ): Promise<ObserveSession> {
   return withAttunementAndObserve(files, async ({ attunement, observe, observeFile }) => {
@@ -181,7 +182,8 @@ function requireObserveAffiliation(attunement: AttunementState, observe: Awaited
   requireThread(attunement, threadId);
   const session = observe.sessions.find((candidate) => candidate.id === sessionId);
   if (!session) throw new ObserveStoreError("not-found", `Observe session '${sessionId}' does not exist`);
-  if (session.threadId !== threadId || session.status !== "active" || session.consentVersion !== 1) {
+  if (session.threadId !== threadId || session.status !== "active"
+    || session.consentVersion !== 2 || session.consentGrant === null) {
     throw new ObserveStoreError("conflict", "Observe session does not match the configured active PersonalThread");
   }
   return session;
