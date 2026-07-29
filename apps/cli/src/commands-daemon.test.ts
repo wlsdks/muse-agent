@@ -2113,6 +2113,74 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.stdout).not.toContain("RUNNING");
   });
 
+  it("--install crash-loop rollback restores and reloads the exact previous LaunchAgent without touching personal stores", async () => {
+    const home = mkdtempSync(join(tmpdir(), "muse-install-crashloop-rollback-"));
+    const plistFile = join(home, "Library", "LaunchAgents", "com.muse.daemon.plist");
+    const notesDir = join(home, ".muse", "notes");
+    const noteFile = join(notesDir, "daily.md");
+    const tasksFile = join(home, ".muse", "tasks.json");
+    const previousPlist = residentLaunchAgentXml(home);
+    const noteBytes = Buffer.from([0, 10, 35, 32, 112, 114, 105, 118, 97, 116, 101, 255]);
+    const taskBytes = Buffer.from([123, 34, 105, 100, 34, 58, 34, 116, 45, 57, 56, 34, 125, 10]);
+    mkdirSync(dirname(plistFile), { recursive: true });
+    mkdirSync(notesDir, { recursive: true });
+    writeFileSync(plistFile, previousPlist, "utf8");
+    writeFileSync(noteFile, noteBytes);
+    writeFileSync(tasksFile, taskBytes);
+    const env: NodeJS.ProcessEnv = {
+      ...tmpEnv(),
+      HOME: home,
+      MUSE_DAEMON_PLIST_FILE: plistFile,
+      MUSE_NOTES_DIR: notesDir,
+      MUSE_TASKS_FILE: tasksFile
+    };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const calls: Array<{ readonly args: readonly string[]; readonly artifact: "new" | "previous" }> = [];
+    const runLaunchctl = async (args: readonly string[]) => {
+      const artifact = readFileSync(plistFile, "utf8") === previousPlist ? "previous" : "new";
+      calls.push({ args: [...args], artifact });
+      if (args[0] === "list" && artifact === "new") {
+        return {
+          code: 0,
+          stderr: "",
+          stdout: '{\n\t"LastExitStatus" = 78;\n\t"Label" = "com.muse.daemon";\n};\n'
+        };
+      }
+      if (args[0] === "list") {
+        return {
+          code: 0,
+          stderr: "",
+          stdout: '{\n\t"PID" = 4242;\n\t"LastExitStatus" = 0;\n\t"Label" = "com.muse.daemon";\n};\n'
+        };
+      }
+      return { code: 0, stderr: "", stdout: "" };
+    };
+
+    const result = await runDaemon(["--install"], {
+      env,
+      platform: "darwin",
+      registry,
+      runLaunchctl
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("crash-looping install");
+    expect(result.stderr).toContain("last exit status 78");
+    expect(result.stderr).toContain("exact previous LaunchAgent artifact was restored and reloaded");
+    expect(result.stdout).not.toMatch(/RUNNING|success|LaunchAgent written/iu);
+    expect(calls).toEqual([
+      { args: ["unload", "-w", plistFile], artifact: "previous" },
+      { args: ["load", "-w", plistFile], artifact: "new" },
+      { args: ["list", "com.muse.daemon"], artifact: "new" },
+      { args: ["unload", "-w", plistFile], artifact: "new" },
+      { args: ["load", "-w", plistFile], artifact: "previous" },
+      { args: ["list", "com.muse.daemon"], artifact: "previous" }
+    ]);
+    expect(readFileSync(plistFile, "utf8")).toBe(previousPlist);
+    expect(readFileSync(noteFile)).toEqual(noteBytes);
+    expect(readFileSync(tasksFile)).toEqual(taskBytes);
+  });
+
   it("--install re-adopts an already-loaded label after unload+load, verified running via the pid in `list`", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-install-idem-"));
     const plistFile = join(dir, "com.muse.daemon.plist");
