@@ -78,6 +78,20 @@ export {
   type ContinuityTechnicalEvidenceSlice
 } from "./evaluation.js";
 export { BASELINE_POLICY, baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
+export {
+  EXPERIENCE_LEARNING_MAX_TTL_MS,
+  EXPERIENCE_LEARNING_SCOPES,
+  EXPERIENCE_SOURCE_RUN_CLASSES,
+  proposeExperienceLearningCandidate
+} from "./experience-learning-candidate.js";
+export type {
+  ExperienceLearningCandidate,
+  ExperienceLearningScope,
+  ExperienceSourceRun,
+  ExperienceSourceRunClass,
+  ExplicitExperienceOutcome,
+  ProposeExperienceLearningCandidateInput
+} from "./experience-learning-candidate.js";
 export { ActiveAttunementPolicyWriteBlockedError } from "./active-policy-write-gate.js";
 export type { ActiveAttunementPolicyWriteGate } from "./active-policy-write-gate.js";
 export {
