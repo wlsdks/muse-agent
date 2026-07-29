@@ -8,6 +8,7 @@ import type {
   ResolvedArtifact
 } from "./types.js";
 import { fingerprintContinuityTaskState } from "./interaction-evidence.js";
+import { evaluateContinuityTemporalState } from "./continuity-temporal-state.js";
 
 function requireThread(state: AttunementState, threadId: string): PersonalThread {
   const thread = state.threads.find((candidate) => candidate.id === threadId);
@@ -22,46 +23,6 @@ function latestOutcome(state: AttunementState, threadId: string) {
     .filter((delivery) => delivery.threadId === threadId && delivery.outcome)
     .sort((left, right) => right.outcome!.recordedAt.localeCompare(left.outcome!.recordedAt));
   return deliveries[0]?.outcome?.outcome;
-}
-
-function deriveTemporalState(artifact: ResolvedArtifact, nowMs: number): ResolvedArtifact {
-  if (artifact.artifactType === "calendar-event" && artifact.calendarStartsAt && artifact.calendarEndsAt) {
-    const startsAt = Date.parse(artifact.calendarStartsAt);
-    const endsAt = Date.parse(artifact.calendarEndsAt);
-    if (Number.isFinite(startsAt) && Number.isFinite(endsAt) && endsAt >= startsAt) {
-      return {
-        ...artifact,
-        calendarTimeState: endsAt < nowMs ? "ended" : startsAt <= nowMs ? "happening" : "upcoming"
-      };
-    }
-  }
-  const dueAt = artifact.artifactType === "task"
-    ? artifact.taskDueAt
-    : artifact.artifactType === "reminder"
-      ? artifact.reminderDueAt
-      : undefined;
-  if (dueAt === undefined) return artifact;
-  const dueMs = Date.parse(dueAt);
-  if (!Number.isFinite(dueMs)) {
-    if (artifact.artifactType === "task") {
-      const { taskDueAt: _invalidDueAt, taskDueState: _invalidDueState, ...withoutInvalidDue } = artifact;
-      return withoutInvalidDue;
-    }
-    const { reminderDueAt: _invalidDueAt, reminderDueState: _invalidDueState, ...withoutInvalidDue } = artifact;
-    return withoutInvalidDue;
-  }
-  if (artifact.artifactType === "reminder") {
-    return {
-      ...artifact,
-      ...(artifact.reminderStatus === "pending"
-        ? { reminderDueState: dueMs < nowMs ? "overdue" as const : "due" as const }
-        : {})
-    };
-  }
-  return {
-    ...artifact,
-    taskDueState: artifact.taskStatus === "open" && dueMs < nowMs ? "overdue" : "due"
-  };
 }
 
 function requireExactResolvedArtifact(link: ArtifactLink, artifact: ResolvedArtifact): ResolvedArtifact {
@@ -97,7 +58,12 @@ export async function buildContinuityPack(
 
   for (const link of thread.links) {
     const resolved = await resolveExactArtifact(link);
-    const artifact = resolved ? deriveTemporalState(requireExactResolvedArtifact(link, resolved), nowMs) : undefined;
+    const artifact = resolved
+      ? evaluateContinuityTemporalState(
+        requireExactResolvedArtifact(link, resolved),
+        nowMs
+      ).artifact
+      : undefined;
     evidence.push({
       reference: {
         artifactId: link.artifactId,

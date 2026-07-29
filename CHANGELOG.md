@@ -8,6 +8,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added an internal v1 Continuity Source Observation Receipt. One caller-declared
+  observation time and one prepared Pack now produce a domain-separated, content-addressed,
+  deeply frozen receipt over all 11 source display types; JSON round-trip verification
+  reparses the same canonical projection and rejects temporal, format, budget, and digest
+  drift. The Pack producer and verifier share one versioned Temporal Rule Module, which also
+  strips hostile resolver-supplied due/time state when its prerequisites are absent while
+  preserving clean output. The receipt is local personal data and proves self-consistency,
+  not external witnessing, freshness, persistence safety, graph binding, Capsule behavior,
+  or action authority.
+
 - Added an internal, provider-neutral Continuity Source Projection Module in
   `@muse/attunement`. It validates every current `ResolvedArtifact` source type and
   observable Pack-coherence invariant, canonicalizes semantic instants and set-like fields,

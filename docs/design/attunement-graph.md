@@ -65,6 +65,13 @@ provider/type rules, observable anchor identity, policy/evidence/next-step coher
 explicit resource budgets, normalizes semantic instants and set-like fields, then returns a
 detached deeply frozen value. It deliberately has no graph dependency and makes no
 freshness, observation-time, receipt, comparison, or Pack-to-graph binding claim.
+AWG-040a2 seals that projection in a separate internal Source Observation Receipt. Capture
+accepts one caller-declared observation time, validates the Pack once, requires task,
+reminder, and calendar derived display state to match the same versioned Temporal Rule used
+by the Pack producer, then computes a domain-separated SHA-256 content address. Verification
+reparses the canonical projection and independently checks version, temporal coherence,
+complete-receipt bytes, and digest. This is integrity and self-consistency, not an
+authenticated witness or source-freshness proof.
 
 It has no application/runtime composition, durable adapter, LLM extraction, Shadow
 delivery, Capsule UI, Policy Card UI, or action authority. The Attunement Graph Engine and
@@ -179,19 +186,25 @@ already-prepared exact ContinuityPack
   → exact 11-type field/provider matrix
   → Pack identity/policy/next-step/anchor coherence
   → canonical immutable Continuity Source Projection
+  → shared versioned Temporal Rule at caller-declared observedAt
+  → content-addressed Source Observation Receipt
 ```
 
-This Module stays in `@muse/attunement`, where `ResolvedArtifact` semantics live.
+These Modules stay in `@muse/attunement`, where `ResolvedArtifact` semantics live.
 `@muse/attunement-graph` must not import provider-specific display rules, and a third shared
 package is not justified before two real adapters need the interface. The next source
-receipt slice will add caller-declared observation time, clock-relative temporal coherence,
-content addressing, and capture/verify. Only then may a Capsule manifest bind that source
-receipt to graph evidence explicitly.
+receipt now adds caller-declared observation time, clock-relative temporal coherence,
+content addressing, and capture/verify. The receipt includes
+`muse.continuity-temporal-state.v1`; changing the rule requires explicit old-version
+verification or a new receipt format. The next Capsule manifest must bind this source
+receipt to graph evidence explicitly rather than joining unrelated live values.
 
 The projection intentionally carries personal display data. Titles, summaries,
 owner-authored prompts, browsing URLs, calendar locations, contact relationships and
 birthdays are local personal data—not anonymous identifiers or safe telemetry. A durable
 consumer must define retention, forget, export, and migration before persisting it.
+The current receipt is therefore an internal pure value only. It reads no clock, source,
+file, store, model, graph, or network; no automatic capture or durable retention is implied.
 
 ## Muse-specific invention: a personal context compiler
 

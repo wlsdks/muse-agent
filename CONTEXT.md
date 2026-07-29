@@ -13,8 +13,14 @@ documents rather than here.
   never a second authority.
 - A **Source Projection** is a bounded, deterministic, immutable view of already-resolved
   source truth. It validates identity and coherence but does not prove freshness.
-- An **Observation Receipt** content-addresses what a caller declared it observed. It proves
-  self-consistency, not that an external observer witnessed the state or time.
+- An **Observation Receipt** content-addresses what a caller declared it observed. A
+  **Source Observation Receipt** preserves canonical personal display truth; a Graph
+  Observation Receipt preserves relational assertions. Each proves self-consistency, not
+  that an external observer witnessed the state or time. A Capsule must bind both explicitly.
+- A **Temporal Rule** is the versioned deterministic Module that derives task, reminder,
+  and calendar display state at one declared observation time. Producers and receipt
+  verification use the same Implementation; old receipts are never silently reinterpreted
+  through an unversioned new rule.
 - The **Evidence Graph** holds rebuildable provenance and temporal assertions. The
   **Working Graph** is an expiring, token-budgeted decision slice.
 - An **Activation Subgraph** is the smallest sufficient graph context compiled for one

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CONTINUITY_SOURCE_PROJECTION_LIMITS,
   ContinuitySourceProjectionError,
+  parseContinuitySourceProjection,
   projectContinuityPackSources
 } from "./continuity-source-projection.js";
 import { fingerprintContinuityTaskState } from "./interaction-evidence.js";
@@ -159,6 +160,21 @@ function expectInvalid(value: unknown, code = "INVALID_PACK"): void {
 }
 
 describe("projectContinuityPackSources", () => {
+  it("reparses its serialized projection through the same canonical rules", () => {
+    const projected = projectContinuityPackSources(packFor());
+    const reparsed = parseContinuitySourceProjection(
+      JSON.parse(JSON.stringify(projected))
+    );
+
+    expect(JSON.stringify(reparsed)).toBe(JSON.stringify(projected));
+    expect(Object.isFrozen(reparsed)).toBe(true);
+    expect(Object.isFrozen(reparsed.evidence[0]?.artifact)).toBe(true);
+
+    const withPackOnlyField = clone(reparsed) as unknown as Data;
+    withPackOnlyField.evidenceRefs = [];
+    expectInvalidProjection(withPackOnlyField);
+  });
+
   it("projects every current source type without losing its typed personal fields", () => {
     const input = packFor();
     const projection = projectContinuityPackSources(input);
@@ -480,3 +496,15 @@ describe("projectContinuityPackSources", () => {
     expectInvalid(input);
   });
 });
+
+function expectInvalidProjection(value: unknown): void {
+  try {
+    parseContinuitySourceProjection(value);
+    throw new Error("expected projection parsing to fail");
+  } catch (cause) {
+    expect(cause).toBeInstanceOf(ContinuitySourceProjectionError);
+    expect((cause as ContinuitySourceProjectionError).code).toBe(
+      "INVALID_PACK"
+    );
+  }
+}

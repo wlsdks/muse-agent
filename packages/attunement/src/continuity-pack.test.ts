@@ -105,6 +105,79 @@ describe("buildContinuityPack", () => {
     expect(pack.evidence.find((entry) => entry.reference.artifactType === "task")?.artifact?.taskDueState).toBe("due");
   });
 
+  it("strips hostile resolver-derived state when temporal prerequisites are absent", async () => {
+    const taskPack = await buildContinuityPack(
+      state(),
+      "thread_life",
+      async (link) => ({
+        artifactId: link.artifactId,
+        artifactType: link.artifactType,
+        providerId: link.providerId,
+        role: link.role,
+        ...(link.artifactType === "task"
+          ? { taskDueState: "overdue" as const, taskStatus: "open" as const }
+          : {}),
+        title: link.artifactId
+      })
+    );
+    expect(taskPack.evidence.find(
+      (entry) => entry.reference.artifactType === "task"
+    )?.artifact?.taskDueState).toBeUndefined();
+
+    const reminderLink: ArtifactLink = {
+      artifactId: "reminder_done",
+      artifactType: "reminder",
+      linkedAt: "2026-07-14T00:00:00.000Z",
+      linkedBy: "user",
+      providerId: "local",
+      role: "context",
+      threadId: "thread_life"
+    };
+    const calendarLink: ArtifactLink = {
+      artifactId: "calendar_partial",
+      artifactType: "calendar-event",
+      linkedAt: "2026-07-14T00:00:00.000Z",
+      linkedBy: "user",
+      providerId: "calendar:gcal",
+      role: "context",
+      threadId: "thread_life"
+    };
+    const current: AttunementState = {
+      ...state(),
+      threads: [{
+        ...state().threads[0]!,
+        links: [reminderLink, calendarLink]
+      }]
+    };
+    const pack = await prepareContinuityPack(
+      current,
+      "thread_life",
+      async (link) => link.artifactType === "reminder"
+        ? {
+            artifactId: link.artifactId,
+            artifactType: link.artifactType,
+            providerId: link.providerId,
+            reminderDueAt: "2026-07-17T09:00:00.000Z",
+            reminderDueState: "overdue",
+            reminderStatus: "fired",
+            role: link.role,
+            title: "Fired reminder"
+          }
+        : {
+            artifactId: link.artifactId,
+            artifactType: link.artifactType,
+            calendarStartsAt: "2026-07-18T08:00:00.000Z",
+            calendarTimeState: "happening",
+            providerId: link.providerId,
+            role: link.role,
+            title: "Incomplete event"
+          },
+      { now: () => Date.parse("2026-07-18T09:00:00.000Z") }
+    );
+    expect(pack.evidence[0]?.artifact?.reminderDueState).toBeUndefined();
+    expect(pack.evidence[1]?.artifact?.calendarTimeState).toBeUndefined();
+  });
+
   it.each([
     ["pending", "2026-07-17T09:00:00.000Z", "overdue"],
     ["pending", "2026-07-19T09:00:00.000Z", "due"],

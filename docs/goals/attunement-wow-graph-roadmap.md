@@ -241,6 +241,45 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
   time, temporal-state coherence, content addressing, and capture/verify over this exact
   projection before any Capsule-to-graph manifest or UI.
 
+## Completed sub-slice: AWG-040a2
+
+- **Classification at activation:** `missing`; the source projection was canonical and
+  bounded but had no observation-time coherence, portable content address, or independent
+  JSON-round-trip verifier. The existing graph receipt seals relational assertions rather
+  than all-source display truth.
+- **Architecture decision:** keep a second domain-specific receipt inside
+  `@muse/attunement`; do not wrap display truth in the graph receipt or introduce a generic
+  receipt abstraction. The Pack producer and receipt verifier share one versioned Temporal
+  Rule Module, giving callers leverage and keeping all task/reminder/calendar time truth in
+  one Implementation.
+- **Built boundary:** pure internal capture/verify over
+  `muse.continuity-source-observation.v1`. It binds the canonical all-source projection,
+  caller-declared canonical observation time, and
+  `muse.continuity-temporal-state.v1` under a domain-separated SHA-256 receipt ID. Exact
+  envelope, semantic, temporal, UTF-8 work/byte, and integrity failures remain distinct.
+- **Producer hardening:** clean Pack output remains compatible. Resolver-supplied derived
+  state is stripped when task/reminder due or calendar interval prerequisites are absent,
+  invalid, non-pending, incomplete, or reversed; reversed source times remain visible for
+  the projection's fail-closed interval rejection.
+- **Truth/privacy boundary:** content addressing proves canonical self-consistency only,
+  not authenticated observation, source freshness, stop detection, causality, usefulness,
+  or permission. The receipt intentionally contains personal titles, summaries, prompts,
+  URLs, locations, relationships, birthdays, provider IDs, and artifact IDs; persistence
+  remains prohibited pending retention, forget, export, migration, and recovery contracts.
+- **Core-roadmap overlap:** none. No onboarding 103, session-handoff 211, application
+  wiring, UI, automatic capture, source read, scheduling, or delivery was implemented.
+- **Status:** `verified-current`; the independent completion evaluator returned `PASS`
+  after independently rerunning the focused, package, changed-scope, typecheck, lint,
+  build, structural-import, internal-export, exact-byte-boundary, and diff-hygiene gates.
+- **Verification:** focused `4 files / 95 tests`; full `@muse/attunement`
+  `34 files / 270 tests`; changed scope `20 files / 207 tests`; package/root typechecks
+  and builds; root ESLint; executable import and export probes; exact
+  `1,000,000`-byte receipt acceptance plus one-byte UTF-8 overflow rejection. Root build
+  retained only the existing Vite chunk-size warning.
+- **Next eligible sub-slice:** AWG-040b Capsule manifest/compiler—explicitly bind one
+  verified Source Observation Receipt, one compatible graph Observation Receipt/current
+  change result, and current prepared truth before any presentation or action.
+
 ## Architecture gates
 
 Every source-changing slice must preserve:

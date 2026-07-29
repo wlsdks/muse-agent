@@ -668,42 +668,46 @@ function parseEvidence(
   return Object.freeze({ artifact, reference, status });
 }
 
-function parsePolicy(value: unknown): ContinuityPolicy {
+function parsePolicy(
+  value: unknown,
+  label: string
+): ContinuityPolicy {
   const record = dataRecord(
     value,
-    "pack.policy",
+    label,
     ["detail", "nextStep", "suppression", "version"],
     ["detail", "nextStep", "suppression", "version"]
   );
   return Object.freeze({
-    detail: oneOf(record.detail, DETAIL_LEVELS, "pack.policy.detail"),
+    detail: oneOf(record.detail, DETAIL_LEVELS, `${label}.detail`),
     nextStep: oneOf(
       record.nextStep,
       NEXT_STEP_PRESENTATIONS,
-      "pack.policy.nextStep"
+      `${label}.nextStep`
     ),
     suppression: oneOf(
       record.suppression,
       SUPPRESSION_MODES,
-      "pack.policy.suppression"
+      `${label}.suppression`
     ),
-    version: nonNegativeInteger(record.version, "pack.policy.version")
+    version: nonNegativeInteger(record.version, `${label}.version`)
   });
 }
 
 function parseThread(
-  value: unknown
+  value: unknown,
+  label: string
 ): Pick<PersonalThread, "id" | "kind" | "title"> {
   const record = dataRecord(
     value,
-    "pack.thread",
+    label,
     ["id", "kind", "title"],
     ["id", "kind", "title"]
   );
   return Object.freeze({
-    id: text(record.id, "pack.thread.id"),
-    kind: oneOf(record.kind, THREAD_KINDS, "pack.thread.kind"),
-    title: text(record.title, "pack.thread.title")
+    id: text(record.id, `${label}.id`),
+    kind: oneOf(record.kind, THREAD_KINDS, `${label}.kind`),
+    title: text(record.title, `${label}.title`)
   });
 }
 
@@ -767,6 +771,186 @@ function parseInteractionAnchor(
   }
 }
 
+interface ProjectionFoundation {
+  readonly deliveryPolicyVersion: number;
+  readonly evidence: readonly ContinuityEvidence[];
+  readonly policy: ContinuityPolicy;
+  readonly rawEvidence: readonly unknown[];
+}
+
+interface OpenNextStepCandidate {
+  readonly artifact: ResolvedArtifact;
+  readonly index: number;
+}
+
+function parseProjectionFoundation(
+  record: Readonly<Record<string, unknown>>,
+  label: string
+): ProjectionFoundation {
+  const policy = parsePolicy(record.policy, `${label}.policy`);
+  const deliveryPolicyVersion = nonNegativeInteger(
+    record.deliveryPolicyVersion,
+    `${label}.deliveryPolicyVersion`
+  );
+  if (deliveryPolicyVersion !== policy.version) {
+    fail(
+      "INVALID_PACK",
+      `${label} delivery policy version does not match its policy`
+    );
+  }
+
+  const rawEvidence = dataArray(
+    record.evidence,
+    `${label}.evidence`,
+    CONTINUITY_SOURCE_PROJECTION_LIMITS.maxEvidence
+  );
+  const evidence = Object.freeze(rawEvidence.map((entry, index) =>
+    parseEvidence(entry, `${label}.evidence[${index.toString()}]`)
+  ));
+  return Object.freeze({
+    deliveryPolicyVersion,
+    evidence,
+    policy,
+    rawEvidence
+  });
+}
+
+function assertUniqueEvidence(
+  evidence: readonly ContinuityEvidence[],
+  label: string
+): void {
+  const referenceKeys = evidence.map((entry) => referenceKey(entry.reference));
+  if (new Set(referenceKeys).size !== referenceKeys.length) {
+    fail("INVALID_PACK", `${label} evidence references must be unique`);
+  }
+}
+
+function findOpenNextStepCandidate(
+  evidence: readonly ContinuityEvidence[],
+  label: string
+): OpenNextStepCandidate | undefined {
+  const candidates = evidence
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) =>
+      entry.status === "available"
+      && entry.artifact?.artifactType === "task"
+      && entry.artifact.providerId === "local"
+      && entry.artifact.role === "next-step"
+      && entry.artifact.taskStatus === "open"
+    );
+  if (candidates.length > 1) {
+    fail("INVALID_PACK", `${label} has more than one open next-step artifact`);
+  }
+  const candidate = candidates[0];
+  return candidate?.entry.artifact
+    ? Object.freeze({ artifact: candidate.entry.artifact, index: candidate.index })
+    : undefined;
+}
+
+function finishProjection(
+  record: Readonly<Record<string, unknown>>,
+  foundation: ProjectionFoundation,
+  candidate: OpenNextStepCandidate | undefined,
+  label: string
+): ContinuitySourceProjection {
+  let nextStep: ResolvedArtifact | undefined;
+  if (record.nextStep !== undefined) {
+    nextStep = parseArtifact(record.nextStep, `${label}.nextStep`);
+  }
+  if (foundation.policy.nextStep === "hidden" || candidate === undefined) {
+    if (nextStep !== undefined) {
+      fail(
+        "INVALID_PACK",
+        `${label} exposes a next step forbidden by its policy or evidence`
+      );
+    }
+  } else if (
+    nextStep === undefined
+    || !sameValue(nextStep, candidate.artifact)
+  ) {
+    fail(
+      "INVALID_PACK",
+      `${label}.nextStep does not match its open evidence artifact`
+    );
+  }
+
+  const previousOutcome = record.previousOutcome === undefined
+    ? undefined
+    : oneOf(record.previousOutcome, OUTCOMES, `${label}.previousOutcome`);
+  if (
+    previousOutcome !== undefined
+    && foundation.policy.suppression !== "acknowledge-previous"
+  ) {
+    fail(
+      "INVALID_PACK",
+      `${label}.previousOutcome is outside its suppression policy`
+    );
+  }
+
+  const projection = Object.freeze({
+    deliveryPolicyVersion: foundation.deliveryPolicyVersion,
+    evidence: foundation.evidence,
+    ...(nextStep ? { nextStep } : {}),
+    policy: foundation.policy,
+    ...(previousOutcome ? { previousOutcome } : {}),
+    schemaVersion: 1 as const,
+    thread: parseThread(record.thread, `${label}.thread`)
+  });
+  const bytes = utf8Bytes(JSON.stringify(projection));
+  if (bytes > CONTINUITY_SOURCE_PROJECTION_LIMITS.maxSerializedBytes) {
+    fail(
+      "BUDGET_EXCEEDED",
+      "continuity source projection exceeds its byte budget",
+      {
+        bytes,
+        limit: CONTINUITY_SOURCE_PROJECTION_LIMITS.maxSerializedBytes
+      }
+    );
+  }
+  return projection;
+}
+
+/**
+ * Internal receipt seam: normalize and revalidate one serialized Source
+ * Projection without reconstructing Pack-only delivery evidence.
+ */
+export function parseContinuitySourceProjection(
+  value: unknown
+): ContinuitySourceProjection {
+  const cloned = clonePlainData(value, "continuity source projection");
+  const record = dataRecord(
+    cloned,
+    "projection",
+    [
+      "deliveryPolicyVersion",
+      "evidence",
+      "nextStep",
+      "policy",
+      "previousOutcome",
+      "schemaVersion",
+      "thread"
+    ],
+    [
+      "deliveryPolicyVersion",
+      "evidence",
+      "policy",
+      "schemaVersion",
+      "thread"
+    ]
+  );
+  if (record.schemaVersion !== 1) {
+    fail("INVALID_PACK", "projection.schemaVersion must be 1");
+  }
+  const foundation = parseProjectionFoundation(record, "projection");
+  assertUniqueEvidence(foundation.evidence, "projection");
+  return finishProjection(
+    record,
+    foundation,
+    findOpenNextStepCandidate(foundation.evidence, "projection"),
+    "projection"
+  );
+}
+
 export function projectContinuityPackSources(
   pack: unknown
 ): ContinuitySourceProjection {
@@ -786,23 +970,7 @@ export function projectContinuityPackSources(
     ],
     ["deliveryPolicyVersion", "evidence", "evidenceRefs", "policy", "thread"]
   );
-  const policy = parsePolicy(record.policy);
-  const deliveryPolicyVersion = nonNegativeInteger(
-    record.deliveryPolicyVersion,
-    "pack.deliveryPolicyVersion"
-  );
-  if (deliveryPolicyVersion !== policy.version) {
-    fail("INVALID_PACK", "pack delivery policy version does not match its policy");
-  }
-
-  const rawEvidence = dataArray(
-    record.evidence,
-    "pack.evidence",
-    CONTINUITY_SOURCE_PROJECTION_LIMITS.maxEvidence
-  );
-  const evidence = Object.freeze(rawEvidence.map((entry, index) =>
-    parseEvidence(entry, `pack.evidence[${index.toString()}]`)
-  ));
+  const foundation = parseProjectionFoundation(record, "pack");
   const evidenceRefs = dataArray(
     record.evidenceRefs,
     "pack.evidenceRefs",
@@ -811,36 +979,21 @@ export function projectContinuityPackSources(
     parseReference(entry, `pack.evidenceRefs[${index.toString()}]`)
   );
   if (
-    evidenceRefs.length !== evidence.length
-    || evidence.some((entry, index) =>
+    evidenceRefs.length !== foundation.evidence.length
+    || foundation.evidence.some((entry, index) =>
       referenceKey(entry.reference) !== referenceKey(evidenceRefs[index]!)
     )
   ) {
     fail("INVALID_PACK", "pack.evidenceRefs do not match evidence order");
   }
-  const referenceKeys = evidence.map((entry) => referenceKey(entry.reference));
-  if (new Set(referenceKeys).size !== referenceKeys.length) {
-    fail("INVALID_PACK", "pack evidence references must be unique");
-  }
+  assertUniqueEvidence(foundation.evidence, "pack");
 
-  const candidates = evidence
-    .map((entry, index) => ({ entry, index }))
-    .filter(({ entry }) =>
-      entry.status === "available"
-      && entry.artifact?.artifactType === "task"
-      && entry.artifact.providerId === "local"
-      && entry.artifact.role === "next-step"
-      && entry.artifact.taskStatus === "open"
-    );
-  if (candidates.length > 1) {
-    fail("INVALID_PACK", "pack has more than one open next-step artifact");
-  }
-  const candidate = candidates[0]?.entry.artifact;
-  const rawCandidateValue = candidates.length === 1
+  const candidate = findOpenNextStepCandidate(foundation.evidence, "pack");
+  const rawCandidateValue = candidate
     ? dataRecord(
       dataRecord(
-        rawEvidence[candidates[0]!.index],
-        `pack.evidence[${candidates[0]!.index.toString()}]`,
+        foundation.rawEvidence[candidate.index],
+        `pack.evidence[${candidate.index.toString()}]`,
         ["artifact", "reference", "status"],
         ["artifact", "reference", "status"]
       ).artifact,
@@ -849,45 +1002,10 @@ export function projectContinuityPackSources(
       ["artifactId", "artifactType", "providerId", "role", "title"]
     )
     : undefined;
-  parseInteractionAnchor(record.interactionAnchor, candidate, rawCandidateValue);
-
-  let nextStep: ResolvedArtifact | undefined;
-  if (record.nextStep !== undefined) {
-    nextStep = parseArtifact(record.nextStep, "pack.nextStep");
-  }
-  if (policy.nextStep === "hidden" || candidate === undefined) {
-    if (nextStep !== undefined) {
-      fail("INVALID_PACK", "pack exposes a next step forbidden by its policy or evidence");
-    }
-  } else if (nextStep === undefined || !sameValue(nextStep, candidate)) {
-    fail("INVALID_PACK", "pack.nextStep does not match its open evidence artifact");
-  }
-
-  const previousOutcome = record.previousOutcome === undefined
-    ? undefined
-    : oneOf(record.previousOutcome, OUTCOMES, "pack.previousOutcome");
-  if (
-    previousOutcome !== undefined
-    && policy.suppression !== "acknowledge-previous"
-  ) {
-    fail("INVALID_PACK", "pack.previousOutcome is outside its suppression policy");
-  }
-
-  const projection = Object.freeze({
-    deliveryPolicyVersion,
-    evidence,
-    ...(nextStep ? { nextStep } : {}),
-    policy,
-    ...(previousOutcome ? { previousOutcome } : {}),
-    schemaVersion: 1 as const,
-    thread: parseThread(record.thread)
-  });
-  const bytes = utf8Bytes(JSON.stringify(projection));
-  if (bytes > CONTINUITY_SOURCE_PROJECTION_LIMITS.maxSerializedBytes) {
-    fail("BUDGET_EXCEEDED", "continuity source projection exceeds its byte budget", {
-      bytes,
-      limit: CONTINUITY_SOURCE_PROJECTION_LIMITS.maxSerializedBytes
-    });
-  }
-  return projection;
+  parseInteractionAnchor(
+    record.interactionAnchor,
+    candidate?.artifact,
+    rawCandidateValue
+  );
+  return finishProjection(record, foundation, candidate, "pack");
 }
