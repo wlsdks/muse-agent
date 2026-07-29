@@ -569,6 +569,12 @@ export {
   type MemoryExportProvenanceLink,
   type MemoryExportProvenanceReport
 } from "./memory-export-provenance.js";
+export {
+  projectTaskReceiptMemoryConflict,
+  taskStatusMemoryKey,
+  type ExactTaskCompletionReceipt,
+  type TaskReceiptMemoryConflict
+} from "./task-receipt-memory-conflict.js";
 
 
 
