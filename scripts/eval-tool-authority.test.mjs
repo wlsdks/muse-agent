@@ -47,7 +47,14 @@ test("every live multi-step battery passes exactly one minted authority into Age
       new RegExp(`toolExposureAuthority\\s*:\\s*createEvalToolExposureAuthority\\(\"${entry.id}\"\\)`, "u"),
       `${entry.file} must use its exact shared authority profile`
     );
-    assert.match(source, /toolApprovalGate\s*:\s*allowEvalToolCall/u, `${entry.file} must use the eval-only approval decision`);
+    const approvalPattern = entry.id === "two-edit-fix"
+      ? /toolApprovalGate\s*:\s*BASELINE_ARTIFACT\s*\?\s*createEffectBudgetGate\(BASELINE_BUDGET\.maxEffects,\s*allowEvalToolCall\)\s*:\s*allowEvalToolCall/u
+      : /toolApprovalGate\s*:\s*allowEvalToolCall/u;
+    assert.match(
+      source,
+      approvalPattern,
+      `${entry.file} must use the eval-only approval decision directly or through its fixed effect-budget gate`
+    );
     assert.doesNotMatch(source, /\bcreateToolExposureAuthority\b/u, `${entry.file} must not mint or widen authority inline`);
   }
 });
