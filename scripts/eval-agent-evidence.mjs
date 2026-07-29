@@ -770,6 +770,31 @@ function readCapabilityAxisProgress(layout) {
   return progress;
 }
 
+/**
+ * Read one authenticated completed shard only when its entire stored receipt is
+ * byte-equivalent to the freshly computed expected receipt. Cache corruption
+ * and identity drift are misses; they can never become progress.
+ */
+export function readReusableCapabilityAxisProgress(options = {}) {
+  try {
+    const layout = evidenceLayout(options.reportPath, options.allowedRoot);
+    const progress = readCapabilityAxisProgress(layout);
+    const candidate = progress.find((item) => item.axis.id === options.axisId);
+    if (
+      !candidate
+      || !isCapabilityShardReceipt(
+        options.expectedReceipt,
+        candidate.axis,
+        candidate.provenance,
+      )
+      || canonicalJson(candidate.shardReceipt) !== canonicalJson(options.expectedReceipt)
+    ) return undefined;
+    return structuredClone(candidate);
+  } catch {
+    return undefined;
+  }
+}
+
 export function beginCapabilityEvidenceAttempt(options = {}) {
   const layout = evidenceLayout(options.reportPath, options.allowedRoot);
   const attemptId = options.attemptId ?? randomUUID();
@@ -802,12 +827,13 @@ export function finalizeCapabilityEvidenceAttempt(attempt, report, options = {})
   if (!finalizedReport || !capabilityReportShapeIsExact(finalizedReport)) throw evidenceError();
   const reportText = canonicalJson(finalizedReport);
   const reportSha256 = sha256(reportText);
-  const shardReceiptSha256 = currentProgress
+  const persistShardProgress = currentProgress && options.persistShardProgress !== false;
+  const shardReceiptSha256 = persistShardProgress
     ? sha256(canonicalJson(currentProgress.shardReceipt))
     : undefined;
   atomicWriteText(layout, paths.report, reportText, options);
 
-  if (currentProgress) {
+  if (persistShardProgress) {
     const latestPointer = readCanonicalJson(layout, layout.pointer);
     const latest = latestPointer.state === "ok" ? parsePointer(latestPointer.value) : undefined;
     if (!latest || latest.attemptId !== attempt.attemptId) throw evidenceError();

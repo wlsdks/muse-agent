@@ -31,6 +31,7 @@ import {
   DEFAULT_CAPABILITY_REPORT_PATH,
   finalizeCapabilityEvidenceAttempt,
   isExactCapabilityReport,
+  readReusableCapabilityAxisProgress,
 } from "./eval-agent-evidence.mjs";
 import {
   MAX_EVAL_PROCESS_DEADLINE_MS,
@@ -664,9 +665,39 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     remainingProcessDeadline,
   );
   const artifactsAfterBuild = safeArtifactSnapshot(() => captureArtifacts(runnerPath));
+  const provisionalProvenance = {
+    sourceBeforeBuild,
+    sourceAfterBuild,
+    sourceAtEnd: sourceAfterBuild,
+    artifactsAfterBuild,
+    artifactsAtEnd: artifactsAfterBuild,
+  };
+  const provisionalReceipt = selectedCapabilities.length === 1
+    ? createCapabilityShardReceipt(selectedCapabilities[0], provisionalProvenance)
+    : undefined;
+  const readReusableAxis = dependencies.readReusableAxis
+    ?? ((options) => readReusableCapabilityAxisProgress({
+      ...options,
+      allowedRoot: REPO_ROOT,
+      reportPath: DEFAULT_CAPABILITY_REPORT_PATH,
+    }));
+  const reusableProgress = selectedCapabilities.length === 1 && provisionalReceipt
+    ? readReusableAxis({
+      axisId: selectedCapabilities[0].id,
+      expectedReceipt: provisionalReceipt,
+    })
+    : undefined;
   const rows = [];
+  let reusedAxis = false;
 
   for (const capability of selectedCapabilities) {
+    if (reusableProgress?.axis?.id === capability.id) {
+      rows.push(structuredClone(reusableProgress.axis));
+      reusedAxis = true;
+      const stream = json ? stderr : stdout;
+      stream.write(`eval:agent reused ${capability.id}\n`);
+      continue;
+    }
     const startedAt = now();
     if (json) {
       stderr.write(`eval:agent running ${capability.id}\n`);
@@ -736,6 +767,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     json,
     shardReceipt,
     shardReceipts,
+    persistShardProgress: !reusedAxis,
     stderr,
     stdout,
   });
@@ -772,7 +804,15 @@ async function finishBuildFailure(reason, context) {
 
 function emitReport(
   report,
-  { dependencies, evidenceAttempt, json, shardReceipt, shardReceipts, stdout },
+  {
+    dependencies,
+    evidenceAttempt,
+    json,
+    persistShardProgress,
+    shardReceipt,
+    shardReceipts,
+    stdout,
+  },
 ) {
   let emittedReport = report;
   try {
@@ -781,7 +821,7 @@ function emitReport(
       const finalizedReport = dependencies.finishAttempt(
         evidenceAttempt,
         report,
-        { shardReceipt, shardReceipts },
+        { persistShardProgress, shardReceipt, shardReceipts },
       );
       const canonicalFinalizedReport = createCapabilityReport(finalizedReport?.capabilities, {
         generatedAt: finalizedReport?.generatedAt,

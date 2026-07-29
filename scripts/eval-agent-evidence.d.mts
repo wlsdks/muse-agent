@@ -8,6 +8,7 @@ export interface CapabilityEvidenceOptions {
   readonly reportPath?: string;
   readonly allowedRoot?: string;
   readonly attemptId?: string;
+  readonly persistShardProgress?: boolean;
   readonly rename?: (from: string, to: string) => void;
   readonly fsync?: (descriptor: number) => void;
   readonly shardReceipt?: unknown;
@@ -32,3 +33,9 @@ export function finalizeCapabilityEvidenceAttempt(
 ): void;
 export function inspectCapabilityEvidence(options?: CapabilityEvidenceOptions): CapabilityEvidenceInspection;
 export function isCanonicalPassingCapabilityReport(report: unknown): boolean;
+export function readReusableCapabilityAxisProgress(options: {
+  readonly allowedRoot?: string;
+  readonly axisId: string;
+  readonly expectedReceipt: unknown;
+  readonly reportPath?: string;
+}): unknown;

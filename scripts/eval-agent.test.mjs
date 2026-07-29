@@ -397,6 +397,49 @@ test("single-axis execution runs only the selected battery and cannot pass the f
   assert.deepEqual(JSON.parse(stdout), report);
 });
 
+test("single-axis execution skips the battery only for an exact reusable completed shard", async () => {
+  let batteryInvocations = 0;
+  let persistedOptions;
+  const selected = CAPABILITIES.find((capability) => capability.id === "plan-quality");
+  const cachedAxis = {
+    durationMs: 123,
+    executed: selected.repeats,
+    id: selected.id,
+    requested: selected.repeats,
+    required: selected.required,
+    status: "passed",
+  };
+  const previousExitCode = process.exitCode;
+  const report = await main(
+    ["--json", "--execute", "--axis", selected.id, "--confirm-idle", "--budget-minutes", "12"],
+    verifiedPipeline({
+      beginAttempt: () => ({ attemptId: "cache-hit" }),
+      finishAttempt: (_attempt, current, options) => {
+        persistedOptions = options;
+        return current;
+      },
+      readReusableAxis: ({ axisId, expectedReceipt }) => ({
+        axis: cachedAxis,
+        generatedAt: "2026-07-21T00:00:00.000Z",
+        matrixId: "muse-agent-capability-v2",
+        provenance: {},
+        schemaVersion: 2,
+        shardReceipt: { ...expectedReceipt, axis: axisId },
+      }),
+      spawn: () => {
+        batteryInvocations += 1;
+        throw new Error("an exact cache hit must not launch the battery");
+      },
+      stderr: { write: () => {} },
+      stdout: { write: () => {} },
+    }),
+  );
+  process.exitCode = previousExitCode;
+  assert.equal(batteryInvocations, 0);
+  assert.equal(report.capabilities.find((row) => row.id === selected.id).status, "passed");
+  assert.equal(persistedOptions.persistShardProgress, false);
+});
+
 test("the persisted aggregate is authoritative for JSON, human output, and exit status", async () => {
   const previousExitCode = process.exitCode;
   const run = async (json) => {

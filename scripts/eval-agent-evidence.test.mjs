@@ -22,6 +22,7 @@ import {
   createCapabilityAxisProgress as createCapabilityAxisProgressRaw,
   finalizeCapabilityEvidenceAttempt as finalizeCapabilityEvidenceAttemptRaw,
   inspectCapabilityEvidence,
+  readReusableCapabilityAxisProgress,
 } from "./eval-agent-evidence.mjs";
 
 function rows(status = "passed", reason = "runtime-execution-failed") {
@@ -480,6 +481,60 @@ test("owner-only axis progress persists and composes across completed same-prove
       assert.equal(statSync(join(progressRoot, "plan-quality.json")).mode & 0o777, 0o600);
       assert.equal(statSync(join(progressRoot, "tool-selection-arguments.json")).mode & 0o777, 0o600);
     }
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("only an exact authenticated completed receipt is reusable", () => {
+  const { root, reportPath } = fixture();
+  try {
+    const value = singleAxisReport(
+      "plan-quality",
+      "passed",
+      "2026-07-21T00:00:00.000Z",
+    );
+    const attempt = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    finalizeCapabilityEvidenceAttempt(attempt, value);
+    const exact = shardReceipt(value);
+    const reused = readReusableCapabilityAxisProgress({
+      allowedRoot: root,
+      axisId: "plan-quality",
+      expectedReceipt: exact,
+      reportPath,
+    });
+    assert.equal(reused.axis.id, "plan-quality");
+    assert.equal(reused.axis.status, "passed");
+
+    for (const changed of [
+      { ...exact, seed: "18" },
+      { ...exact, inputHash: "c".repeat(64) },
+      {
+        ...exact,
+        modelIdentity: { ...exact.modelIdentity, generation: "other-model:1" },
+      },
+      {
+        ...exact,
+        runtimeIdentity: { ...exact.runtimeIdentity, node: "v25.0.0" },
+      },
+      {
+        ...exact,
+        source: { ...exact.source, revision: "c".repeat(40) },
+      },
+    ]) {
+      assert.equal(readReusableCapabilityAxisProgress({
+        allowedRoot: root,
+        axisId: "plan-quality",
+        expectedReceipt: changed,
+        reportPath,
+      }), undefined);
+    }
+    assert.equal(readReusableCapabilityAxisProgress({
+      allowedRoot: root,
+      axisId: "tool-selection-arguments",
+      expectedReceipt: exact,
+      reportPath,
+    }), undefined);
   } finally {
     rmSync(root, { force: true, recursive: true });
   }
