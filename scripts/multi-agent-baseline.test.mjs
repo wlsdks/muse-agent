@@ -6,10 +6,13 @@ import test from "node:test";
 
 import {
   createEffectBudgetGate,
+  createMultiAgentCandidateArtifact,
   createObservedBaselineTool,
+  createPairedAgentComparison,
   createSingleAgentBaselineArtifact,
   createSingleAgentBaselineContract,
   summarizeSingleAgentRun,
+  writeMultiAgentEvaluationArtifact,
   writeSingleAgentBaselineArtifact
 } from "./lib/multi-agent-baseline.mjs";
 
@@ -24,6 +27,38 @@ function contract(overrides = {}) {
     },
     taskFamily: "two-edit-fix",
     ...overrides
+  });
+}
+
+function arm({
+  arm: armName,
+  contract: armContract = contract(),
+  costState = "recorded",
+  costUsd = "0",
+  passedRuns = 1,
+  uncertainEffectCount = 0
+}) {
+  const create = armName === "multi-agent"
+    ? createMultiAgentCandidateArtifact
+    : createSingleAgentBaselineArtifact;
+  return create({
+    contract: armContract,
+    generatedAt: "2026-07-29T00:00:00.000Z",
+    model: "gemma4:12b",
+    provider: "ollama",
+    runs: [{
+      costState,
+      costUsd: costState === "recorded" ? costUsd : null,
+      effectCount: 1,
+      latencyMs: 10,
+      quality: { passed: passedRuns === 1 },
+      runStatus: costState === "recorded" ? "completed" : "failed",
+      tokenUsage: costState === "recorded" ? {} : null,
+      toolCount: 2,
+      toolsUsed: ["file_edit"],
+      uncertainEffectCount
+    }],
+    source: { head: "a".repeat(40) }
   });
 }
 
@@ -210,6 +245,152 @@ test("writes a 0600 artifact atomically and rejects symlink roots", async () => 
   } finally {
     await rm(root, { force: true, recursive: true });
   }
+});
+
+test("paired comparator keeps single-agent when the more complex arm has no quality gain", () => {
+  const baseline = arm({ arm: "single-agent", passedRuns: 1 });
+  const candidate = arm({ arm: "multi-agent", passedRuns: 1 });
+  const comparison = createPairedAgentComparison({
+    baseline,
+    candidate,
+    generatedAt: "2026-07-29T00:01:00.000Z",
+    source: { evaluator: "independent", head: "b".repeat(40) }
+  });
+
+  assert.equal(comparison.decision.outcome, "keep-single-agent");
+  assert.equal(comparison.decision.promotionApplied, false);
+  assert.deepEqual(comparison.decision.reasonCodes, ["NO_QUALITY_GAIN"]);
+  assert.equal(comparison.deltas.qualityRate, 0);
+});
+
+test("paired comparator blocks non-strict, unknown-cost, and uncertain-effect candidates", () => {
+  const baseline = arm({ arm: "single-agent", passedRuns: 0 });
+  const candidate = arm({
+    arm: "multi-agent",
+    costState: "unknown",
+    passedRuns: 0,
+    uncertainEffectCount: 1
+  });
+  const comparison = createPairedAgentComparison({
+    baseline,
+    candidate,
+    generatedAt: "2026-07-29T00:01:00.000Z",
+    source: { head: "b".repeat(40) }
+  });
+
+  assert.equal(comparison.decision.outcome, "keep-single-agent");
+  assert.deepEqual(comparison.decision.reasonCodes, [
+    "NO_QUALITY_GAIN",
+    "CANDIDATE_NOT_STRICT_PASS",
+    "COST_ACCOUNTING_UNKNOWN",
+    "CANDIDATE_EFFECT_UNCERTAIN"
+  ]);
+  assert.equal(comparison.deltas.costUsd, null);
+});
+
+test("paired comparator rejects contract tampering and unfair model/provider changes", () => {
+  const baseline = arm({ arm: "single-agent", passedRuns: 0 });
+  const changedContract = contract({ datasetSeed: "other" });
+  assert.throws(
+    () => createPairedAgentComparison({
+      baseline,
+      candidate: arm({ arm: "multi-agent", contract: changedContract, passedRuns: 1 }),
+      generatedAt: "2026-07-29T00:01:00.000Z",
+      source: { head: "b".repeat(40) }
+    }),
+    /exact same fixture/u
+  );
+
+  const tampered = structuredClone(arm({ arm: "multi-agent", passedRuns: 1 }));
+  tampered.contract.budget.wallclockMs += 1;
+  assert.throws(
+    () => createPairedAgentComparison({
+      baseline,
+      candidate: tampered,
+      generatedAt: "2026-07-29T00:01:00.000Z",
+      source: { head: "b".repeat(40) }
+    }),
+    /input hash is invalid/u
+  );
+
+  const otherModel = { ...arm({ arm: "multi-agent", passedRuns: 1 }), model: "other" };
+  assert.throws(
+    () => createPairedAgentComparison({
+      baseline,
+      candidate: otherModel,
+      generatedAt: "2026-07-29T00:01:00.000Z",
+      source: { head: "b".repeat(40) }
+    }),
+    /same model and provider/u
+  );
+});
+
+test("paired comparator emits a report-only promotion recommendation only for strict known gain", async () => {
+  const baseline = arm({ arm: "single-agent", passedRuns: 0 });
+  const candidate = arm({ arm: "multi-agent", passedRuns: 1 });
+  const comparison = createPairedAgentComparison({
+    baseline,
+    candidate,
+    generatedAt: "2026-07-29T00:01:00.000Z",
+    source: { evaluator: "independent", head: "b".repeat(40) }
+  });
+  assert.equal(comparison.decision.outcome, "promote-multi-agent");
+  assert.equal(comparison.decision.promotionApplied, false);
+  assert.deepEqual(comparison.decision.reasonCodes, []);
+
+  const root = await mkdtemp(join(tmpdir(), "muse-paired-test-"));
+  try {
+    const target = await writeMultiAgentEvaluationArtifact({
+      artifact: comparison,
+      fileName: "paired.json",
+      resultsDir: root
+    });
+    assert.equal((await lstat(target)).mode & 0o777, 0o600);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("paired comparator rejects declared-unknown cost and missing provenance metadata", () => {
+  const baseline = arm({ arm: "single-agent", passedRuns: 0 });
+  const inconsistent = structuredClone(arm({ arm: "multi-agent", passedRuns: 1 }));
+  inconsistent.runs[0].costState = "unknown";
+  assert.throws(
+    () => createPairedAgentComparison({
+      baseline,
+      candidate: inconsistent,
+      generatedAt: "2026-07-29T00:01:00.000Z",
+      source: { head: "b".repeat(40) }
+    }),
+    /runs and aggregate are inconsistent/u
+  );
+
+  const missingMetadataBaseline = {
+    ...baseline,
+    generatedAt: undefined,
+    model: undefined,
+    provider: undefined,
+    source: undefined
+  };
+  assert.throws(
+    () => createPairedAgentComparison({
+      baseline: missingMetadataBaseline,
+      candidate: arm({ arm: "multi-agent", passedRuns: 1 }),
+      generatedAt: undefined,
+      source: undefined
+    }),
+    /model, provider, or provenance is invalid/u
+  );
+
+  assert.throws(
+    () => createPairedAgentComparison({
+      baseline,
+      candidate: arm({ arm: "multi-agent", passedRuns: 1 }),
+      generatedAt: "not-a-time",
+      source: {}
+    }),
+    /timestamp or provenance is invalid/u
+  );
 });
 
 test("baseline mode never reports an unavailable live dependency as a passing exit", async () => {
