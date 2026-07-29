@@ -61,7 +61,9 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-035a** | Observation Receipt format | Strict content-addressed codec preserves one caller-declared exact projection and source accounting without personal source text | completed |
 | **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | completed |
 | **AWG-040** | Continuity Capsule v1 | User-invoked, library-only Capsule renders the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer | in progress (`AWG-040b/c` verified library-only; application integration and exact-stop capture pending) |
-| **AWG-050a** | Graph v2 semantic hardening | Scope-safe immutable snapshots, proof-closed `resumeContext`, freshness, typed completeness, and adversarial isolation; pure/in-memory only | pending |
+| **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | pending |
+| **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | pending |
+| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, proof-closed `resumeContext`, freshness, typed completeness, and adversarial isolation | blocked (PLAN; BUILD never opened) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-070** | Storage bake-off | Prove the Muse-owned local default first; compare PostgreSQL and at most one embedded candidate only as optional Adapters on correctness, cost, recovery, portability, and maintenance | pending |
@@ -72,23 +74,30 @@ Raw numbering does not activate work. Before each BUILD slice, inspect current s
 classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `monitoring`,
 `blocked`, `deferred`, `rejected`, or `superseded`. Implement only the missing delta.
 
-## Next eligible activation: AWG-050a
+## Next eligible activation: AWG-045a
 
 Independent Sol-class architecture reviews converged on a semantic prerequisite before the
 Shadow ledger or durable database:
 
-- add explicit thread/source scope membership and immutable read-snapshot identity;
-- rank proof-closed explanation bundles instead of trimming individual assertions after
-  traversal;
-- return typed completeness with a separate right to assert absence;
-- surface freshness and hard canonical-byte limits;
-- adversarially reject shared-artifact cross-thread leakage and high-degree starvation;
-- keep the slice pure and in-memory, with no persistence, UI, delivery, or action authority.
+- **AWG-045a:** admit hostile external mutable data and re-verify Muse-frozen output through
+  two exact, uniform descriptor profiles that normalize to the same canonical bytes and ID.
+  Keep the helper package-private and leave every verified v1 codec untouched.
+- **AWG-045b:** settle abstract core/optional candidates through one pure ledger. Each
+  candidate ends as exactly `admitted`, `rejected`, `failed`, or `skipped`; diagnostics
+  describe only the selected logical ledger, and mandatory-overhead fallback is monotone:
+  `normal → core-only → abstain → invalid-input`.
+- **AWG-050a integration:** only after both kernels pass their own independent gates, add
+  scope membership, immutable read-snapshot identity, proof-closed bundles, freshness,
+  typed snapshot-only completeness, and adversarial cross-thread/high-degree isolation.
 
 The full decision and dissent are in
-[Muse Agent-Native Graph Core](../design/agent-native-graph-core.md). AWG-050a remains a
-candidate until a fresh harness PLAN evaluator passes its exact contract. AWG-050b then owns
-the actual Shadow `silent | digest | offer` decision receipt and counterfactual.
+[Muse Agent-Native Graph Core](../design/agent-native-graph-core.md). Two fresh AWG-050a
+PLAN activations closed without source changes: the latest found that a mutable array-length
+descriptor contradicted frozen-output re-verification, while core work-cap and
+reason-overhead rollback still admitted multiple byte-distinct diagnostics. These are
+architecture findings, not shipped behavior. AWG-050a remains blocked until AWG-045a/b are
+verified and a new integration PLAN passes. AWG-050b then owns the actual Shadow
+`silent | digest | offer` decision receipt and counterfactual.
 
 ## Completed slice: AWG-010
 

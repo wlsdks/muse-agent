@@ -486,30 +486,126 @@ Use it as a canonical portable export, not as transactional serving storage.
 - measured cache sizes and eviction rhythm from real dogfood;
 - whether any operator benefits enough from lexical/vector seed nomination to pay its cost.
 
+## Pre-integration semantic kernels
+
+The first `resumeContext` PLAN reviews found two contracts that must be proven separately.
+They are internal semantic kernels, not new product surfaces or shipped Graph DB features.
+
+### Canonical immutable envelope
+
+Canonical content and JavaScript object representation are different concerns. A value
+freshly parsed from JSON normally has writable descriptors; the same value returned by Muse
+has non-writable array indices and `length` after deep freeze. Requiring one descriptor
+shape for both makes normal capture → verify → resume impossible.
+
+The v2 kernel therefore admits exactly two uniform whole-tree profiles:
+
+| Profile | Container | Ordinary/index data properties | Array `length` |
+|---|---|---|---|
+| `external-mutable` | extensible | writable, enumerable, configurable | writable, non-enumerable, non-configurable |
+| `muse-frozen` | `Object.isFrozen` | non-writable, enumerable, non-configurable | non-writable, non-enumerable, non-configurable |
+
+Both profiles rebuild a detached canonical tree and produce identical canonical JSON,
+bytes, and IDs. A mixed, shallow-frozen, merely sealed, accessor-bearing, symbolic, sparse,
+aliased/cyclic, proxy, or unsupported-prototype tree fails closed. Verification never
+returns caller-owned data. The canonical encoder orders object keys by raw UTF-16 code
+units directly; it does not depend on `JSON.stringify` property enumeration for
+integer-like keys. Descriptor accounting charges each container and ordinary/index field
+but not the one permitted array `length`.
+
+The lifecycle is fixed:
+
+```text
+inspect profile → detach → domain normalize → enforce caps
+→ canonical UTF-8 → domain-NUL SHA-256 → attach ID
+→ full-envelope cap → deep-freeze children first → verify frozen postconditions
+```
+
+This helper stays package-private until more than one proven domain requires the same
+surface. Existing v1 observation, change, and Capsule codecs remain byte-for-byte
+untouched.
+
+### Candidate settlement ledger
+
+`resumeContext` must not derive diagnostics by mutating a partially serialized result.
+It first builds an abstract candidate inventory and settles it through one pure reducer.
+Every candidate has exactly one published terminal state:
+
+```text
+admitted | rejected | failed | skipped
+```
+
+Core settles before optionals. Semantic preflight does not consume traversal work;
+rejected candidates never rank. Eligible optionals rank deterministically, then pass gates
+in the fixed order `depth → considered → visited → assertions → token → bytes`. Each gate
+commits an explicit delta. Token or output failure retains already committed
+considered/visited work, rolls back only staged publication, and assigns one reason.
+
+The selected logical ledger—not discarded speculative serialization—is diagnostic truth:
+
+```text
+candidateCount = admitted + rejected + failed + skipped
+```
+
+If the mandatory reason and diagnostic envelope itself no longer fits, the reducer selects
+a fresh ledger through a monotone fallback:
+
+```text
+normal → core-only(first violated axis)
+       → abstain(first violated axis)
+       → invalid-input(exact minimum required)
+```
+
+This makes rollback, counters, reasons, IDs, and exact-limit golden vectors unique. Physical
+attempt counts, if later useful for performance tracing, belong in a separate trace metric
+and never change the semantic result.
+
 ## Staged delivery
 
 Do not build the database first.
 
-1. **AWG-050a — semantic hardening:** scoped snapshots, explicit scope membership,
+1. **AWG-045a — canonical immutable-envelope kernel:** one package-private v2 helper
+   admits hostile external mutable values or re-verifies Muse-frozen values through two
+   exact, whole-tree descriptor profiles. Both profiles rebuild a detached value with the
+   same direct canonical encoding, byte count, and content ID. Dense arrays permit only
+   indexed data properties plus `length`; mutable admission requires writable ordinary
+   descriptors, while frozen re-verification requires the corresponding non-writable,
+   non-configurable descriptors. Mixed, shallow-frozen, sealed, accessor-bearing, symbolic,
+   sparse, aliased/cyclic, proxy, and unsupported-prototype graphs fail. Descriptor
+   accounting excludes only array `length`. No export map or existing v1 codec changes.
+2. **AWG-045b — deterministic candidate ledger:** one package-private pure reducer owns
+   candidate terminal states, budget-gate order, counters, reason partition, and fallback.
+   Core is settled first; semantic rejects do not rank or consume work counters; eligible
+   optionals rank deterministically. Candidate conservation is exact:
+   `candidateCount = admitted + rejected + failed + skipped`. Token/byte failure rolls back
+   staged publication but retains that candidate's committed considered/visited work.
+   Mandatory-overhead failure selects a new logical ledger through the monotone lattice
+   `normal → core-only → abstain → invalid-input`; diagnostics describe only the selected
+   ledger, never discarded speculative attempts.
+3. **AWG-050a — semantic hardening integration:** scoped snapshots, explicit scope membership,
    freshness, typed completeness, proof-closed bundles, hard byte budgets, and adversarial
-   cross-thread/high-degree tests. Pure and in-memory.
-2. **AWG-050b — Shadow decision receipt:** `silent | digest | offer`, bounded reason and
+   cross-thread/high-degree tests. Pure and in-memory. It consumes both verified 045
+   kernels rather than reimplementing their rules.
+4. **AWG-050b — Shadow decision receipt:** `silent | digest | offer`, bounded reason and
    counterfactual, later return timing; no sending, action, or chain-of-thought storage.
-3. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
+5. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
    reject, rollback, and no hidden promotion.
-4. **AWG-070a — backend v2 conformance:** snapshot identity, projection compare-and-swap,
+6. **AWG-070a — backend v2 conformance:** snapshot identity, projection compare-and-swap,
    restart, crash, corruption, future version, lifecycle, physical-forget fixtures, and
    byte-identical operator results.
-5. **AWG-070b — storage bake-off:** prototype the capability-gated SQLite candidate and at
+7. **AWG-070b — storage bake-off:** prototype the capability-gated SQLite candidate and at
    most one embedded property graph against the oracle and flat baseline.
-6. **AWG-080 — durable engine:** recovery/export/rebuild, generation migration/compaction,
+8. **AWG-080 — durable engine:** recovery/export/rebuild, generation migration/compaction,
    authorized physical forget, then local runtime composition.
-7. **AWG-090 — qualification:** controlled scenarios followed by repeated local dogfood;
+9. **AWG-090 — qualification:** controlled scenarios followed by repeated local dogfood;
    usefulness, reconstruction cost, policy correction, and silence quality stay separate.
 
-AWG-050a is the next eligible BUILD candidate. It must receive a fresh harness PLAN PASS
-before source changes begin. Persistence is explicitly out of scope until the Shadow and
-Policy workloads make the backend requirements real.
+AWG-045a is the next eligible BUILD candidate and requires a fresh harness PLAN PASS before
+source changes begin. AWG-045b follows under its own gate. Two AWG-050a PLAN activations
+were closed before BUILD: the latest exposed a frozen-array descriptor contradiction and
+non-unique core/fallback accounting. AWG-050a remains blocked until both prerequisites are
+verified and a new integration PLAN passes. Persistence is explicitly out of scope until
+the Shadow and Policy workloads make the backend requirements real.
 
 Core semantic and persistence PLAN work uses `gpt-5.6-sol` at `ultra` or `xhigh`;
 implementation begins only from a bounded accepted handoff, and completion uses a fresh

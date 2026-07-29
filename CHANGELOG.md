@@ -8,6 +8,15 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Refined the agent-native graph roadmap after two fail-closed AWG-050a PLAN
+  activations. No `resumeContext` source BUILD opened. The design now isolates two
+  package-private prerequisites: AWG-045a admits hostile mutable input and re-verifies
+  Muse-frozen output through byte-identical canonical-envelope profiles; AWG-045b settles
+  core/optional candidates through one deterministic ledger and monotone
+  `normal → core-only → abstain → invalid-input` fallback. AWG-050a remains blocked until
+  both kernels pass independent gates, preventing frozen-array and budget-accounting
+  ambiguities from becoming public or persistent formats.
+
 - Added the decision-ready Muse Agent-Native Graph Core blueprint. It preserves the
   in-memory kernel as a semantic oracle, makes scoped snapshots, proof-closed activation,
   typed completeness, freshness, immutable lifecycle events, and physical forget explicit,
