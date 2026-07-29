@@ -241,9 +241,14 @@ export {
 } from "./api-server-options.js";
 
 export {
+  collectDeliveryQueueSnapshot,
   collectDeliverySafety,
   collectDeliverySafetyDiagnostic,
   inspectDeliverySafetyBacklog,
+  type DeliveryQueueAgeBucket,
+  type DeliveryQueueAgeObservation,
+  type DeliveryQueueSnapshot,
+  type DeliveryQueueSnapshotDependencies,
   type DeliverySafetyCollectorDependencies,
   type DeliverySafetyDiagnostic,
   type DeliverySafetyProviderLockDiagnostic,

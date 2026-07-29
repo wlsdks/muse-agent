@@ -1,3 +1,13 @@
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { ResidentDaemonInspection } from "@muse/runtime-state";
@@ -6,6 +16,7 @@ import type { PendingApprovalSourceSnapshot } from "@muse/messaging";
 import type { QualificationLearningHoldInspection } from "@muse/stores";
 
 import {
+  collectDeliveryQueueSnapshot,
   collectDeliverySafety,
   collectDeliverySafetyDiagnostic,
   createApiServerOptions,
@@ -14,6 +25,164 @@ import {
 } from "../src/index.js";
 
 const NOW = new Date("2026-07-27T00:00:00.000Z");
+
+describe("delivery queue snapshot", () => {
+  it("returns only pending, scheduled, overdue denominators and ages", async () => {
+    const snapshot = await collectDeliveryQueueSnapshot({
+      env: greenEnvironment(),
+      inspectPendingApprovals: async () => ({
+        result: "available",
+        value: {
+          excludedCount: 0,
+          pending: [{
+            arguments: { text: "PRIVATE ARGUMENT" },
+            createdAt: "2026-07-26T18:00:00.000Z",
+            draft: "PRIVATE DRAFT",
+            expiresAt: "2026-07-28T00:00:00.000Z",
+            id: "approval-1",
+            providerId: "log",
+            risk: "execute",
+            source: "PRIVATE SOURCE",
+            tool: "send_message"
+          }]
+        }
+      }),
+      now: () => NOW,
+      readText: async (file) => file.endsWith("followups.json")
+        ? {
+            state: "ok",
+            text: JSON.stringify({ followups: [
+              {
+                createdAt: "2026-07-25T00:00:00.000Z",
+                scheduledFor: "2026-07-26T12:00:00.000Z",
+                status: "scheduled",
+                summary: "PRIVATE"
+              },
+              {
+                createdAt: "2026-07-26T12:00:00.000Z",
+                scheduledFor: "2026-07-28T00:00:00.000Z",
+                status: "scheduled",
+                summary: "PRIVATE"
+              }
+            ] })
+          }
+        : {
+            state: "ok",
+            text: JSON.stringify({ reminders: [{
+              createdAt: "2026-07-26T00:00:00.000Z",
+              dueAt: NOW.toISOString(),
+              status: "pending",
+              text: "PRIVATE"
+            }] })
+          }
+    });
+
+    expect(snapshot).toEqual({
+      followups: {
+        overdue: { count: 1, oldestAgeMs: 12 * 60 * 60_000 },
+        scheduled: { count: 2, oldestAgeMs: 2 * 24 * 60 * 60_000 },
+        status: "ok"
+      },
+      generatedAt: NOW.toISOString(),
+      pendingDrafts: { count: 1, oldestAgeMs: 6 * 60 * 60_000, status: "ok" },
+      reminders: {
+        overdue: { count: 1, oldestAgeMs: 0 },
+        scheduled: { count: 1, oldestAgeMs: 24 * 60 * 60_000 },
+        status: "ok"
+      },
+      status: "observed"
+    });
+    expect(JSON.stringify(snapshot)).not.toMatch(/PRIVATE|ARGUMENT|recipient|summary|"text":/u);
+  });
+
+  it.each([
+    ["malformed queue", "{PRIVATE malformed", undefined],
+    ["future creation", JSON.stringify({ followups: [{
+      createdAt: "2026-07-28T00:00:00.000Z",
+      scheduledFor: "2026-07-29T00:00:00.000Z",
+      status: "scheduled"
+    }] }), undefined],
+    ["malformed inactive row", JSON.stringify({ followups: [{
+      createdAt: "2026-07-31T00:00:00.000Z",
+      scheduledFor: "not-a-time",
+      status: "fired"
+    }] }), undefined],
+    ["due before creation", JSON.stringify({ followups: [{
+      createdAt: "2026-07-26T12:00:00.000Z",
+      scheduledFor: "2026-07-26T00:00:00.000Z",
+      status: "scheduled"
+    }] }), undefined],
+    ["excluded pending", JSON.stringify({ followups: [] }), {
+      result: "available",
+      value: { excludedCount: 1, pending: [] }
+    }]
+  ] as const)("fails closed for %s evidence without mutating it", async (_name, followups, pending) => {
+    const reads: string[] = [];
+    const snapshot = await collectDeliveryQueueSnapshot({
+      env: greenEnvironment(),
+      inspectPendingApprovals: async (file) => {
+        reads.push(file);
+        return pending ?? { result: "available", value: { excludedCount: 0, pending: [] } };
+      },
+      now: () => NOW,
+      readText: async (file) => {
+        reads.push(file);
+        return file.endsWith("followups.json")
+          ? { state: "ok", text: followups }
+          : { state: "ok", text: JSON.stringify({ reminders: [] }) };
+      }
+    });
+
+    expect(snapshot.status).toBe("unverified");
+    expect(snapshot.followups.status === "unverified"
+      || snapshot.pendingDrafts.status === "unverified").toBe(true);
+    expect(reads).toHaveLength(3);
+  });
+
+  it("leaves all inspected store bytes, metadata, and directory entries unchanged", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-delivery-queue-snapshot-"));
+    const followups = join(root, "followups.json");
+    const reminders = join(root, "reminders.json");
+    const pending = join(root, "pending-approvals.json");
+    writeFileSync(followups, JSON.stringify({ followups: [{
+      createdAt: "2026-07-26T00:00:00.000Z",
+      scheduledFor: "2026-07-26T12:00:00.000Z",
+      status: "scheduled"
+    }] }), { mode: 0o600 });
+    writeFileSync(reminders, JSON.stringify({ reminders: [] }), { mode: 0o600 });
+    writeFileSync(pending, JSON.stringify({ pending: [] }), { mode: 0o600 });
+    const files = [followups, reminders, pending];
+    const before = {
+      directory: readdirSync(root),
+      files: files.map((file) => ({
+        bytes: readFileSync(file, "utf8"),
+        mode: statSync(file).mode,
+        mtimeMs: statSync(file).mtimeMs,
+        size: statSync(file).size
+      }))
+    };
+
+    await expect(collectDeliveryQueueSnapshot({
+      env: {
+        HOME: root,
+        MUSE_FOLLOWUPS_FILE: followups,
+        MUSE_PENDING_APPROVALS_FILE: pending,
+        MUSE_REMINDERS_FILE: reminders
+      },
+      now: () => NOW
+    })).resolves.toMatchObject({ status: "observed" });
+
+    expect({
+      directory: readdirSync(root),
+      files: files.map((file) => ({
+        bytes: readFileSync(file, "utf8"),
+        mode: statSync(file).mode,
+        mtimeMs: statSync(file).mtimeMs,
+        size: statSync(file).size
+      }))
+    }).toEqual(before);
+  });
+});
 
 function resident(
   env: MuseEnvironment,

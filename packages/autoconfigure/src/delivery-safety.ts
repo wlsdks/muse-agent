@@ -51,6 +51,38 @@ export interface DeliverySafetyCollectorDependencies {
   ) => Promise<ReadOnlySourceInspection<PendingApprovalSourceSnapshot>>;
 }
 
+export interface DeliveryQueueAgeBucket {
+  readonly count: number;
+  readonly oldestAgeMs: number | null;
+}
+
+export interface DeliveryQueueAgeObservation {
+  readonly overdue: DeliveryQueueAgeBucket;
+  readonly scheduled: DeliveryQueueAgeBucket;
+  readonly status: "ok" | "unverified";
+}
+
+export interface DeliveryQueueSnapshot {
+  readonly followups: DeliveryQueueAgeObservation;
+  readonly generatedAt: string;
+  readonly pendingDrafts: {
+    readonly count: number;
+    readonly oldestAgeMs: number | null;
+    readonly status: "ok" | "unverified";
+  };
+  readonly reminders: DeliveryQueueAgeObservation;
+  readonly status: "observed" | "unverified";
+}
+
+export interface DeliveryQueueSnapshotDependencies {
+  readonly env?: MuseEnvironment;
+  readonly inspectPendingApprovals?: (
+    file: string
+  ) => Promise<ReadOnlySourceInspection<PendingApprovalSourceSnapshot>>;
+  readonly now?: () => Date;
+  readonly readText?: (file: string) => Promise<DeliverySafetyTextInspection>;
+}
+
 export type DeliverySafetyProviderResolutionSource =
   | "live-arguments"
   | "persisted-arguments"
@@ -217,6 +249,131 @@ export async function inspectDeliverySafetyBacklog(
     }
   }
   return { overdue, scheduled, status: "ok" };
+}
+
+function emptyAgeObservation(status: "ok" | "unverified"): DeliveryQueueAgeObservation {
+  return {
+    overdue: { count: 0, oldestAgeMs: null },
+    scheduled: { count: 0, oldestAgeMs: null },
+    status
+  };
+}
+
+async function inspectDeliveryQueueAges(
+  file: string,
+  kind: "followups" | "reminders",
+  nowMs: number,
+  inspect: (file: string) => Promise<DeliverySafetyTextInspection>
+): Promise<DeliveryQueueAgeObservation> {
+  if (!Number.isSafeInteger(nowMs)) return emptyAgeObservation("unverified");
+  const source = await inspect(file);
+  if (source.state === "missing") return emptyAgeObservation("ok");
+  if (source.state !== "ok" || source.text === undefined) return emptyAgeObservation("unverified");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source.text) as unknown;
+  } catch {
+    return emptyAgeObservation("unverified");
+  }
+  if (!record(parsed) || !Array.isArray(parsed[kind])) return emptyAgeObservation("unverified");
+
+  const scheduledAges: number[] = [];
+  const overdueAges: number[] = [];
+  for (const row of parsed[kind]) {
+    if (!record(row)) return emptyAgeObservation("unverified");
+    const allowedStatuses = kind === "followups"
+      ? ["scheduled", "fired", "cancelled"]
+      : ["pending", "fired"];
+    if (!allowedStatuses.includes(String(row.status))) return emptyAgeObservation("unverified");
+    const createdAt = canonicalInstant(row.createdAt);
+    const dueAt = canonicalInstant(kind === "followups" ? row.scheduledFor : row.dueAt);
+    if (
+      createdAt === undefined
+      || dueAt === undefined
+      || createdAt > nowMs
+      || dueAt < createdAt
+    ) {
+      return emptyAgeObservation("unverified");
+    }
+    const active = kind === "followups" ? row.status === "scheduled" : row.status === "pending";
+    if (!active) continue;
+    scheduledAges.push(nowMs - createdAt);
+    if (dueAt <= nowMs) overdueAges.push(nowMs - dueAt);
+  }
+
+  return {
+    overdue: {
+      count: overdueAges.length,
+      oldestAgeMs: overdueAges.length === 0 ? null : Math.max(...overdueAges)
+    },
+    scheduled: {
+      count: scheduledAges.length,
+      oldestAgeMs: scheduledAges.length === 0 ? null : Math.max(...scheduledAges)
+    },
+    status: "ok"
+  };
+}
+
+/**
+ * Inspect personal delivery queues without invoking a runtime, provider, or
+ * mutation-capable store reader. The projection contains only counts and ages.
+ */
+export async function collectDeliveryQueueSnapshot(
+  dependencies: DeliveryQueueSnapshotDependencies = {}
+): Promise<DeliveryQueueSnapshot> {
+  const env = dependencies.env ?? process.env;
+  const inspect = dependencies.readText ?? inspectText;
+  const now = (dependencies.now ?? (() => new Date()))();
+  const nowMs = now.getTime();
+  const generatedAt = Number.isSafeInteger(nowMs) ? now.toISOString() : "invalid";
+  const [followups, reminders, pending] = await Promise.all([
+    inspectDeliveryQueueAges(resolveFollowupsFile(env), "followups", nowMs, inspect),
+    inspectDeliveryQueueAges(resolveRemindersFile(env), "reminders", nowMs, inspect),
+    (dependencies.inspectPendingApprovals ?? inspectPendingApprovalsSource)(
+      resolvePendingApprovalsFile(env)
+    ).catch((): ReadOnlySourceInspection<PendingApprovalSourceSnapshot> => ({
+      errorCode: "io-error",
+      result: "unreadable"
+    }))
+  ]);
+
+  let pendingDrafts: DeliveryQueueSnapshot["pendingDrafts"];
+  if (!Number.isSafeInteger(nowMs)) {
+    pendingDrafts = { count: 0, oldestAgeMs: null, status: "unverified" };
+  } else if (pending.result === "absent") {
+    pendingDrafts = { count: 0, oldestAgeMs: null, status: "ok" };
+  } else if (pending.result !== "available" || pending.value.excludedCount !== 0) {
+    pendingDrafts = { count: 0, oldestAgeMs: null, status: "unverified" };
+  } else {
+    const ages: number[] = [];
+    for (const row of pending.value.pending) {
+      const createdAt = canonicalInstant(row.createdAt);
+      if (createdAt === undefined || createdAt > nowMs) {
+        ages.length = 0;
+        pendingDrafts = { count: 0, oldestAgeMs: null, status: "unverified" };
+        break;
+      }
+      ages.push(nowMs - createdAt);
+    }
+    pendingDrafts ??= {
+      count: ages.length,
+      oldestAgeMs: ages.length === 0 ? null : Math.max(...ages),
+      status: "ok"
+    };
+  }
+
+  return {
+    followups,
+    generatedAt,
+    pendingDrafts,
+    reminders,
+    status: followups.status === "ok"
+      && reminders.status === "ok"
+      && pendingDrafts.status === "ok"
+      ? "observed"
+      : "unverified"
+  };
 }
 
 /**
