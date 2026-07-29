@@ -304,6 +304,9 @@ export interface RunDueProactiveNoticesSummary {
   readonly fired: number;
   /** Human-readable error strings, one per failed delivery. */
   readonly errors: readonly string[];
+  /** Items that were eligible by time/source discovery but intentionally held
+   *  before synthesis, investigation, delivery, or delivery-state mutation. */
+  readonly suppressions?: readonly ProactiveTriggerSuppression[];
   /**
    * When a session lock was active for this tick, the
    * ISO timestamp the lock expires at. Otherwise undefined. Callers
@@ -314,6 +317,46 @@ export interface RunDueProactiveNoticesSummary {
   /** Set when required firing-lock ownership was unavailable. No downstream
    *  read, synthesis, delivery, or state mutation was attempted. */
   readonly outcome?: "lock-error" | "lock-held";
+}
+
+export type ProactiveTriggerSuppressionReason =
+  | "permission-denied"
+  | "quiet-hours"
+  | "not-relevant";
+
+export interface ProactiveTriggerSuppression {
+  readonly itemId: string;
+  readonly kind: "calendar" | "task";
+  readonly reason: ProactiveTriggerSuppressionReason;
+}
+
+export type ProactiveTriggerEligibilityDecision =
+  | { readonly eligible: true }
+  | {
+      readonly eligible: false;
+      readonly reason: ProactiveTriggerSuppressionReason;
+    };
+
+/**
+ * Pure, deterministic admission gate for an unsolicited proactive effect.
+ * Permission is checked first, then the user's quiet-hours boundary, then
+ * trigger relevance. Callers must run this before any model/tool/provider work.
+ */
+export function evaluateProactiveTriggerEligibility(input: {
+  readonly permissionAllowed: boolean;
+  readonly quietHoursActive: boolean;
+  readonly relevant: boolean;
+}): ProactiveTriggerEligibilityDecision {
+  if (!input.permissionAllowed) {
+    return { eligible: false, reason: "permission-denied" };
+  }
+  if (input.quietHoursActive) {
+    return { eligible: false, reason: "quiet-hours" };
+  }
+  if (!input.relevant) {
+    return { eligible: false, reason: "not-relevant" };
+  }
+  return { eligible: true };
 }
 
 /**
@@ -425,29 +468,38 @@ async function runDueProactiveNoticesUnderLock(
   }
 
   const cutoff = new Date(nowDate.getTime() + leadMinutes * 60_000);
+  // Inspect one additional lead window as a bounded shadow horizon. Items in
+  // that outer window are candidates for an explainable `not-relevant`
+  // decision, but never enter synthesis or delivery until the actual cutoff.
+  const candidateLeadMinutes = Math.max(leadMinutes, 0) * 2;
+  const candidateCutoff = new Date(nowDate.getTime() + candidateLeadMinutes * 60_000);
 
   const errors: string[] = [];
-  const imminent: ImminentItem[] = [];
+  const discovered: ImminentItem[] = [];
 
   if (options.calendarRegistry) {
-    const collected = await collectImminentCalendar(options.calendarRegistry, nowDate, cutoff);
-    imminent.push(...collected.items);
+    const collected = await collectImminentCalendar(options.calendarRegistry, nowDate, candidateCutoff);
+    discovered.push(...collected.items);
     errors.push(...collected.errors);
   }
 
   if (options.tasksFile) {
-    const collected = await collectImminentTasks(options.tasksFile, nowDate, cutoff);
-    imminent.push(...collected.items);
+    const collected = await collectImminentTasks(options.tasksFile, nowDate, candidateCutoff);
+    discovered.push(...collected.items);
     errors.push(...collected.errors);
   }
 
-  if (imminent.length === 0) {
+  if (discovered.length === 0) {
     return { errors, fired: 0, imminent: 0 };
   }
+  const imminentCount = discovered.filter((item) =>
+    item.startsAt.getTime() >= nowDate.getTime()
+    && item.startsAt.getTime() <= cutoff.getTime()
+  ).length;
 
   const fired = await readProactiveFired(options.sidecarFile);
   const seen = new Set(fired.map((entry) => firedKey(entry)));
-  const prepared = sortImminentByStart(imminent).map((item) => {
+  const prepared = sortImminentByStart(discovered).map((item) => {
     const candidate: ProactiveFiredEntry = item.kind === "calendar"
       ? {
           firedAt: now().toISOString(),
@@ -473,6 +525,7 @@ async function runDueProactiveNoticesUnderLock(
   let nextFired: readonly ProactiveFiredEntry[] = fired;
   let taskFiredPersisted: readonly ProactiveFiredEntry[] = fired;
   let sidecarDirty = false;
+  const suppressions: ProactiveTriggerSuppression[] = [];
 
   // Trust instrumentation: learned avoidance + daily cap.
   // Fail-open — a corrupt/unreadable ledger never gags the daemon.
@@ -502,8 +555,19 @@ async function runDueProactiveNoticesUnderLock(
     if (seen.has(key) || (legacyWildcard !== undefined && seen.has(legacyWildcard))) {
       continue;
     }
-    // Learned avoidance — the user vetoed this source; never re-surface it.
-    if (avoided.has(sourceKey(item.kind, item.id))) {
+    const eligibility = evaluateProactiveTriggerEligibility({
+      permissionAllowed: !avoided.has(sourceKey(item.kind, item.id)),
+      quietHoursActive: options.quietHours !== undefined
+        && isQuietHour(nowDate.getHours(), options.quietHours),
+      relevant: item.startsAt.getTime() >= nowDate.getTime()
+        && item.startsAt.getTime() <= cutoff.getTime()
+    });
+    if (!eligibility.eligible) {
+      suppressions.push({
+        itemId: item.id,
+        kind: item.kind,
+        reason: eligibility.reason
+      });
       continue;
     }
     // Daily cap — once the trailing-24h budget is spent, stop surfacing
@@ -548,7 +612,12 @@ async function runDueProactiveNoticesUnderLock(
     }
   }
 
-  return { errors, fired: firedThisRun, imminent: imminent.length };
+  return {
+    errors,
+    fired: firedThisRun,
+    imminent: imminentCount,
+    ...(suppressions.length > 0 ? { suppressions } : {})
+  };
 }
 
 interface DeliverImminentContext {
@@ -573,15 +642,19 @@ async function deliverImminentItem(
   item: ImminentItem,
   ctx: DeliverImminentContext
 ): Promise<{ readonly delivered: boolean; readonly firedPersisted: boolean }> {
-  const { errors, now, options, sinkChoice } = ctx;
+  const { errors, now, nowDate, options, sinkChoice } = ctx;
 
-  const quietNow = options.quietHours !== undefined && isQuietHour(now().getHours(), options.quietHours);
-  if (sinkChoice === "messaging" && !quietNow) {
+  const quietNow = options.quietHours !== undefined
+    && isQuietHour(nowDate.getHours(), options.quietHours);
+  if (quietNow) {
+    return { delivered: false, firedPersisted: false };
+  }
+  if (sinkChoice === "messaging") {
     return item.kind === "task"
       ? deliverTaskMessagingItem(item, ctx)
       : deliverCalendarMessagingItem(item, ctx);
   }
-  if (sinkChoice === "terminal" && !quietNow && options.terminalSink) {
+  if (sinkChoice === "terminal" && options.terminalSink) {
     return deliverTerminalItem(item, ctx);
   }
 
@@ -589,9 +662,7 @@ async function deliverImminentItem(
   const firedAtIso = now().toISOString();
   let delivered = false;
   try {
-    if (quietNow) {
-      // suppressed — deliver nothing on either sink
-    } else if (sinkChoice === "terminal" && options.terminalSink) {
+    if (sinkChoice === "terminal" && options.terminalSink) {
       await options.terminalSink.deliver({ kind: item.kind, text: noticeText, title: item.title });
     } else {
       await sendWithRetry(

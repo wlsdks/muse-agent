@@ -44,10 +44,14 @@ function paths() {
   };
 }
 
-async function seedTask(p: ReturnType<typeof paths>, id = "task-effect-1"): Promise<void> {
+async function seedTask(
+  p: ReturnType<typeof paths>,
+  id = "task-effect-1",
+  dueAt = DUE_AT
+): Promise<void> {
   await writeTasks(p.tasksFile, [{
     createdAt: "2026-07-27T02:00:00.000Z",
-    dueAt: DUE_AT,
+    dueAt,
     id,
     status: "open",
     title: "Ship release"
@@ -290,8 +294,68 @@ describe("proactive imminent-task durable messaging effect", () => {
       })),
       quietHours: { endHour: 23, startHour: 0 }
     });
-    expect(quietResult.fired).toBe(1);
+    expect(quietResult).toEqual({
+      errors: [],
+      fired: 0,
+      imminent: 1,
+      suppressions: [{
+        itemId: "task-quiet",
+        kind: "task",
+        reason: "quiet-hours"
+      }]
+    });
     expect(existsSync(quiet.effectFile)).toBe(false);
+    expect(existsSync(quiet.sidecarFile)).toBe(false);
+  });
+
+  it("reports a task in the bounded shadow horizon as not-relevant without effects", async () => {
+    const p = paths();
+    await seedTask(p, "task-not-relevant", "2026-07-27T03:20:00.000Z");
+    let providerCalls = 0;
+    let synthesized = 0;
+    let investigated = 0;
+    let brokerCalls = 0;
+    const result = await runDueProactiveNotices({
+      ...options(p, registry(async () => {
+        providerCalls += 1;
+        throw new Error("not-relevant path must not send");
+      })),
+      activitySource: { lastActivityMs: () => NOW.getTime() },
+      agentInitiatedNoticeBroker: { publish: () => { brokerCalls += 1; } },
+      agentInitiatedNoticeUserId: "owner",
+      agentModel: "test-model",
+      historyFile: p.historyFile,
+      investigate: async () => {
+        investigated += 1;
+        return "finding";
+      },
+      modelProvider: {
+        generate: async () => {
+          synthesized += 1;
+          return { output: "generated" };
+        }
+      },
+      trustLedgerFile: p.trustFile
+    });
+
+    expect(result).toEqual({
+      errors: [],
+      fired: 0,
+      imminent: 0,
+      suppressions: [{
+        itemId: "task-not-relevant",
+        kind: "task",
+        reason: "not-relevant"
+      }]
+    });
+    expect(providerCalls).toBe(0);
+    expect(synthesized).toBe(0);
+    expect(investigated).toBe(0);
+    expect(brokerCalls).toBe(0);
+    expect(existsSync(p.effectFile)).toBe(false);
+    expect(existsSync(p.historyFile)).toBe(false);
+    expect(existsSync(p.sidecarFile)).toBe(false);
+    expect(existsSync(p.trustFile)).toBe(false);
   });
 
   it("persists each accepted calendar and task occurrence before later delivery work", async () => {

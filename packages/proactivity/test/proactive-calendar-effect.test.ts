@@ -27,10 +27,11 @@ import {
   type OutboundMessage,
   type OutboundReceipt
 } from "@muse/messaging";
-import { readProactiveFired } from "@muse/stores";
+import { readProactiveFired, recordOutcome } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import {
+  evaluateProactiveTriggerEligibility,
   proactiveCalendarOccurrenceEffectId,
   runDueProactiveNotices
 } from "../src/proactive-notice-loop.js";
@@ -109,6 +110,29 @@ function options(
 }
 
 describe("proactive qualified-calendar durable messaging effect", () => {
+  it("makes proactive trigger eligibility a deterministic permission-first decision", () => {
+    expect(evaluateProactiveTriggerEligibility({
+      permissionAllowed: false,
+      quietHoursActive: true,
+      relevant: false
+    })).toEqual({ eligible: false, reason: "permission-denied" });
+    expect(evaluateProactiveTriggerEligibility({
+      permissionAllowed: true,
+      quietHoursActive: true,
+      relevant: false
+    })).toEqual({ eligible: false, reason: "quiet-hours" });
+    expect(evaluateProactiveTriggerEligibility({
+      permissionAllowed: true,
+      quietHoursActive: false,
+      relevant: false
+    })).toEqual({ eligible: false, reason: "not-relevant" });
+    expect(evaluateProactiveTriggerEligibility({
+      permissionAllowed: true,
+      quietHoursActive: false,
+      relevant: true
+    })).toEqual({ eligible: true });
+  });
+
   it("binds the exact occurrence and persists qualified fired state before post-delivery effects", async () => {
     const p = paths();
     const calendarEvent = event();
@@ -476,16 +500,105 @@ describe("proactive qualified-calendar durable messaging effect", () => {
 
     const quiet = paths();
     let providerCalls = 0;
+    let synthesized = 0;
+    let investigated = 0;
+    let brokerCalls = 0;
     const quietResult = await runDueProactiveNotices({
       ...options(quiet, messaging(async () => {
         providerCalls += 1;
         throw new Error("quiet path must not send");
       })),
+      activitySource: { lastActivityMs: () => NOW.getTime() },
+      agentInitiatedNoticeBroker: { publish: () => { brokerCalls += 1; } },
+      agentInitiatedNoticeUserId: "owner",
+      agentModel: "test-model",
+      historyFile: quiet.historyFile,
+      investigate: async () => {
+        investigated += 1;
+        return "finding";
+      },
+      modelProvider: {
+        generate: async () => {
+          synthesized += 1;
+          return { output: "generated" };
+        }
+      },
       quietHours: { endHour: 13, startHour: 14 }
     });
-    expect(quietResult).toMatchObject({ errors: [], fired: 1, imminent: 1 });
+    expect(quietResult).toEqual({
+      errors: [],
+      fired: 0,
+      imminent: 1,
+      suppressions: [{
+        itemId: "calendar-effect-1",
+        kind: "calendar",
+        reason: "quiet-hours"
+      }]
+    });
     expect(providerCalls).toBe(0);
+    expect(synthesized).toBe(0);
+    expect(investigated).toBe(0);
+    expect(brokerCalls).toBe(0);
     expect(existsSync(quiet.effectFile)).toBe(false);
+    expect(existsSync(quiet.historyFile)).toBe(false);
+    expect(existsSync(quiet.sidecarFile)).toBe(false);
+    expect(existsSync(quiet.trustFile)).toBe(false);
+  });
+
+  it("reports a veto as permission-denied before synthesis or delivery", async () => {
+    const p = paths();
+    await recordOutcome(
+      p.trustFile,
+      "calendar:calendar-effect-1",
+      "vetoed",
+      NOW.getTime()
+    );
+    const trustBefore = readFileSync(p.trustFile, "utf8");
+    let providerCalls = 0;
+    let synthesized = 0;
+    let investigated = 0;
+    let brokerCalls = 0;
+    const result = await runDueProactiveNotices({
+      ...options(p, messaging(async () => {
+        providerCalls += 1;
+        throw new Error("vetoed path must not send");
+      })),
+      activitySource: { lastActivityMs: () => NOW.getTime() },
+      agentInitiatedNoticeBroker: { publish: () => { brokerCalls += 1; } },
+      agentInitiatedNoticeUserId: "owner",
+      agentModel: "test-model",
+      historyFile: p.historyFile,
+      investigate: async () => {
+        investigated += 1;
+        return "finding";
+      },
+      modelProvider: {
+        generate: async () => {
+          synthesized += 1;
+          return { output: "generated" };
+        }
+      },
+      trustLedgerFile: p.trustFile
+    });
+
+    expect(result).toEqual({
+      errors: [],
+      fired: 0,
+      imminent: 1,
+      suppressions: [{
+        itemId: "calendar-effect-1",
+        kind: "calendar",
+        reason: "permission-denied"
+      }]
+    });
+    expect(providerCalls).toBe(0);
+    expect(synthesized).toBe(0);
+    expect(investigated).toBe(0);
+    expect(brokerCalls).toBe(0);
+    expect(existsSync(p.effectFile)).toBe(false);
+    expect(existsSync(p.historyFile)).toBe(false);
+    expect(existsSync(p.sidecarFile)).toBe(false);
+    expect(readFileSync(p.trustFile, "utf8")).toBe(trustBefore);
   });
 
   it("uses the surfaced id as the live durable occurrence fallback when providerEventId is absent", async () => {
