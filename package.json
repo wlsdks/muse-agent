@@ -137,6 +137,7 @@
     "eval:multifile-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-multifile-fix.mjs",
     "eval:multistep": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-multistep.mjs",
     "eval:two-edit-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-two-edit-fix.mjs",
+    "eval:single-agent-baseline": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-two-edit-fix.mjs --baseline-artifact",
     "eval:reverify-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-reverify-fix.mjs",
     "eval:channel-rhythm": "pnpm --filter @muse/agent-core build && pnpm --filter @muse/api build && node scripts/eval-channel-rhythm.mjs",
     "check:env": "node scripts/env-inventory.mjs --check",
