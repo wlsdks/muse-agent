@@ -7,6 +7,8 @@ import { test } from "node:test";
 import { CAPABILITIES, createCapabilityReport } from "./eval-agent.mjs";
 import {
   beginCapabilityEvidenceAttempt,
+  composeCapabilityAxisProgress,
+  createCapabilityAxisProgress,
   finalizeCapabilityEvidenceAttempt,
   inspectCapabilityEvidence,
 } from "./eval-agent-evidence.mjs";
@@ -42,6 +44,151 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), "muse-capability-evidence-"));
   return { root, reportPath: join(root, "evals", "agent-capability", "latest.json") };
 }
+
+function singleAxisReport(
+  axisId,
+  status,
+  generatedAt,
+  { digest = "b".repeat(64), revision = "a".repeat(40) } = {},
+) {
+  const source = { revision, tree: "clean" };
+  const artifacts = { count: 41, digest, status: "ok" };
+  const capabilities = CAPABILITIES.map((capability) => capability.id === axisId
+    ? {
+      durationMs: 10,
+      executed: status === "passed" ? capability.repeats : 0,
+      id: capability.id,
+      requested: capability.repeats,
+      required: capability.required,
+      status,
+      ...(status === "passed" ? {} : { reason: "threshold-not-met" }),
+    }
+    : {
+      durationMs: 0,
+      executed: 0,
+      id: capability.id,
+      reason: "not-selected",
+      requested: capability.repeats,
+      required: capability.required,
+      status: "unverified",
+    });
+  return createCapabilityReport(capabilities, {
+    generatedAt,
+    provenance: {
+      sourceBeforeBuild: source,
+      sourceAfterBuild: source,
+      sourceAtEnd: source,
+      artifactsAfterBuild: artifacts,
+      artifactsAtEnd: artifacts,
+    },
+  });
+}
+
+test("axis progress composes only exact same-provenance rows and keeps the oldest evidence time", () => {
+  const plan = createCapabilityAxisProgress(singleAxisReport(
+    "plan-quality",
+    "passed",
+    "2026-07-21T00:00:00.000Z",
+  ));
+  const current = singleAxisReport(
+    "tool-selection-arguments",
+    "passed",
+    "2026-07-21T00:05:00.000Z",
+  );
+  const aggregate = composeCapabilityAxisProgress(current, [plan]);
+
+  assert.equal(aggregate.status, "unverified");
+  assert.deepEqual(aggregate.counts, { failed: 0, passed: 2, total: 11, unverified: 9 });
+  assert.equal(aggregate.generatedAt, "2026-07-21T00:00:00.000Z");
+  assert.equal(aggregate.capabilities.find((row) => row.id === "plan-quality").status, "passed");
+  assert.equal(aggregate.capabilities.find((row) => row.id === "tool-selection-arguments").status, "passed");
+
+  const otherHead = createCapabilityAxisProgress(singleAxisReport(
+    "tool-argument-grounding",
+    "passed",
+    "2026-07-21T00:01:00.000Z",
+    { revision: "c".repeat(40) },
+  ));
+  assert.deepEqual(composeCapabilityAxisProgress(current, [otherHead]), current);
+  const otherArtifacts = createCapabilityAxisProgress(singleAxisReport(
+    "tool-argument-grounding",
+    "passed",
+    "2026-07-21T00:01:00.000Z",
+    { digest: "d".repeat(64) },
+  ));
+  assert.deepEqual(composeCapabilityAxisProgress(current, [otherArtifacts]), current);
+});
+
+test("newer axis evidence replaces an older result while malformed, tied, or future progress fails closed", () => {
+  const oldPass = createCapabilityAxisProgress(singleAxisReport(
+    "plan-quality",
+    "passed",
+    "2026-07-21T00:00:00.000Z",
+  ));
+  const currentFailure = singleAxisReport(
+    "plan-quality",
+    "failed",
+    "2026-07-21T00:05:00.000Z",
+  );
+  const replaced = composeCapabilityAxisProgress(currentFailure, [oldPass]);
+  assert.equal(replaced.status, "failed");
+  assert.equal(replaced.capabilities.find((row) => row.id === "plan-quality").reason, "threshold-not-met");
+
+  const current = singleAxisReport(
+    "tool-selection-arguments",
+    "passed",
+    "2026-07-21T00:05:00.000Z",
+  );
+  assert.equal(composeCapabilityAxisProgress(current, [{ ...oldPass, privatePayload: "secret" }]), undefined);
+  assert.equal(composeCapabilityAxisProgress(current, [{
+    ...oldPass,
+    axis: { ...oldPass.axis, status: "failed", reason: "/Users/private-owner/secret" },
+  }]), undefined);
+  assert.equal(composeCapabilityAxisProgress(current, [{
+    ...oldPass,
+    axis: { ...oldPass.axis, executed: 0, status: "failed", reason: "not-selected" },
+  }]), undefined);
+  assert.equal(composeCapabilityAxisProgress(current, [{ ...oldPass, generatedAt: "2026-07-21T00:06:00.000Z" }]), undefined);
+  assert.equal(composeCapabilityAxisProgress(current, [
+    oldPass,
+    { ...oldPass, axis: { ...oldPass.axis, durationMs: 11 } },
+  ]), undefined);
+
+  const mutatedPlaceholder = structuredClone(current);
+  const placeholder = mutatedPlaceholder.capabilities.find((row) => row.id === "plan-quality");
+  placeholder.executed = 3;
+  placeholder.durationMs = 999;
+  assert.equal(createCapabilityAxisProgress(mutatedPlaceholder), undefined);
+
+  const selectedNotSelected = structuredClone(current);
+  const selected = selectedNotSelected.capabilities.find((row) => row.id === "tool-selection-arguments");
+  selected.status = "failed";
+  selected.executed = 0;
+  selected.reason = "not-selected";
+  selectedNotSelected.counts = { failed: 1, passed: 0, total: 11, unverified: 10 };
+  selectedNotSelected.status = "failed";
+  assert.equal(createCapabilityAxisProgress(selectedNotSelected), undefined);
+});
+
+test("nine same-provenance required-axis passes produce a passing aggregate without optional overclaim", () => {
+  const required = CAPABILITIES.filter((capability) => capability.required);
+  const reports = required.map((capability, index) => singleAxisReport(
+    capability.id,
+    "passed",
+    `2026-07-21T00:${index.toString().padStart(2, "0")}:00.000Z`,
+  ));
+  const current = reports.at(-1);
+  const prior = reports.slice(0, -1).map((value) => createCapabilityAxisProgress(value));
+  const aggregate = composeCapabilityAxisProgress(current, prior);
+
+  assert.equal(aggregate.status, "passed");
+  assert.deepEqual(aggregate.counts, { failed: 0, passed: 9, total: 11, unverified: 2 });
+  assert.equal(aggregate.generatedAt, "2026-07-21T00:00:00.000Z");
+  assert.ok(aggregate.capabilities.slice(0, 9).every((row) => row.status === "passed"));
+  assert.ok(aggregate.capabilities.slice(9).every((row) => (
+    row.status === "unverified" && row.reason === "not-selected"
+  )));
+});
 
 test("running, completed pass, and owner-only immutable generation states are inspectable", () => {
   const { root, reportPath } = fixture();

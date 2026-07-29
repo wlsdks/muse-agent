@@ -23,6 +23,7 @@ const SHA256 = /^[0-9a-f]{64}$/u;
 const SOURCE_REVISION = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u;
 
 export const CAPABILITY_EVIDENCE_SCHEMA_VERSION = 1;
+export const CAPABILITY_AXIS_PROGRESS_SCHEMA_VERSION = 1;
 const CAPABILITY_MATRIX_ID = "muse-agent-capability-v1";
 const CAPABILITY_MATRIX = Object.freeze([
   { id: "tool-selection-arguments", required: true, repeats: 3 },
@@ -36,6 +37,42 @@ const CAPABILITY_MATRIX = Object.freeze([
   { id: "channel-conversation-rhythm", required: true, repeats: 3 },
   { id: "edit-run-verify", required: false, repeats: 3 },
   { id: "browser-terminal-task", required: false, repeats: 3 },
+]);
+const CAPABILITY_REPORT_REASON_CODES = new Set([
+  "artifact-provenance-unverified",
+  "battery-reported-failure",
+  "chrome-missing",
+  "duplicate-completion",
+  "embed-model-missing",
+  "evaluation-deadline-exhausted",
+  "exit-nonzero",
+  "invalid-completion",
+  "missing-completion",
+  "missing-skip-evidence",
+  "model-missing",
+  "not-selected",
+  "ollama-unreachable",
+  "orchestration-invariant-failed",
+  "regression",
+  "report-integrity-failed",
+  "report-persistence-failed",
+  "requested-repeat-mismatch",
+  "runner-build-failed",
+  "runner-missing",
+  "runner-publish-failed",
+  "runtime-execution-failed",
+  "runtime-unavailable",
+  "sandbox-missing",
+  "signal",
+  "skip-reason-mismatch",
+  "source-provenance-unverified",
+  "spawn-error",
+  "terminal-state-assertion-failed",
+  "terminal-state-failed",
+  "threshold-not-met",
+  "typescript-build-failed",
+  "unexpected-skip",
+  "unrecognized-skip",
 ]);
 export const DEFAULT_CAPABILITY_REPORT_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -326,7 +363,7 @@ function capabilityReportShapeIsExact(report) {
     if (!Number.isSafeInteger(row.durationMs) || row.durationMs < 0) return false;
     if (row.status !== "passed" && row.status !== "failed" && row.status !== "unverified") return false;
     if (row.status === "passed" && (row.executed !== row.requested || row.reason !== undefined)) return false;
-    if (row.status !== "passed" && (typeof row.reason !== "string" || row.reason.length === 0)) return false;
+    if (row.status !== "passed" && !CAPABILITY_REPORT_REASON_CODES.has(row.reason)) return false;
   }
   if (!exactKeys(report.counts, ["failed", "passed", "total", "unverified"])) return false;
   const expectedCounts = {
@@ -352,6 +389,141 @@ export function isCanonicalPassingCapabilityReport(report) {
   const revision = source.sourceBeforeBuild.revision;
   if (source.sourceAfterBuild.revision !== revision || source.sourceAtEnd.revision !== revision) return false;
   return artifactSnapshotIsStable(source.artifactsAfterBuild, source.artifactsAtEnd);
+}
+
+export function createCapabilityAxisProgress(report) {
+  if (!capabilityReportShapeIsExact(report) || !canonicalCapabilityProvenance(report.provenance)) {
+    return undefined;
+  }
+  const selected = report.capabilities.filter((row) => !isExactNotSelectedRow(row));
+  if (selected.length !== 1 || selected[0].reason === "not-selected") return undefined;
+  return {
+    schemaVersion: CAPABILITY_AXIS_PROGRESS_SCHEMA_VERSION,
+    matrixId: CAPABILITY_MATRIX_ID,
+    generatedAt: report.generatedAt,
+    axis: { ...selected[0] },
+    provenance: structuredClone(report.provenance),
+  };
+}
+
+function isExactNotSelectedRow(row) {
+  return row.status === "unverified"
+    && row.reason === "not-selected"
+    && row.executed === 0
+    && row.durationMs === 0;
+}
+
+export function composeCapabilityAxisProgress(currentReport, priorProgress = []) {
+  const current = createCapabilityAxisProgress(currentReport);
+  if (!current || !Array.isArray(priorProgress)) return undefined;
+  const currentTime = Date.parse(current.generatedAt);
+  const matching = [];
+  for (const progress of priorProgress) {
+    if (!isCapabilityAxisProgress(progress)) return undefined;
+    if (!sameCapabilityProvenance(progress.provenance, current.provenance)) continue;
+    const progressTime = Date.parse(progress.generatedAt);
+    if (progressTime > currentTime) return undefined;
+    matching.push(structuredClone(progress));
+  }
+  matching.push(current);
+  matching.sort((left, right) => Date.parse(left.generatedAt) - Date.parse(right.generatedAt));
+
+  const latestByAxis = new Map();
+  for (const progress of matching) {
+    const prior = latestByAxis.get(progress.axis.id);
+    if (prior && prior.generatedAt === progress.generatedAt) {
+      if (canonicalJson(prior) !== canonicalJson(progress)) return undefined;
+      continue;
+    }
+    latestByAxis.set(progress.axis.id, progress);
+  }
+
+  const capabilities = CAPABILITY_MATRIX.map((expected, index) => (
+    latestByAxis.get(expected.id)?.axis ?? currentReport.capabilities[index]
+  ));
+  const counts = {
+    failed: capabilities.filter((row) => row.status === "failed").length,
+    passed: capabilities.filter((row) => row.status === "passed").length,
+    total: capabilities.length,
+    unverified: capabilities.filter((row) => row.status === "unverified").length,
+  };
+  const status = counts.failed > 0
+    ? "failed"
+    : capabilities.some((row) => row.required && row.status !== "passed")
+      ? "unverified"
+      : "passed";
+  const aggregate = {
+    version: 2,
+    matrixId: CAPABILITY_MATRIX_ID,
+    generatedAt: matching[0].generatedAt,
+    status,
+    counts,
+    capabilities: capabilities.map((row) => ({ ...row })),
+    provenance: structuredClone(current.provenance),
+  };
+  return capabilityReportShapeIsExact(aggregate) ? aggregate : undefined;
+}
+
+function isCapabilityAxisProgress(value) {
+  if (!exactKeys(value, ["axis", "generatedAt", "matrixId", "provenance", "schemaVersion"])) return false;
+  if (
+    value.schemaVersion !== CAPABILITY_AXIS_PROGRESS_SCHEMA_VERSION
+    || value.matrixId !== CAPABILITY_MATRIX_ID
+    || !canonicalCapabilityProvenance(value.provenance)
+  ) {
+    return false;
+  }
+  const generatedAt = typeof value.generatedAt === "string" ? Date.parse(value.generatedAt) : Number.NaN;
+  if (!Number.isFinite(generatedAt) || new Date(generatedAt).toISOString() !== value.generatedAt) return false;
+  const expected = CAPABILITY_MATRIX.find((capability) => capability.id === value.axis?.id);
+  if (!expected) return false;
+  if (value.axis.reason === "not-selected") return false;
+  const report = {
+    version: 2,
+    matrixId: CAPABILITY_MATRIX_ID,
+    generatedAt: value.generatedAt,
+    status: value.axis.status === "failed" ? "failed" : "unverified",
+    counts: {
+      failed: value.axis.status === "failed" ? 1 : 0,
+      passed: value.axis.status === "passed" ? 1 : 0,
+      total: CAPABILITY_MATRIX.length,
+      unverified: value.axis.status === "failed" ? 10 : value.axis.status === "passed" ? 10 : 11,
+    },
+    capabilities: CAPABILITY_MATRIX.map((capability) => capability.id === expected.id
+      ? value.axis
+      : {
+        durationMs: 0,
+        executed: 0,
+        id: capability.id,
+        reason: "not-selected",
+        requested: capability.repeats,
+        required: capability.required,
+        status: "unverified",
+      }),
+    provenance: value.provenance,
+  };
+  return capabilityReportShapeIsExact(report);
+}
+
+function canonicalCapabilityProvenance(provenance) {
+  if (!exactKeys(provenance, ["artifactsAfterBuild", "artifactsAtEnd", "sourceAfterBuild", "sourceAtEnd", "sourceBeforeBuild"])) {
+    return false;
+  }
+  if (
+    !sourceSnapshotIsClean(provenance.sourceBeforeBuild)
+    || !sourceSnapshotIsClean(provenance.sourceAfterBuild)
+    || !sourceSnapshotIsClean(provenance.sourceAtEnd)
+  ) {
+    return false;
+  }
+  const revision = provenance.sourceBeforeBuild.revision;
+  return provenance.sourceAfterBuild.revision === revision
+    && provenance.sourceAtEnd.revision === revision
+    && artifactSnapshotIsStable(provenance.artifactsAfterBuild, provenance.artifactsAtEnd);
+}
+
+function sameCapabilityProvenance(left, right) {
+  return canonicalJson(left) === canonicalJson(right);
 }
 
 export function beginCapabilityEvidenceAttempt(options = {}) {
