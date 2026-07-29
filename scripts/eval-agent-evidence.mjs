@@ -795,6 +795,70 @@ export function readReusableCapabilityAxisProgress(options = {}) {
   }
 }
 
+/**
+ * Aggregate authenticated cached shards without executing or persisting
+ * anything. Every row is revalidated against the caller's freshly computed
+ * receipt set; missing or stale required axes remain explicitly unverified.
+ */
+export function readCapabilityAxisAggregate(options = {}) {
+  try {
+    if (!canonicalCapabilityProvenance(options.provenance)) return undefined;
+    const expected = capabilityShardReceiptMap(
+      options.expectedReceipts,
+      options.provenance,
+    );
+    if (!expected) return undefined;
+    const layout = evidenceLayout(options.reportPath, options.allowedRoot);
+    const progress = readCapabilityAxisProgress(layout);
+    const matching = progress.filter((item) => {
+      const receipt = expected.get(item.axis.id);
+      return sameCapabilityProvenance(item.provenance, options.provenance)
+        && receipt !== undefined
+        && canonicalJson(receipt) === canonicalJson(item.shardReceipt);
+    });
+    const byAxis = new Map(matching.map((item) => [item.axis.id, item]));
+    const capabilities = CAPABILITY_MATRIX.map((capability) => (
+      byAxis.get(capability.id)?.axis ?? {
+        durationMs: 0,
+        executed: 0,
+        id: capability.id,
+        reason: "not-selected",
+        requested: capability.repeats,
+        required: capability.required,
+        status: "unverified",
+      }
+    ));
+    const counts = {
+      failed: capabilities.filter((row) => row.status === "failed").length,
+      passed: capabilities.filter((row) => row.status === "passed").length,
+      total: capabilities.length,
+      unverified: capabilities.filter((row) => row.status === "unverified").length,
+    };
+    const generatedAt = matching.length > 0
+      ? matching.reduce((oldest, item) => (
+        Date.parse(item.generatedAt) < Date.parse(oldest) ? item.generatedAt : oldest
+      ), matching[0].generatedAt)
+      : options.generatedAt ?? new Date(0).toISOString();
+    const status = counts.failed > 0
+      ? "failed"
+      : capabilities.some((row) => row.required && row.status !== "passed")
+        ? "unverified"
+        : "passed";
+    const aggregate = {
+      version: 2,
+      matrixId: CAPABILITY_MATRIX_ID,
+      generatedAt,
+      status,
+      counts,
+      capabilities: capabilities.map((row) => ({ ...row })),
+      provenance: structuredClone(options.provenance),
+    };
+    return capabilityReportShapeIsExact(aggregate) ? aggregate : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function beginCapabilityEvidenceAttempt(options = {}) {
   const layout = evidenceLayout(options.reportPath, options.allowedRoot);
   const attemptId = options.attemptId ?? randomUUID();

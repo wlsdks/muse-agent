@@ -39,3 +39,10 @@ export function readReusableCapabilityAxisProgress(options: {
   readonly expectedReceipt: unknown;
   readonly reportPath?: string;
 }): unknown;
+export function readCapabilityAxisAggregate(options: {
+  readonly allowedRoot?: string;
+  readonly expectedReceipts: readonly unknown[];
+  readonly generatedAt?: string;
+  readonly provenance: unknown;
+  readonly reportPath?: string;
+}): unknown;

@@ -22,6 +22,7 @@ import {
   createCapabilityAxisProgress as createCapabilityAxisProgressRaw,
   finalizeCapabilityEvidenceAttempt as finalizeCapabilityEvidenceAttemptRaw,
   inspectCapabilityEvidence,
+  readCapabilityAxisAggregate,
   readReusableCapabilityAxisProgress,
 } from "./eval-agent-evidence.mjs";
 
@@ -533,6 +534,75 @@ test("only an exact authenticated completed receipt is reusable", () => {
       allowedRoot: root,
       axisId: "tool-selection-arguments",
       expectedReceipt: exact,
+      reportPath,
+    }), undefined);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("cached aggregate is read-only and stale or missing required shards cannot become green", () => {
+  const { root, reportPath } = fixture();
+  try {
+    const planReport = singleAxisReport(
+      "plan-quality",
+      "passed",
+      "2026-07-21T00:00:00.000Z",
+    );
+    const planAttempt = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    finalizeCapabilityEvidenceAttempt(planAttempt, planReport);
+    const toolReport = singleAxisReport(
+      "tool-selection-arguments",
+      "passed",
+      "2026-07-21T00:05:00.000Z",
+    );
+    const toolAttempt = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    finalizeCapabilityEvidenceAttempt(toolAttempt, toolReport);
+
+    const progressDirectory = join(root, "evals", "agent-capability", "axis-progress");
+    const before = new Map(readdirSync(progressDirectory).map((name) => [
+      name,
+      readFileSync(join(progressDirectory, name), "utf8"),
+    ]));
+    const aggregate = readCapabilityAxisAggregate({
+      allowedRoot: root,
+      expectedReceipts: shardReceipts(toolReport),
+      generatedAt: "2026-07-21T00:10:00.000Z",
+      provenance: toolReport.provenance,
+      reportPath,
+    });
+    assert.equal(aggregate.status, "unverified");
+    assert.deepEqual(aggregate.counts, { failed: 0, passed: 2, total: 11, unverified: 9 });
+    assert.equal(aggregate.capabilities.find((row) => row.id === "plan-quality").status, "passed");
+    assert.equal(
+      aggregate.capabilities.find((row) => row.id === "tool-argument-grounding").reason,
+      "not-selected",
+    );
+    const after = new Map(readdirSync(progressDirectory).map((name) => [
+      name,
+      readFileSync(join(progressDirectory, name), "utf8"),
+    ]));
+    assert.deepEqual(after, before);
+
+    const stalePlanReceipts = shardReceipts(toolReport, {
+      "plan-quality": { inputHash: "c".repeat(64) },
+    });
+    const stale = readCapabilityAxisAggregate({
+      allowedRoot: root,
+      expectedReceipts: stalePlanReceipts,
+      provenance: toolReport.provenance,
+      reportPath,
+    });
+    assert.equal(stale.status, "unverified");
+    assert.deepEqual(stale.counts, { failed: 0, passed: 1, total: 11, unverified: 10 });
+    assert.equal(stale.capabilities.find((row) => row.id === "plan-quality").reason, "not-selected");
+
+    const duplicateReceipts = shardReceipts(toolReport);
+    duplicateReceipts[1] = duplicateReceipts[0];
+    assert.equal(readCapabilityAxisAggregate({
+      allowedRoot: root,
+      expectedReceipts: duplicateReceipts,
+      provenance: toolReport.provenance,
       reportPath,
     }), undefined);
   } finally {
