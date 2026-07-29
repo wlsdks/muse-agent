@@ -1,7 +1,12 @@
 import type { DaemonStopSignal } from "./commands-daemon-loop.js";
 import { DAEMON_WORKLOAD_UNIT_IDS, type DaemonWorkloadBoundaryV2, type DaemonWorkloadErrorClass, type DaemonWorkloadUnitId } from "./daemon-resource-receipt.js";
 
-export type DaemonWorkloadNotReadyReason = "disabled" | "unconfigured" | "not-due" | "internal-brake";
+export type DaemonWorkloadNotReadyReason =
+  | "disabled"
+  | "unconfigured"
+  | "not-due"
+  | "internal-brake"
+  | "local-only-auxiliary-unavailable";
 export type DaemonWorkloadTickOutcome =
   | { readonly status: "not-ready"; readonly reason: DaemonWorkloadNotReadyReason }
   | { readonly status: "cancelled-before-claim" }

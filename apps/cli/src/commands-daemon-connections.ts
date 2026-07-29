@@ -1,5 +1,6 @@
 import { parseBoolean } from "@muse/autoconfigure";
 import { CHROME_DEVTOOLS_MCP_SERVER_NAME } from "@muse/mcp";
+import type { ProviderLocality } from "@muse/model";
 import type { ChromeSnapshotConnection, runDueFollowups } from "@muse/proactivity";
 import type { MuseTool } from "@muse/tools";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
@@ -7,18 +8,25 @@ import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 export type FollowupModel = {
   readonly modelProvider: Parameters<typeof runDueFollowups>[0]["modelProvider"];
   readonly model: string;
+  /**
+   * Transport locality resolved by the composition root. Optional only for
+   * backwards-compatible test/helper injection; a local-only workload treats
+   * missing provenance as unavailable rather than guessing it is local.
+   */
+  readonly locality?: ProviderLocality;
 };
 
 // Followups REQUIRE a model to synthesize their message. The real
 // daemon builds it from the runtime assembly (best-effort — if the
 // model can't be resolved, the followup tick is skipped, not fatal).
-export async function defaultFollowupModel(_env: NodeJS.ProcessEnv): Promise<FollowupModel | undefined> {
+export async function defaultFollowupModel(env: NodeJS.ProcessEnv): Promise<FollowupModel | undefined> {
   try {
     const { createMuseRuntimeAssembly } = await import("@muse/autoconfigure");
-    const assembly = createMuseRuntimeAssembly();
+    const assembly = createMuseRuntimeAssembly({ env });
     const modelProvider = assembly.backgroundModelProvider ?? assembly.modelProvider;
-    if (modelProvider && assembly.defaultModel) {
+    if (modelProvider && assembly.defaultModel && assembly.modelProviderLocality) {
       return {
+        locality: assembly.modelProviderLocality,
         model: assembly.defaultModel,
         modelProvider: modelProvider as FollowupModel["modelProvider"]
       };

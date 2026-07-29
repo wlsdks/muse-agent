@@ -61,7 +61,11 @@ import {
   type TaskMemoryStore,
   type UserMemoryStore
 } from "@muse/memory";
-import { isInteractiveWebEgressAllowed, type ModelProvider } from "@muse/model";
+import {
+  isInteractiveWebEgressAllowed,
+  type ModelProvider,
+  type ProviderLocality
+} from "@muse/model";
 import {
   InMemoryAgentMetrics,
   InMemoryFollowupSuggestionStore,
@@ -226,6 +230,8 @@ export interface MuseEnvironment {
 export interface MuseRuntimeAssembly {
   readonly agentRuntime?: AgentRuntime;
   readonly backgroundModelProvider?: ModelProvider;
+  /** Locality of the resolved physical model transport before provider wrappers. */
+  readonly modelProviderLocality?: ProviderLocality;
   readonly agentSpecRegistry: AgentSpecRegistry;
   readonly authService?: MuseAuth;
   readonly cache: {
@@ -451,6 +457,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const {
     modelProvider,
     backgroundModelProvider,
+    modelProviderLocality,
     crossProcessModelExecutionLeaseSnapshot,
     localModelContextAdmissionSnapshot,
     modelExecutionBudgetSnapshot,
@@ -603,6 +610,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   return {
     agentRuntime,
     backgroundModelProvider,
+    ...(modelProviderLocality ? { modelProviderLocality } : {}),
     agentSpecRegistry,
     authService,
     cache: {
@@ -813,6 +821,7 @@ function buildModelAndStoreStack(
   return {
     modelProvider,
     backgroundModelProvider: contextAdmissionProviders?.background ?? budgetProviders?.background,
+    modelProviderLocality: modelResolution?.locality,
     crossProcessModelExecutionLeaseSnapshot: crossProcessProviders?.snapshot,
     localModelContextAdmissionSnapshot: contextAdmissionProviders?.snapshot,
     modelExecutionBudgetSnapshot: budgetProviders?.snapshot,

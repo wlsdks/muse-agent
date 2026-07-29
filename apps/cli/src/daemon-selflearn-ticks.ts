@@ -32,6 +32,7 @@ import {
 import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, validateMergeCoverage } from "@muse/agent-core";
 import { FileUserMemoryStore } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
+import { isLocalOnlyEnabled } from "@muse/model";
 import { errorMessage } from "@muse/shared";
 import { decayStalePlaybookRewards, isLearningPaused, queryPlaybook, readPendingLearnEvents, readRecallHits, recordPlaybookStrategy, removePlaybookStrategy, resolveLearnQueueFile, writeFadedMemoryKeys } from "@muse/stores";
 import { DEFAULT_DIGEST_HOUR, isQuietHour, resolveQuietHoursOption, runDigestFlushIfDue, type ProactiveNoticeSink, type QuietHoursOption } from "@muse/proactivity";
@@ -97,6 +98,9 @@ export function makeSelfLearnTick(deps: MakeSelfLearnTickDeps): GovernedDaemonTi
   const { env: e, stdout, followupModel, noticeSink, intervalMs, lastRunMs, selfLearnDistill, contradictionClassify } = deps;
   return async (claim): ReturnType<GovernedDaemonTick> => {
     if (!selfLearnEnabled(e)) return daemonWorkloadNotReady("disabled");
+    if (isLocalOnlyEnabled(e) && followupModel?.locality !== "local") {
+      return daemonWorkloadNotReady("local-only-auxiliary-unavailable");
+    }
     if (!followupModel) return daemonWorkloadNotReady("unconfigured");
     const nowMs = Date.now();
     if (lastRunMs.current !== undefined && nowMs - lastRunMs.current < intervalMs) return daemonWorkloadNotReady("not-due");
