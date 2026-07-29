@@ -44,9 +44,11 @@ export function evaluateReleaseEvidence({
   outputPath,
   repoRoot = process.cwd(),
   spawn = spawnSync,
-  now = () => new Date()
+  now = () => new Date(),
+  writeOutput = true
 }) {
   if (!candidatePath || !outputPath) throw new Error("explicit candidate and output paths are required");
+  if (typeof writeOutput !== "boolean") throw new Error("writeOutput must be boolean");
   const root = resolve(repoRoot);
   const candidate = resolve(candidatePath);
   const output = resolve(outputPath);
@@ -126,7 +128,7 @@ export function evaluateReleaseEvidence({
     signatures,
     findings
   };
-  atomicWriteJson(output, report);
+  if (writeOutput) atomicWriteJson(output, report);
   return report;
 }
 

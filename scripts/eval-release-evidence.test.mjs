@@ -78,7 +78,11 @@ test("binds a git-archive candidate to clean source and emits hashed-only red ev
     git(repoRoot, ["init", "-q"]);
     git(repoRoot, ["config", "user.email", "fixture@example.invalid"]);
     git(repoRoot, ["config", "user.name", "Fixture"]);
-    writeFileSync(join(repoRoot, ".gitignore"), "candidate.tar\nreceipt.json\nskipped.json\n", "utf8");
+    writeFileSync(
+      join(repoRoot, ".gitignore"),
+      "candidate.tar\nreceipt.json\nskipped.json\nmemory-only.json\n",
+      "utf8"
+    );
     writeFileSync(join(repoRoot, "safe.txt"), `fixture ${syntheticToken}\n`, "utf8");
     git(repoRoot, ["add", "."]);
     git(repoRoot, ["commit", "-qm", "fixture"]);
@@ -105,8 +109,18 @@ test("binds a git-archive candidate to clean source and emits hashed-only red ev
       outputPath: output,
       repoRoot
     });
+    const memoryOnlyOutput = join(repoRoot, "memory-only.json");
+    const memoryOnly = evaluateReleaseEvidence({
+      candidatePath: candidate,
+      now: () => fixedNow,
+      outputPath: memoryOnlyOutput,
+      repoRoot,
+      writeOutput: false
+    });
 
     assert.deepEqual(repeated, report);
+    assert.deepEqual(memoryOnly, report);
+    assert.equal(existsSync(memoryOnlyOutput), false);
     assert.equal(report.overall, "red");
     assert.equal(report.generatedAt, fixedNow.toISOString());
     assert.equal(report.inputHashAlgorithm, "sha256");

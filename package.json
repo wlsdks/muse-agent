@@ -64,6 +64,7 @@
     "eval:release-evidence": "node scripts/eval-release-evidence.mjs",
     "eval:release-finding-classification": "node scripts/eval-release-finding-classification.mjs",
     "eval:delivery-queue-snapshot": "pnpm --filter @muse/autoconfigure build && node scripts/eval-delivery-queue-snapshot.mjs",
+    "eval:package-signature-preflight": "node scripts/eval-package-signature-preflight.mjs",
     "eval:continuity-interaction-audit": "pnpm --filter @muse/attunement build && node scripts/eval-continuity-interaction-audit.mjs --eval-run",
     "eval:continuity-provider-boundary": "pnpm --filter @muse/attunement build && node scripts/eval-continuity-provider-boundary.mjs --eval-run",
     "eval:agent:offline": "node --test scripts/eval-harness.test.mjs scripts/eval-adversarial.test.mjs scripts/eval-recall-quality.test.mjs scripts/eval-skip.test.mjs scripts/eval-agent-evidence.test.mjs scripts/eval-agent-process.test.mjs scripts/eval-agent.test.mjs scripts/eval-agent-provenance.test.mjs scripts/eval-agent-artifacts.test.mjs scripts/eval-tool-authority.test.mjs scripts/eval-runner-isolation.test.mjs scripts/eval-trial-environment.test.mjs scripts/eval-evidence.test.mjs",
