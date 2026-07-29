@@ -58,6 +58,13 @@ self-consistency, not that an external observer witnessed that state or time.
 The reference traversal separately caps returned assertions, considered adjacency
 assertions, visited references, and depth, so a dense seed cannot hide unbounded work behind
 a small output limit.
+AWG-040a1 adds the first source-side Capsule seam inside `@muse/attunement`: one already
+prepared `ContinuityPack` can be projected through a single internal all-source Module.
+The Module preserves every current typed display field, validates exact references,
+provider/type rules, observable anchor identity, policy/evidence/next-step coherence and
+explicit resource budgets, normalizes semantic instants and set-like fields, then returns a
+detached deeply frozen value. It deliberately has no graph dependency and makes no
+freshness, observation-time, receipt, comparison, or Pack-to-graph binding claim.
 
 It has no application/runtime composition, durable adapter, LLM extraction, Shadow
 delivery, Capsule UI, Policy Card UI, or action authority. The Attunement Graph Engine and
@@ -154,6 +161,37 @@ Continuity Capsule. This separation keeps the
 module deep: public callers depend only on the query and observation surfaces while
 canonicalization, tamper detection, projection validation, privacy bounds, version
 rejection, and comparison semantics remain behind them.
+
+### All-source projection: preserve useful truth before graph binding
+
+A Capsule needs human-readable current truth that the graph projection intentionally does
+not copy: task state, calendar windows, note summaries, owner prompts, URLs, locations,
+relationships, birthdays, run/checkpoint metadata, and Work counts. Joining a live
+`ContinuityPack` directly to a prior graph receipt would be a shallow and unsafe seam,
+because neither side would prove the display values and graph assertions came from a
+coherent observation.
+
+AWG-040 therefore begins with a source-side Module:
+
+```text
+already-prepared exact ContinuityPack
+  → descriptor-safe bounded validation
+  → exact 11-type field/provider matrix
+  → Pack identity/policy/next-step/anchor coherence
+  → canonical immutable Continuity Source Projection
+```
+
+This Module stays in `@muse/attunement`, where `ResolvedArtifact` semantics live.
+`@muse/attunement-graph` must not import provider-specific display rules, and a third shared
+package is not justified before two real adapters need the interface. The next source
+receipt slice will add caller-declared observation time, clock-relative temporal coherence,
+content addressing, and capture/verify. Only then may a Capsule manifest bind that source
+receipt to graph evidence explicitly.
+
+The projection intentionally carries personal display data. Titles, summaries,
+owner-authored prompts, browsing URLs, calendar locations, contact relationships and
+birthdays are local personal data—not anonymous identifiers or safe telemetry. A durable
+consumer must define retention, forget, export, and migration before persisting it.
 
 ## Muse-specific invention: a personal context compiler
 

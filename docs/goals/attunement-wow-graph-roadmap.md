@@ -57,7 +57,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | completed |
 | **AWG-035a** | Observation Receipt format | Strict content-addressed codec preserves one caller-declared exact projection and source accounting without personal source text | completed |
 | **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | completed |
-| **AWG-040** | Continuity Capsule v1 | User-invoked Capsule renders stopping point, changes, next step, prepared work, expected time, and source drawer | pending |
+| **AWG-040** | Continuity Capsule v1 | User-invoked Capsule renders stopping point, changes, next step, prepared work, expected time, and source drawer | in progress (`AWG-040a1`) |
 | **AWG-050** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-070** | Storage bake-off | Reference adapter vs PostgreSQL vs at most one embedded graph candidate on correctness, cost, recovery, portability, and maintenance | pending |
@@ -206,6 +206,40 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
   automatic stop detection, Capsule/UI, timing policy, or action authority.
 - **Next eligible slice:** AWG-040 Continuity Capsule v1, beginning with a pure
   receipt→current Capsule assembly contract before any UI or automatic delivery.
+
+## Completed sub-slice: AWG-040a1
+
+- **Classification at activation:** `missing`; current graph receipts preserve relational
+  proof, while current `ContinuityPack` resolver display values had no single canonical,
+  bounded projection contract for a later source receipt and Capsule compiler.
+- **Status:** `completed`; the revised PLAN passed a fresh independent evaluator, and a
+  separate fresh completion evaluator passed the final null-prototype-hardened
+  implementation with no blocker.
+- **Architecture decision:** reject a direct live-Pack + graph-result wrapper because it
+  could join stale display truth to graph proof. The all-source projection Module belongs
+  internally to `@muse/attunement`, which owns `ResolvedArtifact` semantics; the graph
+  package remains independent of provider display rules.
+- **Built boundary:** pure `unknown → ContinuitySourceProjection` normalization for all 11
+  current artifact types. It uses own data descriptors, closed type/provider/role and field
+  matrices, semantic-time and set canonicalization, observable Pack-coherence checks,
+  explicit work/byte limits, and recursive freezing. It strips `evidenceRefs` and the
+  interaction anchor after validation, so it carries no delivery, feedback, permission, or
+  action authority.
+- **Truth boundary:** generic `updatedAt` remains an opaque source version/display string;
+  semantic instant fields normalize to ISO. The Module reads no clock or source and proves
+  no freshness, observation time, receipt integrity, source comparison, or graph binding.
+- **Privacy boundary:** the output intentionally includes personal thread/artifact titles,
+  summaries, owner prompts, URLs, locations, relationships, and birthdays. It is local
+  personal data, not anonymous or telemetry-safe. Retention, forget, export, and migration
+  are required before durable use.
+- **Core-roadmap overlap:** none found. The slice does not implement onboarding task 103,
+  session-handoff task 211, automatic observation, UI, scheduling, or general memory work.
+- **Verification:** focused `25/25`; full `@muse/attunement` `32 files / 220 tests`;
+  changed tests; package/root typechecks and builds; root ESLint; executable dependency
+  probe; diff hygiene. Root build retained only the existing Vite chunk-size warning.
+- **Next eligible sub-slice:** AWG-040a2 source receipt—add caller-declared observation
+  time, temporal-state coherence, content addressing, and capture/verify over this exact
+  projection before any Capsule-to-graph manifest or UI.
 
 ## Architecture gates
 

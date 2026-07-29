@@ -8,6 +8,15 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added an internal, provider-neutral Continuity Source Projection Module in
+  `@muse/attunement`. It validates every current `ResolvedArtifact` source type and
+  observable Pack-coherence invariant, canonicalizes semantic instants and set-like fields,
+  strips delivery/action authority, enforces explicit work and byte budgets, and returns a
+  detached deeply frozen projection for the future Capsule source receipt. It intentionally
+  includes local personal display data and proves neither freshness nor graph binding;
+  observation time, receipt integrity, Capsule assembly/UI, retention/forget/export, and
+  action authority remain pending.
+
 - Added pure `explainContinuityChangesFromReceipt` to the existing Continuity observation
   subpath. It verifies one prior Observation Receipt before touching caller-supplied current
   state, derives the receipt-bound scope/time/source boundary, projects current exactly once,

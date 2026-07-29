@@ -1,0 +1,61 @@
+# Muse architecture context
+
+This file names the durable domain language and dependency direction for architectural
+work. Product status and execution history belong in the linked strategy, design, and goal
+documents rather than here.
+
+## Domain language
+
+- **Attunement** is the loop by which Muse gets better at collaborating with one person:
+  personal thread → Continuity Pack/Capsule → explicit outcome → inspectable policy change.
+- An **authoritative source** is the existing task, note, calendar, contact, memory, or
+  Attunement store that owns a fact. A graph, index, receipt, or Capsule is a projection,
+  never a second authority.
+- A **Source Projection** is a bounded, deterministic, immutable view of already-resolved
+  source truth. It validates identity and coherence but does not prove freshness.
+- An **Observation Receipt** content-addresses what a caller declared it observed. It proves
+  self-consistency, not that an external observer witnessed the state or time.
+- The **Evidence Graph** holds rebuildable provenance and temporal assertions. The
+  **Working Graph** is an expiring, token-budgeted decision slice.
+- An **Activation Subgraph** is the smallest sufficient graph context compiled for one
+  agent decision. The model never receives or queries the whole personal graph by default.
+- **Shadow Muse**, **Continuity Capsule**, and **Policy Card** are the signature product
+  surfaces. None may infer permission, usefulness, causality, or feedback from proximity or
+  factual interaction.
+
+## Module boundaries
+
+Dependency direction is one-way:
+
+```text
+authoritative stores
+  → source-specific resolvers
+  → @muse/attunement source projection and receipts
+  → @muse/attunement-graph assertions/operators
+  → bounded Capsule/Shadow/Policy presentation
+  → existing approval and action boundaries
+```
+
+- `@muse/attunement` owns Personal Continuity and `ResolvedArtifact` semantics, including
+  the internal all-source projection contract.
+- `@muse/attunement-graph` owns storage-neutral graph invariants, projections, bounded
+  operators, explanations, and backend conformance—not personal-store adapters.
+- Applications compose the modules. A package must not become a second composition root by
+  importing every personal store.
+- Database SDKs, model providers, embeddings, clocks, files, and networks stay behind
+  replaceable adapters. Domain interfaces must survive replacing the graph backend.
+- Exact identity, time, provenance, epistemic class, policy scope, and authority are
+  established deterministically. Lexical/vector retrieval may nominate candidates only.
+
+## Architecture test
+
+A new graph feature is justified only when it provides measurable relational, temporal, or
+reconstruction leverage over flat exact lookup and any relevant vector baseline. It must
+remain bounded, source-resolvable, locally forgettable, rebuildable, and cheaper than
+loading unrelated personal context into the model.
+
+Canonical contracts:
+
+- [Attunement strategy](docs/strategy/attunement.md)
+- [Attunement Graph design](docs/design/attunement-graph.md)
+- [Wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)
