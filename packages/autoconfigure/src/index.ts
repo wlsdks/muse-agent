@@ -328,10 +328,12 @@ export {
   resolveAuxiliaryModel,
   resolveDefaultModel,
   resolveModelFallbackChain,
+  resolveModelProvider,
   resolveVisionModel,
   type AuxiliaryModelResolution,
   type AuxiliaryTask,
-  type ModelFallbackChainResolution
+  type ModelFallbackChainResolution,
+  type ModelProviderResolution
 } from "./autoconfigure-model-provider.js";
 
 export {

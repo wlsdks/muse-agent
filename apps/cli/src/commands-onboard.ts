@@ -23,6 +23,7 @@ import { readConfigStore, writeConfigStore } from "./program-config.js";
 import type { ProgramIO } from "./program.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 import { probeOllamaModels } from "./ollama-probe.js";
+import { collectOnboardPreflight, type OnboardPreflightOptions } from "./onboard-preflight.js";
 
 export interface OnboardingState {
   readonly ollamaReachable: boolean;
@@ -212,6 +213,8 @@ export interface OnboardHelpers {
    * non-TTY or `--no-input` run).
    */
   readonly confirmNotifications?: (message: string) => Promise<boolean>;
+  /** Read-only `--preflight` seams. No prompt, fetch, daemon, or writer seam is used. */
+  readonly preflight?: OnboardPreflightOptions;
 }
 
 const BACKGROUND_INSTALL_HINT = "Keep Muse running in the background any time — reminders, briefings, and schedules keep firing even with the terminal closed:\n   $ muse daemon --install\n";
@@ -348,7 +351,15 @@ export function registerOnboardCommand(program: Command, io: ProgramIO, helpers:
     .command("onboard")
     .description("Guided setup: the single next step to your first private, cited answer")
     .option("--json", "Print the raw readiness report")
-    .action(async (options: { readonly json?: boolean }) => {
+    .option("--preflight", "Read-only isolated-environment preflight (requires --json)")
+    .action(async (options: { readonly json?: boolean; readonly preflight?: boolean }) => {
+      if (options.preflight) {
+        if (!options.json) {
+          throw new Error("muse onboard --preflight requires --json");
+        }
+        io.stdout(`${JSON.stringify(await collectOnboardPreflight(helpers.preflight), null, 2)}\n`);
+        return;
+      }
       await selectLanguageStep(io, helpers);
       const report = computeOnboarding(await gatherState(io));
       if (options.json) {
