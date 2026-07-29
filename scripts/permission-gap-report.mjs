@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 
 const SURFACE_ORDER = ["tool", "cli", "api", "mcp"];
 const EXPLICIT_SURFACE_AUTHORITY = new Map([
+  ["cli\u0000email reply", "external-send"],
   ["cli\u0000email send", "external-send"]
 ]);
 

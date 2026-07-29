@@ -66,8 +66,12 @@ test("permission gap report covers each public surface deterministically without
       assert.ok(
         row.authorityClass === "unmapped"
           || row.surface === "tool"
-          || (row.surface === "cli" && row.name === "email send" && row.authorityClass === "external-send"),
-        "only existing actuator classifications and the exact email-send closure may be mapped"
+          || (
+            row.surface === "cli"
+            && ["email reply", "email send"].includes(row.name)
+            && row.authorityClass === "external-send"
+          ),
+        "only existing actuator classifications and exact reviewed CLI closures may be mapped"
       );
       const key = `${row.surface}\u0000${row.name}`;
       assert.ok(!seen.has(key), `duplicate report row: ${key}`);
@@ -93,7 +97,10 @@ test("permission gap report covers each public surface deterministically without
     }
     assert.deepEqual(
       first.rows.filter((row) => row.surface !== "tool" && row.authorityClass !== "unmapped"),
-      [{ authorityClass: "external-send", name: "email send", surface: "cli" }]
+      [
+        { authorityClass: "external-send", name: "email reply", surface: "cli" },
+        { authorityClass: "external-send", name: "email send", surface: "cli" }
+      ]
     );
     assert.ok(first.rows.some((row) => row.surface === "cli" && row.name === "approval approve"));
     assert.ok(first.rows.some((row) => row.surface === "cli" && row.name === "tasks list"));
@@ -101,8 +108,12 @@ test("permission gap report covers each public surface deterministically without
     assert.ok(first.rows.some((row) => row.surface === "api" && row.name === "POST /api/tasks"));
     assert.ok(first.rows.some((row) => row.surface === "tool" && row.name === "muse.tasks.list"));
     assert.equal(reportModule.classifyPermissionGapAuthority("tool", "future_actuator"), "unmapped");
+    assert.equal(reportModule.classifyPermissionGapAuthority("cli", "email reply"), "external-send");
     assert.equal(reportModule.classifyPermissionGapAuthority("cli", "email send"), "external-send");
-    assert.equal(reportModule.classifyPermissionGapAuthority("cli", "email reply"), "unmapped");
+    assert.equal(reportModule.classifyPermissionGapAuthority("cli", "Email reply"), "unmapped");
+    assert.equal(reportModule.classifyPermissionGapAuthority("cli", "email reply "), "unmapped");
+    assert.equal(reportModule.classifyPermissionGapAuthority("api", "email reply"), "unmapped");
+    assert.equal(reportModule.classifyPermissionGapAuthority("mcp", "email reply"), "unmapped");
     assert.equal(reportModule.classifyPermissionGapAuthority("cli", "Email send"), "unmapped");
     assert.equal(reportModule.classifyPermissionGapAuthority("mcp", "email send"), "unmapped");
 
