@@ -1,4 +1,16 @@
-import { mkdtempSync, readFileSync, existsSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+  symlinkSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -47,14 +59,41 @@ describe("web_download tool", () => {
     expect(validateToolDefinitions([tool])).toEqual([]);
   });
 
-  it("downloads a public URL to the downloads dir and reports the path", async () => {
+  it("holds a public download in a private quarantine with a content-bound receipt", async () => {
     const d = dir();
-    const tool = createWebDownloadTool({ downloadDir: d, fetchImpl: fakeFetch(Buffer.from("PDF-BYTES")), lookup: publicLookup });
-    const out = await tool.execute({ url: "https://files.test/report.pdf" }, ctx) as { saved: boolean; path: string; name: string };
+    const bytes = Buffer.from("%PDF-1.7\nPDF-BYTES");
+    const tool = createWebDownloadTool({
+      downloadDir: d,
+      fetchImpl: fakeFetch(bytes, 200, { "content-type": "application/pdf; charset=binary" }),
+      lookup: publicLookup
+    });
+    const out = await tool.execute({ url: "https://files.test/report.pdf" }, ctx) as {
+      saved: boolean;
+      path: string;
+      name: string;
+      receipt: Record<string, unknown>;
+    };
     expect(out.saved).toBe(true);
     expect(out.name).toBe("report.pdf");
     expect(existsSync(out.path)).toBe(true);
-    expect(readFileSync(out.path, "utf8")).toBe("PDF-BYTES");
+    expect(readFileSync(out.path)).toEqual(bytes);
+    expect(realpathSync(out.path).startsWith(`${realpathSync(join(d, ".muse-quarantine"))}/`)).toBe(true);
+    expect(statSync(out.path).mode & 0o777).toBe(0o600);
+    expect(lstatSync(join(d, ".muse-quarantine")).isSymbolicLink()).toBe(false);
+    expect(out.receipt).toEqual({
+      autoOpened: false,
+      bytes: bytes.byteLength,
+      declaredType: "application/pdf",
+      detectedType: "application/pdf",
+      finalUrl: "https://files.test/report.pdf",
+      name: "report.pdf",
+      quarantineState: "held",
+      schemaVersion: "muse.web-download-receipt/v1",
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      signature: "pdf",
+      sourceUrl: "https://files.test/report.pdf"
+    });
+    expect(existsSync(join(d, "report.pdf"))).toBe(false);
   });
 
   it("uses the manual redirect final URL for a redirect download, not response.url", async () => {
@@ -75,15 +114,18 @@ describe("web_download tool", () => {
     expect(out).toMatchObject({ name: "final.pdf", saved: true });
   });
 
-  it("does NOT clobber an existing file — dedupes like a browser (no silent data loss)", async () => {
+  it("does NOT clobber a final or quarantined file", async () => {
     const d = dir();
     writeFileSync(join(d, "report.pdf"), "PRECIOUS-USER-FILE", "utf8");
+    mkdirSync(join(d, ".muse-quarantine"), { mode: 0o700 });
+    writeFileSync(join(d, ".muse-quarantine", "report.pdf"), "EARLIER-QUARANTINE", "utf8");
     const tool = createWebDownloadTool({ downloadDir: d, fetchImpl: fakeFetch(Buffer.from("NEW-WEB-BYTES")), lookup: publicLookup });
     const out = await tool.execute({ url: "https://files.test/report.pdf" }, ctx) as { saved: boolean; name: string; path: string };
     expect(out.saved).toBe(true);
-    expect(out.name).toBe("report (1).pdf"); // deduped, not the taken name
-    expect(readFileSync(join(d, "report.pdf"), "utf8")).toBe("PRECIOUS-USER-FILE"); // original UNTOUCHED
-    expect(readFileSync(out.path, "utf8")).toBe("NEW-WEB-BYTES"); // new bytes landed under the deduped name
+    expect(out.name).toBe("report (1).pdf");
+    expect(readFileSync(join(d, "report.pdf"), "utf8")).toBe("PRECIOUS-USER-FILE");
+    expect(readFileSync(join(d, ".muse-quarantine", "report.pdf"), "utf8")).toBe("EARLIER-QUARANTINE");
+    expect(readFileSync(out.path, "utf8")).toBe("NEW-WEB-BYTES");
   });
 
   it("SSRF: a loopback URL is refused without writing", async () => {
@@ -139,7 +181,6 @@ describe("web_download tool", () => {
     expect(out.saved).toBe(false);
     expect(String(out.reason)).toMatch(/redirect|blocked|private|internal|ssrf/i);
     // nothing written to the downloads dir
-    const { readdirSync } = await import("node:fs");
     expect(readdirSync(d)).toHaveLength(0);
     expect(requests).toEqual(["https://files.test/report.pdf"]);
   });
@@ -156,6 +197,7 @@ describe("web_download tool", () => {
     const out = await tool.execute({ url: "https://files.test/big.bin" }, ctx) as { saved: boolean; reason?: string };
     expect(out.saved).toBe(false);
     expect(String(out.reason).toLowerCase()).toMatch(/large|big|size|cap/);
+    expect(readdirSync(d)).toHaveLength(0);
   });
 
   it("keeps download network failures to one physical call (no inherited retry/timeout)", async () => {
@@ -195,9 +237,104 @@ describe("web_download tool", () => {
   it("a model-named filename is sanitized to a basename (no path escape)", async () => {
     const d = dir();
     const tool = createWebDownloadTool({ downloadDir: d, fetchImpl: fakeFetch(Buffer.from("x")), lookup: publicLookup });
-    const out = await tool.execute({ url: "https://files.test/x", filename: "../../evil.sh" }, ctx) as { saved: boolean; path: string; name: string };
+    const out = await tool.execute({ url: "https://files.test/x", filename: "../../evil.txt" }, ctx) as { saved: boolean; path: string; name: string };
     expect(out.saved).toBe(true);
-    expect(out.name).toBe("evil.sh");
-    expect(out.path.startsWith(d)).toBe(true);
+    expect(out.name).toBe("evil.txt");
+    expect(realpathSync(out.path).startsWith(`${realpathSync(join(d, ".muse-quarantine"))}/`)).toBe(true);
+    expect(existsSync(join(d, "evil.txt"))).toBe(false);
+  });
+
+  it("treats backslashes and control characters as untrusted filename syntax", () => {
+    expect(safeDownloadName("..\\..\\evil\u0000.pdf", "https://files.test/x")).toBe("evil_.pdf");
+  });
+
+  it("blocks executable signature/type/name mismatch before creating quarantine", async () => {
+    const d = dir();
+    const elf = Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x01, 0x02]);
+    const tool = createWebDownloadTool({
+      downloadDir: d,
+      fetchImpl: fakeFetch(elf, 200, { "content-type": "application/pdf" }),
+      lookup: publicLookup
+    });
+    const out = await tool.execute({
+      filename: "../../invoice.pdf",
+      url: "https://files.test/invoice.pdf"
+    }, ctx) as { saved: boolean; reason?: string };
+    expect(out.saved).toBe(false);
+    expect(String(out.reason)).toMatch(/executable.*do not match/u);
+    expect(readdirSync(d)).toEqual([]);
+  });
+
+  it("quarantines a consistently named executable but never opens it", async () => {
+    const d = dir();
+    const elf = Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x01, 0x02]);
+    const tool = createWebDownloadTool({
+      downloadDir: d,
+      fetchImpl: fakeFetch(elf, 200, { "content-type": "application/x-executable" }),
+      lookup: publicLookup
+    });
+    const out = await tool.execute({
+      filename: "installer.run",
+      url: "https://files.test/installer.run"
+    }, ctx) as { saved: boolean; receipt: Record<string, unknown>; path: string };
+    expect(out.saved).toBe(true);
+    expect(out.receipt).toMatchObject({
+      autoOpened: false,
+      quarantineState: "held",
+      signature: "elf"
+    });
+    expect(realpathSync(out.path).startsWith(`${realpathSync(join(d, ".muse-quarantine"))}/`)).toBe(true);
+  });
+
+  it("refuses a pre-existing quarantine symlink so bytes cannot escape Downloads", async () => {
+    const d = dir();
+    const outside = dir();
+    symlinkSync(outside, join(d, ".muse-quarantine"));
+    const tool = createWebDownloadTool({
+      downloadDir: d,
+      fetchImpl: fakeFetch(Buffer.from("payload")),
+      lookup: publicLookup
+    });
+    const out = await tool.execute({
+      filename: "escape.dat",
+      url: "https://files.test/escape.dat"
+    }, ctx) as { saved: boolean; reason?: string };
+    expect(out.saved).toBe(false);
+    expect(String(out.reason)).toMatch(/quarantine.*escape/u);
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it("blocks executable MIME with unknown bytes and executable filename with non-executable bytes", async () => {
+    const executableMimeDir = dir();
+    const executableMime = createWebDownloadTool({
+      downloadDir: executableMimeDir,
+      fetchImpl: fakeFetch(Buffer.from("not-an-executable"), 200, {
+        "content-type": "application/x-executable"
+      }),
+      lookup: publicLookup
+    });
+    const mimeOut = await executableMime.execute({
+      filename: "innocent.txt",
+      url: "https://files.test/innocent.txt"
+    }, ctx) as { saved: boolean; reason?: string };
+    expect(mimeOut.saved).toBe(false);
+    expect(String(mimeOut.reason)).toMatch(/declared executable.*signature/u);
+    expect(readdirSync(executableMimeDir)).toEqual([]);
+
+    const executableNameDir = dir();
+    const executableName = createWebDownloadTool({
+      downloadDir: executableNameDir,
+      fetchImpl: fakeFetch(Buffer.from("%PDF-1.7\nsafe"), 200, {
+        "content-type": "application/pdf"
+      }),
+      lookup: publicLookup
+    });
+    const nameOut = await executableName.execute({
+      filename: "document.exe",
+      url: "https://files.test/document.exe"
+    }, ctx) as { saved: boolean; reason?: string };
+    expect(nameOut.saved).toBe(false);
+    expect(String(nameOut.reason)).toMatch(/executable filename.*does not match/u);
+    expect(readdirSync(executableNameDir)).toEqual([]);
   });
 });
