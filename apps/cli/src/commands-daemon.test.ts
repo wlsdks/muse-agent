@@ -2119,19 +2119,23 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const notesDir = join(home, ".muse", "notes");
     const noteFile = join(notesDir, "daily.md");
     const tasksFile = join(home, ".muse", "tasks.json");
+    const remindersFile = join(home, ".muse", "reminders.json");
     const previousPlist = residentLaunchAgentXml(home);
     const noteBytes = Buffer.from([0, 10, 35, 32, 112, 114, 105, 118, 97, 116, 101, 255]);
     const taskBytes = Buffer.from([123, 34, 105, 100, 34, 58, 34, 116, 45, 57, 56, 34, 125, 10]);
+    const reminderBytes = Buffer.from([123, 34, 114, 101, 109, 105, 110, 100, 101, 114, 115, 34, 58, 91, 93, 125, 10]);
     mkdirSync(dirname(plistFile), { recursive: true });
     mkdirSync(notesDir, { recursive: true });
     writeFileSync(plistFile, previousPlist, "utf8");
     writeFileSync(noteFile, noteBytes);
     writeFileSync(tasksFile, taskBytes);
+    writeFileSync(remindersFile, reminderBytes);
     const env: NodeJS.ProcessEnv = {
       ...tmpEnv(),
       HOME: home,
       MUSE_DAEMON_PLIST_FILE: plistFile,
       MUSE_NOTES_DIR: notesDir,
+      MUSE_REMINDERS_FILE: remindersFile,
       MUSE_TASKS_FILE: tasksFile
     };
     const registry = new MessagingProviderRegistry([capturingProvider([])]);
@@ -2179,6 +2183,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(readFileSync(plistFile, "utf8")).toBe(previousPlist);
     expect(readFileSync(noteFile)).toEqual(noteBytes);
     expect(readFileSync(tasksFile)).toEqual(taskBytes);
+    expect(readFileSync(remindersFile)).toEqual(reminderBytes);
   });
 
   it("--install re-adopts an already-loaded label after unload+load, verified running via the pid in `list`", async () => {
