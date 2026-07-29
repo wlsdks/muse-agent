@@ -46,6 +46,14 @@ export { createSearchMcpServer, normaliseTimeRange } from "./loopback-search.js"
 export { createStatusMcpServer } from "./loopback-status.js";
 export { createTasksMcpServer } from "./loopback-tasks.js";
 export { normalizeLocalTaskMutationOutcome } from "./task-mutation-outcome.js";
+export { projectTaskIntentDraft } from "./task-intent-draft.js";
+export type {
+  RejectedTaskIntentDraft,
+  TaskIntentClass,
+  TaskIntentDraft,
+  TaskIntentDraftProjection,
+  TaskIntentObservation
+} from "./task-intent-draft.js";
 export { createTasksRegistryMcpServer } from "./loopback-tasks-registry.js";
 export { createTextUtilsMcpServer } from "./loopback-text-utils-server.js";
 export { createTimeMcpServer } from "./loopback-time-server.js";
