@@ -201,6 +201,31 @@ describe("compileThreadRootedWitnessDocuments", () => {
       })
     ]);
     expect(result.settlement?.status).toBe("partial");
+    expect(result.frontier?.receipt.dispositions).toEqual([
+      expect.objectContaining({
+        focusAssertionId: "edge-b",
+        lane: "change",
+        nominationId: "changed-flight",
+        predicate: "REVISION_OF",
+        rank: 0,
+        status: "budget-admitted"
+      })
+    ]);
+    expect(result.frontier?.receipt.coverage).toEqual({
+      canAssertAbsenceWithinSnapshot: false,
+      canAssertCurrentWorldAbsence: false,
+      reasons: [
+        "bounded-witness-pool-only",
+        "caller-declared-snapshot",
+        "caller-declared-freshness",
+        "source-authority-not-independently-verified",
+        "focus-predicate-lane-mapping-v1"
+      ],
+      status: "partial"
+    });
+    expect(result.receipt.frontierReceiptId).toBe(
+      result.frontier?.receipt.receiptId
+    );
     if (result.settlement?.status !== "partial") throw new Error("expected partial");
     const documents = new Map(result.settlement.documents.map((item) => [item.kind, item]));
     expect(documents.get("core")?.proof.paths).toEqual([[

@@ -2,10 +2,13 @@ import {
   CanonicalImmutableEnvelopeError,
   canonicalizeImmutableEnvelope
 } from "./canonical-immutable-envelope.js";
-import {
-  type ScopedProofDocumentSettlementResultV1,
-  compileScopedProofDocumentSettlement
+import type {
+  ScopedProofDocumentSettlementResultV1
 } from "./scoped-proof-document-settlement.js";
+import {
+  type FairWitnessFrontierCompositionV1,
+  settleFairWitnessFrontier
+} from "./fair-witness-frontier-settlement.js";
 import { AttunementGraphError } from "./error.js";
 import type {
   GraphAssertion,
@@ -143,12 +146,17 @@ export type ThreadRootedWitnessReceiptV1 = Readonly<{
   readonly requestId: string;
   readonly schemaVersion: 1;
   readonly scope: Scope;
+  readonly frontierReceiptId?: string;
   readonly settlementResultId?: string;
   readonly snapshot: Snapshot;
   readonly status: "partial" | "abstained";
 }>;
 
 export type ThreadRootedWitnessCompilationV1 = Readonly<{
+  readonly frontier?: Readonly<{
+    readonly order: FairWitnessFrontierCompositionV1["order"];
+    readonly receipt: FairWitnessFrontierCompositionV1["receipt"];
+  }>;
   readonly receipt: ThreadRootedWitnessReceiptV1;
   readonly settlement?: ScopedProofDocumentSettlementResultV1;
   readonly status: "partial" | "abstained";
@@ -975,24 +983,48 @@ export function compileThreadRootedWitnessDocuments(
       : left.role === "core" ? -1 : 1
   );
   const coreDocument = documents.get(core.nominationId);
+  let frontier: FairWitnessFrontierCompositionV1 | undefined;
   let settlement: ScopedProofDocumentSettlementResultV1 | undefined;
   if (coreDocument) {
-    const optionalDocuments = optionals
-      .map((item) => documents.get(item.nominationId))
-      .filter((item): item is Record<string, unknown> => item !== undefined);
-    settlement = compileScopedProofDocumentSettlement(mutableJson({
+    const witnessedOptionals = optionals.flatMap((item) => {
+      const witnessDocument = documents.get(item.nominationId);
+      const focus = scopeEligible.get(item.assertionId)?.assertion;
+      if (witnessDocument === undefined) return [];
+      if (focus === undefined) internal("focus-assertion-postcondition-failed");
+      return [{
+        document: witnessDocument,
+        focusAssertion: focus,
+        nominationId: item.nominationId,
+        observedAt: item.observedAt
+      }];
+    });
+    frontier = settleFairWitnessFrontier({
       budget: requestedBudget,
-      core: { document: coreDocument, localStatus: { status: "eligible" } },
+      coreDocument,
       declaredFreshness: requestedFreshness,
-      operatorVersion: "muse.scoped-proof-document-settlement.v1",
-      optionals: optionalDocuments.map((value) => ({
-        document: value,
-        localStatus: { status: "eligible" }
-      })),
-      schemaVersion: 1,
+      optionals: witnessedOptionals,
       scope: requestedScope,
-      snapshot: requestedSnapshot
-    }));
+      seed: { id: seed.id, kind: "thread" },
+      snapshot: requestedSnapshot,
+      threadRootedRequestId: requestId
+    });
+    settlement = frontier.settlement;
+    const excludedOptionalIds = new Set(dispositions
+      .filter((item) => item.role === "optional" && item.status === "excluded")
+      .map((item) => item.nominationId));
+    const frontierOptionalIds = new Set(frontier.receipt.dispositions.map((item) =>
+      item.nominationId
+    ));
+    if (
+      excludedOptionalIds.size + frontierOptionalIds.size !== optionals.length
+      || [...excludedOptionalIds].some((id) => frontierOptionalIds.has(id))
+      || optionals.some((item) =>
+        !excludedOptionalIds.has(item.nominationId)
+        && !frontierOptionalIds.has(item.nominationId)
+      )
+    ) {
+      internal("frontier-conservation-postcondition-failed");
+    }
   }
   const status = coreDocument && settlement?.status === "partial"
     ? "partial" as const
@@ -1020,12 +1052,19 @@ export function compileThreadRootedWitnessDocuments(
     snapshot: requestedSnapshot,
     status
   };
+  if (frontier) receiptBody.frontierReceiptId = frontier.receipt.receiptId;
   if (settlement) receiptBody.settlementResultId = settlement.resultId;
   const receipt = captureReceipt(receiptBody);
   if (!RECEIPT_ID.test(receipt.receiptId)) {
     internal("receipt-postcondition-failed");
   }
   return freezeTree(freezeRecord({
+    ...(frontier ? {
+      frontier: freezeRecord({
+        order: frontier.order,
+        receipt: frontier.receipt
+      })
+    } : {}),
     receipt,
     ...(settlement ? { settlement } : {}),
     status

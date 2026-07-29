@@ -8,6 +8,24 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added independently verified, package-private **witness-derived fair context
+  admission** to the agent-native graph. The exact nominated focus assertion at the end of
+  each locally closed thread-rooted witness now determines its Continuity, Change,
+  Evidence, Policy, or Authority lane; generic `LINKED_TO` relations remain explicitly
+  undetermined. The private compiler evaluates the fair order against the existing
+  six-axis settlement oracle one candidate at a time, retains only subsets whose core and
+  previously accepted witnesses all remain admitted, and continues after an oversized
+  candidate instead of starving later lanes. A separate content-addressed receipt
+  preserves witness eligibility,
+  fair opportunity rank, actual budget outcome, exact violated axis, core/capacity
+  abstention, and partial-only truth boundaries. The generic v1 ledger, public exports,
+  stores, persistence, runtime, and UI are unchanged. Thirteen focused tests, all 187
+  package tests, package/root typechecks, build, changed tests, lint, two literal receipt
+  verifiers, and a fresh Sol/high completion gate passed. A bounded 255-optional probe
+  performed exactly 256 settlement invocations and admitted a later fitting witness after
+  the first oversized witness failed; its observed local runtime was about 1.65 seconds,
+  not a production performance claim.
+
 - Added the independently verified private fair frontier bundle-order kernel for the
   agent-native graph. It orders caller-declared opportunities carrying syntactically valid
   proof-document IDs across five caller-declared lanes—Continuity, Change, Evidence, Policy,
@@ -18,8 +36,9 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   caught and closed a caller-supplied internal `admissionId` bypass; runtime probes confirmed
   zero getter and Proxy-trap execution. All 181 package tests, standalone independent oracle,
   package/root typechecks, build, lint, changed tests, and diff checks passed. This kernel
-  proves opportunity-order fairness only: lane semantics remain caller-declared, coverage is
-  partial, and witness derivation, six-axis budget-admission fairness, authoritative
+  proves opportunity-order fairness only at its standalone boundary: lane semantics remain
+  caller-declared there and coverage is partial. The thread-rooted compiler now composes
+  this kernel through witness-derived fair context admission, while authoritative
   snapshots, persistence, runtime/UI composition, and public exports remain pending.
 
 - Added the independently verified private exact thread-rooted graph witness compiler.

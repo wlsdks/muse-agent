@@ -176,6 +176,26 @@ assert.equal(result.status, "partial");
 assert.equal(result.receipt.coverage.canAssertAbsenceWithinSnapshot, false);
 assert.equal(result.receipt.coverage.canAssertCurrentWorldAbsence, false);
 assert.equal(result.settlement?.status, "partial");
+assert.equal(result.frontier?.receipt.status, "partial");
+assert.equal(result.frontier?.receipt.dispositions[0]?.lane, "change");
+assert.equal(result.frontier?.receipt.dispositions[0]?.status, "budget-admitted");
+assert.equal(
+  result.receipt.frontierReceiptId,
+  result.frontier?.receipt.receiptId
+);
+assert.equal(
+  result.frontier?.receipt.receiptId,
+  contentId(
+    result.frontier.receipt,
+    "receiptId",
+    "muse.attunement-graph.fair-witness-frontier-receipt.v1",
+    "muse-fair-witness-frontier-receipt:sha256:"
+  )
+);
+assert.equal(
+  result.frontier?.receipt.receiptId,
+  "muse-fair-witness-frontier-receipt:sha256:f26c8048d60d70df36c8b82b646d565bb89b4827fc5d9b53ba226a6a495356f3"
+);
 const change = result.settlement.documents.find((document) =>
   document.kind === "change"
 );
@@ -192,7 +212,7 @@ assert.equal(
 );
 assert.equal(
   result.receipt.receiptId,
-  "muse-thread-rooted-witness-receipt:sha256:308e2af1b604094928162db96470e90559aa9b8fd74e4c9a9e5bbbbcb731cdd9"
+  "muse-thread-rooted-witness-receipt:sha256:15249e146c03b10827b5e7872f8862eb417302226701f78b497b4c0b77734e44"
 );
 
 const tieInput = fixture();
@@ -246,6 +266,7 @@ assert.equal(publicIndex.includes("thread-rooted-witness-documents"), false);
 
 stdout.write(`${JSON.stringify({
   abstainedReceiptId: abstained.receipt.receiptId,
+  frontierReceiptId: result.frontier?.receipt.receiptId,
   partialReceiptId: result.receipt.receiptId,
   status: "ok",
   witnessDepth: expectedPath.length

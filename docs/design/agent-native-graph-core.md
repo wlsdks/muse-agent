@@ -601,10 +601,12 @@ Do not build the database first.
    round-robin order across caller-declared Continuity, Change, Evidence, Policy, and
    Authority lanes without claiming the referenced witnesses are verified or the lanes
    are authoritative or budget-admitted.
-   **AWG-050a2b2** still owns witness-derived lane semantics and composition with six-axis
-   settlement; **AWG-050a3** still owns authoritative snapshot/freshness Provider
-   composition and verified Continuity `resumeContext`. Pure and in-memory until those
-   semantics pass.
+   **AWG-050a2b2 is complete:** the exact nominated focus assertion derives a lane for each
+   locally closed witness, generic `LINKED_TO` abstains, and a bounded subset-feasibility
+   composer separately receipts fair opportunity order and actual six-axis admission while
+   continuing after an oversized bundle. The generic v1 ledger is unchanged.
+   **AWG-050a3** still owns authoritative snapshot/freshness Provider composition and
+   verified Continuity `resumeContext`. Pure and in-memory until those semantics pass.
 4. **AWG-050b — Shadow decision receipt:** `silent | digest | offer`, bounded reason and
    counterfactual, later return timing; no sending, action, or chain-of-thought storage.
 5. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
@@ -619,17 +621,16 @@ Do not build the database first.
 9. **AWG-090 — qualification:** controlled scenarios followed by repeated local dogfood;
    usefulness, reconstruction cost, policy correction, and silence quality stay separate.
 
-AWG-045a, AWG-045b, AWG-050a1, AWG-050a2a, and AWG-050a2b1 are independently
+AWG-045a, AWG-045b, AWG-050a1, AWG-050a2a, AWG-050a2b1, and AWG-050a2b2 are independently
 verified and landed as package-private kernels with no public export or v1 codec change.
 Together they now prove deterministic hostile admission → exact thread-rooted witness
-traversal → local proof validation → fair opportunity order → candidate settlement →
-exact context bytes. Fair order is not yet composed into settlement, so this sequence is a
-verified set of private seams rather than one end-to-end fairness claim. The compiler still
-sees only a caller-declared finite snapshot, reports partial coverage, and makes no
-authoritative freshness, absence, permission, or action claim. AWG-050a2b2 witness-derived
-lane and settlement composition is the next eligible PLAN; AWG-050a3 Provider composition
-follows. Persistence is explicitly out of scope until the Shadow and Policy workloads make
-the backend requirements real.
+traversal → local proof validation → focus-derived lane → fair opportunity order → bounded
+subset feasibility → exact context bytes. This is an end-to-end claim only over the finite,
+caller-declared witness pool and actual six-axis budget; it is not a source-truth,
+causality, completeness, or user-value claim. The compiler still reports partial coverage
+and makes no authoritative freshness, absence, permission, or action claim. AWG-050a3
+Provider composition is the next eligible PLAN. Persistence is explicitly out of scope
+until the Shadow and Policy workloads make the backend requirements real.
 
 Core semantic and persistence PLAN work uses `gpt-5.6-sol` at `ultra` or `xhigh`;
 implementation begins only from a bounded accepted handoff, and completion uses a fresh
