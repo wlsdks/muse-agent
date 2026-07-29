@@ -7,6 +7,7 @@
  */
 
 export * from "./controller.js";
+export * from "./browser-action-plan.js";
 export * from "./browser-tools.js";
 export * from "./matcher.js";
 export {
