@@ -33,6 +33,7 @@ import type { Command } from "commander";
 import { buildActuatorTools } from "./actuator-tools.js";
 import { commandErrorLine } from "./format-cli-error.js";
 import type { ProgramIO } from "./program.js";
+import { withSigintAbort } from "./sigint-abort.js";
 
 export interface ApproveResult {
   readonly status: "ran" | "declined" | "not-found" | "no-tool" | "unknown" | "conflict" | "persistence-uncertain";
@@ -188,6 +189,22 @@ function formatPending(entry: PendingApproval): string {
   return `${entry.id}  ${who}  ${entry.tool}${route} — ${entry.draft} (expires ${entry.expiresAt})`;
 }
 
+function interruptedApprovalDetail(action: "Approval" | "Recovery", result: ApproveResult): string {
+  if (result.status === "ran") {
+    return `${action} completed before the interruption settled; replay is blocked.`;
+  }
+  const effectMayHaveOccurred = result.effectAttempted === true
+    || (result.status === "conflict" && (
+      result.phase === "finalize"
+      || result.state === "executing"
+      || result.state === "succeeded"
+      || result.state === "unknown"
+    ));
+  return effectMayHaveOccurred
+    ? `${action} was interrupted after effect admission; the outcome is not safe to retry.`
+    : `${action} was interrupted before another effect was admitted.`;
+}
+
 export function registerApprovalsCommands(
   program: Command,
   io: ProgramIO,
@@ -254,12 +271,25 @@ export function registerApprovalsCommands(
     .argument("<id>", "Claimed approval id")
     .option("--json", "Print the coordinator result as JSON")
     .action(async (id: string, options: { readonly json?: boolean }, command: Command) => {
-      const result = await recover({
-        env: process.env as Record<string, string | undefined>,
-        id,
-        io,
-        pendingFile: pendingFile()
+      let interrupted = false;
+      const result = await withSigintAbort(async (signal) => {
+        const completed = await recover({
+          env: process.env as Record<string, string | undefined>,
+          id,
+          io,
+          pendingFile: pendingFile(),
+          signal
+        });
+        interrupted = signal.aborted;
+        return completed;
       });
+      if (interrupted) {
+        io.stderr(commandErrorLine(
+          "approvals recover",
+          interruptedApprovalDetail("Recovery", result)
+        ));
+        return;
+      }
       if (options.json) {
         io.stdout(`${JSON.stringify(result)}\n`);
         if (result.status === "ran") return;
@@ -301,12 +331,25 @@ export function registerApprovalsCommands(
     .description("Approve a pending channel action by id — confirms the exact draft, records its outcome, and blocks replay")
     .argument("<id>", "Pending approval id (from `muse approvals list`)")
     .action(async (id: string, _options, command: Command) => {
-      const result = await approve({
-        env: process.env as Record<string, string | undefined>,
-        id,
-        io,
-        pendingFile: pendingFile()
+      let interrupted = false;
+      const result = await withSigintAbort(async (signal) => {
+        const completed = await approve({
+          env: process.env as Record<string, string | undefined>,
+          id,
+          io,
+          pendingFile: pendingFile(),
+          signal
+        });
+        interrupted = signal.aborted;
+        return completed;
       });
+      if (interrupted) {
+        io.stderr(commandErrorLine(
+          "approvals approve",
+          interruptedApprovalDetail("Approval", result)
+        ));
+        return;
+      }
       switch (result.status) {
         case "ran":
           io.stdout(`Completed ${result.tool ?? "action"} and recorded the result; replay is blocked.\n`);

@@ -17,7 +17,12 @@ import { readActionLog, readTasks } from "@muse/stores";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { approvePendingApproval, recoverPendingApproval, registerApprovalsCommands } from "./commands-approvals.js";
+import {
+  approvePendingApproval,
+  recoverPendingApproval,
+  registerApprovalsCommands,
+  type ApproveResult
+} from "./commands-approvals.js";
 import type { ProgramIO } from "./program.js";
 
 function fakeIo(): ProgramIO {
@@ -72,7 +77,9 @@ async function run(
   const stderr: string[] = [];
   const io = { stderr: (m: string) => stderr.push(m), stdout: (m: string) => stdout.push(m) };
   const prev = process.env.MUSE_PENDING_APPROVALS_FILE;
+  const previousExitCode = process.exitCode;
   process.env.MUSE_PENDING_APPROVALS_FILE = file;
+  process.exitCode = undefined;
   let exitCode: number | undefined;
   try {
     const program = new Command();
@@ -85,6 +92,8 @@ async function run(
   } catch (cause) {
     exitCode = (cause as { exitCode?: number }).exitCode ?? 1;
   } finally {
+    exitCode ??= process.exitCode;
+    process.exitCode = previousExitCode;
     if (prev === undefined) delete process.env.MUSE_PENDING_APPROVALS_FILE;
     else process.env.MUSE_PENDING_APPROVALS_FILE = prev;
   }
@@ -124,6 +133,59 @@ describe("muse approvals", () => {
 
   it("empty worklist → friendly message", async () => {
     expect((await run(file(), [])).stdout).toBe("No pending approvals.\n");
+  });
+
+  it.each(["approve", "recover"] as const)("threads SIGINT cancellation through the %s command and cleans up its listener", async (commandName) => {
+    const before = process.listenerCount("SIGINT");
+    let observedSignal: AbortSignal | undefined;
+    const complete = async (options: { readonly signal?: AbortSignal }) => {
+      observedSignal = options.signal;
+      expect(observedSignal?.aborted).toBe(false);
+      const aborted = Promise.withResolvers<void>();
+      observedSignal?.addEventListener("abort", () => aborted.resolve(), { once: true });
+      setImmediate(() => process.emit("SIGINT" as never));
+      await aborted.promise;
+      return { detail: "cancelled", state: "denied" as const, status: "declined" as const };
+    };
+    const result = commandName === "approve"
+      ? await run(file(), ["approve", "cancel-me"], complete as typeof approvePendingApproval)
+      : await run(file(), ["recover", "cancel-me"], undefined, { recoverPendingApproval: complete as typeof recoverPendingApproval });
+
+    expect(observedSignal?.aborted).toBe(true);
+    expect(result.exitCode).toBe(130);
+    expect(result.stderr).toContain("interrupted before another effect was admitted");
+    expect(process.listenerCount("SIGINT")).toBe(before);
+  });
+
+  it.each([
+    [
+      "completed effect",
+      { state: "succeeded", status: "ran", tool: "muse.tasks.add" },
+      "completed before the interruption settled; replay is blocked"
+    ],
+    [
+      "finalize conflict",
+      { phase: "finalize", state: "executing", status: "conflict" },
+      "after effect admission; the outcome is not safe to retry"
+    ],
+    [
+      "pre-effect persistence uncertainty",
+      { effectAttempted: false, phase: "claim", status: "persistence-uncertain" },
+      "before another effect was admitted"
+    ]
+  ] as const)("describes an interrupted %s without misstating effect admission", async (_case, completion, expected) => {
+    const approve = async (options: { readonly signal?: AbortSignal }): Promise<ApproveResult> => {
+      const aborted = Promise.withResolvers<void>();
+      options.signal?.addEventListener("abort", () => aborted.resolve(), { once: true });
+      setImmediate(() => process.emit("SIGINT" as never));
+      await aborted.promise;
+      return completion;
+    };
+
+    const result = await run(file(), ["approve", "cancel-me"], approve as typeof approvePendingApproval);
+
+    expect(result.exitCode).toBe(130);
+    expect(result.stderr).toContain(expected);
   });
 
   it("hides an expired entry from the list", async () => {
