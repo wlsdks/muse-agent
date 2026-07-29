@@ -22,10 +22,19 @@ documents rather than here.
   receipt-to-receipt change result is computed. This remains caller-declared evidence, not an
   authenticated witness, freshness proof, or independent authority.
 - A **Continuity Capsule Manifest** is a bounded, immutable, render-ready display snapshot:
-  prior stopping point, current next step, selected available supporting evidence, prepared
-  work, expected time, receipt/change IDs, and the exact provenance required to verify them.
-  It does not join live stores. A `draft` is display-only; an `action-preview` always requires
-  a new approval. Neither form contains a UI, persistence, action, or tool payload.
+  the previous observation's recorded next step (not an observed exact stopping point), its
+  current availability, the current next step, selected available supporting evidence,
+  prepared work, expected time, receipt/change IDs, and the exact provenance required to
+  verify them. It does not join live stores. A `draft` is display-only; an `action-preview`
+  always requires a new approval. Neither form contains a UI, persistence, action, or tool
+  payload. Exact-stop experience remains future work until an explicit stop-marker/capture
+  contract exists.
+- A **Continuity Capsule Presentation** is the bounded, bilingual library view over verified
+  Capsule dependencies. Its owner-request reason is only
+  `caller-declared-owner-request`; automatic timing is `not-performed`. Standalone
+  verification establishes canonical self-consistency, not authenticated observation,
+  source freshness, or proof that the caller request occurred. It has no UI, delivery,
+  persistence, source/store join, policy mutation, or action authority.
 - A **Temporal Rule** is the versioned deterministic Module that derives task, reminder,
   and calendar display state at one declared observation time. Producers and receipt
   verification use the same Implementation; old receipts are never silently reinterpreted
@@ -54,11 +63,16 @@ authoritative stores
 - `@muse/attunement` owns Personal Continuity and `ResolvedArtifact` semantics, including
   the internal all-source projection contract.
 - `@muse/attunement-graph` owns storage-neutral graph invariants, projections, bounded
-  operators, explanations, backend conformance, and the internal AWG-040b Capsule compiler—
-  not personal-store adapters or a presentation layer.
+  operators, explanations, backend conformance, the internal AWG-040b Capsule compiler, and
+  the AWG-040c pure render-data presentation Module—not personal-store adapters, UI, or
+  application composition.
+- Muse's own local graph default must support the complete flagship experience. External
+  Graph DBs and hosted graph services are optional, removable storage/interoperability
+  Adapters; no Capsule, Shadow Muse, Policy Card, or qualification gate may require one.
 - The compiler may consume the narrow `@muse/attunement/continuity-source-observations`
   facade, but it must not become a second composition root, graph database/backend, durable
-  store, or action/tool boundary. A later, user-invoked presentation adapter owns rendering.
+  store, or action/tool boundary. The user-invoked presentation Module owns render-ready
+  bilingual data only; applications own actual rendering and delivery.
 - Applications compose the modules. A package must not become a second composition root by
   importing every personal store.
 - Database SDKs, model providers, embeddings, clocks, files, and networks stay behind

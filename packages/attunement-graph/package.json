@@ -25,13 +25,18 @@
     "./continuity-observations": {
       "types": "./dist/continuity-observation.d.ts",
       "import": "./dist/continuity-observation.js"
+    },
+    "./continuity-capsules": {
+      "types": "./dist/continuity-capsule-presentation.d.ts",
+      "import": "./dist/continuity-capsule-presentation.js"
     }
   },
   "scripts": {
     "benchmark:continuity-changes": "pnpm build && node scripts/benchmark-continuity-changes.mjs",
     "build": "tsc -b",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:continuity-capsules": "pnpm build && node scripts/verify-continuity-capsules.mjs"
   },
   "dependencies": {
     "@muse/attunement": "workspace:*"

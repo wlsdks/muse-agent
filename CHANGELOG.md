@@ -8,6 +8,19 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added AWG-040c's bounded, bilingual Continuity Capsule presentation library surface over
+  the verified receipt/compiler dependencies. It is explicit owner-request rendering only:
+  authority is `caller-declared-owner-request`, automatic timing is `not-performed`, and
+  standalone transport verification establishes canonical self-consistency rather than
+  authenticated observation, source freshness, or a proved request. The presentation resumes
+  from the previous observation's recorded next step—not an observed exact stopping point—and
+  preserves the display-only/new-approval action boundary. Graph-source evidence over the
+  row/drawer cap fails closed rather than publishing an unverifiable omitted count. It adds
+  no UI, delivery,
+  persistence, source/store read, automatic timing, policy mutation, action execution, or
+  core-roadmap onboarding/session-handoff behavior; explicit exact-stop capture remains
+  future work.
+
 - Added the independently verified AWG-040b internal, provider-neutral Continuity Capsule
   manifest/compiler contract. It pairs prior/current scoped Source
   Observation Receipts with prior/current Graph Observation Receipts, requires exact

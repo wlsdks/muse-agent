@@ -13,6 +13,10 @@ related: [../strategy/attunement.md, attunement.md, ../goals/attunement-wow-grap
 > agent-native graph that can explain how one person's intent, unfinished work, changing
 > circumstances, evidence, collaboration policy, and action authority relate over time.
 
+Its optimization target is the AI agent loop—not generic graph feature breadth: minimal
+context assembly, bounded temporal/causal reasoning, explicit uncertainty, provenance,
+permission-safe action boundaries, local incremental updates, and cheap rebuild/forget.
+
 The architecture is a dedicated, maintainable `@muse/attunement-graph` module. It is not a
 generic knowledge graph product and it is not a new source of truth for tasks, notes,
 calendar, memory, or Attunement receipts. Those stores remain authoritative. The graph is
@@ -22,8 +26,10 @@ The engine exists to power three product experiences:
 
 1. **Shadow Muse** can record why it would speak or stay quiet, and compare that decision
    with what the user later did.
-2. **Continuity Capsule** can reconstruct the exact stopping point, what changed afterward,
-   the relevant evidence, one next step, prepared work, and expected time.
+2. **Continuity Capsule** can restore the state needed to continue: what changed afterward,
+   relevant evidence, a next step, prepared work, and expected time. A future explicit
+   stop-marker/capture contract is required before it can claim an exact stopping point;
+   the current substrate resumes from the previous observation's recorded next step.
 3. **Policy Card** can show what Muse proposes to learn about collaborating with this person,
    the evidence behind it, its scope, and how to try, edit, reject, or roll it back.
 
@@ -78,17 +84,24 @@ Receipts and previous/current Graph Observation Receipts. Each paired observatio
 the exact source ID, thread, canonical time, complete `CONTEXT_FOR`/`NEXT_STEP_FOR` link-role
 set, and policy binding; it then derives one deterministic receipt-to-receipt change result.
 The bounded, deeply frozen Capsule Manifest binds all receipt/change IDs and carries
-render-ready snapshots of the prior stopping point, current next step, and selected current
-supporting evidence, plus caller-declared prepared work and expected minutes. Snapshot text is
-copied only from verified source truth and remains local personal data. A `draft` is
-display-only; an `action-preview` is only a preview and requires a new approval.
+render-ready snapshots of the previous observation's recorded next step and its current
+availability, the current next step, and selected current supporting evidence, plus
+caller-declared prepared work and expected minutes. It does not establish an observed exact
+stopping point. Snapshot text is copied only from verified source truth and remains local
+personal data. A `draft` is display-only; an `action-preview` is only a preview and requires
+a new approval.
 
 The compiler is neither a user interface nor a durable/persistent Capsule store, source I/O,
 tool payload, action path, Graph DB/backend, or dogfood result. Manifest-only verification
 checks canonical self-consistency; dependency-aware verification requires all four receipts
-and recomputes their binding and change result. The next slice, AWG-040c, is limited to a
-pure, user-invoked presentation adapter; it must not add automatic delivery or authority.
-AWG-040b does not implement core-roadmap onboarding 103 or session-handoff 211.
+and recomputes their binding and change result. AWG-040c is the matching pure,
+user-invoked presentation Module: it exposes bounded English/Korean render data with a
+visible `caller-declared-owner-request` reason, `not-performed` automatic timing, and the
+display-only/new-approval boundary. Its standalone verifier proves canonical
+self-consistency only; it does not prove request authentication, source freshness, or an
+independent observation. It adds no automatic delivery, UI, persistence, source/store join,
+policy mutation, or action authority. AWG-040b/c do not implement core-roadmap onboarding
+103 or session-handoff 211.
 
 It has no application/runtime composition, durable adapter, LLM extraction, Shadow
 delivery, Capsule UI, Policy Card UI, or action authority. The Attunement Graph Engine and
@@ -228,7 +241,8 @@ file, store, model, graph, or network; no automatic capture or durable retention
 The most useful graph is not the largest graph. On every relevant turn, Attunement Graph
 should compile a tiny **Activation Subgraph** containing only:
 
-- the active thread and exact stopping point;
+- the active thread and previous observation's recorded next step (or, only after a future
+  explicit stop-marker/capture contract, an exact stopping point);
 - facts that changed after that point;
 - evidence paths needed to justify those changes;
 - the policy version and scope governing whether/how to help;
@@ -455,6 +469,14 @@ store and create a second composition root.
 ## Storage strategy
 
 No production database is selected in this document.
+
+The flagship Muse experience must remain complete with Muse's own local default graph
+Module. Neo4j, Graphiti, a hosted graph service, or any other external Graph DB may later
+appear only behind an optional storage/interoperability Adapter. No Capsule, Shadow Muse,
+Policy Card, explanation, forget, export, or dogfood qualification gate may depend on
+installing or operating one. If an external backend improves a proven workload, it must
+still preserve identical domain/query contracts and a clean fallback to Muse-owned local
+storage.
 
 1. Build an in-memory reference engine and backend conformance suite first.
 2. Run the same dogfood corpus against a minimal append-only local implementation,

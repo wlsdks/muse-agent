@@ -25,7 +25,7 @@ import { ContinuityChangeQueryError } from "./continuity-change-primitives.js";
 import type { ExplainedContinuityChangeResult } from "./continuity-change-contracts.js";
 
 export const CONTINUITY_CAPSULE_MANIFEST_FORMAT_VERSION =
-  "muse.continuity-capsule-manifest.v1" as const;
+  "muse.continuity-capsule-manifest.v2" as const;
 
 export const CONTINUITY_CAPSULE_MANIFEST_LIMITS = Object.freeze({
   maxExpectedMinutes: 1_440,
@@ -37,11 +37,11 @@ export const CONTINUITY_CAPSULE_MANIFEST_LIMITS = Object.freeze({
   maxSourceDisplayBytes: 16_384
 });
 
-const HASH_DOMAIN = "muse.attunement.continuity-capsule-manifest.v1\0";
-const MANIFEST_ID_PREFIX = "muse-continuity-capsule-manifest:v1:sha256:";
+const HASH_DOMAIN = "muse.attunement.continuity-capsule-manifest.v2\0";
+const MANIFEST_ID_PREFIX = "muse-continuity-capsule-manifest:v2:sha256:";
 const MANIFEST_ID_PLACEHOLDER = `${MANIFEST_ID_PREFIX}${"0".repeat(64)}`;
 const MANIFEST_ID_PATTERN =
-  /^muse-continuity-capsule-manifest:v1:sha256:[0-9a-f]{64}$/u;
+  /^muse-continuity-capsule-manifest:v2:sha256:[0-9a-f]{64}$/u;
 const SOURCE_RECEIPT_ID_PATTERN =
   /^muse-continuity-scoped-source-observation:v1:sha256:[0-9a-f]{64}$/u;
 const GRAPH_RECEIPT_ID_PATTERN =
@@ -103,8 +103,8 @@ export interface ContinuityCapsuleManifest {
   readonly currentSourceObservationReceiptId: string;
   readonly currentGraphObservationReceiptId: string;
   readonly changeResultId: string;
-  readonly stoppingPoint: CapsuleArtifactSnapshot;
-  readonly stoppingPointCurrentAvailability: "available" | "unavailable";
+  readonly previousNextStep: CapsuleArtifactSnapshot;
+  readonly previousNextStepCurrentAvailability: "available" | "unavailable";
   readonly currentNextStep: CapsuleArtifactSnapshot;
   readonly supportingEvidence: readonly CapsuleArtifactSnapshot[];
   readonly preparedWork: ContinuityCapsulePreparedWork;
@@ -114,6 +114,16 @@ export interface ContinuityCapsuleManifest {
 export interface ContinuityCapsuleCompilation {
   readonly manifest: ContinuityCapsuleManifest;
   readonly changeResult: ExplainedContinuityChangeResult;
+}
+
+/**
+ * Package-internal verified inputs for a Capsule presentation. This source-file
+ * export is deliberately not exposed through a package export map.
+ */
+export interface ContinuityCapsuleContext {
+  readonly compilation: ContinuityCapsuleCompilation;
+  readonly previousSource: ContinuityScopedSourceObservationReceipt;
+  readonly currentSource: ContinuityScopedSourceObservationReceipt;
 }
 
 interface ParsedPreparation {
@@ -426,7 +436,7 @@ function manifestBody(
   if (preparation.preparedAt !== currentSource.observation.observedAt) {
     fail("DEPENDENCY_MISMATCH", "preparation.preparedAt must equal the current observation time");
   }
-  const stoppingPoint = snapshotFromResolved(previousProjection.nextStep);
+  const previousNextStep = snapshotFromResolved(previousProjection.nextStep);
   const currentNextStep = snapshotFromAvailableEvidence(currentProjection.nextStep, currentProjection.evidence, "current next step");
   const supportingEvidence = freezeArray(preparation.supportingEvidenceRefs.map((reference) =>
     snapshotFromAvailableEvidence(reference, currentProjection.evidence, "supporting evidence")
@@ -444,8 +454,8 @@ function manifestBody(
     currentSourceObservationReceiptId: currentSource.receiptId,
     currentGraphObservationReceiptId: currentGraph.receiptId,
     changeResultId: changeResult.resultId,
-    stoppingPoint,
-    stoppingPointCurrentAvailability: availability(stoppingPoint.reference, currentProjection.evidence),
+    previousNextStep,
+    previousNextStepCurrentAvailability: availability(previousNextStep.reference, currentProjection.evidence),
     currentNextStep,
     supportingEvidence,
     preparedWork: preparation.preparedWork
@@ -469,7 +479,7 @@ function finalizeManifest(body: ManifestBody): ContinuityCapsuleManifest {
   return Object.freeze({ ...body, manifestId: id });
 }
 
-export function compileContinuityCapsuleManifest(input: unknown): ContinuityCapsuleCompilation {
+export function compileContinuityCapsuleContext(input: unknown): ContinuityCapsuleContext {
   const parsed = parseCompilerInput(input);
   let previousSource: ContinuityScopedSourceObservationReceipt;
   let previousGraph: ContinuityObservationReceipt;
@@ -485,7 +495,12 @@ export function compileContinuityCapsuleManifest(input: unknown): ContinuityCaps
   let changeResult: ExplainedContinuityChangeResult;
   try { changeResult = compareVerifiedContinuityObservationReceipts(previousGraph, currentGraph); } catch (cause) { mapComparison(cause); }
   const body = manifestBody(previousSource, previousGraph, currentSource, currentGraph, parsed.preparation, changeResult);
-  return Object.freeze({ manifest: finalizeManifest(body), changeResult });
+  const compilation = Object.freeze({ manifest: finalizeManifest(body), changeResult });
+  return Object.freeze({ compilation, previousSource, currentSource });
+}
+
+export function compileContinuityCapsuleManifest(input: unknown): ContinuityCapsuleCompilation {
+  return compileContinuityCapsuleContext(input).compilation;
 }
 
 function parseSnapshot(value: unknown, label: string): CapsuleArtifactSnapshot {
@@ -502,7 +517,7 @@ function parseSnapshot(value: unknown, label: string): CapsuleArtifactSnapshot {
 }
 
 function parseManifest(input: unknown): ContinuityCapsuleManifest {
-  const record = shallowRecord(input, "capsule manifest", ["schemaVersion", "formatVersion", "authority", "thread", "previousObservedAt", "currentObservedAt", "preparedAt", "previousSourceObservationReceiptId", "previousGraphObservationReceiptId", "currentSourceObservationReceiptId", "currentGraphObservationReceiptId", "changeResultId", "stoppingPoint", "stoppingPointCurrentAvailability", "currentNextStep", "supportingEvidence", "preparedWork", "manifestId"], ["schemaVersion", "formatVersion", "authority", "thread", "previousObservedAt", "currentObservedAt", "preparedAt", "previousSourceObservationReceiptId", "previousGraphObservationReceiptId", "currentSourceObservationReceiptId", "currentGraphObservationReceiptId", "changeResultId", "stoppingPoint", "stoppingPointCurrentAvailability", "currentNextStep", "supportingEvidence", "preparedWork", "manifestId"], "INVALID_MANIFEST");
+  const record = shallowRecord(input, "capsule manifest", ["schemaVersion", "formatVersion", "authority", "thread", "previousObservedAt", "currentObservedAt", "preparedAt", "previousSourceObservationReceiptId", "previousGraphObservationReceiptId", "currentSourceObservationReceiptId", "currentGraphObservationReceiptId", "changeResultId", "previousNextStep", "previousNextStepCurrentAvailability", "currentNextStep", "supportingEvidence", "preparedWork", "manifestId"], ["schemaVersion", "formatVersion", "authority", "thread", "previousObservedAt", "currentObservedAt", "preparedAt", "previousSourceObservationReceiptId", "previousGraphObservationReceiptId", "currentSourceObservationReceiptId", "currentGraphObservationReceiptId", "changeResultId", "previousNextStep", "previousNextStepCurrentAvailability", "currentNextStep", "supportingEvidence", "preparedWork", "manifestId"], "INVALID_MANIFEST");
   if (record.schemaVersion !== 1 || record.formatVersion !== CONTINUITY_CAPSULE_MANIFEST_FORMAT_VERSION || record.authority !== "caller-declared-preparation") fail("INVALID_MANIFEST", "capsule manifest envelope is unsupported");
   const dependencyIds: readonly [unknown, RegExp, string][] = [
     [record.previousSourceObservationReceiptId, SOURCE_RECEIPT_ID_PATTERN, "previous source receipt ID"],
@@ -524,15 +539,15 @@ function parseManifest(input: unknown): ContinuityCapsuleManifest {
   const previousObservedAt = canonicalInstant(record.previousObservedAt, "previousObservedAt", "INVALID_MANIFEST");
   const currentObservedAt = canonicalInstant(record.currentObservedAt, "currentObservedAt", "INVALID_MANIFEST");
   const preparedAt = canonicalInstant(record.preparedAt, "preparedAt", "INVALID_MANIFEST");
-  const stoppingPoint = parseSnapshot(record.stoppingPoint, "stoppingPoint");
+  const previousNextStep = parseSnapshot(record.previousNextStep, "previousNextStep");
   const currentNextStep = parseSnapshot(record.currentNextStep, "currentNextStep");
   const rawSupporting = strictArray(record.supportingEvidence, "supportingEvidence", "INVALID_MANIFEST");
   if (rawSupporting.length > CONTINUITY_CAPSULE_MANIFEST_LIMITS.maxSupportingEvidence) fail("BUDGET_EXCEEDED", "supportingEvidence exceeds its item budget");
   const supportingEvidence = freezeArray(rawSupporting.map((entry, index) => parseSnapshot(entry, `supportingEvidence[${index}]`)));
   const preparedWork = parsePreparedWork(record.preparedWork, "INVALID_MANIFEST");
-  if (record.stoppingPointCurrentAvailability !== "available" && record.stoppingPointCurrentAvailability !== "unavailable") fail("INVALID_MANIFEST", "stoppingPointCurrentAvailability is invalid");
+  if (record.previousNextStepCurrentAvailability !== "available" && record.previousNextStepCurrentAvailability !== "unavailable") fail("INVALID_MANIFEST", "previousNextStepCurrentAvailability is invalid");
   if (
-    stoppingPoint.status !== "available"
+    previousNextStep.status !== "available"
     || currentNextStep.status !== "available"
     || supportingEvidence.some((entry) => entry.status !== "available")
   ) {
@@ -561,8 +576,8 @@ function parseManifest(input: unknown): ContinuityCapsuleManifest {
     currentSourceObservationReceiptId: record.currentSourceObservationReceiptId as string,
     currentGraphObservationReceiptId: record.currentGraphObservationReceiptId as string,
     changeResultId: record.changeResultId as string,
-    stoppingPoint,
-    stoppingPointCurrentAvailability: record.stoppingPointCurrentAvailability,
+    previousNextStep,
+    previousNextStepCurrentAvailability: record.previousNextStepCurrentAvailability,
     currentNextStep,
     supportingEvidence,
     preparedWork

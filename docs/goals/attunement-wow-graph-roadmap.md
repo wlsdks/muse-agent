@@ -18,8 +18,9 @@ Those programs harden the general agent substrate. This one builds Muse's signat
 The two workstreams are inseparable:
 
 - **Experience:** Shadow Muse → Continuity Capsule → Policy Card.
-- **Engine:** a modular Attunement Graph that can connect intent, change, time, evidence,
-  policy, and authority without copying existing stores.
+- **Engine:** a modular, agent-native Graph DB/Engine optimized for compact context,
+  temporal/provenance reasoning, abstention, policy, and action authority—not generic query
+  breadth—and able to connect those relations without copying existing stores.
 
 ## Program boundary
 
@@ -36,8 +37,10 @@ same source.
 
 The program is not done when Muse has a graph database. It is done when:
 
-1. a real unfinished thread can be resumed with a grounded Capsule that identifies the
-   stopping point, changes, evidence, next step, prepared action, and expected time;
+1. a real unfinished thread can be resumed with a grounded Capsule that identifies changes,
+   evidence, next step, prepared action, and expected time; an exact stopping point is a
+   later capability that requires explicit stop-marker/capture evidence, while the current
+   substrate resumes from the previous observation's recorded next step;
 2. Muse can explain why it surfaced or stayed silent and show a bounded counterfactual;
 3. a Policy Card proposes a scoped collaboration change with evidence and reversible
    controls;
@@ -57,10 +60,10 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | completed |
 | **AWG-035a** | Observation Receipt format | Strict content-addressed codec preserves one caller-declared exact projection and source accounting without personal source text | completed |
 | **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | completed |
-| **AWG-040** | Continuity Capsule v1 | User-invoked Capsule renders stopping point, changes, next step, prepared work, expected time, and source drawer | in progress (`AWG-040b` verified; `AWG-040c` next) |
+| **AWG-040** | Continuity Capsule v1 | User-invoked, library-only Capsule renders the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer | in progress (`AWG-040b/c` verified library-only; application integration and exact-stop capture pending) |
 | **AWG-050** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
-| **AWG-070** | Storage bake-off | Reference adapter vs PostgreSQL vs at most one embedded graph candidate on correctness, cost, recovery, portability, and maintenance | pending |
+| **AWG-070** | Storage bake-off | Prove the Muse-owned local default first; compare PostgreSQL and at most one embedded candidate only as optional Adapters on correctness, cost, recovery, portability, and maintenance | pending |
 | **AWG-080** | Durable local graph adapter | Selected adapter passes conformance, export/rebuild, corruption, migration, forget, and crash-recovery gates | pending |
 | **AWG-090** | Dogfood qualification | Controlled scenarios plus repeated organic use; reconstruction-cost and policy-correction evidence remain separately reported | pending |
 
@@ -282,7 +285,7 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
 ## Completed sub-slice: AWG-040b
 
 - **Classification at activation:** `missing`; AWG-040a2 preserved one canonical Source
-  Observation Receipt, but an honest Capsule still needed bi-temporal stopping/current truth,
+  Observation Receipt, but an honest Capsule still needed bi-temporal previous-next-step/current truth,
   exact Graph provenance, a receipt-to-receipt change result, and bounded display data that a
   later presenter could use without rejoining live sources.
 - **Implemented boundary:** an internal `@muse/attunement-graph` compiler consumes previous
@@ -291,11 +294,13 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
   complete `CONTEXT_FOR`/`NEXT_STEP_FOR` source-link roles, and policy source/ref binding;
   valid graph receipts then produce the deterministic receipt-to-receipt change result.
 - **Capsule contract:** the frozen, byte-bounded manifest binds all four receipt IDs and the
-  change-result ID, with render-ready source snapshots for the prior stopping point, current
-  next step, and selected current supporting evidence. Snapshot text is exact verified source
-  text when present, never model-created text. Standalone manifest verification proves only
-  canonical self-consistency; dependency-aware verification receives all four receipts and
-  recomputes bindings, selections, and the change result.
+  change-result ID, with render-ready source snapshots for the previous observation's
+  recorded next step and its current availability, the current next step, and selected
+  current supporting evidence. Snapshot text is exact verified source text when present,
+  never model-created text. It is not evidence of an exact observed stopping point;
+  explicit stop-marker/capture remains future work. Standalone manifest verification proves
+  only canonical self-consistency; dependency-aware verification receives all four receipts
+  and recomputes bindings, selections, and the change result.
 - **Authority and privacy:** a `draft` is display-only. An `action-preview` contains no tool
   or action payload and always requires a new approval. The compiler is caller-invoked and
   pure: no UI, persistence, source I/O, automatic observation/delivery, action, tool call,
@@ -309,16 +314,28 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
   two locale probes, package/root typechecks and builds, lint, export/import probes, and
   diff hygiene all passed. This is not a claim of product integration or user-facing
   Capsule availability.
-- **Next eligible sub-slice:** AWG-040c, a pure, user-invoked presentation adapter over the
-  verified manifest/change-result contract. It may render the bounded snapshots but must not
-  introduce automatic delivery, persistence, source/store joins, action/tool payloads, or
-  approval bypass.
+- **Completed sub-slice: AWG-040c.** The pure, user-invoked
+  `@muse/attunement-graph/continuity-capsules` library Module presents the verified bounded
+  snapshots in English or Korean. It visibly attributes the reason to
+  `caller-declared-owner-request`, reports automatic timing as `not-performed`, and keeps
+  drafts display-only while action previews require a new approval. Its standalone verifier
+  establishes canonical self-consistency only; request authentication, source freshness, and
+  independent observation remain unproven. This is not a Capsule UI, CLI/API/MCP entry point,
+  delivery, persistence layer, source/store join, automatic timing system, policy mutation,
+  or action authority. Graph-source evidence is never silently omitted: a row or drawer over
+  its verified cap fails closed instead of publishing an unverifiable omitted count. The
+  fresh completion gate passed after the 128-item saturation adversary, focused manifest and
+  presentation tests (`45/45`), full graph tests (`121/121`), typecheck, built export/boundary
+  probes, and diff hygiene passed. AWG-040 remains `in progress` until application integration
+  and an explicit-stop capture substrate are separately scoped and verified.
 
 ## Architecture gates
 
 Every source-changing slice must preserve:
 
 - domain semantics independent of a database SDK;
+- the complete flagship experience on Muse's own local default, with every external Graph DB
+  or hosted graph service remaining an optional, removable Adapter;
 - authoritative existing stores plus rebuildable graph projection;
 - append-oriented, versioned, provenance-bearing assertions;
 - bi-temporal validity and transaction time;

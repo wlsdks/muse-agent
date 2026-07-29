@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CONTINUITY_CAPSULE_MANIFEST_LIMITS,
   ContinuityCapsuleManifestError,
+  compileContinuityCapsuleContext,
   compileContinuityCapsuleManifest,
   verifyContinuityCapsuleCompilation,
   verifyContinuityCapsuleManifest,
@@ -26,8 +27,8 @@ import { captureContinuityObservation } from "./continuity-observation.js";
 const PREVIOUS_AT = "2026-07-29T08:00:00.000Z";
 const CURRENT_AT = "2026-07-29T10:00:00.000Z";
 const SCOPE = { sourceId: "default", threadId: "thread_capsule" } as const;
-const HASH_DOMAIN = "muse.attunement.continuity-capsule-manifest.v1\0";
-const MANIFEST_ID_PREFIX = "muse-continuity-capsule-manifest:v1:sha256:";
+const HASH_DOMAIN = "muse.attunement.continuity-capsule-manifest.v2\0";
+const MANIFEST_ID_PREFIX = "muse-continuity-capsule-manifest:v2:sha256:";
 
 type Data = Record<string, unknown>;
 type ScopeFixture = { readonly sourceId: string; readonly threadId: string };
@@ -285,7 +286,10 @@ describe("Continuity Capsule Manifest", () => {
 
     expect(compilerInput).toEqual(before);
     expect(roundTrip).toEqual(compilation.manifest);
-    expect(compilation.manifest.stoppingPoint.reference).toEqual(TASK);
+    expect(compilation.manifest.formatVersion).toBe("muse.continuity-capsule-manifest.v2");
+    expect(compilation.manifest.manifestId.startsWith(MANIFEST_ID_PREFIX)).toBe(true);
+    expect(compilation.manifest.previousNextStep.reference).toEqual(TASK);
+    expect(compilation.manifest.previousNextStepCurrentAvailability).toBe("available");
     expect(compilation.manifest.currentNextStep.title).toBe("Resume booking");
     expect(compilation.manifest.supportingEvidence[0]?.summary).toBe("Owner note");
     expect(compilation.manifest.preparedWork.actionMode).toBe("display-only");
@@ -293,6 +297,16 @@ describe("Continuity Capsule Manifest", () => {
     expect(Object.isFrozen(compilation.manifest)).toBe(true);
     expect(Object.isFrozen(compilation.manifest.supportingEvidence)).toBe(true);
     expect(Object.isFrozen(compilation.manifest.supportingEvidence[0])).toBe(true);
+  });
+
+  it("compiles one internal context with the verified scoped source receipts", () => {
+    const compilerInput = input();
+    const context = compileContinuityCapsuleContext(compilerInput);
+
+    expect(context.compilation).toEqual(compileContinuityCapsuleManifest(compilerInput));
+    expect(context.previousSource.receiptId).toBe(compilerInput.previousSourceObservationReceipt.receiptId);
+    expect(context.currentSource.receiptId).toBe(compilerInput.currentSourceObservationReceipt.receiptId);
+    expect(Object.isFrozen(context)).toBe(true);
   });
 
   it("enforces action authority and preparation budgets before dependencies", () => {
@@ -553,7 +567,7 @@ describe("Continuity Capsule Manifest", () => {
         currentNextStep: { ...one.currentNextStep, reference: { ...one.currentNextStep.reference, providerId: "mcp:github" } }
       }), "INVALID_MANIFEST"],
       ["noncanonical time", rehash({ ...one, previousObservedAt: "2026-07-29T08:00:00Z" }), "INVALID_MANIFEST"],
-      ["unavailable stop", rehash({ ...one, stoppingPoint: { ...one.stoppingPoint, status: "unavailable" } }), "INVALID_MANIFEST"],
+      ["unavailable previous next step", rehash({ ...one, previousNextStep: { ...one.previousNextStep, status: "unavailable" } }), "INVALID_MANIFEST"],
       ["unsorted support", rehash({ ...two, supportingEvidence: [...two.supportingEvidence].reverse() }), "INVALID_MANIFEST"],
       ["duplicate support", rehash({ ...two, supportingEvidence: [two.supportingEvidence[0]!, two.supportingEvidence[0]!] }), "INVALID_MANIFEST"]
     ];
