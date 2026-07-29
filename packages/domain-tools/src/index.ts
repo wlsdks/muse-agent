@@ -7,6 +7,18 @@ export { createBackgroundListTool } from "./background-list-tool.js";
 export { detectCalendarConflicts, selectUpcomingConflicts } from "./calendar-conflicts.js";
 export type { CalendarConflict, ConflictEventLike } from "./calendar-conflicts.js";
 export { createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createUpcomingBirthdaysTool } from "./contacts-tool.js";
+export {
+  bindCommunicationContentApproval,
+  COMMUNICATION_CONTENT_APPROVAL_VERSION,
+  verifyCommunicationContentApproval
+} from "./communication-content-approval.js";
+export type {
+  BindCommunicationContentApprovalResult,
+  CommunicationAttachmentContent,
+  CommunicationContent,
+  CommunicationContentApprovalBinding,
+  VerifyCommunicationContentApprovalResult
+} from "./communication-content-approval.js";
 export { extractEmailAddress, extractPlainTextBody, GmailAuthError, GmailEmailProvider, summarizeInbox, unreadBriefingLine } from "./email-provider.js";
 export type { EmailMessage, EmailProvider, EmailReader, EmailSearcher, EmailSender, EmailSummary } from "./email-provider.js";
 export { ImapSmtpAuthError, ImapSmtpEmailProvider, ImapSmtpNetworkError } from "./email-provider-imap.js";
