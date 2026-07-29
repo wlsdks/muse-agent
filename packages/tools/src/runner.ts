@@ -54,13 +54,17 @@ export interface RunnerCommandResponse {
 
 export interface RustRunnerToolOptions {
   readonly runnerPath?: string;
-  readonly invokeRunner?: (request: RunnerCommandRequest) => Promise<RunnerCommandResponse>;
+  readonly invokeRunner?: (
+    request: RunnerCommandRequest,
+    signal?: AbortSignal
+  ) => Promise<RunnerCommandResponse>;
   /** Caller-only fixture boundary; model-supplied cwd cannot escape it. */
   readonly isolationRoot?: string;
 }
 
 export function createRustRunnerTool(options: RustRunnerToolOptions = {}): MuseTool {
-  const invoke = options.invokeRunner ?? ((request) => invokeRustRunner(options.runnerPath ?? "muse-runner", request));
+  const invoke = options.invokeRunner
+    ?? ((request, signal) => invokeRustRunner(options.runnerPath ?? "muse-runner", request, signal));
 
   return {
     definition: {
@@ -94,12 +98,12 @@ export function createRustRunnerTool(options: RustRunnerToolOptions = {}): MuseT
       name: "run_command",
       risk: "execute"
     },
-    async execute(args) {
+    async execute(args, context) {
       const parsed = parseRunnerCommandRequest(args);
       const request = options.isolationRoot === undefined
         ? parsed
         : await constrainRunnerRequestToIsolationRoot(parsed, options.isolationRoot);
-      const response = await invoke(request);
+      const response = await invoke(request, context.signal);
 
       const cap = request.maxOutputBytes;
       const cappedStdout = cap !== undefined ? truncateUtf8(response.stdout, cap) : response.stdout;
@@ -213,7 +217,8 @@ export function runnerWatchdogMs(request: RunnerCommandRequest): number {
 
 export async function invokeRustRunner(
   runnerPath: string,
-  request: RunnerCommandRequest
+  request: RunnerCommandRequest,
+  abortSignal?: AbortSignal
 ): Promise<RunnerCommandResponse> {
   try {
     const responseText = JSON.stringify(request);
@@ -226,6 +231,7 @@ export async function invokeRustRunner(
       // outer watchdog kills a wedged runner, kill that whole inherited group
       // too; otherwise a backgrounded command can survive its runner parent.
       killProcessGroup: true,
+      abortSignal,
       maxStdoutBytes: 200_000,
       maxStderrBytes: 200_000
     });

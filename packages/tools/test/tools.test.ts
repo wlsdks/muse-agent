@@ -1204,6 +1204,79 @@ describe.skipIf(process.platform === "win32")("Rust runner watchdog", () => {
     }
     throw new Error(`runner watchdog left command process ${commandPid.toString()} alive`);
   }, 15_000);
+
+  it("does not spawn an already-aborted runner request", async () => {
+    const { chmodSync, mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-runner-pre-abort-"));
+    const marker = join(dir, "spawned");
+    const script = join(dir, "must-not-spawn");
+    writeFileSync(script, `#!${process.execPath}\nrequire("node:fs").writeFileSync(${JSON.stringify(marker)}, "spawned");\n`);
+    chmodSync(script, 0o755);
+    const controller = new AbortController();
+    controller.abort(new Error("cancelled before runner spawn"));
+
+    const result = await invokeRustRunner(script, { command: "noop" }, controller.signal);
+
+    expect(result).toMatchObject({ ok: false, timedOut: false });
+    expect(result.error).toContain("cancelled before runner spawn");
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("returns a missing-runner failure with a live signal without an unhandled cleanup rejection", async () => {
+    const controller = new AbortController();
+    const missing = path.join(tmpdir(), `missing-muse-runner-${process.pid.toString()}-${Date.now().toString()}`);
+
+    const result = await invokeRustRunner(missing, { command: "noop" }, controller.signal);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(result).toMatchObject({ ok: false, timedOut: false });
+    expect(result.error).toMatch(/ENOENT|not found/u);
+  });
+
+  it("kills an in-flight runner process group when the caller aborts", async () => {
+    const { chmodSync, mkdtempSync, readFileSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-runner-abort-tree-"));
+    const pidFile = join(dir, "command.pid");
+    const script = join(dir, "abortable-runner");
+    writeFileSync(
+      script,
+      `#!${process.execPath}\nconst { spawn } = require("node:child_process");\nconst { writeFileSync } = require("node:fs");\nconst command = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });\nwriteFileSync(${JSON.stringify(pidFile)}, String(command.pid));\nsetInterval(() => {}, 1000);\n`
+    );
+    chmodSync(script, 0o755);
+    const controller = new AbortController();
+    const pending = invokeRustRunner(script, { command: "noop", timeoutMs: 600_000 }, controller.signal);
+
+    for (let attempt = 0; attempt < 80 && !existsSync(pidFile); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(existsSync(pidFile)).toBe(true);
+    const commandPid = Number(readFileSync(pidFile, "utf8"));
+    const started = Date.now();
+    controller.abort(new Error("caller cancelled runner"));
+    const result = await pending;
+
+    expect(result).toMatchObject({ ok: false, timedOut: false });
+    expect(result.error).toContain("caller cancelled runner");
+    expect(Date.now() - started).toBeLessThan(2_000);
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      try {
+        process.kill(commandPid, 0);
+      } catch {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    try {
+      process.kill(commandPid, "SIGKILL");
+    } catch {
+      // The assertion below has the clearer failure when the process is gone.
+    }
+    throw new Error(`aborted runner left command process ${commandPid.toString()} alive`);
+  }, 10_000);
 });
 
 // The runner is a SEPARATE child process; its stdout is an untrusted boundary
@@ -1311,6 +1384,29 @@ describe("Rust runner tool", () => {
       timeoutMs: 1000
     });
     expect(result).toMatchObject({ ok: true, stdout: "done" });
+  });
+
+  it("passes the exact tool-context cancellation signal to the runner bridge", async () => {
+    const controller = new AbortController();
+    let capturedSignal: AbortSignal | undefined;
+    const tool = createRustRunnerTool({
+      invokeRunner: async (_request, signal) => {
+        capturedSignal = signal;
+        return {
+          error: null,
+          ok: true,
+          status: 0,
+          stderr: "",
+          stdout: "done",
+          timedOut: false,
+          truncated: false
+        };
+      }
+    });
+
+    await tool.execute({ command: "echo" }, { runId: "run-signal", signal: controller.signal });
+
+    expect(capturedSignal).toBe(controller.signal);
   });
 
   it("flips `truncated` when a model-supplied maxOutputBytes actually shortens the output", async () => {

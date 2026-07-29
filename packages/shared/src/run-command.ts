@@ -187,9 +187,14 @@ export async function runCommandWithTimeout(options: RunCommandOptions): Promise
         abortDeferred.reject(abortError(abortSignal.reason));
       };
       abortSignal.addEventListener("abort", onAbort, { once: true });
-      void outcome.finally(() => {
+      const removeAbortListener = (): void => {
         abortSignal.removeEventListener("abort", onAbort);
-      });
+      };
+      // Use both settlement handlers instead of `void outcome.finally(...)`.
+      // `finally` creates a second rejected promise when spawn fails; ignoring
+      // that promise turns an expected ENOENT result into an unhandled
+      // rejection after the caller has already handled `outcome`.
+      void outcome.then(removeAbortListener, removeAbortListener);
       return abortDeferred.promise;
     })()
     : undefined;

@@ -32,4 +32,23 @@ describe("runCommandWithTimeout stream limits", () => {
 
     await expect(pending).resolves.toMatchObject({ stdout: "abc", truncated: true });
   });
+
+  it("cleans up a live abort listener after an asynchronous spawn error without a second rejection", async () => {
+    const child = makeFakeChild();
+    const spawnImpl = vi.fn(() => child) as unknown as typeof spawn;
+    const controller = new AbortController();
+    const remove = vi.spyOn(controller.signal, "removeEventListener");
+    const pending = runCommandWithTimeout({
+      abortSignal: controller.signal,
+      command: "missing-runner",
+      spawnImpl,
+      timeoutMs: 5_000
+    });
+
+    child.emit("error", new Error("spawn missing-runner ENOENT"));
+
+    await expect(pending).rejects.toThrow("ENOENT");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(remove).toHaveBeenCalledOnce();
+  });
 });
