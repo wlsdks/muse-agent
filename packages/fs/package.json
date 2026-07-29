@@ -17,6 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@muse/policy": "workspace:*",
     "@muse/shared": "workspace:*",
     "@muse/tools": "workspace:*",
     "ignore": "^7.0.5",

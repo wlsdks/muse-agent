@@ -2,8 +2,14 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  attenuateToolExposureAuthority,
+  createToolExposureAuthority,
+  PERSONAL_WORK_CAPABILITY_PROFILE_ID,
+  resolveToolExposureAuthority
+} from "@muse/policy";
 import type { JsonObject } from "@muse/shared";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FileCheckpointStore, type CheckpointRecordInput, type CheckpointStore } from "./fs-checkpoints.js";
 import { applyEdit, applyEdits, createFileDeleteTool, createFileEditTool, createFileMoveTool, createFileMultiEditTool, createFileWriteTool, type FsWriteApprovalGate } from "./fs-write-tools.js";
@@ -184,6 +190,192 @@ describe("file_write / file_edit / file_multi_edit — gated writes", () => {
   });
 
   const opts = (gate: FsWriteApprovalGate) => ({ approvalGate: gate, baseDir: root, roots: [root] });
+
+  describe("delegated canonical writable scope", () => {
+    it("allows only in-scope canonical targets across every file mutation tool", async () => {
+      const allowedRoot = join(root, "allowed");
+      const outsideRoot = join(root, "outside");
+      await mkdir(allowedRoot, { recursive: true });
+      await mkdir(outsideRoot, { recursive: true });
+      const authority = createToolExposureAuthority({
+        allowedToolNames: ["file_write", "file_edit", "file_multi_edit", "file_delete", "file_move"],
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        localMode: true,
+        writablePaths: [allowedRoot]
+      });
+      const scopedCtx = { ...ctx, toolExposureAuthority: authority };
+
+      const write = createFileWriteTool(opts(allow));
+      const allowedFile = join(allowedRoot, "ok.md");
+      expect((await write.execute({ content: "ok", path: allowedFile }, scopedCtx) as JsonObject)["written"]).toBe(true);
+      const edit = createFileEditTool(opts(allow));
+      expect((await edit.execute({ new_string: "edited", old_string: "ok", path: allowedFile }, scopedCtx) as JsonObject)["written"]).toBe(true);
+      const multi = createFileMultiEditTool(opts(allow));
+      expect((await multi.execute({
+        edits: [{ new_string: "EDITED", old_string: "edited" }],
+        path: allowedFile
+      }, scopedCtx) as JsonObject)["written"]).toBe(true);
+      const move = createFileMoveTool(opts(allow));
+      const movedFile = join(allowedRoot, "moved.md");
+      expect((await move.execute({ from: allowedFile, to: movedFile }, scopedCtx) as JsonObject)["moved"]).toBe(true);
+      const remove = createFileDeleteTool(opts(allow));
+      expect((await remove.execute({ path: movedFile }, scopedCtx) as JsonObject)["deleted"]).toBe(true);
+
+      expect((await write.execute({ content: "no", path: join(outsideRoot, "no.md") }, scopedCtx) as JsonObject)).toMatchObject({
+        refused: true,
+        written: false
+      });
+
+      const editTarget = join(outsideRoot, "edit.md");
+      await writeFile(editTarget, "old");
+      expect((await edit.execute({ new_string: "new", old_string: "old", path: editTarget }, scopedCtx) as JsonObject)["written"]).toBe(false);
+      expect(await readFile(editTarget, "utf8")).toBe("old");
+
+      const multiTarget = join(outsideRoot, "multi.md");
+      await writeFile(multiTarget, "alpha beta");
+      expect((await multi.execute({
+        edits: [{ new_string: "A", old_string: "alpha" }, { new_string: "B", old_string: "beta" }],
+        path: multiTarget
+      }, scopedCtx) as JsonObject)["written"]).toBe(false);
+      expect(await readFile(multiTarget, "utf8")).toBe("alpha beta");
+
+      const deleteTarget = join(outsideRoot, "delete.md");
+      await writeFile(deleteTarget, "keep");
+      expect((await remove.execute({ path: deleteTarget }, scopedCtx) as JsonObject)["deleted"]).toBe(false);
+      expect(await readFile(deleteTarget, "utf8")).toBe("keep");
+
+      const moveSource = join(allowedRoot, "move.md");
+      await writeFile(moveSource, "stay");
+      expect((await move.execute({ from: moveSource, to: join(outsideRoot, "move.md") }, scopedCtx) as JsonObject)["moved"]).toBe(false);
+      expect(await readFile(moveSource, "utf8")).toBe("stay");
+      const outsideSource = join(outsideRoot, "outside-source.md");
+      await writeFile(outsideSource, "also-stay");
+      expect((await move.execute({ from: outsideSource, to: join(allowedRoot, "inside-destination.md") }, scopedCtx) as JsonObject)["moved"]).toBe(false);
+      expect(await readFile(outsideSource, "utf8")).toBe("also-stay");
+    });
+
+    it("denies empty, forged, and expired delegated authority without changing legacy no-authority writes", async () => {
+      const target = join(root, "target.md");
+      const tool = createFileWriteTool(opts(allow));
+      for (const toolExposureAuthority of [
+        createToolExposureAuthority({
+          allowedToolNames: ["file_write"],
+          expiresAt: "2099-01-01T00:00:00.000Z",
+          localMode: true,
+          writablePaths: []
+        }),
+        null as never,
+        {} as never,
+        createToolExposureAuthority({
+          allowedToolNames: ["file_write"],
+          expiresAt: "2000-01-01T00:00:00.000Z",
+          localMode: true,
+          writablePaths: [root]
+        })
+      ]) {
+        const out = await tool.execute(
+          { content: "blocked", path: target },
+          { ...ctx, toolExposureAuthority }
+        ) as JsonObject;
+        expect(out["written"]).toBe(false);
+      }
+      expect((await tool.execute({ content: "legacy", path: target }, ctx) as JsonObject)["written"]).toBe(true);
+      expect(await readFile(target, "utf8")).toBe("legacy");
+    });
+
+    it("fails closed when an opaque absolute scope cannot be canonicalized", async () => {
+      const blocker = join(root, "scope-blocker");
+      await writeFile(blocker, "not a directory");
+      const impossibleRoot = join(blocker, "child");
+      const authority = createToolExposureAuthority({
+        allowedToolNames: ["file_write"],
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        localMode: true,
+        writablePaths: [impossibleRoot]
+      });
+      const out = await createFileWriteTool(opts(allow)).execute(
+        { content: "blocked", path: join(root, "target.md") },
+        { ...ctx, toolExposureAuthority: authority }
+      ) as JsonObject;
+      expect(out).toMatchObject({ refused: true, written: false });
+      expect(String(out["reason"])).toMatch(/canonicalized/u);
+    });
+
+    it("denies a direct file tool call outside the opaque tool-name ceiling or under safe-default-only authority", async () => {
+      const target = join(root, "direct.md");
+      const tool = createFileWriteTool(opts(allow));
+      const scopedWithoutWrite = createToolExposureAuthority({
+        allowedToolNames: ["file_edit"],
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        localMode: true,
+        writablePaths: [root]
+      });
+      const safeDefault = attenuateToolExposureAuthority(undefined, ["file_write"], {
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        writablePaths: [root]
+      })!;
+      const profileExcluded = createToolExposureAuthority({
+        allowedToolNames: ["file_write"],
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        localMode: true,
+        profileId: PERSONAL_WORK_CAPABILITY_PROFILE_ID,
+        writablePaths: [root]
+      });
+      for (const toolExposureAuthority of [scopedWithoutWrite, safeDefault, profileExcluded]) {
+        const out = await tool.execute(
+          { content: "blocked", path: target },
+          { ...ctx, toolExposureAuthority }
+        ) as JsonObject;
+        expect(out).toMatchObject({ refused: true, written: false });
+      }
+      await expect(readFile(target, "utf8")).rejects.toThrow();
+    });
+
+    it("re-checks expiry at concrete execution after the authority was previously current", async () => {
+      const target = join(root, "expiry-race.md");
+      const authority = createToolExposureAuthority({
+        allowedToolNames: ["file_write"],
+        expiresAt: "2030-01-01T00:00:00.000Z",
+        localMode: true,
+        writablePaths: [root]
+      });
+      const clock = vi.spyOn(Date, "now");
+      try {
+        clock.mockReturnValue(Date.parse("2029-12-31T23:59:59.000Z"));
+        expect(resolveToolExposureAuthority(authority)).toBeDefined();
+        clock.mockReturnValue(Date.parse("2030-01-01T00:00:00.000Z"));
+        const out = await createFileWriteTool(opts(allow)).execute(
+          { content: "blocked", path: target },
+          { ...ctx, toolExposureAuthority: authority }
+        ) as JsonObject;
+        expect(out).toMatchObject({ refused: true, written: false });
+        await expect(readFile(target, "utf8")).rejects.toThrow();
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    it.skipIf(process.platform === "win32")("checks the resolved symlink target, not the lexical in-scope path", async () => {
+      const allowedRoot = join(root, "allowed");
+      const outsideRoot = join(root, "outside");
+      await mkdir(allowedRoot, { recursive: true });
+      await mkdir(outsideRoot, { recursive: true });
+      await symlink(outsideRoot, join(allowedRoot, "link"));
+      const authority = createToolExposureAuthority({
+        allowedToolNames: ["file_write"],
+        expiresAt: "2099-01-01T00:00:00.000Z",
+        localMode: true,
+        writablePaths: [allowedRoot]
+      });
+      const tool = createFileWriteTool(opts(allow));
+      const out = await tool.execute(
+        { content: "blocked", path: join(allowedRoot, "link", "escape.md") },
+        { ...ctx, toolExposureAuthority: authority }
+      ) as JsonObject;
+      expect(out).toMatchObject({ refused: true, written: false });
+      await expect(readFile(join(outsideRoot, "escape.md"), "utf8")).rejects.toThrow();
+    });
+  });
 
   describe("file_write", () => {
     it("creates a file when the gate approves", async () => {

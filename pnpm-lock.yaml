@@ -323,6 +323,9 @@ importers:
         specifier: workspace:*
         version: link:../tools
     devDependencies:
+      '@muse/fs':
+        specifier: workspace:*
+        version: link:../fs
       '@muse/mcp-shared':
         specifier: workspace:*
         version: link:../mcp-shared
@@ -584,6 +587,9 @@ importers:
 
   packages/fs:
     dependencies:
+      '@muse/policy':
+        specifier: workspace:*
+        version: link:../policy
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared

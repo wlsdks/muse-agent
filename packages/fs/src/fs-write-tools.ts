@@ -14,10 +14,11 @@
 
 import { constants as fsConstants } from "node:fs";
 import { lstat, mkdir, open, rename, stat, unlink } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, isAbsolute, relative } from "node:path";
 
+import { resolveToolExposureAuthority, selectToolNamesForExposureAuthority } from "@muse/policy";
 import { errorMessage, type JsonObject } from "@muse/shared";
-import type { MuseTool } from "@muse/tools";
+import type { MuseTool, MuseToolContext } from "@muse/tools";
 
 import { checkEditIntegrity } from "./edit-integrity.js";
 import { createInMemoryCheckpointStore, type CheckpointStore } from "./fs-checkpoints.js";
@@ -116,6 +117,63 @@ function refusal(error: unknown, path: string): JsonObject {
   return { path, reason: errorMessage(error), written: false };
 }
 
+function canonicalPathWithin(path: string, root: string): boolean {
+  const relation = relative(root, path);
+  return relation === "" || (!isAbsolute(relation) && relation !== ".." && !relation.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`));
+}
+
+async function delegatedWriteRefusal(
+  context: MuseToolContext,
+  toolName: string,
+  canonicalPaths: readonly string[],
+  options: FsWriteToolsOptions,
+  policy: ResolvedPolicy
+): Promise<JsonObject | undefined> {
+  if (context.toolExposureAuthority === undefined) return undefined;
+  const authority = resolveToolExposureAuthority(context.toolExposureAuthority);
+  if (!authority) {
+    return {
+      reason: "delegated write authority is invalid or expired",
+      refused: true,
+      written: false
+    };
+  }
+  if (
+    authority.safeDefaultOnly === true
+    || !selectToolNamesForExposureAuthority(authority, [toolName]).includes(toolName)
+  ) {
+    return {
+      reason: `tool '${toolName}' is outside the delegated tool scope`,
+      refused: true,
+      written: false
+    };
+  }
+  if (authority.writablePaths === undefined) return undefined;
+  let canonicalRoots: readonly string[];
+  try {
+    canonicalRoots = await Promise.all(
+      authority.writablePaths.map((root) => resolveSafePath(root, options, policy))
+    );
+  } catch {
+    return {
+      reason: "delegated writable scope could not be canonicalized",
+      refused: true,
+      written: false
+    };
+  }
+  const outside = canonicalPaths.find((path) =>
+    !canonicalRoots.some((root) => canonicalPathWithin(path, root))
+  );
+  return outside
+    ? {
+        path: outside,
+        reason: "target is outside the delegated writable scope",
+        refused: true,
+        written: false
+      }
+    : undefined;
+}
+
 /**
  * Write `content` to an already-sandbox-approved path WITHOUT following a
  * symlink at the leaf. `O_NOFOLLOW` makes the kernel reject (ELOOP) a final
@@ -175,9 +233,10 @@ export function createFileWriteTool(options: FsWriteToolsOptions, policyPromise?
       },
       keywords: ["file", "write", "create", "save", "overwrite", "파일", "저장", "생성", "만들어"],
       name: "file_write",
-      risk: "write"
+      risk: "write",
+      delegatedWriteScope: "canonical-path"
     },
-    execute: async (args): Promise<JsonObject> => {
+    execute: async (args, context): Promise<JsonObject> => {
       const path = asString(args["path"]).trim();
       if (path.length === 0) {
         return { reason: "file_write needs `path`", written: false };
@@ -187,11 +246,15 @@ export function createFileWriteTool(options: FsWriteToolsOptions, policyPromise?
       }
       const content = args["content"];
       let safe: string;
+      let resolvedPolicy: ResolvedPolicy;
       try {
-        safe = await resolveSafePath(path, options, await policy);
+        resolvedPolicy = await policy;
+        safe = await resolveSafePath(path, options, resolvedPolicy);
       } catch (error) {
         return refusal(error, path);
       }
+      const scopeRefusal = await delegatedWriteRefusal(context, "file_write", [safe], options, resolvedPolicy);
+      if (scopeRefusal) return scopeRefusal;
       try {
         const info = await stat(safe).catch(() => undefined);
         if (info?.isDirectory()) {
@@ -263,16 +326,20 @@ function editExecutor(
   policy: Promise<ResolvedPolicy>,
   action: "edit" | "multi_edit"
 ) {
-  return async (path: string, edits: readonly FsEditSpec[]): Promise<JsonObject> => {
+  return async (path: string, edits: readonly FsEditSpec[], context: MuseToolContext): Promise<JsonObject> => {
     if (path.length === 0) {
       return { reason: `${action === "edit" ? "file_edit" : "file_multi_edit"} needs \`path\``, written: false };
     }
     let safe: string;
+    let resolvedPolicy: ResolvedPolicy;
     try {
-      safe = await resolveSafePath(path, options, await policy);
+      resolvedPolicy = await policy;
+      safe = await resolveSafePath(path, options, resolvedPolicy);
     } catch (error) {
       return refusal(error, path);
     }
+    const scopeRefusal = await delegatedWriteRefusal(context, action === "edit" ? "file_edit" : "file_multi_edit", [safe], options, resolvedPolicy);
+    if (scopeRefusal) return scopeRefusal;
     if (options.wasPathRead && !options.wasPathRead(safe)) {
       return {
         path: safe,
@@ -383,14 +450,15 @@ export function createFileEditTool(options: FsWriteToolsOptions, policyPromise?:
       },
       keywords: ["file", "edit", "replace", "change", "modify", "파일", "수정", "바꿔", "고쳐", "code", "source", "bug", "fix"],
       name: "file_edit",
-      risk: "write"
+      risk: "write",
+      delegatedWriteScope: "canonical-path"
     },
-    execute: async (args): Promise<JsonObject> => {
+    execute: async (args, context): Promise<JsonObject> => {
       const spec = parseEdit(args);
       if (!spec) {
         return { reason: "file_edit needs `old_string` and `new_string` (strings)", written: false };
       }
-      return run(asString(args["path"]).trim(), [spec]);
+      return run(asString(args["path"]).trim(), [spec], context);
     }
   };
 }
@@ -432,9 +500,10 @@ export function createFileMultiEditTool(options: FsWriteToolsOptions, policyProm
       },
       keywords: ["file", "edit", "edits", "replace", "multiple", "파일", "수정", "여러", "일괄", "code", "source", "bug", "fix"],
       name: "file_multi_edit",
-      risk: "write"
+      risk: "write",
+      delegatedWriteScope: "canonical-path"
     },
-    execute: async (args): Promise<JsonObject> => {
+    execute: async (args, context): Promise<JsonObject> => {
       const rawEdits = args["edits"];
       if (!Array.isArray(rawEdits) || rawEdits.length === 0) {
         return { reason: "file_multi_edit needs a non-empty `edits` array", written: false };
@@ -447,7 +516,7 @@ export function createFileMultiEditTool(options: FsWriteToolsOptions, policyProm
         }
         specs.push(spec);
       }
-      return run(asString(args["path"]).trim(), specs);
+      return run(asString(args["path"]).trim(), specs, context);
     }
   };
 }
@@ -472,19 +541,24 @@ export function createFileDeleteTool(options: FsWriteToolsOptions, policyPromise
       },
       keywords: ["file", "delete", "remove", "파일", "삭제", "지워"],
       name: "file_delete",
-      risk: "write"
+      risk: "write",
+      delegatedWriteScope: "canonical-path"
     },
-    execute: async (args): Promise<JsonObject> => {
+    execute: async (args, context): Promise<JsonObject> => {
       const path = asString(args["path"]).trim();
       if (path.length === 0) {
         return { deleted: false, reason: "file_delete needs `path`" };
       }
       let safe: string;
+      let resolvedPolicy: ResolvedPolicy;
       try {
-        safe = await resolveSafePath(path, options, await policy);
+        resolvedPolicy = await policy;
+        safe = await resolveSafePath(path, options, resolvedPolicy);
       } catch (error) {
         return { ...refusal(error, path), deleted: false };
       }
+      const scopeRefusal = await delegatedWriteRefusal(context, "file_delete", [safe], options, resolvedPolicy);
+      if (scopeRefusal) return { ...scopeRefusal, deleted: false };
       try {
         // lstat (not stat) so a symlink is classified as a link, not its target:
         // deleting a real directory is refused; unlink removes a file or a symlink
@@ -552,9 +626,10 @@ export function createFileMoveTool(options: FsWriteToolsOptions, policyPromise?:
       },
       keywords: ["file", "move", "rename", "파일", "이동", "이름", "옮겨"],
       name: "file_move",
-      risk: "write"
+      risk: "write",
+      delegatedWriteScope: "canonical-path"
     },
-    execute: async (args): Promise<JsonObject> => {
+    execute: async (args, context): Promise<JsonObject> => {
       const fromArg = asString(args["from"]).trim();
       const toArg = asString(args["to"]).trim();
       if (fromArg.length === 0 || toArg.length === 0) {
@@ -569,6 +644,8 @@ export function createFileMoveTool(options: FsWriteToolsOptions, policyPromise?:
       } catch (error) {
         return { ...refusal(error, fromArg), moved: false };
       }
+      const scopeRefusal = await delegatedWriteRefusal(context, "file_move", [from, to], options, resolved);
+      if (scopeRefusal) return { ...scopeRefusal, moved: false };
       try {
         const src = await lstat(from).catch(() => undefined);
         if (!src) {

@@ -23,6 +23,11 @@ export interface MuseToolDefinition {
   readonly description: string;
   readonly inputSchema: JsonObject;
   readonly risk: ToolRisk;
+  /**
+   * Trusted implementation marker: this non-read tool consumes the opaque
+   * delegated write authority and checks canonical targets before mutation.
+   */
+  readonly delegatedWriteScope?: "canonical-path";
   readonly dependsOn?: readonly string[];
   readonly keywords?: readonly string[];
   readonly scopes?: readonly ToolExposureScope[];

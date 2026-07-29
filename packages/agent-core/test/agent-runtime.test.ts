@@ -3,17 +3,18 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { InMemoryAgentSpecRegistry, RuleBasedAgentSpecResolver } from "@muse/agent-specs";
 import { InMemoryResponseCache } from "@muse/cache";
-import { ModelProviderRegistry, type ModelProvider, type ModelRequest, type ModelResponse } from "@muse/model";
+import { ModelProviderRegistry, type ModelProvider, type ModelRequest, type ModelResponse, type ModelTool } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
 import { InMemoryExemplarRetriever, InMemoryPromptLayerRegistry } from "@muse/prompts";
 import { COMPACTION_SUMMARY_PREFIX, InMemoryConversationSummaryStore } from "@muse/memory";
 import { InMemoryAgentRunHistoryStore, InMemoryCheckpointStore, InMemoryHookTraceStore } from "@muse/runtime-state";
+import type { JsonObject } from "@muse/shared";
 import {
   createToolExposureAuthority,
   GuardBlockRateMonitor,
   PERSONAL_WORK_CAPABILITY_PROFILE_ID
 } from "@muse/policy";
-import { ToolRegistry, createDefaultToolExposurePolicy } from "@muse/tools";
+import { ToolRegistry, createDefaultToolExposurePolicy, type MuseToolContext } from "@muse/tools";
 import {
   createAgentRuntime,
   createAgentCheckpointState,
@@ -4196,6 +4197,20 @@ describe("AgentRuntime server-owned tool exposure authority", () => {
       writablePaths: ["/workspace/reports"]
     });
     let observed: unknown;
+    const contextCaptureTool = {
+      definition: {
+        delegatedWriteScope: "canonical-path" as const,
+        description: "capture context",
+        inputSchema: { type: "object" as const },
+        keywords: ["authority", "tool"],
+        name: "write_tool",
+        risk: "write" as const
+      },
+      execute: (_args: JsonObject, context: MuseToolContext) => {
+        observed = context.toolExposureAuthority;
+        return "ok";
+      }
+    };
     const runtime = createAgentRuntime({
       modelProvider: createSequenceProvider([
         {
@@ -4208,19 +4223,7 @@ describe("AgentRuntime server-owned tool exposure authority", () => {
       ]),
       toolApprovalGate: () => ({ allowed: true }),
       toolExposurePolicy: createDefaultToolExposurePolicy({ allowWriteWithoutMutationIntent: true }),
-      toolRegistry: new ToolRegistry([{
-        definition: {
-          description: "capture context",
-          inputSchema: { type: "object" },
-          keywords: ["authority", "tool"],
-          name: "write_tool",
-          risk: "write"
-        },
-        execute: (_args, context) => {
-          observed = context.toolExposureAuthority;
-          return "ok";
-        }
-      }])
+      toolRegistry: new ToolRegistry([contextCaptureTool])
     });
 
     await runtime.run({
@@ -4230,6 +4233,46 @@ describe("AgentRuntime server-owned tool exposure authority", () => {
       toolExposureAuthority: authority
     });
     expect(observed).toBe(authority);
+  });
+
+  it("a delegated path scope exposes reads and canonical-scope tools, never execute or unscoped writes", async () => {
+    const scopedWriteBase = authorityTool("scoped_write", "write");
+    const scopedWrite = {
+      ...scopedWriteBase,
+      definition: { ...scopedWriteBase.definition, delegatedWriteScope: "canonical-path" as const }
+    };
+    const registry = new ToolRegistry([
+      authorityTool("read_tool", "read"),
+      scopedWrite,
+      authorityTool("unscoped_write", "write"),
+      authorityTool("run_command", "execute")
+    ]);
+    const authority = createToolExposureAuthority({
+      allowedToolNames: ["read_tool", "scoped_write", "unscoped_write", "run_command"],
+      localMode: true,
+      writablePaths: ["/workspace/reports"]
+    });
+    let advertised: readonly string[] = [];
+    let advertisedWire: readonly ModelTool[] = [];
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({}, "authority-test", (request) => {
+        advertisedWire = request.tools ?? [];
+        advertised = request.tools?.map((tool) => tool.name) ?? [];
+      }),
+      toolExposurePolicy: createDefaultToolExposurePolicy({ allowWriteWithoutMutationIntent: true }),
+      toolRegistry: registry
+    });
+    await runtime.run({
+      messages: [{ content: "authority tool", role: "user" }],
+      model: "provider/model",
+      runId: "scoped-exposure",
+      toolExposureAuthority: authority
+    });
+    expect(advertised).toEqual([
+      "read_tool",
+      "scoped_write"
+    ]);
+    expect(advertisedWire.every((tool) => !("delegatedWriteScope" in tool))).toBe(true);
   });
 });
 

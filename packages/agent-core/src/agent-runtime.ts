@@ -976,6 +976,12 @@ export class AgentRuntime {
       return [];
     }
 
+    const authorityVisibleTools = authority.writablePaths === undefined
+      ? availableTools
+      : availableTools.filter((tool) =>
+          tool.definition.risk === "read"
+          || tool.definition.delegatedWriteScope === "canonical-path"
+        );
     const safeDefaultCandidates = authority.safeDefaultOnly === true
       ? new Set(authority.allowedToolNames)
       : undefined;
@@ -985,7 +991,7 @@ export class AgentRuntime {
         ? safeDefaultToolNames.filter((toolName) => safeDefaultCandidates.has(toolName))
         : selectToolNamesForExposureAuthority(
             authority,
-            availableTools.map((tool) => tool.definition.name)
+            authorityVisibleTools.map((tool) => tool.definition.name)
           );
 
     // `ToolExposurePolicy` treats an empty allowlist as unrestricted. An
@@ -995,7 +1001,10 @@ export class AgentRuntime {
       return [];
     }
 
-    const tools = this.toolRegistry
+    const scopedRegistry = authorityVisibleTools === availableTools
+      ? this.toolRegistry
+      : new ToolRegistry(authorityVisibleTools);
+    const tools = scopedRegistry
       .planForContext({
         allowedToolNames,
         localMode: authority.safeDefaultOnly === true ? false : authority.localMode,

@@ -30,6 +30,7 @@
     "@muse/tools": "workspace:*"
   },
   "devDependencies": {
+    "@muse/fs": "workspace:*",
     "@muse/mcp-shared": "workspace:*"
   }
 }
