@@ -97,6 +97,7 @@ test("every live coding assembly creates and injects a disposable trial first", 
     "eval-multifile-fix.mjs",
     "eval-reverify-fix.mjs",
     "eval-run-command.mjs",
+    "eval-two-edit-fix-paired.mjs",
     "eval-two-edit-fix.mjs"
   ];
 
