@@ -2,6 +2,11 @@ import type { AgentRunInput, AgentRunResult, AgentRuntime } from "@muse/agent-co
 import type { ModelMessage } from "@muse/model";
 
 import { runCascade } from "./cascade-run.js";
+import {
+  bindDelegationSubtaskScope,
+  type BoundDelegationSubtaskScope,
+  type DelegationHandoff
+} from "./delegation-handoff.js";
 
 export interface AgentWorker {
   readonly id: string;
@@ -16,6 +21,8 @@ export interface AgentWorker {
   readonly model?: string;
   /** Optional child allowlist. Undefined inherits the parent ceiling; [] denies all tools. */
   readonly toolNames?: readonly string[];
+  readonly writablePaths?: readonly string[];
+  readonly scopeExpiresAt?: string;
   canHandle(input: AgentRunInput): number;
   run(input: AgentRunInput): Promise<AgentRunResult>;
 }
@@ -34,7 +41,9 @@ export class RuntimeAgentWorker implements AgentWorker {
     private readonly runtime: AgentRuntime,
     private readonly matcher: (input: AgentRunInput) => number,
     readonly model?: string,
-    readonly toolNames?: readonly string[]
+    readonly toolNames?: readonly string[],
+    readonly writablePaths?: readonly string[],
+    readonly scopeExpiresAt?: string
   ) {}
 
   canHandle(input: AgentRunInput): number {
@@ -57,9 +66,32 @@ export interface RuntimeAgentWorkerSpec {
 }
 
 export interface RuntimeAgentWorkerOptions {
+  readonly delegation?: {
+    readonly handoff: DelegationHandoff;
+    readonly nowIso: string;
+    readonly subtaskId: string;
+    readonly workspaceRoot: string;
+  };
   readonly model?: string;
   readonly runtime: AgentRuntime;
   readonly spec: RuntimeAgentWorkerSpec;
+}
+
+function workerScope(options: RuntimeAgentWorkerOptions): BoundDelegationSubtaskScope | undefined {
+  const binding = options.delegation;
+  return binding
+    ? bindDelegationSubtaskScope(binding.handoff, binding.subtaskId, binding.workspaceRoot, binding.nowIso)
+    : undefined;
+}
+
+function workerToolNames(
+  specToolNames: readonly string[] | undefined,
+  scope: BoundDelegationSubtaskScope | undefined
+): readonly string[] | undefined {
+  if (!scope) return specToolNames;
+  if (specToolNames === undefined) return scope.allowedToolNames;
+  const ceiling = new Set(scope.allowedToolNames);
+  return specToolNames.filter((name) => ceiling.has(name));
 }
 
 function prepareRuntimeWorkerInput(
@@ -86,12 +118,15 @@ function prepareRuntimeWorkerInput(
  */
 export function createRuntimeAgentWorker(options: RuntimeAgentWorkerOptions): AgentWorker {
   const { model, runtime, spec } = options;
+  const scope = workerScope(options);
+  const toolNames = workerToolNames(spec.toolNames, scope);
   return {
     canHandle: () => 1,
     description: spec.description,
     id: spec.id,
     ...(model ? { model } : {}),
-    ...(spec.toolNames !== undefined ? { toolNames: [...spec.toolNames] } : {}),
+    ...(toolNames !== undefined ? { toolNames: Object.freeze([...toolNames]) } : {}),
+    ...(scope ? { writablePaths: scope.writablePaths, scopeExpiresAt: scope.expiresAt } : {}),
     run: (input) => runtime.run(prepareRuntimeWorkerInput(input, spec))
   };
 }
@@ -105,12 +140,15 @@ export interface CascadeRuntimeAgentWorkerOptions extends Omit<RuntimeAgentWorke
 /** Bounded fast → heavy delegation over the same shared AgentRuntime. */
 export function createCascadeRuntimeAgentWorker(options: CascadeRuntimeAgentWorkerOptions): AgentWorker {
   const { confidenceOf, fastModel, heavyModel, runtime, spec } = options;
+  const scope = workerScope(options);
+  const toolNames = workerToolNames(spec.toolNames, scope);
   return {
     canHandle: () => 1,
     description: spec.description,
     id: spec.id,
     model: fastModel,
-    ...(spec.toolNames !== undefined ? { toolNames: [...spec.toolNames] } : {}),
+    ...(toolNames !== undefined ? { toolNames: Object.freeze([...toolNames]) } : {}),
+    ...(scope ? { writablePaths: scope.writablePaths, scopeExpiresAt: scope.expiresAt } : {}),
     async run(input) {
       const baseInput = prepareRuntimeWorkerInput(input, spec, { logprobs: true });
       const outcome = await runCascade<AgentRunResult>({

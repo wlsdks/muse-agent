@@ -337,7 +337,10 @@ export async function executeToolCall(
     arguments: finalArguments,
     context: {
       runId: context.runId,
-      userId: metadataString(context.input.metadata, "userId")
+      userId: metadataString(context.input.metadata, "userId"),
+      ...(context.input.toolExposureAuthority !== undefined
+        ? { toolExposureAuthority: context.input.toolExposureAuthority }
+        : {})
     },
     id: toolCall.id,
     name: toolCall.name,

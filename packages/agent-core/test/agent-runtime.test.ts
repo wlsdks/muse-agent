@@ -4188,6 +4188,49 @@ describe("AgentRuntime server-owned tool exposure authority", () => {
 
     expect(writes).toBe(1);
   });
+
+  it("forwards the same opaque run authority into the concrete tool context", async () => {
+    const authority = createToolExposureAuthority({
+      allowedToolNames: ["write_tool"],
+      localMode: true,
+      writablePaths: ["/workspace/reports"]
+    });
+    let observed: unknown;
+    const runtime = createAgentRuntime({
+      modelProvider: createSequenceProvider([
+        {
+          id: "authority-call",
+          model: "m",
+          output: "",
+          toolCalls: [{ arguments: {}, id: "write-1", name: "write_tool" }]
+        },
+        { id: "authority-final", model: "m", output: "completed" }
+      ]),
+      toolApprovalGate: () => ({ allowed: true }),
+      toolExposurePolicy: createDefaultToolExposurePolicy({ allowWriteWithoutMutationIntent: true }),
+      toolRegistry: new ToolRegistry([{
+        definition: {
+          description: "capture context",
+          inputSchema: { type: "object" },
+          keywords: ["authority", "tool"],
+          name: "write_tool",
+          risk: "write"
+        },
+        execute: (_args, context) => {
+          observed = context.toolExposureAuthority;
+          return "ok";
+        }
+      }])
+    });
+
+    await runtime.run({
+      messages: [{ content: "authority tool", role: "user" }],
+      model: "provider/model",
+      runId: "scope-context",
+      toolExposureAuthority: authority
+    });
+    expect(observed).toBe(authority);
+  });
 });
 
 function sequentialIds(prefix: string): () => string {

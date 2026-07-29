@@ -2,6 +2,8 @@ import type { AgentRunResult } from "@muse/agent-core";
 export { createWorkerResult, parseHandoffPart, parseWorkerResult, validateWorkerHandoff } from "./worker-result.js";
 export {
   assessDelegationFanout,
+  bindDelegationSubtaskScope,
+  type BoundDelegationSubtaskScope,
   type DelegationHandoff,
   type DelegationHandoffAdmission,
   type DelegationSubtaskHandoff

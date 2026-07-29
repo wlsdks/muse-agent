@@ -21,7 +21,14 @@ export function dispatchDelegatedWorker(
   input: AgentRunInput,
   isCancelled: () => boolean
 ): Promise<AgentRunResult> {
-  const authority = attenuateToolExposureAuthority(input.toolExposureAuthority, worker.toolNames);
+  const hasIncompleteScope = (worker.writablePaths === undefined) !== (worker.scopeExpiresAt === undefined);
+  const authority = attenuateToolExposureAuthority(
+    input.toolExposureAuthority,
+    hasIncompleteScope ? [] : worker.toolNames,
+    worker.writablePaths !== undefined && worker.scopeExpiresAt !== undefined
+      ? { expiresAt: worker.scopeExpiresAt, writablePaths: worker.writablePaths }
+      : undefined
+  );
   const delegatedInput = authority === undefined && input.toolExposureAuthority === undefined
     ? input
     : { ...input, toolExposureAuthority: authority };

@@ -1,5 +1,5 @@
 import type { ModelTool } from "@muse/model";
-import type { SanitizedToolOutput } from "@muse/policy";
+import type { SanitizedToolOutput, ToolExposureAuthority } from "@muse/policy";
 import type { RetryBudget } from "@muse/resilience";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
@@ -54,6 +54,8 @@ export interface MuseToolContext {
   readonly runId: string;
   readonly userId?: string;
   readonly signal?: AbortSignal;
+  /** Opaque run authority forwarded for concrete tools to enforce canonical delegated scopes. */
+  readonly toolExposureAuthority?: ToolExposureAuthority | null;
 }
 
 export type ToolExecutionValue = string | JsonValue;

@@ -1,3 +1,5 @@
+import { isAbsolute, resolve } from "node:path";
+
 const HANDOFF_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
 const TOOL_NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u;
 const UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
@@ -29,6 +31,12 @@ export interface DelegationHandoff {
 export type DelegationHandoffAdmission =
   | { readonly ok: true; readonly handoff: DelegationHandoff }
   | { readonly ok: false; readonly reason: string };
+
+export interface BoundDelegationSubtaskScope {
+  readonly allowedToolNames: readonly string[];
+  readonly expiresAt: string;
+  readonly writablePaths: readonly string[];
+}
 
 function requiredText(value: unknown, label: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -188,4 +196,24 @@ export function assessDelegationFanout(
   } catch (cause) {
     return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
   }
+}
+
+/** Bind one admitted relative handoff scope to a trusted absolute workspace root. */
+export function bindDelegationSubtaskScope(
+  handoff: DelegationHandoff,
+  subtaskId: string,
+  workspaceRoot: string,
+  nowIso: string
+): BoundDelegationSubtaskScope {
+  const admission = assessDelegationFanout(handoff, handoff.subtasks.map((subtask) => subtask.id), nowIso);
+  if (!admission.ok) throw new Error(`delegation handoff rejected: ${admission.reason}`);
+  if (!isAbsolute(workspaceRoot)) throw new Error("workspaceRoot must be absolute");
+  const subtask = admission.handoff.subtasks.find((candidate) => candidate.id === subtaskId);
+  if (!subtask) throw new Error(`delegation handoff has no subtask '${subtaskId}'`);
+  const root = resolve(workspaceRoot);
+  return Object.freeze({
+    allowedToolNames: subtask.allowedToolNames,
+    expiresAt: subtask.expiresAt,
+    writablePaths: Object.freeze(subtask.writablePaths.map((path) => resolve(root, path)))
+  });
 }

@@ -42,6 +42,81 @@ const input: AgentRunInput = {
 };
 
 describe("shared runtime delegation workers", () => {
+  it("binds a handoff subtask scope into the opaque child authority", async () => {
+    const capture = captureRuntime();
+    const parentAuthority = createToolExposureAuthority({
+      allowedToolNames: ["file_read", "file_write"],
+      localMode: true,
+      writablePaths: ["/workspace/muse/reports"]
+    });
+    const handoff = {
+      contextIndependent: true,
+      decomposition: "fanout" as const,
+      mergeable: true,
+      objective: "Compare reports",
+      schemaVersion: 1 as const,
+      sharedState: false,
+      subtasks: ["s1", "s2"].map((id) => ({
+        allowedToolNames: ["file_read", "file_write"],
+        dependsOn: [],
+        effectScopes: [],
+        expiresAt: "2099-07-30T00:00:00.000Z",
+        id,
+        input: id,
+        outputSchema: "text",
+        role: "worker",
+        writablePaths: [`reports/${id}`]
+      }))
+    };
+    const worker = createRuntimeAgentWorker({
+      delegation: {
+        handoff,
+        nowIso: "2026-07-29T00:00:00.000Z",
+        subtaskId: "s1",
+        workspaceRoot: "/workspace/muse"
+      },
+      runtime: capture.runtime,
+      spec: { description: "scoped", id: "scoped", toolNames: ["file_write", "forbidden"] }
+    });
+
+    await new MultiAgentOrchestrator({ workers: [worker] }).run({
+      ...input,
+      toolExposureAuthority: parentAuthority
+    });
+
+    expect(resolveToolExposureAuthority(capture.inputs[0]?.toolExposureAuthority)).toMatchObject({
+      allowedToolNames: ["file_write"],
+      expiresAt: "2099-07-30T00:00:00.000Z",
+      writablePaths: ["/workspace/muse/reports/s1"]
+    });
+  });
+
+  it("fails closed when a custom worker supplies only half of a delegated write scope", async () => {
+    const parentAuthority = createToolExposureAuthority({
+      allowedToolNames: ["file_write"],
+      localMode: true
+    });
+    for (const partial of [
+      { writablePaths: ["/workspace/reports"] },
+      { scopeExpiresAt: "2099-07-30T00:00:00.000Z" }
+    ]) {
+      const capture = captureRuntime();
+      const worker = {
+        canHandle: () => 1,
+        description: "incomplete",
+        id: "incomplete",
+        run: (workerInput: AgentRunInput) => capture.runtime.run(workerInput),
+        toolNames: ["file_write"],
+        ...partial
+      };
+      await new MultiAgentOrchestrator({ workers: [worker] }).run({
+        ...input,
+        toolExposureAuthority: parentAuthority
+      });
+      expect(resolveToolExposureAuthority(capture.inputs[0]?.toolExposureAuthority)?.allowedToolNames).toEqual([]);
+    }
+  });
+
   it("preserves undefined versus empty AgentSpec tool limits and attenuates parent authority at dispatch", async () => {
     const parentAuthority = createToolExposureAuthority({
       allowedToolNames: ["safe.read", "parent.only"],

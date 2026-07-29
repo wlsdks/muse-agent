@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assessDelegationFanout, type DelegationHandoff } from "../src/delegation-handoff.js";
+import { assessDelegationFanout, bindDelegationSubtaskScope, type DelegationHandoff } from "../src/delegation-handoff.js";
 
 const NOW = "2026-07-29T00:00:00.000Z";
 
@@ -133,5 +133,18 @@ describe("delegation handoff fan-out admission", () => {
       ok: false,
       reason: expect.stringContaining("canonical UTC")
     });
+  });
+
+  it("binds one admitted subtask to frozen absolute workspace paths", () => {
+    const scope = bindDelegationSubtaskScope(handoff(), "s1", "/workspace/muse", NOW);
+    expect(scope).toEqual({
+      allowedToolNames: ["file_read"],
+      expiresAt: "2026-07-30T00:00:00.000Z",
+      writablePaths: ["/workspace/muse/reports/a"]
+    });
+    expect(Object.isFrozen(scope)).toBe(true);
+    expect(Object.isFrozen(scope.writablePaths)).toBe(true);
+    expect(() => bindDelegationSubtaskScope(handoff(), "ghost", "/workspace/muse", NOW)).toThrow(/no subtask/u);
+    expect(() => bindDelegationSubtaskScope(handoff(), "s1", "relative", NOW)).toThrow(/absolute/u);
   });
 });
