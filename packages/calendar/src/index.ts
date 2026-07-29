@@ -31,6 +31,15 @@ export type {
   CredentialRequirement
 } from "./types.js";
 export { decodeCalendarEventReference, encodeCalendarEventReference, selectExactCalendarEvent } from "./exact-event.js";
+export { projectCalendarRead } from "./read-projection.js";
+export type {
+  CalendarAvailabilityInterval,
+  CalendarEventDetailProjection,
+  CalendarReadAuthority,
+  CalendarReadEvent,
+  CalendarReadProjection,
+  CalendarReadProjectionRequest
+} from "./read-projection.js";
 export { CalendarProviderError, CalendarValidationError, CALENDAR_RETRY_AFTER_CAP_MS, isRetryableCalendarStatus, parseRetryAfterMs } from "./errors.js";
 export { eventsToIcs, type IcsEvent } from "./ics-export.js";
 export { CalendarProviderRegistry } from "./registry.js";
