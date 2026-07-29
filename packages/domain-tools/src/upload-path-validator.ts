@@ -12,13 +12,30 @@
  * stops a prompt-injected page steering an upload at `~/.ssh/id_rsa`.
  */
 
-import { realpath as nodeRealpath } from "node:fs/promises";
-import { homedir } from "node:os";
-import { resolve as pathResolve, sep as pathSep } from "node:path";
+import { createHash } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
+import { mkdtemp, open, realpath as nodeRealpath, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { basename, join, resolve as pathResolve, sep as pathSep } from "node:path";
 
 export type PathValidationResult =
-  | { readonly allowed: true; readonly resolvedPath: string }
+  | {
+      readonly allowed: true;
+      readonly cleanup: () => Promise<void>;
+      readonly identity: UploadFileIdentity;
+      readonly resolvedPath: string;
+      readonly uploadPath: string;
+    }
   | { readonly allowed: false; readonly reason: string };
+
+export interface UploadFileIdentity {
+  readonly bytes: number;
+  readonly changedAtMs: number;
+  readonly device: number;
+  readonly inode: number;
+  readonly modifiedAtMs: number;
+  readonly sha256: string;
+}
 
 /**
  * Resolves a free-text/raw local path to an allow/deny decision. Async because
@@ -34,12 +51,88 @@ export interface AllowlistPathValidatorOptions {
   readonly realpath?: (path: string) => Promise<string>;
   /** Home dir for `~` expansion; defaults to os.homedir(). */
   readonly home?: string;
+  /** Test seam; production creates a private content-stable staging copy. */
+  readonly inspectFile?: (path: string) => Promise<UploadFileIdentity>;
+}
+
+async function prepareUploadFile(path: string): Promise<{
+  readonly cleanup: () => Promise<void>;
+  readonly identity: UploadFileIdentity;
+  readonly uploadPath: string;
+}> {
+  const handle = await open(path, fsConstants.O_NOFOLLOW | fsConstants.O_RDONLY);
+  let stagingDir: string | undefined;
+  try {
+    const before = await handle.stat();
+    if (!before.isFile()) throw new Error("upload source is not a regular file");
+    stagingDir = await mkdtemp(join(tmpdir(), "muse-upload-"));
+    const uploadPath = join(stagingDir, basename(path));
+    const staged = await open(
+      uploadPath,
+      fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW | fsConstants.O_WRONLY,
+      0o600
+    );
+    const hash = createHash("sha256");
+    const chunk = Buffer.allocUnsafe(64 * 1024);
+    let position = 0;
+    try {
+      for (;;) {
+        const { bytesRead } = await handle.read(chunk, 0, chunk.byteLength, position);
+        if (bytesRead === 0) break;
+        hash.update(chunk.subarray(0, bytesRead));
+        let written = 0;
+        while (written < bytesRead) {
+          const result = await staged.write(
+            chunk,
+            written,
+            bytesRead - written,
+            position + written
+          );
+          written += result.bytesWritten;
+        }
+        position += bytesRead;
+      }
+      await staged.sync();
+      await staged.chmod(0o400);
+    } finally {
+      await staged.close();
+    }
+    const after = await handle.stat();
+    if (
+      before.dev !== after.dev
+      || before.ino !== after.ino
+      || before.size !== after.size
+      || before.mtimeMs !== after.mtimeMs
+      || before.ctimeMs !== after.ctimeMs
+      || position !== after.size
+    ) {
+      throw new Error("upload source changed while hashing");
+    }
+    return {
+      cleanup: async () => rm(stagingDir!, { force: true, recursive: true }),
+      identity: {
+        bytes: after.size,
+        changedAtMs: after.ctimeMs,
+        device: after.dev,
+        inode: after.ino,
+        modifiedAtMs: after.mtimeMs,
+        sha256: hash.digest("hex")
+      },
+      uploadPath
+    };
+  } catch (cause) {
+    if (stagingDir) await rm(stagingDir, { force: true, recursive: true });
+    throw cause;
+  } finally {
+    await handle.close();
+  }
 }
 
 export function createAllowlistPathValidator(options: AllowlistPathValidatorOptions): AllowlistPathValidator {
   const home = options.home ?? homedir();
   const roots = options.roots.map((root) => pathResolve(root.replace(/^~(?=\/|$)/, home)));
   const realpathOf = options.realpath ?? nodeRealpath;
+  const inspectFile = options.inspectFile;
   const within = (candidate: string, base: string): boolean => candidate === base || candidate.startsWith(`${base}${pathSep}`);
   return async (raw) => {
     const trimmed = typeof raw === "string" ? raw.trim() : "";
@@ -64,6 +157,24 @@ export function createAllowlistPathValidator(options: AllowlistPathValidatorOpti
     if (!realRoots.some((root) => within(realTarget, root))) {
       return { allowed: false, reason: `'${raw}' resolves through a link to outside the readable folders` };
     }
-    return { allowed: true, resolvedPath: realTarget };
+    try {
+      if (inspectFile) {
+        return {
+          allowed: true,
+          cleanup: async () => {},
+          identity: await inspectFile(realTarget),
+          resolvedPath: realTarget,
+          uploadPath: realTarget
+        };
+      }
+      const prepared = await prepareUploadFile(realTarget);
+      return {
+        allowed: true,
+        ...prepared,
+        resolvedPath: realTarget
+      };
+    } catch {
+      return { allowed: false, reason: `'${raw}' is not a stable regular file` };
+    }
   };
 }

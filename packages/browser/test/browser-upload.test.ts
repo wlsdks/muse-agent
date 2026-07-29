@@ -7,7 +7,14 @@ import {
   type BrowserActionDraft,
   type BrowserUploadPathValidator
 } from "../src/browser-tools.js";
-import type { BrowserController, PageSnapshot, SnapshotElement, WaitCondition, WaitOutcome } from "../src/controller.js";
+import type {
+  BrowserController,
+  BrowserUploadTargetIdentity,
+  PageSnapshot,
+  SnapshotElement,
+  WaitCondition,
+  WaitOutcome
+} from "../src/controller.js";
 
 const ctx = { runId: "r", userId: "u1" };
 
@@ -31,6 +38,10 @@ const SNAP: PageSnapshot = {
 class FakeController implements BrowserController {
   uploads: Array<{ ref: number; path: string }> = [];
   reads: string[] = [];
+  url = SNAP.url;
+  targetName = "upload";
+  retainedCleanups: Array<() => Promise<void>> = [];
+  beforeUploadBoundary?: () => void;
   /** Which refs are genuine <input type=file> elements. */
   fileInputs = new Set<number>([7]);
   private readonly elements = new Map<number, SnapshotElement>([
@@ -43,12 +54,43 @@ class FakeController implements BrowserController {
   async hover(): Promise<PageSnapshot> { return SNAP; }
   async pressKey(): Promise<PageSnapshot> { return SNAP; }
   async type(): Promise<PageSnapshot> { return SNAP; }
-  async uploadFile(ref: number, path: string): Promise<PageSnapshot> {
-    if (!this.fileInputs.has(ref)) {
-      throw new Error(`element ref ${ref.toString()} is not a file input`);
+  async inspectUploadTarget(ref: number) {
+    return {
+      accept: ".pdf",
+      disabled: false,
+      fileInput: this.fileInputs.has(ref),
+      frameUrl: this.url,
+      hidden: true,
+      id: "resume-file",
+      multiple: false,
+      name: this.targetName,
+      pageUrl: this.url,
+      ref,
+      selector: `[data-muse-ref="${ref.toString()}"]`
+    };
+  }
+  async uploadFile(
+    ref: number,
+    path: string,
+    expectedTarget?: BrowserUploadTargetIdentity,
+    releaseSource?: () => Promise<void>
+  ): Promise<PageSnapshot> {
+    try {
+      if (!this.fileInputs.has(ref)) {
+        throw new Error(`element ref ${ref.toString()} is not a file input`);
+      }
+      this.beforeUploadBoundary?.();
+      const currentTarget = await this.inspectUploadTarget(ref);
+      if (expectedTarget && JSON.stringify(currentTarget) !== JSON.stringify(expectedTarget)) {
+        throw new Error("upload field identity changed at the controller boundary");
+      }
+      this.uploads.push({ path, ref });
+      if (releaseSource) this.retainedCleanups.push(releaseSource);
+      return SNAP;
+    } catch (cause) {
+      await releaseSource?.();
+      throw cause;
     }
-    this.uploads.push({ path, ref });
-    return SNAP;
   }
   async back(): Promise<PageSnapshot> { return SNAP; }
   async scroll(): Promise<PageSnapshot> { return SNAP; }
@@ -57,14 +99,26 @@ class FakeController implements BrowserController {
   async screenshot(path: string): Promise<{ readonly path: string }> { return { path }; }
   async screenshotBase64(): Promise<string> { return "aW1n"; }
   describeElement(ref: number): SnapshotElement | undefined { return this.elements.get(ref); }
-  currentUrl(): string { return SNAP.url; }
+  currentUrl(): string { return this.url; }
   async hasOpenPage(): Promise<boolean> { return true; }
-  async disconnect(): Promise<void> { /* noop */ }
-  async close(): Promise<void> { /* noop */ }
+  async disconnect(): Promise<void> {
+    await Promise.all(this.retainedCleanups.splice(0).map((cleanup) => cleanup()));
+  }
+  async close(): Promise<void> {
+    await this.disconnect();
+  }
 }
 
 const allow: BrowserApprovalGate = () => ({ approved: true });
 const deny: BrowserApprovalGate = () => ({ approved: false, reason: "user did not confirm" });
+const FILE_IDENTITY = {
+  bytes: 12,
+  changedAtMs: 4,
+  device: 1,
+  inode: 2,
+  modifiedAtMs: 3,
+  sha256: "a".repeat(64)
+};
 
 /** A validator that allows ONLY paths under /home/u/Downloads — records every path it was asked about. */
 function rootedValidator(): BrowserUploadPathValidator & { checked: string[] } {
@@ -72,7 +126,13 @@ function rootedValidator(): BrowserUploadPathValidator & { checked: string[] } {
   const fn = (async (path: string) => {
     checked.push(path);
     if (path.startsWith("/home/u/Downloads/")) {
-      return { allowed: true, resolvedPath: path } as const;
+      return {
+        allowed: true,
+        cleanup: async () => {},
+        identity: FILE_IDENTITY,
+        resolvedPath: path,
+        uploadPath: `${path}.staged`
+      } as const;
     }
     return { allowed: false, reason: `'${path}' is outside the readable folders` } as const;
   }) as BrowserUploadPathValidator & { checked: string[] };
@@ -132,9 +192,7 @@ describe("browser_upload — non-file-input target fails closed", () => {
     // validated, the gate approved, but the controller refuses the act.
     const out = await tool.execute({ path: "/home/u/Downloads/resume.pdf", target: "Upload file" }, ctx) as Record<string, unknown>;
     expect(out["uploaded"]).toBe(false);
-    // A controller-thrown failure (the chosen element is not a file input)
-    // surfaces in `error`, like click/type's controller-failure shape.
-    expect(String(out["error"])).toMatch(/not a file input/);
+    expect(String(out["reason"])).toMatch(/not an enabled file input/);
     expect(c.uploads).toEqual([]);
   });
 });
@@ -163,6 +221,13 @@ describe("browser_upload — approval draft shows the path AND the resolved fiel
     expect(seen?.target).toContain("Attach resume");
     expect(seen?.path).toBe("/home/u/Downloads/resume.pdf");
     expect(seen?.url).toBe("https://jobs.example.test/apply");
+    expect(seen?.origin).toBe("https://jobs.example.test");
+    expect(seen?.file).toEqual({ bytes: 12, sha256: "a".repeat(64) });
+    expect(seen?.uploadTarget).toMatchObject({
+      fileInput: true,
+      id: "resume-file",
+      name: "upload"
+    });
   });
 });
 
@@ -171,11 +236,223 @@ describe("browser_upload — confirmed + allowed path ⇒ setInputFiles with the
     const c = new FakeController();
     // A validator that canonicalises the path (symlink realpath) returns a
     // DIFFERENT resolvedPath — the controller must receive the canonical one.
-    const validator = (async (path: string) => ({ allowed: true, resolvedPath: `${path}.real` })) as BrowserUploadPathValidator;
+    const validator = (async (path: string) => ({
+      allowed: true,
+      cleanup: async () => {},
+      identity: FILE_IDENTITY,
+      resolvedPath: `${path}.real`,
+      uploadPath: `${path}.staged`
+    })) as BrowserUploadPathValidator;
     const tool = createBrowserUploadTool({ approvalGate: allow, controller: c, validatePath: validator });
     const out = await tool.execute({ path: "/home/u/Downloads/resume.pdf", target: "Attach resume" }, ctx) as Record<string, unknown>;
     expect(out["uploaded"]).toBe(true);
-    expect(c.uploads).toEqual([{ path: "/home/u/Downloads/resume.pdf.real", ref: 7 }]);
+    expect(c.uploads).toEqual([{ path: "/home/u/Downloads/resume.pdf.staged", ref: 7 }]);
+    expect(out["authorityReceipts"]).toMatchObject({
+      upload: { action: "upload", status: "performed" }
+    });
+  });
+});
+
+describe("browser_upload — approval-bound revalidation", () => {
+  it("holds when file bytes or canonical identity change after approval", async () => {
+    const c = new FakeController();
+    let validations = 0;
+    const validator = (async (path: string) => {
+      validations += 1;
+      return {
+        allowed: true,
+        cleanup: async () => {},
+        identity: validations === 1
+          ? FILE_IDENTITY
+          : { ...FILE_IDENTITY, sha256: "b".repeat(64) },
+        resolvedPath: path,
+        uploadPath: `${path}.staged-${validations.toString()}`
+      } as const;
+    }) as BrowserUploadPathValidator;
+    const out = await createBrowserUploadTool({
+      approvalGate: allow,
+      controller: c,
+      validatePath: validator
+    }).execute({
+      path: "/home/u/Downloads/resume.pdf",
+      target: "Attach resume"
+    }, ctx) as Record<string, unknown>;
+    expect(out).toMatchObject({
+      authorityReceipts: { upload: { status: "held" } },
+      uploaded: false
+    });
+    expect(String(out["reason"])).toMatch(/file changed after approval/u);
+    expect(c.uploads).toEqual([]);
+  });
+
+  it("holds when destination origin changes during approval", async () => {
+    const c = new FakeController();
+    const out = await createBrowserUploadTool({
+      approvalGate: () => {
+        c.url = "https://evil.example.test/upload";
+        return { approved: true };
+      },
+      controller: c,
+      validatePath: rootedValidator()
+    }).execute({
+      path: "/home/u/Downloads/resume.pdf",
+      target: "Attach resume"
+    }, ctx) as Record<string, unknown>;
+    expect(out).toMatchObject({
+      authorityReceipts: { upload: { status: "held" } },
+      uploaded: false
+    });
+    expect(String(out["reason"])).toMatch(/destination page changed/u);
+    expect(c.uploads).toEqual([]);
+  });
+
+  it("holds when the exact upload field identity changes during approval", async () => {
+    const c = new FakeController();
+    const out = await createBrowserUploadTool({
+      approvalGate: () => {
+        c.targetName = "rewritten-field";
+        return { approved: true };
+      },
+      controller: c,
+      validatePath: rootedValidator()
+    }).execute({
+      path: "/home/u/Downloads/resume.pdf",
+      target: "Attach resume"
+    }, ctx) as Record<string, unknown>;
+    expect(out).toMatchObject({
+      authorityReceipts: { upload: { status: "held" } },
+      uploaded: false
+    });
+    expect(String(out["reason"])).toMatch(/field identity changed/u);
+    expect(c.uploads).toEqual([]);
+  });
+
+  it("rechecks page and field after the second async file preparation", async () => {
+    for (const drift of ["page", "field"] as const) {
+      const c = new FakeController();
+      let validations = 0;
+      const validator = (async (path: string) => {
+        validations += 1;
+        if (validations === 2) {
+          if (drift === "page") c.url = "https://evil.example.test/upload";
+          else c.targetName = "drifted-during-file-check";
+        }
+        return {
+          allowed: true,
+          cleanup: async () => {},
+          identity: FILE_IDENTITY,
+          resolvedPath: path,
+          uploadPath: `${path}.staged-${validations.toString()}`
+        } as const;
+      }) as BrowserUploadPathValidator;
+      const out = await createBrowserUploadTool({
+        approvalGate: allow,
+        controller: c,
+        validatePath: validator
+      }).execute({
+        path: "/home/u/Downloads/resume.pdf",
+        target: "Attach resume"
+      }, ctx) as Record<string, unknown>;
+      expect(out).toMatchObject({
+        authorityReceipts: { upload: { status: "held" } },
+        uploaded: false
+      });
+      expect(c.uploads).toEqual([]);
+    }
+  });
+
+  it("the controller boundary catches a final field drift before setInputFiles", async () => {
+    const c = new FakeController();
+    c.beforeUploadBoundary = () => {
+      c.targetName = "last-moment-drift";
+    };
+    const out = await createBrowserUploadTool({
+      approvalGate: allow,
+      controller: c,
+      validatePath: rootedValidator()
+    }).execute({
+      path: "/home/u/Downloads/resume.pdf",
+      target: "Attach resume"
+    }, ctx) as Record<string, unknown>;
+    expect(out).toMatchObject({
+      authorityReceipts: { upload: { status: "failed" } },
+      uploaded: "unknown"
+    });
+    expect(c.uploads).toEqual([]);
+  });
+
+  it("freezes the canonical path, file identity, and field identity shown to the gate", async () => {
+    const c = new FakeController();
+    let seen: BrowserActionDraft | undefined;
+    await createBrowserUploadTool({
+      approvalGate: (draft) => {
+        seen = draft;
+        expect(Object.isFrozen(draft)).toBe(true);
+        expect(Object.isFrozen(draft.file)).toBe(true);
+        expect(Object.isFrozen(draft.uploadTarget)).toBe(true);
+        return { approved: false };
+      },
+      controller: c,
+      validatePath: rootedValidator()
+    }).execute({
+      path: "/home/u/Downloads/resume.pdf",
+      target: "Attach resume"
+    }, ctx);
+    expect(seen).toMatchObject({
+      origin: "https://jobs.example.test",
+      path: "/home/u/Downloads/resume.pdf"
+    });
+    expect(c.uploads).toEqual([]);
+  });
+
+  it("reports controller acknowledgement failure as unknown with a failed receipt", async () => {
+    const c = new FakeController();
+    c.uploadFile = async (_ref, _path, _expected, releaseSource) => {
+      await releaseSource?.();
+      throw new Error("upload acknowledgement lost");
+    };
+    const out = await createBrowserUploadTool({
+      approvalGate: allow,
+      controller: c,
+      validatePath: rootedValidator()
+    }).execute({
+      path: "/home/u/Downloads/resume.pdf",
+      target: "Attach resume"
+    }, ctx) as Record<string, unknown>;
+    expect(out).toMatchObject({
+      authorityReceipts: { upload: { status: "failed" } },
+      uploaded: "unknown"
+    });
+    expect(String(out["error"])).toContain("acknowledgement lost");
+  });
+
+  it("retains the stable staged source until controller release, then cleans it", async () => {
+    const c = new FakeController();
+    let cleanups = 0;
+    const validator = (async (path: string) => ({
+      allowed: true,
+      cleanup: async () => {
+        cleanups += 1;
+      },
+      identity: FILE_IDENTITY,
+      resolvedPath: path,
+      uploadPath: `${path}.staged`
+    })) as BrowserUploadPathValidator;
+    const out = await createBrowserUploadTool({
+      approvalGate: allow,
+      controller: c,
+      validatePath: validator
+    }).execute({
+      path: "/home/u/Downloads/resume.pdf",
+      target: "Attach resume"
+    }, ctx) as Record<string, unknown>;
+    expect(out["uploaded"]).toBe(true);
+    // First approval snapshot is disposable; the successful second snapshot
+    // remains controller-owned so the browser File stays readable for submit.
+    expect(cleanups).toBe(1);
+    expect(c.retainedCleanups).toHaveLength(1);
+    await c.disconnect();
+    expect(cleanups).toBe(2);
   });
 });
 

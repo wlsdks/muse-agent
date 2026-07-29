@@ -1,14 +1,39 @@
-import { resolve } from "node:path";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { createAllowlistPathValidator } from "./upload-path-validator.js";
 
+const identity = {
+  bytes: 42,
+  changedAtMs: 4,
+  device: 1,
+  inode: 2,
+  modifiedAtMs: 3,
+  sha256: "a".repeat(64)
+};
+const inspectFile = async () => identity;
+
 describe("createAllowlistPathValidator — allowlist + symlink-escape guard", () => {
   it("allows a path inside a root and returns its real (canonical) path", async () => {
-    const validate = createAllowlistPathValidator({ roots: ["/dl"], realpath: async (p) => p });
+    const validate = createAllowlistPathValidator({ inspectFile, roots: ["/dl"], realpath: async (p) => p });
     const result = await validate("/dl/resume.pdf");
-    expect(result).toEqual({ allowed: true, resolvedPath: resolve("/dl/resume.pdf") });
+    expect(result).toMatchObject({
+      allowed: true,
+      identity,
+      resolvedPath: resolve("/dl/resume.pdf"),
+      uploadPath: resolve("/dl/resume.pdf")
+    });
   });
 
   it("refuses a path lexically OUTSIDE every root (no realpath needed)", async () => {
@@ -30,9 +55,14 @@ describe("createAllowlistPathValidator — allowlist + symlink-escape guard", ()
   });
 
   it("expands a leading ~ to the home dir before the roots check", async () => {
-    const validate = createAllowlistPathValidator({ home: resolve("/home/u"), realpath: async (p) => p, roots: [resolve("/home/u/Downloads")] });
+    const validate = createAllowlistPathValidator({ home: resolve("/home/u"), inspectFile, realpath: async (p) => p, roots: [resolve("/home/u/Downloads")] });
     const result = await validate("~/Downloads/cv.pdf");
-    expect(result).toEqual({ allowed: true, resolvedPath: resolve("/home/u/Downloads/cv.pdf") });
+    expect(result).toMatchObject({
+      allowed: true,
+      identity,
+      resolvedPath: resolve("/home/u/Downloads/cv.pdf"),
+      uploadPath: resolve("/home/u/Downloads/cv.pdf")
+    });
   });
 
   it("refuses an empty path", async () => {
@@ -54,10 +84,42 @@ describe("createAllowlistPathValidator — allowlist + symlink-escape guard", ()
     // /dl/alias → /dl/real.pdf: still inside the root, so allowed, and the
     // canonical path is what gets returned (so the upload reads the real file).
     const validate = createAllowlistPathValidator({
+      inspectFile,
       realpath: async (p) => (p === resolve("/dl/alias") ? resolve("/dl/real.pdf") : p),
       roots: ["/dl"]
     });
     const result = await validate("/dl/alias");
-    expect(result).toEqual({ allowed: true, resolvedPath: resolve("/dl/real.pdf") });
+    expect(result).toMatchObject({
+      allowed: true,
+      identity,
+      resolvedPath: resolve("/dl/real.pdf"),
+      uploadPath: resolve("/dl/real.pdf")
+    });
+  });
+
+  it("hashes the real regular file and returns its exact filesystem identity", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-upload-validator-"));
+    const path = join(root, "resume.pdf");
+    const bytes = Buffer.from("exact-upload-bytes");
+    writeFileSync(path, bytes);
+    const result = await createAllowlistPathValidator({ roots: [root] })(path);
+    expect(result).toMatchObject({
+      allowed: true,
+      identity: {
+        bytes: bytes.byteLength,
+        sha256: createHash("sha256").update(bytes).digest("hex")
+      },
+      resolvedPath: realpathSync(path)
+    });
+    if (result.allowed) {
+      expect(result.identity.device).toBeGreaterThan(0);
+      expect(result.identity.inode).toBeGreaterThan(0);
+      expect(result.identity.modifiedAtMs).toBeGreaterThan(0);
+      expect(result.uploadPath).not.toBe(result.resolvedPath);
+      expect(readFileSync(result.uploadPath)).toEqual(bytes);
+      expect(statSync(result.uploadPath).mode & 0o777).toBe(0o400);
+      await result.cleanup();
+      expect(existsSync(result.uploadPath)).toBe(false);
+    }
   });
 });

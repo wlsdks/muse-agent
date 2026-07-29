@@ -388,7 +388,15 @@ export function buildBrowserApprovalGate(deps: {
       what = `Submit this already-filled payload:\n${payload}`;
       question = "Submit this payload in the browser?";
     } else if (draft.action === "upload") {
-      what = `Attach file ${showBrowserDialogValue(draft.path ?? "")}\n  → ${showBrowserDialogValue(draft.target)}`;
+      what = [
+        `Attach file ${showBrowserDialogValue(draft.path ?? "")}`,
+        `  SHA-256: ${showBrowserDialogValue(draft.file?.sha256 ?? "missing")}`,
+        `  Bytes: ${(draft.file?.bytes ?? 0).toString()}`,
+        `  Destination origin: ${showBrowserDialogValue(draft.origin ?? "missing")}`,
+        `  Page: ${showBrowserDialogValue(draft.url)}`,
+        `  Field: ${showBrowserDialogValue(draft.target)}`,
+        `  Field identity: ${showBrowserDialogValue(JSON.stringify(draft.uploadTarget ?? {}))}`
+      ].join("\n");
       question = "Attach this file in the browser?";
     } else if (draft.action === "type") {
       what = `Type into ${showBrowserDialogValue(draft.target)}: ${showBrowserDialogValue(draft.text ?? "")}`;

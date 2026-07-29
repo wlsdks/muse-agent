@@ -7,7 +7,12 @@
 
 import { errorMessage, type JsonObject, type JsonValue } from "@muse/shared";
 
-import { BROWSER_MAX_ELEMENTS, type BrowserController, type PageSnapshot } from "./controller.js";
+import {
+  BROWSER_MAX_ELEMENTS,
+  type BrowserController,
+  type BrowserUploadTargetIdentity,
+  type PageSnapshot
+} from "./controller.js";
 import { matchElementResult, type MatchIntent } from "./matcher.js";
 import { defangElementName, wrapPageContent } from "./page-content-guard.js";
 import type { PendingDialogDecision, PendingDialogIdentity } from "./pending-dialog-coordinator.js";
@@ -21,6 +26,12 @@ export interface BrowserActionDraft {
   readonly text?: string;
   /** The local file path being attached (for `upload` only) — shown so the user confirms WHICH file leaves their machine. */
   readonly path?: string;
+  /** Canonical content identity for an upload source. */
+  readonly file?: { readonly bytes: number; readonly sha256: string };
+  /** Exact destination origin for an upload. */
+  readonly origin?: string;
+  /** Exact live file-input identity for an upload. */
+  readonly uploadTarget?: BrowserUploadTargetIdentity;
   /**
    * The resolved field→value pairs for a multi-field `fill` (browser_fill_form).
    * Each `target` is the RESOLVED element label (role + name), not the raw model

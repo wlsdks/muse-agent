@@ -232,6 +232,47 @@ describe("buildBrowserApprovalGate — separate submit authority", () => {
     expect(rendered).toContain("truncated; utf16Length=704; sha256=");
     expect(rendered.length).toBeLessThan(5_000);
   });
+
+  it("shows canonical upload content, destination, and field identity before approval", async () => {
+    const stdout: string[] = [];
+    const questions: string[] = [];
+    const gate = buildBrowserApprovalGate({
+      confirmAction: async (question) => {
+        questions.push(question);
+        return false;
+      },
+      io: { ...fakeIo(), stdout: (text) => stdout.push(text) },
+      isInteractive: () => true
+    });
+    await gate({
+      action: "upload",
+      file: { bytes: 42, sha256: "a".repeat(64) },
+      origin: "https://jobs.example.test",
+      path: "/Users/me/Downloads/resume.pdf",
+      target: 'button "Attach resume"',
+      uploadTarget: {
+        accept: ".pdf",
+        disabled: false,
+        fileInput: true,
+        frameUrl: "https://jobs.example.test/apply",
+        hidden: true,
+        id: "resume-file",
+        multiple: false,
+        name: "resume",
+        pageUrl: "https://jobs.example.test/apply",
+        ref: 7,
+        selector: "[data-muse-ref=\"7\"]"
+      },
+      url: "https://jobs.example.test/apply"
+    });
+    const rendered = stdout.join("");
+    expect(rendered).toContain("/Users/me/Downloads/resume.pdf");
+    expect(rendered).toContain("a".repeat(64));
+    expect(rendered).toContain("Bytes: 42");
+    expect(rendered).toContain("https://jobs.example.test");
+    expect(rendered).toContain("resume-file");
+    expect(questions).toEqual(["Attach this file in the browser?"]);
+  });
 });
 
 describe("buildActuatorTools — env-driven actuator selection", () => {

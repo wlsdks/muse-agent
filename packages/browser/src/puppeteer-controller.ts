@@ -40,6 +40,7 @@ import {
   BROWSER_MAX_TEXT,
   type BrowserController,
   type BrowserKey,
+  type BrowserUploadTargetIdentity,
   type PageSnapshot,
   type ScrollDirection,
   type SnapshotElement,
@@ -160,6 +161,7 @@ export class PuppeteerBrowserController implements BrowserController {
   private lastUrl = "";
   private lastDialog: { readonly type: string; readonly message: string; readonly response?: string } | undefined;
   private lastHttpStatus: number | undefined;
+  private readonly retainedUploadCleanups = new Set<() => Promise<void>>();
   private readonly sessionIncarnation = `browser_${randomUUID()}`;
   private readonly pendingDialogCoordinator = new PendingDialogCoordinator({
     sessionIncarnation: this.sessionIncarnation
@@ -978,7 +980,15 @@ export class PuppeteerBrowserController implements BrowserController {
     return this.snapshot();
   }
 
-  async uploadFile(ref: number, path: string): Promise<PageSnapshot> {
+  async uploadFile(
+    ref: number,
+    path: string,
+    expectedTarget?: BrowserUploadTargetIdentity,
+    releaseSource?: () => Promise<void>
+  ): Promise<PageSnapshot> {
+    if (releaseSource) this.retainedUploadCleanups.add(releaseSource);
+    let sourceRetained = false;
+    try {
     const page = await this.ensurePage();
     const { frame, selector } = await this.resolveRef(ref);
     const handle = await frame.$(selector);
@@ -989,18 +999,96 @@ export class PuppeteerBrowserController implements BrowserController {
     // <input type=file>. Attaching a file to anything else is a no-op that would
     // leave the user thinking the file was attached — refuse it loudly instead,
     // AFTER the user already confirmed (the tool also resolves before the gate).
-    const isFileInput = await handle.evaluate(
-      (el) => el instanceof HTMLInputElement && el.type === "file"
-    );
-    if (!isFileInput) {
+    const details = await handle.evaluate((element) => {
+      const input = element instanceof HTMLInputElement ? element : undefined;
+      const style = globalThis.getComputedStyle(element);
+      return {
+        accept: input?.accept ?? "",
+        disabled: input?.disabled ?? false,
+        fileInput: input?.type === "file",
+        hidden:
+          element.hasAttribute("hidden")
+          || element.getAttribute("aria-hidden") === "true"
+          || style.display === "none"
+          || style.visibility === "hidden"
+          || element.getClientRects().length === 0,
+        id: element.id,
+        multiple: input?.multiple ?? false,
+        name: input?.name ?? ""
+      };
+    });
+    const currentTarget: BrowserUploadTargetIdentity = {
+      ...details,
+      frameUrl: frame.url(),
+      pageUrl: page.url(),
+      ref,
+      selector
+    };
+    if (!currentTarget.fileInput || currentTarget.disabled) {
       await handle.dispose();
-      throw new Error("the chosen element is not a file input — pick the page's file-attach control");
+      throw new Error("the chosen element is not an enabled file input — pick the page's file-attach control");
+    }
+    if (
+      expectedTarget
+      && JSON.stringify(currentTarget) !== JSON.stringify(expectedTarget)
+    ) {
+      await handle.dispose();
+      throw new Error("upload field identity changed at the controller boundary");
+    }
+    if (expectedTarget && page.url() !== expectedTarget.pageUrl) {
+      await handle.dispose();
+      throw new Error("upload destination changed at the controller boundary");
     }
     // The evaluate above PROVED this handle is an <input type=file>; narrow it
     // so puppeteer's uploadFile (typed for HTMLInputElement) accepts it.
     await (handle as ElementHandle<HTMLInputElement>).uploadFile(path);
+    sourceRetained = true;
     await this.settleDom(page);
     return this.snapshot();
+    } finally {
+      if (!sourceRetained && releaseSource) {
+        this.retainedUploadCleanups.delete(releaseSource);
+        await releaseSource().catch(() => undefined);
+      }
+    }
+  }
+
+  async inspectUploadTarget(ref: number): Promise<BrowserUploadTargetIdentity> {
+    const page = await this.ensurePage();
+    const { frame, selector } = await this.resolveRef(ref);
+    const handle = await frame.$(selector);
+    if (!handle) {
+      throw new Error(`no element with ref ${ref.toString()} on the current page — call browser_read again`);
+    }
+    try {
+      const details = await handle.evaluate((element) => {
+        const input = element instanceof HTMLInputElement ? element : undefined;
+        const style = globalThis.getComputedStyle(element);
+        return {
+          accept: input?.accept ?? "",
+          disabled: input?.disabled ?? false,
+          fileInput: input?.type === "file",
+          hidden:
+            element.hasAttribute("hidden")
+            || element.getAttribute("aria-hidden") === "true"
+            || style.display === "none"
+            || style.visibility === "hidden"
+            || element.getClientRects().length === 0,
+          id: element.id,
+          multiple: input?.multiple ?? false,
+          name: input?.name ?? ""
+        };
+      });
+      return {
+        ...details,
+        frameUrl: frame.url(),
+        pageUrl: page.url(),
+        ref,
+        selector
+      };
+    } finally {
+      await handle.dispose();
+    }
   }
 
   async back(): Promise<PageSnapshot> {
@@ -1091,6 +1179,7 @@ export class PuppeteerBrowserController implements BrowserController {
     } catch { /* best-effort */ }
     this.browser = undefined;
     this.page = undefined;
+    await this.releaseRetainedUploads();
   }
 
   async close(): Promise<void> {
@@ -1098,6 +1187,13 @@ export class PuppeteerBrowserController implements BrowserController {
     await this.browser?.close().catch(() => { /* best-effort */ });
     this.browser = undefined;
     this.page = undefined;
+    await this.releaseRetainedUploads();
+  }
+
+  private async releaseRetainedUploads(): Promise<void> {
+    const cleanups = [...this.retainedUploadCleanups];
+    this.retainedUploadCleanups.clear();
+    await Promise.all(cleanups.map((cleanup) => cleanup().catch(() => undefined)));
   }
 }
 

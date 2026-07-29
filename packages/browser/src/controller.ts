@@ -27,6 +27,21 @@ export interface SnapshotElement {
   readonly url?: string;
 }
 
+/** Exact live identity of a browser file-input at an approval boundary. */
+export interface BrowserUploadTargetIdentity {
+  readonly accept: string;
+  readonly disabled: boolean;
+  readonly fileInput: boolean;
+  readonly frameUrl: string;
+  readonly hidden: boolean;
+  readonly id: string;
+  readonly multiple: boolean;
+  readonly name: string;
+  readonly pageUrl: string;
+  readonly ref: number;
+  readonly selector: string;
+}
+
 export interface PageSnapshot {
   readonly url: string;
   readonly title: string;
@@ -97,6 +112,8 @@ export interface BrowserController {
   hover(ref: number): Promise<PageSnapshot>;
   /** Type into the element with this ref; optionally press Enter to submit. */
   type(ref: number, text: string, submit: boolean): Promise<PageSnapshot>;
+  /** Re-observe the exact file-input contract immediately before upload. */
+  inspectUploadTarget?(ref: number): Promise<BrowserUploadTargetIdentity>;
   /**
    * Attach a local file to the file input with this ref (`setInputFiles`).
    * Fail-closed on a non-file element: an element that is NOT an
@@ -104,7 +121,13 @@ export interface BrowserController {
    * the wrong control). The `path` is the already-allowlist-validated, real
    * on-disk path — the controller does not re-validate it.
    */
-  uploadFile(ref: number, path: string): Promise<PageSnapshot>;
+  uploadFile(
+    ref: number,
+    path: string,
+    expectedTarget?: BrowserUploadTargetIdentity,
+    /** Ownership transfers on call; release after browser consumption/session end, or on failure. */
+    releaseSource?: () => Promise<void>
+  ): Promise<PageSnapshot>;
   /** Go back in history; returns the new snapshot. */
   back(): Promise<PageSnapshot>;
   /**

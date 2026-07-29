@@ -10,7 +10,11 @@ import { createHash } from "node:crypto";
 import { errorMessage, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import { type BrowserController, type PageSnapshot } from "./controller.js";
+import {
+  type BrowserController,
+  type BrowserUploadTargetIdentity,
+  type PageSnapshot
+} from "./controller.js";
 import { errorResult, resolveGateDecision, resolveTarget, snapshotToJson, statusFields, type BrowserActionDraft, type BrowserApprovalGate, type ResolveResult } from "./browser-tool-primitives.js";
 import type {
   ClaimPendingDialogInput,
@@ -846,8 +850,23 @@ export function createBrowserFillFormTool(deps: BrowserActToolDeps): MuseTool {
 }
 
 export type BrowserUploadPathValidationResult =
-  | { readonly allowed: true; readonly resolvedPath: string }
+  | {
+      readonly allowed: true;
+      readonly cleanup: () => Promise<void>;
+      readonly identity: BrowserUploadFileIdentity;
+      readonly resolvedPath: string;
+      readonly uploadPath: string;
+    }
   | { readonly allowed: false; readonly reason: string };
+
+export interface BrowserUploadFileIdentity {
+  readonly bytes: number;
+  readonly changedAtMs: number;
+  readonly device: number;
+  readonly inode: number;
+  readonly modifiedAtMs: number;
+  readonly sha256: string;
+}
 
 /**
  * Injected guard for the LOCAL file an upload would read. `browser_upload`
@@ -871,6 +890,25 @@ export interface BrowserUploadToolDeps {
   readonly validatePath?: BrowserUploadPathValidator;
 }
 
+function sameUploadFileIdentity(
+  left: BrowserUploadFileIdentity,
+  right: BrowserUploadFileIdentity
+): boolean {
+  return left.bytes === right.bytes
+    && left.changedAtMs === right.changedAtMs
+    && left.device === right.device
+    && left.inode === right.inode
+    && left.modifiedAtMs === right.modifiedAtMs
+    && left.sha256 === right.sha256;
+}
+
+function sameUploadTargetIdentity(
+  left: NonNullable<BrowserActionDraft["uploadTarget"]>,
+  right: NonNullable<BrowserActionDraft["uploadTarget"]>
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 export function createBrowserUploadTool(deps: BrowserUploadToolDeps): MuseTool {
   return {
     definition: {
@@ -881,8 +919,9 @@ export function createBrowserUploadTool(deps: BrowserUploadToolDeps): MuseTool {
         "and the file in `path` (a path under the user's Downloads/Desktop/Documents, e.g. " +
         "'~/Downloads/resume.pdf'). Use ONLY to attach a file to a page's upload field — NOT to type text " +
         "(browser_type), NOT to click a button (browser_click), NOT to read a local file (file_read). The " +
-        "file path is checked against the allowed folders and the user MUST confirm before Muse attaches it " +
-        "(the file then leaves toward that site); absent confirmation nothing is attached.",
+        "canonical path, content hash/size, destination origin, and exact file-input identity are shown and " +
+        "revalidated after confirmation before Muse attaches it (the file then leaves toward that site); " +
+        "absent confirmation or any drift nothing is attached.",
       domain: "browser",
       groundedArgs: ["target", "path"],
       inputSchema: {
@@ -915,9 +954,20 @@ export function createBrowserUploadTool(deps: BrowserUploadToolDeps): MuseTool {
       if ("error" in resolved) {
         return { uploaded: false, ...resolved.error };
       }
-      // Allowlist guard for the SOURCE file. Absent validator ⇒ fail-closed (an
-      // unguarded local read is never shipped). A rejected path is refused
-      // BEFORE the approval draft and BEFORE any read — the file never opens.
+      if (!deps.controller.inspectUploadTarget) {
+        return { reason: "browser controller cannot verify the upload field identity", uploaded: false };
+      }
+      let preliminaryTarget: BrowserUploadTargetIdentity;
+      try {
+        preliminaryTarget = await deps.controller.inspectUploadTarget(resolved.ref);
+      } catch (cause) {
+        return { uploaded: false, ...errorResult(cause) };
+      }
+      if (!preliminaryTarget.fileInput || preliminaryTarget.disabled) {
+        return { reason: "the chosen upload target is not an enabled file input", uploaded: false };
+      }
+      // Allowlist + stable-content preparation for the SOURCE file. Production
+      // returns a private staged copy whose bytes are the exact approved hash.
       if (!deps.validatePath) {
         return { reason: "no path validator wired — local file upload is fail-closed", uploaded: false };
       }
@@ -930,16 +980,164 @@ export function createBrowserUploadTool(deps: BrowserUploadToolDeps): MuseTool {
       if (!verdict.allowed) {
         return { reason: verdict.reason, uploaded: false };
       }
-      const draft: BrowserActionDraft = { action: "upload", path, target: resolved.label, url: deps.controller.currentUrl() };
-      const decision = await resolveGateDecision(deps.approvalGate, draft);
-      if (!decision.approved) {
-        return { reason: decision.reason, uploaded: false };
-      }
+      let currentVerdict: Extract<BrowserUploadPathValidationResult, { readonly allowed: true }> | undefined;
       try {
-        const snapshot = await deps.controller.uploadFile(resolved.ref, verdict.resolvedPath);
-        return { uploaded: true, ...snapshotToJson(snapshot), ...statusFields(snapshot) };
-      } catch (cause) {
-        return { uploaded: false, ...errorResult(cause) };
+        let draftResolved: ResolveResult;
+        try {
+          draftResolved = await resolveTarget(deps.controller, args, "click");
+        } catch (cause) {
+          return { uploaded: false, ...errorResult(cause) };
+        }
+        if (
+          "error" in draftResolved
+          || draftResolved.ref !== resolved.ref
+          || draftResolved.label !== resolved.label
+        ) {
+          return { reason: "upload field changed while preparing the file; inspect again", uploaded: false };
+        }
+        let uploadTarget: BrowserUploadTargetIdentity;
+        try {
+          uploadTarget = await deps.controller.inspectUploadTarget(draftResolved.ref);
+        } catch (cause) {
+          return { uploaded: false, ...errorResult(cause) };
+        }
+        if (!uploadTarget.fileInput || uploadTarget.disabled) {
+          return { reason: "the chosen upload target is not an enabled file input", uploaded: false };
+        }
+        const url = deps.controller.currentUrl();
+        let origin: string;
+        try {
+          origin = new URL(url).origin;
+        } catch {
+          return { reason: "the current browser page has no valid destination origin", uploaded: false };
+        }
+        if (uploadTarget.pageUrl !== url) {
+          return { reason: "page changed while inspecting the upload target", uploaded: false };
+        }
+        const file = Object.freeze({
+          bytes: verdict.identity.bytes,
+          sha256: verdict.identity.sha256
+        });
+        const frozenTarget = Object.freeze({ ...uploadTarget });
+        const draft: BrowserActionDraft = Object.freeze({
+          action: "upload",
+          file,
+          origin,
+          path: verdict.resolvedPath,
+          target: draftResolved.label,
+          uploadTarget: frozenTarget,
+          url
+        });
+        const decision = await resolveGateDecision(deps.approvalGate, draft);
+        if (!decision.approved) {
+          return { reason: decision.reason, uploaded: false };
+        }
+        let revalidated: BrowserUploadPathValidationResult;
+        try {
+          revalidated = await deps.validatePath(path);
+        } catch (cause) {
+          return {
+            authorityReceipts: { upload: authorityReceipt(draft, "held") },
+            reason: `path revalidation error: ${errorMessage(cause)}`,
+            uploaded: false
+          };
+        }
+        if (!revalidated.allowed) {
+          return {
+            authorityReceipts: { upload: authorityReceipt(draft, "held") },
+            reason: revalidated.reason,
+            uploaded: false
+          };
+        }
+        currentVerdict = revalidated;
+        if (
+          currentVerdict.resolvedPath !== verdict.resolvedPath
+          || !sameUploadFileIdentity(currentVerdict.identity, verdict.identity)
+        ) {
+          return {
+            authorityReceipts: { upload: authorityReceipt(draft, "held") },
+            reason: "upload file changed after approval; choose and approve the current file",
+            uploaded: false
+          };
+        }
+        if (deps.controller.currentUrl() !== draft.url) {
+          return {
+            authorityReceipts: { upload: authorityReceipt(draft, "held") },
+            reason: "destination page changed during upload approval",
+            uploaded: false
+          };
+        }
+        let currentResolved: ResolveResult;
+        try {
+          currentResolved = await resolveTarget(deps.controller, args, "click");
+        } catch (cause) {
+          return {
+            authorityReceipts: { upload: authorityReceipt(draft, "held") },
+            uploaded: false,
+            ...errorResult(cause)
+          };
+        }
+        if (
+          "error" in currentResolved
+          || currentResolved.ref !== draftResolved.ref
+          || currentResolved.label !== draftResolved.label
+        ) {
+          return {
+            authorityReceipts: { upload: authorityReceipt(draft, "held") },
+            reason: "upload field changed after approval; inspect again",
+            uploaded: false
+          };
+        }
+        let currentTarget: BrowserUploadTargetIdentity;
+        try {
+          currentTarget = await deps.controller.inspectUploadTarget(currentResolved.ref);
+        } catch (cause) {
+          return {
+            authorityReceipts: { upload: authorityReceipt(draft, "held") },
+            uploaded: false,
+            ...errorResult(cause)
+          };
+        }
+        if (
+          !sameUploadTargetIdentity(frozenTarget, currentTarget)
+          || currentTarget.pageUrl !== draft.url
+          || !currentTarget.fileInput
+          || currentTarget.disabled
+        ) {
+          return {
+            authorityReceipts: { upload: authorityReceipt(draft, "held") },
+            reason: "upload field identity changed after approval; inspect again",
+            uploaded: false
+          };
+        }
+        try {
+          const uploadSource = currentVerdict;
+          // Ownership of the private staged file transfers to the controller.
+          // It must remain readable until the browser consumes/submits the
+          // selected File, then is released on controller disconnect/close.
+          currentVerdict = undefined;
+          const snapshot = await deps.controller.uploadFile(
+            currentResolved.ref,
+            uploadSource.uploadPath,
+            frozenTarget,
+            uploadSource.cleanup
+          );
+          return {
+            authorityReceipts: { upload: authorityReceipt(draft, "performed") },
+            uploaded: true,
+            ...snapshotToJson(snapshot),
+            ...statusFields(snapshot)
+          };
+        } catch (cause) {
+          return {
+            authorityReceipts: { upload: authorityReceipt(draft, "failed") },
+            uploaded: "unknown",
+            ...errorResult(cause)
+          };
+        }
+      } finally {
+        await currentVerdict?.cleanup().catch(() => undefined);
+        await verdict.cleanup().catch(() => undefined);
       }
     }
   };
