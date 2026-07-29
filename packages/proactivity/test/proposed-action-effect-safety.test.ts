@@ -374,6 +374,7 @@ describe("proposed action durable outbound effect", () => {
       effectFile: race.effectFile,
       file: race.file,
       id: proposal.id,
+      now: NOW.toISOString(),
       payloadHash: proposal.payloadHash
     };
     await Promise.all([
@@ -407,6 +408,7 @@ describe("proposed action durable outbound effect", () => {
       effectFile: repair.effectFile,
       file: repair.file,
       id: repairProposal.id,
+      now: NOW.toISOString(),
       payloadHash: repairProposal.payloadHash
     };
     await Promise.all([

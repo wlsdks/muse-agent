@@ -11,6 +11,7 @@ interface Input {
   readonly effectFile: string;
   readonly file: string;
   readonly id: string;
+  readonly now: string;
   readonly payloadHash: string;
 }
 
@@ -32,6 +33,7 @@ const result = await confirmProposedAction({
   effectFile: input.effectFile,
   file: input.file,
   id: input.id,
+  now: () => new Date(input.now),
   payloadHash: input.payloadHash,
   registry
 });
