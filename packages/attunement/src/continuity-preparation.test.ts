@@ -2,14 +2,22 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import {
+  CalendarProviderRegistry,
+  encodeCalendarEventReference,
+  type CalendarEvent,
+  type CalendarProvider
+} from "@muse/calendar";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   AttunementStoreError,
   baselinePolicy,
+  createCalendarExactArtifactResolver,
   openPreparedContinuityPack,
   policyForOutcome,
   readAttunementState,
+  readPreparedContinuityPack,
   resetThreadPolicy,
   type ArtifactLink,
   type AttunementState,
@@ -71,6 +79,106 @@ afterEach(async () => {
 });
 
 describe("openPreparedContinuityPack", () => {
+  it("previews only one exact recurring calendar occurrence without recording a delivery", async () => {
+    const file = await seededFile();
+    const selected: CalendarEvent = {
+      allDay: false,
+      endsAt: new Date("2026-07-25T10:00:00.000Z"),
+      id: "series_team_sync",
+      providerId: "gcal",
+      startsAt: new Date("2026-07-25T09:00:00.000Z"),
+      title: "Selected team sync"
+    };
+    const sibling: CalendarEvent = {
+      ...selected,
+      endsAt: new Date("2026-08-01T10:00:00.000Z"),
+      startsAt: new Date("2026-08-01T09:00:00.000Z"),
+      title: "Sibling team sync"
+    };
+    const exactCalls: Array<{ readonly eventId: string; readonly startsAt: string }> = [];
+    const provider: CalendarProvider & {
+      resolveExactEvent(locator: {
+        readonly eventId: string;
+        readonly startsAt: string;
+      }): Promise<CalendarEvent | undefined>;
+    } = {
+      createEvent: async () => { throw new Error("not used"); },
+      deleteEvent: async () => { throw new Error("not used"); },
+      describe: () => ({
+        credentials: [],
+        description: "",
+        displayName: "Google",
+        id: "gcal",
+        local: false
+      }),
+      id: "gcal",
+      listEvents: async () => { throw new Error("series listing must not run"); },
+      resolveExactEvent: async (locator) => {
+        exactCalls.push(locator);
+        return [selected, sibling].find((event) =>
+          event.id === locator.eventId
+          && event.startsAt.toISOString() === locator.startsAt
+        );
+      },
+      updateEvent: async () => { throw new Error("not used"); }
+    };
+    const reference = encodeCalendarEventReference(selected);
+    const current = state();
+    await writeAttunementState(file, {
+      ...current,
+      threads: current.threads.map((thread) => ({
+        ...thread,
+        links: [{
+          artifactId: reference,
+          artifactType: "calendar-event" as const,
+          linkedAt: "2026-07-20T00:00:00.000Z",
+          linkedBy: "user" as const,
+          providerId: "calendar:gcal",
+          role: "context" as const,
+          threadId: thread.id
+        }]
+      }))
+    });
+    const before = await readFile(file);
+
+    const pack = await readPreparedContinuityPack(
+      file,
+      "thread_life",
+      createCalendarExactArtifactResolver(new CalendarProviderRegistry([provider])),
+      { now: () => Date.parse("2026-07-24T09:00:00.000Z") }
+    );
+
+    expect(exactCalls).toEqual([{
+      eventId: selected.id,
+      startsAt: selected.startsAt.toISOString()
+    }]);
+    expect(pack.evidence).toEqual([
+      expect.objectContaining({
+        artifact: expect.objectContaining({
+          artifactId: reference,
+          calendarEndsAt: selected.endsAt.toISOString(),
+          calendarStartsAt: selected.startsAt.toISOString(),
+          providerId: "calendar:gcal",
+          title: selected.title
+        }),
+        reference: expect.objectContaining({
+          artifactId: reference,
+          providerId: "calendar:gcal",
+          role: "context"
+        }),
+        status: "available"
+      })
+    ]);
+    const packBytes = JSON.stringify(pack);
+    expect(packBytes).not.toContain(sibling.title);
+    expect(packBytes).not.toContain(sibling.startsAt.toISOString());
+    expect(packBytes).not.toContain(sibling.endsAt.toISOString());
+    expect(pack.nextStep).toBeUndefined();
+    expect(pack.interactionAnchor).toBeUndefined();
+    expect(await readFile(file)).toEqual(before);
+    expect((await readAttunementState(file)).deliveries).toHaveLength(0);
+  });
+
   it("owns one clock read and atomically opens the exact available pack", async () => {
     const file = await seededFile();
     const now = vi.fn(() => Date.parse("2026-07-18T09:00:00.000Z"));
