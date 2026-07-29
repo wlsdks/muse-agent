@@ -3,6 +3,7 @@ import {
 } from "../../attunement/dist/local-attunement-snapshot-provider.js";
 import {
   compileHeadRevalidatedProviderBoundGraphEvidence,
+  isProcessMintedProviderHeadRevalidatedGraphEvidence,
   verifyProviderHeadRevalidatedGraphBindingReceipt
 } from "../dist/provider-head-revalidated-graph-evidence.js";
 import {
@@ -110,6 +111,10 @@ const fresh = await compose(
 );
 invariant(fresh.evidence.status === "partial", "fresh must settle partial");
 invariant(
+  isProcessMintedProviderHeadRevalidatedGraphEvidence(fresh.evidence),
+  "fresh exact result must be process minted"
+);
+invariant(
   fresh.evidence.receipt.canAssertFreshAtAssessment === true,
   "fresh assessment flag"
 );
@@ -152,6 +157,10 @@ invariant(
   !Object.hasOwn(changed.evidence, "graphEvidence"),
   "changed must not compile Graph"
 );
+invariant(
+  isProcessMintedProviderHeadRevalidatedGraphEvidence(changed.evidence),
+  "changed exact result must be process minted"
+);
 
 const exceeded = await compose(
   [
@@ -168,6 +177,10 @@ invariant(
 invariant(
   !Object.hasOwn(exceeded.evidence, "graphEvidence"),
   "span must not compile Graph"
+);
+invariant(
+  isProcessMintedProviderHeadRevalidatedGraphEvidence(exceeded.evidence),
+  "span exact result must be process minted"
 );
 
 const headUnavailable = await compose(
@@ -187,6 +200,12 @@ invariant(
     === "provider-owned-two-capture-pair-verified-in-composing-process",
   "head unavailable pair mint wording"
 );
+invariant(
+  isProcessMintedProviderHeadRevalidatedGraphEvidence(
+    headUnavailable.evidence
+  ),
+  "head unavailable exact result must be process minted"
+);
 
 const subjectUnavailable = await compose(
   [{ status: "missing" }],
@@ -201,6 +220,160 @@ invariant(
   subjectUnavailable.artifact.receipt.mintVerification
     === "provider-owned-revalidation-artifact-verified-in-composing-process",
   "subject unavailable one-read mint wording"
+);
+invariant(
+  isProcessMintedProviderHeadRevalidatedGraphEvidence(
+    subjectUnavailable.evidence
+  ),
+  "subject unavailable exact result must be process minted"
+);
+
+const trapCounts = {
+  get: 0,
+  getOwnPropertyDescriptor: 0,
+  getPrototypeOf: 0,
+  ownKeys: 0
+};
+const hostile = new Proxy(fresh.evidence, {
+  get() {
+    trapCounts.get++;
+    throw new Error("get trap must not run");
+  },
+  getOwnPropertyDescriptor() {
+    trapCounts.getOwnPropertyDescriptor++;
+    throw new Error("descriptor trap must not run");
+  },
+  getPrototypeOf() {
+    trapCounts.getPrototypeOf++;
+    throw new Error("prototype trap must not run");
+  },
+  ownKeys() {
+    trapCounts.ownKeys++;
+    throw new Error("ownKeys trap must not run");
+  }
+});
+const revoked = Proxy.revocable(fresh.evidence, {});
+revoked.revoke();
+const mintForgeries = [
+  null,
+  undefined,
+  false,
+  0,
+  "",
+  Symbol("forgery"),
+  { ...fresh.evidence },
+  JSON.parse(JSON.stringify(fresh.evidence)),
+  structuredClone(fresh.evidence),
+  Object.assign(Object.create(null), fresh.evidence),
+  Object.create(fresh.evidence),
+  {
+    receipt: fresh.evidence.receipt,
+    stage: fresh.evidence.stage,
+    status: fresh.evidence.status
+  },
+  new Proxy(fresh.evidence, {}),
+  hostile,
+  revoked.proxy
+];
+for (const forgery of mintForgeries) {
+  let accepted;
+  try {
+    accepted = isProcessMintedProviderHeadRevalidatedGraphEvidence(forgery);
+  } catch {
+    throw new Error(
+      "provider head-revalidated graph evidence verification failed: mint predicate must be total"
+    );
+  }
+  invariant(!accepted, "copies, wrappers, and proxies must not be minted");
+}
+invariant(
+  Object.values(trapCounts).every((count) => count === 0),
+  "hostile Proxy traps must remain at zero"
+);
+
+const beforeJson = JSON.stringify(fresh.evidence);
+const beforeReceiptId = fresh.evidence.receipt.receiptId;
+const beforePrototype = Reflect.getPrototypeOf(fresh.evidence);
+const beforeDescriptors =
+  Reflect.ownKeys(fresh.evidence).map((key) => [
+    key,
+    Reflect.getOwnPropertyDescriptor(fresh.evidence, key)
+  ]);
+const beforeFrozen = Object.isFrozen(fresh.evidence);
+invariant(
+  isProcessMintedProviderHeadRevalidatedGraphEvidence(fresh.evidence),
+  "exact result must remain minted"
+);
+invariant(JSON.stringify(fresh.evidence) === beforeJson, "JSON bytes changed");
+invariant(
+  fresh.evidence.receipt.receiptId === beforeReceiptId,
+  "receipt ID changed"
+);
+invariant(
+  Reflect.getPrototypeOf(fresh.evidence) === beforePrototype,
+  "result prototype changed"
+);
+invariant(
+  Object.isFrozen(fresh.evidence) === beforeFrozen,
+  "result frozen state changed"
+);
+for (const [key, descriptor] of beforeDescriptors) {
+  const after = Reflect.getOwnPropertyDescriptor(fresh.evidence, key);
+  invariant(
+    after?.configurable === descriptor.configurable
+      && after?.enumerable === descriptor.enumerable
+      && after?.value === descriptor.value
+      && after?.writable === descriptor.writable,
+    "result descriptor or nested identity changed"
+  );
+}
+
+const poisonProvider = provider(
+  [
+    { state: state(), status: "available" },
+    { state: state(), status: "available" }
+  ],
+  [SUBJECT_AT, "2026-07-30T00:00:00.025Z"]
+);
+const poisonArtifact = await poisonProvider.captureHeadRevalidation(
+  SCOPE,
+  { maxCaptureSpanMs: 25 }
+);
+const originalWeakSetAdd = WeakSet.prototype.add;
+const originalWeakSetHas = WeakSet.prototype.has;
+const forgedResult = {};
+let poisonForgeryAccepted;
+let poisonExactAccepted;
+try {
+  WeakSet.prototype.add = function poisonedAdd(value) {
+    if (
+      value?.receipt?.receiptVersion
+        === "muse.provider-head-revalidated-graph-evidence-receipt.v1"
+      && value.revalidationReceipt !== undefined
+    ) {
+      return this;
+    }
+    return originalWeakSetAdd.call(this, value);
+  };
+  WeakSet.prototype.has = function poisonedHas(value) {
+    return value === forgedResult || originalWeakSetHas.call(this, value);
+  };
+  poisonForgeryAccepted =
+    isProcessMintedProviderHeadRevalidatedGraphEvidence(forgedResult);
+  const poisonedResult =
+    await compileHeadRevalidatedProviderBoundGraphEvidence(poisonArtifact);
+  poisonExactAccepted =
+    isProcessMintedProviderHeadRevalidatedGraphEvidence(poisonedResult);
+} finally {
+  WeakSet.prototype.add = originalWeakSetAdd;
+  WeakSet.prototype.has = originalWeakSetHas;
+}
+invariant(!poisonForgeryAccepted, "poisoned has accepted forgery");
+invariant(poisonExactAccepted, "poisoned add prevented exact mint");
+invariant(
+  WeakSet.prototype.add === originalWeakSetAdd
+    && WeakSet.prototype.has === originalWeakSetHas,
+  "WeakSet prototype methods were not restored"
 );
 
 let cloneRejected = false;

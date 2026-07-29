@@ -8,6 +8,7 @@ import { canonicalizeImmutableEnvelope } from "./canonical-immutable-envelope.js
 import {
   ProviderHeadRevalidatedGraphEvidenceError,
   compileHeadRevalidatedProviderBoundGraphEvidence,
+  isProcessMintedProviderHeadRevalidatedGraphEvidence,
   verifyProviderHeadRevalidatedGraphBindingReceipt
 } from "./provider-head-revalidated-graph-evidence.js";
 
@@ -88,6 +89,7 @@ function state(title = "Private head graph canary") {
 
 async function fixture(options: {
   readonly changed?: boolean;
+  readonly headUnavailable?: boolean;
   readonly spanMs?: number;
   readonly subjectUnavailable?: boolean;
 }) {
@@ -99,14 +101,21 @@ async function fixture(options: {
       sourceId: SOURCE_ID
     },
     {
-      readState: async () => options.subjectUnavailable
-        ? { status: "missing" as const }
-        : ({
-            state: state(options.changed && reads++ > 0
-              ? "Changed title"
-              : "Private head graph canary"),
-            status: "available" as const
-          }),
+      readState: async () => {
+        const readIndex = reads++;
+        if (
+          (options.subjectUnavailable && readIndex === 0)
+          || (options.headUnavailable && readIndex > 0)
+        ) {
+          return { status: "missing" as const };
+        }
+        return {
+          state: state(options.changed && readIndex > 0
+            ? "Changed title"
+            : "Private head graph canary"),
+          status: "available" as const
+        };
+      },
       clock: () => {
         const at = clocks++ === 0
           ? SUBJECT_AT
@@ -123,7 +132,245 @@ async function fixture(options: {
   };
 }
 
+function captureObservableObjectGraph(root: object) {
+  const seen = new Set<object>();
+  const pending = [root];
+  const records: {
+    readonly descriptors: readonly (
+      readonly [PropertyKey, PropertyDescriptor]
+    )[];
+    readonly frozen: boolean;
+    readonly object: object;
+    readonly prototype: object | null;
+  }[] = [];
+  while (pending.length > 0) {
+    const object = pending.pop()!;
+    if (seen.has(object)) continue;
+    seen.add(object);
+    const descriptors = Reflect.ownKeys(object).map((key) => {
+      const descriptor = Reflect.getOwnPropertyDescriptor(object, key)!;
+      if (
+        "value" in descriptor
+        && descriptor.value !== null
+        && (
+          typeof descriptor.value === "object"
+          || typeof descriptor.value === "function"
+        )
+      ) {
+        pending.push(descriptor.value as object);
+      }
+      return [key, descriptor] as const;
+    });
+    records.push({
+      descriptors,
+      frozen: Object.isFrozen(object),
+      object,
+      prototype: Reflect.getPrototypeOf(object)
+    });
+  }
+  return records;
+}
+
+function expectObservableObjectGraphUnchanged(
+  records: ReturnType<typeof captureObservableObjectGraph>
+): void {
+  for (const record of records) {
+    expect(Reflect.getPrototypeOf(record.object)).toBe(record.prototype);
+    expect(Object.isFrozen(record.object)).toBe(record.frozen);
+    expect(Reflect.ownKeys(record.object)).toEqual(
+      record.descriptors.map(([key]) => key)
+    );
+    for (const [key, before] of record.descriptors) {
+      const after = Reflect.getOwnPropertyDescriptor(record.object, key);
+      expect(after?.configurable).toBe(before.configurable);
+      expect(after?.enumerable).toBe(before.enumerable);
+      if ("value" in before) {
+        expect(after && "value" in after ? after.value : undefined)
+          .toBe(before.value);
+        expect(after && "writable" in after ? after.writable : undefined)
+          .toBe(before.writable);
+      } else {
+        expect(after && "get" in after ? after.get : undefined)
+          .toBe(before.get);
+        expect(after && "set" in after ? after.set : undefined)
+          .toBe(before.set);
+      }
+    }
+  }
+}
+
 describe("provider head-revalidated Graph evidence", () => {
+  it("recognizes all five exact final Provider results from this module instance", async () => {
+    const sources = await Promise.all([
+      fixture({}),
+      fixture({ changed: true }),
+      fixture({ spanMs: 26 }),
+      fixture({ subjectUnavailable: true }),
+      fixture({ headUnavailable: true })
+    ]);
+    const outcomes = await Promise.all(sources.map(async (source) => {
+      const artifact = await source.provider.captureHeadRevalidation(
+        source.scope,
+        { maxCaptureSpanMs: 25 }
+      );
+      return compileHeadRevalidatedProviderBoundGraphEvidence(artifact);
+    }));
+
+    expect(outcomes.map((result) => [
+      result.status,
+      result.stage,
+      isProcessMintedProviderHeadRevalidatedGraphEvidence(result)
+    ])).toEqual([
+      ["partial", "graph-evidence", true],
+      ["stale", "revalidation", true],
+      ["stale", "revalidation", true],
+      ["abstained", "provider", true],
+      ["abstained", "revalidation", true]
+    ]);
+  });
+
+  it("rejects copies, wrappers, and proxies without reflection", async () => {
+    const source = await fixture({});
+    const artifact = await source.provider.captureHeadRevalidation(
+      source.scope,
+      { maxCaptureSpanMs: 25 }
+    );
+    const result =
+      await compileHeadRevalidatedProviderBoundGraphEvidence(artifact);
+    const trapCounts = {
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0
+    };
+    const hostile = new Proxy(result, {
+      get() {
+        trapCounts.get++;
+        throw new Error("get trap must not run");
+      },
+      getOwnPropertyDescriptor() {
+        trapCounts.getOwnPropertyDescriptor++;
+        throw new Error("descriptor trap must not run");
+      },
+      getPrototypeOf() {
+        trapCounts.getPrototypeOf++;
+        throw new Error("prototype trap must not run");
+      },
+      ownKeys() {
+        trapCounts.ownKeys++;
+        throw new Error("ownKeys trap must not run");
+      }
+    });
+    const revoked = Proxy.revocable(result, {});
+    revoked.revoke();
+    const fabricated = {
+      receipt: result.receipt,
+      stage: result.stage,
+      status: result.status
+    };
+    const candidates = [
+      null,
+      undefined,
+      false,
+      0,
+      "",
+      Symbol("forgery"),
+      { ...result },
+      JSON.parse(JSON.stringify(result)),
+      structuredClone(result),
+      Object.assign(Object.create(null) as object, result),
+      Object.create(result) as object,
+      fabricated,
+      new Proxy(result, {}),
+      hostile,
+      revoked.proxy
+    ];
+
+    expect(candidates.map((candidate) => {
+      expect(() =>
+        isProcessMintedProviderHeadRevalidatedGraphEvidence(candidate)
+      ).not.toThrow();
+      return isProcessMintedProviderHeadRevalidatedGraphEvidence(candidate);
+    })).toEqual(candidates.map(() => false));
+    expect(trapCounts).toEqual({
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0
+    });
+  });
+
+  it("preserves every observable result object property and identity", async () => {
+    const source = await fixture({});
+    const artifact = await source.provider.captureHeadRevalidation(
+      source.scope,
+      { maxCaptureSpanMs: 25 }
+    );
+    const result =
+      await compileHeadRevalidatedProviderBoundGraphEvidence(artifact);
+    const json = JSON.stringify(result);
+    const receiptId = result.receipt.receiptId;
+    const graph = captureObservableObjectGraph(result);
+
+    expect(isProcessMintedProviderHeadRevalidatedGraphEvidence(result))
+      .toBe(true);
+    expect(JSON.stringify(result)).toBe(json);
+    expect(result.receipt.receiptId).toBe(receiptId);
+    expectObservableObjectGraphUnchanged(graph);
+  });
+
+  it("resists post-import WeakSet add and has poisoning", async () => {
+    const source = await fixture({});
+    const artifact = await source.provider.captureHeadRevalidation(
+      source.scope,
+      { maxCaptureSpanMs: 25 }
+    );
+    const originalAdd = WeakSet.prototype.add;
+    const originalHas = WeakSet.prototype.has;
+    const forgery = {};
+    let forgeryAccepted: boolean | undefined;
+    let exactAccepted: boolean | undefined;
+    try {
+      WeakSet.prototype.add = (function poisonedAdd(
+        this: WeakSet<object>,
+        value: object
+      ): WeakSet<object> {
+        const candidate = value as {
+          readonly receipt?: { readonly receiptVersion?: unknown };
+          readonly revalidationReceipt?: unknown;
+        };
+        if (
+          candidate.receipt?.receiptVersion
+            === "muse.provider-head-revalidated-graph-evidence-receipt.v1"
+          && candidate.revalidationReceipt !== undefined
+        ) {
+          return this;
+        }
+        return originalAdd.call(this, value);
+      }) as typeof WeakSet.prototype.add;
+      WeakSet.prototype.has = (function poisonedHas(
+        this: WeakSet<object>,
+        value: object
+      ): boolean {
+        return value === forgery || originalHas.call(this, value);
+      }) as typeof WeakSet.prototype.has;
+      forgeryAccepted =
+        isProcessMintedProviderHeadRevalidatedGraphEvidence(forgery);
+      const result =
+        await compileHeadRevalidatedProviderBoundGraphEvidence(artifact);
+      exactAccepted =
+        isProcessMintedProviderHeadRevalidatedGraphEvidence(result);
+    } finally {
+      WeakSet.prototype.add = originalAdd;
+      WeakSet.prototype.has = originalHas;
+    }
+
+    expect(forgeryAccepted).toBe(false);
+    expect(exactAccepted).toBe(true);
+    expect(WeakSet.prototype.add).toBe(originalAdd);
+    expect(WeakSet.prototype.has).toBe(originalHas);
+  });
+
   it("settles equal endpoints as partial with exact narrow semantics", async () => {
     const source = await fixture({});
     const artifact = await source.provider.captureHeadRevalidation(

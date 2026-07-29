@@ -137,6 +137,28 @@ export type ProviderHeadRevalidatedGraphEvidenceV1 =
       readonly receipt: ProviderHeadRevalidatedGraphBindingReceiptV1;
     }>;
 
+const processMintedProviderResults = new WeakSet<object>();
+const addProcessMintedProviderResult =
+  processMintedProviderResults.add.bind(processMintedProviderResults);
+const hasProcessMintedProviderResult =
+  processMintedProviderResults.has.bind(processMintedProviderResults);
+
+function mintProcessProviderResult(
+  result: ProviderHeadRevalidatedGraphEvidenceV1
+): ProviderHeadRevalidatedGraphEvidenceV1 {
+  addProcessMintedProviderResult(result);
+  return result;
+}
+
+/** @internal */
+export function isProcessMintedProviderHeadRevalidatedGraphEvidence(
+  input: unknown
+): boolean {
+  return typeof input === "object"
+    && input !== null
+    && hasProcessMintedProviderResult(input);
+}
+
 export type ProviderHeadRevalidatedGraphEvidenceErrorCode =
   | "INVALID_REVALIDATION"
   | "GRAPH_EVIDENCE_FAILED"
@@ -321,12 +343,14 @@ export async function compileHeadRevalidatedProviderBoundGraphEvidence(
         reasons: ["provider-head-revalidation-not-admitted-to-graph"]
       }
     });
-    return freezeTree(freezeRecord({
-      status: revalidation.status,
-      stage: revalidation.stage,
-      revalidationReceipt: revalidation,
-      receipt
-    })) as ProviderHeadRevalidatedGraphEvidenceV1;
+    return mintProcessProviderResult(
+      freezeTree(freezeRecord({
+        status: revalidation.status,
+        stage: revalidation.stage,
+        revalidationReceipt: revalidation,
+        receipt
+      })) as ProviderHeadRevalidatedGraphEvidenceV1
+    );
   }
   const freshReceipt = revalidation as FreshRevalidationReceipt;
   const graphSnapshot = snapshot(freshReceipt);
@@ -392,14 +416,16 @@ export async function compileHeadRevalidatedProviderBoundGraphEvidence(
     snapshot: graphSnapshot,
     declaredFreshness: graphFreshness
   });
-  return freezeTree(freezeRecord({
-    status: "partial" as const,
-    stage: "graph-evidence" as const,
-    revalidationReceipt: revalidation,
-    graphObservationReceipt: projection.observation,
-    graphEvidence: projection.graph,
-    receipt
-  }));
+  return mintProcessProviderResult(
+    freezeTree(freezeRecord({
+      status: "partial" as const,
+      stage: "graph-evidence" as const,
+      revalidationReceipt: revalidation,
+      graphObservationReceipt: projection.observation,
+      graphEvidence: projection.graph,
+      receipt
+    }))
+  );
 }
 
 function closedRecord(
