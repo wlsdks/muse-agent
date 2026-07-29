@@ -220,6 +220,43 @@ describe("executeStreamingModelLoop", () => {
     expect(execution.finalResponse.output).toBe("(run interrupted)");
   });
 
+  it("settles a mid-batch cancellation with blocking-path parity and no second model turn", async () => {
+    const controller = new AbortController();
+    const ran: string[] = [];
+    const seen: ModelRequest[] = [];
+    const run = {
+      maxToolCalls: 5,
+      tracer: { startSpan: () => noopSpan },
+      metrics: { recordTokenUsage() {} },
+      executeToolCall: async (_ctx: AgentRunContext, toolCall: ModelToolCall): Promise<ExecutedToolResult> => {
+        ran.push(toolCall.name);
+        controller.abort();
+        return {
+          result: { id: toolCall.id, name: toolCall.name, output: `settled ${toolCall.name}`, status: "completed" },
+          toolCall
+        };
+      }
+    } as unknown as ModelLoopRunner;
+    const prov = provider([
+      [done("calling", [
+        { id: "a", name: "alpha", arguments: {} },
+        { id: "b", name: "beta", arguments: {} }
+      ])],
+      [done("must not run")]
+    ], seen);
+
+    const { events, execution } = await drive(prov, run, context(controller.signal), true);
+
+    expect(seen).toHaveLength(1);
+    expect(ran).toEqual(["alpha"]);
+    expect(execution.finalResponse.id).toBe("interrupted");
+    expect(execution.toolResults.map((item) => item.result.status)).toEqual(["completed", "blocked"]);
+    expect(execution.toolResults[1]?.result.output).toContain("run interrupted before tool execution");
+    expect(events.filter((event) => event.type === "tool-result")).toHaveLength(2);
+    expect(execution.intermediateMessages.filter((message) => message.role === "tool").map((message) => message.toolCallId))
+      .toEqual(["a", "b"]);
+  });
+
   it("propagates a provider error event out of the loop", async () => {
     const prov = provider([[{ type: "error", error: new ModelProviderError("fake", "boom", true) }]]);
     await expect(drive(prov, runner(), context(), true)).rejects.toThrow("boom");

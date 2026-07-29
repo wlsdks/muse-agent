@@ -314,6 +314,7 @@ interface ToolBatchResult {
   readonly messages: readonly ModelMessage[];
   readonly postCompactionLoopDetected: boolean;
   readonly pingPongLoopDetected: boolean;
+  readonly interrupted: boolean;
 }
 
 /**
@@ -334,6 +335,7 @@ interface PlannedToolCall {
   readonly middlewareBlock: string | null;
   readonly conflicting: boolean;
   readonly deadlineReason: boolean;
+  readonly interruptedReason: boolean;
   promise?: Promise<ExecutedToolResult>;
 }
 
@@ -363,6 +365,7 @@ async function* runToolBatch(
   let toolCallCount = state.toolCallCount;
   let postCompactionLoopDetected = false;
   let pingPongLoopDetected = false;
+  let interrupted = false;
   const toolMessages: ModelMessage[] = [];
 
   intermediateMessages.push(assistantMessage);
@@ -422,6 +425,13 @@ async function* runToolBatch(
     }
     const segment = calls.slice(segmentStart, segmentEnd);
     segmentStart = segmentEnd;
+    // Cancellation is settled at each sequential segment boundary. Calls that
+    // were already admitted keep their real result, while every call still
+    // present in the model's assistant message receives an explicit blocked
+    // tool result. This preserves message-pair integrity without admitting a
+    // new effect or advancing the actual tool-call counter.
+    const interruptedBeforeSegment = context.input.signal?.aborted === true;
+    interrupted ||= interruptedBeforeSegment;
 
     // Phase 1 — decide each call's fate IN ORDER (pure/sync, no I/O): gate,
     // dedup, advance the tool-call counter. Nothing executes yet.
@@ -435,7 +445,11 @@ async function* runToolBatch(
       // Deterministic pre-call policy gate: a middleware may veto this call
       // before it runs. Empty chain → null → unchanged execution.
       const middlewareBlock = applyToolCallMiddleware(toolCall, runner.toolCallMiddleware ?? []);
-      const canRun = remaining > 0 && !crossedDeadlineMidBatch && !conflicting && !middlewareBlock;
+      const canRun = !interruptedBeforeSegment
+        && remaining > 0
+        && !crossedDeadlineMidBatch
+        && !conflicting
+        && !middlewareBlock;
       const signature = deduplicator.buildSignature(toolCall);
       const memo = canRun ? deduplicator.check(toolCall) : undefined;
       // An identical call earlier IN THIS SAME segment hasn't recorded its
@@ -457,7 +471,8 @@ async function* runToolBatch(
         intraSegmentDuplicate,
         middlewareBlock,
         conflicting,
-        deadlineReason: crossedDeadlineMidBatch && remaining > 0
+        deadlineReason: crossedDeadlineMidBatch && remaining > 0,
+        interruptedReason: interruptedBeforeSegment
       });
     }
 
@@ -491,7 +506,9 @@ async function* runToolBatch(
           // Same content as the sibling that executed, but this call's id/name
           // (matching how deduplicator.check re-labels a cross-turn duplicate).
           ? { result: { ...executedBySignature.get(plan.signature)!.result, id: toolCall.id, name: toolCall.name }, toolCall }
-          : plan.middlewareBlock
+          : plan.interruptedReason
+            ? blockedToolResult(toolCall, "Error: run interrupted before tool execution")
+            : plan.middlewareBlock
             ? blockedToolResult(toolCall, `Error: ${plan.middlewareBlock}`)
             : plan.conflicting
               ? blockedToolResult(toolCall, "Error: conflicting write withheld — ambiguous duplicate action in this batch")
@@ -596,7 +613,7 @@ async function* runToolBatch(
     : nextMessages;
   intermediateMessages.push(...toolMessages);
 
-  return { messages, pingPongLoopDetected, postCompactionLoopDetected, toolCallCount };
+  return { interrupted, messages, pingPongLoopDetected, postCompactionLoopDetected, toolCallCount };
 }
 
 export async function executeModelLoop(
@@ -737,6 +754,9 @@ export async function executeModelLoop(
     if (toolCallCount > 0) {
       await recordCheckpoint({ checkpointStore: runner.checkpointStore, context, messages, phase: "act", step: toolCallCount });
     }
+    if (step.value.interrupted) {
+      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed);
+    }
   }
 }
 
@@ -863,6 +883,9 @@ export async function* executeStreamingModelLoop(
     // re-running already-completed tools (their results are in the replayed messages).
     if (toolCallCount > 0) {
       await recordCheckpoint({ checkpointStore: runner.checkpointStore, context, messages, phase: "act", step: toolCallCount });
+    }
+    if (batchResult.interrupted) {
+      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed);
     }
   }
 }

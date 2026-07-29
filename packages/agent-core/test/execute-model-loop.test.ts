@@ -231,6 +231,53 @@ describe("executeModelLoop", () => {
     expect(result.finalResponse.output).toBe("(run interrupted)");
   });
 
+  it("settles a mid-batch cancellation without admitting the next sequential tool", async () => {
+    const controller = new AbortController();
+    const ran: string[] = [];
+    const requests: ModelRequest[] = [];
+    const saved: { readonly step: number; readonly state: { encodedMessages: string[] } }[] = [];
+    const checkpointStore = {
+      save: async (checkpoint: { step: number; state: { encodedMessages: string[] } }) => {
+        saved.push(checkpoint);
+        return checkpoint;
+      },
+      findByRunId: async () => [],
+      findLatestByRunId: async () => undefined,
+      deleteByRunId: async () => undefined
+    };
+    const loop = {
+      checkpointStore,
+      maxToolCalls: 5,
+      generateWithTracing: async (_ctx: AgentRunContext, _provider: ModelProvider, modelRequest: ModelRequest) => {
+        requests.push(modelRequest);
+        return requests.length === 1
+          ? resp("calling", [call("a", "alpha"), call("b", "beta")])
+          : resp("must not run");
+      },
+      executeToolCall: async (_ctx: AgentRunContext, toolCall: ModelToolCall): Promise<ExecutedToolResult> => {
+        ran.push(toolCall.name);
+        controller.abort();
+        return {
+          result: { id: toolCall.id, name: toolCall.name, output: `settled ${toolCall.name}`, status: "completed" },
+          toolCall
+        };
+      }
+    } as unknown as ModelLoopRunner;
+
+    const result = await executeModelLoop(loop, context(controller.signal), provider, request());
+
+    expect(requests).toHaveLength(1);
+    expect(ran).toEqual(["alpha"]);
+    expect(result.finalResponse.id).toBe("interrupted");
+    expect(result.toolResults.map((item) => item.result.status)).toEqual(["completed", "blocked"]);
+    expect(result.toolResults[1]?.result.output).toContain("run interrupted before tool execution");
+    expect(result.intermediateMessages.map((message) => message.role)).toEqual(["assistant", "tool", "tool"]);
+    expect(result.intermediateMessages.filter((message) => message.role === "tool").map((message) => message.toolCallId))
+      .toEqual(["a", "b"]);
+    expect(saved.at(-1)?.step).toBe(1);
+    expect(saved.at(-1)?.state.encodedMessages.filter((message) => message.includes("|tool|"))).toHaveLength(2);
+  });
+
   // Runaway guard (agent-eval / backlog P1): the wall-clock deadline cuts the
   // loop short — once exceeded, the next turn is offered NO tools (so the model
   // synthesizes a clean answer instead of asking for one we'd refuse), even if
