@@ -27,7 +27,7 @@ import {
 } from "./daemon-messaging-safety.js";
 
 export const PERSONAL_AGENT_QUALIFICATION_SCHEMA_VERSION = 2 as const;
-export const AGENT_CAPABILITY_MATRIX_ID = "muse-agent-capability-v1" as const;
+export const AGENT_CAPABILITY_MATRIX_ID = "muse-agent-capability-v2" as const;
 export const DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_HOURS = 24;
 const DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_MS = DEFAULT_CAPABILITY_EVIDENCE_MAX_AGE_HOURS * 60 * 60_000;
 

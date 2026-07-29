@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   mkdirSync,
@@ -94,6 +95,65 @@ function singleAxisReport(
   });
 }
 
+function canonicalJson(value) {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function writeCanonicalJson(path, value) {
+  writeFileSync(path, canonicalJson(value), { encoding: "utf8", mode: 0o600 });
+}
+
+function writeLegacyV1AxisProgress(root, axisId = "plan-quality") {
+  const attemptId = "11111111-1111-4111-8111-111111111111";
+  const directory = join(root, "evals", "agent-capability");
+  const attempts = join(directory, "attempts");
+  const progressDirectory = join(directory, "axis-progress");
+  mkdirSync(attempts, { mode: 0o700, recursive: true });
+  mkdirSync(progressDirectory, { mode: 0o700, recursive: true });
+  if (process.platform !== "win32") {
+    chmodSync(directory, 0o700);
+    chmodSync(attempts, 0o700);
+    chmodSync(progressDirectory, 0o700);
+  }
+
+  const legacy = structuredClone(singleAxisReport(
+    axisId,
+    "passed",
+    "2026-07-21T00:00:00.000Z",
+  ));
+  legacy.matrixId = "muse-agent-capability-v1";
+  legacy.capabilities.find((row) => row.id === "cosine-recall-abstention").requested = 1;
+  const reportText = canonicalJson(legacy);
+  const reportSha256 = sha256(reportText);
+  const reportPath = join(attempts, `${attemptId}.report.json`);
+  writeFileSync(reportPath, reportText, { encoding: "utf8", mode: 0o600 });
+  writeCanonicalJson(join(attempts, `${attemptId}.state.json`), {
+    schemaVersion: 1,
+    attemptId,
+    phase: "completed",
+    status: "unverified",
+    reportSha256,
+  });
+  const axis = legacy.capabilities.find((row) => row.id === axisId);
+  writeCanonicalJson(join(progressDirectory, `${axisId}.json`), {
+    schemaVersion: 1,
+    attemptId,
+    reportSha256,
+    progress: {
+      schemaVersion: 1,
+      matrixId: "muse-agent-capability-v1",
+      generatedAt: legacy.generatedAt,
+      axis,
+      provenance: legacy.provenance,
+    },
+  });
+  return { reportPath };
+}
+
 test("axis progress composes only exact same-provenance rows and keeps the oldest evidence time", () => {
   const plan = createCapabilityAxisProgress(singleAxisReport(
     "plan-quality",
@@ -127,6 +187,69 @@ test("axis progress composes only exact same-provenance rows and keeps the oldes
     { digest: "d".repeat(64) },
   ));
   assert.deepEqual(composeCapabilityAxisProgress(current, [otherArtifacts]), current);
+});
+
+test("authenticated v1 progress is obsolete and ignored while a tampered legacy chain still fails closed", () => {
+  const { root, reportPath } = fixture();
+  try {
+    const legacy = writeLegacyV1AxisProgress(root);
+    const current = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    const finalized = finalizeCapabilityEvidenceAttempt(current, singleAxisReport(
+      "cosine-recall-abstention",
+      "passed",
+      "2026-07-21T00:05:00.000Z",
+    ));
+    assert.deepEqual(finalized.counts, { failed: 0, passed: 1, total: 11, unverified: 10 });
+    assert.equal(
+      finalized.capabilities.find((row) => row.id === "plan-quality").reason,
+      "not-selected",
+    );
+    assert.equal(
+      finalized.capabilities.find((row) => row.id === "cosine-recall-abstention").status,
+      "passed",
+    );
+
+    writeFileSync(legacy.reportPath, `${readFileSync(legacy.reportPath, "utf8")}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    const next = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    assert.throws(
+      () => finalizeCapabilityEvidenceAttempt(next, singleAxisReport(
+        "tool-selection-arguments",
+        "passed",
+        "2026-07-21T00:10:00.000Z",
+      )),
+      /capability-report-persistence-failed/u,
+    );
+    assert.equal(inspectCapabilityEvidence({ allowedRoot: root, reportPath }).state, "running");
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("an unknown matrix id in axis progress remains fail closed", () => {
+  const { root, reportPath } = fixture();
+  try {
+    writeLegacyV1AxisProgress(root);
+    const progressPath = join(root, "evals", "agent-capability", "axis-progress", "plan-quality.json");
+    const record = JSON.parse(readFileSync(progressPath, "utf8"));
+    record.progress.matrixId = "muse-agent-capability-v999";
+    writeCanonicalJson(progressPath, record);
+
+    const current = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    assert.throws(
+      () => finalizeCapabilityEvidenceAttempt(current, singleAxisReport(
+        "cosine-recall-abstention",
+        "passed",
+        "2026-07-21T00:05:00.000Z",
+      )),
+      /capability-report-persistence-failed/u,
+    );
+    assert.equal(inspectCapabilityEvidence({ allowedRoot: root, reportPath }).state, "running");
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
 });
 
 test("newer axis evidence replaces an older result while malformed, tied, or future progress fails closed", () => {

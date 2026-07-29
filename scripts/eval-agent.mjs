@@ -39,7 +39,7 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const CAPABILITY_DEADLINE_MS = MAX_EVAL_PROCESS_DEADLINE_MS;
 const REPO_ROOT = resolve(here, "..");
-export const CAPABILITY_MATRIX_ID = "muse-agent-capability-v1";
+export const CAPABILITY_MATRIX_ID = "muse-agent-capability-v2";
 
 const HELP_FLAGS = new Set(["--help", "-h"]);
 const PREFLIGHT_FLAG = "--preflight";

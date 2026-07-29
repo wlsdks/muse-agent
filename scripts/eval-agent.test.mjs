@@ -1045,7 +1045,7 @@ test("default orchestration binds every battery to one freshly built source and 
   ]);
   assert.deepEqual(runnerPaths, Array(CAPABILITIES.length).fill("/fixed/private/muse-runner"));
   assert.equal(report.version, 2);
-  assert.equal(report.matrixId, "muse-agent-capability-v1");
+  assert.equal(report.matrixId, "muse-agent-capability-v2");
   assert.deepEqual(Object.keys(report.provenance), [
     "sourceBeforeBuild",
     "sourceAfterBuild",
