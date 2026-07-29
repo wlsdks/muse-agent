@@ -7,11 +7,13 @@ import { test } from "node:test";
 
 import {
   classifyRecallOutcome,
+  committedEmbeddingsSidecarPath,
   executeProductionRecallQualityCase,
   evaluateRecallQualityGate,
   isExactModelResident,
   observeCorrectionFreshness,
   observeRecallQuality,
+  ownerPersonalStateManifestSha256,
   RECALL_MEMORY_CORPUS,
   RECALL_QUALITY_CASES,
   RECALL_QUALITY_CORRECTION_SCORER_VERSION,
@@ -27,6 +29,106 @@ import { canonicalJson, createAuditedLoopbackFetch, sha256 } from "./recall-eval
 
 const POSITIVE = { note: "x", expectedSource: "fact:car" };
 const ABSENT = { note: "x", expectedSource: null };
+
+test("fixture resolves only the exact committed embedding generation", () => {
+  const hash = "a".repeat(64);
+  const indexPath = "/private/tmp/muse-recall/notes-index.json";
+  assert.equal(
+    committedEmbeddingsSidecarPath(indexPath, {
+      embeddingFile: `notes-index.embeddings.${hash}.bin`,
+      embeddingSha256: hash
+    }),
+    `/private/tmp/muse-recall/notes-index.embeddings.${hash}.bin`
+  );
+  assert.throws(
+    () => committedEmbeddingsSidecarPath(indexPath, {
+      embeddingFile: "../outside.bin",
+      embeddingSha256: hash
+    }),
+    (error) => error?.code === "FIXTURE_INVALID"
+  );
+  assert.throws(
+    () => committedEmbeddingsSidecarPath(indexPath, {
+      embeddingFile: `notes-index.embeddings.${"b".repeat(64)}.bin`,
+      embeddingSha256: hash
+    }),
+    (error) => error?.code === "FIXTURE_INVALID"
+  );
+});
+
+test("owner personal-state guard ignores only daemon liveness churn", () => {
+  const base = {
+    entries: [
+      { mode: 0o700, path: ".", sha256: null, size: 128, type: "directory" },
+      { mode: 0o600, path: "tasks.json", sha256: "1".repeat(64), size: 12, type: "file" },
+      { mode: 0o600, path: "proactive-heartbeat-daemon-loop.json", sha256: "2".repeat(64), size: 20, type: "file" },
+      { mode: 0o600, path: "resident-daemon-restart-state.json", sha256: "3".repeat(64), size: 20, type: "file" },
+      { mode: 0o600, path: "resident-daemon-terminal-state.json", sha256: "4".repeat(64), size: 20, type: "file" }
+    ]
+  };
+  const livenessChanged = {
+    entries: base.entries.map((entry) => entry.path.endsWith(".json") && entry.path !== "tasks.json"
+      ? { ...entry, sha256: "a".repeat(64), size: 21 }
+      : entry)
+  };
+  assert.equal(
+    ownerPersonalStateManifestSha256(base),
+    ownerPersonalStateManifestSha256(livenessChanged)
+  );
+  const validAtomicTemp = {
+    entries: [...base.entries, {
+      mode: 0o600,
+      path: "resident-daemon-terminal-state.json.tmp-42-123e4567-e89b-42d3-a456-426614174000",
+      sha256: "d".repeat(64),
+      size: 20,
+      type: "file"
+    }]
+  };
+  assert.equal(
+    ownerPersonalStateManifestSha256(base),
+    ownerPersonalStateManifestSha256(validAtomicTemp)
+  );
+  const personalChanged = {
+    entries: base.entries.map((entry) => entry.path === "tasks.json"
+      ? { ...entry, sha256: "b".repeat(64) }
+      : entry)
+  };
+  assert.notEqual(
+    ownerPersonalStateManifestSha256(base),
+    ownerPersonalStateManifestSha256(personalChanged)
+  );
+  const unknownOperationalFile = {
+    entries: [...base.entries, {
+      mode: 0o600,
+      path: "resident-daemon-unknown-state.json",
+      sha256: "c".repeat(64),
+      size: 20,
+      type: "file"
+    }]
+  };
+  assert.notEqual(
+    ownerPersonalStateManifestSha256(base),
+    ownerPersonalStateManifestSha256(unknownOperationalFile)
+  );
+  for (const path of [
+    "resident-daemon-terminal-state.json.tmp-not-an-atomic-name",
+    "resident-daemon-restart-state.json.tmp-42-123e4567-e89b-42d3-a456-426614174000/private.txt",
+    "proactive-heartbeat-daemon-loop.json.tmp-evil"
+  ]) {
+    assert.notEqual(
+      ownerPersonalStateManifestSha256(base),
+      ownerPersonalStateManifestSha256({
+        entries: [...base.entries, {
+          mode: 0o600,
+          path,
+          sha256: "e".repeat(64),
+          size: 20,
+          type: "file"
+        }]
+      })
+    );
+  }
+});
 
 test("audited recall transport observes request classes and denies non-loopback without retaining content", async () => {
   const dispatched = [];
@@ -101,6 +203,7 @@ test("production case executes CLI retrieval once then prepares from its exact i
   const rerankFn = Object.assign(async () => undefined, { mode: "correction-pair" });
   const snapshot = frozenSnapshot(rerankFn);
   const accounting = { preloadRequests: 0, selectorRequests: 0 };
+  const prepareTemporalClaimContext = async () => ({ authority: { storeRevision: 0 } });
   let retrievedInput;
   let preparedInput;
   const observed = await executeProductionRecallQualityCase({
@@ -115,6 +218,7 @@ test("production case executes CLI retrieval once then prepares from its exact i
       preparedInput = input;
       return { scored: [{ file: "/isolated/notes/current.md" }], verdict: "confident" };
     },
+    prepareTemporalClaimContext,
     retrieve: async (input) => {
       retrievedInput = input;
       accounting.preloadRequests += 1;
@@ -128,6 +232,7 @@ test("production case executes CLI retrieval once then prepares from its exact i
   assert.deepEqual(Object.keys(retrievedInput).sort(), ["embedModel", "indexFiles", "json", "notesDir", "onStderr", "query", "scope", "snapshotIdentity", "topK"]);
   assert.equal(preparedInput.retrievalSnapshot, snapshot);
   assert.equal(preparedInput.rerankFn, snapshot.rerankFn);
+  assert.equal(preparedInput.prepareTemporalClaimContext, prepareTemporalClaimContext);
   assert.equal(observed.snapshotReused, true);
   assert.deepEqual(observed.sources, ["fact:current"]);
   assert.deepEqual(accounting, { preloadRequests: 1, selectorRequests: 1 });
@@ -148,6 +253,7 @@ test("production case fails closed if prepare reruns the selector", async () => 
       accounting.selectorRequests += 1;
       return { scored: [], verdict: "none" };
     },
+    prepareTemporalClaimContext: async () => ({ authority: { storeRevision: 0 } }),
     retrieve: async () => {
       accounting.preloadRequests += 1;
       accounting.selectorRequests += 1;

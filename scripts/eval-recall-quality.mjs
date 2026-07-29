@@ -31,7 +31,7 @@
 import { spawn } from "node:child_process";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -48,6 +48,28 @@ import {
 } from "./recall-eval-runtime-common.mjs";
 
 export const RECALL_QUALITY_CORRECTION_SCORER_VERSION = "recall-quality-correction-order-v2";
+
+const OWNER_OPERATIONAL_LIVENESS_PATHS = new Set([
+  "proactive-heartbeat-daemon-loop.json",
+  "resident-daemon-restart-state.json",
+  "resident-daemon-terminal-state.json"
+]);
+const OWNER_OPERATIONAL_ATOMIC_TEMP_SUFFIX =
+  /^\.tmp-[1-9]\d*-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+
+export function ownerPersonalStateManifestSha256(manifest) {
+  const personalEntries = manifest.entries.filter((entry) => {
+    for (const path of OWNER_OPERATIONAL_LIVENESS_PATHS) {
+      if (entry.path === path) return false;
+      if (entry.path.startsWith(path)
+        && OWNER_OPERATIONAL_ATOMIC_TEMP_SUFFIX.test(entry.path.slice(path.length))) {
+        return false;
+      }
+    }
+    return true;
+  });
+  return sha256(`${canonicalJson(personalEntries)}\n`);
+}
 
 /**
  * The user's OWN memory, rendered as sourced entries (what a memory store holds:
@@ -383,6 +405,7 @@ export async function executeProductionRecallQualityCase({
   notesDir,
   notesIndexFile,
   prepare,
+  prepareTemporalClaimContext,
   retrieve,
   runtime,
   sourceForFile,
@@ -421,6 +444,7 @@ export async function executeProductionRecallQualityCase({
     query: testCase.query,
     rerankFn: snapshot.rerankFn,
     retrievalSnapshot: snapshot,
+    prepareTemporalClaimContext,
     sources: { notesDir, notesIndexFile }
   });
   const afterPrepare = networkSnapshot?.();
@@ -453,6 +477,19 @@ async function readRunningModels(baseUrl, fetchImpl) {
   }
 }
 
+export function committedEmbeddingsSidecarPath(indexPath, persistedIndex) {
+  const stem = basename(indexPath).replace(/\.json$/u, "");
+  const embeddingFile = persistedIndex?.embeddingFile;
+  const embeddingSha256 = persistedIndex?.embeddingSha256;
+  if (typeof embeddingFile !== "string"
+    || typeof embeddingSha256 !== "string"
+    || !/^[0-9a-f]{64}$/u.test(embeddingSha256)
+    || embeddingFile !== `${stem}.embeddings.${embeddingSha256}.bin`) {
+    throw codedError("FIXTURE_INVALID");
+  }
+  return join(dirname(indexPath), embeddingFile);
+}
+
 async function createFixture({ auditFetch, baseUrl, embedModel, home, recall }) {
   const notesDir = join(home, "notes");
   const notesIndexFile = join(home, "notes-index.json");
@@ -479,8 +516,9 @@ async function createFixture({ auditFetch, baseUrl, embedModel, home, recall }) 
     || summary.index.version !== 2) {
     throw codedError(summary.failed === summary.totalFiles ? "EMBED_MODEL_UNAVAILABLE" : "FIXTURE_INVALID");
   }
+  const persistedIndex = JSON.parse(await readFile(notesIndexFile, "utf8"));
   await chmod(notesIndexFile, 0o600);
-  await chmod(recall.embeddingsSidecarPath(notesIndexFile), 0o600);
+  await chmod(committedEmbeddingsSidecarPath(notesIndexFile, persistedIndex), 0o600);
   return Object.freeze({
     index: summary.index,
     notesDir,
@@ -614,6 +652,7 @@ async function runChildEvaluation({ embedModel, expectedRerankDigest, home, repe
       notesDir: fixture.notesDir,
       notesIndexFile: fixture.notesIndexFile,
       prepare: recall.prepareGroundedRecall,
+      prepareTemporalClaimContext: () => cliRetrieval.captureTemporalClaimContext(evalEnv),
       retrieve: cliRetrieval.retrieveAndRankNotes,
       runtime: { env: evalEnv, fetchFn: audit.fetch },
       sourceForFile: fixture.sourceForFile,
@@ -857,7 +896,9 @@ async function parentMain(embedModel) {
     if (isolatedRoot) await rm(isolatedRoot, { force: true, recursive: true });
   }
 
-  if (before.manifestSha256 !== after.manifestSha256) parentFailure = "OWNER_STATE_CHANGED";
+  if (ownerPersonalStateManifestSha256(before) !== ownerPersonalStateManifestSha256(after)) {
+    parentFailure = "OWNER_STATE_CHANGED";
+  }
   if (parentFailure) {
     const unavailable = ["OLLAMA_UNREACHABLE", "RERANK_MODEL_MISSING", "EMBED_MODEL_UNAVAILABLE"].includes(parentFailure);
     if (unavailable) {
