@@ -155,7 +155,12 @@ function captureSource(root, spawn) {
 }
 
 function gitTarCommit(bytes, root, spawn) {
-  const result = spawn("git", ["get-tar-commit-id"], commandOptions(root, { input: bytes }));
+  const headerWindow = bytes.subarray(0, Math.min(bytes.byteLength, 1024));
+  const result = spawn(
+    "git",
+    ["get-tar-commit-id"],
+    commandOptions(root, { input: headerWindow })
+  );
   if (!succeeded(result)) return undefined;
   const value = String(result.stdout).trim();
   return /^[a-f0-9]{40,64}$/u.test(value) ? value : undefined;

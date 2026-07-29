@@ -9,6 +9,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  truncateSync,
   unlinkSync,
   writeFileSync
 } from "node:fs";
@@ -354,6 +355,37 @@ test("accepts the package-manager argument separator on the executable path", ()
     assert.equal(result.stderr, "", result.stderr);
     assert.equal(JSON.parse(readFileSync(output, "utf8")).overall, "red");
     assert.match(result.stdout, /"overall":"red"/u);
+  } finally {
+    rmSync(repoRoot, { force: true, recursive: true });
+  }
+});
+
+test("reads provenance from a large git archive without piping the entire candidate", () => {
+  const repoRoot = mkdtempSync(join(tmpdir(), "muse-release-evidence-large-archive-"));
+  try {
+    git(repoRoot, ["init", "-q"]);
+    git(repoRoot, ["config", "user.email", "fixture@example.invalid"]);
+    git(repoRoot, ["config", "user.name", "Fixture"]);
+    writeFileSync(join(repoRoot, ".gitignore"), "candidate.tar\nreceipt.json\n", "utf8");
+    const large = join(repoRoot, "large.bin");
+    writeFileSync(large, "");
+    truncateSync(large, 24 * 1024 * 1024);
+    git(repoRoot, ["add", "."]);
+    git(repoRoot, ["commit", "-qm", "fixture"]);
+    const head = git(repoRoot, ["rev-parse", "HEAD"]);
+    const candidate = join(repoRoot, "candidate.tar");
+    git(repoRoot, ["archive", "--format=tar", `--output=${candidate}`, "HEAD"]);
+
+    const report = evaluateReleaseEvidence({
+      candidatePath: candidate,
+      outputPath: join(repoRoot, "receipt.json"),
+      repoRoot
+    });
+
+    assert.equal(report.candidate.commit, head);
+    assert.equal(report.candidate.matchesCurrent, true);
+    assert.equal(report.overall, "red");
+    assert.ok(report.reasons.includes("scan-skipped"));
   } finally {
     rmSync(repoRoot, { force: true, recursive: true });
   }
