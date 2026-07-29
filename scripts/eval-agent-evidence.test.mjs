@@ -1,5 +1,15 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -188,6 +198,210 @@ test("nine same-provenance required-axis passes produce a passing aggregate with
   assert.ok(aggregate.capabilities.slice(9).every((row) => (
     row.status === "unverified" && row.reason === "not-selected"
   )));
+});
+
+test("owner-only axis progress persists and composes across completed same-provenance attempts", () => {
+  const { root, reportPath } = fixture();
+  try {
+    const planAttempt = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    const plan = finalizeCapabilityEvidenceAttempt(planAttempt, singleAxisReport(
+      "plan-quality",
+      "passed",
+      "2026-07-21T00:00:00.000Z",
+    ));
+    assert.deepEqual(plan.counts, { failed: 0, passed: 1, total: 11, unverified: 10 });
+
+    const toolAttempt = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    const aggregate = finalizeCapabilityEvidenceAttempt(toolAttempt, singleAxisReport(
+      "tool-selection-arguments",
+      "passed",
+      "2026-07-21T00:05:00.000Z",
+    ));
+    assert.deepEqual(aggregate.counts, { failed: 0, passed: 2, total: 11, unverified: 9 });
+    assert.equal(aggregate.generatedAt, "2026-07-21T00:00:00.000Z");
+
+    const inspected = inspectCapabilityEvidence({ allowedRoot: root, reportPath });
+    assert.equal(inspected.status, "unverified");
+    assert.deepEqual(inspected.artifact.value, aggregate);
+    assert.throws(() => statSync(reportPath), { code: "ENOENT" });
+    if (process.platform !== "win32") {
+      const progressRoot = join(root, "evals", "agent-capability", "axis-progress");
+      assert.equal(statSync(progressRoot).mode & 0o077, 0);
+      assert.equal(statSync(join(progressRoot, "plan-quality.json")).mode & 0o777, 0o600);
+      assert.equal(statSync(join(progressRoot, "tool-selection-arguments.json")).mode & 0o777, 0o600);
+    }
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("only a persisted aggregate with all required axes promotes the canonical report", () => {
+  const { root, reportPath } = fixture();
+  try {
+    const required = CAPABILITIES.filter((capability) => capability.required);
+    let aggregate;
+    for (let index = 0; index < required.length; index += 1) {
+      const attempt = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+      aggregate = finalizeCapabilityEvidenceAttempt(attempt, singleAxisReport(
+        required[index].id,
+        "passed",
+        `2026-07-21T00:${index.toString().padStart(2, "0")}:00.000Z`,
+      ));
+      if (index < required.length - 1) {
+        assert.equal(aggregate.status, "unverified");
+        assert.throws(() => statSync(reportPath), { code: "ENOENT" });
+      }
+    }
+    assert.equal(aggregate.status, "passed");
+    assert.deepEqual(aggregate.counts, { failed: 0, passed: 9, total: 11, unverified: 2 });
+    assert.deepEqual(JSON.parse(readFileSync(reportPath, "utf8")), aggregate);
+    assert.equal(inspectCapabilityEvidence({ allowedRoot: root, reportPath }).status, "passed");
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("a newer axis failure replaces its prior pass and provenance drift cannot reuse checkpoints", () => {
+  const { root, reportPath } = fixture();
+  try {
+    const first = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    finalizeCapabilityEvidenceAttempt(first, singleAxisReport(
+      "plan-quality",
+      "passed",
+      "2026-07-21T00:00:00.000Z",
+    ));
+
+    const failure = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    const failed = finalizeCapabilityEvidenceAttempt(failure, singleAxisReport(
+      "plan-quality",
+      "failed",
+      "2026-07-21T00:05:00.000Z",
+    ));
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.capabilities.find((row) => row.id === "plan-quality").reason, "threshold-not-met");
+
+    const drifted = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    const isolated = finalizeCapabilityEvidenceAttempt(drifted, singleAxisReport(
+      "tool-selection-arguments",
+      "passed",
+      "2026-07-21T00:10:00.000Z",
+      { revision: "c".repeat(40) },
+    ));
+    assert.deepEqual(isolated.counts, { failed: 0, passed: 1, total: 11, unverified: 10 });
+    assert.equal(isolated.capabilities.find((row) => row.id === "plan-quality").reason, "not-selected");
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("tampered axis progress blocks composition and leaves the current attempt running", () => {
+  const { root, reportPath } = fixture();
+  try {
+    const first = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    finalizeCapabilityEvidenceAttempt(first, singleAxisReport(
+      "plan-quality",
+      "passed",
+      "2026-07-21T00:00:00.000Z",
+    ));
+    const progressPath = join(root, "evals", "agent-capability", "axis-progress", "plan-quality.json");
+    const value = JSON.parse(readFileSync(progressPath, "utf8"));
+    writeFileSync(progressPath, `${JSON.stringify({ ...value, privatePayload: "secret" }, null, 2)}\n`, { mode: 0o600 });
+
+    const current = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    assert.throws(
+      () => finalizeCapabilityEvidenceAttempt(current, singleAxisReport(
+        "tool-selection-arguments",
+        "passed",
+        "2026-07-21T00:05:00.000Z",
+      )),
+      /capability-report-persistence-failed/u,
+    );
+    assert.equal(inspectCapabilityEvidence({ allowedRoot: root, reportPath }).state, "running");
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("unexpected axis progress entries fail closed", () => {
+  const { root, reportPath } = fixture();
+  try {
+    const first = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    finalizeCapabilityEvidenceAttempt(first, singleAxisReport(
+      "plan-quality",
+      "passed",
+      "2026-07-21T00:00:00.000Z",
+    ));
+    writeFileSync(
+      join(root, "evals", "agent-capability", "axis-progress", "unexpected.json"),
+      "{}\n",
+      { mode: 0o600 },
+    );
+
+    const current = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    assert.throws(
+      () => finalizeCapabilityEvidenceAttempt(current, singleAxisReport(
+        "tool-selection-arguments",
+        "passed",
+        "2026-07-21T00:05:00.000Z",
+      )),
+      /capability-report-persistence-failed/u,
+    );
+    assert.equal(inspectCapabilityEvidence({ allowedRoot: root, reportPath }).state, "running");
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("axis progress cannot be redirected through a symlinked parent", () => {
+  const { root, reportPath } = fixture();
+  const outside = mkdtempSync(join(tmpdir(), "muse-capability-progress-outside-"));
+  try {
+    const attempt = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    const directory = join(root, "evals", "agent-capability");
+    mkdirSync(directory, { recursive: true });
+    symlinkSync(outside, join(directory, "axis-progress"), "dir");
+    assert.throws(
+      () => finalizeCapabilityEvidenceAttempt(attempt, singleAxisReport(
+        "plan-quality",
+        "passed",
+        "2026-07-21T00:00:00.000Z",
+      )),
+      /capability-report-persistence-failed/u,
+    );
+    assert.deepEqual(readdirSync(outside), []);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+    rmSync(outside, { force: true, recursive: true });
+  }
+});
+
+test("a checkpoint that references an incomplete attempt is ignored and cannot become green evidence", () => {
+  const { root, reportPath } = fixture();
+  try {
+    const completed = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    finalizeCapabilityEvidenceAttempt(completed, singleAxisReport(
+      "plan-quality",
+      "passed",
+      "2026-07-21T00:00:00.000Z",
+    ));
+    const pending = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    const progressPath = join(root, "evals", "agent-capability", "axis-progress", "plan-quality.json");
+    const progress = JSON.parse(readFileSync(progressPath, "utf8"));
+    writeFileSync(progressPath, `${JSON.stringify({ ...progress, attemptId: pending.attemptId }, null, 2)}\n`, {
+      mode: 0o600,
+    });
+
+    const current = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    const aggregate = finalizeCapabilityEvidenceAttempt(current, singleAxisReport(
+      "tool-selection-arguments",
+      "passed",
+      "2026-07-21T00:05:00.000Z",
+    ));
+    assert.deepEqual(aggregate.counts, { failed: 0, passed: 1, total: 11, unverified: 10 });
+    assert.equal(aggregate.capabilities.find((row) => row.id === "plan-quality").reason, "not-selected");
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
 });
 
 test("running, completed pass, and owner-only immutable generation states are inspectable", () => {

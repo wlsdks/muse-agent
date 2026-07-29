@@ -8,6 +8,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -148,6 +149,7 @@ function evidenceLayout(reportPath = DEFAULT_CAPABILITY_REPORT_PATH, allowedRoot
   const directory = dirname(canonicalReport);
   return {
     attemptsDirectory: join(directory, "attempts"),
+    axisProgressDirectory: join(directory, "axis-progress"),
     canonicalReport,
     directory,
     pointer: join(directory, "latest-attempt.json"),
@@ -526,6 +528,81 @@ function sameCapabilityProvenance(left, right) {
   return canonicalJson(left) === canonicalJson(right);
 }
 
+function axisProgressPath(layout, axisId) {
+  if (!CAPABILITY_MATRIX.some((capability) => capability.id === axisId)) throw evidenceError();
+  return join(layout.axisProgressDirectory, `${axisId}.json`);
+}
+
+function parseAxisProgressRecord(value) {
+  if (!exactKeys(value, ["attemptId", "progress", "reportSha256", "schemaVersion"])) return undefined;
+  if (
+    value.schemaVersion !== CAPABILITY_AXIS_PROGRESS_SCHEMA_VERSION
+    || !UUID.test(value.attemptId)
+    || !SHA256.test(value.reportSha256)
+    || !isCapabilityAxisProgress(value.progress)
+  ) {
+    return undefined;
+  }
+  return value;
+}
+
+function inspectAxisProgressRecord(layout, record) {
+  const paths = attemptPaths(layout, record.attemptId);
+  const stateRead = readCanonicalJson(layout, paths.state);
+  const state = stateRead.state === "ok" ? parseAttemptState(stateRead.value, record.attemptId) : undefined;
+  if (state?.phase === "running") return { state: "pending" };
+  if (!state || state.phase !== "completed" || state.reportSha256 !== record.reportSha256) {
+    return { state: "invalid" };
+  }
+  const reportRead = readCanonicalJson(layout, paths.report);
+  if (
+    reportRead.state !== "ok"
+    || reportRead.digest !== record.reportSha256
+    || !isV2ReportWithStatus(reportRead.value, state.status)
+    || !capabilityReportShapeIsExact(reportRead.value)
+  ) {
+    return { state: "invalid" };
+  }
+  const row = reportRead.value.capabilities.find((candidate) => candidate.id === record.progress.axis.id);
+  if (
+    canonicalJson(row) !== canonicalJson(record.progress.axis)
+    || !sameCapabilityProvenance(reportRead.value.provenance, record.progress.provenance)
+  ) {
+    return { state: "invalid" };
+  }
+  return { progress: record.progress, state: "valid" };
+}
+
+function readCapabilityAxisProgress(layout) {
+  if (existsSync(layout.axisProgressDirectory)) {
+    verifyExistingPath(layout.rootRealPath, layout.axisProgressDirectory);
+    const directoryStat = lstatSync(layout.axisProgressDirectory);
+    if (
+      !directoryStat.isDirectory()
+      || directoryStat.isSymbolicLink()
+      || (process.platform !== "win32" && (directoryStat.mode & 0o077) !== 0)
+    ) {
+      throw evidenceError();
+    }
+    const allowedNames = new Set(CAPABILITY_MATRIX.map((capability) => `${capability.id}.json`));
+    if (readdirSync(layout.axisProgressDirectory).some((name) => !allowedNames.has(name))) {
+      throw evidenceError();
+    }
+  }
+  const progress = [];
+  for (const capability of CAPABILITY_MATRIX) {
+    const read = readCanonicalJson(layout, axisProgressPath(layout, capability.id));
+    if (read.state === "missing") continue;
+    if (read.state !== "ok") throw evidenceError();
+    const record = parseAxisProgressRecord(read.value);
+    if (!record) throw evidenceError();
+    const inspected = inspectAxisProgressRecord(layout, record);
+    if (inspected.state === "invalid") throw evidenceError();
+    if (inspected.state === "valid") progress.push(inspected.progress);
+  }
+  return progress;
+}
+
 export function beginCapabilityEvidenceAttempt(options = {}) {
   const layout = evidenceLayout(options.reportPath, options.allowedRoot);
   const attemptId = options.attemptId ?? randomUUID();
@@ -546,12 +623,29 @@ export function finalizeCapabilityEvidenceAttempt(attempt, report, options = {})
   if (!capabilityReportShapeIsExact(report)) {
     throw evidenceError();
   }
-  const reportText = canonicalJson(report);
+  const currentProgress = createCapabilityAxisProgress(report);
+  const finalizedReport = currentProgress
+    ? composeCapabilityAxisProgress(report, readCapabilityAxisProgress(layout))
+    : report;
+  if (!finalizedReport || !capabilityReportShapeIsExact(finalizedReport)) throw evidenceError();
+  const reportText = canonicalJson(finalizedReport);
   const reportSha256 = sha256(reportText);
   atomicWriteText(layout, paths.report, reportText, options);
 
-  if (report.status === "passed") {
-    if (!isCanonicalPassingCapabilityReport(report)) throw evidenceError();
+  if (currentProgress) {
+    const latestPointer = readCanonicalJson(layout, layout.pointer);
+    const latest = latestPointer.state === "ok" ? parsePointer(latestPointer.value) : undefined;
+    if (!latest || latest.attemptId !== attempt.attemptId) throw evidenceError();
+    atomicWriteJson(layout, axisProgressPath(layout, currentProgress.axis.id), {
+      schemaVersion: CAPABILITY_AXIS_PROGRESS_SCHEMA_VERSION,
+      attemptId: attempt.attemptId,
+      reportSha256,
+      progress: currentProgress,
+    }, options);
+  }
+
+  if (finalizedReport.status === "passed") {
+    if (!isCanonicalPassingCapabilityReport(finalizedReport)) throw evidenceError();
     const latestPointer = readCanonicalJson(layout, layout.pointer);
     const latest = latestPointer.state === "ok" ? parsePointer(latestPointer.value) : undefined;
     if (!latest || latest.attemptId !== attempt.attemptId) throw evidenceError();
@@ -569,10 +663,11 @@ export function finalizeCapabilityEvidenceAttempt(attempt, report, options = {})
       schemaVersion: CAPABILITY_EVIDENCE_SCHEMA_VERSION,
       attemptId: attempt.attemptId,
       phase: "completed",
-      status: report.status,
+      status: finalizedReport.status,
       reportSha256,
     }, options);
   }
+  return finalizedReport;
 }
 
 function legacyArtifact(layout) {
