@@ -162,6 +162,38 @@ describe("createModelProvider — OpenAI-compatible presets", () => {
     expect(provider?.id).toBe("ollama");
   });
 
+  it("opts Ollama listModels into capability probing only when explicitly enabled", async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return new Response(JSON.stringify({ capabilities: ["completion"] }));
+    }) as typeof globalThis.fetch;
+    try {
+      const enabled = createModelProvider({
+        MUSE_CROSS_PROCESS_MODEL_LEASE_ENABLED: "false",
+        MUSE_MODEL: "ollama/same-model",
+        MUSE_OLLAMA_PROBE_CAPABILITIES: "true"
+      });
+      const enabledModel = (await enabled?.listModels())?.[0];
+      expect(calls).toEqual(["http://127.0.0.1:11434/api/show"]);
+      expect(enabledModel).toMatchObject({
+        capabilities: { toolCalling: false, vision: false },
+        capabilityProbe: { status: "available" }
+      });
+
+      calls.length = 0;
+      const disabled = createModelProvider({
+        MUSE_CROSS_PROCESS_MODEL_LEASE_ENABLED: "false",
+        MUSE_MODEL: "ollama/same-model"
+      });
+      expect((await disabled?.listModels())?.[0]?.capabilityProbe).toBeUndefined();
+      expect(calls).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("routes openrouter through its OWN OpenRouterProvider (not the openai-compatible fallback)", () => {
     // OpenRouter is a first-class provider family with its own adapter; every
     // other preset test lands on OpenAICompatibleProvider, so this dedicated

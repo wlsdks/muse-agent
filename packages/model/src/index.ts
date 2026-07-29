@@ -1,6 +1,10 @@
 import type { JsonObject } from "@muse/shared";
 
 import { ModelProviderError } from "./provider-base.js";
+import {
+  projectModelCapabilitiesFromProbe,
+  type ModelCapabilityProbeResult
+} from "./model-capability-probe.js";
 
 export { sanitizeGeminiSchema } from "./provider-wire.js";
 
@@ -54,6 +58,7 @@ export interface ModelInfo {
   readonly modelId: string;
   readonly displayName?: string;
   readonly capabilities: ModelCapabilities;
+  readonly capabilityProbe?: ModelCapabilityProbeResult;
 }
 
 export interface ModelTool {
@@ -182,6 +187,8 @@ export interface ModelProvider {
   listModels(): Promise<readonly ModelInfo[]>;
   generate(request: ModelRequest): Promise<ModelResponse>;
   stream(request: ModelRequest): AsyncIterable<ModelEvent>;
+  /** Optional fresh runtime evidence for model-specific capability routing. */
+  probeCapabilities?(model: string): Promise<ModelCapabilityProbeResult>;
   /** Optional physical-provider context window. Owner admission caps live above this value. */
   resolveContextWindow?(model: string): Promise<ModelContextWindowResolution>;
 }
@@ -269,6 +276,10 @@ export interface OllamaProviderOptions extends Omit<OpenAICompatibleProviderOpti
    * a probe error. Maps `MUSE_OLLAMA_PROBE_CONTEXT`.
    */
   readonly probeContextWindow?: boolean;
+  /** Opt in to model-specific /api/show capability projection in listModels. */
+  readonly probeModelCapabilities?: boolean;
+  /** Test/host clock for capability probe freshness receipts. */
+  readonly capabilityProbeNow?: () => Date;
 }
 
 export interface AnthropicProviderOptions {
@@ -299,11 +310,22 @@ export interface DiagnosticModelProviderOptions {
 }
 
 export { DEFAULT_MODEL_CALL_TIMEOUT_MS, fetchOrThrowAsProviderError, isRetryableHttpStatus, modelCallSignal, ModelProviderError, OpenAICompatibleProvider, resolveModelCallTimeoutMs } from "./provider-base.js";
+export {
+  DEFAULT_MODEL_CAPABILITY_PROBE_TTL_MS,
+  MODEL_CAPABILITY_PROBE_SCHEMA_VERSION,
+  modelCapabilityProbeIsFresh,
+  projectModelCapabilitiesFromProbe,
+  type AvailableModelCapabilityProbeResult,
+  type FailedModelCapabilityProbeResult,
+  type ModelCapabilityProbeResult,
+  type ProbedModelCapabilities,
+  type ProbedModelCapability
+} from "./model-capability-probe.js";
 export { createLeadingThinkStripper, recoverToolArgsJson, sanitizeLoneSurrogates, sanitizeToolCallName, stripLeadingThinkBlock } from "./provider-shared.js";
 export { DiagnosticModelProvider } from "./adapter-diagnostic.js";
 export { buildCodexExecArgs, codexModelCapabilities, CodexCliProvider, CODEX_DEFAULT_MODEL_ID, CODEX_PROVIDER_ID, flattenCodexPrompt, runCodexExecSafe, type CodexCliProviderOptions, type CodexInvocationDeps, type CodexInvocationResult, type CodexSpawnLike } from "./adapter-codex-cli.js";
 export { OpenAIProvider, OpenRouterProvider } from "./adapter-openai.js";
-export { DEFAULT_CONTEXT_PROBE_TIMEOUT_MS, DEFAULT_OLLAMA_NUM_CTX, OllamaProvider, extractOllamaContextLength, probeOllamaContextWindow, sanitizeOllamaToolSchema } from "./adapter-ollama.js";
+export { DEFAULT_CONTEXT_PROBE_TIMEOUT_MS, DEFAULT_OLLAMA_NUM_CTX, OllamaProvider, extractOllamaContextLength, probeOllamaContextWindow, probeOllamaModelCapabilities, sanitizeOllamaToolSchema } from "./adapter-ollama.js";
 export { isWellFormedBase64 } from "./base64-image.js";
 export { AnthropicProvider } from "./adapter-anthropic.js";
 export { GeminiProvider } from "./adapter-gemini.js";
@@ -376,7 +398,12 @@ export class ModelProviderRegistry {
     if (pinnedProvider || exactModel) {
       const provider = this.getProvider(pinnedProvider);
       const models = await provider.listModels();
-      const selected = models.find((model) => {
+      const selected = models
+        .map(modelForRouting)
+        .find((model) => {
+        if (!model) {
+          return false;
+        }
         if (exactModel && model.modelId !== exactModel) {
           return false;
         }
@@ -394,7 +421,11 @@ export class ModelProviderRegistry {
     const candidates: SelectedModel[] = [];
 
     for (const provider of this.providers.values()) {
-      for (const model of await provider.listModels()) {
+      for (const listedModel of await provider.listModels()) {
+        const model = modelForRouting(listedModel);
+        if (!model) {
+          continue;
+        }
         if (modelMatchesCapabilities(model, criteria)) {
           candidates.push({ model, provider });
         }
@@ -499,6 +530,26 @@ function modelMatchesCapabilities(model: ModelInfo, criteria: ModelSelectionCrit
   }
 
   return true;
+}
+
+function modelForRouting(model: ModelInfo): ModelInfo | undefined {
+  if (model.capabilityProbe === undefined) {
+    return model;
+  }
+  if (!model.capabilityProbe || typeof model.capabilityProbe !== "object") {
+    return undefined;
+  }
+  if (model.capabilityProbe.providerId !== model.providerId
+    || model.capabilityProbe.modelId !== model.modelId) {
+    return undefined;
+  }
+  const capabilities = projectModelCapabilitiesFromProbe(
+    model.capabilities,
+    model.capabilityProbe
+  );
+  return capabilities
+    ? { ...model, capabilities }
+    : undefined;
 }
 
 function compareSelectedModels(criteria: ModelSelectionCriteria): (left: SelectedModel, right: SelectedModel) => number {

@@ -536,6 +536,11 @@ function createRawModelProvider(env: MuseEnvironment, modelOverride?: string): M
         // cause silent prompt truncation. Off by default (byte-identical wire).
         ...(parseBoolean(env.MUSE_OLLAMA_PROBE_CONTEXT, false)
           ? { probeContextWindow: true }
+          : {}),
+        // Opt-in model capability discovery: /api/show evidence replaces the
+        // static tool/stream/schema/vision booleans used by model routing.
+        ...(parseBoolean(env.MUSE_OLLAMA_PROBE_CAPABILITIES, false)
+          ? { probeModelCapabilities: true }
           : {})
       });
     case "openai":

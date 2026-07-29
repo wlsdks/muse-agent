@@ -24,6 +24,14 @@ import {
 import { ModelProviderError, OpenAICompatibleProvider, isRetryableHttpStatus, modelCallSignal } from "./provider-base.js";
 import { awaitModelContextWindow } from "./model-context-window.js";
 import {
+  failedModelCapabilityProbe,
+  modelCapabilityProbeIsFresh,
+  probeWindow,
+  projectModelCapabilitiesFromProbe,
+  type AvailableModelCapabilityProbeResult,
+  type ModelCapabilityProbeResult
+} from "./model-capability-probe.js";
+import {
   createLeadingThinkStripper,
   isJsonObject,
   parseJson,
@@ -75,6 +83,9 @@ export class OllamaProvider extends OpenAICompatibleProvider {
   private readonly numThread: number | undefined;
   private readonly numGpu: number | undefined;
   private readonly probeContextWindow: boolean;
+  private readonly probeModelCapabilities: boolean;
+  private readonly capabilityProbeNow: () => Date;
+  private readonly capabilityProbeByModel = new Map<string, Promise<ModelCapabilityProbeResult>>();
   private readonly contextWindowByModel = new Map<string, Promise<ModelContextWindowResolution>>();
   private readonly clampWarned = new Set<string>();
   private static traceSeq = 0;
@@ -122,14 +133,52 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     // when it was configured higher than the model can honour (avoids Ollama
     // silently truncating the prompt). Never clamps UP.
     this.probeContextWindow = options.probeContextWindow ?? false;
+    this.probeModelCapabilities = options.probeModelCapabilities ?? false;
+    this.capabilityProbeNow = options.capabilityProbeNow ?? (() => new Date());
   }
 
   override async listModels(): Promise<readonly ModelInfo[]> {
     const models = await super.listModels();
-    return models.map((model) => ({
-      ...model,
-      capabilities: localModelCapabilities()
+    if (!this.probeModelCapabilities) {
+      return models.map((model) => ({
+        ...model,
+        capabilities: localModelCapabilities()
+      }));
+    }
+    return Promise.all(models.map(async (model) => {
+      const declared = localModelCapabilities();
+      const capabilityProbe = await this.probeCapabilities(model.modelId);
+      return {
+        ...model,
+        capabilities: projectModelCapabilitiesFromProbe(
+          declared,
+          capabilityProbe,
+          this.capabilityProbeNow()
+        ) ?? declared,
+        capabilityProbe
+      };
     }));
+  }
+
+  async probeCapabilities(model: string): Promise<ModelCapabilityProbeResult> {
+    const name = model.replace(/^ollama\//u, "").trim();
+    const cached = this.capabilityProbeByModel.get(name);
+    if (cached) {
+      const result = await cached;
+      if (modelCapabilityProbeIsFresh(result, this.capabilityProbeNow())) {
+        return result;
+      }
+      this.capabilityProbeByModel.delete(name);
+    }
+    const pending = probeOllamaModelCapabilities(
+      this.nativeBaseUrl,
+      this.id,
+      name,
+      this.nativeFetch,
+      { now: this.capabilityProbeNow }
+    );
+    this.capabilityProbeByModel.set(name, pending);
+    return pending;
   }
 
   /**
@@ -613,6 +662,104 @@ export async function probeOllamaContextWindow(
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Project Ollama's model-specific `/api/show.capabilities` array into the
+ * provider-neutral routing contract. `completion` proves the native generation
+ * surface used for streaming and schema-constrained decoding is present;
+ * `tools` and `vision` remain model-specific. A missing/invalid response is
+ * failed+unknown, never silently downgraded to unsupported.
+ */
+export async function probeOllamaModelCapabilities(
+  baseUrl: string,
+  providerId: string,
+  model: string,
+  fetchImpl?: typeof globalThis.fetch,
+  options: {
+    readonly now?: () => Date;
+    readonly timeoutMs?: number;
+    readonly ttlMs?: number;
+  } = {}
+): Promise<ModelCapabilityProbeResult> {
+  const name = model.replace(/^ollama\//u, "").trim();
+  const now = options.now?.() ?? new Date();
+  const failure = (
+    failureReason: Parameters<typeof failedModelCapabilityProbe>[0]["failureReason"]
+  ): ModelCapabilityProbeResult => failedModelCapabilityProbe({
+    adapterVersion: "ollama-native-api.v1",
+    failureReason,
+    modelId: name,
+    now,
+    providerId,
+    source: "ollama-api-show",
+    ...(options.ttlMs !== undefined ? { ttlMs: options.ttlMs } : {})
+  });
+  if (name.length === 0) {
+    return failure("invalid-model");
+  }
+
+  const nativeBase = baseUrl.replace(/\/v1\/?$/u, "");
+  const fetchFn = fetchImpl ?? globalThis.fetch.bind(globalThis);
+  const timeoutMs = options.timeoutMs !== undefined
+    && Number.isFinite(options.timeoutMs)
+    && options.timeoutMs > 0
+    ? options.timeoutMs
+    : DEFAULT_CONTEXT_PROBE_TIMEOUT_MS;
+  let signal: AbortSignal | undefined;
+  try {
+    signal = AbortSignal.timeout(timeoutMs);
+  } catch {
+    signal = undefined;
+  }
+  let response: Response;
+  try {
+    response = await fetchFn(`${nativeBase}/api/show`, {
+      body: JSON.stringify({ model: name }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      ...(signal ? { signal } : {})
+    });
+  } catch {
+    return failure("transport-error");
+  }
+  if (!response.ok) {
+    return failure("http-error");
+  }
+  const raw = await response.text().catch(() => "");
+  const parsed = parseJson(raw);
+  if (!isRecord(parsed)
+    || !Array.isArray(parsed.capabilities)
+    || !parsed.capabilities.every((value) => typeof value === "string")) {
+    return failure("invalid-response");
+  }
+
+  const nativeCapabilities = new Set(parsed.capabilities);
+  if (!nativeCapabilities.has("completion")) {
+    return failure("invalid-response");
+  }
+  const window = probeWindow(now, options.ttlMs);
+  const maxInputTokens = extractOllamaContextLength(parsed.model_info);
+  const result: AvailableModelCapabilityProbeResult = {
+    adapterVersion: "ollama-native-api.v1",
+    capabilities: Object.freeze({
+      streaming: "supported",
+      structuredOutput: "supported",
+      toolCalling: nativeCapabilities.has("tools") ? "supported" : "unsupported",
+      vision: nativeCapabilities.has("vision") ? "supported" : "unsupported"
+    }),
+    limits: Object.freeze({
+      ...(maxInputTokens !== undefined ? { maxInputTokens } : {})
+    }),
+    modelId: name,
+    observedAt: window.observedAt,
+    providerId,
+    schemaVersion: 1,
+    source: "ollama-api-show",
+    status: "available",
+    validUntil: window.validUntil
+  };
+  return Object.freeze(result);
 }
 
 const MAX_OLLAMA_SCHEMA_DEPTH = 64;
