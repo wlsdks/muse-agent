@@ -37,6 +37,7 @@ const RULES = [
   { id: "private-key-header", pattern: /-----BEGIN (?:EC |OPENSSH |RSA )?PRIVATE KEY-----/gu },
   { id: "personal-home-path", pattern: /\/Users\/[A-Za-z0-9._-]+\//gu }
 ];
+export const RELEASE_FINDING_RULE_IDS = Object.freeze(RULES.map(({ id }) => id));
 
 export function evaluateReleaseEvidence({
   candidatePath,
@@ -129,7 +130,7 @@ export function evaluateReleaseEvidence({
   return report;
 }
 
-function releaseEvidenceInputHash({ candidateSha256, sourceHead, sourceTree }) {
+export function releaseEvidenceInputHash({ candidateSha256, sourceHead, sourceTree }) {
   return sha256(Buffer.from(JSON.stringify({
     candidateSha256,
     ruleIds: RULES.map(({ id }) => id).sort(),
@@ -328,6 +329,11 @@ function scanTar(candidateBytes, embeddedCommit, root, spawn) {
         }
         const content = readFileSync(file);
         bytes += content.byteLength;
+        const expectedEntry = expected.get(path);
+        if (!expectedEntry || gitBlobOid(content, expectedEntry.oid.length) !== expectedEntry.oid) {
+          skipped = true;
+          continue;
+        }
         const scanned = scanBytes(
           content,
           "candidate",
@@ -357,16 +363,26 @@ function scanTar(candidateBytes, embeddedCommit, root, spawn) {
 function parseGitTree(bytes) {
   const entries = new Map();
   for (const record of bytes.toString("utf8").split("\0").filter(Boolean)) {
-    const match = /^(?<mode>[0-9]{6}) (?<type>[a-z]+) [a-f0-9]{40,64}\t(?<path>.+)$/u.exec(record);
+    const match = /^(?<mode>[0-9]{6}) (?<type>[a-z]+) (?<oid>[a-f0-9]{40}|[a-f0-9]{64})\t(?<path>.+)$/u.exec(record);
     if (!match?.groups || !safeRelativePath(match.groups.path) || entries.has(match.groups.path)) {
       return undefined;
     }
     entries.set(match.groups.path, {
       mode: match.groups.mode,
+      oid: match.groups.oid,
       type: match.groups.type
     });
   }
   return entries;
+}
+
+function gitBlobOid(bytes, oidLength) {
+  const algorithm = oidLength === 40 ? "sha1" : oidLength === 64 ? "sha256" : undefined;
+  if (!algorithm) return undefined;
+  return createHash(algorithm)
+    .update(`blob ${bytes.byteLength.toString()}\0`, "utf8")
+    .update(bytes)
+    .digest("hex");
 }
 
 function expectedDirectoryPrefixes(paths) {

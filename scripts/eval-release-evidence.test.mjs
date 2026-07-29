@@ -47,6 +47,27 @@ function replaceTarRegularWithSymlink(candidate, path, target) {
   throw new Error(`tar fixture entry not found: ${path}`);
 }
 
+function replaceTarRegularContent(candidate, path, replacement) {
+  const bytes = readFileSync(candidate);
+  let offset = 0;
+  while (offset + 512 <= bytes.length) {
+    const header = bytes.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const name = header.subarray(0, 100).toString("utf8").replace(/\0.*$/u, "");
+    const sizeText = header.subarray(124, 136).toString("ascii").replace(/\0.*$/u, "").trim();
+    const size = Number.parseInt(sizeText || "0", 8);
+    if (name === path) {
+      const replacementBytes = Buffer.from(replacement, "utf8");
+      if (replacementBytes.byteLength !== size) throw new Error("replacement must preserve tar entry size");
+      replacementBytes.copy(bytes, offset + 512);
+      writeFileSync(candidate, bytes);
+      return;
+    }
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  throw new Error(`tar fixture entry not found: ${path}`);
+}
+
 test("binds a git-archive candidate to clean source and emits hashed-only red evidence", () => {
   const repoRoot = mkdtempSync(join(tmpdir(), "muse-release-evidence-"));
   const candidate = join(repoRoot, "candidate.tar");
@@ -278,6 +299,35 @@ test("rejects an actual symlink forged over an expected regular archive member",
     assert.equal(report.candidate.matchesCurrent, true);
     assert.equal(report.scans.candidate.status, "skipped");
     assert.equal(report.scans.candidate.specialEntries, 1);
+    assert.ok(report.reasons.includes("scan-skipped"));
+  } finally {
+    rmSync(repoRoot, { force: true, recursive: true });
+  }
+});
+
+test("rejects a tar payload whose embedded commit header no longer matches its Git blob", () => {
+  const repoRoot = mkdtempSync(join(tmpdir(), "muse-release-evidence-forged-payload-"));
+  try {
+    git(repoRoot, ["init", "-q"]);
+    git(repoRoot, ["config", "user.email", "fixture@example.invalid"]);
+    git(repoRoot, ["config", "user.name", "Fixture"]);
+    writeFileSync(join(repoRoot, ".gitignore"), "candidate.tar\nreceipt.json\n", "utf8");
+    writeFileSync(join(repoRoot, "regular.txt"), "safe\n", "utf8");
+    git(repoRoot, ["add", "."]);
+    git(repoRoot, ["commit", "-qm", "fixture"]);
+    const candidate = join(repoRoot, "candidate.tar");
+    git(repoRoot, ["archive", "--format=tar", `--output=${candidate}`, "HEAD"]);
+    replaceTarRegularContent(candidate, "regular.txt", "evil\n");
+
+    const report = evaluateReleaseEvidence({
+      candidatePath: candidate,
+      outputPath: join(repoRoot, "receipt.json"),
+      repoRoot
+    });
+
+    assert.equal(report.candidate.matchesCurrent, true);
+    assert.equal(report.scans.source.status, "complete");
+    assert.equal(report.scans.candidate.status, "skipped");
     assert.ok(report.reasons.includes("scan-skipped"));
   } finally {
     rmSync(repoRoot, { force: true, recursive: true });
