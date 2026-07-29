@@ -8,6 +8,22 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added independently verified, package-private **receipt-bound Agent Graph evidence
+  compilation**. One verified Continuity Observation Receipt now rebuilds a fresh private
+  Muse graph, derives its opaque thread seed, performs exactly one bounded Activation
+  traversal, and binds the captured plan and result to graph-owned witness paths plus the
+  existing settlement receipts. Duplicate logical nominations remain visible while
+  deterministic `core > change > support` representatives prevent duplicate budget spend;
+  model hypotheses, caller-supplied paths or internal IDs, and surplus frontier outcomes
+  fail closed. Activation evidence and its compact binding receipt are separately
+  content-addressed and capped rather than advertised as one prompt payload. Thirty-four
+  focused adversarial tests, all 228 package tests, package typecheck/build,
+  repository-authoritative TS7 fast typecheck, changed tests, standalone verification,
+  lint, diff checks, and a fresh independent completion gate passed. This remains private,
+  process-local substrate: public exports, persistence, authoritative Providers,
+  runtime/UI composition, external graph databases, source/action authority, and
+  user-visible Attunement wow are unchanged.
+
 - Added independently verified, package-private **witness-derived fair context
   admission** to the agent-native graph. The exact nominated focus assertion at the end of
   each locally closed thread-rooted witness now determines its Continuity, Change,

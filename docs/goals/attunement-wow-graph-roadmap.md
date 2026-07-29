@@ -63,7 +63,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-040** | Continuity Capsule v1 | User-invoked, library-only Capsule renders the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer | in progress (`AWG-040b/c` verified library-only; application integration and exact-stop capture pending) |
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
-| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` settlement, `050a2a` exact thread-rooted witnesses, `050a2b1` fair opportunity ordering, and `050a2b2` witness-derived fair context admission independently verified; authoritative Providers `050a3` pending) |
+| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` settlement, `050a2a` exact thread-rooted witnesses, `050a2b1` fair opportunity ordering, `050a2b2` witness-derived fair context admission, and `050a2c` receipt-bound Agent Graph evidence compilation independently verified; authoritative Providers `050a3` pending) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-070** | Storage bake-off | Prove the Muse-owned local default first; compare PostgreSQL and at most one embedded candidate only as optional Adapters on correctness, cost, recovery, portability, and maintenance | pending |
@@ -111,16 +111,53 @@ Shadow ledger or durable database:
   receipts fair opportunity rank and actual six-axis admission, continues after oversized
   bundles, and preserves the existing v1 ledger. This verifies local witness structure and
   selection—not source truth, causality, authoritative freshness, or runtime behavior.
+- **AWG-050a2c (completed private integration):** one verified caller-declared Continuity
+  Observation Receipt now rebuilds a fresh private Muse graph, derives its opaque thread
+  seed, performs exactly one bounded Activation traversal, and binds that captured plan and
+  result to graph-owned witness paths and the existing settlement receipts. Duplicate
+  logical nominations are conserved behind deterministic `core > change > support`
+  representatives, while model hypotheses, caller-supplied paths/internal IDs, surplus
+  frontier outcomes, and source/action authority fail closed. The linked evidence artifacts
+  are content-addressed and independently capped; the aggregate is not advertised as one
+  prompt payload.
 - **AWG-050a3 (next PLAN):** compose authoritative snapshot/freshness Providers and the
   verified Continuity observation/change/Capsule `resumeContext` grammar.
 
 The full decision and dissent are in
 [Muse Agent-Native Graph Core](../design/agent-native-graph-core.md). Those earlier
 fail-closed findings produced AWG-045a/045b and the now verified
-AWG-050a1/050a2a/050a2b1/050a2b2 seams rather than being bypassed. This is still private
+AWG-050a1/050a2a/050a2b1/050a2b2/050a2c seams rather than being bypassed. This is still private
 deterministic substrate, not shipped `resumeContext` or user-visible wow. AWG-050a3
 remains closed to source changes until a new bounded PLAN passes. AWG-050b then owns the
 actual Shadow `silent | digest | offer` decision receipt and counterfactual.
+
+## Completed slice: AWG-050a2c
+
+- **Product meaning:** call this capability **receipt-bound Agent Graph evidence
+  compilation**. It is the first complete private execution path from an exact Continuity
+  receipt through Muse's own temporal graph, one bounded Activation traversal, graph-owned
+  explanation paths, and budget settlement.
+- **Classification at activation:** `missing` — all constituent kernels existed, but no
+  compiler bound one verified receipt, opaque graph identity, actual traversal, duplicate
+  nominations, and settled proof evidence into one fail-closed composition.
+- **Status:** `completed private integration`. It has no public export, persistence,
+  external graph database, Provider/runtime/UI integration, source/freshness authority, or
+  user-visible wow claim.
+- **Maker:** Codex root/high for the compiler and tests; a bounded fresh
+  `gpt-5.6-terra`/high worker produced the standalone verifier after the PLAN gate.
+- **Evaluators:** independent Sol/high PLAN gate passed after two material correction
+  rounds; a separate fresh Sol/high architecture review passed; the fresh Sol/high
+  completion gate failed once on frontier conservation and adversarial coverage, then
+  issued `COMPLETION PASS` after both were closed.
+- **Acceptance evidence:** 34 focused adversarial tests and all 228 package tests passed;
+  package typecheck/build, repository-authoritative `pnpm typecheck:fast`,
+  `pnpm test:changed`, standalone verifier, changed-file lint, diff check, and a fresh
+  CodeGraph index passed. The compatibility `pnpm typecheck` probe still reports the
+  pre-existing untouched `packages/eval-datasets/src/seams.ts` schema-version mismatch;
+  that unrelated repair was not absorbed into this Graph slice.
+- **Rollback:** delete the three private compiler/test/verifier files and their exact
+  ignored dist artifacts plus package build info, then rebuild. No public or persisted
+  state requires migration.
 
 ## Completed slice: AWG-050a2b2
 
