@@ -20,14 +20,15 @@ DELTA, never the base.
 
 1. **ANCHOR** — run `date` (never assume); read the watermark block at the
    top of `docs/goals/rival-watch.md` (last scout date, per-repo upstream
-   SHAs, roster + reference shelf). `git -C /Users/jinan/ai/<name> fetch
-   origin` EVERY roster and shelf clone now — the fire reads today's
+   SHAs, roster + reference shelf). Resolve the operator-configured rival root
+   as `$MUSE_RIVAL_ROOT`, then `git -C "$MUSE_RIVAL_ROOT/<name>" fetch origin`
+   for EVERY roster and shelf clone now — the fire reads today's
    upstream, never a stale checkout. Everything below is scoped to changes
    AFTER the watermark.
 
 2. **SWEEP (delta only, verify-in-code)** —
    - **Named rivals** (roster in rival-watch.md carries repo URLs, SHAs, and
-     the persistent local clones under `/Users/jinan/ai/<name>` — `git -C`
+     the persistent local clones under `$MUSE_RIVAL_ROOT/<name>` — `git -C`
      fetch them, never re-clone; a NEW roster member gets a blobless clone
      there). High-velocity repos ship
      thousands of commits per window — sweep RELEASES + CHANGELOG first

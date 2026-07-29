@@ -85,7 +85,7 @@ const MIN_QUERY_CHARS = 4;
  */
 /**
  * A short, user-facing citation source. A note's `ref` is its ABSOLUTE path
- * ("/Users/me/.muse/notes/wifi_passwords/seoul_office.md") — ugly, it leaks the
+ * ("$HOME/.muse/notes/wifi_passwords/seoul_office.md") — ugly, it leaks the
  * home dir, AND it is so long the local model spent its output budget echoing
  * it and TRUNCATED the answer mid-citation. Strip to the path under the notes
  * dir ("wifi_passwords/seoul_office.md"), else the basename. Non-path refs

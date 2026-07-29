@@ -85,7 +85,7 @@ export function createRustRunnerTool(options: RustRunnerToolOptions = {}): MuseT
             description: "The executable name ONLY — e.g. 'node', 'ls', 'pnpm'. NOT a full command line and NOT a path; put every argument in `args`.",
             type: "string"
           },
-          cwd: { description: "Working directory to run in, e.g. '/Users/me/project'. Default: the current directory.", type: "string" },
+          cwd: { description: "Working directory to run in, e.g. '/path/to/project'. Default: the current directory.", type: "string" },
           env: { additionalProperties: { type: "string" }, type: "object" },
           maxOutputBytes: { maximum: MAX_RUNNER_OUTPUT_BYTES, minimum: 1, type: "integer" },
           timeoutMs: { description: "Kill the command after this many milliseconds, e.g. 5000.", maximum: MAX_RUNNER_TIMEOUT_MS, minimum: 1, type: "integer" }

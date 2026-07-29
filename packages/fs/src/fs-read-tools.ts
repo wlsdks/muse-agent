@@ -211,7 +211,7 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
       description:
         "Read ONE local file and return its text — plain text/code, PDF, Word (.docx), PowerPoint (.pptx), " +
         "email (.eml), and images (read with the local vision model). Give a path ('~/notes/todo.md', " +
-        "'/Users/me/x.ts') OR, for your " +
+        "'/path/to/x.ts') OR, for your " +
         "everyday folders, a filename fragment ('invoice pdf', '계약서 워드', '영수증 사진') and Muse reads the " +
         "newest match. This is the right tool whenever the user names ONE file to open/read/summarize, even " +
         "if a folder is mentioned ('다운로드에 있는 invoice.pdf 읽어줘' → file_read). Use offset/limit to page " +
@@ -227,7 +227,7 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
           numbered: { description: "Prefix each line with its line number (text only, default false).", type: "boolean" },
           offset: { description: "Optional 1-based start line (text only), e.g. 200.", minimum: 1, type: "integer" },
           path: {
-            description: "Path ('~/notes/todo.md', '/Users/me/x.ts') or a filename fragment to find ('invoice pdf', '영수증 사진').",
+            description: "Path ('~/notes/todo.md', '/path/to/x.ts') or a filename fragment to find ('invoice pdf', '영수증 사진').",
             type: "string"
           }
         },

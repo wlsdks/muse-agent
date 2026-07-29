@@ -20,7 +20,7 @@ import { ConfigurationError, type MuseEnvironment } from "./index.js";
  *     "mcpServers": {
  *       "filesystem": {
  *         "command": "npx",
- *         "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/me/Documents"],
+ *         "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/Documents"],
  *         "env": { "FOO": "bar" }
  *       },
  *       "github": {

@@ -1758,20 +1758,20 @@ mod tests {
         let spec = SeatbeltSpec {
             cwd: None,
             tmpdir: "/tmp",
-            home: Some("/Users/x"),
+            home: Some("/home/test-user"),
             allow_network: false,
         };
         let profile = build_seatbelt_profile(&spec);
         assert!(
-            profile.contains("(allow file-write* (subpath \"/Users/x/Library/pnpm/store\"))"),
+            profile.contains("(allow file-write* (subpath \"/home/test-user/Library/pnpm/store\"))"),
             "{profile}"
         );
         assert!(
-            profile.contains("(allow file-write* (subpath \"/Users/x/.npm\"))"),
+            profile.contains("(allow file-write* (subpath \"/home/test-user/.npm\"))"),
             "{profile}"
         );
         assert!(
-            profile.contains("(allow file-write* (subpath \"/Users/x/.cache\"))"),
+            profile.contains("(allow file-write* (subpath \"/home/test-user/.cache\"))"),
             "{profile}"
         );
         assert!(
@@ -1812,7 +1812,7 @@ mod tests {
         let spec = SeatbeltSpec {
             cwd: Some("/tmp/work"),
             tmpdir: "/var/tmp",
-            home: Some("/Users/x"),
+            home: Some("/home/test-user"),
             allow_network: false,
         };
         let profile = build_seatbelt_profile(&spec);
@@ -1825,7 +1825,7 @@ mod tests {
         assert!(profile.contains("(allow file-write* (subpath \"/tmp/work\"))"));
         assert!(profile.contains("(allow file-write* (subpath \"/var/tmp\"))"));
         assert!(profile.contains("(allow file-write* (subpath \"/private/tmp\"))"));
-        assert!(profile.contains("(allow file-write* (subpath \"/Users/x/Library/pnpm/store\"))"));
+        assert!(profile.contains("(allow file-write* (subpath \"/home/test-user/Library/pnpm/store\"))"));
         assert!(!profile.contains("(allow network*)"));
     }
 
