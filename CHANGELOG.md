@@ -8,6 +8,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-040b internal, provider-neutral Continuity Capsule
+  manifest/compiler contract. It pairs prior/current scoped Source
+  Observation Receipts with prior/current Graph Observation Receipts, requires exact
+  source ID, thread, time, complete link-role, and policy-provenance binding, and derives a
+  deterministic receipt-to-receipt change result. Its frozen, bounded manifest holds only
+  render-ready display snapshots and preparation metadata; a `draft` is display-only and an
+  `action-preview` always requires a new approval. It adds no UI, persistence, source I/O,
+  action or tool payload, graph backend/database claim, dogfooding claim, or overlap with
+  core-roadmap onboarding 103 or session-handoff 211.
+
 - Added an internal v1 Continuity Source Observation Receipt. One caller-declared
   observation time and one prepared Pack now produce a domain-separated, content-addressed,
   deeply frozen receipt over all 11 source display types; JSON round-trip verification

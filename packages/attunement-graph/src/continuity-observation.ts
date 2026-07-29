@@ -14,8 +14,6 @@ import {
   type PreparedContinuityComparisonObservation
 } from "./continuity-change-comparison.js";
 import {
-  CONTINUITY_PROJECTION_BOUNDARY_NAMESPACE,
-  type ContinuityChangeBoundary,
   type ContinuityChangeObservationDiagnostics,
   type ExplainedContinuityChangeResult
 } from "./continuity-change-contracts.js";
@@ -27,6 +25,10 @@ import {
   prepareContinuitySourceObservation,
   type PreparedContinuitySourceObservation
 } from "./continuity-source-observation.js";
+import {
+  continuityReceiptComparisonBoundary,
+  preparedContinuityReceiptObservation
+} from "./continuity-observation-comparison.js";
 import type {
   GraphAssertion,
   GraphEvidenceRef
@@ -821,17 +823,6 @@ export function verifyContinuityObservation(
   return receipt;
 }
 
-function receiptComparisonObservation(
-  receipt: ContinuityObservationReceipt
-): PreparedContinuityComparisonObservation {
-  return Object.freeze({
-    diagnostics: receipt.diagnostics,
-    projection: receipt.projection,
-    scope: receipt.projection.scope,
-    sourceObservedAt: receipt.observedAt
-  });
-}
-
 function currentComparisonObservation(
   prepared: PreparedContinuitySourceObservation
 ): PreparedContinuityComparisonObservation {
@@ -844,22 +835,6 @@ function currentComparisonObservation(
     },
     scope: prepared.input.scope,
     sourceObservedAt: prepared.input.sourceObservedAt
-  });
-}
-
-function receiptComparisonBoundary(
-  receipt: ContinuityObservationReceipt
-): ContinuityChangeBoundary {
-  return Object.freeze({
-    authority: "caller-declared-observation",
-    observedAt: receipt.observedAt,
-    schemaVersion: 1,
-    scope: receipt.projection.scope,
-    sourceRef: Object.freeze({
-      id: receipt.projection.sourceVersion,
-      namespace: CONTINUITY_PROJECTION_BOUNDARY_NAMESPACE,
-      version: receipt.projection.projectionVersion
-    })
   });
 }
 
@@ -877,9 +852,9 @@ export function explainContinuityChangesFromReceipt(
       "current"
     );
     return comparePreparedContinuityObservations(
-      receiptComparisonObservation(receipt),
+      preparedContinuityReceiptObservation(receipt),
       currentComparisonObservation(current),
-      receiptComparisonBoundary(receipt)
+      continuityReceiptComparisonBoundary(receipt)
     );
   } catch (cause) {
     if (!(cause instanceof ContinuityChangeQueryError)) throw cause;

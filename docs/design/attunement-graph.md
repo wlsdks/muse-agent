@@ -72,6 +72,23 @@ by the Pack producer, then computes a domain-separated SHA-256 content address. 
 reparses the canonical projection and independently checks version, temporal coherence,
 complete-receipt bytes, and digest. This is integrity and self-consistency, not an
 authenticated witness or source-freshness proof.
+AWG-040b is implemented and independently verified. Its internal
+`@muse/attunement-graph` Capsule compiler accepts previous/current scoped Source Observation
+Receipts and previous/current Graph Observation Receipts. Each paired observation must match
+the exact source ID, thread, canonical time, complete `CONTEXT_FOR`/`NEXT_STEP_FOR` link-role
+set, and policy binding; it then derives one deterministic receipt-to-receipt change result.
+The bounded, deeply frozen Capsule Manifest binds all receipt/change IDs and carries
+render-ready snapshots of the prior stopping point, current next step, and selected current
+supporting evidence, plus caller-declared prepared work and expected minutes. Snapshot text is
+copied only from verified source truth and remains local personal data. A `draft` is
+display-only; an `action-preview` is only a preview and requires a new approval.
+
+The compiler is neither a user interface nor a durable/persistent Capsule store, source I/O,
+tool payload, action path, Graph DB/backend, or dogfood result. Manifest-only verification
+checks canonical self-consistency; dependency-aware verification requires all four receipts
+and recomputes their binding and change result. The next slice, AWG-040c, is limited to a
+pure, user-invoked presentation adapter; it must not add automatic delivery or authority.
+AWG-040b does not implement core-roadmap onboarding 103 or session-handoff 211.
 
 It has no application/runtime composition, durable adapter, LLM extraction, Shadow
 delivery, Capsule UI, Policy Card UI, or action authority. The Attunement Graph Engine and

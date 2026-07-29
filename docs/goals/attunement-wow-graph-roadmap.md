@@ -57,7 +57,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | completed |
 | **AWG-035a** | Observation Receipt format | Strict content-addressed codec preserves one caller-declared exact projection and source accounting without personal source text | completed |
 | **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | completed |
-| **AWG-040** | Continuity Capsule v1 | User-invoked Capsule renders stopping point, changes, next step, prepared work, expected time, and source drawer | in progress (`AWG-040a1`) |
+| **AWG-040** | Continuity Capsule v1 | User-invoked Capsule renders stopping point, changes, next step, prepared work, expected time, and source drawer | in progress (`AWG-040b` verified; `AWG-040c` next) |
 | **AWG-050** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-070** | Storage bake-off | Reference adapter vs PostgreSQL vs at most one embedded graph candidate on correctness, cost, recovery, portability, and maintenance | pending |
@@ -276,9 +276,43 @@ classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `mo
   and builds; root ESLint; executable import and export probes; exact
   `1,000,000`-byte receipt acceptance plus one-byte UTF-8 overflow rejection. Root build
   retained only the existing Vite chunk-size warning.
-- **Next eligible sub-slice:** AWG-040b Capsule manifest/compiler—explicitly bind one
-  verified Source Observation Receipt, one compatible graph Observation Receipt/current
-  change result, and current prepared truth before any presentation or action.
+- **Completed sub-slice:** AWG-040b Capsule manifest/compiler—the paired-receipt,
+  source-to-graph-bound assembly contract below is now independently verified.
+
+## Completed sub-slice: AWG-040b
+
+- **Classification at activation:** `missing`; AWG-040a2 preserved one canonical Source
+  Observation Receipt, but an honest Capsule still needed bi-temporal stopping/current truth,
+  exact Graph provenance, a receipt-to-receipt change result, and bounded display data that a
+  later presenter could use without rejoining live sources.
+- **Implemented boundary:** an internal `@muse/attunement-graph` compiler consumes previous
+  and current scoped Source Observation Receipts plus previous and current Graph Observation
+  Receipts. Every pair requires exact `sourceId`, thread ID, canonical observation time,
+  complete `CONTEXT_FOR`/`NEXT_STEP_FOR` source-link roles, and policy source/ref binding;
+  valid graph receipts then produce the deterministic receipt-to-receipt change result.
+- **Capsule contract:** the frozen, byte-bounded manifest binds all four receipt IDs and the
+  change-result ID, with render-ready source snapshots for the prior stopping point, current
+  next step, and selected current supporting evidence. Snapshot text is exact verified source
+  text when present, never model-created text. Standalone manifest verification proves only
+  canonical self-consistency; dependency-aware verification receives all four receipts and
+  recomputes bindings, selections, and the change result.
+- **Authority and privacy:** a `draft` is display-only. An `action-preview` contains no tool
+  or action payload and always requires a new approval. The compiler is caller-invoked and
+  pure: no UI, persistence, source I/O, automatic observation/delivery, action, tool call,
+  Graph DB/backend, or dogfooding claim. Receipt IDs, exact references, display text, thread
+  title, and prepared content are local personal/linkable data, not telemetry-safe.
+- **Core-roadmap overlap:** none. AWG-040b does not implement onboarding task 103,
+  session-handoff task 211, application wiring, or general-purpose memory/session behavior.
+- **Status:** `verified-current`. A fresh `gpt-5.6-sol`/high completion evaluator, separate
+  from the makers, passed the gate after full `@muse/attunement` (35 files / 280 tests),
+  full `@muse/attunement-graph` (9 files / 94 tests), changed-scope (6 files / 81 tests),
+  two locale probes, package/root typechecks and builds, lint, export/import probes, and
+  diff hygiene all passed. This is not a claim of product integration or user-facing
+  Capsule availability.
+- **Next eligible sub-slice:** AWG-040c, a pure, user-invoked presentation adapter over the
+  verified manifest/change-result contract. It may render the bounded snapshots but must not
+  introduce automatic delivery, persistence, source/store joins, action/tool payloads, or
+  approval bypass.
 
 ## Architecture gates
 

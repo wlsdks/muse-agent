@@ -16,7 +16,16 @@ documents rather than here.
 - An **Observation Receipt** content-addresses what a caller declared it observed. A
   **Source Observation Receipt** preserves canonical personal display truth; a Graph
   Observation Receipt preserves relational assertions. Each proves self-consistency, not
-  that an external observer witnessed the state or time. A Capsule must bind both explicitly.
+  that an external observer witnessed the state or time. The AWG-040b Capsule compiler uses
+  previous and current *scoped* Source and Graph Receipt pairs: each pair binds exact
+  `sourceId`, thread, observation time, complete link roles, and policy provenance before a
+  receipt-to-receipt change result is computed. This remains caller-declared evidence, not an
+  authenticated witness, freshness proof, or independent authority.
+- A **Continuity Capsule Manifest** is a bounded, immutable, render-ready display snapshot:
+  prior stopping point, current next step, selected available supporting evidence, prepared
+  work, expected time, receipt/change IDs, and the exact provenance required to verify them.
+  It does not join live stores. A `draft` is display-only; an `action-preview` always requires
+  a new approval. Neither form contains a UI, persistence, action, or tool payload.
 - A **Temporal Rule** is the versioned deterministic Module that derives task, reminder,
   and calendar display state at one declared observation time. Producers and receipt
   verification use the same Implementation; old receipts are never silently reinterpreted
@@ -45,7 +54,11 @@ authoritative stores
 - `@muse/attunement` owns Personal Continuity and `ResolvedArtifact` semantics, including
   the internal all-source projection contract.
 - `@muse/attunement-graph` owns storage-neutral graph invariants, projections, bounded
-  operators, explanations, and backend conformance—not personal-store adapters.
+  operators, explanations, backend conformance, and the internal AWG-040b Capsule compiler—
+  not personal-store adapters or a presentation layer.
+- The compiler may consume the narrow `@muse/attunement/continuity-source-observations`
+  facade, but it must not become a second composition root, graph database/backend, durable
+  store, or action/tool boundary. A later, user-invoked presentation adapter owns rendering.
 - Applications compose the modules. A package must not become a second composition root by
   importing every personal store.
 - Database SDKs, model providers, embeddings, clocks, files, and networks stay behind

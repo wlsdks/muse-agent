@@ -11,6 +11,10 @@
     "./state-validation": {
       "types": "./dist/state-validation.d.ts",
       "import": "./dist/state-validation.js"
+    },
+    "./continuity-source-observations": {
+      "types": "./dist/continuity-source-observations.d.ts",
+      "import": "./dist/continuity-source-observations.js"
     }
   },
   "scripts": { "build": "tsc -b", "test": "vitest run", "typecheck": "tsc -p tsconfig.json --noEmit" },

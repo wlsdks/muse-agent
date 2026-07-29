@@ -29,21 +29,19 @@ import {
   evidenceRefKey,
   normalizeGraphAssertion
 } from "./validation.js";
+import {
+  CONTINUITY_SOURCE_NAMESPACES,
+  deriveContinuityArtifactGraphRef,
+  deriveContinuityArtifactLinkSourceRef,
+  deriveContinuityPolicyGraphRef,
+  deriveContinuityPolicySourceRef,
+  deriveContinuityThreadGraphRef
+} from "./continuity-projection-identity.js";
 
 export const CONTINUITY_PROJECTION_RULE_VERSION =
   "continuity-state-projection-v1" as const;
 
-export const CONTINUITY_SOURCE_NAMESPACES = Object.freeze({
-  artifactLink: "muse.attunement.artifact-link",
-  delivery: "muse.attunement.delivery",
-  deliveryEvidence: "muse.attunement.delivery-evidence",
-  interaction: "muse.attunement.interaction",
-  outcome: "muse.attunement.outcome",
-  policyReset: "muse.attunement.policy-reset",
-  policyUndo: "muse.attunement.policy-undo",
-  thread: "muse.attunement.thread",
-  threadPolicy: "muse.attunement.thread-policy"
-} as const);
+export { CONTINUITY_SOURCE_NAMESPACES };
 
 export type ContinuityProjectionErrorCode =
   | "ASSERTION_COLLISION"
@@ -217,15 +215,7 @@ export function continuityThreadGraphRef(
   if (typeof scope.threadId !== "string" || scope.threadId.trim().length === 0) {
     invalidSource("projection threadId must be non-empty text");
   }
-  return graphRef("thread", { sourceId, threadId: scope.threadId });
-}
-
-function policyGraphRef(
-  sourceId: string,
-  threadId: string,
-  version: number
-): GraphRef {
-  return graphRef("policy", { sourceId, threadId, version });
+  return deriveContinuityThreadGraphRef(sourceId, scope.threadId);
 }
 
 function artifactIdentity(reference: ArtifactReference): object {
@@ -241,10 +231,6 @@ function artifactReferenceView(reference: ArtifactReference): object {
     ...artifactIdentity(reference),
     role: reference.role
   };
-}
-
-function artifactGraphRef(sourceId: string, reference: ArtifactReference): GraphRef {
-  return graphRef("artifact", { sourceId, ...artifactIdentity(reference) });
 }
 
 function deliveryGraphRef(sourceId: string, deliveryId: string): GraphRef {
@@ -579,11 +565,10 @@ export function projectContinuityState(
     { threadId: thread.id },
     threadView(thread)
   );
-  const currentPolicySource = sourceRef(
-    CONTINUITY_SOURCE_NAMESPACES.threadPolicy,
+  const currentPolicySource = deriveContinuityPolicySourceRef(
     sourceId,
-    { threadId: thread.id },
-    policyView(thread.policy)
+    thread.id,
+    thread.policy
   );
   const assertions: GraphAssertion[] = [];
   const timestampBasis = new Map<string, ContinuityProjectionTimestampBasis>();
@@ -607,11 +592,11 @@ export function projectContinuityState(
 
   for (const link of links) {
     const linkedAt = canonicalInstant(link.linkedAt, "link.linkedAt");
-    const linkSource = sourceRef(
-      CONTINUITY_SOURCE_NAMESPACES.artifactLink,
+    const linkSource = deriveContinuityArtifactLinkSourceRef(
       sourceId,
-      { ...artifactIdentity(link), threadId: thread.id },
-      linkView(link)
+      thread.id,
+      link,
+      linkedAt
     );
     add(makeAssertion({
       epistemicClass: "user-asserted",
@@ -619,7 +604,7 @@ export function projectContinuityState(
       predicate: link.role === "next-step" ? "NEXT_STEP_FOR" : "CONTEXT_FOR",
       recordedAt: linkedAt,
       sourceRefs: [linkSource],
-      subject: artifactGraphRef(sourceId, link),
+      subject: deriveContinuityArtifactGraphRef(sourceId, link),
       validFrom: linkedAt
     }));
   }
@@ -644,7 +629,7 @@ export function projectContinuityState(
     }));
     add(makeAssertion({
       epistemicClass: "source-observed",
-      object: policyGraphRef(
+      object: deriveContinuityPolicyGraphRef(
         sourceId,
         thread.id,
         delivery.policyVersion
@@ -703,11 +688,15 @@ export function projectContinuityState(
       }));
       add(makeAssertion({
         epistemicClass: "source-observed",
-        object: policyGraphRef(sourceId, thread.id, delivery.policyVersion),
+        object: deriveContinuityPolicyGraphRef(
+          sourceId,
+          thread.id,
+          delivery.policyVersion
+        ),
         predicate: "SUPERSEDES",
         recordedAt: outcomeAt,
         sourceRefs: [outcomeSource],
-        subject: policyGraphRef(
+        subject: deriveContinuityPolicyGraphRef(
           sourceId,
           thread.id,
           delivery.outcome.policyVersion
@@ -726,11 +715,19 @@ export function projectContinuityState(
     );
     add(makeAssertion({
       epistemicClass: "source-observed",
-      object: policyGraphRef(sourceId, thread.id, reset.basePolicyVersion),
+      object: deriveContinuityPolicyGraphRef(
+        sourceId,
+        thread.id,
+        reset.basePolicyVersion
+      ),
       predicate: "SUPERSEDES",
       recordedAt: sourceObservedAt,
       sourceRefs: [resetSource],
-      subject: policyGraphRef(sourceId, thread.id, reset.resetPolicyVersion)
+      subject: deriveContinuityPolicyGraphRef(
+        sourceId,
+        thread.id,
+        reset.resetPolicyVersion
+      )
     }), "source-observation");
   }
 
@@ -744,11 +741,19 @@ export function projectContinuityState(
     );
     add(makeAssertion({
       epistemicClass: "source-observed",
-      object: policyGraphRef(sourceId, thread.id, undo.previousPolicyVersion),
+      object: deriveContinuityPolicyGraphRef(
+        sourceId,
+        thread.id,
+        undo.previousPolicyVersion
+      ),
       predicate: "SUPERSEDES",
       recordedAt: undoneAt,
       sourceRefs: [undoSource],
-      subject: policyGraphRef(sourceId, thread.id, undo.undoPolicyVersion),
+      subject: deriveContinuityPolicyGraphRef(
+        sourceId,
+        thread.id,
+        undo.undoPolicyVersion
+      ),
       validFrom: undoneAt
     }));
   }
@@ -768,7 +773,11 @@ export function projectContinuityState(
     predicate: "SCOPED_TO",
     recordedAt: generation.recordedAt,
     sourceRefs: [currentPolicySource, generation.sourceRef],
-    subject: policyGraphRef(sourceId, thread.id, thread.policy.version),
+    subject: deriveContinuityPolicyGraphRef(
+      sourceId,
+      thread.id,
+      thread.policy.version
+    ),
     ...(generation.validFrom ? { validFrom: generation.validFrom } : {})
   }), generation.basis);
 

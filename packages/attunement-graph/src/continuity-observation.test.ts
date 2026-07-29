@@ -19,6 +19,9 @@ import {
   prepareContinuitySourceObservation
 } from "./continuity-source-observation.js";
 import {
+  compareVerifiedContinuityObservationReceipts
+} from "./continuity-observation-comparison.js";
+import {
   projectContinuityState,
   type ContinuityGraphProjection
 } from "./continuity-projection.js";
@@ -439,6 +442,27 @@ describe("Continuity Observation Receipt", () => {
       return;
     }
     throw new Error("expected current internal sentinel");
+  });
+
+  it("keeps verified receipt comparison byte-identical to the raw-current query", () => {
+    const previous = verifyContinuityObservation(
+      clone(captureContinuityObservation(rawObservation()))
+    );
+    const currentInput = rawObservation();
+    currentInput.sourceObservedAt = CURRENT_AT;
+    const current = verifyContinuityObservation(
+      clone(captureContinuityObservation(currentInput))
+    );
+
+    const rawResult = compareReceiptCurrent(previous, currentInput);
+    const receiptResult = compareVerifiedContinuityObservationReceipts(
+      previous,
+      current
+    );
+
+    expect(receiptResult).toStrictEqual(rawResult);
+    expect(JSON.stringify(receiptResult)).toBe(JSON.stringify(rawResult));
+    expect(receiptResult.resultId).toBe(rawResult.resultId);
   });
 
   it("seals a deterministic caller-declared receipt and survives JSON round-trip", () => {
