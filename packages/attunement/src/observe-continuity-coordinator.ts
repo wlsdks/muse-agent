@@ -18,6 +18,7 @@ import {
   type ObserveAppCategory,
   type ObserveLeaseAuthority,
   type ObserveStoreOptions,
+  type ResumeObserveSessionInput,
   type StartObserveSessionInput
 } from "./observe-store.js";
 import type { AttunementState, PersonalThread } from "./types.js";
@@ -93,10 +94,11 @@ export async function startObserveSessionSafe(
 export async function resumeObserveSessionSafe(
   files: ObserveContinuityFiles,
   sessionId: string,
+  input: ResumeObserveSessionInput,
   options: ObserveStoreOptions = {}
 ): Promise<ObserveSession> {
   return withAttunementAndObserve(files, async ({ attunement, observe, observeFile }) => {
-    const transition = resumeObserveSessionTransition(observe, sessionId, options);
+    const transition = resumeObserveSessionTransition(observe, sessionId, input, options);
     requireThread(attunement, transition.result.threadId);
     if (transition.changed) await writeObserveStateUnlocked(observeFile, transition.state);
     return transition.result;

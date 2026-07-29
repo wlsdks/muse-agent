@@ -22,6 +22,11 @@ import {
 const directories: string[] = [];
 const SESSION_ID = "observe_00000000-0000-4000-8000-000000000001";
 const OBSERVATION_ID = "observe_observation_00000000-0000-4000-8000-000000000002";
+const RESUME_INPUT = {
+  acceptVersion: OBSERVE_CONSENT_VERSION,
+  consent: { ...OBSERVE_CONSENT_TEMPLATE, retentionDays: 45 },
+  previousGeneration: 1
+} as const;
 
 async function applySample(file: string, sessionId: string, category: Parameters<typeof reduceObserveSample>[2], observedAt: string, options: Parameters<typeof reduceObserveSample>[4] = {}): Promise<void> {
   const mutation = reduceObserveSample(await readObserveState(file), sessionId, category, observedAt, options);
@@ -52,6 +57,7 @@ describe("Observe O1 strict collection store", () => {
     }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
     expect(session).toMatchObject({
       consentGrant: OBSERVE_CONSENT_TEMPLATE,
+      consentGeneration: 1,
       consentVersion: OBSERVE_CONSENT_VERSION,
       id: SESSION_ID,
       observedThroughAt: null,
@@ -65,8 +71,20 @@ describe("Observe O1 strict collection store", () => {
     expect(await pauseObserveSession(file, SESSION_ID)).toEqual(paused);
     expect(await readFile(file, "utf8")).toBe(bytes);
 
-    const resumed = await resumeObserveSession(file, SESSION_ID, { now: () => new Date("2026-07-22T00:02:00.000Z") });
-    expect(resumed).toMatchObject({ status: "active", updatedAt: "2026-07-22T00:02:00.000Z" });
+    await expect(resumeObserveSession(file, SESSION_ID, {
+      ...RESUME_INPUT,
+      previousGeneration: 0
+    })).rejects.toThrow("generation is stale");
+    expect(await readFile(file, "utf8")).toBe(bytes);
+    const resumed = await resumeObserveSession(file, SESSION_ID, RESUME_INPUT, {
+      now: () => new Date("2026-07-22T00:02:00.000Z")
+    });
+    expect(resumed).toMatchObject({
+      consentGeneration: 2,
+      consentGrant: { retentionDays: 45 },
+      status: "active",
+      updatedAt: "2026-07-22T00:02:00.000Z"
+    });
     expect(await forgetObserveSession(file, SESSION_ID)).toEqual({ deletedObservations: 0 });
     expect((await readObserveState(file)).sessions).toEqual([]);
   });
@@ -121,12 +139,40 @@ describe("Observe O1 strict collection store", () => {
       activeSegments: [],
       collectorLease: null,
       observations: [{ durationMs: 10_000, sessionId: SESSION_ID }],
-      schemaVersion: 2,
-      sessions: [{ consentGrant: null, consentVersion: 1, status: "paused" }]
+      schemaVersion: 3,
+      sessions: [{ consentGeneration: 0, consentGrant: null, consentVersion: 1, status: "paused" }]
     });
     await writeObserveStateUnlocked(file, migrated);
     expect(await readObserveState(file)).toEqual(migrated);
-    await expect(resumeObserveSession(file, SESSION_ID)).rejects.toThrow("new explicit consent enrollment");
+    await expect(resumeObserveSession(file, SESSION_ID, RESUME_INPUT)).rejects.toThrow("new explicit consent enrollment");
+  });
+
+  it("migrates a schema-v2 consented session to generation 1 with a valid round trip", async () => {
+    const file = await storeFile();
+    await writeFile(file, `${JSON.stringify({
+      activeSegments: [],
+      collectorLease: null,
+      nextFencingToken: 1,
+      observations: [],
+      schemaVersion: 2,
+      sessions: [{
+        consentGrant: OBSERVE_CONSENT_TEMPLATE,
+        consentVersion: 2,
+        createdAt: "2026-07-22T00:00:00.000Z",
+        id: SESSION_ID,
+        observedThroughAt: null,
+        status: "paused",
+        threadId: "thread-a",
+        updatedAt: "2026-07-22T00:01:00.000Z"
+      }]
+    })}\n`);
+    const migrated = await readObserveState(file);
+    expect(migrated).toMatchObject({
+      schemaVersion: 3,
+      sessions: [{ consentGeneration: 1, consentGrant: OBSERVE_CONSENT_TEMPLATE, status: "paused" }]
+    });
+    await writeObserveStateUnlocked(file, migrated);
+    expect(await readObserveState(file)).toEqual(migrated);
   });
 
   it("rejects duplicate keys and leaves malformed bytes untouched", async () => {
@@ -240,7 +286,9 @@ describe("Observe O1 strict collection store", () => {
     const file = await storeFile();
     await startObserveSession(file, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: "thread-a" }, { idFactory: () => SESSION_ID, now: () => new Date("2026-07-22T00:00:00.000Z") });
     await pauseObserveSession(file, SESSION_ID, { now: () => new Date("2026-07-22T00:01:00.000Z") });
-    await resumeObserveSession(file, SESSION_ID, { now: () => new Date("2026-07-22T00:02:00.000Z") });
+    await resumeObserveSession(file, SESSION_ID, RESUME_INPUT, {
+      now: () => new Date("2026-07-22T00:02:00.000Z")
+    });
     const state = await readObserveState(file);
     expect(() => reduceObserveSample(state, SESSION_ID, "writing", "2026-07-22T00:01:59.999Z")).toThrow("stale");
   });

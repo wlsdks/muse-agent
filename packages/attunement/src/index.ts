@@ -104,6 +104,7 @@ export type {
   ObserveSession,
   ObserveSessionStatus,
   ObserveStoreOptions,
+  ResumeObserveSessionInput,
   StartObserveSessionInput
 } from "./observe-store.js";
 export {

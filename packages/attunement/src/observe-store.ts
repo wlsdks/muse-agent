@@ -52,8 +52,15 @@ export interface StartObserveSessionInput {
   readonly threadId: string;
 }
 
+export interface ResumeObserveSessionInput {
+  readonly acceptVersion: number;
+  readonly consent: ObserveConsentGrant;
+  readonly previousGeneration: number;
+}
+
 export interface ObserveSession {
   readonly consentGrant: ObserveConsentGrant | null;
+  readonly consentGeneration: number;
   readonly consentVersion: 1 | 2;
   readonly createdAt: string;
   readonly id: string;
@@ -95,7 +102,7 @@ export interface ObserveState {
   readonly collectorLease: ObserveCollectorLease | null;
   readonly nextFencingToken: number;
   readonly observations: readonly ObserveObservation[];
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly sessions: readonly ObserveSession[];
 }
 
@@ -125,7 +132,7 @@ const EMPTY_STATE: ObserveState = {
   collectorLease: null,
   nextFencingToken: 1,
   observations: [],
-  schemaVersion: 2,
+  schemaVersion: 3,
   sessions: []
 };
 
@@ -245,6 +252,7 @@ export function startObserveSessionTransition(
   const now = optionTime(options);
   const session: ObserveSession = {
     consentGrant,
+    consentGeneration: 1,
     consentVersion: 2,
     createdAt: now,
     id: makeId("observe", options),
@@ -279,19 +287,40 @@ export async function pauseObserveSession(file: string, sessionId: string, optio
   });
 }
 
-export async function resumeObserveSession(file: string, sessionId: string, options: ObserveStoreOptions = {}): Promise<ObserveSession> {
-  return mutateObserveState(file, (state) => resumeObserveSessionTransition(state, sessionId, options));
+export async function resumeObserveSession(
+  file: string,
+  sessionId: string,
+  input: ResumeObserveSessionInput,
+  options: ObserveStoreOptions = {}
+): Promise<ObserveSession> {
+  return mutateObserveState(file, (state) => resumeObserveSessionTransition(state, sessionId, input, options));
 }
 
 /** Internal pure transition used by the canonical cross-store coordinator. */
-export function resumeObserveSessionTransition(state: ObserveState, sessionId: string, options: ObserveStoreOptions = {}): Mutation<ObserveSession> {
+export function resumeObserveSessionTransition(
+  state: ObserveState,
+  sessionId: string,
+  input: ResumeObserveSessionInput,
+  options: ObserveStoreOptions = {}
+): Mutation<ObserveSession> {
   const session = requireSession(state, sessionId);
   if (session.consentVersion !== 2 || session.consentGrant === null) {
     throw new ObserveStoreError("conflict", "legacy Observe session requires a new explicit consent enrollment");
   }
-  if (session.status === "active") return { changed: false, result: session, state };
+  if (session.status === "active") throw new ObserveStoreError("conflict", "Observe session is already active");
+  if (input.acceptVersion !== OBSERVE_CONSENT_VERSION) throw new ObserveStoreError("invalid", "Observe consent version must be accepted exactly");
+  if (!Number.isSafeInteger(input.previousGeneration) || input.previousGeneration !== session.consentGeneration) {
+    throw new ObserveStoreError("conflict", "Observe consent generation is stale");
+  }
+  const consentGrant = parseConsentGrant(input.consent);
   if (state.sessions.some((entry) => entry.id !== session.id && entry.status === "active")) throw new ObserveStoreError("conflict", "another Observe session is already active");
-  const updated = { ...session, status: "active" as const, updatedAt: lifecycleTime(session, options) };
+  const updated = {
+    ...session,
+    consentGeneration: session.consentGeneration + 1,
+    consentGrant,
+    status: "active" as const,
+    updatedAt: lifecycleTime(session, options)
+  };
   return { changed: true, result: updated, state: { ...state, sessions: replaceSession(state.sessions, updated) } };
 }
 
@@ -492,14 +521,15 @@ export async function writeObserveStateUnlocked(file: string, state: ObserveStat
 
 function parseObserveState(value: unknown): ObserveState {
   if (!isRecord(value) || !exactKeys(value, ["schemaVersion", "sessions", "observations", "activeSegments", "collectorLease", "nextFencingToken"])
-    || ![1, 2].includes(value.schemaVersion as number) || !Array.isArray(value.sessions) || value.sessions.length > MAX_SESSIONS
+    || ![1, 2, 3].includes(value.schemaVersion as number) || !Array.isArray(value.sessions) || value.sessions.length > MAX_SESSIONS
     || !Array.isArray(value.observations) || value.observations.length > MAX_OBSERVATIONS
     || !Array.isArray(value.activeSegments) || value.activeSegments.length > 1
     || !Number.isSafeInteger(value.nextFencingToken) || (value.nextFencingToken as number) < 1) {
     throw new ObserveStoreError("invalid", "Observe store has an unsupported schema or limit");
   }
-  const legacy = value.schemaVersion === 1;
-  const sessions = value.sessions.map((session) => parseSession(session, legacy));
+  const schemaVersion = value.schemaVersion as 1 | 2 | 3;
+  const legacy = schemaVersion === 1;
+  const sessions = value.sessions.map((session) => parseSession(session, schemaVersion));
   const observations = value.observations.map(parseObservation);
   const activeSegments = value.activeSegments.map(parseSegment);
   const collectorLease = value.collectorLease === null ? null : parseLease(value.collectorLease);
@@ -541,34 +571,50 @@ function parseObserveState(value: unknown): ObserveState {
       collectorLease: null,
       nextFencingToken: value.nextFencingToken as number,
       observations: migratedObservations,
-      schemaVersion: 2,
+      schemaVersion: 3,
       sessions: sessions.map((session) => ({
         ...session,
         consentGrant: null,
+        consentGeneration: 0,
         consentVersion: 1,
         status: "paused"
       }))
     };
   }
-  return { activeSegments, collectorLease, nextFencingToken: value.nextFencingToken as number, observations, schemaVersion: 2, sessions };
+  return { activeSegments, collectorLease, nextFencingToken: value.nextFencingToken as number, observations, schemaVersion: 3, sessions };
 }
 
-function parseSession(value: unknown, legacy: boolean): ObserveSession {
+function parseSession(value: unknown, schemaVersion: 1 | 2 | 3): ObserveSession {
+  const legacy = schemaVersion === 1;
   const expectedKeys = legacy
     ? ["consentVersion", "createdAt", "id", "observedThroughAt", "status", "threadId", "updatedAt"]
-    : ["consentGrant", "consentVersion", "createdAt", "id", "observedThroughAt", "status", "threadId", "updatedAt"];
+    : schemaVersion === 2
+      ? ["consentGrant", "consentVersion", "createdAt", "id", "observedThroughAt", "status", "threadId", "updatedAt"]
+      : ["consentGeneration", "consentGrant", "consentVersion", "createdAt", "id", "observedThroughAt", "status", "threadId", "updatedAt"];
   if (!isRecord(value) || !exactKeys(value, expectedKeys)
     || (legacy ? value.consentVersion !== 1 : ![1, 2].includes(value.consentVersion as number))
     || !SESSION_ID.test(String(value.id)) || !isTime(value.createdAt) || !isTime(value.updatedAt)
     || (value.observedThroughAt !== null && !isTime(value.observedThroughAt)) || !["active", "paused"].includes(String(value.status))) throw new ObserveStoreError("invalid", "Observe store contains an invalid session");
   assertThreadId(value.threadId);
   if (value.updatedAt < value.createdAt || (value.observedThroughAt !== null && value.observedThroughAt < value.createdAt)) throw new ObserveStoreError("invalid", "Observe session time is inconsistent");
-  if (legacy) return { ...(value as unknown as Omit<ObserveSession, "consentGrant">), consentGrant: null };
+  if (legacy) {
+    return {
+      ...(value as unknown as Omit<ObserveSession, "consentGeneration" | "consentGrant">),
+      consentGeneration: 0,
+      consentGrant: null
+    };
+  }
   const consentGrant = value.consentGrant === null ? null : parseConsentGrant(value.consentGrant);
-  if ((value.consentVersion === 2) !== (consentGrant !== null) || (consentGrant === null && value.status === "active")) {
+  const consentGeneration = schemaVersion === 2
+    ? consentGrant === null ? 0 : 1
+    : value.consentGeneration;
+  if (!Number.isSafeInteger(consentGeneration) || (consentGeneration as number) < 0
+    || (value.consentVersion === 2) !== (consentGrant !== null)
+    || (consentGrant === null && (value.status === "active" || consentGeneration !== 0))
+    || (consentGrant !== null && (consentGeneration as number) < 1)) {
     throw new ObserveStoreError("invalid", "Observe session consent grant is inconsistent");
   }
-  return { ...(value as unknown as ObserveSession), consentGrant };
+  return { ...(value as unknown as ObserveSession), consentGeneration: consentGeneration as number, consentGrant };
 }
 
 function parseConsentGrant(value: unknown): ObserveConsentGrant {

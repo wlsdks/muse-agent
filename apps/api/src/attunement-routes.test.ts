@@ -197,14 +197,38 @@ describe("Observe O1 API", () => {
       url: "/api/attunement/observe/sessions"
     });
     expect(started.statusCode).toBe(200);
-    const session = started.json<{ id: string }>();
+    const session = started.json<{ consentGeneration: number; id: string }>();
+    expect(session.consentGeneration).toBe(1);
     const status = await app.inject({ method: "GET", url: "/api/attunement/observe/sessions" });
     expect(status.json()).toMatchObject({ collector: { state: "idle" }, sessions: [{ id: session.id }] });
     expect(status.body).not.toContain("collectorFingerprint");
     expect(status.body).not.toContain("fencingToken");
 
     expect((await app.inject({ method: "POST", url: `/api/attunement/observe/sessions/${session.id}/pause` })).statusCode).toBe(200);
-    expect((await app.inject({ method: "POST", url: `/api/attunement/observe/sessions/${session.id}/resume` })).statusCode).toBe(200);
+    expect((await app.inject({
+      method: "POST",
+      url: `/api/attunement/observe/sessions/${session.id}/resume`
+    })).statusCode).toBe(400);
+    const resumed = await app.inject({
+      method: "POST",
+      payload: {
+        acceptVersion: OBSERVE_CONSENT_VERSION,
+        consent: OBSERVE_CONSENT_TEMPLATE,
+        previousGeneration: session.consentGeneration
+      },
+      url: `/api/attunement/observe/sessions/${session.id}/resume`
+    });
+    expect(resumed.statusCode).toBe(200);
+    expect(resumed.json()).toMatchObject({ consentGeneration: 2, status: "active" });
+    expect((await app.inject({
+      method: "POST",
+      payload: {
+        acceptVersion: OBSERVE_CONSENT_VERSION,
+        consent: OBSERVE_CONSENT_TEMPLATE,
+        previousGeneration: session.consentGeneration
+      },
+      url: `/api/attunement/observe/sessions/${session.id}/resume`
+    })).statusCode).toBe(409);
     expect((await app.inject({ method: "POST", url: `/api/attunement/observe/sessions/${session.id}/forget` })).statusCode).toBe(200);
     await app.close();
   });

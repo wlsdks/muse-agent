@@ -20,6 +20,11 @@ import {
 
 const directories: string[] = [];
 const SESSION_ID = "observe_00000000-0000-4000-8000-000000000001";
+const RESUME_INPUT = {
+  acceptVersion: OBSERVE_CONSENT_VERSION,
+  consent: OBSERVE_CONSENT_TEMPLATE,
+  previousGeneration: 1
+} as const;
 
 afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })));
@@ -93,8 +98,8 @@ describe("Observe and PersonalThread lifecycle coordinator", () => {
       await startObserveSessionSafe(resumes, { acceptVersion: OBSERVE_CONSENT_VERSION, consent: OBSERVE_CONSENT_TEMPLATE, threadId: resumeThread.id }, { idFactory: () => secondId });
       await pauseObserveSession(resumes.observeFile, secondId);
       const resumeResults = await Promise.allSettled([
-        resumeObserveSessionSafe(resumes, firstId),
-        resumeObserveSessionSafe(resumes, secondId)
+        resumeObserveSessionSafe(resumes, firstId, RESUME_INPUT),
+        resumeObserveSessionSafe(resumes, secondId, RESUME_INPUT)
       ]);
       expect(resumeResults.filter((result) => result.status === "fulfilled")).toHaveLength(1);
       expect((await readObserveState(resumes.observeFile)).sessions.filter((session) => session.status === "active")).toHaveLength(1);

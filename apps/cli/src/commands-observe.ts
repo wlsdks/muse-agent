@@ -120,9 +120,31 @@ export function registerObserveCommands(program: Command, io: ProgramIO): void {
     try { write(io, await pauseObserveSession(await observeFile(), sessionId)); } catch (cause) { fail(io, cause); }
   });
 
-  observe.command("resume <sessionId>").action(async (sessionId: string) => {
-    try { write(io, await resumeObserveSessionSafe(files(), sessionId)); } catch (cause) { fail(io, cause); }
-  });
+  observe.command("resume <sessionId>")
+    .requiredOption("--accept-version <version>", "accept exactly the displayed consent version again")
+    .requiredOption("--previous-generation <generation>", "match the paused session consent generation")
+    .requiredOption("--source <source>", "accept the displayed Observe source")
+    .requiredOption("--fields <fields>", "accept the displayed comma-separated field list")
+    .requiredOption("--cadence-ms <milliseconds>", "choose collection cadence (10000-300000)")
+    .requiredOption("--retention-days <days>", "choose retention window (1-365)")
+    .requiredOption("--pause-control <command>", "accept the displayed pause control")
+    .action(async (sessionId: string, options: {
+      readonly acceptVersion: string;
+      readonly cadenceMs: string;
+      readonly fields: string;
+      readonly pauseControl: string;
+      readonly previousGeneration: string;
+      readonly retentionDays: string;
+      readonly source: string;
+    }) => {
+      try {
+        write(io, await resumeObserveSessionSafe(files(), sessionId, {
+          acceptVersion: parseVersion(options.acceptVersion),
+          consent: parseConsent(options),
+          previousGeneration: parseInteger(options.previousGeneration, "--previous-generation")
+        }));
+      } catch (cause) { fail(io, cause); }
+    });
 
   observe.command("forget <sessionId>").description("permanently delete the session and its observations").action(async (sessionId: string) => {
     try { write(io, await forgetObserveSession(await observeFile(), sessionId)); } catch (cause) { fail(io, cause); }

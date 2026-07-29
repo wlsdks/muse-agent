@@ -149,9 +149,18 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     catch (cause) { return sendObserveFailure(reply, cause); }
   });
 
-  server.post<{ Params: { readonly sessionId: string } }>("/api/attunement/observe/sessions/:sessionId/resume", async (request, reply) => {
+  server.post<{
+    Body: { readonly acceptVersion?: unknown; readonly consent?: unknown; readonly previousGeneration?: unknown };
+    Params: { readonly sessionId: string };
+  }>("/api/attunement/observe/sessions/:sessionId/resume", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
-    try { return await resumeObserveSessionSafe({ attunementFile: gate.attunementFile }, request.params.sessionId, observeNow); }
+    try {
+      return await resumeObserveSessionSafe({ attunementFile: gate.attunementFile }, request.params.sessionId, {
+        acceptVersion: request.body?.acceptVersion as number,
+        consent: request.body?.consent as ObserveConsentGrant,
+        previousGeneration: request.body?.previousGeneration as number
+      }, observeNow);
+    }
     catch (cause) { return sendObserveFailure(reply, cause); }
   });
 
