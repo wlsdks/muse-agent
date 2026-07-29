@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import { DaemonStopSignal } from "./commands-daemon-loop.js";
-import { DAEMON_WORKLOAD_UNIT_IDS } from "./daemon-resource-receipt.js";
+import {
+  assessDaemonResourceAdmission,
+  type DaemonResourceSnapshot
+} from "./daemon-resource-admission.js";
+import {
+  DAEMON_WORKLOAD_UNIT_IDS,
+  workloadDecisionReceipt
+} from "./daemon-resource-receipt.js";
+import {
+  emptyDaemonWorkloadProfile,
+  recordDaemonWorkloadReceipt
+} from "./daemon-workload-profile.js";
 import {
   DaemonWorkloadGovernor,
   daemonWorkloadCancelled,
@@ -156,6 +167,91 @@ describe("DaemonWorkloadGovernor", () => {
       status: "boundary"
     });
     expect(calls).toEqual(["pattern", "pattern"]);
+  });
+
+  it("keeps background work unclaimed and records deferral under foreground user pressure", async () => {
+    const foregroundPressure: DaemonResourceSnapshot = {
+      cpuCount: 8,
+      freeMemoryBytes: 4 * 1024 * 1024 * 1024,
+      idleMs: 1_000,
+      load1: 1,
+      onAcPower: true,
+      platform: "darwin",
+      processCpuSystemMicros: 10,
+      processCpuUserMicros: 20,
+      residentMemoryBytes: 256 * 1024 * 1024,
+      thermalState: "nominal"
+    };
+    const idleHeadroom: DaemonResourceSnapshot = {
+      ...foregroundPressure,
+      idleMs: 300_000
+    };
+    let backgroundClaims = 0;
+    let backgroundEffects = 0;
+    const governor = new DaemonWorkloadGovernor([{
+      id: "pattern",
+      run: async (claim) => {
+        if (!claim!()) return daemonWorkloadCancelled();
+        backgroundClaims += 1;
+        backgroundEffects += 1;
+        return daemonWorkloadCompleted();
+      }
+    }]);
+    const deferredAdmission = assessDaemonResourceAdmission({}, foregroundPressure);
+    const deferredReceipt = workloadDecisionReceipt(
+      deferredAdmission,
+      foregroundPressure,
+      governor.queueDepth,
+      "2026-07-29T00:00:00.000Z"
+    );
+
+    const deferred = await governor.runAdmittedCycle(
+      new DaemonStopSignal(),
+      new Set(),
+      () => ({ status: "defer", token: deferredReceipt })
+    );
+
+    expect(deferredAdmission).toEqual({ reason: "active-user", status: "defer" });
+    expect(deferred).toEqual({
+      claimToken: deferredReceipt,
+      status: "deferred-before-claim"
+    });
+    expect({ backgroundClaims, backgroundEffects }).toEqual({
+      backgroundClaims: 0,
+      backgroundEffects: 0
+    });
+    expect(recordDaemonWorkloadReceipt(
+      emptyDaemonWorkloadProfile("2026-07-29T00:00:00.000Z"),
+      deferredReceipt
+    )).toMatchObject({
+      admitted: 0,
+      boundaries: 0,
+      deferred: 1
+    });
+
+    const admittedAdmission = assessDaemonResourceAdmission({}, idleHeadroom);
+    const admittedReceipt = workloadDecisionReceipt(
+      admittedAdmission,
+      idleHeadroom,
+      governor.queueDepth,
+      "2026-07-29T00:01:00.000Z"
+    );
+    const admitted = await governor.runAdmittedCycle(
+      new DaemonStopSignal(),
+      new Set(),
+      () => ({ status: "admit", token: admittedReceipt })
+    );
+
+    expect(admittedAdmission).toEqual({ status: "admit" });
+    expect(admitted).toMatchObject({
+      boundary: { unit: "pattern" },
+      claimToken: admittedReceipt,
+      status: "boundary"
+    });
+    expect({ backgroundClaims, backgroundEffects }).toEqual({
+      backgroundClaims: 1,
+      backgroundEffects: 1
+    });
   });
 
   it.each(["admit", "defer"] as const)("lets synchronous stop outrank a %s gate decision", async (status) => {
