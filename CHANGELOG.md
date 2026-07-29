@@ -8,6 +8,20 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified private fair frontier bundle-order kernel for the
+  agent-native graph. It orders caller-declared opportunities carrying syntactically valid
+  proof-document IDs across five caller-declared lanes—Continuity, Change, Evidence, Policy,
+  and Authority—and emits one content-addressed, permutation-stable round-robin order. In a 255-opportunity adversarial
+  case where one lane held 251 items, all five lanes appeared in the first five ranks;
+  exact per-lane counts, dense ranks, deterministic rotation, hostile-input admission,
+  frozen re-verification, and internal-ID rejection are receipted. A fresh Sol/high review
+  caught and closed a caller-supplied internal `admissionId` bypass; runtime probes confirmed
+  zero getter and Proxy-trap execution. All 181 package tests, standalone independent oracle,
+  package/root typechecks, build, lint, changed tests, and diff checks passed. This kernel
+  proves opportunity-order fairness only: lane semantics remain caller-declared, coverage is
+  partial, and witness derivation, six-axis budget-admission fairness, authoritative
+  snapshots, persistence, runtime/UI composition, and public exports remain pending.
+
 - Added the independently verified private exact thread-rooted graph witness compiler.
   Hostile caller input is admitted separately from its normalized semantic request
   identity, then one exact Continuity thread seeds a bounded, deterministic traversal over
