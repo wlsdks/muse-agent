@@ -53,6 +53,14 @@ links, delivery evidence, explicit outcomes, policy versions/revisions, and fact
 interaction evidence become content-addressed assertions with scope-safe deltas. The
 authoritative store and projector share one I/O-free `unknown → AttunementState` parser;
 the graph never reads or owns the file.
+The first real-source boundary is now implemented outside this package: the trusted
+`@muse/attunement/host` factory performs one byte-bounded read of its configured local
+Attunement file and mints a process-local capture. A narrow I/O-free verification subpath
+separates serializable receipt integrity from exact in-process Provider provenance,
+exposes the complete normalized state only as a non-enumerable immutable string, and
+labels freshness `unassessed`. Missing source or thread availability abstains without an
+absence claim. Binding this capture into graph projection and the existing receipt-bound
+evidence compiler is the next seam; no runtime or Capsule consumes it yet.
 AWG-030 adds the first verified personal-temporal operator: an isolated
 `/continuity-changes` query over two immutable observations and one caller-declared,
 version-bound boundary. It normalizes identical-source re-observation, classifies

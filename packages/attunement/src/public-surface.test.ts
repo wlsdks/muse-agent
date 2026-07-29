@@ -66,6 +66,8 @@ describe("@muse/attunement public authority surface", () => {
     expect("deletePersonalThread" in publicSurface).toBe(false);
     expect("deletePersonalThreadWorkSafe" in publicSurface).toBe(false);
     expect(Object.keys(hostSurface).sort()).toEqual([
+      "LocalAttunementSnapshotProviderError",
+      "createLocalAttunementSnapshotProvider",
       "createObserveActiveAppSource",
       "createObserveCollector",
       "createObserveRunner",

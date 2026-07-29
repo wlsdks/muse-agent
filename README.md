@@ -72,6 +72,14 @@ boundary, project one caller-supplied current snapshot, and return the same expl
 result as the raw state-to-state query.
 That receipt is caller-declared integrity input for the future Capsule—not proof of an
 external observation, automatic stop-point detection, persistence, or the Capsule itself.
+Muse now also has a bounded trusted-host Provider that reads one configured local
+Attunement file and mints a process-local, content-addressed snapshot capture. Its
+serializable receipt proves integrity only; exact Provider provenance belongs to the
+in-process capture, freshness remains `unassessed`, and missing data never becomes an
+absence claim. This closes the first real-source boundary for the Agent Graph without
+making the graph read files or depend on an external Graph DB. Projection into graph
+evidence, runtime/Capsule wiring, durable authority, and user-visible behavior remain
+roadmap work.
 See the separate [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse console home — model chip, integrations, and what Muse has learned" width="860" /></p>

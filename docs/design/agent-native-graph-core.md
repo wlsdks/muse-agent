@@ -605,8 +605,13 @@ Do not build the database first.
    locally closed witness, generic `LINKED_TO` abstains, and a bounded subset-feasibility
    composer separately receipts fair opportunity order and actual six-axis admission while
    continuing after an oversized bundle. The generic v1 ledger is unchanged.
-   **AWG-050a3** still owns authoritative snapshot/freshness Provider composition and
-   verified Continuity `resumeContext`. Pure and in-memory until those semantics pass.
+   **AWG-050a3a is complete:** one trusted-host Provider now performs a byte-bounded read
+   of its configured local Attunement file, produces a whole-state content-addressed
+   capture, and separates process-local mint provenance from serializable receipt
+   integrity. Freshness remains `unassessed`; missing scope does not establish absence.
+   **AWG-050a3b** still owns verified capture → graph projection/Observation Receipt →
+   receipt-bound evidence composition. Verified Continuity `resumeContext` remains a
+   later 050a3 seam. Pure and in-memory until those semantics pass.
 4. **AWG-050b — Shadow decision receipt:** `silent | digest | offer`, bounded reason and
    counterfactual, later return timing; no sending, action, or chain-of-thought storage.
 5. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
@@ -629,7 +634,8 @@ subset feasibility → exact context bytes. This is an end-to-end claim only ove
 caller-declared witness pool and actual six-axis budget; it is not a source-truth,
 causality, completeness, or user-value claim. The compiler still reports partial coverage
 and makes no authoritative freshness, absence, permission, or action claim. AWG-050a3
-Provider composition is the next eligible PLAN. Persistence is explicitly out of scope
+now has a verified configured-local Provider capture boundary, but the capture-to-graph
+binding is the next eligible PLAN. Persistence is explicitly out of scope
 until the Shadow and Policy workloads make the backend requirements real.
 
 Core semantic and persistence PLAN work uses `gpt-5.6-sol` at `ultra` or `xhigh`;

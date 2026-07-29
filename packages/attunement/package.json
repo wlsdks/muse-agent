@@ -15,6 +15,10 @@
     "./continuity-source-observations": {
       "types": "./dist/continuity-source-observations.d.ts",
       "import": "./dist/continuity-source-observations.js"
+    },
+    "./continuity-snapshots": {
+      "types": "./dist/continuity-snapshots.d.ts",
+      "import": "./dist/continuity-snapshots.js"
     }
   },
   "scripts": { "build": "tsc -b", "test": "vitest run", "typecheck": "tsc -p tsconfig.json --noEmit" },

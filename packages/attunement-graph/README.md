@@ -25,6 +25,11 @@ path plus completeness-or-abstention contract, not arbitrary model-generated gra
 It does **not** own authoritative personal data, durable persistence, LLM extraction,
 runtime scheduling, policy promotion, approval, or action execution. Factual task
 interaction receipts are projected only as evidence/correlation, never as user outcomes.
+The configured-local snapshot Provider therefore lives behind
+`@muse/attunement/host`, while its I/O-free receipt and process-local mint verifiers live
+behind `@muse/attunement/continuity-snapshots`. The graph package will consume only a
+verified minted capture in the next binding seam; it still never reads the Attunement
+file itself.
 The adapter is exposed from `@muse/attunement-graph/continuity`, so importing the kernel
 root does not eagerly load Attunement validation or personal-store dependencies.
 

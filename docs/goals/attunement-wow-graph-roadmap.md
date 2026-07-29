@@ -3,7 +3,7 @@ title: Attunement wow + graph roadmap
 audience: [product, engineering, agents]
 purpose: Run the signature Muse experience and Attunement Graph as a separate long-lived program
 status: active
-updated: 2026-07-29
+updated: 2026-07-30
 related: [../strategy/attunement.md, ../design/attunement-graph.md, ../design/agent-native-graph-core.md, attunement-implementation-plan.md]
 ---
 
@@ -63,7 +63,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-040** | Continuity Capsule v1 | User-invoked, library-only Capsule renders the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer | in progress (`AWG-040b/c` verified library-only; application integration and exact-stop capture pending) |
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
-| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` settlement, `050a2a` exact thread-rooted witnesses, `050a2b1` fair opportunity ordering, `050a2b2` witness-derived fair context admission, and `050a2c` receipt-bound Agent Graph evidence compilation independently verified; authoritative Providers `050a3` pending) |
+| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` settlement, `050a2a` exact thread-rooted witnesses, `050a2b1` fair opportunity ordering, `050a2b2` witness-derived fair context admission, `050a2c` receipt-bound Agent Graph evidence compilation, and `050a3a` configured-local Provider capture independently verified; Provider→graph binding `050a3b` pending) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-070** | Storage bake-off | Prove the Muse-owned local default first; compare PostgreSQL and at most one embedded candidate only as optional Adapters on correctness, cost, recovery, portability, and maintenance | pending |
@@ -74,7 +74,7 @@ Raw numbering does not activate work. Before each BUILD slice, inspect current s
 classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `monitoring`,
 `blocked`, `deferred`, `rejected`, or `superseded`. Implement only the missing delta.
 
-## Next eligible activation: AWG-050a3 authoritative Provider composition PLAN
+## Next eligible activation: AWG-050a3b Provider-to-graph binding PLAN
 
 Independent Sol-class architecture reviews converged on a semantic prerequisite before the
 Shadow ledger or durable database:
@@ -120,16 +120,61 @@ Shadow ledger or durable database:
   frontier outcomes, and source/action authority fail closed. The linked evidence artifacts
   are content-addressed and independently capped; the aggregate is not advertised as one
   prompt payload.
-- **AWG-050a3 (next PLAN):** compose authoritative snapshot/freshness Providers and the
-  verified Continuity observation/change/Capsule `resumeContext` grammar.
+- **AWG-050a3a (completed trusted-host boundary):** one Provider performs a single
+  byte-bounded read of the configured local Attunement file and returns a whole-state,
+  content-addressed process-local capture. Its serializable receipt proves integrity only;
+  exact Provider provenance is bound to the in-process minted object, freshness remains
+  `unassessed`, and missing scope abstains without asserting absence. File I/O remains
+  outside `@muse/attunement-graph`.
+- **AWG-050a3b (next PLAN):** verify the minted capture before state access, recompute its
+  bytes/digest, bind its exact scope into the existing graph projection and Observation
+  Receipt, then feed only that verified result to receipt-bound Agent Graph evidence.
+  Later 050a3 seams own actual freshness comparison and verified Continuity
+  `resumeContext`; this slice must not absorb them.
 
 The full decision and dissent are in
 [Muse Agent-Native Graph Core](../design/agent-native-graph-core.md). Those earlier
 fail-closed findings produced AWG-045a/045b and the now verified
-AWG-050a1/050a2a/050a2b1/050a2b2/050a2c seams rather than being bypassed. This is still private
-deterministic substrate, not shipped `resumeContext` or user-visible wow. AWG-050a3
-remains closed to source changes until a new bounded PLAN passes. AWG-050b then owns the
-actual Shadow `silent | digest | offer` decision receipt and counterfactual.
+AWG-050a1/050a2a/050a2b1/050a2b2/050a2c seams rather than being bypassed. The Provider
+capture is a trusted host seam, while the graph compiler remains private deterministic
+substrate. Neither is shipped `resumeContext` or user-visible wow. AWG-050a3b remains
+closed to source changes until a new bounded PLAN passes. AWG-050b then owns the actual
+Shadow `silent | digest | offer` decision receipt and counterfactual.
+
+## Completed slice: AWG-050a3a
+
+- **Product meaning:** call this capability **provider-observed configured-local
+  Attunement snapshot**. Muse can now take one bounded, coherent local source read and
+  hand the future Agent Graph an immutable whole-state snapshot without making the graph
+  package read files or depend on an external graph database.
+- **Classification at activation:** `missing` — graph projection and receipt integrity
+  existed, but no trusted host capability could attest that input came from one configured
+  local Attunement read.
+- **Status:** `completed trusted-host boundary`. The host factory and narrow verification
+  subpath are exported; the root barrel, persisted store schema/bytes, graph exports,
+  runtime/UI, source observation codecs, recall freshness reducer, and stores are
+  unchanged. It does not yet produce graph evidence, Capsule `resumeContext`, Shadow
+  decisions, durable authority, or a user-visible feature.
+- **Authority boundary:** the serializable receipt is `receipt-integrity-only`; Provider
+  provenance belongs only to the exact module-minted process-local capture. JSON clones
+  and correctly intact receipts cannot recreate it. `captureCompletedAt` is a terminal
+  completion bound, not observation freshness, and coverage never asserts source,
+  snapshot, or current-world absence.
+- **Privacy and bounds:** raw and normalized state are independently capped at 4 MiB; the
+  receipt is capped at 8 KiB. The normalized whole state is a non-enumerable immutable
+  in-memory string and is excluded from receipt/capture serialization, errors, paths,
+  traces, persistence, and external transmission in this seam.
+- **Maker and gates:** Codex root/high implemented the Provider and adversarial tests from
+  a Sol/high-approved PLAN; an independent Terra/high worker produced the standalone
+  boundary verifier. Fresh independent completion evaluation is recorded in the landing
+  commit.
+- **Acceptance evidence:** 26 focused adversarial tests, all 323 Attunement tests, and all
+  228 existing Agent Graph tests passed. Attunement/Graph typechecks, Attunement build,
+  repository TS7 fast typecheck, changed tests, standalone public-subpath verification,
+  changed-file lint, diff check, and fresh CodeGraph passed.
+- **Rollback:** delete the Provider source/test/verifier, remove the trusted-host export,
+  narrow `continuity-snapshots` export-map entry and surface test additions, and remove
+  this documentation. No migration or user-data cleanup is required.
 
 ## Completed slice: AWG-050a2c
 

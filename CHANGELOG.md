@@ -8,6 +8,22 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified **provider-observed configured-local Attunement
+  snapshot**, the first real-source boundary for Muse's agent-native graph. A trusted-host
+  Provider now opens one configured local Attunement file, reads no more than 4 MiB plus
+  one sentinel byte, validates/upgrades it through the canonical state parser, and returns
+  a whole-state content-addressed process-local capture. The serializable receipt proves
+  integrity only; exact Provider provenance is bound to the module-minted object, JSON
+  reconstruction fails closed, freshness remains `unassessed`, and missing source/thread
+  availability never becomes an absence claim. Personal state is independently capped,
+  non-enumerable, immutable, and absent from capture/receipt serialization and stable
+  errors. Twenty-six focused adversarial tests, all 323 Attunement tests, all 228 existing
+  Agent Graph tests, package/root TS7 typechecks, build, changed tests, standalone
+  public-subpath verification, lint, diff check, and a fresh independent completion gate
+  passed. This does not yet bind the capture into graph evidence or ship Capsule,
+  `resumeContext`, Shadow, persistence, durable authority, external graph databases,
+  runtime/UI behavior, or user-visible wow.
+
 - Added independently verified, package-private **receipt-bound Agent Graph evidence
   compilation**. One verified Continuity Observation Receipt now rebuilds a fresh private
   Muse graph, derives its opaque thread seed, performs exactly one bounded Activation

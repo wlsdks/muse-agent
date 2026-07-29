@@ -20,3 +20,11 @@ export {
   type ObserveRunnerEnvironmentOptions
 } from "./observe-runtime.js";
 export { prepareProductionAuthorizedContinuityTaskCompletionInteraction } from "./continuity-interaction-outbox.js";
+export {
+  createLocalAttunementSnapshotProvider,
+  LocalAttunementSnapshotProviderError,
+  type LocalAttunementSnapshotProvider,
+  type LocalAttunementSnapshotProviderErrorCode,
+  type LocalAttunementSnapshotProviderErrorReason,
+  type LocalAttunementSnapshotProviderOptions
+} from "./local-attunement-snapshot-provider.js";
