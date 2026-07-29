@@ -3,7 +3,7 @@ import type { JsonObject } from "@muse/shared";
 
 export type SpanAttributes = Readonly<Record<string, string | number | boolean>>;
 export type OutputGuardMetricAction = "allowed" | "modified" | "rejected";
-export type AgentRunMetricStatus = "completed" | "failed";
+export type AgentRunMetricStatus = "cancelled" | "completed" | "failed";
 export type FollowupSuggestionEventKind = "impression" | "click";
 
 export interface MuseTracer {
@@ -295,4 +295,3 @@ export {
   type TokenUsageGroup,
   type TokenUsageSummary
 } from "./observability-token-usage-local.js";
-

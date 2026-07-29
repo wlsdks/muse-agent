@@ -731,6 +731,11 @@ export class AgentRuntime {
     readonly summaryAppliedMessageCount: number;
   }): Promise<ModelResponse> {
     const { cacheKey, context, execution, preparedRequest, promptBudget, runSpan, selected, startedAtMs, summaryAppliedMessageCount } = args;
+    // Preserve the loop's terminal classification across response filters and
+    // output guards. Those stages may replace response objects (including
+    // their ids), but they must not turn an interrupted run into a successful
+    // completion with cache/hook/summary side effects.
+    const interrupted = execution.finalResponse.id === "interrupted";
     const filtered = await applyResponseFiltersFn(
       context,
       execution.finalResponse,
@@ -740,7 +745,17 @@ export class AgentRuntime {
     );
     const guarded = await applyOutputGuardsFn(context, filtered, this.outputGuards, this.tracer, this.metrics);
 
-    await this.recordRunComplete(context, { ...execution, finalResponse: guarded });
+    await this.recordRunComplete(context, {
+      ...execution,
+      finalResponse: interrupted ? { ...guarded, id: "interrupted" } : guarded
+    });
+    if (interrupted) {
+      await this.recordCheckpoint(context, 100, "cancelled", context.input.messages, guarded.output);
+      this.recordAgentRun(context, guarded.model, "cancelled", startedAtMs);
+      runSpan.setAttribute("run.latency_ms", Date.now() - startedAtMs);
+      return guarded;
+    }
+
     await this.recordCheckpoint(context, 100, "complete", context.input.messages, guarded.output);
     await this.writeCache(cacheKey, guarded, execution.toolsUsed);
     if (preparedRequest.contextWindow?.summaryInserted) {
@@ -1170,7 +1185,7 @@ export class AgentRuntime {
   private recordAgentRun(
     context: AgentRunContext,
     model: string,
-    status: "completed" | "failed",
+    status: "cancelled" | "completed" | "failed",
     startedAtMs: number
   ): void {
     this.metrics.recordAgentRun({

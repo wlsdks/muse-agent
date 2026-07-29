@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { InMemoryAgentSpecRegistry, RuleBasedAgentSpecResolver } from "@muse/agent-specs";
+import { InMemoryResponseCache } from "@muse/cache";
 import { ModelProviderRegistry, type ModelProvider, type ModelRequest, type ModelResponse } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryMuseTracer } from "@muse/observability";
 import { InMemoryExemplarRetriever, InMemoryPromptLayerRegistry } from "@muse/prompts";
@@ -39,6 +40,7 @@ import {
   extractJsonArray,
   GuardBlockedError,
   HookRegistry,
+  InMemoryTelemetryAggregator,
   ModelRoutingError,
   OutputGuardBlockedError,
   MAX_PLAN_STEPS,
@@ -1585,11 +1587,21 @@ describe("AgentRuntime", () => {
       { definition: { description: "x", inputSchema: { type: "object" }, name: "do_thing", risk: "read" }, execute: executeTool }
     ]);
     const generate = vi.fn(async (request: { model: string }) => ({ id: "r", model: request.model, output: "should not be reached" }));
+    const afterComplete = vi.fn();
+    const checkpointStore = new InMemoryCheckpointStore();
     const historyStore = new InMemoryAgentRunHistoryStore();
+    const metrics = new InMemoryAgentMetrics();
+    const responseCache = new InMemoryResponseCache();
+    const telemetryAggregator = new InMemoryTelemetryAggregator();
     const runtime = createAgentRuntime({
+      checkpointStore,
       historyStore,
+      hooks: [{ afterComplete, id: "completion-observer" }],
       maxToolCalls: 3,
+      metrics,
       modelProvider: { id: "p", generate, async listModels() { return []; }, async *stream() { /* unused */ } },
+      responseCache,
+      telemetryAggregator,
       toolRegistry
     });
     const controller = new AbortController();
@@ -1610,6 +1622,69 @@ describe("AgentRuntime", () => {
       status: "cancelled"
     });
     expect(await historyStore.listToolCalls("run-aborted")).toEqual([]);
+    expect((await checkpointStore.findByRunId("run-aborted")).map((checkpoint) => checkpoint.state.phase)).toEqual([
+      "start",
+      "cancelled"
+    ]);
+    expect(responseCache.size()).toBe(0);
+    expect(afterComplete).not.toHaveBeenCalled();
+    expect(metrics.recordedEvents()).toContainEqual({
+      payload: expect.objectContaining({
+        runId: "run-aborted",
+        status: "cancelled"
+      }),
+      type: "agent_run"
+    });
+    expect(telemetryAggregator.recent(10)).toEqual([]);
+  });
+
+  it("does not persist a prepared compaction summary when cancellation interrupts tool admission", async () => {
+    const controller = new AbortController();
+    const conversationSummaryStore = new InMemoryConversationSummaryStore();
+    const saveSummary = vi.spyOn(conversationSummaryStore, "save");
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "x",
+          inputSchema: { type: "object" },
+          name: "do_thing",
+          risk: "read"
+        },
+        execute: vi.fn(() => ({ ok: true }))
+      }
+    ]);
+    const provider = createProvider(
+      {
+        output: "I will do it.",
+        toolCalls: [{ arguments: {}, id: "tc-abort", name: "do_thing" }]
+      },
+      "p",
+      () => controller.abort()
+    );
+    const runtime = createAgentRuntime({
+      contextWindow: { maxContextWindowTokens: 1_500, outputReserveTokens: 100 },
+      conversationSummaryStore,
+      modelProvider: provider,
+      toolRegistry
+    });
+    const messages = [
+      ...Array.from({ length: 20 }, (_, index) => [
+        { content: `User question ${index.toString()} `.repeat(80), role: "user" as const },
+        { content: `Assistant answer ${index.toString()} `.repeat(80), role: "assistant" as const }
+      ]).flat(),
+      { content: "do the thing", role: "user" as const }
+    ];
+
+    const result = await runtime.run({
+      messages,
+      metadata: { sessionId: "session-aborted-summary" },
+      model: "provider/model",
+      runId: "run-aborted-summary",
+      signal: controller.signal
+    });
+
+    expect(result.response.output).toBe("(run interrupted)");
+    expect(saveSummary).not.toHaveBeenCalled();
   });
 
   it("toolApprovalGate can block an execute-risk call before the executor runs", async () => {

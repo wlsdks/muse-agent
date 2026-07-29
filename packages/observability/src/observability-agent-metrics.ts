@@ -134,7 +134,12 @@ export function createDerivedAgentMetrics(options: DerivedAgentMetricsOptions): 
   return {
     recordAgentRun(event) {
       slo?.recordLatency(event.durationMs);
-      slo?.recordResult(event.status === "completed");
+      // Caller cancellation is neither agent success nor agent failure.
+      // Retain latency visibility while excluding it from the error-rate
+      // denominator so user interrupts cannot manufacture SLO incidents.
+      if (event.status !== "cancelled") {
+        slo?.recordResult(event.status === "completed");
+      }
       inner.recordAgentRun(event);
     },
     recordGuardRejection(stage, reason, metadata) {

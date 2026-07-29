@@ -69,4 +69,22 @@ describe("createDerivedAgentMetrics — the detector fan-out", () => {
     expect(slo.snapshot()).toMatchObject({ latencySamples: 1, resultSamples: 1 });
     expect(slo.snapshot().errorRate).toBe(1); // the one run failed
   });
+
+  it("records cancelled latency without counting cancellation as an SLO result", () => {
+    const slo = new SloAlertEvaluator({ cooldownSeconds: 0, errorRateThreshold: 0.2, latencyThresholdMs: 100, minSamples: 1, now: () => 1000, windowSeconds: 60 });
+    const inner = new InMemoryAgentMetrics();
+    const m = createDerivedAgentMetrics({ inner, slo });
+
+    m.recordAgentRun({ durationMs: 10, model: "test", runId: "cancelled", status: "cancelled" });
+
+    expect(slo.snapshot()).toMatchObject({
+      errorRate: null,
+      latencySamples: 1,
+      resultSamples: 0
+    });
+    expect(inner.recordedEvents()).toContainEqual({
+      payload: expect.objectContaining({ runId: "cancelled", status: "cancelled" }),
+      type: "agent_run"
+    });
+  });
 });
