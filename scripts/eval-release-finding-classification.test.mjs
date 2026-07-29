@@ -78,7 +78,7 @@ function priorClassification(release, verdict = "false-positive") {
       findingCount: findings.length,
     },
     status: "slice-classified",
-    generatedAt: "2026-07-29T00:00:00.000Z",
+    generatedAt: "2026-07-29T00:00:00Z",
     inputHashAlgorithm: "sha256",
     inputHashContract: "sha256(utf8(JSON.stringify(inputHashPreimage)))",
     inputHashPreimage: preimage,

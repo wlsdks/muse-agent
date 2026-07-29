@@ -573,7 +573,10 @@ function canonicalJson(value) {
 function exactIsoTimestamp(value) {
   if (typeof value !== "string") return false;
   const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
+  if (!Number.isFinite(parsed)) return false;
+  const canonical = new Date(parsed).toISOString();
+  return value === canonical
+    || (canonical.endsWith(".000Z") && value === canonical.replace(".000Z", "Z"));
 }
 
 function sha256(value) {
