@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { NOTES_INDEX_SCHEMA_VERSION, runGroundedRecall, type GroundedRecallInput } from "@muse/recall";
+import { createNotesMcpServer } from "@muse/domain-tools";
+import { NOTES_INDEX_SCHEMA_VERSION, reindexNotes, runGroundedRecall, type GroundedRecallInput } from "@muse/recall";
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -68,6 +69,91 @@ function parseSseFrames(body: string): SseFrame[] {
 }
 
 describe("POST /api/ask — grounded recall on the API surface", () => {
+  it("Core100-057: captures an exact MCP note, reindexes it locally, and refuses an unsupported synthesis", async () => {
+    const capturedRelativePath = "inbox/2026-07-29.md";
+    const capturedPath = join(notesDir, capturedRelativePath);
+    const capturedBytes = "# Inbox — 2026-07-29\n\nThe patio heater must remain OFF during rain.\n";
+    await rm(join(notesDir, "vpn.md"), { force: true });
+    await rm(indexFile, { force: true });
+
+    const append = createNotesMcpServer({ notesDir }).tools.find((tool) => tool.name === "append");
+    expect(append).toBeDefined();
+    const appendResult = await append!.execute({ content: capturedBytes, path: capturedRelativePath });
+    expect(appendResult).toEqual({ path: capturedRelativePath, sizeBytes: Buffer.byteLength(capturedBytes, "utf8") });
+    expect(await readFile(capturedPath)).toEqual(Buffer.from(capturedBytes, "utf8"));
+
+    let embeddingCalls = 0;
+    const embeddingPrompts: string[] = [];
+    const reindexed = await reindexNotes({
+      baseUrlResolver: () => "http://127.0.0.1:11434",
+      dir: notesDir,
+      fetchImpl: (async (_url, init) => {
+        embeddingCalls += 1;
+        embeddingPrompts.push((JSON.parse(String(init?.body)) as { prompt: string }).prompt);
+        return new Response(JSON.stringify({ embedding: [0, 1, 0] }), { status: 200 });
+      }) as typeof globalThis.fetch,
+      force: true,
+      indexPath: indexFile,
+      model: EMBED_MODEL
+    });
+    expect(reindexed).toMatchObject({ embedded: 1, status: "complete", totalFiles: 1 });
+    expect(embeddingCalls).toBe(1);
+    expect(embeddingPrompts).toEqual([`[2026-07-29.md] ${capturedBytes.trim()}`]);
+
+    let supportedEmbedCalls = 0;
+    let supportedGenerationCalls = 0;
+    const grounded = await runGroundedRecall({
+      options: { answerModel: "test-answerer", embedModel: EMBED_MODEL },
+      query: "What must the patio heater do during rain?",
+      runtime: {
+        embedFn: async (text) => {
+          supportedEmbedCalls += 1;
+          return fakeEmbed(text);
+        },
+        generateAnswer: async () => {
+          supportedGenerationCalls += 1;
+          return "The patio heater must remain OFF during rain. [from inbox/2026-07-29.md]";
+        }
+      },
+      sources: { notesDir, notesIndexFile: indexFile }
+    });
+    expect(supportedEmbedCalls).toBe(1);
+    expect(supportedGenerationCalls).toBe(1);
+    expect(grounded.answer).toContain("The patio heater must remain OFF during rain.");
+    expect(grounded.citations).toEqual([capturedRelativePath]);
+    expect(grounded.refusal).toBe(false);
+    expect(grounded.verdict).toBe("confident");
+    expect(grounded.scored.map((source) => source.file)).toEqual([capturedPath]);
+    expect(grounded.scored.map((source) => source.chunk.text)).toEqual([capturedBytes.trim()]);
+    expect(await readFile(capturedPath)).toEqual(Buffer.from(capturedBytes, "utf8"));
+
+    let unsupportedEmbedCalls = 0;
+    let unsupportedGenerationCalls = 0;
+    const unsupported = await runGroundedRecall({
+      options: { answerModel: "test-answerer", embedModel: EMBED_MODEL },
+      query: "When does the ghost thermostat open the gate?",
+      runtime: {
+        embedFn: async (text) => {
+          unsupportedEmbedCalls += 1;
+          return fakeEmbed(text);
+        },
+        generateAnswer: async () => {
+          unsupportedGenerationCalls += 1;
+          return "The ghost thermostat opens the gate at midnight. [from ghost.md]";
+        }
+      },
+      sources: { notesDir, notesIndexFile: indexFile }
+    });
+    expect(unsupportedEmbedCalls).toBe(1);
+    expect(unsupportedGenerationCalls).toBe(1);
+    expect(unsupported.refusal).toBe(true);
+    expect(unsupported.citations).toEqual([]);
+    expect(unsupported.strippedCitations).toContain("ghost.md");
+    expect(unsupported.answer).not.toContain("ghost thermostat");
+    expect(unsupported.answer).not.toContain("midnight");
+    expect(unsupported.answer).not.toContain("[from");
+  });
+
   it("answers with the surviving citation, verdict, and receipts", async () => {
     const server = Fastify();
     registerAskRoutes(server, routeOptions("Your VPN MTU is 1380. [from vpn.md]"));
