@@ -14,6 +14,7 @@ import {
   createBrowserTypeTool,
   createBrowserWaitTool,
   statusFields,
+  type BrowserActionDraft,
   type BrowserApprovalGate
 } from "../src/browser-tools.js";
 import type { BrowserController, PageSnapshot, SnapshotElement, WaitCondition, WaitOutcome } from "../src/controller.js";
@@ -308,7 +309,7 @@ describe("navigation-status fidelity — an HTTP error page must not pass for th
 
   it("browser_type submit that lands on a 500 surfaces statusError", async () => {
     const controller = new FakeController();
-    controller.type = async () => withStatus(500);
+    controller.pressKey = async () => withStatus(500);
     const out = await createBrowserTypeTool({ approvalGate: allow, controller }).execute({ target: "Email", text: "q", submit: true }, ctx) as { typed: boolean; httpStatus?: number; statusError?: string };
     expect(out.typed).toBe(true);
     expect(out.httpStatus).toBe(500);
@@ -720,20 +721,163 @@ describe("browser_type — target grounding + draft-first", () => {
     expect(c.calls).toEqual(["snapshot"]);
   });
 
-  it("the gate draft shows the typed text (and ⏎ when submitting)", async () => {
+  it("shows separate type and submit drafts with the exact payload", async () => {
     const c = new FakeController();
-    let seen: { text?: string } | undefined;
-    const tool = createBrowserTypeTool({ approvalGate: (d) => { seen = d; return { approved: false }; }, controller: c });
+    const seen: Array<{ action: string; text?: string }> = [];
+    const tool = createBrowserTypeTool({
+      approvalGate: (draft) => {
+        seen.push(draft);
+        return { approved: true };
+      },
+      controller: c
+    });
     await tool.execute({ submit: true, target: "Email", text: "laptop" }, ctx);
-    expect(seen?.text).toContain("laptop");
-    expect(seen?.text).toContain("submit");
+    expect(seen).toMatchObject([
+      { action: "type", text: "laptop" },
+      { action: "submit", text: "laptop" }
+    ]);
   });
 
-  it("a CONFIRMED type resolves the target and acts with (ref, text, submit)", async () => {
+  it("freezes both approval drafts so a gate cannot rewrite the payload", async () => {
+    const c = new FakeController();
+    const drafts: BrowserActionDraft[] = [];
+    const tool = createBrowserTypeTool({
+      approvalGate: (draft) => {
+        drafts.push(draft);
+        try {
+          (draft as { text?: string }).text = "rewritten";
+        } catch {
+          // Expected in strict mode: the authority snapshot is immutable.
+        }
+        return { approved: true };
+      },
+      controller: c
+    });
+    await tool.execute({ submit: true, target: "Email", text: "original" }, ctx);
+    expect(drafts).toHaveLength(2);
+    expect(drafts.every(Object.isFrozen)).toBe(true);
+    expect(drafts.map((draft) => draft.text)).toEqual(["original", "original"]);
+    expect(c.calls).toEqual(["snapshot", "type:5:original:false", "key:Enter"]);
+  });
+
+  it("a separately confirmed submit types without submit, then presses Enter", async () => {
     const c = new FakeController();
     const tool = createBrowserTypeTool({ approvalGate: allow, controller: c });
-    expect(await tool.execute({ submit: true, target: "Email", text: "laptop" }, ctx)).toMatchObject({ typed: true });
-    expect(c.calls).toEqual(["snapshot", "type:5:laptop:true"]);
+    expect(await tool.execute({ submit: true, target: "Email", text: "laptop" }, ctx)).toMatchObject({
+      submitted: true,
+      typed: true
+    });
+    expect(c.calls).toEqual(["snapshot", "type:5:laptop:false", "key:Enter"]);
+  });
+
+  it("submit denial preserves the completed type but makes zero Enter calls", async () => {
+    const c = new FakeController();
+    let approvals = 0;
+    const tool = createBrowserTypeTool({
+      approvalGate: () => {
+        approvals += 1;
+        return approvals === 1 ? { approved: true } : { approved: false, reason: "submit denied" };
+      },
+      controller: c
+    });
+    const out = await tool.execute({ submit: true, target: "Email", text: "laptop" }, ctx) as {
+      authorityReceipts: { fill: { status: string }; submit: { status: string } };
+      reason?: string;
+      submitted: boolean;
+      typed: boolean;
+    };
+    expect(out).toMatchObject({
+      authorityReceipts: {
+        fill: {
+          action: "type",
+          schemaVersion: "muse.browser-authority-receipt/v1",
+          status: "performed"
+        },
+        submit: {
+          action: "submit",
+          schemaVersion: "muse.browser-authority-receipt/v1",
+          status: "refused"
+        }
+      },
+      reason: "submit denied",
+      submitted: false,
+      typed: true
+    });
+    expect(c.calls).toEqual(["snapshot", "type:5:laptop:false"]);
+  });
+
+  it("submit gate failure and Enter failure remain distinct receipts", async () => {
+    const gateFailure = new FakeController();
+    let gateCalls = 0;
+    const gateOut = await createBrowserTypeTool({
+      approvalGate: () => {
+        gateCalls += 1;
+        if (gateCalls === 2) throw new Error("submit gate down");
+        return { approved: true };
+      },
+      controller: gateFailure
+    }).execute({ submit: true, target: "Email", text: "laptop" }, ctx) as Record<string, unknown>;
+    expect(gateOut).toMatchObject({
+      submitted: false,
+      typed: true
+    });
+    expect(String(gateOut["reason"])).toContain("submit gate down");
+    expect(gateFailure.calls).not.toContain("key:Enter");
+
+    const enterFailure = new FakeController();
+    enterFailure.pressKey = async () => {
+      enterFailure.calls.push("key:Enter");
+      throw new Error("navigation failed");
+    };
+    const enterOut = await createBrowserTypeTool({
+      approvalGate: allow,
+      controller: enterFailure
+    }).execute({ submit: true, target: "Email", text: "laptop" }, ctx) as Record<string, unknown>;
+    expect(enterOut).toMatchObject({
+      authorityReceipts: { submit: { status: "failed" } },
+      submitted: false,
+      typed: true
+    });
+    expect(String(enterOut["error"])).toContain("navigation failed");
+  });
+
+  it("holds submit when the page changes during the second approval", async () => {
+    const c = new FakeController();
+    let url = "https://example.test/";
+    let approvals = 0;
+    c.currentUrl = () => url;
+    const out = await createBrowserTypeTool({
+      approvalGate: () => {
+        approvals += 1;
+        if (approvals === 2) url = "https://example.test/drifted";
+        return { approved: true };
+      },
+      controller: c
+    }).execute({ submit: true, target: "Email", text: "laptop" }, ctx) as Record<string, unknown>;
+    expect(out).toMatchObject({
+      authorityReceipts: { submit: { status: "held" } },
+      reason: "page changed during submit approval; inspect again before submit",
+      submitted: false,
+      typed: true
+    });
+    expect(c.calls).toEqual(["snapshot", "type:5:laptop:false"]);
+  });
+
+  it("reports an acknowledged type failure as unknown with a failed authority receipt", async () => {
+    const c = new FakeController();
+    c.type = async () => {
+      c.calls.push("type:5:laptop:false");
+      throw new Error("settle failed after input");
+    };
+    const out = await createBrowserTypeTool({
+      approvalGate: allow,
+      controller: c
+    }).execute({ target: "Email", text: "laptop" }, ctx) as Record<string, unknown>;
+    expect(out).toMatchObject({
+      authorityReceipts: { fill: { action: "type", status: "failed" } },
+      typed: "unknown"
+    });
+    expect(String(out["error"])).toContain("settle failed after input");
   });
 });
 
@@ -921,11 +1065,104 @@ describe("browser_fill_form — multi-field, ONE draft-first approval, fail-clos
     expect(c.calls).toEqual(["snapshot", "snapshot", "type:1:a@b.com:false", "type:2:hunter2:false"]);
   });
 
-  it("submit true presses Enter ONLY on the last field (no mid-form submit)", async () => {
+  it("submit true fills every field without submit, then separately presses Enter", async () => {
     const c = new FormController();
     const tool = createBrowserFillFormTool({ approvalGate: allow, controller: c });
     await tool.execute({ fields: twoFields, submit: true }, ctx);
-    expect(c.calls).toEqual(["snapshot", "snapshot", "type:1:a@b.com:false", "type:2:hunter2:true"]);
+    expect(c.calls).toEqual([
+      "snapshot",
+      "snapshot",
+      "type:1:a@b.com:false",
+      "type:2:hunter2:false",
+      "key:Enter"
+    ]);
+  });
+
+  it("fill approval cannot authorize submit and the second draft repeats all payload fields", async () => {
+    const c = new FormController();
+    const drafts: Array<{ action: string; fields?: readonly { target: string; value: string }[] }> = [];
+    const tool = createBrowserFillFormTool({
+      approvalGate: (draft) => {
+        drafts.push(draft);
+        return draft.action === "fill"
+          ? { approved: true }
+          : { approved: false, reason: "submit denied" };
+      },
+      controller: c
+    });
+    const out = await tool.execute({ fields: twoFields, submit: true }, ctx) as {
+      filled: boolean;
+      submitted: boolean;
+    };
+    expect(drafts).toMatchObject([
+      {
+        action: "fill",
+        fields: [
+          { target: 'textbox "Email"', value: "a@b.com" },
+          { target: 'textbox "Password"', value: "hunter2" }
+        ]
+      },
+      {
+        action: "submit",
+        fields: [
+          { target: 'textbox "Email"', value: "a@b.com" },
+          { target: 'textbox "Password"', value: "hunter2" }
+        ]
+      }
+    ]);
+    expect(out).toMatchObject({ filled: true, submitted: false });
+    expect(c.calls).not.toContain("key:Enter");
+    expect(drafts.every(Object.isFrozen)).toBe(true);
+    expect(drafts.every((draft) => draft.fields?.every(Object.isFrozen))).toBe(true);
+  });
+
+  it("holds form submit when the page changes during the second approval", async () => {
+    const c = new FormController();
+    let url = "https://app.test/login";
+    let approvals = 0;
+    c.currentUrl = () => url;
+    const out = await createBrowserFillFormTool({
+      approvalGate: () => {
+        approvals += 1;
+        if (approvals === 2) url = "https://app.test/other";
+        return { approved: true };
+      },
+      controller: c
+    }).execute({ fields: twoFields, submit: true }, ctx) as Record<string, unknown>;
+    expect(out).toMatchObject({
+      authorityReceipts: { submit: { status: "held" } },
+      filled: true,
+      reason: "page changed during submit approval; inspect again before submit",
+      submitted: false
+    });
+    expect(c.calls).not.toContain("key:Enter");
+  });
+
+  it("reports committed earlier fields when a later field fails after its effect may have started", async () => {
+    const c = new FormController();
+    c.type = async (ref, text, submit) => {
+      c.calls.push(`type:${ref.toString()}:${text}:${submit.toString()}`);
+      if (ref === 2) throw new Error("second field failed after first committed");
+      return FORM_SNAP;
+    };
+    const out = await createBrowserFillFormTool({
+      approvalGate: allow,
+      controller: c
+    }).execute({ fields: twoFields }, ctx) as Record<string, unknown>;
+    expect(out).toMatchObject({
+      authorityReceipts: { fill: { action: "fill", status: "failed" } },
+      effectStatus: "partial",
+      fields: 2,
+      fieldsCompleted: 1,
+      filled: false
+    });
+    expect(String(out["error"])).toContain("second field failed after first committed");
+    expect(c.calls).toEqual([
+      "snapshot",
+      "snapshot",
+      "type:1:a@b.com:false",
+      "type:2:hunter2:false"
+    ]);
   });
 
   it("the ONE approval draft contains ALL field→value pairs (resolved labels)", async () => {
@@ -1032,6 +1269,34 @@ describe("browser action budget — bounds click/type/fill so a task cannot run 
     expect(String(out.reason)).toMatch(/exhaust|cap/i);
     expect(out.actionsUsed).toBe("actions_used 3/3");
     expect(c.calls.some((call) => call.startsWith("type:"))).toBe(false);
+  });
+
+  it("a second exhausted budget holds submit after typing and makes zero Enter calls", async () => {
+    const c = new FakeController();
+    let attempts = 0;
+    const tool = createBrowserTypeTool({
+      actionBudget: {
+        tryConsume: () => {
+          attempts += 1;
+          return attempts === 1 ? allowedFirst : exhausted;
+        }
+      },
+      approvalGate: allow,
+      controller: c
+    });
+    const out = await tool.execute(
+      { submit: true, target: "Email", text: "hi" },
+      ctx
+    ) as Record<string, unknown>;
+    expect(out).toMatchObject({
+      authorityReceipts: {
+        fill: { status: "performed" },
+        submit: { status: "held" }
+      },
+      submitted: false,
+      typed: true
+    });
+    expect(c.calls).toEqual(["snapshot", "type:5:hi:false"]);
   });
 
   it("browser_fill_form refuses once the budget is exhausted, WITHOUT calling the controller", async () => {

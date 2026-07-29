@@ -13,7 +13,7 @@ import { defangElementName, wrapPageContent } from "./page-content-guard.js";
 import type { PendingDialogDecision, PendingDialogIdentity } from "./pending-dialog-coordinator.js";
 
 export interface BrowserActionDraft {
-  readonly action: "click" | "type" | "key" | "fill" | "upload" | "dialog-decision";
+  readonly action: "click" | "type" | "key" | "fill" | "submit" | "upload" | "dialog-decision";
   readonly url: string;
   /** Human label of the target element ("Sign in" button), or the key for `key`. */
   readonly target: string;

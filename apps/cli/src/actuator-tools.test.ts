@@ -12,7 +12,7 @@ import type { JsonObject } from "@muse/shared";
 import { ToolRegistry } from "@muse/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildActuatorTools, buildBrowserTools, buildCliPendingApprovalStager, buildContactsApprovalGate, buildEmailApprovalGate, buildFsWriteApprovalGate, buildMessagingApprovalGate, buildWebApprovalGate, classifyActuatorPermission, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
+import { buildActuatorTools, buildBrowserApprovalGate, buildBrowserTools, buildCliPendingApprovalStager, buildContactsApprovalGate, buildEmailApprovalGate, buildFsWriteApprovalGate, buildMessagingApprovalGate, buildWebApprovalGate, classifyActuatorPermission, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
 import type { ProgramIO } from "./program.js";
 
 describe("buildMessagingApprovalGate — draft-first, fail-closed in non-TTY", () => {
@@ -176,6 +176,61 @@ describe("buildBrowserTools — separate dialog-decision approval", () => {
     });
     expect(confirmAction).not.toHaveBeenCalled();
     expect(stdout).not.toHaveBeenCalled();
+  });
+});
+
+describe("buildBrowserApprovalGate — separate submit authority", () => {
+  it("renders the exact already-filled payload and asks a distinct submit question", async () => {
+    const stdout: string[] = [];
+    const questions: string[] = [];
+    const gate = buildBrowserApprovalGate({
+      confirmAction: async (question) => {
+        questions.push(question);
+        return false;
+      },
+      io: { ...fakeIo(), stdout: (text) => stdout.push(text) },
+      isInteractive: () => true
+    });
+    await expect(gate({
+      action: "submit",
+      fields: [
+        { target: 'textbox "Email"', value: "a@b.com" },
+        { target: 'textbox "Password"', value: "hunter2" }
+      ],
+      target: "2 fields",
+      url: "https://app.test/login"
+    })).resolves.toEqual({ approved: false, reason: "user did not confirm" });
+    expect(stdout.join("")).toContain('"textbox \\"Email\\"": "a@b.com"');
+    expect(stdout.join("")).toContain('"textbox \\"Password\\"": "hunter2"');
+    expect(stdout.join("")).toContain("https://app.test/login");
+    expect(questions).toEqual(["Submit this payload in the browser?"]);
+  });
+
+  it("sanitizes and bounds type and fill approval values while retaining exact digests", async () => {
+    const stdout: string[] = [];
+    const gate = buildBrowserApprovalGate({
+      confirmAction: async () => false,
+      io: { ...fakeIo(), stdout: (text) => stdout.push(text) },
+      isInteractive: () => true
+    });
+    const hostile = `\u001b[2J${"x".repeat(700)}`;
+    await gate({
+      action: "type",
+      target: hostile,
+      text: hostile,
+      url: `https://app.test/${hostile}`
+    });
+    await gate({
+      action: "fill",
+      fields: [{ target: hostile, value: hostile }],
+      target: "1 field",
+      url: "https://app.test/form"
+    });
+    const rendered = stdout.join("");
+    expect(rendered).not.toContain("\u001b");
+    expect(rendered).toContain("control characters hidden");
+    expect(rendered).toContain("truncated; utf16Length=704; sha256=");
+    expect(rendered.length).toBeLessThan(5_000);
   });
 });
 

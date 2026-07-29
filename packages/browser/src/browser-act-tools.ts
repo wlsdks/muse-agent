@@ -5,6 +5,8 @@
  * browser-tool-primitives.js (a leaf), never from the browser-tools.js hub.
  */
 
+import { createHash } from "node:crypto";
+
 import { errorMessage, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
@@ -42,6 +44,18 @@ export interface PendingDialogBrowserController extends BrowserController {
 export interface BrowserDialogDecisionToolDeps {
   readonly approvalGate: BrowserApprovalGate;
   readonly controller: PendingDialogBrowserController;
+}
+
+function authorityReceipt(
+  draft: BrowserActionDraft,
+  status: "performed" | "refused" | "failed" | "held"
+): JsonObject {
+  return {
+    action: draft.action,
+    payloadDigest: createHash("sha256").update(JSON.stringify(draft), "utf8").digest("hex"),
+    schemaVersion: "muse.browser-authority-receipt/v1",
+    status
+  };
 }
 
 export function createBrowserClickTool(deps: BrowserActToolDeps): MuseTool {
@@ -438,7 +452,8 @@ export function createBrowserTypeTool(deps: BrowserActToolDeps): MuseTool {
         "Type text into a field on the page open in Muse's browser. '검색창에 X 입력하고 검색해줘' / 'type X " +
         "into the search box' means THIS tool — never browser_open (there is no URL to open; the field is on " +
         "the current page). Say WHICH field in `target` — its label or placeholder — and Muse finds it; set " +
-        "`submit` true to press Enter after — e.g. target 'search', text 'wireless mouse', submit true. " +
+        "`submit` true to request a SECOND confirmation before Enter — e.g. target 'search', text " +
+        "'wireless mouse', submit true. Typing approval never authorizes submission. " +
         "Dropdowns too: put the option to choose in `text` (target 'Country', text 'Korea'). " +
         "The user MUST confirm before Muse types (it can submit a form / post to a site); absent " +
         "confirmation nothing happens.",
@@ -448,7 +463,7 @@ export function createBrowserTypeTool(deps: BrowserActToolDeps): MuseTool {
         additionalProperties: false,
         properties: {
           ref: { description: "Advanced: exact field ref from a prior snapshot. Prefer `target` instead.", type: "number" },
-          submit: { description: "true to press Enter after typing (submit the form/search). Default false.", type: "boolean" },
+          submit: { description: "true to ask for a separate final confirmation before pressing Enter. Default false.", type: "boolean" },
           target: { description: "Which field — its label or placeholder, e.g. 'search box' or 'Email'.", type: "string" },
           text: { description: "The text to type, e.g. 'wireless headphones'.", type: "string" }
         },
@@ -478,27 +493,118 @@ export function createBrowserTypeTool(deps: BrowserActToolDeps): MuseTool {
       if ("error" in resolved) {
         return { typed: false, ...resolved.error };
       }
-      const draft: BrowserActionDraft = {
+      const draft: BrowserActionDraft = Object.freeze({
         action: "type",
         target: resolved.label,
-        text: submit ? `${text} ⏎(submit)` : text,
+        text,
         url: deps.controller.currentUrl()
-      };
+      });
       const decision = await resolveGateDecision(deps.approvalGate, draft);
       if (!decision.approved) {
         return { reason: decision.reason, typed: false };
       }
+      let snapshot: PageSnapshot;
       try {
-        const snapshot = await deps.controller.type(resolved.ref, text, submit);
+        snapshot = await deps.controller.type(resolved.ref, text, false);
+      } catch (cause) {
         return {
+          authorityReceipts: { fill: authorityReceipt(draft, "failed") },
+          typed: "unknown",
+          ...errorResult(cause)
+        };
+      }
+      const typeReceipt = authorityReceipt(draft, "performed");
+      if (!submit) {
+        return {
+          authorityReceipts: { fill: typeReceipt },
           typed: true,
           ...snapshotToJson(snapshot),
           ...statusFields(snapshot),
           ...(budget ? { actionsUsed: budget.label, ...(budget.warning ? { budgetWarning: budget.warning } : {}) } : {})
         };
-      } catch (cause) {
-        return { typed: false, ...errorResult(cause) };
       }
+      const submitDraft: BrowserActionDraft = Object.freeze({
+        action: "submit",
+        target: resolved.label,
+        text,
+        url: deps.controller.currentUrl()
+      });
+      if (submitDraft.url !== draft.url) {
+        return {
+          authorityReceipts: {
+            fill: typeReceipt,
+            submit: authorityReceipt(submitDraft, "held")
+          },
+          reason: "page changed after typing; inspect again before submit",
+          submitted: false,
+          typed: true
+        };
+      }
+      const submitBudget = deps.actionBudget?.tryConsume();
+      if (submitBudget && !submitBudget.allowed) {
+        return {
+          actionsUsed: submitBudget.label,
+          authorityReceipts: {
+            fill: typeReceipt,
+            submit: authorityReceipt(submitDraft, "held")
+          },
+          reason: submitBudget.refusal ?? "browser action budget is exhausted before submit",
+          submitted: false,
+          typed: true
+        };
+      }
+      const submitDecision = await resolveGateDecision(deps.approvalGate, submitDraft);
+      if (!submitDecision.approved) {
+        return {
+          authorityReceipts: {
+            fill: typeReceipt,
+            submit: authorityReceipt(submitDraft, "refused")
+          },
+          reason: submitDecision.reason,
+          submitted: false,
+          typed: true
+        };
+      }
+      if (deps.controller.currentUrl() !== submitDraft.url) {
+        return {
+          authorityReceipts: {
+            fill: typeReceipt,
+            submit: authorityReceipt(submitDraft, "held")
+          },
+          reason: "page changed during submit approval; inspect again before submit",
+          submitted: false,
+          typed: true
+        };
+      }
+      try {
+        snapshot = await deps.controller.pressKey("Enter");
+      } catch (cause) {
+        return {
+          authorityReceipts: {
+            fill: typeReceipt,
+            submit: authorityReceipt(submitDraft, "failed")
+          },
+          submitted: false,
+          typed: true,
+          ...errorResult(cause)
+        };
+      }
+      return {
+        authorityReceipts: {
+          fill: typeReceipt,
+          submit: authorityReceipt(submitDraft, "performed")
+        },
+        submitted: true,
+        typed: true,
+        ...snapshotToJson(snapshot),
+        ...statusFields(snapshot),
+        ...(submitBudget
+          ? {
+              actionsUsed: submitBudget.label,
+              ...(submitBudget.warning ? { budgetWarning: submitBudget.warning } : {})
+            }
+          : {})
+      };
     }
   };
 }
@@ -547,8 +653,8 @@ export function createBrowserFillFormTool(deps: BrowserActToolDeps): MuseTool {
         "values for one form at once — a login (email + password), a sign-up, a checkout / address form — " +
         "e.g. 'log in with email a@b.com and password hunter2', '이름·이메일·전화번호 한 번에 채워줘'. Do NOT use " +
         "for a SINGLE field (use browser_type) or to click a button (use browser_click). The user MUST " +
-        "confirm ONCE — Muse shows every field→value pair and fills them all only on confirm; absent " +
-        "confirmation nothing is typed.",
+        "confirm the full field list before filling. If `submit` is true, Muse asks a SECOND confirmation " +
+        "showing the same payload before Enter; fill approval alone never submits.",
       domain: "browser",
       inputSchema: {
         additionalProperties: false,
@@ -567,7 +673,7 @@ export function createBrowserFillFormTool(deps: BrowserActToolDeps): MuseTool {
             minItems: 2,
             type: "array"
           },
-          submit: { description: "true to press Enter after the last field (submit the form). Default false.", type: "boolean" }
+          submit: { description: "true to ask for a separate final confirmation before pressing Enter after filling. Default false.", type: "boolean" }
         },
         required: ["fields"],
         type: "object"
@@ -604,35 +710,136 @@ export function createBrowserFillFormTool(deps: BrowserActToolDeps): MuseTool {
         }
         resolved.push({ label: result.label, ref: result.ref, value: field.value });
       }
-      const draftFields = resolved.map((entry) => ({ target: entry.label, value: entry.value }));
-      const draft: BrowserActionDraft = {
+      const draftFields = Object.freeze(
+        resolved.map((entry) => Object.freeze({ target: entry.label, value: entry.value }))
+      );
+      const draft: BrowserActionDraft = Object.freeze({
         action: "fill",
-        fields: submit ? draftFields.map((entry, i) => (i === draftFields.length - 1 ? { ...entry, value: `${entry.value} ⏎(submit)` } : entry)) : draftFields,
+        fields: draftFields,
         target: `${resolved.length.toString()} fields`,
         url: deps.controller.currentUrl()
-      };
+      });
       const decision = await resolveGateDecision(deps.approvalGate, draft);
       if (!decision.approved) {
         return { filled: false, reason: decision.reason };
       }
       let snapshot: PageSnapshot | undefined;
-      try {
-        for (let i = 0; i < resolved.length; i += 1) {
-          const entry = resolved[i]!;
-          // Only the LAST field carries `submit` — submitting mid-form would
-          // post before the rest is typed (the same hazard the resolve-first
-          // pass guards against, now at the fill stage).
-          const isLast = i === resolved.length - 1;
-          snapshot = await deps.controller.type(entry.ref, entry.value, submit && isLast);
+      let fieldsCompleted = 0;
+      for (let i = 0; i < resolved.length; i += 1) {
+        const entry = resolved[i]!;
+        try {
+          // Filling and submission are different authorities. Every field is
+          // typed with submit=false; an optional Enter happens only after a
+          // second exact-payload approval below.
+          snapshot = await deps.controller.type(entry.ref, entry.value, false);
+          fieldsCompleted += 1;
+        } catch (cause) {
+          return {
+            authorityReceipts: { fill: authorityReceipt(draft, "failed") },
+            effectStatus: fieldsCompleted === 0 ? "unknown" : "partial",
+            filled: false,
+            fields: resolved.length,
+            fieldsCompleted,
+            ...errorResult(cause)
+          };
         }
+      }
+      const fillReceipt = authorityReceipt(draft, "performed");
+      if (!submit) {
+        return {
+          authorityReceipts: { fill: fillReceipt },
+          filled: true,
+          fields: resolved.length,
+          ...(snapshot ? { ...snapshotToJson(snapshot), ...statusFields(snapshot) } : {}),
+          ...(budget ? { actionsUsed: budget.label, ...(budget.warning ? { budgetWarning: budget.warning } : {}) } : {})
+        };
+      }
+      const submitDraft: BrowserActionDraft = Object.freeze({
+        action: "submit",
+        fields: draftFields,
+        target: `${resolved.length.toString()} fields`,
+        url: deps.controller.currentUrl()
+      });
+      if (submitDraft.url !== draft.url) {
+        return {
+          authorityReceipts: {
+            fill: fillReceipt,
+            submit: authorityReceipt(submitDraft, "held")
+          },
+          filled: true,
+          fields: resolved.length,
+          reason: "page changed after filling; inspect again before submit",
+          submitted: false
+        };
+      }
+      const submitBudget = deps.actionBudget?.tryConsume();
+      if (submitBudget && !submitBudget.allowed) {
+        return {
+          actionsUsed: submitBudget.label,
+          authorityReceipts: {
+            fill: fillReceipt,
+            submit: authorityReceipt(submitDraft, "held")
+          },
+          filled: true,
+          fields: resolved.length,
+          reason: submitBudget.refusal ?? "browser action budget is exhausted before submit",
+          submitted: false
+        };
+      }
+      const submitDecision = await resolveGateDecision(deps.approvalGate, submitDraft);
+      if (!submitDecision.approved) {
+        return {
+          authorityReceipts: {
+            fill: fillReceipt,
+            submit: authorityReceipt(submitDraft, "refused")
+          },
+          filled: true,
+          fields: resolved.length,
+          reason: submitDecision.reason,
+          submitted: false
+        };
+      }
+      if (deps.controller.currentUrl() !== submitDraft.url) {
+        return {
+          authorityReceipts: {
+            fill: fillReceipt,
+            submit: authorityReceipt(submitDraft, "held")
+          },
+          filled: true,
+          fields: resolved.length,
+          reason: "page changed during submit approval; inspect again before submit",
+          submitted: false
+        };
+      }
+      try {
+        snapshot = await deps.controller.pressKey("Enter");
       } catch (cause) {
-        return { filled: false, ...errorResult(cause) };
+        return {
+          authorityReceipts: {
+            fill: fillReceipt,
+            submit: authorityReceipt(submitDraft, "failed")
+          },
+          filled: true,
+          fields: resolved.length,
+          submitted: false,
+          ...errorResult(cause)
+        };
       }
       return {
+        authorityReceipts: {
+          fill: fillReceipt,
+          submit: authorityReceipt(submitDraft, "performed")
+        },
         filled: true,
         fields: resolved.length,
+        submitted: true,
         ...(snapshot ? { ...snapshotToJson(snapshot), ...statusFields(snapshot) } : {}),
-        ...(budget ? { actionsUsed: budget.label, ...(budget.warning ? { budgetWarning: budget.warning } : {}) } : {})
+        ...(submitBudget
+          ? {
+              actionsUsed: submitBudget.label,
+              ...(submitBudget.warning ? { budgetWarning: submitBudget.warning } : {})
+            }
+          : {})
       };
     }
   };

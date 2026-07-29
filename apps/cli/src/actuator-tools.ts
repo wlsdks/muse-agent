@@ -359,7 +359,7 @@ export function buildEmailApprovalGate(deps: {
  * delivered, so the act is DENIED (outbound-safety — a wrong autonomous
  * click/submit toward a third-party site can't be rolled back).
  */
-function buildBrowserApprovalGate(deps: {
+export function buildBrowserApprovalGate(deps: {
   readonly io: ProgramIO;
   readonly confirmAction: (message: string) => Promise<boolean>;
   readonly isInteractive?: () => boolean;
@@ -372,14 +372,26 @@ function buildBrowserApprovalGate(deps: {
     let what: string;
     let question: string;
     if (draft.action === "fill") {
-      const lines = (draft.fields ?? []).map((field) => `  • ${field.target}: ${field.value}`).join("\n");
+      const lines = (draft.fields ?? []).map(
+        (field) =>
+          `  • ${showBrowserDialogValue(field.target)}: ${showBrowserDialogValue(field.value)}`
+      ).join("\n");
       what = `Fill these fields:\n${lines}`;
       question = "Fill these fields in the browser?";
+    } else if (draft.action === "submit") {
+      const payload = draft.fields
+        ? draft.fields.map(
+            (field) =>
+              `  • ${showBrowserDialogValue(field.target)}: ${showBrowserDialogValue(field.value)}`
+          ).join("\n")
+        : `  • ${showBrowserDialogValue(draft.target)}: ${showBrowserDialogValue(draft.text ?? "")}`;
+      what = `Submit this already-filled payload:\n${payload}`;
+      question = "Submit this payload in the browser?";
     } else if (draft.action === "upload") {
-      what = `Attach file ${draft.path ?? ""}\n  → ${draft.target}`;
+      what = `Attach file ${showBrowserDialogValue(draft.path ?? "")}\n  → ${showBrowserDialogValue(draft.target)}`;
       question = "Attach this file in the browser?";
     } else if (draft.action === "type") {
-      what = `Type into ${draft.target}: ${draft.text ?? ""}`;
+      what = `Type into ${showBrowserDialogValue(draft.target)}: ${showBrowserDialogValue(draft.text ?? "")}`;
       question = "Type this in the browser?";
     } else if (draft.action === "dialog-decision") {
       const dialog = draft.dialog;
@@ -405,10 +417,10 @@ function buildBrowserApprovalGate(deps: {
       ].join("\n");
       question = `${decision.kind === "accept" ? "Accept" : "Dismiss"} this browser dialog?`;
     } else {
-      what = `Click ${draft.target}`;
+      what = `Click ${showBrowserDialogValue(draft.target)}`;
       question = "Click this in the browser?";
     }
-    deps.io.stdout(`\n${what}\n(on ${draft.url})\n\n`);
+    deps.io.stdout(`\n${what}\n(on ${showBrowserDialogValue(draft.url)})\n\n`);
     return (await deps.confirmAction(question))
       ? { approved: true }
       : { approved: false, reason: "user did not confirm" };
