@@ -25,6 +25,7 @@ import { errorMessage, type JsonObject } from "@muse/shared";
 import { isRetryableProviderError, recordUsageSpanAttributes } from "./runtime-helpers.js";
 import { sanitiseCitations } from "./citation-sanitiser.js";
 import { sanitizeRequestForProvider } from "./prompt-cache-safety.js";
+import { classifyHistoricalToolCalls } from "./tool-call-history.js";
 
 /**
  * Returns a new ModelRequest with `metadata.webSearchPolicy` populated by
@@ -81,6 +82,32 @@ export interface InvokeModelArgs {
   readonly requestTimeoutMs?: number;
 }
 
+export const MODEL_FALLBACK_BLOCK_REASON = {
+  pendingOrUncertainToolEffect: "pending-or-uncertain-tool-effect"
+} as const;
+
+export type ModelFallbackBlockReason =
+  typeof MODEL_FALLBACK_BLOCK_REASON[keyof typeof MODEL_FALLBACK_BLOCK_REASON];
+
+/**
+ * A provider swap was refused because the request history cannot prove every
+ * prior tool/effect reached a terminal result. The primary error remains the
+ * cause; callers get a stable reason without losing the original failure.
+ */
+export class ModelFallbackBlockedError extends Error {
+  readonly code = "MODEL_FALLBACK_BLOCKED";
+  readonly reason: ModelFallbackBlockReason;
+
+  constructor(reason: ModelFallbackBlockReason, cause: unknown) {
+    super(
+      `Model fallback blocked: ${reason}; reconcile the pending tool/effect before provider swap`,
+      { cause }
+    );
+    this.name = "ModelFallbackBlockedError";
+    this.reason = reason;
+  }
+}
+
 /**
  * The single resilient entry point for `provider.generate`. Composes timeout
  * → retry → fallback → circuit-breaker → tracing in that order so the outer
@@ -129,7 +156,20 @@ async function invokeWithFallback(args: InvokeModelArgs): Promise<ModelResponse>
   try {
     return await invokeWithResilience(args);
   } catch (error) {
-    const fallback = await args.fallbackStrategy?.execute(
+    if (!args.fallbackStrategy) {
+      throw error;
+    }
+    const unresolved = classifyHistoricalToolCalls(
+      args.request.messages,
+      args.request.tools
+    ).some((occurrence) => occurrence.output === undefined);
+    if (unresolved) {
+      throw new ModelFallbackBlockedError(
+        MODEL_FALLBACK_BLOCK_REASON.pendingOrUncertainToolEffect,
+        error
+      );
+    }
+    const fallback = await args.fallbackStrategy.execute(
       {
         ...(args.request.maxOutputTokens !== undefined ? { maxOutputTokens: args.request.maxOutputTokens } : {}),
         messages: args.request.messages,

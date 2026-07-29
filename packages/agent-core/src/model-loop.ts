@@ -50,6 +50,7 @@ import { buildPostCompactionSignature, PostCompactionLoopGuard, POST_COMPACTION_
 import { DEFAULT_STREAM_IDLE_TIMEOUT_MS, withStreamIdleTimeout } from "./stream-idle-timeout.js";
 import { detectConflictingWritesInBatch } from "./tool-batch-conflict.js";
 import { ToolCallDeduplicator } from "./tool-call-deduplicator.js";
+import { classifyHistoricalToolCalls } from "./tool-call-history.js";
 import { applyToolCallMiddleware, type ToolCallMiddleware } from "./tool-call-middleware.js";
 import { ToolFailureStreakTracker } from "./tool-failure-streak.js";
 import { buildPingPongSignature, PingPongLoopGuard } from "./tool-loop-pingpong.js";
@@ -884,46 +885,7 @@ export function seedDeduplicatorFromHistory(
   messages: readonly ModelMessage[],
   tools: readonly ModelTool[] | undefined
 ): void {
-  interface HistoricalToolCall {
-    readonly toolCall: ModelToolCall;
-    readonly mutating: boolean;
-    output?: string;
-  }
-
-  const riskByName = new Map((tools ?? []).map((tool) => [tool.name, tool.risk]));
-  const occurrences: HistoricalToolCall[] = [];
-  const pendingById = new Map<string, HistoricalToolCall[]>();
-
-  for (const message of messages) {
-    if (message.role === "assistant" && message.toolCalls) {
-      for (const toolCall of message.toolCalls) {
-        const risk = riskByName.get(toolCall.name);
-        const occurrence: HistoricalToolCall = {
-          mutating: risk === "write" || risk === "execute",
-          toolCall
-        };
-        occurrences.push(occurrence);
-        const pending = pendingById.get(toolCall.id) ?? [];
-        pending.push(occurrence);
-        pendingById.set(toolCall.id, pending);
-      }
-      continue;
-    }
-
-    if (message.role !== "tool" || !message.toolCallId) continue;
-    const pending = pendingById.get(message.toolCallId);
-    // Pair only an unambiguous result that follows its call. A result before
-    // the call, a reused in-flight ID, or a conflicting tool name must not
-    // convert an uncertain effect into a completed one.
-    if (
-      pending?.length !== 1 ||
-      (message.name !== undefined && message.name !== pending[0]!.toolCall.name)
-    ) {
-      continue;
-    }
-    pending[0]!.output = message.content;
-    pendingById.delete(message.toolCallId);
-  }
+  const occurrences = classifyHistoricalToolCalls(messages, tools);
 
   // Seed known completions first. Any unresolved mutating occurrence is then
   // applied last so effect-unknown dominates a later completed occurrence with

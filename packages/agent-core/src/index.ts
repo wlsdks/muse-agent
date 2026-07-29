@@ -670,7 +670,13 @@ export {
 } from "./response-filters.js";
 
 export { sanitiseCitations, type SanitiseCitationsResult } from "./citation-sanitiser.js";
-export { applyCitationSanitisation, buildModelRequestWithWebSearch } from "./model-invocation.js";
+export {
+  applyCitationSanitisation,
+  buildModelRequestWithWebSearch,
+  MODEL_FALLBACK_BLOCK_REASON,
+  ModelFallbackBlockedError,
+  type ModelFallbackBlockReason
+} from "./model-invocation.js";
 export { renderToolExemplarSection, selectToolExemplars, type ToolExemplar } from "./tool-exemplars.js";
 export { RUN_TOOL_PLAN_EXEMPLAR_BANK } from "./tool-plan-exemplars.js";
 export { DEFAULT_TOOL_EXEMPLAR_BANK } from "./default-tool-exemplars.js";

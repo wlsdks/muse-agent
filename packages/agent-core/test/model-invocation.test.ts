@@ -3,7 +3,14 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { createRetryBudget, DefaultCircuitBreaker, RetryBudgetExhaustedError, type FallbackStrategy, type RetryOptions } from "@muse/resilience";
 import { ModelProviderError, USAGE_RECORDED_BY_RUNTIME_FLAG, type ModelProvider, type ModelRequest, type ModelResponse } from "@muse/model";
 import { InMemoryAgentMetrics, InMemoryMuseTracer, InMemoryTokenUsageSink } from "@muse/observability";
-import { applyCitationSanitisation, buildModelRequestWithWebSearch, invokeModel, recordTokenUsageEvent } from "../src/model-invocation.js";
+import {
+  applyCitationSanitisation,
+  buildModelRequestWithWebSearch,
+  invokeModel,
+  MODEL_FALLBACK_BLOCK_REASON,
+  ModelFallbackBlockedError,
+  recordTokenUsageEvent
+} from "../src/model-invocation.js";
 
 function provider(generate: (req: ModelRequest) => Promise<ModelResponse>): ModelProvider {
   return {
@@ -84,6 +91,121 @@ describe("invokeModel", () => {
     });
 
     expect(result.output).toBe("fallback answer");
+  });
+
+  it.each([
+    {
+      label: "an unmatched write call",
+      messages: [
+        { content: "send it", role: "user" },
+        {
+          content: "",
+          role: "assistant",
+          toolCalls: [{ arguments: { to: "mina" }, id: "write-1", name: "send_email" }]
+        }
+      ]
+    },
+    {
+      label: "a result before its call",
+      messages: [
+        { content: "sent", name: "send_email", role: "tool", toolCallId: "write-1" },
+        {
+          content: "",
+          role: "assistant",
+          toolCalls: [{ arguments: { to: "mina" }, id: "write-1", name: "send_email" }]
+        }
+      ]
+    },
+    {
+      label: "a mismatched result name",
+      messages: [
+        {
+          content: "",
+          role: "assistant",
+          toolCalls: [{ arguments: { to: "mina" }, id: "write-1", name: "send_email" }]
+        },
+        { content: "sent", name: "delete_email", role: "tool", toolCallId: "write-1" }
+      ]
+    },
+    {
+      label: "an unmatched read call",
+      messages: [
+        { content: "check it", role: "user" },
+        {
+          content: "",
+          role: "assistant",
+          toolCalls: [{ arguments: {}, id: "read-1", name: "read_inbox" }]
+        }
+      ]
+    }
+  ])("blocks provider swap when history contains $label", async ({ messages }) => {
+    const fallback = {
+      execute: vi.fn(async () => ({
+        id: "fb",
+        model: "fallback/model",
+        output: "unsafe"
+      }))
+    };
+    const error = await invokeModel({
+      fallbackStrategy: fallback,
+      metrics: new InMemoryAgentMetrics(),
+      provider: provider(async () => {
+        throw new Error("primary down after uncertain effect");
+      }),
+      request: {
+        messages: messages as ModelRequest["messages"],
+        model: "test/model",
+        tools: [
+          { description: "send", inputSchema: {}, name: "send_email", risk: "write" },
+          { description: "read", inputSchema: {}, name: "read_inbox", risk: "read" }
+        ]
+      },
+      runId: "run-fallback-effect-unknown",
+      tracer: new InMemoryMuseTracer()
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ModelFallbackBlockedError);
+    expect(error).toMatchObject({
+      code: "MODEL_FALLBACK_BLOCKED",
+      reason: MODEL_FALLBACK_BLOCK_REASON.pendingOrUncertainToolEffect
+    });
+    expect(fallback.execute).not.toHaveBeenCalled();
+  });
+
+  it("allows fallback after a completed tool result without replaying that effect", async () => {
+    const fallback = {
+      execute: vi.fn(async () => ({
+        id: "fb",
+        model: "fallback/model",
+        output: "continued safely"
+      }))
+    };
+    const result = await invokeModel({
+      fallbackStrategy: fallback,
+      metrics: new InMemoryAgentMetrics(),
+      provider: provider(async () => {
+        throw new Error("primary down before the next model output");
+      }),
+      request: {
+        messages: [
+          { content: "send it", role: "user" },
+          {
+            content: "",
+            role: "assistant",
+            toolCalls: [{ arguments: { to: "mina" }, id: "write-1", name: "send_email" }]
+          },
+          { content: "sent", name: "send_email", role: "tool", toolCallId: "write-1" }
+        ],
+        model: "test/model",
+        tools: [{ description: "send", inputSchema: {}, name: "send_email", risk: "write" }]
+      },
+      runId: "run-fallback-completed-effect",
+      tracer: new InMemoryMuseTracer()
+    });
+
+    expect(result.output).toBe("continued safely");
+    expect(fallback.execute).toHaveBeenCalledOnce();
+    expect(fallback.execute.mock.calls[0]?.[0].messages).toHaveLength(3);
   });
 
   it("retries retryable errors up to maxAttempts before throwing", async () => {
