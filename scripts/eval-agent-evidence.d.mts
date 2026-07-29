@@ -10,6 +10,8 @@ export interface CapabilityEvidenceOptions {
   readonly attemptId?: string;
   readonly rename?: (from: string, to: string) => void;
   readonly fsync?: (descriptor: number) => void;
+  readonly shardReceipt?: unknown;
+  readonly shardReceipts?: readonly unknown[];
 }
 
 export interface CapabilityEvidenceInspection {

@@ -20,6 +20,7 @@ import {
   createCapabilityExecutionAdmissionForArgs,
   createCapabilityPreflight,
   createCapabilityReport,
+  createCapabilityShardReceipt,
   main,
   persistCapabilityReport,
   selectCapabilityAxes,
@@ -155,6 +156,55 @@ test("axis selector accepts exactly one known id and rejects empty, unknown, or 
     selectCapabilityAxes(["--axis", "plan-quality", "--axis", "tool-selection-arguments"]),
     { ok: false, reason: "duplicate-axis-selection" }
   );
+});
+
+test("a shard receipt binds source, input, seed, model, and runtime without leaking environment values", () => {
+  const capability = CAPABILITIES[0];
+  const source = { revision: "a".repeat(40), tree: "clean" };
+  const artifacts = { count: 41, digest: "b".repeat(64), status: "ok" };
+  const provenance = {
+    sourceBeforeBuild: source,
+    sourceAfterBuild: source,
+    sourceAtEnd: source,
+    artifactsAfterBuild: artifacts,
+    artifactsAtEnd: artifacts,
+  };
+  const env = {
+    MUSE_EVAL_MODEL: "gemma4:12b",
+    MUSE_EVAL_SEED: "17",
+    MUSE_EVAL_THRESHOLD: "0.85",
+    MUSE_EVAL_PRIVATE_FIXTURE: "top-secret-input",
+  };
+  const receipt = createCapabilityShardReceipt(capability, provenance, {
+    env,
+    nodeVersion: "v24.0.0",
+    platformIdentity: "darwin/arm64",
+  });
+  assert.equal(receipt.axis, capability.id);
+  assert.equal(receipt.seed, "17");
+  assert.equal(receipt.source.revision, source.revision);
+  assert.equal(receipt.source.tree, "clean");
+  assert.equal(receipt.modelIdentity.generation, "gemma4:12b");
+  assert.equal(receipt.runtimeIdentity.runnerArtifactDigest, artifacts.digest);
+  assert.match(receipt.inputHash, /^[a-f0-9]{64}$/u);
+  assert.doesNotMatch(JSON.stringify(receipt), /top-secret-input/u);
+
+  const changed = createCapabilityShardReceipt(capability, provenance, {
+    env: { ...env, MUSE_EVAL_THRESHOLD: "0.90" },
+    nodeVersion: "v24.0.0",
+    platformIdentity: "darwin/arm64",
+  });
+  assert.notEqual(changed.inputHash, receipt.inputHash);
+  assert.equal(createCapabilityShardReceipt(capability, provenance, {
+    env: { ...env, MUSE_EVAL_SEED: "unsafe seed value" },
+  }), undefined);
+  assert.equal(createCapabilityShardReceipt(capability, provenance, {
+    env: { ...env, MUSE_EVAL_MODEL: "sk-secret-like-value" },
+  }), undefined);
+  assert.equal(createCapabilityShardReceipt(capability, {
+    ...provenance,
+    sourceBeforeBuild: { ...source, tree: "dirty" },
+  }, { env }), undefined);
 });
 
 test("plan-quality threshold is pinned to one and cannot be weakened by environment", () => {
@@ -423,7 +473,11 @@ test("the production evidence finalizer aggregate is accepted regardless of obje
           allowedRoot: root,
           reportPath: canonicalReportPath,
         }),
-        finishAttempt: (attempt, current) => finalizeCapabilityEvidenceAttempt(attempt, current),
+        finishAttempt: (attempt, current, options) => finalizeCapabilityEvidenceAttempt(
+          attempt,
+          current,
+          options,
+        ),
         now: () => 0,
         spawn: (_command, _args, options) => {
           const requested = Number(options.env.MUSE_EVAL_REPEAT);

@@ -18,9 +18,9 @@ import { test } from "node:test";
 import { CAPABILITIES, createCapabilityReport } from "./eval-agent.mjs";
 import {
   beginCapabilityEvidenceAttempt,
-  composeCapabilityAxisProgress,
-  createCapabilityAxisProgress,
-  finalizeCapabilityEvidenceAttempt,
+  composeCapabilityAxisProgress as composeCapabilityAxisProgressRaw,
+  createCapabilityAxisProgress as createCapabilityAxisProgressRaw,
+  finalizeCapabilityEvidenceAttempt as finalizeCapabilityEvidenceAttemptRaw,
   inspectCapabilityEvidence,
 } from "./eval-agent-evidence.mjs";
 
@@ -92,6 +92,64 @@ function singleAxisReport(
       artifactsAfterBuild: artifacts,
       artifactsAtEnd: artifacts,
     },
+  });
+}
+
+function shardReceipt(value, overrides = {}, axisId) {
+  const axis = axisId
+    ? value.capabilities.find((row) => row.id === axisId)
+    : value.capabilities.find((row) => row.reason !== "not-selected");
+  if (!axis) return undefined;
+  const revision = value.provenance.sourceBeforeBuild.revision;
+  const runnerArtifactDigest = value.provenance.artifactsAfterBuild.digest;
+  return {
+    schemaVersion: 1,
+    axis: axis.id,
+    seed: "test-seed",
+    inputHash: createHash("sha256").update(`input:${axis.id}`, "utf8").digest("hex"),
+    modelIdentity: {
+      embedding: "test-embed:1",
+      generation: "test-generate:1",
+    },
+    runtimeIdentity: {
+      node: "v24.0.0",
+      platform: "darwin/arm64",
+      runnerArtifactDigest,
+    },
+    source: { revision, tree: "clean" },
+    ...overrides,
+  };
+}
+
+function shardReceipts(value, overridesByAxis = {}) {
+  return CAPABILITIES.map((capability) => shardReceipt(
+    value,
+    overridesByAxis[capability.id] ?? {},
+    capability.id,
+  ));
+}
+
+function createCapabilityAxisProgress(value, overrides) {
+  return createCapabilityAxisProgressRaw(value, shardReceipt(value, overrides));
+}
+
+function composeCapabilityAxisProgress(current, prior, overrides, overridesByAxis) {
+  return composeCapabilityAxisProgressRaw(
+    current,
+    prior,
+    shardReceipt(current, overrides),
+    shardReceipts(current, overridesByAxis),
+  );
+}
+
+function finalizeCapabilityEvidenceAttempt(attempt, value, options = {}) {
+  const selected = value?.capabilities?.filter((row) => row.reason !== "not-selected") ?? [];
+  return finalizeCapabilityEvidenceAttemptRaw(attempt, value, {
+    ...options,
+    ...(selected.length === 1 ? {
+      shardReceipt: shardReceipt(value),
+      shardReceipts: shardReceipts(value),
+    } : {}),
   });
 }
 
@@ -187,6 +245,75 @@ test("axis progress composes only exact same-provenance rows and keeps the oldes
     { digest: "d".repeat(64) },
   ));
   assert.deepEqual(composeCapabilityAxisProgress(current, [otherArtifacts]), current);
+});
+
+test("axis progress rejects any missing source, input, seed, model, or runtime receipt field", () => {
+  const value = singleAxisReport(
+    "plan-quality",
+    "passed",
+    "2026-07-21T00:00:00.000Z",
+  );
+  const receipt = shardReceipt(value);
+  assert.equal(createCapabilityAxisProgressRaw(value, undefined), undefined);
+  for (const key of [
+    "axis",
+    "inputHash",
+    "modelIdentity",
+    "runtimeIdentity",
+    "seed",
+    "source",
+  ]) {
+    const missing = structuredClone(receipt);
+    delete missing[key];
+    assert.equal(createCapabilityAxisProgressRaw(value, missing), undefined, key);
+  }
+  assert.equal(createCapabilityAxisProgressRaw(value, {
+    ...receipt,
+    source: { revision: receipt.source.revision },
+  }), undefined);
+  assert.equal(createCapabilityAxisProgressRaw(value, {
+    ...receipt,
+    source: { ...receipt.source, revision: "c".repeat(40) },
+  }), undefined);
+  assert.equal(createCapabilityAxisProgressRaw(value, {
+    ...receipt,
+    modelIdentity: { generation: receipt.modelIdentity.generation },
+  }), undefined);
+  assert.equal(createCapabilityAxisProgressRaw(value, {
+    ...receipt,
+    runtimeIdentity: { ...receipt.runtimeIdentity, runnerArtifactDigest: "c".repeat(64) },
+  }), undefined);
+  assert.equal(createCapabilityAxisProgressRaw(value, {
+    ...receipt,
+    modelIdentity: { ...receipt.modelIdentity, generation: "sk-secret-like-value" },
+  }), undefined);
+});
+
+test("receipt mismatch stales only that prior axis instead of reusing it", () => {
+  const planReport = singleAxisReport(
+    "plan-quality",
+    "passed",
+    "2026-07-21T00:00:00.000Z",
+  );
+  const toolReport = singleAxisReport(
+    "tool-selection-arguments",
+    "passed",
+    "2026-07-21T00:05:00.000Z",
+  );
+  const plan = createCapabilityAxisProgress(planReport);
+  const changedInput = "c".repeat(64);
+  const aggregate = composeCapabilityAxisProgress(
+    toolReport,
+    [plan],
+    undefined,
+    { "plan-quality": { inputHash: changedInput } },
+  );
+  assert.deepEqual(aggregate.counts, { failed: 0, passed: 1, total: 11, unverified: 10 });
+  assert.equal(aggregate.capabilities.find((row) => row.id === "plan-quality").reason, "not-selected");
+  assert.equal(
+    aggregate.capabilities.find((row) => row.id === "tool-selection-arguments").status,
+    "passed",
+  );
 });
 
 test("authenticated v1 progress is obsolete and ignored while a tampered legacy chain still fails closed", () => {
@@ -429,6 +556,35 @@ test("tampered axis progress blocks composition and leaves the current attempt r
     const progressPath = join(root, "evals", "agent-capability", "axis-progress", "plan-quality.json");
     const value = JSON.parse(readFileSync(progressPath, "utf8"));
     writeFileSync(progressPath, `${JSON.stringify({ ...value, privatePayload: "secret" }, null, 2)}\n`, { mode: 0o600 });
+
+    const current = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    assert.throws(
+      () => finalizeCapabilityEvidenceAttempt(current, singleAxisReport(
+        "tool-selection-arguments",
+        "passed",
+        "2026-07-21T00:05:00.000Z",
+      )),
+      /capability-report-persistence-failed/u,
+    );
+    assert.equal(inspectCapabilityEvidence({ allowedRoot: root, reportPath }).state, "running");
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("a receipt mutation is rejected by the completed attempt state binding", () => {
+  const { root, reportPath } = fixture();
+  try {
+    const first = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
+    finalizeCapabilityEvidenceAttempt(first, singleAxisReport(
+      "plan-quality",
+      "passed",
+      "2026-07-21T00:00:00.000Z",
+    ));
+    const progressPath = join(root, "evals", "agent-capability", "axis-progress", "plan-quality.json");
+    const value = JSON.parse(readFileSync(progressPath, "utf8"));
+    value.progress.shardReceipt.seed = "18";
+    writeCanonicalJson(progressPath, value);
 
     const current = beginCapabilityEvidenceAttempt({ allowedRoot: root, reportPath });
     assert.throws(

@@ -7,6 +7,8 @@
  * copies prompts, model output, or tool payloads into the report.
  */
 
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -46,6 +48,11 @@ const PREFLIGHT_FLAG = "--preflight";
 const ADMISSION_FLAG = "--admit";
 const EXECUTE_FLAG = "--execute";
 const AXIS_FLAG = "--axis";
+const SAFE_SHARD_IDENTITY = /^[a-z0-9][a-z0-9._:/@+-]{0,199}$/iu;
+const SAFE_SHARD_SEED = /^(?:default|[0-9]{1,20}|seed-[0-9]{1,20})$/u;
+const SECRET_LIKE_IDENTITY = /^(?:eyJ|gh[opsu]_|sk-|xox[abprs]-)/u;
+const DEFAULT_GENERATION_MODEL = "gemma4:12b";
+const DEFAULT_EMBEDDING_MODEL = "nomic-embed-text-v2-moe";
 
 export const CAPABILITIES = Object.freeze([
   { id: "tool-selection-arguments", battery: "eval-tool-selection.mjs", required: true, repeats: 3 },
@@ -60,6 +67,91 @@ export const CAPABILITIES = Object.freeze([
   { id: "edit-run-verify", battery: "eval-edit-run-verify.mjs", required: false, repeats: 3 },
   { id: "browser-terminal-task", battery: "eval-browser-agent.mjs", required: false, repeats: 3 },
 ]);
+
+function canonicalHash(value) {
+  return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
+}
+
+function safeShardIdentity(value) {
+  return typeof value === "string"
+    && SAFE_SHARD_IDENTITY.test(value)
+    && !SECRET_LIKE_IDENTITY.test(value)
+    ? value
+    : undefined;
+}
+
+/**
+ * Bind one cacheable axis result to its exact source, static battery input,
+ * configured model identities, trial seed, Node/platform runtime, and freshly
+ * published runner digest. Raw environment values are hashed into inputHash
+ * but never copied into evidence.
+ */
+export function createCapabilityShardReceipt(capability, provenance, options = {}) {
+  try {
+    if (!CAPABILITIES.some((candidate) => candidate.id === capability?.id)) return undefined;
+    const source = provenance?.sourceBeforeBuild;
+    const artifacts = provenance?.artifactsAfterBuild;
+    if (
+      source?.tree !== "clean"
+      || typeof source.revision !== "string"
+      || !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(source.revision)
+      || artifacts?.status !== "ok"
+      || typeof artifacts.digest !== "string"
+      || !/^[a-f0-9]{64}$/u.test(artifacts.digest)
+    ) return undefined;
+
+    const env = options.env ?? process.env;
+    const rawSeed = env.MUSE_EVAL_SEED ?? "default";
+    const seed = SAFE_SHARD_SEED.test(rawSeed) ? rawSeed : undefined;
+    const generation = safeShardIdentity(env.MUSE_EVAL_MODEL ?? DEFAULT_GENERATION_MODEL);
+    const embedding = safeShardIdentity(
+      env.MUSE_EVAL_EMBED_MODEL
+      ?? env.MUSE_RECALL_EMBED_MODEL
+      ?? DEFAULT_EMBEDDING_MODEL
+    );
+    const node = safeShardIdentity(options.nodeVersion ?? process.version);
+    const platform = safeShardIdentity(
+      options.platformIdentity ?? `${process.platform}/${process.arch}`
+    );
+    if (!seed || !generation || !embedding || !node || !platform) return undefined;
+
+    const batteryPath = resolve(here, capability.battery);
+    const batterySha256 = createHash("sha256").update(readFileSync(batteryPath)).digest("hex");
+    const relevantEnvironment = Object.entries(env)
+      .filter(([key]) => (
+        key.startsWith("MUSE_EVAL_")
+        || key.startsWith("MUSE_RECALL_")
+        || key === "OLLAMA_BASE_URL"
+      ))
+      .sort(([left], [right]) => left.localeCompare(right));
+    const modelIdentity = { embedding, generation };
+    const runtimeIdentity = {
+      node,
+      platform,
+      runnerArtifactDigest: artifacts.digest,
+    };
+    const inputHash = canonicalHash({
+      axis: capability.id,
+      batterySha256,
+      modelIdentity,
+      relevantEnvironment,
+      repeats: capability.repeats,
+      runtimeIdentity,
+      seed,
+    });
+    return {
+      schemaVersion: 1,
+      axis: capability.id,
+      seed,
+      inputHash,
+      modelIdentity,
+      runtimeIdentity,
+      source: { revision: source.revision, tree: source.tree },
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 const CAPABILITY_REQUIREMENTS = Object.freeze({
   "tool-selection-arguments": ["local-ollama-generation-model"],
@@ -627,12 +719,26 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     artifactsAfterBuild,
     artifactsAtEnd,
   };
+  const shardReceipts = CAPABILITIES.map((capability) => (
+    createCapabilityShardReceipt(capability, provenance)
+  ));
+  const shardReceipt = selectedCapabilities.length === 1
+    ? shardReceipts.find((receipt) => receipt?.axis === selectedCapabilities[0].id)
+    : undefined;
   const completeRows = completeCapabilityRows(rows, selectedCapabilities);
   const report = createCapabilityReport(applyProvenanceGate(completeRows, provenance), {
     generatedAt: generatedAt(now),
     provenance,
   });
-  return emitReport(report, { dependencies, evidenceAttempt, json, stderr, stdout });
+  return emitReport(report, {
+    dependencies,
+    evidenceAttempt,
+    json,
+    shardReceipt,
+    shardReceipts,
+    stderr,
+    stdout,
+  });
   })();
 }
 
@@ -664,12 +770,19 @@ async function finishBuildFailure(reason, context) {
   return emitReport(report, context);
 }
 
-function emitReport(report, { dependencies, evidenceAttempt, json, stdout }) {
+function emitReport(
+  report,
+  { dependencies, evidenceAttempt, json, shardReceipt, shardReceipts, stdout },
+) {
   let emittedReport = report;
   try {
     if (dependencies.finishAttempt) {
       if (!evidenceAttempt) throw new Error("capability evidence attempt missing");
-      const finalizedReport = dependencies.finishAttempt(evidenceAttempt, report);
+      const finalizedReport = dependencies.finishAttempt(
+        evidenceAttempt,
+        report,
+        { shardReceipt, shardReceipts },
+      );
       const canonicalFinalizedReport = createCapabilityReport(finalizedReport?.capabilities, {
         generatedAt: finalizedReport?.generatedAt,
         provenance: finalizedReport?.provenance,
@@ -840,6 +953,10 @@ function sanitizeProvenance(provenance) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   await main(process.argv.slice(2), {
     beginAttempt: () => beginCapabilityEvidenceAttempt({ allowedRoot: REPO_ROOT }),
-    finishAttempt: (attempt, report) => finalizeCapabilityEvidenceAttempt(attempt, report),
+    finishAttempt: (attempt, report, options) => finalizeCapabilityEvidenceAttempt(
+      attempt,
+      report,
+      options,
+    ),
   });
 }

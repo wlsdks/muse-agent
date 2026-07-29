@@ -22,9 +22,12 @@ const MAX_EVIDENCE_BYTES = 2 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const SHA256 = /^[0-9a-f]{64}$/u;
 const SOURCE_REVISION = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u;
+const SAFE_SHARD_IDENTITY = /^[a-z0-9][a-z0-9._:/@+-]{0,199}$/iu;
+const SAFE_SHARD_SEED = /^(?:default|test-seed|[0-9]{1,20}|seed-[0-9]{1,20})$/u;
+const SECRET_LIKE_IDENTITY = /^(?:eyJ|gh[opsu]_|sk-|xox[abprs]-)/u;
 
 export const CAPABILITY_EVIDENCE_SCHEMA_VERSION = 1;
-export const CAPABILITY_AXIS_PROGRESS_SCHEMA_VERSION = 1;
+export const CAPABILITY_AXIS_PROGRESS_SCHEMA_VERSION = 2;
 const CAPABILITY_MATRIX_ID = "muse-agent-capability-v2";
 const CAPABILITY_MATRIX = Object.freeze([
   { id: "tool-selection-arguments", required: true, repeats: 3 },
@@ -330,13 +333,30 @@ function parseAttemptState(value, attemptId) {
     return exactKeys(value, ["attemptId", "phase", "schemaVersion"]) ? value : undefined;
   }
   if (value.phase !== "completed" || !SHA256.test(value.reportSha256)) return undefined;
+  const receiptKeys = value.shardReceiptSha256 === undefined ? [] : ["shardReceiptSha256"];
+  if (value.shardReceiptSha256 !== undefined && !SHA256.test(value.shardReceiptSha256)) return undefined;
   if (value.status === "passed") {
-    if (!exactKeys(value, ["attemptId", "canonicalSha256", "phase", "reportSha256", "schemaVersion", "status"])) return undefined;
+    if (!exactKeys(value, [
+      "attemptId",
+      "canonicalSha256",
+      "phase",
+      "reportSha256",
+      "schemaVersion",
+      "status",
+      ...receiptKeys,
+    ])) return undefined;
     if (!SHA256.test(value.canonicalSha256) || value.canonicalSha256 !== value.reportSha256) return undefined;
     return value;
   }
   if (value.status !== "failed" && value.status !== "unverified") return undefined;
-  return exactKeys(value, ["attemptId", "phase", "reportSha256", "schemaVersion", "status"])
+  return exactKeys(value, [
+    "attemptId",
+    "phase",
+    "reportSha256",
+    "schemaVersion",
+    "status",
+    ...receiptKeys,
+  ])
     ? value
     : undefined;
 }
@@ -418,18 +438,20 @@ export function isCanonicalPassingCapabilityReport(report) {
   return artifactSnapshotIsStable(source.artifactsAfterBuild, source.artifactsAtEnd);
 }
 
-export function createCapabilityAxisProgress(report) {
+export function createCapabilityAxisProgress(report, shardReceipt) {
   if (!capabilityReportShapeIsExact(report) || !canonicalCapabilityProvenance(report.provenance)) {
     return undefined;
   }
   const selected = report.capabilities.filter((row) => !isExactNotSelectedRow(row));
   if (selected.length !== 1 || selected[0].reason === "not-selected") return undefined;
+  if (!isCapabilityShardReceipt(shardReceipt, selected[0], report.provenance)) return undefined;
   return {
     schemaVersion: CAPABILITY_AXIS_PROGRESS_SCHEMA_VERSION,
     matrixId: CAPABILITY_MATRIX_ID,
     generatedAt: report.generatedAt,
     axis: { ...selected[0] },
     provenance: structuredClone(report.provenance),
+    shardReceipt: structuredClone(shardReceipt),
   };
 }
 
@@ -440,14 +462,29 @@ function isExactNotSelectedRow(row) {
     && row.durationMs === 0;
 }
 
-export function composeCapabilityAxisProgress(currentReport, priorProgress = []) {
-  const current = createCapabilityAxisProgress(currentReport);
-  if (!current || !Array.isArray(priorProgress)) return undefined;
+export function composeCapabilityAxisProgress(
+  currentReport,
+  priorProgress = [],
+  shardReceipt,
+  expectedShardReceipts = [],
+) {
+  const current = createCapabilityAxisProgress(currentReport, shardReceipt);
+  const expected = capabilityShardReceiptMap(expectedShardReceipts, currentReport.provenance);
+  if (
+    !current
+    || !Array.isArray(priorProgress)
+    || !expected
+    || canonicalJson(expected.get(current.axis.id)) !== canonicalJson(current.shardReceipt)
+  ) return undefined;
   const currentTime = Date.parse(current.generatedAt);
   const matching = [];
   for (const progress of priorProgress) {
     if (!isCapabilityAxisProgress(progress)) return undefined;
     if (!sameCapabilityProvenance(progress.provenance, current.provenance)) continue;
+    const expectedReceipt = expected.get(progress.axis.id);
+    if (!expectedReceipt || canonicalJson(expectedReceipt) !== canonicalJson(progress.shardReceipt)) {
+      continue;
+    }
     const progressTime = Date.parse(progress.generatedAt);
     if (progressTime > currentTime) return undefined;
     matching.push(structuredClone(progress));
@@ -491,8 +528,23 @@ export function composeCapabilityAxisProgress(currentReport, priorProgress = [])
   return capabilityReportShapeIsExact(aggregate) ? aggregate : undefined;
 }
 
+function capabilityShardReceiptMap(receipts, provenance) {
+  if (!Array.isArray(receipts) || receipts.length !== CAPABILITY_MATRIX.length) return undefined;
+  const byAxis = new Map();
+  for (const receipt of receipts) {
+    const expected = CAPABILITY_MATRIX.find((capability) => capability.id === receipt?.axis);
+    if (
+      !expected
+      || byAxis.has(expected.id)
+      || !isCapabilityShardReceipt(receipt, expected, provenance)
+    ) return undefined;
+    byAxis.set(expected.id, receipt);
+  }
+  return byAxis.size === CAPABILITY_MATRIX.length ? byAxis : undefined;
+}
+
 function isCapabilityAxisProgressForMatrix(value, matrixId, matrix) {
-  if (!exactKeys(value, ["axis", "generatedAt", "matrixId", "provenance", "schemaVersion"])) return false;
+  if (!exactKeys(value, ["axis", "generatedAt", "matrixId", "provenance", "schemaVersion", "shardReceipt"])) return false;
   if (
     value.schemaVersion !== CAPABILITY_AXIS_PROGRESS_SCHEMA_VERSION
     || value.matrixId !== matrixId
@@ -505,6 +557,7 @@ function isCapabilityAxisProgressForMatrix(value, matrixId, matrix) {
   const expected = matrix.find((capability) => capability.id === value.axis?.id);
   if (!expected) return false;
   if (value.axis.reason === "not-selected") return false;
+  if (!isCapabilityShardReceipt(value.shardReceipt, value.axis, value.provenance)) return false;
   const report = {
     version: 2,
     matrixId,
@@ -532,6 +585,46 @@ function isCapabilityAxisProgressForMatrix(value, matrixId, matrix) {
     provenance: value.provenance,
   };
   return capabilityReportShapeIsExactForMatrix(report, matrixId, matrix);
+}
+
+function isCapabilityShardReceipt(value, axis, provenance) {
+  if (!exactKeys(value, [
+    "axis",
+    "inputHash",
+    "modelIdentity",
+    "runtimeIdentity",
+    "schemaVersion",
+    "seed",
+    "source",
+  ])) return false;
+  if (
+    value.schemaVersion !== 1
+    || value.axis !== axis?.id
+    || !SHA256.test(value.inputHash)
+    || typeof value.seed !== "string"
+    || !SAFE_SHARD_SEED.test(value.seed)
+  ) return false;
+  if (
+    !exactKeys(value.modelIdentity, ["embedding", "generation"])
+    || !identityString(value.modelIdentity.embedding)
+    || !identityString(value.modelIdentity.generation)
+    || !exactKeys(value.runtimeIdentity, ["node", "platform", "runnerArtifactDigest"])
+    || !identityString(value.runtimeIdentity.node)
+    || !identityString(value.runtimeIdentity.platform)
+    || !SHA256.test(value.runtimeIdentity.runnerArtifactDigest)
+    || !exactKeys(value.source, ["revision", "tree"])
+    || value.source.tree !== "clean"
+    || !SOURCE_REVISION.test(value.source.revision)
+  ) return false;
+  return canonicalCapabilityProvenance(provenance)
+    && value.source.revision === provenance.sourceBeforeBuild.revision
+    && value.runtimeIdentity.runnerArtifactDigest === provenance.artifactsAfterBuild.digest;
+}
+
+function identityString(value) {
+  return typeof value === "string"
+    && SAFE_SHARD_IDENTITY.test(value)
+    && !SECRET_LIKE_IDENTITY.test(value);
 }
 
 function isCapabilityAxisProgress(value) {
@@ -579,6 +672,29 @@ function parseAxisProgressRecord(value) {
   return value;
 }
 
+function parseObsoleteAxisProgress(value) {
+  if (!exactKeys(value, ["attemptId", "progress", "reportSha256", "schemaVersion"])) return false;
+  const progress = value.progress;
+  if (
+    value.schemaVersion !== 1
+    || !UUID.test(value.attemptId)
+    || !SHA256.test(value.reportSha256)
+    || !exactKeys(progress, ["axis", "generatedAt", "matrixId", "provenance", "schemaVersion"])
+    || progress.schemaVersion !== 1
+  ) return false;
+  const matrix = CAPABILITY_MATRICES.get(progress.matrixId);
+  if (!matrix) return false;
+  const generatedAt = typeof progress.generatedAt === "string"
+    ? Date.parse(progress.generatedAt)
+    : Number.NaN;
+  if (!Number.isFinite(generatedAt) || new Date(generatedAt).toISOString() !== progress.generatedAt) {
+    return false;
+  }
+  const expected = matrix.find((candidate) => candidate.id === progress.axis?.id);
+  if (!expected || progress.axis.reason === "not-selected") return false;
+  return canonicalCapabilityProvenance(progress.provenance) ? value : undefined;
+}
+
 function inspectAxisProgressRecord(layout, record) {
   const matrixId = record.progress.matrixId;
   const matrix = CAPABILITY_MATRICES.get(matrixId);
@@ -606,6 +722,10 @@ function inspectAxisProgressRecord(layout, record) {
   ) {
     return { state: "invalid" };
   }
+  if (
+    record.progress.schemaVersion === CAPABILITY_AXIS_PROGRESS_SCHEMA_VERSION
+    && state.shardReceiptSha256 !== sha256(canonicalJson(record.progress.shardReceipt))
+  ) return { state: "invalid" };
   return { progress: record.progress, state: "valid" };
 }
 
@@ -631,7 +751,15 @@ function readCapabilityAxisProgress(layout) {
     if (read.state === "missing") continue;
     if (read.state !== "ok") throw evidenceError();
     const record = parseAxisProgressRecord(read.value);
-    if (!record) throw evidenceError();
+    if (!record) {
+      const obsolete = parseObsoleteAxisProgress(read.value);
+      if (!obsolete) throw evidenceError();
+      const inspected = inspectAxisProgressRecord(layout, obsolete);
+      if (inspected.state === "invalid") throw evidenceError();
+      // Authenticated schema-v1 checkpoints are historical only. They never
+      // contribute to the current aggregate, but tampering still fails closed.
+      continue;
+    }
     const inspected = inspectAxisProgressRecord(layout, record);
     if (inspected.state === "invalid") throw evidenceError();
     if (
@@ -662,13 +790,21 @@ export function finalizeCapabilityEvidenceAttempt(attempt, report, options = {})
   if (!capabilityReportShapeIsExact(report)) {
     throw evidenceError();
   }
-  const currentProgress = createCapabilityAxisProgress(report);
+  const currentProgress = createCapabilityAxisProgress(report, options.shardReceipt);
   const finalizedReport = currentProgress
-    ? composeCapabilityAxisProgress(report, readCapabilityAxisProgress(layout))
+    ? composeCapabilityAxisProgress(
+      report,
+      readCapabilityAxisProgress(layout),
+      options.shardReceipt,
+      options.shardReceipts,
+    )
     : report;
   if (!finalizedReport || !capabilityReportShapeIsExact(finalizedReport)) throw evidenceError();
   const reportText = canonicalJson(finalizedReport);
   const reportSha256 = sha256(reportText);
+  const shardReceiptSha256 = currentProgress
+    ? sha256(canonicalJson(currentProgress.shardReceipt))
+    : undefined;
   atomicWriteText(layout, paths.report, reportText, options);
 
   if (currentProgress) {
@@ -696,6 +832,7 @@ export function finalizeCapabilityEvidenceAttempt(attempt, report, options = {})
       status: "passed",
       reportSha256,
       canonicalSha256: reportSha256,
+      ...(shardReceiptSha256 ? { shardReceiptSha256 } : {}),
     }, options);
   } else {
     atomicWriteJson(layout, paths.state, {
@@ -704,6 +841,7 @@ export function finalizeCapabilityEvidenceAttempt(attempt, report, options = {})
       phase: "completed",
       status: finalizedReport.status,
       reportSha256,
+      ...(shardReceiptSha256 ? { shardReceiptSha256 } : {}),
     }, options);
   }
   return finalizedReport;
