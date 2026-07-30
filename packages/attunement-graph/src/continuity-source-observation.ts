@@ -78,6 +78,7 @@ function countSource(
     [
       "deliveries",
       "experienceLearningPolicyAudits",
+      "experienceLearningPromotionHandles",
       "interactionReceipts",
       "nextPolicyVersion",
       "resetReceipts",
@@ -109,6 +110,12 @@ function countSource(
     : continuityDataArray(
       state.experienceLearningPolicyAudits,
       `${label}.state.experienceLearningPolicyAudits`
+    );
+  const promotionHandles = state.experienceLearningPromotionHandles === undefined
+    ? []
+    : continuityDataArray(
+      state.experienceLearningPromotionHandles,
+      `${label}.state.experienceLearningPromotionHandles`
     );
   const resets = continuityDataArray(
     state.resetReceipts,
@@ -174,6 +181,7 @@ function countSource(
     + evidenceRefs
     + interactions.length
     + policyAudits.length
+    + promotionHandles.length
     + resets.length
     + undos.length;
   const checks: readonly [number, number, string][] = [

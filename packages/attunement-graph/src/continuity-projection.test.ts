@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import {
   AttunementStoreError,
+  createExperienceLearningPromotionHandle,
   fingerprintContinuityPolicy,
   readAttunementState,
   type AttunementState,
@@ -246,13 +247,27 @@ describe("Exact Continuity projection", () => {
         .update(JSON.stringify(auditCore))
         .digest("hex")}`
     };
+    const promotionHandle = createExperienceLearningPromotionHandle({
+      activeBehaviorDigestAfter: audit.activeBehaviorDigestAfter,
+      activeBehaviorDigestBefore: audit.activeBehaviorDigestBefore,
+      appliedAt: audit.occurredAt,
+      authority: audit.authority,
+      candidateId: audit.candidateId,
+      policyAfter,
+      policyBefore,
+      promotionAuditId: audit.id,
+      promotionId: `learning_promotion_${"a".repeat(64)}`,
+      threadId: audit.threadId
+    });
+    if (!promotionHandle) throw new Error("test promotion handle was invalid");
     const state: AttunementState = {
       deliveries: [],
       experienceLearningPolicyAudits: [audit],
+      experienceLearningPromotionHandles: [promotionHandle],
       interactionReceipts: [],
       nextPolicyVersion: 2,
       resetReceipts: [],
-      schemaVersion: 12,
+      schemaVersion: 13,
       threads: [{
         createdAt: "2026-07-29T00:00:00.000Z",
         id: "thread_learning",
@@ -270,7 +285,7 @@ describe("Exact Continuity projection", () => {
       state
     }, "current");
 
-    expect(prepared.diagnostics.sourceRecordsInspected).toBe(2);
+    expect(prepared.diagnostics.sourceRecordsInspected).toBe(3);
     expect(prepared.projection.assertions).toHaveLength(1);
     expect(prepared.projection.assertions[0]).toMatchObject({
       predicate: "SCOPED_TO",
@@ -285,6 +300,7 @@ describe("Exact Continuity projection", () => {
     expect(serialized).not.toContain(audit.candidateId);
     expect(serialized).not.toContain(audit.activeBehaviorDigestBefore);
     expect(serialized).not.toContain(audit.activeBehaviorDigestAfter);
+    expect(serialized).not.toContain(promotionHandle.handleId);
   });
 
   it("projects one thread deterministically with exact provenance and no personal text", async () => {
@@ -635,7 +651,7 @@ describe("Exact Continuity projection", () => {
       const legacy = { ...withoutPolicyAudits, schemaVersion: 2 };
       await writeFile(file, JSON.stringify(legacy), "utf8");
       const normalized = await readAttunementState(file);
-      expect(normalized.schemaVersion).toBe(12);
+      expect(normalized.schemaVersion).toBe(13);
       expect(project(legacy)).toEqual(project(normalized));
     } finally {
       await rm(directory, { force: true, recursive: true });

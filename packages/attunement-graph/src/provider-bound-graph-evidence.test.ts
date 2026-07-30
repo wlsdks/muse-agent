@@ -218,7 +218,7 @@ describe("provider-bound graph evidence", () => {
     expect(first.status).toBe("abstained");
     expect(first.receipt.receiptId).toBe(
       "muse-provider-bound-graph-evidence:sha256:"
-      + "10fd741adf39900558ac1bc043227446781619952d4872a54f2187a453f9f3d0"
+      + "9aa07a55b44c80150c137e6d97d39ac50f8da65fa59bfed04b2151060d4d669f"
     );
     expect(second.receipt.receiptId).toBe(first.receipt.receiptId);
     if (first.stage !== "graph-evidence" || source.status !== "available") {
@@ -241,19 +241,19 @@ describe("provider-bound graph evidence", () => {
         + "cd144471ad2387a2ac9ccc059f52f0fa9d312ac511d596d0a28963aa5defb6c8",
       graphEvidenceReceiptId:
         "muse-receipt-bound-graph-evidence-receipt:sha256:"
-        + "7da307e64f099a7887b0e0d05f2261250c9eeec41c4118100307f1a8767c7074",
+        + "fc1ba99109368662a377cfb0567909852f2da4c0af14cbbea517940a606a5373",
       legacyFrontierReceiptId:
         "muse-fair-witness-frontier-receipt:sha256:"
-        + "b21c3ece9ba8574bbb06015774fcf53cd468a9d89f171cfb2f85c90f2495b21d",
+        + "c01cdbcebbb8d8502c762033440788f76612f4bcbfc988fc497a1dd49a1d8ad8",
       legacyOrderId:
         "muse-fair-frontier-order:sha256:"
-        + "9defbc83494600802e22c6b9eddb6fe0cd40e9d53b275ac9227527e71384b048",
+        + "a4fea3b0eb8a19f3e95248223505780dec647aede1117d840825a01d73565921",
       legacySettlementResultId:
         "muse-candidate-ledger:sha256:"
-        + "755596efb10936faa23162cbf7b27d1907828abe57a657b3f376d7912bb54eba",
+        + "e5f5a16dbfe1418b95be3e9791c8fb46731ff764aa942a3b92870ae28a48a068",
       legacyWitnessReceiptId:
         "muse-thread-rooted-witness-receipt:sha256:"
-        + "e63c598bbb2c99f7a08e8d22478ade3c6da2104479892a6f5df95606477de59f"
+        + "bfe9a3ac3f5d4a7173168aa24e1c73114790343dcba5c3def706e1b3c4e408b2"
     });
     expect(first.providerReceipt.receiptId).toBe(source.receipt.receiptId);
     expect(first.graphObservationReceipt.observedAt).toBe(AT);

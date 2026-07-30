@@ -28,8 +28,8 @@ creates truth, feedback, policy, permission, or authority.
   its domain types and invariants.
 - `./backend` · `./local` — the store contract, and the worker-isolated local SQLite adapter.
 - `./continuity` · `./continuity-changes` · `./continuity-observations` — exact Continuity
-  projection, the "what changed since I stopped" query, and content-addressed observation
-  receipts.
+  and governed-learning lineage projections, the "what changed since I stopped" query, and
+  content-addressed observation receipts.
 - `./continuity-capsules` · `./continuity-resume-runtime` — Capsule render data, and the
   process-local resume compiler.
 - `./shadow-decision-receipt` — the Shadow Muse decision record.
@@ -365,8 +365,10 @@ Silicon and Linux x86-64.
 - Evidence is rebuildable and never outranks its authoritative source.
 - A model hypothesis cannot silently become a source-observed fact.
 - Factual interaction is not feedback, usefulness, causality, policy, or permission.
-- A validated policy audit may establish when the current policy generation occurred;
-  its audit ID, candidate, behavior digests, and authority do not become graph evidence.
+- A validated policy audit alone may establish only when the current policy generation
+  occurred. A content-bound promotion handle plus its exact bound audit may project policy
+  revision/support/correlation lineage; neither record creates graph authorization,
+  feedback, outcome, or promotion authority.
 - Lexical/vector retrieval may nominate candidates only.
 - Mandatory proof, source, freshness, scope, policy, or authority branches are never
   silently truncated.

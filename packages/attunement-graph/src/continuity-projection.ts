@@ -39,6 +39,16 @@ import {
   deriveContinuityThreadGraphRef
 } from "./continuity-projection-identity.js";
 
+export {
+  EXPERIENCE_LEARNING_LINEAGE_PROJECTION_RULE_VERSION,
+  ExperienceLearningLineageProjectionError,
+  projectExperienceLearningLineage,
+  type ExperienceLearningLineageProjection,
+  type ExperienceLearningLineageProjectionErrorCode,
+  type ExperienceLearningLineageProjectionInput,
+  type ExperienceLearningLineageProjectionScope
+} from "./experience-learning-lineage-projection.js";
+
 export const CONTINUITY_PROJECTION_RULE_VERSION =
   "continuity-state-projection-v1" as const;
 
