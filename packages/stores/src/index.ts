@@ -4,6 +4,8 @@
 // unexported. See packages/agent-core/src/index.ts for the house style.
 
 export { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+export { FileTriggerAdmissionJournalStore } from "./trigger-admission-journal-store.js";
+export type { FileTriggerAdmissionJournalStoreOptions } from "./trigger-admission-journal-store.js";
 export {
   readDaemonSettingsSync,
   readQuietHoursSettingSync,
