@@ -11,7 +11,12 @@ export type TriggerAdmissionReason =
   | "focus-unknown"
   | "future"
   | "invalid"
+  | "irrelevant"
   | "paused"
+  | "permission-denied"
+  | "permission-unknown"
+  | "quiet-hours"
+  | "relevance-unknown"
   | "shadow-only"
   | "stale";
 
@@ -30,6 +35,9 @@ export interface TriggerAdmissionInput {
   readonly paused?: boolean;
   readonly cooldownUntil?: Date;
   readonly focus?: "active" | "inactive" | "not-applicable" | "unknown";
+  readonly permission?: "denied" | "granted" | "unknown";
+  readonly quietHoursActive?: boolean;
+  readonly relevance?: "irrelevant" | "relevant" | "unknown";
   readonly budgetAvailable?: boolean;
   readonly deliveryBrakeEngaged?: boolean;
   readonly shadowOnly?: boolean;
@@ -66,6 +74,11 @@ export function admitTrigger(input: TriggerAdmissionInput): TriggerAdmissionDeci
   if (input.cooldownUntil && input.cooldownUntil.getTime() > nowMs) {
     rejectionReasons.push("cooldown-active");
   }
+  if (input.permission === "denied") {
+    rejectionReasons.push("permission-denied");
+  } else if (input.permission === "unknown") {
+    rejectionReasons.push("permission-unknown");
+  }
   if (rejectionReasons.length > 0) {
     return {
       action: "reject",
@@ -78,6 +91,14 @@ export function admitTrigger(input: TriggerAdmissionInput): TriggerAdmissionDeci
     shadowReasons.push("focus-inactive");
   } else if (input.focus === "unknown") {
     shadowReasons.push("focus-unknown");
+  }
+  if (input.quietHoursActive === true) {
+    shadowReasons.push("quiet-hours");
+  }
+  if (input.relevance === "irrelevant") {
+    shadowReasons.push("irrelevant");
+  } else if (input.relevance === "unknown") {
+    shadowReasons.push("relevance-unknown");
   }
   if (input.budgetAvailable === false) {
     shadowReasons.push("budget-exhausted");

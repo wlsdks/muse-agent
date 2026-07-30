@@ -74,7 +74,12 @@ const ADMISSION_REASONS = new Set<TriggerAdmissionReason>([
   "focus-unknown",
   "future",
   "invalid",
+  "irrelevant",
   "paused",
+  "permission-denied",
+  "permission-unknown",
+  "quiet-hours",
+  "relevance-unknown",
   "shadow-only",
   "stale"
 ]);

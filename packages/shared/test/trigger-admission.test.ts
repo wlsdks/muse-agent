@@ -30,7 +30,9 @@ describe("admitTrigger", () => {
     ["future", { envelope: envelope({ occurredAt: "2026-07-30T12:01:00.000Z" }) }],
     ["stale", { envelope: envelope({ occurredAt: "2026-07-30T11:58:00.000Z" }), maxAgeMs: 60_000 }],
     ["paused", { paused: true }],
-    ["cooldown-active", { cooldownUntil: new Date("2026-07-30T12:01:00.000Z") }]
+    ["cooldown-active", { cooldownUntil: new Date("2026-07-30T12:01:00.000Z") }],
+    ["permission-denied", { permission: "denied" }],
+    ["permission-unknown", { permission: "unknown" }]
   ] as const)("rejects %s before execution", (reason, overrides) => {
     const decision = admitTrigger({
       envelope: envelope(),
@@ -63,5 +65,25 @@ describe("admitTrigger", () => {
       focus: "not-applicable",
       now: NOW
     }).action).toBe("execute");
+  });
+
+  it("shadows quiet, irrelevant, and unknown-relevance events without authorizing delivery", () => {
+    expect(admitTrigger({
+      envelope: envelope(),
+      now: NOW,
+      quietHoursActive: true,
+      relevance: "irrelevant"
+    })).toMatchObject({
+      action: "shadow",
+      reasons: ["quiet-hours", "irrelevant"]
+    });
+    expect(admitTrigger({
+      envelope: envelope(),
+      now: NOW,
+      relevance: "unknown"
+    })).toMatchObject({
+      action: "shadow",
+      reasons: ["relevance-unknown"]
+    });
   });
 });

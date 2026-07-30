@@ -87,6 +87,35 @@ describe("trigger control state", () => {
     })).toThrow(/already exists/u);
   });
 
+  it.each([
+    ["permission-denied", { permission: "denied" as const }],
+    ["permission-unknown", { permission: "unknown" as const }],
+    ["quiet-hours", { quietHoursActive: true }],
+    ["irrelevant", { relevance: "irrelevant" as const }],
+    ["relevance-unknown", { relevance: "unknown" as const }]
+  ])("records %s suppression and refuses a work claim", (reason, policy) => {
+    const admission = admitTriggerControl(
+      createTriggerControlState({ maxEntries: 4, maxPending: 2 }),
+      {
+        envelope: envelope(reason),
+        now: T0,
+        ...policy
+      }
+    );
+    expect(admission).toMatchObject({
+      decision: { reasons: [reason] },
+      recorded: true
+    });
+    expect(admission.state.journal.entries[0]?.state).not.toBe("queued");
+    expect(() => claimTriggerControlWork(admission.state, {
+      at: T0,
+      dedupKey: envelope(reason).dedupKey,
+      leaseDurationMs: 1_000,
+      leaseToken: "worker-a:1",
+      maxAttempts: 2
+    })).toThrow(/only queued/u);
+  });
+
   it("atomically settles success in work and journal", () => {
     const completed = settleTriggerControlWork(claimed(), {
       at: T500,

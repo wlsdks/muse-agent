@@ -56,6 +56,40 @@ describe("trigger admission journal", () => {
     expect(second.journal.entries.map((entry) => entry.state)).toEqual(["queued", "shadowed"]);
   });
 
+  it("round-trips exact policy suppression reasons as durable non-effect states", () => {
+    const denied = admitTriggerToJournal(
+      createTriggerAdmissionJournal({ maxPending: 2 }),
+      {
+        envelope: envelope("permission-denied"),
+        now: NOW,
+        permission: "denied"
+      }
+    );
+    const quiet = admitTriggerToJournal(denied.journal, {
+      envelope: envelope("quiet-hours"),
+      now: NOW,
+      quietHoursActive: true,
+      relevance: "unknown"
+    });
+    const restored = parseTriggerAdmissionJournal(
+      serializeTriggerAdmissionJournal(quiet.journal)
+    );
+
+    expect(restored.entries).toMatchObject([
+      {
+        decision: { action: "reject", reasons: ["permission-denied"] },
+        state: "rejected"
+      },
+      {
+        decision: {
+          action: "shadow",
+          reasons: ["quiet-hours", "relevance-unknown"]
+        },
+        state: "shadowed"
+      }
+    ]);
+  });
+
   it("does not persist invalid or duplicate input", () => {
     const initial = createTriggerAdmissionJournal({ maxPending: 1 });
     const invalid = admitTriggerToJournal(initial, { envelope: {}, now: NOW });
