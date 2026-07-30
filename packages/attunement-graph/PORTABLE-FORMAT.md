@@ -1,13 +1,17 @@
 # MAG portable format (`.magx`) v1
 
-Status: **encoder core and golden integration verified-current**. This document fixes
+Status: **encoder core, golden integration, and streaming/order qualification
+verified-current**. This document fixes
 the portable wire contract. AWG-070a3a1a2 implements its independently verified
 package-private transactional encoder core and mandatory exact-head identity-sink
 boundary. AWG-070a3a1a3a0b adds an independently verified production generator and
 production/clean-room/checked-in byte/report integration with recoverable refresh
-rollback. Negative ordering, broad limit qualification, streaming, and reduced-budget
-qualification remain pending. No decoder, runtime filesystem publisher, SQLite staging
-sink, Worker command, public administration API, or public export exists.
+rollback. AWG-070a3a1a3a1 adds an independently verified qualification for exact raw
+UTF-8 negative ordering, terminal failure-object identity after sink engagement, and a
+deterministic 4,096-generation × two-run streaming non-retention smoke. Broad limits
+and reduced-budget qualification remain pending. No decoder, runtime filesystem
+publisher, SQLite staging sink, Worker command, public administration API, or public
+export exists.
 
 ## 1. Purpose and boundary
 

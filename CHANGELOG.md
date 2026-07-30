@@ -8,6 +8,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a3a1 qualification for
+  portable raw UTF-8 projection/head ordering and a deterministic
+  4,096-generation × two-run streaming non-retention smoke. The test uses the
+  checked-in Unicode corpus plus Engine-produced projections, an encoder-admitting
+  current-only backend, incremental hashes, exact scalar retained-state accounting, and
+  exact terminal failure-object identity after sink engagement.
+  This is not an RSS, asymptotic, 100K/1M, production-scale, cross-runtime, decoder,
+  admin, export, or rebuild claim. A fresh evaluator found one reference-identity gap;
+  the repaired test then passed independently with no P0/P1 findings.
+
 - Added the independently verified AWG-070a3a1a3a0b production `.magx`
   golden-corpus generator and three-way production/clean-room/checked-in integration.
   Package-local modes fail closed around read-only comparison, isolated external
