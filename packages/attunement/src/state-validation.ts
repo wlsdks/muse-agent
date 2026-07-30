@@ -12,7 +12,6 @@ import {
 import { CONTINUITY_EVIDENCE_CLASSES } from "./evidence-provenance.js";
 import { continuityOutcomeId } from "./outcome-id.js";
 import { isValidExperienceLearningPolicyAudit } from "./experience-learning-policy-audit.js";
-import { fingerprintContinuityPolicy } from "./policy-digest.js";
 import {
   ARTIFACT_ROLES,
   ARTIFACT_TYPES,
