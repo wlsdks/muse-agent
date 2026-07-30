@@ -1,6 +1,6 @@
 import { realpath } from "node:fs/promises";
 
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, buildExperienceLearningProposalPreview, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TEMPLATE, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, proposeExperienceLearningFromDelivery, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, type ArtifactLinkValidator, type ExactArtifactResolver } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, buildExperienceLearningProposalPreview, buildExperienceLearningReplayBundle, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TEMPLATE, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, proposeExperienceLearningFromDelivery, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, type ArtifactLinkValidator, type ExactArtifactResolver } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
 import type { ContinuityOutcome, ExperienceLearningProposalDraft, ObserveConsentGrant, OpenPreparedContinuityPack } from "@muse/attunement";
 import { createQualificationLearningWriteGate } from "@muse/autoconfigure";
@@ -500,6 +500,42 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     return preview;
   });
 
+  server.post<{ Params: { readonly deliveryId: string }; Body: unknown }>("/api/attunement/deliveries/:deliveryId/learning-replay-preview", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    const state = await readAttunementState(gate.attunementFile);
+    const delivery = state.deliveries.find((candidate) =>
+      candidate.id === request.params.deliveryId
+    );
+    if (!delivery) {
+      return reply.code(404).send({ errorMessage: "continuity delivery not found" });
+    }
+    if (!isExactReplayPreviewBody(request.body)) {
+      return reply.code(422).send({
+        reason: "invalid-replay-preview",
+        status: "held"
+      });
+    }
+    const proposal = proposeExperienceLearningFromDelivery({
+      delivery,
+      draft: request.body.draft as ExperienceLearningProposalDraft
+    });
+    if (proposal.status === "held") {
+      return reply.code(422).send(proposal);
+    }
+    const preview = buildExperienceLearningProposalPreview(proposal.candidate);
+    const replayBundle = buildExperienceLearningReplayBundle(
+      proposal.candidate,
+      request.body.evidenceCases
+    );
+    if (!preview || !replayBundle) {
+      return reply.code(422).send({
+        reason: "invalid-replay-preview",
+        status: "held"
+      });
+    }
+    return { preview, replayBundle };
+  });
+
   server.get<{ Params: { readonly runId: string } }>("/api/attunement/runs/:runId", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
     const delivery = (await readAttunementState(gate.attunementFile)).deliveries
@@ -507,4 +543,23 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     if (!delivery) return reply.code(404).send({ error: "continuity run not found" });
     return delivery;
   });
+}
+
+function isExactReplayPreviewBody(
+  value: unknown
+): value is { readonly draft: unknown; readonly evidenceCases: unknown } {
+  if (typeof value !== "object" || value === null || Object.getPrototypeOf(value) !== Object.prototype) {
+    return false;
+  }
+  const keys = Reflect.ownKeys(value);
+  return keys.length === 2
+    && keys.every((key) => key === "draft" || key === "evidenceCases")
+    && ["draft", "evidenceCases"].every((field) => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, field);
+      return descriptor !== undefined
+        && Object.hasOwn(descriptor, "value")
+        && descriptor.get === undefined
+        && descriptor.set === undefined
+        && descriptor.enumerable === true;
+    });
 }

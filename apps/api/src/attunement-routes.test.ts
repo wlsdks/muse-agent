@@ -641,6 +641,102 @@ describe("POST /api/attunement/deliveries/:deliveryId/learning-preview", () => {
   });
 });
 
+describe("POST /api/attunement/deliveries/:deliveryId/learning-replay-preview", () => {
+  it("returns a frozen replay preview without mutating policy or delivery state", async () => {
+    const { createExperienceReplayEvidenceReceipt } = await import("@muse/attunement");
+    const app = server();
+    const opened = await app.inject({
+      method: "POST",
+      url: `/api/attunement/threads/${threadId}/continue`
+    });
+    const deliveryId = opened.json().delivery.id as string;
+    expect((await app.inject({
+      method: "POST",
+      payload: { outcome: "rejected" },
+      url: `/api/attunement/deliveries/${deliveryId}/outcome`
+    })).statusCode).toBe(200);
+    const before = await readFile(attunementFile);
+    const evidenceInput = {
+      caseId: "replay-case-1",
+      evaluator: { id: "continuity-terminal-grader", version: "1.0.0" },
+      inputHash: "f".repeat(64),
+      observedAt: "2026-07-17T00:02:00.000Z"
+    };
+    const baseline = createExperienceReplayEvidenceReceipt({
+      ...evidenceInput,
+      passed: false,
+      variant: "baseline"
+    })!;
+    const challenger = createExperienceReplayEvidenceReceipt({
+      ...evidenceInput,
+      passed: true,
+      variant: "challenger"
+    })!;
+    const draft = {
+      expectedBenefit: "Interrupt less often.",
+      expiresAt: "2026-07-20T00:00:00.000Z",
+      experienceId: "experience-api-replay-1",
+      proposedAt: "2026-07-17T00:01:00.000Z",
+      proposedBehavior: "Wait longer before offering this thread.",
+      proposedChange: {
+        adjustment: "increase-cooldown",
+        kind: "thread-timing"
+      },
+      scope: {
+        kind: "thread-timing",
+        threadId
+      }
+    };
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        draft,
+        evidenceCases: [{ baseline, caseId: evidenceInput.caseId, challenger }]
+      },
+      url: `/api/attunement/deliveries/${deliveryId}/learning-replay-preview`
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      preview: {
+        boundary: {
+          activation: "none",
+          permission: "unchanged"
+        }
+      },
+      replayBundle: {
+        replay: {
+          promotionApplied: false,
+          recommendation: "eligible-for-review"
+        },
+        status: "frozen"
+      }
+    });
+    expect(await readFile(attunementFile)).toEqual(before);
+
+    const invalidEvidence = await app.inject({
+      method: "POST",
+      payload: {
+        draft,
+        evidenceCases: [{
+          baseline,
+          caseId: evidenceInput.caseId,
+          challenger: { ...challenger, evidenceHash: "0".repeat(64) }
+        }]
+      },
+      url: `/api/attunement/deliveries/${deliveryId}/learning-replay-preview`
+    });
+    expect(invalidEvidence.statusCode).toBe(422);
+    expect(invalidEvidence.json()).toEqual({
+      reason: "invalid-replay-preview",
+      status: "held"
+    });
+    expect(await readFile(attunementFile)).toEqual(before);
+    await app.close();
+  });
+});
+
 describe("GET /api/attunement/review", () => {
   it("returns the shared oldest-pending exact review without mutating persisted state", async () => {
     const app = server();
