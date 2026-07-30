@@ -1,4 +1,8 @@
-import type { ContinuityOutcome, ContinuityOutcomeRecord } from "@muse/attunement";
+import type {
+  ContinuityOutcome,
+  ContinuityOutcomeRecord,
+  ExperienceLearningReviewOpportunity
+} from "@muse/attunement";
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
@@ -13,6 +17,7 @@ export interface ContinuityOutcomeToolResult {
     readonly id: string;
     readonly outcome?: ContinuityOutcomeRecord;
   };
+  readonly learningOpportunity?: ExperienceLearningReviewOpportunity;
   readonly policy: {
     readonly version: number;
   };
@@ -30,6 +35,42 @@ interface ContinuityOutcomeInput {
   readonly deliveryId: string;
   readonly outcome: ContinuityOutcome;
   readonly ownerNote?: string;
+}
+
+function projectLearningOpportunity(
+  value: ExperienceLearningReviewOpportunity
+): JsonObject {
+  return {
+    activation: value.activation,
+    boundary: {
+      actionScope: value.boundary.actionScope,
+      permission: value.boundary.permission,
+      recipient: value.boundary.recipient,
+      retention: value.boundary.retention,
+      source: value.boundary.source
+    },
+    deliveryId: value.deliveryId,
+    opportunityId: value.opportunityId,
+    outcome: {
+      outcome: value.outcome.outcome,
+      outcomeId: value.outcome.outcomeId,
+      recordedAt: value.outcome.recordedAt
+    },
+    requiredReview: {
+      boundedDraft: value.requiredReview.boundedDraft,
+      explicitApproval: value.requiredReview.explicitApproval,
+      frozenReplayEvidence: value.requiredReview.frozenReplayEvidence
+    },
+    schemaVersion: value.schemaVersion,
+    scope: { threadId: value.scope.threadId },
+    sourceRun: {
+      behaviorDigest: value.sourceRun.behaviorDigest,
+      completedAt: value.sourceRun.completedAt,
+      evidenceClass: value.sourceRun.evidenceClass,
+      runId: value.sourceRun.runId
+    },
+    status: value.status
+  };
 }
 
 function dataValue(
@@ -161,6 +202,9 @@ export function createContinuityOutcomeTool(
         outcome: recorded.outcome,
         ownerNoteRecorded: recorded.ownerNote !== undefined,
         policyVersion: result.policy.version,
+        ...(result.learningOpportunity
+          ? { learningOpportunity: projectLearningOpportunity(result.learningOpportunity) }
+          : {}),
         success: true
       };
     }

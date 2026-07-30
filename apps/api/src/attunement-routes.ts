@@ -472,7 +472,14 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
       createQualificationLearningWriteGate(gate.env ?? process.env),
       { ...(gate.now ? { now: () => new Date(gate.now!()) } : {}) }
     );
-    return { applied: result.applied, delivery: result.delivery, policy: result.policy };
+    return {
+      applied: result.applied,
+      delivery: result.delivery,
+      ...(result.learningOpportunity
+        ? { learningOpportunity: result.learningOpportunity }
+        : {}),
+      policy: result.policy
+    };
   });
 
   server.post<{ Params: { readonly deliveryId: string }; Body: unknown }>("/api/attunement/deliveries/:deliveryId/learning-preview", async (request, reply) => {

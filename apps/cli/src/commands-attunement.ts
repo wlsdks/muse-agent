@@ -796,6 +796,9 @@ Examples:
           { now: () => new Date(now()) }
         );
         io.stdout(`${recorded.applied ? "Recorded" : "Already recorded"} ${canonicalOutcome} for ${deliveryId}; policy v${recorded.policy.version.toString()}\n`);
+        if (recorded.learningOpportunity) {
+          io.stdout(`Learning review required: ${recorded.learningOpportunity.opportunityId} (no policy change; bounded draft, frozen replay evidence, and explicit approval required)\n`);
+        }
       });
     });
 

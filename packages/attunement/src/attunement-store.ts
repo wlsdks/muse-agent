@@ -12,6 +12,10 @@ import {
   type ActiveAttunementPolicyWriteGate
 } from "./active-policy-write-gate.js";
 import { fingerprintContinuityTaskState } from "./interaction-evidence.js";
+import {
+  buildExperienceLearningReviewOpportunity,
+  type ExperienceLearningReviewOpportunity
+} from "./experience-learning-opportunity.js";
 import { mutateFileState, type FileStateMutation } from "./file-state-mutation.js";
 import {
   createOrganicContinuityWriteAuthority,
@@ -61,6 +65,10 @@ export interface AttunementStoreOptions extends ContinuityEvidenceWriteOptions {
 export interface RecordContinuityOutcomeOptions extends AttunementStoreOptions {
   readonly ownerNote?: string;
 }
+
+export type ProductionContinuityOutcomeResult =
+  Awaited<ReturnType<typeof recordContinuityOutcome>>
+  & Readonly<{ readonly learningOpportunity?: ExperienceLearningReviewOpportunity }>;
 
 export interface CreateThreadInput {
   readonly kind: PersonalThreadKind;
@@ -527,17 +535,21 @@ export async function recordContinuityOutcome(
 }
 
 /** Exact production operation: authority is consumed by this one outcome write. */
-export function recordProductionAuthorizedContinuityOutcome(
+export async function recordProductionAuthorizedContinuityOutcome(
   file: string,
   deliveryId: string,
   outcome: ContinuityOutcome,
   activePolicyWriteGate: ActiveAttunementPolicyWriteGate,
   options: Omit<RecordContinuityOutcomeOptions, "evidenceAuthority" | "evidenceClass"> = {}
-): ReturnType<typeof recordContinuityOutcome> {
-  return recordContinuityOutcome(file, deliveryId, outcome, activePolicyWriteGate, {
+): Promise<ProductionContinuityOutcomeResult> {
+  const result = await recordContinuityOutcome(file, deliveryId, outcome, activePolicyWriteGate, {
     ...options,
     evidenceAuthority: createOrganicContinuityWriteAuthority()
   });
+  const review = buildExperienceLearningReviewOpportunity(result.delivery);
+  return review.status === "review-required"
+    ? Object.freeze({ ...result, learningOpportunity: review.opportunity })
+    : result;
 }
 
 /**

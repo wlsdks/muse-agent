@@ -575,11 +575,35 @@ describe("POST /api/attunement/deliveries/:deliveryId/learning-preview", () => {
       url: `/api/attunement/threads/${threadId}/continue`
     });
     const deliveryId = opened.json().delivery.id as string;
-    expect((await app.inject({
+    const outcomeResponse = await app.inject({
       method: "POST",
       payload: { outcome: "rejected" },
       url: `/api/attunement/deliveries/${deliveryId}/outcome`
-    })).statusCode).toBe(200);
+    });
+    expect(outcomeResponse.statusCode).toBe(200);
+    expect(outcomeResponse.json()).toMatchObject({
+      learningOpportunity: {
+        activation: "none",
+        opportunityId: expect.stringMatching(/^learning_opportunity_[a-f0-9]{64}$/u),
+        requiredReview: {
+          boundedDraft: true,
+          explicitApproval: true,
+          frozenReplayEvidence: true
+        },
+        status: "review-required"
+      }
+    });
+    const afterFirstOutcome = await readFile(attunementFile);
+    const replayedOutcome = await app.inject({
+      method: "POST",
+      payload: { outcome: "rejected" },
+      url: `/api/attunement/deliveries/${deliveryId}/outcome`
+    });
+    expect(replayedOutcome.statusCode).toBe(200);
+    expect(replayedOutcome.json().applied).toBe(false);
+    expect(replayedOutcome.json().learningOpportunity.opportunityId)
+      .toBe(outcomeResponse.json().learningOpportunity.opportunityId);
+    expect(await readFile(attunementFile)).toEqual(afterFirstOutcome);
     const before = await readFile(attunementFile);
 
     const response = await app.inject({

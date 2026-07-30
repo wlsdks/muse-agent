@@ -223,6 +223,9 @@ describe("muse thread / continue — Personal Continuity", () => {
 
     const outcome = await run(f, ["thread", "outcome", deliveryId!, "ignored"]);
     expect(outcome.stdout).toContain("Recorded ignored");
+    expect(outcome.stdout).toMatch(
+      /Learning review required: learning_opportunity_[a-f0-9]{64} \(no policy change;/u
+    );
     const next = await run(f, ["thread", "continue", id]);
     expect(next.stdout).toContain("Previous pack: ignored");
   });

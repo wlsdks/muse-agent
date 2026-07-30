@@ -10,6 +10,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createMuseRuntimeAssembly } from "../src/index.js";
+import { createContinuityOutcomeTool } from "../src/continuity-outcome-tool.js";
 
 let directory: string | undefined;
 
@@ -19,6 +20,69 @@ afterEach(async () => {
 });
 
 describe("normal-chat explicit Continuity outcome tool", () => {
+  it("passes through the canonical activation-none learning opportunity", async () => {
+    const tool = createContinuityOutcomeTool({
+      recordOutcome: async (deliveryId, outcome) => ({
+        applied: true,
+        delivery: {
+          id: deliveryId,
+          outcome: {
+            authority: "owner-explicit",
+            evidenceClass: "organic",
+            id: "continuity_outcome_1",
+            outcome,
+            policyVersion: 2,
+            recordedAt: "2026-07-30T11:05:00.000Z"
+          }
+        },
+        learningOpportunity: {
+          activation: "none",
+          boundary: {
+            actionScope: "not-expanded",
+            permission: "unchanged",
+            recipient: "unchanged",
+            retention: "unchanged",
+            source: "unchanged"
+          },
+          deliveryId,
+          opportunityId: `learning_opportunity_${"a".repeat(64)}`,
+          outcome: {
+            outcome: "ignored",
+            outcomeId: "continuity_outcome_1",
+            recordedAt: "2026-07-30T11:05:00.000Z"
+          },
+          requiredReview: {
+            boundedDraft: true,
+            explicitApproval: true,
+            frozenReplayEvidence: true
+          },
+          schemaVersion: 1,
+          scope: { threadId: "thread-1" },
+          sourceRun: {
+            behaviorDigest: "b".repeat(64),
+            completedAt: "2026-07-30T11:00:00.000Z",
+            evidenceClass: "organic-production",
+            runId: "run-1"
+          },
+          status: "review-required"
+        },
+        policy: { version: 2 }
+      })
+    });
+
+    await expect(tool.execute({
+      deliveryId: "delivery_opportunity_1",
+      outcome: "ignored"
+    }, { runId: "approved" })).resolves.toMatchObject({
+      learningOpportunity: {
+        activation: "none",
+        opportunityId: `learning_opportunity_${"a".repeat(64)}`,
+        status: "review-required"
+      },
+      success: true
+    });
+  });
+
   it("registers four explicit outcomes and records one exact owner note only", async () => {
     directory = await mkdtemp(join(tmpdir(), "muse-continuity-outcome-"));
     const file = join(directory, "attunement.json");
