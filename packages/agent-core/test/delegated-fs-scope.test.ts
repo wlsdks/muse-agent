@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -67,13 +67,80 @@ describe("delegated fs scope — real AgentRuntime expiry race", () => {
     });
 
     await runtime.run({
-      messages: [{ content: "write the file", role: "user" }],
+      messages: [{ content: `write the file at ${target}`, role: "user" }],
       model: "test/model",
       runId: "delegated-expiry-race",
       toolExposureAuthority: authority
     });
 
     expect(advertised).toBe(true);
+    await expect(readFile(target, "utf8")).rejects.toThrow();
+  });
+
+  it("refuses a concrete write outside the delegated root through the public runtime", async () => {
+    root = await mkdtemp(join(tmpdir(), "muse-fs-delegated-runtime-"));
+    const allowedRoot = join(root, "allowed");
+    const target = join(root, "outside.md");
+    await mkdir(allowedRoot);
+    const authority = createToolExposureAuthority({
+      allowedToolNames: ["file_write"],
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      localMode: true,
+      writablePaths: [allowedRoot]
+    });
+    let turn = 0;
+    let advertised = false;
+    let observedToolResult = "";
+    const provider = {
+      id: "outside-scope",
+      async generate(request: {
+        readonly messages?: readonly { readonly content?: unknown; readonly role?: string }[];
+        readonly model: string;
+        readonly tools?: readonly { readonly name: string }[];
+      }) {
+        turn += 1;
+        if (turn === 1) {
+          advertised = request.tools?.some((tool) => tool.name === "file_write") === true;
+          return {
+            id: "call",
+            model: request.model,
+            output: "",
+            toolCalls: [{
+              arguments: { content: "must-not-write", path: target },
+              id: "write-1",
+              name: "file_write"
+            }]
+          };
+        }
+        observedToolResult = JSON.stringify(request.messages);
+        return { id: "final", model: request.model, output: "done" };
+      },
+      async listModels() { return []; },
+      async *stream() {}
+    };
+    const fileWrite = createFileWriteTool({
+      approvalGate: () => ({ approved: true }),
+      baseDir: root,
+      roots: [root]
+    });
+    const registry = new ToolRegistry([fileWrite]);
+    const runtime = createAgentRuntime({
+      modelProvider: provider as never,
+      toolApprovalGate: () => ({ allowed: true }),
+      toolExecutor: new ToolExecutor({ registry }),
+      toolExposurePolicy: createDefaultToolExposurePolicy({ allowWriteWithoutMutationIntent: true }),
+      toolRegistry: registry
+    });
+
+    await runtime.run({
+      messages: [{ content: `write the file at ${target}`, role: "user" }],
+      model: "test/model",
+      runId: "delegated-outside-scope",
+      toolExposureAuthority: authority
+    });
+
+    expect(advertised).toBe(true);
+    expect(observedToolResult).toContain("target is outside the delegated writable scope");
     await expect(readFile(target, "utf8")).rejects.toThrow();
   });
 });
