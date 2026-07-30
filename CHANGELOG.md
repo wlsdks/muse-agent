@@ -8,6 +8,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a0 package-private foundations for a future
+  portable codec: an internal canonical helper may override only the body/full byte
+  ceilings, and exact portable projection admission returns the Engine-normalized
+  projection with detached scope, generation, commit, and `mag-store:` identity.
+  Existing canonical defaults, `openMag`, and public exports remain unchanged. A future
+  encoder must still require caller `expectedScope` and a mandatory exact-head validation
+  sink; no codec, filesystem, SQLite, Worker, admin, or public export ships here.
+
 - Added the independently verified AWG-070a3a0 portable-format foundation. The exact
   stored-projection normalizer used by `openMag` is now a package-private seam with
   direct corruption tests, and `packages/attunement-graph/PORTABLE-FORMAT.md` fixes the

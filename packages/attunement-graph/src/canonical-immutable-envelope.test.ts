@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 import {
   CANONICAL_IMMUTABLE_ENVELOPE_LIMITS,
   CanonicalImmutableEnvelopeError,
-  canonicalizeImmutableEnvelope
+  canonicalizeImmutableEnvelope,
+  canonicalizeImmutableEnvelopeForInternalUse,
+  mintCanonicalImmutableEnvelopeFromFrozenUnsignedForInternalUse
 } from "./canonical-immutable-envelope.js";
 
 import type {
@@ -879,6 +881,266 @@ describe("canonical immutable envelope", () => {
     );
     expect(error.details.axis).toBe("full-envelope-bytes");
     expect(error.details.actual).toBe(fullLimit + 1);
+  });
+
+  it("keeps the default helper byte-identical while allowing only internal byte ceilings to change", () => {
+    const publicResult = canonicalizeImmutableEnvelope(
+      fixture(),
+      "external-mutable",
+      SPEC
+    );
+    const internalResult = canonicalizeImmutableEnvelopeForInternalUse(
+      fixture(),
+      "external-mutable",
+      SPEC,
+      {
+        maxCanonicalBodyBytes: 1_048_256,
+        maxEnvelopeBytes: 1_048_576
+      }
+    );
+    expect(internalResult.canonicalJson).toBe(publicResult.canonicalJson);
+    expect(internalResult.canonicalByteLength).toBe(
+      publicResult.canonicalByteLength
+    );
+    expect(internalResult.contentId).toBe(publicResult.contentId);
+    expect(Buffer.from(internalResult.canonicalJson).toString("hex")).toBe(
+      Buffer.from(publicResult.canonicalJson).toString("hex")
+    );
+
+    const bodyLimits = {
+      maxCanonicalBodyBytes: 2_048,
+      maxEnvelopeBytes: 4_096
+    };
+    expect(() => canonicalizeImmutableEnvelopeForInternalUse(
+      bodyFixtureAtBytes(bodyLimits.maxCanonicalBodyBytes),
+      "external-mutable",
+      SPEC,
+      bodyLimits
+    )).not.toThrow();
+    const bodyError = expectError(
+      () => canonicalizeImmutableEnvelopeForInternalUse(
+        bodyFixtureAtBytes(bodyLimits.maxCanonicalBodyBytes + 1),
+        "external-mutable",
+        SPEC,
+        bodyLimits
+      ),
+      "BUDGET_EXCEEDED"
+    );
+    expect(bodyError.details.axis).toBe("canonical-body-bytes");
+    expect(bodyError.details.limit).toBe(bodyLimits.maxCanonicalBodyBytes);
+
+    const fullSpec = {
+      hashDomain: "internal-full-envelope-boundary",
+      idField: "a".repeat(64),
+      idPrefix: "\"".repeat(128)
+    };
+    const fullAddition = Buffer.byteLength(JSON.stringify(fullSpec.idField))
+      + 1
+      + Buffer.byteLength(JSON.stringify(`${fullSpec.idPrefix}${"0".repeat(64)}`))
+      + 1;
+    const fullLimits = {
+      maxCanonicalBodyBytes: 4_096,
+      maxEnvelopeBytes: 4_096
+    };
+    const exactFull = canonicalizeImmutableEnvelopeForInternalUse(
+      bodyFixtureAtBytes(fullLimits.maxEnvelopeBytes - fullAddition, "z"),
+      "external-mutable",
+      fullSpec,
+      fullLimits
+    );
+    expect(exactFull.canonicalByteLength).toBe(fullLimits.maxEnvelopeBytes);
+    const fullError = expectError(
+      () => canonicalizeImmutableEnvelopeForInternalUse(
+        bodyFixtureAtBytes(
+          fullLimits.maxEnvelopeBytes - fullAddition + 1,
+          "z"
+        ),
+        "external-mutable",
+        fullSpec,
+        fullLimits
+      ),
+      "BUDGET_EXCEEDED"
+    );
+    expect(fullError.details.axis).toBe("full-envelope-bytes");
+    expect(fullError.details.limit).toBe(fullLimits.maxEnvelopeBytes);
+  });
+
+  it("mints an exact frozen unsigned root only through the package-private path", () => {
+    const frozenUnsigned = frozenCopy(fixture());
+    expectError(
+      () => canonicalizeImmutableEnvelope(
+        frozenUnsigned,
+        "muse-frozen",
+        SPEC
+      ),
+      "INVALID_INPUT",
+      "missing-id"
+    );
+    const expected = canonicalizeImmutableEnvelope(
+      fixture(),
+      "external-mutable",
+      SPEC
+    );
+    const minted =
+      mintCanonicalImmutableEnvelopeFromFrozenUnsignedForInternalUse(
+        frozenUnsigned,
+        SPEC
+      );
+    expectError(
+      () => mintCanonicalImmutableEnvelopeFromFrozenUnsignedForInternalUse(
+        frozenCopy(signedMutable(fixture())),
+        SPEC
+      ),
+      "INVALID_INPUT",
+      "expected-unsigned-root"
+    );
+    expect(minted.contentId).toBe(expected.contentId);
+    expect(minted.canonicalJson).toBe(expected.canonicalJson);
+    expect(minted.canonicalByteLength).toBe(expected.canonicalByteLength);
+    expect(Buffer.from(minted.canonicalJson).toString("hex")).toBe(
+      Buffer.from(expected.canonicalJson).toString("hex")
+    );
+    assertFrozenTree(minted.envelope);
+  });
+
+  it("rejects hostile or invalid internal byte limits without invoking getters or proxy traps", () => {
+    let getterCalls = 0;
+    const accessorLimits = {
+      maxEnvelopeBytes: 2_048
+    };
+    Object.defineProperty(accessorLimits, "maxCanonicalBodyBytes", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        throw new Error("must not run");
+      }
+    });
+    let proxyTraps = 0;
+    const proxyLimits = new Proxy({
+      maxCanonicalBodyBytes: 1_024,
+      maxEnvelopeBytes: 2_048
+    }, {
+      ownKeys() {
+        proxyTraps += 1;
+        throw new Error("must not run");
+      }
+    });
+    const symbolLimits = {
+      maxCanonicalBodyBytes: 1_024,
+      maxEnvelopeBytes: 2_048,
+      [Symbol("unknown")]: true
+    };
+    const invalidLimits: readonly unknown[] = [
+      null,
+      [],
+      new Date(),
+      proxyLimits,
+      accessorLimits,
+      symbolLimits,
+      { maxCanonicalBodyBytes: 1_024 },
+      {
+        maxCanonicalBodyBytes: 1_024,
+        maxEnvelopeBytes: 2_048,
+        unknown: true
+      },
+      { maxCanonicalBodyBytes: 0, maxEnvelopeBytes: 2_048 },
+      { maxCanonicalBodyBytes: 1.5, maxEnvelopeBytes: 2_048 },
+      { maxCanonicalBodyBytes: 2_049, maxEnvelopeBytes: 2_048 },
+      { maxCanonicalBodyBytes: 1_024, maxEnvelopeBytes: 2_097_153 },
+      {
+        maxCanonicalBodyBytes: Number.MAX_SAFE_INTEGER + 1,
+        maxEnvelopeBytes: Number.MAX_SAFE_INTEGER + 1
+      }
+    ];
+    for (const limits of invalidLimits) {
+      expectError(
+        () => canonicalizeImmutableEnvelopeForInternalUse(
+          fixture(),
+          "external-mutable",
+          SPEC,
+          limits as never
+        ),
+        "INVALID_CONTRACT",
+        "invalid-byte-limits"
+      );
+    }
+    expect(getterCalls).toBe(0);
+    expect(proxyTraps).toBe(0);
+    expect(() => canonicalizeImmutableEnvelopeForInternalUse(
+      fixture(),
+      "external-mutable",
+      SPEC,
+      {
+        maxCanonicalBodyBytes: 2_097_152,
+        maxEnvelopeBytes: 2_097_152
+      }
+    )).not.toThrow();
+  });
+
+  it("does not relax non-byte admission checks under the maximum internal ceilings", () => {
+    const limits = {
+      maxCanonicalBodyBytes: 2_097_152,
+      maxEnvelopeBytes: 2_097_152
+    };
+    const run = (value: unknown): unknown =>
+      canonicalizeImmutableEnvelopeForInternalUse(
+        value,
+        "external-mutable",
+        SPEC,
+        limits
+      );
+    let error = expectError(
+      () => run(nestedAtDepth(CANONICAL_IMMUTABLE_ENVELOPE_LIMITS.maxDepth)),
+      "BUDGET_EXCEEDED"
+    );
+    expect(error.details.axis).toBe("depth");
+    error = expectError(
+      () => run(aggregateFixture(
+        CANONICAL_IMMUTABLE_ENVELOPE_LIMITS.maxAggregateStringBytes + 1
+      )),
+      "BUDGET_EXCEEDED"
+    );
+    expect(error.details.axis).toBe("aggregate-string-bytes");
+    error = expectError(
+      () => run({
+        value: "a".repeat(
+          CANONICAL_IMMUTABLE_ENVELOPE_LIMITS.maxStringCodeUnits + 1
+        )
+      }),
+      "BUDGET_EXCEEDED"
+    );
+    expect(error.details.axis).toBe("string-code-units");
+    error = expectError(
+      () => run({ value: "가".repeat(5_462) }),
+      "BUDGET_EXCEEDED"
+    );
+    expect(error.details.axis).toBe("string-bytes");
+
+    const cycle: Record<string, unknown> = {};
+    cycle.self = cycle;
+    const shared = { value: 1 };
+    const accessor = {};
+    let getterCalls = 0;
+    Object.defineProperty(accessor, "value", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        throw new Error("must not run");
+      }
+    });
+    const sparse = new Array(1);
+    for (const [value, reason] of [
+      [cycle, "cycle"],
+      [{ left: shared, right: shared }, "alias"],
+      [accessor, "accessor-or-missing-descriptor"],
+      [{ sparse }, "sparse-array"],
+      [{ value: "\ud800" }, "unpaired-surrogate"],
+      [{ value: -0 }, "unsupported-number"],
+      [{ value: Number.POSITIVE_INFINITY }, "unsupported-number"]
+    ] as const) {
+      expectError(() => run(value), "INVALID_INPUT", reason);
+    }
+    expect(getterCalls).toBe(0);
   });
 
   it("keeps legacy root exports while adding the neutral MAG lifecycle", async () => {

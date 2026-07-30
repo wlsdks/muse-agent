@@ -70,7 +70,7 @@ function instant(value: unknown, label: string, code: MagError["code"] = "INVALI
   return value;
 }
 
-function scope(value: unknown, label: string, code: MagError["code"] = "INVALID_INPUT"): MagScope {
+export function normalizeMagScope(value: unknown, label: string, code: MagError["code"] = "INVALID_INPUT"): MagScope {
   const input = record(value, label, ["sourceId", "threadId"], ["sourceId", "threadId"], code);
   return Object.freeze({ sourceId: text(input.sourceId, `${label}.sourceId`, code), threadId: text(input.threadId, `${label}.threadId`, code) });
 }
@@ -82,7 +82,7 @@ function sameScope(left: MagScope, right: MagScope): boolean {
 function snapshot(value: unknown, label: string, code: MagError["code"] = "INVALID_INPUT"): MagSnapshot {
   const input = record(value, label, ["schemaVersion", "scope", "generation", "commitId"], ["schemaVersion", "scope", "generation", "commitId"], code);
   if (input.schemaVersion !== 1 || !Number.isSafeInteger(input.generation) || (input.generation as number) < 1) magError(code, `${label} is invalid`);
-  return Object.freeze({ schemaVersion: 1, scope: scope(input.scope, `${label}.scope`, code), generation: input.generation as number, commitId: text(input.commitId, `${label}.commitId`, code) });
+  return Object.freeze({ schemaVersion: 1, scope: normalizeMagScope(input.scope, `${label}.scope`, code), generation: input.generation as number, commitId: text(input.commitId, `${label}.commitId`, code) });
 }
 
 function freshness(value: unknown, label: string, code: MagError["code"] = "INVALID_INPUT"): MagSourceFreshness {
@@ -137,7 +137,7 @@ function normalizedObservationFromEnvelope(
   const input = record(envelope, "source observation", ["schemaVersion", "observationId", "observationKey", "scope", "observedAt", "sourceFreshness", "assertions"], ["schemaVersion", "observationId", "observationKey", "scope", "observedAt", "sourceFreshness", "assertions"], code);
   if (input.schemaVersion !== 1) magError(code, "source observation.schemaVersion must be 1");
   text(input.observationKey, "source observation.observationKey", code);
-  const observedScope = scope(input.scope, "source observation.scope", code);
+  const observedScope = normalizeMagScope(input.scope, "source observation.scope", code);
   if (!sameScope(observedScope, expectedScope)) magError(code === "INVALID_INPUT" ? "INVALID_SCOPE" : code, "source observation must match the opened scope");
   if (!Array.isArray(input.assertions)) magError(code, "source observation.assertions must be an array");
   let assertions: readonly GraphAssertion[];
@@ -310,7 +310,7 @@ function sameSnapshot(left: MagSnapshot | undefined, right: MagSnapshot | undefi
 
 export async function openMag(options: OpenMagOptions): Promise<Mag> {
   const input = record(options, "open MAG options", ["scope", "store"], ["scope", "store"]);
-  const openedScope = scope(input.scope, "open MAG options.scope");
+  const openedScope = normalizeMagScope(input.scope, "open MAG options.scope");
   const backend = registeredMagStoreBackend(input.store as OpenMagOptions["store"]);
   if (!backend) magError("INVALID_INPUT", "store must be created by the backend Adapter seam");
   let lifecycle: "open" | "closing" | "closed" = "open";

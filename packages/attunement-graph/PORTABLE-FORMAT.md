@@ -3,7 +3,8 @@
 Status: **implementation pending normative contract**. This document fixes the portable
 wire contract before a codec, filesystem publisher, SQLite staging sink, Worker command,
 or public administration API exists. Nothing in this document is a shipped runtime or
-public export.
+public export. AWG-070a3a1a0 has independently verified package-private
+canonical byte-limit and exact projection-admission seams for a future codec.
 
 ## 1. Purpose and boundary
 
@@ -111,13 +112,16 @@ type Footer = {
 };
 ```
 
-`projection` is the current `MagStoredProjection` logical value. It is admitted by the
-exact shared Engine `normalizeStoredProjection` seam, including schema, scope, canonical
+`projection` is the current `MagStoredProjection` logical value. The package-private
+portable admission seam first normalizes caller-supplied `expectedScope` through the
+Engine's exact hostile-safe scope normalizer, then admits the value through the exact
+shared Engine `normalizeStoredProjection` seam. This covers schema, scope, canonical
 projection/content ID, metadata, assertion, snapshot commit, hostile-object, and size
-checks. Portable code MUST NOT substitute the weaker local Worker parser.
+checks. Portable code MUST NOT read scope from the supplied projection first or
+substitute the weaker local Worker parser.
 
-`projectionId` is the `storeEnvelopeId` validated or minted by that exact shared
-normalizer. The ID is:
+`projectionId` is the `storeEnvelopeId` validated or minted by that exact admission
+path. The ID is:
 
 ```text
 "mag-store:"
@@ -243,6 +247,9 @@ interface MagPortableValidationSink {
 The `O(max-line)` claim excludes sink storage. A SQLite importer is expected to use
 indexed staging state and publish only after `finish`. An exporter is expected to use a
 pinned ordered cursor so concurrent source changes cannot mix states in one artifact.
+A future encoder MUST accept caller-supplied `expectedScope` for every projection and a
+mandatory exact-head validation sink; it must not infer scope from an unadmitted value or
+make head validation optional.
 
 ## 7. Future `./admin` public contract
 

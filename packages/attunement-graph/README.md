@@ -43,6 +43,9 @@ The current implementation includes:
 - an independently verified AWG-070a3a0 foundation: the Engine's exact stored-projection
   normalizer is available through a package-private seam, and
   [`PORTABLE-FORMAT.md`](PORTABLE-FORMAT.md) fixes the normative `.magx` v1 contract;
+- an independently verified AWG-070a3a1a0 package-private foundation: canonical admission can
+  override only its body/envelope byte ceilings, and portable code can obtain one exact
+  normalized projection plus its detached scope/head/store-envelope identity;
 - exact Continuity observation, change, Capsule-presentation, resume-runtime, and Shadow
   decision-receipt compatibility Modules used by Muse.
 
@@ -51,9 +54,10 @@ program. AWG-070a remains `partial` until physical-forget fixtures and the compl
 byte-identical conformance corpus pass. AWG-070b remains `partial` until backup, portable
 export, and the complete physical-profile program pass.
 
-The AWG-070a3a0 foundation is `verified-current`, but does not implement a codec,
-export/rebuild, filesystem or SQLite staging, Worker/admin runtime, or a public
-`./admin` subpath.
+The AWG-070a3a0 and AWG-070a3a1a0 foundations are `verified-current`. Neither implements a
+codec, export/rebuild, filesystem or SQLite staging, Worker/admin runtime, or a public
+`./admin` subpath. A future encoder must require caller-supplied `expectedScope` and a
+mandatory exact-head validation sink.
 
 Still required before a standalone release:
 

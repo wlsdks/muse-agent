@@ -538,6 +538,13 @@ filesystem/SQLite staging, Worker/admin runtime, or public `./admin` API ships i
 slice. A fresh independent evaluator passed the exact validator, public-surface, and
 normative-format gate after the projection-order repair.
 
+AWG-070a3a1a0 is `verified-current`: package-private canonical admission can override
+only its body and full-envelope byte ceilings, while exact portable projection admission
+returns the Engine-normalized projection with detached scope, generation, commit, and
+store-envelope identity. A future encoder still must require caller `expectedScope` and
+a mandatory exact-head validation sink. This slice adds no codec, filesystem, SQLite,
+Worker, admin, or public export.
+
 ### It does not own
 
 - authoritative task, note, calendar, contact, memory, or Attunement state;

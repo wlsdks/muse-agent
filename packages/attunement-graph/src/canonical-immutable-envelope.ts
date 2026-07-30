@@ -59,6 +59,11 @@ export interface CanonicalImmutableEnvelopeResult {
   readonly contentId: string;
 }
 
+export interface CanonicalImmutableEnvelopeByteLimits {
+  readonly maxCanonicalBodyBytes: number;
+  readonly maxEnvelopeBytes: number;
+}
+
 export class CanonicalImmutableEnvelopeError extends Error {
   readonly code: CanonicalImmutableEnvelopeErrorCode;
   readonly details: Readonly<{
@@ -93,6 +98,8 @@ type DetachedValue = JsonPrimitive | DetachedArray | DetachedRecord;
 interface InspectionState {
   readonly profile: CanonicalImmutableEnvelopeProfile;
   readonly spec: CanonicalImmutableEnvelopeSpec;
+  readonly allowMissingFrozenRootId: boolean;
+  readonly allowFrozenPlainRecordPrototype: boolean;
   readonly active: WeakSet<object>;
   readonly seen: WeakSet<object>;
   descriptors: number;
@@ -134,6 +141,12 @@ const weakSetConstructor = WeakSet;
 const weakSetAdd = WeakSet.prototype.add;
 const weakSetDelete = WeakSet.prototype.delete;
 const weakSetHas = WeakSet.prototype.has;
+const DEFAULT_CANONICAL_BYTE_LIMITS =
+  objectFreeze<CanonicalImmutableEnvelopeByteLimits>({
+    maxCanonicalBodyBytes: 1_048_256,
+    maxEnvelopeBytes: 1_048_576
+  });
+const MAX_INTERNAL_CANONICAL_BYTE_LIMIT = 2_097_152;
 const mapGet = Map.prototype.get;
 const mapHas = Map.prototype.has;
 const mapSet = Map.prototype.set;
@@ -255,6 +268,75 @@ function validateContract(
   ) {
     contractFailure("invalid-id-prefix");
   }
+}
+
+function validateByteLimits(
+  value: CanonicalImmutableEnvelopeByteLimits
+): CanonicalImmutableEnvelopeByteLimits {
+  if (
+    value === null
+    || typeof value !== "object"
+    || isProxy(value)
+    || arrayIsArray(value)
+  ) {
+    contractFailure("invalid-byte-limits");
+  }
+  const prototype = reflectGetPrototypeOf(value);
+  if (prototype !== objectPrototype && prototype !== null) {
+    contractFailure("invalid-byte-limits");
+  }
+  const keys = reflectOwnKeys(value);
+  const firstKey = keys[0];
+  const secondKey = keys[1];
+  if (
+    keys.length !== 2
+    || !(
+      (
+        firstKey === "maxCanonicalBodyBytes"
+        && secondKey === "maxEnvelopeBytes"
+      )
+      || (
+        firstKey === "maxEnvelopeBytes"
+        && secondKey === "maxCanonicalBodyBytes"
+      )
+    )
+  ) {
+    contractFailure("invalid-byte-limits");
+  }
+  const bodyDescriptor = reflectGetOwnPropertyDescriptor(
+    value,
+    "maxCanonicalBodyBytes"
+  );
+  const envelopeDescriptor = reflectGetOwnPropertyDescriptor(
+    value,
+    "maxEnvelopeBytes"
+  );
+  if (
+    bodyDescriptor === undefined
+    || envelopeDescriptor === undefined
+    || !("value" in bodyDescriptor)
+    || !("value" in envelopeDescriptor)
+  ) {
+    contractFailure("invalid-byte-limits");
+  }
+  const maxCanonicalBodyBytes = bodyDescriptor.value;
+  const maxEnvelopeBytes = envelopeDescriptor.value;
+  if (
+    typeof maxCanonicalBodyBytes !== "number"
+    || typeof maxEnvelopeBytes !== "number"
+    || !numberIsSafeInteger(maxCanonicalBodyBytes)
+    || !numberIsSafeInteger(maxEnvelopeBytes)
+    || maxCanonicalBodyBytes < 1
+    || maxEnvelopeBytes < 1
+    || maxCanonicalBodyBytes > maxEnvelopeBytes
+    || maxEnvelopeBytes > MAX_INTERNAL_CANONICAL_BYTE_LIMIT
+  ) {
+    contractFailure("invalid-byte-limits");
+  }
+  return objectFreeze({
+    maxCanonicalBodyBytes,
+    maxEnvelopeBytes
+  });
 }
 
 function reflection<T>(path: string, operation: () => T): T {
@@ -459,7 +541,9 @@ function inspectValue(
       ? prototype !== arrayPrototype
       : state.profile === "external-mutable"
         ? prototype !== objectPrototype && prototype !== null
-        : prototype !== null
+        : state.allowFrozenPlainRecordPrototype
+          ? prototype !== objectPrototype && prototype !== null
+          : prototype !== null
   ) {
     fail("INVALID_INPUT", "inspect", "unsupported-prototype", path);
   }
@@ -582,8 +666,16 @@ function inspectRecord(
       }
     }
   }
-  if (root && state.profile === "muse-frozen" && !hasId) {
+  if (
+    root
+    && state.profile === "muse-frozen"
+    && !hasId
+    && !state.allowMissingFrozenRootId
+  ) {
     fail("INVALID_INPUT", "inspect", "missing-id", path);
+  }
+  if (root && state.allowMissingFrozenRootId && hasId) {
+    fail("INVALID_INPUT", "inspect", "expected-unsigned-root", path);
   }
   chargeDescriptors(state, stringKeys.length + (root && !hasId ? 1 : 0), path);
   if (root && !hasId) {
@@ -621,11 +713,15 @@ function inspectRecord(
 function inspectEnvelope(
   input: unknown,
   profile: CanonicalImmutableEnvelopeProfile,
-  spec: CanonicalImmutableEnvelopeSpec
+  spec: CanonicalImmutableEnvelopeSpec,
+  allowMissingFrozenRootId = false,
+  allowFrozenPlainRecordPrototype = false
 ): { readonly body: Record<string, DetachedValue>; readonly suppliedId?: string } {
   const state: InspectionState = {
     profile,
     spec,
+    allowMissingFrozenRootId,
+    allowFrozenPlainRecordPrototype,
     active: new weakSetConstructor(),
     seen: new weakSetConstructor(),
     descriptors: 0,
@@ -797,18 +893,71 @@ export function canonicalizeImmutableEnvelope(
   profile: CanonicalImmutableEnvelopeProfile,
   spec: CanonicalImmutableEnvelopeSpec
 ): CanonicalImmutableEnvelopeResult {
+  return canonicalizeImmutableEnvelopeForInternalUse(
+    input,
+    profile,
+    spec,
+    DEFAULT_CANONICAL_BYTE_LIMITS
+  );
+}
+
+export function canonicalizeImmutableEnvelopeForInternalUse(
+  input: unknown,
+  profile: CanonicalImmutableEnvelopeProfile,
+  spec: CanonicalImmutableEnvelopeSpec,
+  limits: CanonicalImmutableEnvelopeByteLimits
+): CanonicalImmutableEnvelopeResult {
+  return canonicalizeImmutableEnvelopeWithInternalOptions(
+    input,
+    profile,
+    spec,
+    limits,
+    false,
+    false
+  );
+}
+
+export function mintCanonicalImmutableEnvelopeFromFrozenUnsignedForInternalUse(
+  input: unknown,
+  spec: CanonicalImmutableEnvelopeSpec
+): CanonicalImmutableEnvelopeResult {
+  return canonicalizeImmutableEnvelopeWithInternalOptions(
+    input,
+    "muse-frozen",
+    spec,
+    DEFAULT_CANONICAL_BYTE_LIMITS,
+    true,
+    true
+  );
+}
+
+function canonicalizeImmutableEnvelopeWithInternalOptions(
+  input: unknown,
+  profile: CanonicalImmutableEnvelopeProfile,
+  spec: CanonicalImmutableEnvelopeSpec,
+  limits: CanonicalImmutableEnvelopeByteLimits,
+  allowMissingFrozenRootId: boolean,
+  allowFrozenPlainRecordPrototype: boolean
+): CanonicalImmutableEnvelopeResult {
   validateContract(profile, spec);
-  const inspected = inspectEnvelope(input, profile, spec);
+  const byteLimits = validateByteLimits(limits);
+  const inspected = inspectEnvelope(
+    input,
+    profile,
+    spec,
+    allowMissingFrozenRootId,
+    allowFrozenPlainRecordPrototype
+  );
   const unsigned = encodeCanonical(
     inspected.body,
-    CANONICAL_IMMUTABLE_ENVELOPE_LIMITS.maxCanonicalBodyBytes,
+    byteLimits.maxCanonicalBodyBytes,
     "canonical-body-bytes"
   );
   const contentId = `${spec.idPrefix}${digest(spec.hashDomain, unsigned.json)}`;
   defineDetachedField(inspected.body, spec.idField, contentId);
   const full = encodeCanonical(
     inspected.body,
-    CANONICAL_IMMUTABLE_ENVELOPE_LIMITS.maxEnvelopeBytes,
+    byteLimits.maxEnvelopeBytes,
     "full-envelope-bytes"
   );
   if (inspected.suppliedId !== undefined && inspected.suppliedId !== contentId) {
@@ -827,13 +976,13 @@ export function canonicalizeImmutableEnvelope(
     assertFrozenOutput(inspected.body);
     const unsignedAgain = encodeCanonical(
       inspected.body,
-      CANONICAL_IMMUTABLE_ENVELOPE_LIMITS.maxCanonicalBodyBytes,
+      byteLimits.maxCanonicalBodyBytes,
       "canonical-body-bytes",
       spec.idField
     );
     const fullAgain = encodeCanonical(
       inspected.body,
-      CANONICAL_IMMUTABLE_ENVELOPE_LIMITS.maxEnvelopeBytes,
+      byteLimits.maxEnvelopeBytes,
       "full-envelope-bytes"
     );
     const digestAgain = digest(spec.hashDomain, unsignedAgain.json);
