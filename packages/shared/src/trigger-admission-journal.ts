@@ -7,7 +7,7 @@ import {
   type TriggerAdmissionReason
 } from "./trigger-admission.js";
 import { isTriggerEnvelope, type TriggerEnvelope } from "./trigger-envelope.js";
-import { isRecord, type JsonValue } from "./json-utils.js";
+import { assertPlainDataTree, isRecord, type JsonValue } from "./json-utils.js";
 import { parseStrictJson } from "./strict-json.js";
 
 export const TRIGGER_ADMISSION_JOURNAL_SCHEMA_VERSION = 1 as const;
@@ -273,6 +273,7 @@ export function normalizeTriggerAdmissionJournal(
   if (journal !== null && typeof journal === "object" && trustedJournals.has(journal)) {
     return journal;
   }
+  assertPlainDataTree(journal, "triggerAdmissionJournal");
   return parseTriggerAdmissionJournal(JSON.stringify(journal));
 }
 

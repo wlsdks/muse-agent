@@ -4,7 +4,7 @@ import {
   normalizeTriggerAdmissionJournal,
   type TriggerAdmissionJournal
 } from "./trigger-admission-journal.js";
-import { isRecord, type JsonValue } from "./json-utils.js";
+import { assertPlainDataTree, isRecord, type JsonValue } from "./json-utils.js";
 import { parseStrictJson } from "./strict-json.js";
 
 export const TRIGGER_WORK_STATE_SCHEMA_VERSION = 1 as const;
@@ -284,6 +284,7 @@ export function normalizeTriggerWorkState(state: TriggerWorkState): TriggerWorkS
   if (state !== null && typeof state === "object" && trustedWorkStates.has(state)) {
     return state;
   }
+  assertPlainDataTree(state, "triggerWorkState");
   return parseTriggerWorkState(JSON.stringify(state));
 }
 

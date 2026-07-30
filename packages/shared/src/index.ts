@@ -116,6 +116,21 @@ export {
   type LoopSupervisorHealthSnapshot
 } from "./loop-supervisor-health.js";
 export {
+  TRIGGER_CONTROL_STATE_SCHEMA_VERSION,
+  admitTriggerControl,
+  cancelTriggerControlWork,
+  claimTriggerControlWork,
+  createTriggerControlState,
+  normalizeTriggerControlState,
+  parseTriggerControlState,
+  resumeTriggerControlWork,
+  serializeTriggerControlState,
+  settleTriggerControlWork,
+  type AdmitTriggerControlResult,
+  type TriggerControlState,
+  type TriggerControlWorkInput
+} from "./trigger-control-state.js";
+export {
   runCommandWithTimeout,
   type RunCommandOptions,
   type RunCommandResult
@@ -135,7 +150,16 @@ export {
   type ReadOnlySourceFailure,
   type ReadOnlySourceInspection
 } from "./read-only-source.js";
-export { isRecord, parseJson, parseJsonWith, type JsonObject, type JsonPredicate, type JsonPrimitive, type JsonValue } from "./json-utils.js";
+export {
+  assertPlainDataTree,
+  isRecord,
+  parseJson,
+  parseJsonWith,
+  type JsonObject,
+  type JsonPredicate,
+  type JsonPrimitive,
+  type JsonValue
+} from "./json-utils.js";
 export { parseStrictJson, StrictJsonError, type StrictJsonOptions } from "./strict-json.js";
 export {
   CANONICAL_RUN_OUTCOMES,
