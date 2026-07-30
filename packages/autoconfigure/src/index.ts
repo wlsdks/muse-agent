@@ -137,6 +137,10 @@ export type { ExternalMcpEntryDiagnosis, ExternalMcpEntryStatus } from "./extern
 export { buildRuntimeToolRegistry, type RuntimeToolRegistryDeps } from "./runtime-tool-registry.js";
 
 export {
+  toTriggerSchedulerTerminalReceipt
+} from "./trigger-lineage-execution-adapter.js";
+
+export {
   createProgressiveAutonomyToolOpportunityObserver,
   observeProgressiveAutonomyToolOpportunity,
   type ProgressiveAutonomyToolOpportunityObserverOptions
