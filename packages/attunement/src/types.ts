@@ -187,13 +187,28 @@ export interface UndoResetReceipt {
   readonly undoPolicyVersion: number;
 }
 
+export interface ExperienceLearningPolicyAudit {
+  readonly activeBehaviorDigestAfter: string;
+  readonly activeBehaviorDigestBefore: string;
+  readonly authority: "owner-explicit";
+  readonly candidateId: string;
+  readonly id: string;
+  readonly kind: "promotion" | "rollback";
+  readonly occurredAt: string;
+  readonly policyAfter: ContinuityPolicy;
+  readonly policyBefore: ContinuityPolicy;
+  readonly sourceId: string;
+  readonly threadId: string;
+}
+
 export interface AttunementState {
   readonly deliveries: readonly ContinuityDelivery[];
+  readonly experienceLearningPolicyAudits: readonly ExperienceLearningPolicyAudit[];
   readonly interactionReceipts: readonly ContinuityInteractionReceipt[];
   /** The next globally monotonic policy version. Initial thread policies use 0. */
   readonly nextPolicyVersion: number;
   readonly resetReceipts: readonly PolicyResetReceipt[];
-  readonly schemaVersion: 11;
+  readonly schemaVersion: 12;
   readonly threads: readonly PersonalThread[];
   readonly undoResetReceipts: readonly UndoResetReceipt[];
 }

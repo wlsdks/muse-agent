@@ -135,6 +135,10 @@ export {
   promoteExperienceLearningCandidate,
   rollbackExperienceLearningPromotion
 } from "./experience-learning-promotion.js";
+export {
+  promoteExperienceLearningContinuityPolicy,
+  rollbackExperienceLearningContinuityPolicy
+} from "./experience-learning-policy-store.js";
 export type {
   ExperienceLearningPolicyCompareAndSwap,
   ExperienceLearningPolicyTransition,

@@ -11,6 +11,8 @@ import {
 
 import { CONTINUITY_EVIDENCE_CLASSES } from "./evidence-provenance.js";
 import { continuityOutcomeId } from "./outcome-id.js";
+import { isValidExperienceLearningPolicyAudit } from "./experience-learning-policy-audit.js";
+import { fingerprintContinuityPolicy } from "./policy-digest.js";
 import {
   ARTIFACT_ROLES,
   ARTIFACT_TYPES,
@@ -28,6 +30,7 @@ import {
   type ContinuityDelivery,
   type ContinuityInteractionAnchor,
   type ContinuityInteractionReceipt,
+  type ExperienceLearningPolicyAudit,
   type PersonalThread,
   type PolicyResetReceipt,
   type UndoResetReceipt
@@ -241,6 +244,26 @@ function isUndoResetReceipt(value: unknown): value is UndoResetReceipt {
     && isSafeVersion(value.undoPolicyVersion);
 }
 
+function isExperienceLearningPolicyAudit(
+  value: unknown
+): value is ExperienceLearningPolicyAudit {
+  return isRecord(value)
+    && isFingerprint(value.activeBehaviorDigestAfter)
+    && isFingerprint(value.activeBehaviorDigestBefore)
+    && value.authority === "owner-explicit"
+    && isNonEmptyString(value.candidateId)
+    && isNonEmptyString(value.id)
+    && (value.kind === "promotion" || value.kind === "rollback")
+    && isIsoTimestamp(value.occurredAt)
+    && isPolicy(value.policyAfter)
+    && isPolicy(value.policyBefore)
+    && isNonEmptyString(value.sourceId)
+    && isNonEmptyString(value.threadId)
+    && isValidExperienceLearningPolicyAudit(
+      value as unknown as ExperienceLearningPolicyAudit
+    );
+}
+
 function assertUnique(values: readonly string[], label: string): void {
   if (new Set(values).size !== values.length) {
     invalid(`attunement store has duplicate ${label}`);
@@ -265,6 +288,10 @@ function validateStateRelations(state: AttunementState): void {
   assertUnique(
     state.interactionReceipts.map((receipt) => receipt.deliveryId),
     "interaction delivery ids"
+  );
+  assertUnique(
+    state.experienceLearningPolicyAudits.map((audit) => audit.id),
+    "experience learning policy audit ids"
   );
   assertUnique(state.resetReceipts.map((receipt) => receipt.id), "reset receipt ids");
   assertUnique(
@@ -398,6 +425,32 @@ function validateStateRelations(state: AttunementState): void {
     addVersion(receipt.threadId, receipt.undoPolicyVersion);
   }
 
+  const promotions = new Map(
+    state.experienceLearningPolicyAudits
+      .filter((audit) => audit.kind === "promotion")
+      .map((audit) => [audit.id, audit])
+  );
+  for (const audit of state.experienceLearningPolicyAudits) {
+    if (!threads.has(audit.threadId)) {
+      invalid(`experience learning audit '${audit.id}' references a missing thread`);
+    }
+    if (audit.kind === "promotion" && audit.sourceId !== audit.candidateId) {
+      invalid(`experience learning promotion audit '${audit.id}' has an invalid candidate binding`);
+    }
+    if (audit.kind === "rollback") {
+      const promotion = promotions.get(audit.sourceId);
+      if (!promotion
+        || promotion.threadId !== audit.threadId
+        || promotion.candidateId !== audit.candidateId
+        || audit.activeBehaviorDigestBefore !== promotion.activeBehaviorDigestAfter
+        || !samePolicy(audit.policyBefore, promotion.policyAfter)
+        || Date.parse(audit.occurredAt) < Date.parse(promotion.occurredAt)) {
+        invalid(`experience learning rollback audit '${audit.id}' has an invalid promotion binding`);
+      }
+    }
+    addVersion(audit.threadId, audit.policyAfter.version);
+  }
+
   const generatedVersions = [...generatedByThread.values()].flat();
   assertUnique(
     generatedVersions.map(String),
@@ -431,6 +484,16 @@ function validateStateRelations(state: AttunementState): void {
   }
 }
 
+function samePolicy(
+  left: PersonalThread["policy"],
+  right: PersonalThread["policy"]
+): boolean {
+  return left.detail === right.detail
+    && left.nextStep === right.nextStep
+    && left.suppression === right.suppression
+    && left.version === right.version;
+}
+
 /**
  * I/O-free parser and normalizer shared by authoritative store reads/writes and
  * disposable projections. It is the only runtime boundary that upgrades unknown
@@ -442,7 +505,7 @@ export function parseAttunementState(value: unknown): AttunementState {
     : 0;
   if (
     !isRecord(value)
-    || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(schemaVersion)
+    || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(schemaVersion)
     || !Array.isArray(value.threads)
     || !value.threads.every((thread) => isThread(thread, schemaVersion))
     || !Array.isArray(value.deliveries)
@@ -453,6 +516,13 @@ export function parseAttunementState(value: unknown): AttunementState {
     || !value.resetReceipts.every(isResetReceipt)
     || !Array.isArray(value.undoResetReceipts)
     || !value.undoResetReceipts.every(isUndoResetReceipt)
+    || (
+      schemaVersion >= 12
+      && (
+        !Array.isArray(value.experienceLearningPolicyAudits)
+        || !value.experienceLearningPolicyAudits.every(isExperienceLearningPolicyAudit)
+      )
+    )
     || (
       schemaVersion >= 2
       && (
@@ -483,6 +553,9 @@ export function parseAttunementState(value: unknown): AttunementState {
           : {})
       })
     ),
+    experienceLearningPolicyAudits: schemaVersion >= 12
+      ? value.experienceLearningPolicyAudits as unknown as readonly ExperienceLearningPolicyAudit[]
+      : [],
     interactionReceipts: schemaVersion >= 2
       ? (value.interactionReceipts as unknown as readonly ContinuityInteractionReceipt[])
           .map((receipt) => ({
@@ -492,7 +565,7 @@ export function parseAttunementState(value: unknown): AttunementState {
       : [],
     nextPolicyVersion: value.nextPolicyVersion,
     resetReceipts: value.resetReceipts,
-    schemaVersion: 11,
+    schemaVersion: 12,
     threads: value.threads,
     undoResetReceipts: value.undoResetReceipts
   };

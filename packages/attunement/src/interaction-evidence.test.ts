@@ -118,6 +118,7 @@ describe("Continuity interaction evidence", () => {
         delivery("work_receipt_controlled", "work", "organic"),
         delivery("work_receipt_organic", "work", "organic")
       ],
+      experienceLearningPolicyAudits: [],
       interactionReceipts: [
         receipt("life_receipt_organic", "life", "organic"),
         receipt("life_receipt_unclassified_delivery", "life", "organic"),
@@ -126,7 +127,7 @@ describe("Continuity interaction evidence", () => {
       ],
       nextPolicyVersion: 1,
       resetReceipts: [],
-      schemaVersion: 11,
+      schemaVersion: 12,
       threads: [thread("life", "life"), thread("work", "work")],
       undoResetReceipts: []
     };
@@ -665,11 +666,11 @@ describe("Continuity interaction evidence", () => {
     await writeFile(file, legacy, { mode: 0o600 });
 
     const read = await readAttunementState(file);
-    expect(read).toMatchObject({ interactionReceipts: [], schemaVersion: 11 });
+    expect(read).toMatchObject({ interactionReceipts: [], schemaVersion: 12 });
     expect(await readFile(file, "utf8")).toBe(legacy);
 
     await createPersonalThread(file, { kind: "work", title: "Migrate once" });
     const migrated = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
-    expect(migrated).toMatchObject({ interactionReceipts: [], schemaVersion: 11 });
+    expect(migrated).toMatchObject({ interactionReceipts: [], schemaVersion: 12 });
   });
 });

@@ -33,10 +33,11 @@ function state(
 ): AttunementState {
   return {
     deliveries: [],
+    experienceLearningPolicyAudits: [],
     interactionReceipts: [],
     nextPolicyVersion: 1,
     resetReceipts: [],
-    schemaVersion: 11,
+    schemaVersion: 12,
     threads: [
       {
         createdAt: "2026-07-20T09:00:00.000Z",
@@ -211,7 +212,7 @@ describe("local Attunement snapshot Provider", () => {
         Buffer.byteLength(capture.normalizedStateJson)
       );
       expect(JSON.parse(capture.normalizedStateJson)).toMatchObject({
-        schemaVersion: 11,
+        schemaVersion: 12,
         threads: [{ id: THREAD_ID }]
       });
     });
@@ -237,6 +238,7 @@ describe("local Attunement snapshot Provider", () => {
         resetReceipts: value.resetReceipts,
         nextPolicyVersion: value.nextPolicyVersion,
         interactionReceipts: value.interactionReceipts,
+        experienceLearningPolicyAudits: value.experienceLearningPolicyAudits,
         deliveries: value.deliveries
       }, null, 2)}\n`, "utf8");
       const second = await createLocalAttunementSnapshotProvider(options(file))

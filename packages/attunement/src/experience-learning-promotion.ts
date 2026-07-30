@@ -15,6 +15,10 @@ import {
   runActiveAttunementPolicyMutation,
   type ActiveAttunementPolicyWriteGate
 } from "./active-policy-write-gate.js";
+import { reduceExperienceLearningContinuityPolicy } from "./experience-learning-policy-reducer.js";
+import { buildExperienceLearningPolicyAudit } from "./experience-learning-policy-audit.js";
+import { fingerprintContinuityPolicy } from "./policy-digest.js";
+import type { ContinuityPolicy, ExperienceLearningPolicyAudit } from "./types.js";
 
 export const EXPERIENCE_LEARNING_PROMOTION_MIN_CASES = 10;
 
@@ -29,6 +33,8 @@ export interface ExperienceLearningPromotionInput {
   readonly approval: ExperienceLearningPromotionApproval;
   readonly appliedAt: string;
   readonly candidate: ExperienceLearningCandidate;
+  readonly currentPolicy: ContinuityPolicy;
+  readonly nextPolicyVersion: number;
   readonly replay: ExperienceLearningReplay;
   readonly replayCases: readonly ExperienceReplayCase[];
 }
@@ -39,18 +45,24 @@ export interface ExperienceLearningPolicyTransition {
   readonly candidateId: string;
   readonly proposedBehavior: string;
   readonly proposedChange: ExperienceLearningCandidate["proposedChange"];
+  readonly policyAfter: ContinuityPolicy;
+  readonly policyBefore: ContinuityPolicy;
   readonly replayInputHash: string;
   readonly scope: ExperienceLearningCandidate["scope"];
 }
 
 /**
- * Must atomically compare the active behavior digest with `expectedDigest` and
- * replace it with `nextDigest`. `false` means no mutation occurred.
+ * Must atomically compare the exact active policy with `policyBefore` and
+ * replace it with `policyAfter`. Digests are redundant fail-closed evidence.
  */
 export type ExperienceLearningPolicyCompareAndSwap = (
   transition: Readonly<{
     expectedDigest: string;
+    audit: ExperienceLearningPolicyAudit;
     nextDigest: string;
+    policyAfter: ContinuityPolicy;
+    policyBefore: ContinuityPolicy;
+    threadId: string;
   }>
 ) => Promise<boolean>;
 
@@ -60,17 +72,19 @@ export interface ExperienceLearningPromotionReceipt extends ExperienceLearningPo
   readonly authority: "owner-explicit";
   readonly promotionApplied: true;
   readonly promotionId: string;
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
 }
 
 export interface ExperienceLearningRollbackReceipt {
   readonly activeBehaviorDigestAfter: string;
   readonly activeBehaviorDigestBefore: string;
   readonly promotionId: string;
+  readonly policyAfter: ContinuityPolicy;
+  readonly policyBefore: ContinuityPolicy;
   readonly rollbackApplied: true;
   readonly rollbackId: string;
   readonly rolledBackAt: string;
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
 }
 
 export type ExperienceLearningPromotionErrorCode =
@@ -99,34 +113,38 @@ export async function promoteExperienceLearningCandidate(
   compareAndSwap: ExperienceLearningPolicyCompareAndSwap
 ): Promise<ExperienceLearningPromotionReceipt> {
   const transition = validatePromotion(input);
+  const promotionId = `learning_promotion_${sha256Hex(JSON.stringify([
+    transition.candidateId,
+    transition.replayInputHash,
+    transition.activeBehaviorDigestBefore,
+    transition.activeBehaviorDigestAfter,
+    transition.scope.kind,
+    transition.scope.threadId,
+    transition.proposedBehavior,
+    transition.proposedChange,
+    input.approval.approvedAt,
+    input.appliedAt
+  ]))}`;
+  const receipt: ExperienceLearningPromotionReceipt = Object.freeze({
+    ...transition,
+    appliedAt: input.appliedAt,
+    approvedAt: input.approval.approvedAt,
+    authority: "owner-explicit",
+    promotionApplied: true,
+    promotionId,
+    schemaVersion: 2
+  });
   return runActiveAttunementPolicyMutation(activePolicyWriteGate, async () => {
     const applied = await compareAndSwap(Object.freeze({
+      audit: promotionAudit(receipt),
       expectedDigest: transition.activeBehaviorDigestBefore,
-      nextDigest: transition.activeBehaviorDigestAfter
+      nextDigest: transition.activeBehaviorDigestAfter,
+      policyAfter: transition.policyAfter,
+      policyBefore: transition.policyBefore,
+      threadId: transition.scope.threadId
     }));
     if (!applied) throw new ExperienceLearningPromotionError("stale-active-policy");
-
-    const promotionId = `learning_promotion_${sha256Hex(JSON.stringify([
-      transition.candidateId,
-      transition.replayInputHash,
-      transition.activeBehaviorDigestBefore,
-      transition.activeBehaviorDigestAfter,
-      transition.scope.kind,
-      transition.scope.threadId,
-      transition.proposedBehavior,
-      transition.proposedChange,
-      input.approval.approvedAt,
-      input.appliedAt
-    ]))}`;
-    return Object.freeze({
-      ...transition,
-      appliedAt: input.appliedAt,
-      approvedAt: input.approval.approvedAt,
-      authority: "owner-explicit" as const,
-      promotionApplied: true as const,
-      promotionId,
-      schemaVersion: 1 as const
-    });
+    return receipt;
   });
 }
 
@@ -138,36 +156,86 @@ export async function promoteExperienceLearningCandidate(
 export async function rollbackExperienceLearningPromotion(
   receipt: ExperienceLearningPromotionReceipt,
   rolledBackAt: string,
+  rollbackPolicyVersion: number,
   activePolicyWriteGate: ActiveAttunementPolicyWriteGate | undefined,
   compareAndSwap: ExperienceLearningPolicyCompareAndSwap
 ): Promise<ExperienceLearningRollbackReceipt> {
   if (!isValidPromotionReceipt(receipt)
     || !isIso(rolledBackAt)
+    || !Number.isSafeInteger(rollbackPolicyVersion)
+    || rollbackPolicyVersion <= receipt.policyAfter.version
     || Date.parse(rolledBackAt) < Date.parse(receipt.appliedAt)) {
     throw new ExperienceLearningPromotionError("invalid-input");
   }
+  const restoredPolicy = Object.freeze({
+    ...receipt.policyBefore,
+    version: rollbackPolicyVersion
+  });
+  const restoredDigest = fingerprintContinuityPolicy(restoredPolicy);
+  const rollbackId = `learning_rollback_${sha256Hex(JSON.stringify([
+    receipt.promotionId,
+    receipt.activeBehaviorDigestAfter,
+    restoredDigest,
+    rolledBackAt
+  ]))}`;
+  const rollbackReceipt: ExperienceLearningRollbackReceipt = Object.freeze({
+    activeBehaviorDigestAfter: restoredDigest,
+    activeBehaviorDigestBefore: receipt.activeBehaviorDigestAfter,
+    policyAfter: restoredPolicy,
+    policyBefore: receipt.policyAfter,
+    promotionId: receipt.promotionId,
+    rollbackApplied: true,
+    rollbackId,
+    rolledBackAt,
+    schemaVersion: 2
+  });
   return runActiveAttunementPolicyMutation(activePolicyWriteGate, async () => {
     const applied = await compareAndSwap(Object.freeze({
+      audit: rollbackAudit(receipt, rollbackReceipt),
       expectedDigest: receipt.activeBehaviorDigestAfter,
-      nextDigest: receipt.activeBehaviorDigestBefore
+      nextDigest: restoredDigest,
+      policyAfter: restoredPolicy,
+      policyBefore: receipt.policyAfter,
+      threadId: receipt.scope.threadId
     }));
     if (!applied) throw new ExperienceLearningPromotionError("stale-active-policy");
+    return rollbackReceipt;
+  });
+}
 
-    const rollbackId = `learning_rollback_${sha256Hex(JSON.stringify([
-      receipt.promotionId,
-      receipt.activeBehaviorDigestAfter,
-      receipt.activeBehaviorDigestBefore,
-      rolledBackAt
-    ]))}`;
-    return Object.freeze({
-      activeBehaviorDigestAfter: receipt.activeBehaviorDigestBefore,
-      activeBehaviorDigestBefore: receipt.activeBehaviorDigestAfter,
-      promotionId: receipt.promotionId,
-      rollbackApplied: true as const,
-      rollbackId,
-      rolledBackAt,
-      schemaVersion: 1 as const
-    });
+function promotionAudit(
+  receipt: ExperienceLearningPromotionReceipt
+): ExperienceLearningPolicyAudit {
+  return buildExperienceLearningPolicyAudit({
+    activeBehaviorDigestAfter: receipt.activeBehaviorDigestAfter,
+    activeBehaviorDigestBefore: receipt.activeBehaviorDigestBefore,
+    authority: "owner-explicit",
+    candidateId: receipt.candidateId,
+    kind: "promotion",
+    occurredAt: receipt.appliedAt,
+    policyAfter: receipt.policyAfter,
+    policyBefore: receipt.policyBefore,
+    sourceId: receipt.candidateId,
+    threadId: receipt.scope.threadId
+  });
+}
+
+function rollbackAudit(
+  promotion: ExperienceLearningPromotionReceipt,
+  rollback: ExperienceLearningRollbackReceipt
+): ExperienceLearningPolicyAudit {
+  const promotedAudit = promotionAudit(promotion);
+  return buildExperienceLearningPolicyAudit({
+    activeBehaviorDigestAfter: rollback.activeBehaviorDigestAfter,
+    activeBehaviorDigestBefore: rollback.activeBehaviorDigestBefore,
+    authority: "owner-explicit",
+    candidateId: promotion.candidateId,
+    kind: "rollback",
+    occurredAt: rollback.rolledBackAt,
+    policyAfter: rollback.policyAfter,
+    policyBefore: rollback.policyBefore,
+    sourceId: promotedAudit.id,
+    threadId: promotion.scope.threadId
   });
 }
 
@@ -219,18 +287,25 @@ function validatePromotion(input: ExperienceLearningPromotionInput): ExperienceL
     throw new ExperienceLearningPromotionError("candidate-expired");
   }
 
-  const activeBehaviorDigestAfter = computePromotedDigest(
-    candidate.activeBehaviorDigestBefore,
-    candidate.scope,
-    candidate.proposedBehavior,
-    candidate.proposedChange
+  if (!isExactContinuityPolicy(input.currentPolicy)
+    || fingerprintContinuityPolicy(input.currentPolicy) !== candidate.activeBehaviorDigestBefore) {
+    throw new ExperienceLearningPromotionError("stale-active-policy");
+  }
+  const policyAfter = reduceExperienceLearningContinuityPolicy(
+    input.currentPolicy,
+    candidate.proposedChange,
+    input.nextPolicyVersion
   );
+  if (!policyAfter) throw new ExperienceLearningPromotionError("invalid-input");
+  const activeBehaviorDigestAfter = fingerprintContinuityPolicy(policyAfter);
   return Object.freeze({
     activeBehaviorDigestAfter,
     activeBehaviorDigestBefore: candidate.activeBehaviorDigestBefore,
     candidateId: candidate.candidateId,
     proposedBehavior: candidate.proposedBehavior,
     proposedChange: Object.freeze({ ...candidate.proposedChange }) as ExperienceLearningCandidate["proposedChange"],
+    policyAfter,
+    policyBefore: Object.freeze({ ...input.currentPolicy }),
     replayInputHash: recomputedReplay.inputHash,
     scope: Object.freeze({ ...candidate.scope })
   });
@@ -272,6 +347,8 @@ function isValidPromotionReceipt(value: ExperienceLearningPromotionReceipt): boo
     "candidateId",
     "promotionApplied",
     "promotionId",
+    "policyAfter",
+    "policyBefore",
     "proposedBehavior",
     "proposedChange",
     "replayInputHash",
@@ -280,7 +357,7 @@ function isValidPromotionReceipt(value: ExperienceLearningPromotionReceipt): boo
   ])
     || value.authority !== "owner-explicit"
     || value.promotionApplied !== true
-    || value.schemaVersion !== 1
+    || value.schemaVersion !== 2
     || !isIso(value.appliedAt)
     || !isIso(value.approvedAt)
     || !isDigest(value.activeBehaviorDigestBefore)
@@ -295,6 +372,8 @@ function isValidPromotionReceipt(value: ExperienceLearningPromotionReceipt): boo
     || !isExactRecord(value.scope, ["kind", "threadId"])
     || !EXPERIENCE_LEARNING_SCOPES.includes(value.scope.kind as ExperienceLearningCandidate["scope"]["kind"])
     || typeof value.scope.threadId !== "string"
+    || !isExactContinuityPolicy(value.policyBefore)
+    || !isExactContinuityPolicy(value.policyAfter)
     || value.scope.threadId.length === 0) {
     return false;
   }
@@ -302,12 +381,17 @@ function isValidPromotionReceipt(value: ExperienceLearningPromotionReceipt): boo
   const proposedChange = parseExperienceLearningChange(value.proposedChange, scope.kind);
   if (!proposedChange
     || Date.parse(value.approvedAt) > Date.parse(value.appliedAt)
-    || value.activeBehaviorDigestAfter !== computePromotedDigest(
-      value.activeBehaviorDigestBefore,
-      scope,
-      value.proposedBehavior,
-      proposedChange
-    )) return false;
+    || fingerprintContinuityPolicy(value.policyBefore) !== value.activeBehaviorDigestBefore
+    || fingerprintContinuityPolicy(value.policyAfter) !== value.activeBehaviorDigestAfter) return false;
+  const recomputedPolicyAfter = reduceExperienceLearningContinuityPolicy(
+    value.policyBefore,
+    proposedChange,
+    value.policyAfter.version
+  );
+  if (!recomputedPolicyAfter
+    || fingerprintContinuityPolicy(recomputedPolicyAfter) !== value.activeBehaviorDigestAfter) {
+    return false;
+  }
   const expectedId = `learning_promotion_${sha256Hex(JSON.stringify([
     value.candidateId,
     value.replayInputHash,
@@ -323,24 +407,17 @@ function isValidPromotionReceipt(value: ExperienceLearningPromotionReceipt): boo
   return value.promotionId === expectedId;
 }
 
-function computePromotedDigest(
-  activeBehaviorDigestBefore: string,
-  scope: ExperienceLearningCandidate["scope"],
-  proposedBehavior: string,
-  proposedChange: ExperienceLearningCandidate["proposedChange"]
-): string {
-  return sha256Hex(JSON.stringify([
-    "muse.experience-learning-promotion.v1",
-    activeBehaviorDigestBefore,
-    scope.kind,
-    scope.threadId,
-    proposedBehavior,
-    proposedChange
-  ]));
-}
-
 function isDigest(value: unknown): value is string {
   return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
+}
+
+function isExactContinuityPolicy(value: unknown): value is ContinuityPolicy {
+  return isExactRecord(value, ["detail", "nextStep", "suppression", "version"])
+    && (value.detail === "standard" || value.detail === "compact")
+    && (value.nextStep === "direct" || value.nextStep === "contextual" || value.nextStep === "hidden")
+    && (value.suppression === "none" || value.suppression === "acknowledge-previous")
+    && Number.isSafeInteger(value.version)
+    && (value.version as number) >= 0;
 }
 
 function isIso(value: unknown): value is string {

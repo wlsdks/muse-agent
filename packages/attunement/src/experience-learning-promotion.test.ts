@@ -4,13 +4,15 @@ import {
   ActiveAttunementPolicyWriteBlockedError,
   compareExperienceLearningReplay,
   ExperienceLearningPromotionError,
+  fingerprintContinuityPolicy,
   promoteExperienceLearningCandidate,
   proposeExperienceLearningCandidate,
   rollbackExperienceLearningPromotion,
   type ActiveAttunementPolicyWriteGate,
   type ExperienceLearningCandidate,
   type ExperienceLearningPromotionInput,
-  type ExperienceReplayCase
+  type ExperienceReplayCase,
+  type ContinuityPolicy
 } from "./index.js";
 
 const digest = (character: string) => character.repeat(64);
@@ -18,9 +20,16 @@ const gate: ActiveAttunementPolicyWriteGate = {
   run: async (operation) => operation()
 };
 
+const CURRENT_POLICY: ContinuityPolicy = {
+  detail: "standard",
+  nextStep: "direct",
+  suppression: "none",
+  version: 4
+};
+
 function candidate(): ExperienceLearningCandidate {
   return proposeExperienceLearningCandidate({
-    activeBehaviorDigest: digest("a"),
+    activeBehaviorDigest: fingerprintContinuityPolicy(CURRENT_POLICY),
     expectedBenefit: "Reduce interruptions.",
     expiresAt: "2026-08-01T00:00:00.000Z",
     experienceId: "experience-1",
@@ -34,10 +43,11 @@ function candidate(): ExperienceLearningCandidate {
     proposedAt: "2026-07-29T03:06:00.000Z",
     proposedBehavior: "Offer only during an explicit review window.",
     proposedChange: {
-      adjustment: "increase-cooldown",
-      kind: "thread-timing"
+      detail: "compact",
+      kind: "thread-display",
+      nextStep: "contextual"
     },
-    scope: { kind: "thread-timing", threadId: "thread-1" },
+    scope: { kind: "thread-display", threadId: "thread-1" },
     sourceRun: {
       behaviorDigest: digest("b"),
       completedAt: "2026-07-29T03:00:00.000Z",
@@ -68,21 +78,27 @@ function promotionInput(total = 10): ExperienceLearningPromotionInput {
     },
     appliedAt: "2026-07-29T03:08:00.000Z",
     candidate: learningCandidate,
+    currentPolicy: CURRENT_POLICY,
+    nextPolicyVersion: 5,
     replay,
     replayCases
   };
 }
 
-function inMemoryCas(initial: string) {
+function inMemoryCas(initial: ContinuityPolicy) {
   let current = initial;
   return {
     current: () => current,
-    swap: async ({ expectedDigest, nextDigest }: {
+    swap: async ({ expectedDigest, nextDigest, policyAfter, policyBefore }: {
       readonly expectedDigest: string;
       readonly nextDigest: string;
+      readonly policyAfter: ContinuityPolicy;
+      readonly policyBefore: ContinuityPolicy;
     }) => {
-      if (current !== expectedDigest) return false;
-      current = nextDigest;
+      if (fingerprintContinuityPolicy(current) !== expectedDigest
+        || fingerprintContinuityPolicy(policyBefore) !== expectedDigest
+        || fingerprintContinuityPolicy(policyAfter) !== nextDigest) return false;
+      current = policyAfter;
       return true;
     }
   };
@@ -91,7 +107,7 @@ function inMemoryCas(initial: string) {
 describe("experience learning promotion", () => {
   it("applies one owner-approved 10-case improvement and emits an exact receipt", async () => {
     const input = promotionInput();
-    const policy = inMemoryCas(input.candidate.activeBehaviorDigestBefore);
+    const policy = inMemoryCas(CURRENT_POLICY);
 
     const receipt = await promoteExperienceLearningCandidate(input, gate, policy.swap);
 
@@ -101,15 +117,17 @@ describe("experience learning promotion", () => {
       candidateId: input.candidate.candidateId,
       promotionApplied: true,
       proposedChange: {
-        adjustment: "increase-cooldown",
-        kind: "thread-timing"
+        detail: "compact",
+        kind: "thread-display",
+        nextStep: "contextual"
       },
       replayInputHash: input.replay.inputHash,
-      schemaVersion: 1
+      schemaVersion: 2
     });
     expect(receipt.activeBehaviorDigestAfter).toMatch(/^[a-f0-9]{64}$/u);
     expect(receipt.activeBehaviorDigestAfter).not.toBe(receipt.activeBehaviorDigestBefore);
-    expect(policy.current()).toBe(receipt.activeBehaviorDigestAfter);
+    expect(receipt.activeBehaviorDigestAfter).toBe(fingerprintContinuityPolicy(receipt.policyAfter));
+    expect(policy.current()).toEqual(receipt.policyAfter);
   });
 
   it("fails before mutation for insufficient, regressing, tampered, expired, or mismatched evidence", async () => {
@@ -153,51 +171,61 @@ describe("experience learning promotion", () => {
 
   it("requires the write gate and an atomic match of the active digest", async () => {
     const input = promotionInput();
-    const policy = inMemoryCas(digest("f"));
+    const policy = inMemoryCas({ ...CURRENT_POLICY, version: 3 });
 
     await expect(promoteExperienceLearningCandidate(input, undefined, policy.swap))
       .rejects.toBeInstanceOf(ActiveAttunementPolicyWriteBlockedError);
     await expect(promoteExperienceLearningCandidate(input, gate, policy.swap))
       .rejects.toMatchObject({ code: "stale-active-policy" });
-    expect(policy.current()).toBe(digest("f"));
+    expect(policy.current()).toEqual({ ...CURRENT_POLICY, version: 3 });
   });
 
   it("rolls back only the exact promoted digest and rejects a forged receipt", async () => {
     const input = promotionInput();
-    const policy = inMemoryCas(input.candidate.activeBehaviorDigestBefore);
+    const policy = inMemoryCas(CURRENT_POLICY);
     const receipt = await promoteExperienceLearningCandidate(input, gate, policy.swap);
 
     const rollback = await rollbackExperienceLearningPromotion(
       receipt,
       "2026-07-29T03:09:00.000Z",
+      6,
       gate,
       policy.swap
     );
 
     expect(rollback).toMatchObject({
-      activeBehaviorDigestAfter: receipt.activeBehaviorDigestBefore,
       activeBehaviorDigestBefore: receipt.activeBehaviorDigestAfter,
+      policyAfter: {
+        detail: CURRENT_POLICY.detail,
+        nextStep: CURRENT_POLICY.nextStep,
+        suppression: CURRENT_POLICY.suppression,
+        version: 6
+      },
       promotionId: receipt.promotionId,
       rollbackApplied: true,
-      schemaVersion: 1
+      schemaVersion: 2
     });
-    expect(policy.current()).toBe(receipt.activeBehaviorDigestBefore);
+    expect(policy.current()).toEqual(rollback.policyAfter);
+    expect(rollback.activeBehaviorDigestAfter).toBe(fingerprintContinuityPolicy(rollback.policyAfter));
 
     await expect(rollbackExperienceLearningPromotion(
       receipt,
       "2026-07-29T03:10:00.000Z",
+      7,
       gate,
       policy.swap
     )).rejects.toBeInstanceOf(ExperienceLearningPromotionError);
     await expect(rollbackExperienceLearningPromotion(
       { ...receipt, promotionId: "forged" },
       "2026-07-29T03:10:00.000Z",
+      7,
       gate,
       policy.swap
     )).rejects.toMatchObject({ code: "invalid-input" });
     await expect(rollbackExperienceLearningPromotion(
       { ...receipt, proposedBehavior: "Tampered behavior." },
       "2026-07-29T03:10:00.000Z",
+      7,
       gate,
       policy.swap
     )).rejects.toMatchObject({ code: "invalid-input" });
@@ -205,17 +233,19 @@ describe("experience learning promotion", () => {
       {
         ...receipt,
         proposedChange: {
-          adjustment: "increase-stable-focus",
-          kind: "thread-timing"
+          kind: "thread-suppression",
+          suppression: "acknowledge-previous"
         }
       },
       "2026-07-29T03:10:00.000Z",
+      7,
       gate,
       policy.swap
     )).rejects.toMatchObject({ code: "invalid-input" });
     await expect(rollbackExperienceLearningPromotion(
-      { ...receipt, scope: { ...receipt.scope, kind: "thread-display" } },
+      { ...receipt, scope: { ...receipt.scope, kind: "thread-suppression" } },
       "2026-07-29T03:10:00.000Z",
+      7,
       gate,
       policy.swap
     )).rejects.toMatchObject({ code: "invalid-input" });

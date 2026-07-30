@@ -126,10 +126,11 @@ export interface ThreadInspection {
 
 const EMPTY_STATE: AttunementState = {
   deliveries: [],
+  experienceLearningPolicyAudits: [],
   interactionReceipts: [],
   nextPolicyVersion: 1,
   resetReceipts: [],
-  schemaVersion: 11,
+  schemaVersion: 12,
   threads: [],
   undoResetReceipts: []
 };
@@ -621,7 +622,7 @@ export async function recordContinuityTaskCompletionInteraction(
     return {
       changed: true,
       result: { kind: "recorded", receipt },
-      state: { ...state, interactionReceipts: [...state.interactionReceipts, receipt], schemaVersion: 11 }
+      state: { ...state, interactionReceipts: [...state.interactionReceipts, receipt], schemaVersion: 12 }
     };
   });
 }

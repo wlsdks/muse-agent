@@ -40,11 +40,11 @@ describe("Attunement schema v9 browsing-visit references", () => {
     const raw = `${JSON.stringify(state(8), null, 2)}\n`;
     await writeFile(file, raw, "utf8");
 
-    expect(await readAttunementState(file)).toMatchObject({ schemaVersion: 11 });
+    expect(await readAttunementState(file)).toMatchObject({ schemaVersion: 12 });
     expect(await readFile(file, "utf8")).toBe(raw);
 
     await createPersonalThread(file, { kind: "work", title: "Ship exact browsing context" });
-    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({ schemaVersion: 11 });
+    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({ schemaVersion: 12 });
   });
 
   it("rejects browsing references in v1-v8 and accepts the same link and delivery evidence only in v9", async () => {
@@ -87,7 +87,7 @@ describe("Attunement schema v9 browsing-visit references", () => {
     await writeFile(file, `${JSON.stringify(withDelivery, null, 2)}\n`, "utf8");
     await expect(readAttunementState(file)).resolves.toMatchObject({
       deliveries: [{ evidenceRefs: [reference] }],
-      schemaVersion: 11,
+      schemaVersion: 12,
       threads: [{ links: [expect.objectContaining(reference)] }]
     });
   });
