@@ -107,6 +107,7 @@ describe("trigger control crash and replay", () => {
   });
 
   it("fences late success after owner cancellation", () => {
+    const admitted = admit();
     const cancelled = cancelTriggerWork(claim(), {
       at: T250,
       reason: "owner-stop"
@@ -120,6 +121,16 @@ describe("trigger control crash and replay", () => {
       leaseToken: "worker-a:1",
       outcome: "succeeded"
     })).toThrow(/only leased/u);
+    const settledJournal = settleTriggerAdmission(admitted, {
+      at: T250,
+      dedupKey: cancelled.dedupKey,
+      outcome: "cancelled",
+      reason: cancelled.terminalReason
+    });
+    expect(settledJournal.entries[0]).toMatchObject({
+      state: "cancelled",
+      terminalReason: "owner-stop"
+    });
   });
 
   it("keeps capacity-shadowed work outside the claimable queue", () => {

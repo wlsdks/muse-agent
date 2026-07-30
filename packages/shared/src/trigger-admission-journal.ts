@@ -13,6 +13,7 @@ import { parseStrictJson } from "./strict-json.js";
 export const TRIGGER_ADMISSION_JOURNAL_SCHEMA_VERSION = 1 as const;
 
 export type TriggerAdmissionJournalState =
+  | "cancelled"
   | "completed"
   | "dead-lettered"
   | "queued"
@@ -56,7 +57,7 @@ export interface JournalTriggerAdmissionResult {
 export interface SettleTriggerAdmissionInput {
   readonly at: Date;
   readonly dedupKey: string;
-  readonly outcome: "completed" | "dead-lettered";
+  readonly outcome: "cancelled" | "completed" | "dead-lettered";
   readonly reason?: string;
 }
 
@@ -168,7 +169,9 @@ export function settleTriggerAdmission(
   input: SettleTriggerAdmissionInput
 ): TriggerAdmissionJournal {
   const currentJournal = normalizeTriggerAdmissionJournal(journal);
-  if (input.outcome !== "completed" && input.outcome !== "dead-lettered") {
+  if (input.outcome !== "cancelled"
+    && input.outcome !== "completed"
+    && input.outcome !== "dead-lettered") {
     throw new TypeError("invalid trigger admission settlement outcome");
   }
   const index = currentJournal.entries.findIndex((entry) => entry.envelope.dedupKey === input.dedupKey);
@@ -180,8 +183,8 @@ export function settleTriggerAdmission(
     throw new TypeError("only queued trigger admission entries can be settled");
   }
   const reason = input.reason?.trim();
-  if (input.outcome === "dead-lettered" && !reason) {
-    throw new TypeError("dead-lettered trigger admission entries require a reason");
+  if ((input.outcome === "cancelled" || input.outcome === "dead-lettered") && !reason) {
+    throw new TypeError(`${input.outcome} trigger admission entries require a reason`);
   }
   if (input.outcome === "completed" && reason) {
     throw new TypeError("completed trigger admission entries cannot have a terminal reason");
@@ -310,11 +313,14 @@ function parseEntry(value: JsonValue): TriggerAdmissionJournalEntry {
   }
   const settledAt = value.settledAt;
   const terminalReason = value.terminalReason;
-  const terminal = value.state === "completed" || value.state === "dead-lettered";
+  const terminal = value.state === "cancelled"
+    || value.state === "completed"
+    || value.state === "dead-lettered";
   if (terminal !== (typeof settledAt === "string" && isCanonicalTimestamp(settledAt))
     || (typeof settledAt === "string" && Date.parse(settledAt) < Date.parse(value.admittedAt))
-    || (value.state === "dead-lettered" && (typeof terminalReason !== "string" || terminalReason.trim() === ""))
-    || (value.state !== "dead-lettered" && terminalReason !== undefined)
+    || ((value.state === "cancelled" || value.state === "dead-lettered")
+      && (typeof terminalReason !== "string" || terminalReason.trim() === ""))
+    || (value.state !== "cancelled" && value.state !== "dead-lettered" && terminalReason !== undefined)
     || stateForDecision(value.decision) !== (terminal ? "queued" : value.state)) {
     throw new TypeError("invalid trigger admission journal entry state");
   }
@@ -418,7 +424,8 @@ function isDecision(value: unknown, dedupKey: string): value is TriggerAdmission
 }
 
 function isJournalState(value: unknown): value is TriggerAdmissionJournalState {
-  return value === "completed"
+  return value === "cancelled"
+    || value === "completed"
     || value === "dead-lettered"
     || value === "queued"
     || value === "rejected"

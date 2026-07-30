@@ -100,6 +100,35 @@ describe("trigger admission journal", () => {
     })).toThrow(/require a reason/u);
   });
 
+  it("persists cancellation as a reason-bound monotonic terminal state", () => {
+    const queued = admitTriggerToJournal(createTriggerAdmissionJournal({ maxPending: 1 }), {
+      envelope: envelope("g1"),
+      now: NOW
+    }).journal;
+    expect(() => settleTriggerAdmission(queued, {
+      at: NOW,
+      dedupKey: envelope("g1").dedupKey,
+      outcome: "cancelled"
+    })).toThrow(/require a reason/u);
+    const cancelled = settleTriggerAdmission(queued, {
+      at: NOW,
+      dedupKey: envelope("g1").dedupKey,
+      outcome: "cancelled",
+      reason: "owner-stop"
+    });
+    expect(parseTriggerAdmissionJournal(
+      serializeTriggerAdmissionJournal(cancelled)
+    ).entries[0]).toMatchObject({
+      state: "cancelled",
+      terminalReason: "owner-stop"
+    });
+    expect(() => settleTriggerAdmission(cancelled, {
+      at: NOW,
+      dedupKey: envelope("g1").dedupKey,
+      outcome: "completed"
+    })).toThrow(/only queued/u);
+  });
+
   it("rejects unsafe settlement outcomes and time travel", () => {
     const queued = admitTriggerToJournal(createTriggerAdmissionJournal({ maxPending: 1 }), {
       envelope: envelope("g1"),

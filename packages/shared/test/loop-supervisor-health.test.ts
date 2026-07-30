@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   admitTriggerToJournal,
+  cancelTriggerWork,
   claimTriggerWork,
   createLoopSupervisorHealthSnapshot,
   createTriggerAdmissionJournal,
@@ -220,6 +221,40 @@ describe("createLoopSupervisorHealthSnapshot", () => {
       adaptation: {
         level: "blocked",
         reasons: ["adaptation-promotion-unverified"]
+      }
+    });
+  });
+
+  it("counts one cancellation identity once across journal and worker state", () => {
+    const admitted = journal("cancelled");
+    const leased = claimTriggerWork(admitted, {
+      at: NOW,
+      dedupKey: admitted.entries[0]!.envelope.dedupKey,
+      leaseDurationMs: 1_000,
+      leaseToken: "worker-a:1",
+      maxAttempts: 1
+    });
+    const cancelledWork = cancelTriggerWork(leased, {
+      at: new Date("2026-07-30T12:00:00.250Z"),
+      reason: "owner-stop"
+    });
+    const cancelledJournal = settleTriggerAdmission(admitted, {
+      at: new Date("2026-07-30T12:00:00.250Z"),
+      dedupKey: admitted.entries[0]!.envelope.dedupKey,
+      outcome: "cancelled",
+      reason: "owner-stop"
+    });
+    expect(createLoopSupervisorHealthSnapshot({
+      event: {
+        journal: cancelledJournal,
+        workStates: [cancelledWork]
+      },
+      generatedAt: new Date("2026-07-30T12:00:00.250Z")
+    })).toMatchObject({
+      event: {
+        counts: { cancelled: 1 },
+        level: "degraded",
+        reasons: ["event-cancelled"]
       }
     });
   });

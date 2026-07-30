@@ -186,6 +186,7 @@ function eventHealth(
   for (const state of workStates) {
     const entry = journal.entries.find((candidate) => candidate.envelope.dedupKey === state.dedupKey)!;
     if (entry.state === "rejected" || entry.state === "shadowed"
+      || (entry.state === "cancelled" && state.status !== "cancelled")
       || (entry.state === "completed" && state.status !== "completed")
       || (entry.state === "dead-lettered" && state.status !== "dead-lettered")) {
       throw new TypeError("event work state contradicts admission journal");
@@ -200,8 +201,16 @@ function eventHealth(
       .filter((state) => state.status === "dead-lettered")
       .map((state) => state.dedupKey)
   ]);
+  const cancelledKeys = new Set([
+    ...journal.entries
+      .filter((entry) => entry.state === "cancelled")
+      .map((entry) => entry.envelope.dedupKey),
+    ...workStates
+      .filter((state) => state.status === "cancelled")
+      .map((state) => state.dedupKey)
+  ]);
   const counts = {
-    cancelled: workStates.filter((state) => state.status === "cancelled").length,
+    cancelled: cancelledKeys.size,
     completed: journal.entries.filter((entry) => entry.state === "completed").length,
     deadLettered: deadLetterKeys.size,
     leased: workStates.filter((state) => state.status === "leased").length,
