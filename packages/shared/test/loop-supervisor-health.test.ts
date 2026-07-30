@@ -112,6 +112,20 @@ describe("createLoopSupervisorHealthSnapshot", () => {
     });
   });
 
+  it("degrades queued admissions that have no recoverable work state", () => {
+    expect(createLoopSupervisorHealthSnapshot({
+      event: { journal: journal(), workStates: [] },
+      generatedAt: NOW
+    })).toMatchObject({
+      event: {
+        counts: { queued: 1 },
+        level: "degraded",
+        reasons: ["event-work-state-missing"]
+      },
+      level: "degraded"
+    });
+  });
+
   it("surfaces dead letters, expired leases, and backpressure", () => {
     const admitted = journal();
     const leased = claimTriggerWork(admitted, {
@@ -195,7 +209,10 @@ describe("createLoopSupervisorHealthSnapshot", () => {
       event: { journal: pressured, workStates: [] },
       generatedAt: NOW
     })).toMatchObject({
-      event: { level: "degraded", reasons: ["event-backpressure"] }
+      event: {
+        level: "degraded",
+        reasons: ["event-backpressure", "event-work-state-missing"]
+      }
     });
   });
 

@@ -247,6 +247,12 @@ function eventHealth(
     if (level !== "blocked") level = "degraded";
     reasons.add("event-cancelled");
   }
+  if (journal.entries.some((entry) =>
+    entry.state === "queued"
+      && !workStates.some((state) => state.dedupKey === entry.envelope.dedupKey))) {
+    if (level !== "blocked") level = "degraded";
+    reasons.add("event-work-state-missing");
+  }
   if (workStates.some((state) => {
     const entry = journal.entries.find((candidate) =>
       candidate.envelope.dedupKey === state.dedupKey)!;

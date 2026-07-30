@@ -24,7 +24,7 @@ describe("GET /api/loop-health", () => {
     await server.close();
   });
 
-  it("combines current agent, event, and adaptation evidence into healthy supervision", async () => {
+  it("reports current event counts without calling unleased queued work healthy", async () => {
     const endedAt = new Date(Date.now() - 1_000).toISOString();
     const now = new Date();
     const journal = admitTriggerToJournal(
@@ -68,11 +68,11 @@ describe("GET /api/loop-health", () => {
     expect(body.agent).toEqual({ level: "healthy", reasons: [] });
     expect(body.event).toMatchObject({
       counts: { queued: 1 },
-      level: "healthy",
-      reasons: []
+      level: "degraded",
+      reasons: ["event-work-state-missing"]
     });
-    expect(body.level).toBe("healthy");
-    expect(body.reasons).toEqual([]);
+    expect(body.level).toBe("degraded");
+    expect(body.reasons).toEqual(["event-work-state-missing"]);
     expect(body.generatedAt).not.toBe(endedAt);
     await server.close();
   });
