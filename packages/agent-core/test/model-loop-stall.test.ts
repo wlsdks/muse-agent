@@ -1,4 +1,5 @@
 import type { ModelProvider, ModelRequest, ModelResponse, ModelToolCall } from "@muse/model";
+import type { ToolExecutionResult } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
 import { executeModelLoop, type ModelLoopRunner } from "../src/model-loop.js";
@@ -74,5 +75,97 @@ describe("executeModelLoop — no-progress stall early-exit (arXiv:2505.17616)",
     expect(ran.length).toBe(10); // ran to the cap — the stall gate did NOT fire on progressing reads
     expect(result.finalResponse.output).toBe("synthesised final answer");
     expect(result.controlStopReason).toBeUndefined();
+  });
+
+  it.each([
+    ["completed without verification", {
+      output: "write returned without a receipt",
+      status: "completed"
+    }, 4],
+    ["completed with an unverified receipt", {
+      effectVerification: { reason: "read-back timed out", status: "unverified" },
+      output: "write could not be verified",
+      status: "completed"
+    }, 4],
+    ["blocked", {
+      output: "write blocked",
+      status: "blocked"
+    }, 4],
+    ["failed with a contradictory verified receipt", {
+      effectVerification: { status: "verified" },
+      output: "write failed",
+      status: "failed"
+    }, 4],
+    ["completed with a verified receipt", {
+      effectVerification: { status: "verified" },
+      output: "write verified",
+      status: "completed"
+    }, 6]
+  ] as const)("counts %s correctly at the production progress seam", async (
+    _label,
+    writeResult,
+    expectedCalls
+  ) => {
+    const tools = [
+      tool,
+      { name: "update", description: "update", inputSchema: { type: "object" as const }, risk: "write" as const }
+    ];
+    let turn = 0;
+    const calls: string[] = [];
+    const runner = {
+      maxToolCalls: 10,
+      generateWithTracing: async (
+        _ctx: AgentRunContext,
+        _provider: ModelProvider,
+        current: ModelRequest
+      ): Promise<ModelResponse> => {
+        if ((current.tools?.length ?? 0) === 0) {
+          return { id: "fin", model: "m", output: "synthesised final answer", toolCalls: [] };
+        }
+        turn += 1;
+        const name = turn === 3 ? "update" : "search";
+        return {
+          id: `response-${turn.toString()}`,
+          model: "m",
+          output: "still looking",
+          toolCalls: [{ arguments: { turn }, id: `tool-${turn.toString()}`, name }]
+        };
+      },
+      executeToolCall: async (
+        _ctx: AgentRunContext,
+        toolCall: ModelToolCall
+      ): Promise<ExecutedToolResult> => {
+        calls.push(toolCall.name);
+        return toolCall.name === "update"
+          ? {
+              result: {
+                id: toolCall.id,
+                name: toolCall.name,
+                ...writeResult
+              } as ToolExecutionResult,
+              toolCall
+            }
+          : {
+              result: {
+                id: toolCall.id,
+                name: toolCall.name,
+                output: "results: alpha beta gamma delta",
+                status: "completed"
+              },
+              toolCall
+            };
+      }
+    } as unknown as ModelLoopRunner;
+
+    const result = await executeModelLoop(
+      runner,
+      context(),
+      provider,
+      { ...request(), tools }
+    );
+
+    expect(calls).toHaveLength(expectedCalls);
+    expect(calls.slice(0, 4)).toEqual(["search", "search", "update", "search"]);
+    expect(result.controlStopReason).toBe("no-progress");
   });
 });

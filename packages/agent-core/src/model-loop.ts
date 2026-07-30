@@ -541,10 +541,11 @@ async function* runToolBatch(
       };
       const mutating = plan.toolRisk === "write" || plan.toolRisk === "execute";
       deduplicator.record(toolCall, executed.result, mutating);
-      // Feed only GENUINE executions (not blocked / exact-dups) to the stall
-      // tracker; a mutating call resets the window (it advanced state).
+      // Feed only GENUINE executions (not exact-dups) to the stall tracker.
+      // A mutating attempt resets the window only when a completed post-condition
+      // receipt proves that it actually advanced state.
       if (plan.canRun && !isDuplicate) {
-        progress.record(executed.result.output, mutating);
+        progress.record(executed.result, mutating);
         failureStreak.record(toolCall.name, executed.result.status);
         shellPhase.record(toolCall.name, executed.result.output);
         reverify.recordTool(plan.toolRisk);

@@ -11,8 +11,9 @@
  * final synthesis instead of burning the remaining maxToolCalls budget on spin
  * that ends in "max tool call limit reached" errors.
  *
- * A WRITE/EXECUTE tool is progress by definition (it changed the world), so it
- * RESETS the stall window — a legitimate retry-after-write is never cut. This
+ * A WRITE/EXECUTE tool is progress only when its completed effect is verified,
+ * so only that receipt RESETS the stall window. Failed, blocked, or unverifiable
+ * mutation attempts cannot manufacture progress. This
  * detects REPEATED observations (the SAME read returned again — a genuinely
  * lexical phenomenon), not paraphrase similarity, so token-Jaccard at a HIGH
  * floor is the right signal. Distinct from the exact-signature dedup the
@@ -66,22 +67,29 @@ export function detectToolLoopStall(
 }
 
 /**
- * Stateful wrapper for the tool loop: record each genuinely-executed tool result
- * (a mutating one resets the read window — it advanced state), then query
- * stalled() at the top of the next turn.
+ * Stateful wrapper for the tool loop: record each genuinely-executed tool result,
+ * reset the read window only for a verified mutating effect, then query stalled()
+ * at the top of the next turn.
  */
 export class ToolLoopProgressTracker {
   private reads: string[] = [];
 
-  record(output: string, mutating: boolean): void {
+  record(
+    result: Pick<ToolExecutionResult, "effectVerification" | "output" | "status">,
+    mutating: boolean
+  ): void {
     if (mutating) {
-      this.reads = [];
+      if (result.status === "completed"
+        && result.effectVerification?.status === "verified") {
+        this.reads = [];
+      }
       return;
     }
-    this.reads.push(output);
+    this.reads.push(result.output);
   }
 
   stalled(opts?: { readonly window?: number; readonly threshold?: number }): boolean {
     return detectToolLoopStall(this.reads, opts);
   }
 }
+import type { ToolExecutionResult } from "@muse/tools";

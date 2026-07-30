@@ -6,6 +6,15 @@ import {
   TOOL_LOOP_STALL_WINDOW
 } from "../src/index.js";
 
+const result = (
+  output: string,
+  overrides: Partial<Parameters<ToolLoopProgressTracker["record"]>[0]> = {}
+): Parameters<ToolLoopProgressTracker["record"]>[0] => ({
+  output,
+  status: "completed",
+  ...overrides
+});
+
 // Extrinsic early-exit (arXiv:2505.17616): halt a tool loop trapped re-issuing
 // near-identical READs that don't advance state.
 
@@ -55,19 +64,41 @@ describe("detectToolLoopStall", () => {
 describe("ToolLoopProgressTracker", () => {
   it("flags a stall after window near-identical READ results", () => {
     const t = new ToolLoopProgressTracker();
-    t.record("results: alpha beta gamma", false);
-    t.record("results: alpha beta gamma", false);
+    t.record(result("results: alpha beta gamma"), false);
+    t.record(result("results: alpha beta gamma"), false);
     expect(t.stalled()).toBe(false); // only 2
-    t.record("results: alpha beta gamma", false);
+    t.record(result("results: alpha beta gamma"), false);
     expect(t.stalled()).toBe(true); // 3 near-identical
   });
 
-  it("a WRITE/EXECUTE result RESETS the window (it advanced state)", () => {
+  it("a verified WRITE/EXECUTE effect resets the window", () => {
     const t = new ToolLoopProgressTracker();
-    t.record("results: alpha beta gamma", false);
-    t.record("results: alpha beta gamma", false);
-    t.record("wrote the file", true); // mutating → reset
-    t.record("results: alpha beta gamma", false);
+    t.record(result("results: alpha beta gamma"), false);
+    t.record(result("results: alpha beta gamma"), false);
+    t.record(result("wrote the file", {
+      effectVerification: { status: "verified" }
+    }), true);
+    t.record(result("results: alpha beta gamma"), false);
     expect(t.stalled()).toBe(false); // window reset; only 1 read since
+  });
+
+  it.each([
+    ["failed", result("failed", { status: "failed" })],
+    ["blocked", result("blocked", { status: "blocked" })],
+    ["completed without verification", result("unverified")],
+    ["completed with unverified receipt", result("unverified", {
+      effectVerification: { status: "unverified" }
+    })],
+    ["failed with a contradictory verified receipt", result("failed", {
+      effectVerification: { status: "verified" },
+      status: "failed"
+    })]
+  ])("does not treat a %s mutation attempt as progress", (_label, mutationResult) => {
+    const t = new ToolLoopProgressTracker();
+    t.record(result("results: alpha beta gamma"), false);
+    t.record(result("results: alpha beta gamma"), false);
+    t.record(mutationResult, true);
+    t.record(result("results: alpha beta gamma"), false);
+    expect(t.stalled()).toBe(true);
   });
 });
