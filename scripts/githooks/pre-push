@@ -46,6 +46,7 @@ changed_file_count=0
 scope_fallback=0
 saw_ref=0
 ref_index=0
+package_json_requires_full=0
 
 add_changed_file() {
   local file="$1" key
@@ -59,6 +60,21 @@ add_changed_file() {
 
 valid_sha() {
   [[ "$1" =~ ^[0-9a-fA-F]{40}$ ]]
+}
+
+package_json_change_is_description_only() {
+  git diff --unified=0 "$1" "$2" -- package.json 2>/dev/null \
+    | awk '
+      /^(diff --git|index |--- |\+\+\+ |@@)/ { next }
+      /^[+-]/ {
+        saw_change = 1
+        line = substr($0, 2)
+        if (line !~ /^[[:space:]]*"description"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"[[:space:]]*,?[[:space:]]*$/) {
+          invalid = 1
+        }
+      }
+      END { exit (!saw_change || invalid) ? 1 : 0 }
+    '
 }
 
 while IFS=' ' read -r local_ref local_sha remote_ref remote_sha extra; do
@@ -93,6 +109,10 @@ while IFS=' ' read -r local_ref local_sha remote_ref remote_sha extra; do
     continue
   fi
   while IFS= read -r -d '' file; do
+    if [ "$file" = "package.json" ] \
+      && ! package_json_change_is_description_only "$base" "$local_commit"; then
+      package_json_requires_full=1
+    fi
     add_changed_file "$file" || scope_fallback=1
   done < "$diff_file"
 done <<< "$push_refs_stdin"
@@ -151,8 +171,10 @@ for ((index = 0; index < changed_file_count; index += 1)); do
       needs_full_lint=1
     fi
   fi
-  is_web_impact_path "$file" && needs_web=1
-  is_full_lint_impact_path "$file" && needs_full_lint=1
+  if [ "$file" != "package.json" ] || [ "$package_json_requires_full" -eq 1 ]; then
+    is_web_impact_path "$file" && needs_web=1
+    is_full_lint_impact_path "$file" && needs_full_lint=1
+  fi
   if [ -f "$file" ] && is_lintable_path "$file"; then
     lint_files[$lint_file_count]="$file"
     lint_file_count=$((lint_file_count + 1))

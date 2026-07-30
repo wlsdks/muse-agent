@@ -168,6 +168,87 @@ test("shared-package code is treated as web-impacting", () => {
   assert.ok(calls(logFile).some((call) => call.includes("--filter @muse/web typecheck")));
 });
 
+test("package description-only change runs root typecheck without web or full lint", () => {
+  const repoDir = makeTempRepo();
+  const remoteSha = writeAndCommit(
+    repoDir,
+    "package.json",
+    `${JSON.stringify({ description: "old identity", name: "muse" }, null, 2)}\n`,
+    "base"
+  );
+  const localSha = writeAndCommit(
+    repoDir,
+    "package.json",
+    `${JSON.stringify({ description: "new identity", name: "muse" }, null, 2)}\n`,
+    "description"
+  );
+  const logFile = path.join(repoDir, "pnpm.log");
+  const pnpmDir = makePnpmShim(logFile);
+  const result = runHook(repoDir, {
+    pathDirs: [pnpmDir, realGitDir, "/usr/bin", "/bin"],
+    input: refUpdateStdin(localSha, remoteSha)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(calls(logFile).map((call) => call.includes("typecheck:fast") ? "root" : call), ["root"]);
+  assert.match(result.stderr, /apps\/web typecheck skipped/u);
+  assert.match(result.stderr, /lint skipped/u);
+});
+
+test("non-description package change retains web typecheck and full lint", () => {
+  const repoDir = makeTempRepo();
+  const remoteSha = writeAndCommit(
+    repoDir,
+    "package.json",
+    `${JSON.stringify({ description: "identity", name: "muse", scripts: { check: "old" } }, null, 2)}\n`,
+    "base"
+  );
+  const localSha = writeAndCommit(
+    repoDir,
+    "package.json",
+    `${JSON.stringify({ description: "identity", name: "muse", scripts: { check: "new" } }, null, 2)}\n`,
+    "script"
+  );
+  const logFile = path.join(repoDir, "pnpm.log");
+  const pnpmDir = makePnpmShim(logFile);
+  const result = runHook(repoDir, {
+    pathDirs: [pnpmDir, realGitDir, "/usr/bin", "/bin"],
+    input: refUpdateStdin(localSha, remoteSha)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(calls(logFile).map((call) =>
+    call.includes("typecheck:fast") ? "root" : call.includes("@muse/web") ? "web" : call.includes("-s lint") ? "lint" : call
+  ), ["root", "web", "lint"]);
+});
+
+test("same-line package keys cannot hide a non-description change", () => {
+  const repoDir = makeTempRepo();
+  const remoteSha = writeAndCommit(
+    repoDir,
+    "package.json",
+    "{\n  \"description\": \"old identity\", \"name\": \"muse\"\n}\n",
+    "base"
+  );
+  const localSha = writeAndCommit(
+    repoDir,
+    "package.json",
+    "{\n  \"description\": \"new identity\", \"name\": \"renamed\"\n}\n",
+    "mixed metadata"
+  );
+  const logFile = path.join(repoDir, "pnpm.log");
+  const pnpmDir = makePnpmShim(logFile);
+  const result = runHook(repoDir, {
+    pathDirs: [pnpmDir, realGitDir, "/usr/bin", "/bin"],
+    input: refUpdateStdin(localSha, remoteSha)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(calls(logFile).map((call) =>
+    call.includes("typecheck:fast") ? "root" : call.includes("@muse/web") ? "web" : call.includes("-s lint") ? "lint" : call
+  ), ["root", "web", "lint"]);
+});
+
 test("changed-file lint preserves whitespace and option-like basenames behind --", () => {
   const repoDir = makeTempRepo();
   const remoteSha = writeAndCommit(repoDir, "README.md", "base\n", "base");
