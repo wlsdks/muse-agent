@@ -118,6 +118,7 @@ export interface OpenDeliveryInput {
   readonly evidenceRefs: readonly ArtifactReference[];
   readonly expectedPolicyVersion: number;
   readonly interactionAnchor?: Omit<ContinuityInteractionAnchor, "observedAt">;
+  readonly runId?: string;
   readonly threadId: string;
 }
 
@@ -161,6 +162,19 @@ function isIsoTimestamp(value: unknown): value is string {
 
 function isFingerprint(value: unknown): value is string {
   return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
+}
+
+function requireCorrelationRunId(value: unknown): string {
+  if (typeof value !== "string"
+    || value.length === 0
+    || value.length > 160
+    || value.trim() !== value
+    || hasControlCharacter(value)) {
+    throw new AttunementStoreError(
+      "delivery runId must be 1-160 characters with no surrounding whitespace or control characters"
+    );
+  }
+  return value;
 }
 
 function parseState(value: unknown): AttunementState {
@@ -455,6 +469,9 @@ export async function openContinuityDelivery(
       }
       interactionAnchor = { ...input.interactionAnchor, observedAt: openedAt };
     }
+    const correlatedRunId = input.runId === undefined
+      ? undefined
+      : requireCorrelationRunId(input.runId);
     const delivery: ContinuityDelivery = {
       evidenceClass: resolveContinuityEvidenceClass(options),
       evidenceRefs: expectedRefs,
@@ -463,7 +480,7 @@ export async function openContinuityDelivery(
       openedAt,
       policyDigest: fingerprintContinuityPolicy(thread.policy),
       policyVersion: thread.policy.version,
-      runId: newId("continuity_run", options),
+      runId: correlatedRunId ?? newId("continuity_run", options),
       threadId: thread.id
     };
     return { changed: true, result: delivery, state: { ...state, deliveries: [...state.deliveries, delivery] } };

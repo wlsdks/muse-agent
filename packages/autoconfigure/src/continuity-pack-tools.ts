@@ -24,7 +24,8 @@ const MAX_SUMMARY_CHARACTERS = 240;
 
 export interface ContinuityPackOpenToolDeps {
   readonly openPack: (
-    threadId: string
+    threadId: string,
+    runId: string
   ) => Promise<{ readonly delivery: ContinuityDelivery; readonly pack: ContinuityPack }>;
   readonly previewPack: (threadId: string) => Promise<ContinuityPack>;
 }
@@ -171,6 +172,19 @@ function digestMatches(left: string, right: string): boolean {
   const leftBytes = Buffer.from(left, "hex");
   const rightBytes = Buffer.from(right, "hex");
   return leftBytes.length === rightBytes.length && timingSafeEqual(leftBytes, rightBytes);
+}
+
+function requireSourceRunId(value: unknown): string {
+  if (typeof value !== "string"
+    || value.length === 0
+    || value.length > 160
+    || value.trim() !== value
+    || /[\u0000-\u001f\u007f-\u009f]/u.test(value)) {
+    throw new Error(
+      "continuity Pack source runId must be 1-160 characters with no surrounding whitespace or control characters"
+    );
+  }
+  return value;
 }
 
 async function inspectPack(
@@ -353,24 +367,27 @@ export function createContinuityPackOpenTool(
       name: "muse.continuity.pack.open",
       risk: "write"
     },
-    execute: async (args): Promise<JsonObject> => {
+    execute: async (args, context): Promise<JsonObject> => {
+      const sourceRunId = requireSourceRunId(context.runId);
       const input = parseInput(args, true);
       const current = await inspectPack(deps, input.threadId);
       if (!digestMatches(input.previewDigest, current.digest)) {
         throw new Error("continuity Pack previewDigest is stale or does not match this exact Pack");
       }
-      const opened = await deps.openPack(input.threadId);
+      const opened = await deps.openPack(input.threadId, sourceRunId);
       if (
         opened.delivery.threadId !== input.threadId
         || opened.pack.thread.id !== input.threadId
+        || opened.delivery.runId !== sourceRunId
       ) {
-        throw new Error("opened Continuity Pack did not preserve the approved exact thread");
+        throw new Error("opened Continuity Pack did not preserve the approved thread and source run");
       }
       return {
         delivery: {
           evidenceCount: opened.delivery.evidenceRefs.length,
           id: opened.delivery.id,
           openedAt: opened.delivery.openedAt,
+          runId: opened.delivery.runId,
           threadId: opened.delivery.threadId
         },
         success: true

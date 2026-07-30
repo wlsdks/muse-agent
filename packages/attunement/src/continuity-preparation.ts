@@ -9,6 +9,8 @@ export interface ContinuityFilePreparationOptions extends ContinuityEvidenceWrit
   readonly idFactory?: AttunementStoreOptions["idFactory"];
   /** Milliseconds since the Unix epoch. Read once per preparation. */
   readonly now?: () => number;
+  /** Optional trusted host correlation id; it grants no write authority. */
+  readonly runId?: string;
 }
 
 function capturePreparationTime(options: ContinuityFilePreparationOptions): number {
@@ -57,6 +59,7 @@ export async function openPreparedContinuityPack(
     evidenceRefs: pack.evidenceRefs,
     expectedPolicyVersion: pack.deliveryPolicyVersion,
     ...(pack.interactionAnchor ? { interactionAnchor: pack.interactionAnchor } : {}),
+    ...(options.runId !== undefined ? { runId: options.runId } : {}),
     threadId
   }, {
     ...(options.evidenceAuthority ? { evidenceAuthority: options.evidenceAuthority } : {}),

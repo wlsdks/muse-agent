@@ -197,6 +197,50 @@ describe("openPreparedContinuityPack", () => {
     expect((await readAttunementState(file)).deliveries).toHaveLength(1);
   });
 
+  it("preserves one bounded host run id while legacy callers still receive generated ids", async () => {
+    const file = await seededFile();
+    const resolve = async (link: ArtifactLink): Promise<ResolvedArtifact> => ({
+      ...link,
+      taskStatus: "open",
+      title: "Choose flowers"
+    });
+    const correlated = await openPreparedContinuityPack(file, "thread_life", resolve, {
+      idFactory: () => "correlated-delivery",
+      now: () => Date.parse("2026-07-18T09:00:00.000Z"),
+      runId: "trigger:agent-run-1"
+    });
+    const generated = await openPreparedContinuityPack(file, "thread_life", resolve, {
+      idFactory: () => "generated",
+      now: () => Date.parse("2026-07-18T09:01:00.000Z")
+    });
+
+    expect(correlated.delivery.runId).toBe("trigger:agent-run-1");
+    expect(generated.delivery.runId).toBe("continuity_run_generated");
+  });
+
+  it.each([
+    "",
+    " padded ",
+    "control\u0000character",
+    "x".repeat(161)
+  ])("rejects invalid correlated run id %j without persistence", async (runId) => {
+    const file = await seededFile();
+    const before = await readFile(file);
+    const idFactory = vi.fn(() => "must-not-run");
+
+    await expect(openPreparedContinuityPack(file, "thread_life", async (link) => ({
+      ...link,
+      taskStatus: "open",
+      title: "Choose flowers"
+    }), {
+      idFactory,
+      now: () => Date.parse("2026-07-18T09:00:00.000Z"),
+      runId
+    })).rejects.toThrow(/delivery runId/u);
+    expect(idFactory).not.toHaveBeenCalled();
+    expect(await readFile(file)).toEqual(before);
+  });
+
   it("fails closed without a delivery when every exact source is unavailable", async () => {
     const file = await seededFile();
     const before = await readFile(file);

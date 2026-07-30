@@ -203,6 +203,7 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
     expect(state.deliveries).toHaveLength(1);
     expect(state.deliveries[0]).toMatchObject({
       evidenceClass: "organic",
+      runId: "open_1",
       threadId: thread.id
     });
   });
@@ -256,7 +257,7 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
         ordinaryReads += 1;
         return pack;
       },
-      openPack: async () => {
+      openPack: async (_threadId, runId) => {
         opens += 1;
         return {
           delivery: {
@@ -265,6 +266,7 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
             id: "delivery_dependency_split",
             openedAt: "2026-07-30T00:00:00.000Z",
             policyVersion: 0,
+            runId,
             threadId
           },
           pack
@@ -277,14 +279,22 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
     );
     expect(resumeReads).toBe(1);
     expect(ordinaryReads).toBe(0);
+    let runIdReads = 0;
+    const changingContext = Object.defineProperty({}, "runId", {
+      get() {
+        runIdReads += 1;
+        return runIdReads === 1 ? "dependency_open" : "forged_after_write";
+      }
+    });
     await open.execute({
       previewDigest:
         (previewed as { readonly previewDigest: string }).previewDigest,
       threadId
-    }, { runId: "dependency_open" });
+    }, changingContext as { readonly runId: string });
     expect(resumeReads).toBe(1);
     expect(ordinaryReads).toBe(1);
     expect(opens).toBe(1);
+    expect(runIdReads).toBe(1);
   });
 
   it("does not present a Capsule from a forged compared result plus an unrelated Pack", async () => {

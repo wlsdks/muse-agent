@@ -171,10 +171,11 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
               })
           });
         const openPackDeps: ContinuityPackOpenToolDeps = {
-          openPack: (threadId) => openProductionAuthorizedContinuityPack(
+          openPack: (threadId, runId) => openProductionAuthorizedContinuityPack(
             deps.attunementFile!,
             threadId,
-            resolveExactArtifact
+            resolveExactArtifact,
+            { runId }
           ),
           previewPack: (threadId) => readPreparedContinuityPack(
             deps.attunementFile!,

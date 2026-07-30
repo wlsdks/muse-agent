@@ -81,6 +81,9 @@ describe("continuity learning preview tool", () => {
     }, { runId: "open-pack" });
     const deliveryId = (opened as { readonly delivery: { readonly id: string } })
       .delivery.id;
+    expect(opened).toMatchObject({
+      delivery: { runId: "open-pack" }
+    });
     await tool("muse.continuity.delivery.outcome").execute({
       deliveryId,
       outcome: "adjusted",
@@ -90,6 +93,9 @@ describe("continuity learning preview tool", () => {
       {},
       { runId: "read-queue" }
     );
+    expect(queue).toMatchObject({
+      items: [{ sourceRun: { runId: "open-pack" } }]
+    });
     const opportunityId = (
       queue as { readonly items: readonly { readonly opportunityId: string }[] }
     ).items[0]!.opportunityId;
