@@ -26,6 +26,7 @@ import {
   displayWidth,
   emptyInput,
   extractAttachmentPaths,
+  formatAutomaticCompactionNotice,
   imageMimeForPath,
   formatCompactPreview,
   friendlyError,
@@ -63,6 +64,15 @@ describe("displayWidth", () => {
     expect(displayWidth("hi")).toBe(2);
     expect(displayWidth("안녕")).toBe(4);
     expect(displayWidth("a안")).toBe(3);
+  });
+});
+
+describe("formatAutomaticCompactionNotice", () => {
+  it("renders a bounded one-line notice without summary content", () => {
+    expect(formatAutomaticCompactionNotice(7))
+      .toBe("Context compacted — summarized 7 older message(s).");
+    expect(formatAutomaticCompactionNotice(Number.NaN))
+      .toBe("Context compacted — summarized 0 older message(s).");
   });
 });
 

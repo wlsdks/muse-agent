@@ -35,6 +35,7 @@ import {
   type DisplayTurnRole,
   type HudSegmentId,
   extractAttachmentPaths,
+  formatAutomaticCompactionNotice,
   imageMimeForPath,
   formatCompactPreview,
   formatJobsList,
@@ -239,8 +240,8 @@ export function MuseChatApp(props: {
    * signal, or a cloud failure all fall back the same way, silently.
    */
   readonly cloudTurn?: (message: string, personaBlock: string, groundingBlock: string) => Promise<{ readonly text: string; readonly marker: string } | undefined>;
-  readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
-  readonly streamWithTools: (messages: readonly ChatTurnMessage[], model: string, requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<ApprovalPromptDecision>) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
+  readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; removedCount?: number; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
+  readonly streamWithTools: (messages: readonly ChatTurnMessage[], model: string, requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<ApprovalPromptDecision>) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; removedCount?: number; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
   readonly readFile: (relativePath: string) => Promise<string | undefined>;
   readonly readImage?: (relativePath: string) => Promise<{ readonly mimeType: string; readonly dataBase64: string } | undefined>;
   readonly saveText: (text: string) => Promise<string | undefined>;
@@ -784,6 +785,9 @@ export function MuseChatApp(props: {
           }
           if (event.type === "tool-result" && event.grounding) {
             toolGrounding.push(event.grounding);
+          }
+          if (event.type === "context-compacted") {
+            setCommandNotice(formatAutomaticCompactionNotice(event.removedCount ?? 0));
           }
           if (event.type === "text-delta" && typeof event.text === "string") {
             accumulated += event.text;

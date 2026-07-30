@@ -718,6 +718,13 @@ export function formatCompactPreview(totalMessages: number, result: Conversation
   return lines.join("\n");
 }
 
+export function formatAutomaticCompactionNotice(removedCount: number): string {
+  const count = Number.isSafeInteger(removedCount) && removedCount >= 0
+    ? removedCount
+    : 0;
+  return `Context compacted — summarized ${count.toString()} older message(s).`;
+}
+
 export interface FocusedCompactionResult {
   readonly messages: readonly ChatTurnMessage[];
   readonly note: string;

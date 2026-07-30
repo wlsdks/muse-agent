@@ -124,6 +124,14 @@ export async function* toSseStream(
   // a local 12B model.
   yield "event: stage\ndata: thinking\n\n";
   for await (const event of events) {
+    if (event.type === "context-compacted") {
+      yield `event: context_compacted\ndata: ${sseData(JSON.stringify({
+        removedCount: event.removedCount,
+        runId: event.runId
+      }))}\n\n`;
+      continue;
+    }
+
     if (event.type === "text-delta") {
       assembled += event.text;
       const safe = liveFilter.push(event.text);

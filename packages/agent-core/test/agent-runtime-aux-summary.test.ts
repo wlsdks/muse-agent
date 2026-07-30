@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DiagnosticModelProvider, type ModelMessage, type ModelRequest, type ModelEvent } from "@muse/model";
+import type { CachedResponse, ResponseCache } from "@muse/cache";
 import { COMPACTION_SUMMARY_PREFIX, type ConversationMessage } from "@muse/memory";
 import { InMemoryMuseTracer } from "@muse/observability";
 import { retry } from "@muse/resilience";
@@ -49,6 +50,71 @@ function compactingMessages(): ConversationMessage[] {
 }
 
 describe("CMP-2 runtime wiring", () => {
+  it("emits one bounded compaction event before both uncached and cached model output", async () => {
+    let cacheReads = 0;
+    const cachedResponse: CachedResponse = {
+      cachedAt: 0,
+      content: "cached response",
+      metadata: {},
+      model: "diagnostic/smoke",
+      toolsUsed: []
+    };
+    const responseCache: ResponseCache = {
+      get: () => {
+        cacheReads += 1;
+        return cacheReads === 1 ? undefined : cachedResponse;
+      },
+      invalidateAll: () => {},
+      put: () => {}
+    };
+    const provider = new CapturingDiagnostic({ defaultModel: "diagnostic/smoke" });
+    const runtime = new AgentRuntime({
+      contextWindow: { maxContextWindowTokens: 60, outputReserveTokens: 10 },
+      modelProvider: provider,
+      responseCache
+    });
+    const input = {
+      messages: compactingMessages(),
+      model: "diagnostic/smoke",
+      runId: "compaction-notice"
+    };
+
+    const collect = async () => {
+      const events = [];
+      for await (const event of runtime.stream(input)) events.push(event);
+      return events;
+    };
+    const uncached = await collect();
+    const capturesAfterUncached = provider.captured.length;
+    const cached = await collect();
+
+    for (const events of [uncached, cached]) {
+      expect(events[0]).toEqual({
+        removedCount: expect.any(Number),
+        runId: "compaction-notice",
+        type: "context-compacted"
+      });
+      expect(events.filter((event) => event.type === "context-compacted")).toHaveLength(1);
+    }
+    expect(cached.at(-1)).toMatchObject({ type: "done" });
+    expect(provider.captured).toHaveLength(capturesAfterUncached);
+  });
+
+  it("does not emit a compaction event when the request fits", async () => {
+    const runtime = new AgentRuntime({
+      contextWindow: { maxContextWindowTokens: 60, outputReserveTokens: 10 },
+      modelProvider: new CapturingDiagnostic({ defaultModel: "diagnostic/smoke" })
+    });
+    const events = [];
+    for await (const event of runtime.stream({
+      messages: [{ content: "short", role: "user" }],
+      model: "diagnostic/smoke"
+    })) {
+      events.push(event);
+    }
+    expect(events.some((event) => event.type === "context-compacted")).toBe(false);
+  });
+
   it("scopes only auxiliary summarization to the foreground run retry ledger", async () => {
     const tracer = new InMemoryMuseTracer();
     let calls = 0;

@@ -422,6 +422,11 @@ export type EgressAdvisorySink = (advisory: EgressAdvisory) => void | Promise<vo
 
 export type AgentRuntimeStreamEvent =
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "text-delta" }>)
+  | {
+      readonly removedCount: number;
+      readonly runId: string;
+      readonly type: "context-compacted";
+    }
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call" }>)
   | {
       readonly runId: string;

@@ -536,6 +536,14 @@ export class AgentRuntime {
         await this.prepareInvocation(context, runSpan, retryBudget);
       seedEgressAuthorityFromMessages(context.egressAuthority, preparedRequest.request.messages);
 
+      if (preparedRequest.contextWindow?.summaryInserted === true) {
+        yield {
+          removedCount: preparedRequest.contextWindow.removedCount,
+          runId: layeredContext.runId,
+          type: "context-compacted"
+        };
+      }
+
       if (cached) {
         const guardedCachedResponse = await this.processCachedResponse(layeredContext, cached, selected, startedAtMs);
         yield { runId: layeredContext.runId, text: guardedCachedResponse.output, type: "text-delta" };

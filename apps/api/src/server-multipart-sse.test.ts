@@ -59,6 +59,26 @@ describe("toSseStream opening stage frame", () => {
     expect(frames[0]).toContain("thinking");
     expect(frames[1]).toContain("event: message");
   });
+
+  it("preserves a content-free compaction transition before answer output", async () => {
+    async function* compactedRuntime(): AsyncIterable<
+      | { type: "context-compacted"; removedCount: number; runId: string }
+      | { type: "text-delta"; text: string; runId: string }
+    > {
+      yield { removedCount: 7, runId: "r", type: "context-compacted" };
+      yield { runId: "r", text: "hello", type: "text-delta" };
+    }
+    const { toSseStream } = await import("./server-multipart-sse.js");
+    const frames: string[] = [];
+    for await (const frame of toSseStream(compactedRuntime() as never, "compat")) {
+      frames.push(frame);
+      if (frames.length >= 3) break;
+    }
+    expect(frames[1]).toBe(
+      'event: context_compacted\ndata: {"removedCount":7,"runId":"r"}\n\n'
+    );
+    expect(frames[2]).toContain("event: message");
+  });
 });
 
 describe("toSseStream live citation gate on forwarded deltas", () => {
