@@ -145,7 +145,7 @@ gate that would have caught the next regression.
 ## 7. Independent judgment (maker ≠ judge)
 
 - For a substantive slice, the builder does not grade their own work: spawn
-  an independent evaluator (harness-evaluator subagent, or at minimum a
+  an independent evaluator (independent-evaluator subagent, or at minimum a
   fresh-context review of the diff + test evidence) before calling it done.
   **This is not ceremony.** In one session an evaluator failed 4/4 slices that
   had ALL shipped with green suites and a green live battery — including a

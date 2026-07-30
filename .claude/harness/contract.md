@@ -9,7 +9,7 @@ related: [roles.md, handoff.md, dev-loop.md]
 # Agent Harness — Operating Contract
 
 > **This file is the entrypoint.** If you (an agent) have read this file, work by the contract below
-> from now on. This one page is what makes any agent work the same way; the four sibling documents
+> from now on. This one page is what makes any agent work the same way; the three sibling documents
 > resolve the details. It is vendor-neutral — nothing here depends on a specific model or tool, so
 > Claude Code, Codex, and any other agent read the same contract.
 >
@@ -53,7 +53,7 @@ planner pass plus heavy multi-stage handoff — is **reserved for L-size or secu
 For any non-trivial task, pick a **mode** before starting:
 
 - **Just work** — trivial, single-step, strictly sequential, same-file edits, routine.
-- **Subagents** (`.claude/agents/harness-*`) — noise isolation, "do and report" repetition.
+- **Subagents** — noise isolation, "do and report" repetition, and the independent verdict.
 - **Agent team** — workers that collaborate, challenge each other, and exchange results in parallel.
 - **Workflow** — deterministic, repetitive, large-scale multi-step work (codebase sweeps, mass
   migrations).
@@ -101,10 +101,15 @@ self-evaluation" in the evaluation section and request human review.
 | Orchestrator | Optional (L-size) | Owns context and plan, delegates to multiple workers, synthesizes |
 | Reviewer | Optional (security-grade) | Full-context risk review before merge |
 
-The per-role prompts live in `.claude/agents/harness-*.md` — a subagent loads its own; do not
-paste a second copy anywhere. The full ceremony (separate planner pass + heavy multi-stage handoff)
-is **reserved for L-size or security-grade slices**. Details and the onboarding checklist for a new
-agent: [roles](roles.md).
+**Only one of these ships as a subagent file**:
+[`.claude/agents/independent-evaluator.md`](../agents/independent-evaluator.md). Planner and
+curator are inline fields, so a dedicated subagent for either would contradict this section; the
+worker is the session doing the work, which already has this contract in context. Do not re-add a
+`planner`/`worker`/`curator` agent file — the three that existed were never once invoked, and a
+`planner` is also confusable with the host's built-in `Plan` agent.
+
+The full ceremony (separate planner pass + heavy multi-stage handoff) is **reserved for L-size or
+security-grade slices**. Details and the onboarding checklist for a new agent: [roles](roles.md).
 
 ## 3. Gates (fail-closed — this is the core safety mechanism)
 

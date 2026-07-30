@@ -57,7 +57,7 @@ between the two mandatory roles is held absolutely tight.
   and produces better results the narrower its file scope. In a single session without an
   orchestrator, this role also covers delegation and planning.
 - **Independent evaluator** — judges the built result in a **different instance** (the
-  harness-evaluator subagent, or at minimum a fresh session with zero build-conversation history).
+  independent-evaluator subagent, or at minimum a fresh session with zero build-conversation history).
   **Maker ≠ judge is never compromised** — a self-graded PASS is void; if separation is truly
   impossible, record "unseparated self-evaluation" and request human review. A FAIL verdict names
   the concrete violation (which criterion, which input, what went wrong).
@@ -196,7 +196,7 @@ to one; combine.
 ---
 
 > This document is the baseline for **who does what**. The per-role prompts a subagent actually
-> loads are `.claude/agents/harness-*.md`; the exchange format is [handoff](handoff.md); the gates
+> loads is `.claude/agents/independent-evaluator.md`; the exchange format is [handoff](handoff.md); the gates
 > that decide PASS are [contract](contract.md) §3.
 
 ## Sources (verified basis)

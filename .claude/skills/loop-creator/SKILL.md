@@ -105,7 +105,7 @@ design docs).
 ④ VERIFY: build the touched packages → pnpm test:changed → <relevant suites> →
    <relevant evals> → pnpm lint → pnpm typecheck:fast (first diagnosis on
    failure: stale-dist rebuild). Then the independent judge: a separate Opus
-   subagent (harness-evaluator, model opus) adaptively attacks THIS slice's own
+   subagent (independent-evaluator, model opus) adaptively attacks THIS slice's own
    ways-to-break + runs its own mutation-RED ≥1. FAIL must name the concrete
    violation (vague uncertainty is not grounds) → git restore rollback +
    backlog blocker → end the fire. Deterministic gates are the primary

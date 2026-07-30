@@ -125,7 +125,7 @@ sourcing ladder and permission boundaries.
    automatically) + the invariants (fabrication=0 *on real traces too*, lint 0/0,
    **`pnpm test:changed`** (vitest related — only the tests related to changed files, not a whole
    package suite), and `pnpm check` pre-commit / when cross-package). Grounding/safety is pass^k
-   k≥3. Independent evaluator = the harness-evaluator subagent (no write tools), calibrated via
+   k≥3. Independent evaluator = the independent-evaluator subagent (no write tools), calibrated via
    the eval:judge meta-eval. Not green, not done.
 6. **WRITE-BACK (completion gate — no done declaration without it)** — (a) the fixed failure
    becomes a STABLE-3/3 golden case; (b) Jinan's repeated correction becomes one line in
@@ -172,7 +172,7 @@ What this loop *cannot* do — the ceiling a 6-path review confirmed in code. Ig
   skill-erected gate and stalls.)
 - **On a single model, maker=judge — `eval:judge` is advisory.** The same gemma grading the same
   gemma on toy fixtures carries almost no signal about this slice's truth. Fabrication-critical
-  claims take **deterministic scorers first**, otherwise an **opus harness-evaluator (a separate,
+  claims take **deterministic scorers first**, otherwise an **opus independent-evaluator (a separate,
   stronger model session, write tools removed)**. This is the irreducible "needs a stronger
   model/human" point — a fixed 12B cannot self-certify the grounding claim it just made.
 - **WRITE-BACK is now mechanical.** `scripts/guard-writeback.mjs` (a commit-msg hook) forces a
