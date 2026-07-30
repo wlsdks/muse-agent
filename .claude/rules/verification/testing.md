@@ -104,31 +104,17 @@ binary LLM-judge — see [`agent-testing.md`](agent-testing.md) (the method).
   or replayed interaction receipts; never assert that task completion implies
   `used`, feedback coverage, permission, or promotion.
 
-## Supported TypeScript test stack (reviewed 2026-07-16)
+## Which runner
 
-- **Vitest 4.1** is the primary TypeScript runner. It transforms TS/JSX through
-  Vite/Oxc and does not consume the TypeScript compiler API, so it can run beside
-  the TS7 native compiler while the `typescript` module remains on the TS6 API
-  compatibility package for eslint tooling. Keep `node:test` only for small,
-  dependency-free `.mjs` scripts.
-- **Vitest Browser Mode + Playwright** is the first choice for React interaction
-  tests. Use `*.browser.test.tsx` for focus, keyboard, hooks, and DOM events; keep
-  fast `renderToStaticMarkup` tests for static markup contracts. Browser tests run
-  in a separate Linux CI job so the normal Node suite remains fast and Windows
-  does not need to launch Chromium.
-- **fast-check + `@fast-check/vitest`** is opt-in for high-risk invariants only:
-  untrusted parsers, serialization round trips, fail-close guards, redaction,
-  message pairing, and deterministic reducers. A failing seed must remain
-  reproducible; do not replace precise example tests with broad random assertions.
-- **Injected fetch fakes** remain the default for unit-level provider contracts.
-  Add MSW only when the HTTP boundary itself (method, URL, headers, streaming, or
-  retries) is the behavior under test. Keep Playwright for end-to-end flows and
-  Testcontainers for real PostgreSQL behavior.
-- Do not globally change Vitest's `forks` pool, isolation, or worker count without
-  an A/B benchmark on representative packages. The 2026-07-16 12-core benchmark
-  was 41.16s at defaults, 45.91s at six workers, and 94.08s at two workers, so a
-  repo-wide cap was rejected. Prefer `pnpm test:changed` for the edit loop and the
-  full suite once at the merge gate.
+- **Vitest** is the TypeScript runner. `node:test` is only for dependency-free
+  `scripts/*.mjs`.
+- **`*.browser.test.tsx`** (Vitest Browser Mode + Playwright) for React focus,
+  keyboard, hooks and DOM events; static markup contracts stay in fast Node tests.
+- Everything else about the stack — when property-based testing is warranted, when
+  MSW earns its place over an injected fetch fake, and why the `forks` pool and
+  worker count are not to be changed without an A/B — is decided in
+  [`testing-strategy.md`](../../../docs/development/testing-strategy.md), which owns
+  the measurements. Do not restate its numbers here; they drifted once already.
 
 ## Run only the narrowest test that proves THIS change (Jinan, 2026-06-22)
 

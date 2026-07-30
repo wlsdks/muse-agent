@@ -63,57 +63,22 @@ Don't mix unrelated work into one commit.
   origin/main` should list no leftover slice branches — any that show up
   are cleanup debt, not history.
 
-## Versioned git hooks (`scripts/githooks/`, wired via `core.hooksPath`)
+## Versioned git hooks
 
-Hooks live in `scripts/githooks/` (checked in) instead of the unversioned
-`.git/hooks/*` — `scripts/setup-githooks.mjs` points `core.hooksPath` there
-(runs automatically on `pnpm install` via `postinstall`; safe to re-run).
-`core.hooksPath` is a normal, non-worktree-scoped git config key, so it is
-**shared across every worktree of the repo** — setting it from any worktree
-affects all of them.
+Hooks are checked into `scripts/githooks/` and wired via `core.hooksPath`, which is
+shared across every worktree of the repo. `pre-push` runs, in order: a push-window lock,
+a fail-closed scope classifier, the documentation reference gates, the deterministic
+compile/lint gates, and an opt-in grounding tripwire. Mechanism and per-stage detail:
+[`scripts/githooks/README.md`](../../../scripts/githooks/README.md).
 
-`pre-push` runs five stages in order:
+The escape hatches are greppable — prefer them to `--no-verify`:
 
-1. **Push-window lock** (`scripts/githooks/lib/pushlock.sh`) — serializes the
-   whole hook run (and the `git push` right after it) across same-machine
-   agents, closing the race where several agents pass their checks against a
-   stale branch tip and then collide pushing at once. macOS ships no
-   `flock(1)`, so the primary mechanism is a portable mkdir-spinlock (`mkdir`
-   is atomic on any POSIX filesystem) with a ~10-minute stale-lock timeout so
-   a crashed holder can't deadlock every future push.
-2. **Fail-CLOSED scope classifier** — unions the changed paths from every
-   pushed ref. Docs/assets-only pushes skip deterministic gates; known code
-   paths select the relevant gates. Missing/malformed ref input, unknown Git
-   objects, diff failures, and unclassified paths all fall back to the full
-   gate rather than guessing that a push is safe.
-3. **Fail-CLOSED deterministic gates** — code/config changes run
-   `pnpm -s typecheck:fast`; web-impacting changes also run the direct
-   `apps/web` typecheck (outside the `tsc -b` reference graph by design, see
-   `architecture.md`). ESLint receives existing changed source files, while
-   lint config/dependency or fallback scope runs the full lint. A required
-   gate whose environment cannot resolve `pnpm` is blocked. If a newly added
-   dependency is missing locally, run `pnpm install --frozen-lockfile`.
-4. **Fail-CLOSED documentation reference gate** — any pushed `.md` (or anything
-   under `docs/` or `.claude/rules/`) runs `node scripts/check-doc-links.mjs`,
-   which resolves every relative link, every `#fragment` against the target's
-   real headings, and every frontmatter `related:` entry across all markdown.
-   It is pure node, so it also covers a docs-only push, which skips stage 3
-   entirely — that gap is how a docs refactor once shipped broken links. Code
-   spans and fenced blocks are stripped first: `` `![](exfil)` `` in an
-   injection-test note is not a link. A tree that predates the checker reports
-   a visible skip instead of blocking.
-5. **Explicit live grounding tripwire** — grounding is not part of the
-   default local push latency. Set `MUSE_RUN_PREPUSH_GROUNDING=1` to run
-   `pnpm -s precheck:grounding` when the pushed paths affect grounding. It
-   remains fail-open when pnpm/Ollama cannot be reached.
-
-The controls are documented and greppable — prefer them to `--no-verify`:
-
-- `MUSE_RUN_PREPUSH_GROUNDING=1` — opts into stage 4 for a relevant push.
-- `MUSE_SKIP_PREPUSH=1` — explicitly suppresses stage 4 only; deterministic
-  gates still run. Kept for compatibility with existing automation.
-- `MUSE_SKIP_PREPUSH_ALL=1` — skips every stage, including the compile gate.
-  Genuine emergencies only.
+- `MUSE_RUN_PREPUSH_GROUNDING=1` — opt INTO the grounding tripwire for a push that
+  touches grounding.
+- `MUSE_SKIP_PREPUSH=1` — suppresses the grounding tripwire only; every other gate still
+  runs. Kept for compatibility with existing automation.
+- `MUSE_SKIP_PREPUSH_ALL=1` — skips every stage including the compile gate. Genuine
+  emergencies only.
 
 ## After-correction protocol
 
