@@ -89,6 +89,17 @@ export interface ObserveActiveSegment {
   readonly threadId: string;
 }
 
+export interface ObserveForgetReceipt {
+  readonly consentGeneration: number;
+  readonly deletedObservations: number;
+  readonly operation: "forget";
+  readonly schemaVersion: 1;
+  readonly scope: {
+    readonly sessionId: string;
+    readonly threadId: string;
+  };
+}
+
 export interface ObserveCollectorLease {
   readonly claimedAt: string;
   readonly collectorFingerprint: string;
@@ -324,13 +335,23 @@ export function resumeObserveSessionTransition(
   return { changed: true, result: updated, state: { ...state, sessions: replaceSession(state.sessions, updated) } };
 }
 
-export async function forgetObserveSession(file: string, sessionId: string): Promise<{ readonly deletedObservations: number }> {
+export async function forgetObserveSession(file: string, sessionId: string): Promise<ObserveForgetReceipt> {
   return mutateObserveState(file, (state) => {
     const session = requireSession(state, sessionId);
     const observations = state.observations.filter((entry) => entry.sessionId !== session.id);
+    const result = Object.freeze({
+      consentGeneration: session.consentGeneration,
+      deletedObservations: state.observations.length - observations.length,
+      operation: "forget" as const,
+      schemaVersion: 1 as const,
+      scope: Object.freeze({
+        sessionId: session.id,
+        threadId: session.threadId
+      })
+    });
     return {
       changed: true,
-      result: { deletedObservations: state.observations.length - observations.length },
+      result,
       state: {
         ...state,
         activeSegments: state.activeSegments.filter((entry) => entry.sessionId !== session.id),

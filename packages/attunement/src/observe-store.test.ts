@@ -85,7 +85,19 @@ describe("Observe O1 strict collection store", () => {
       status: "active",
       updatedAt: "2026-07-22T00:02:00.000Z"
     });
-    expect(await forgetObserveSession(file, SESSION_ID)).toEqual({ deletedObservations: 0 });
+    const forgotten = await forgetObserveSession(file, SESSION_ID);
+    expect(forgotten).toEqual({
+      consentGeneration: 2,
+      deletedObservations: 0,
+      operation: "forget",
+      schemaVersion: 1,
+      scope: {
+        sessionId: SESSION_ID,
+        threadId: "thread-a"
+      }
+    });
+    expect(Object.isFrozen(forgotten)).toBe(true);
+    expect(Object.isFrozen(forgotten.scope)).toBe(true);
     expect((await readObserveState(file)).sessions).toEqual([]);
   });
 

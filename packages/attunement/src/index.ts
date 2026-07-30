@@ -139,6 +139,7 @@ export type {
   ObserveConsentField,
   ObserveConsentGrant,
   ObserveErrorCode,
+  ObserveForgetReceipt,
   ObserveObservation,
   ObserveSession,
   ObserveSessionStatus,
