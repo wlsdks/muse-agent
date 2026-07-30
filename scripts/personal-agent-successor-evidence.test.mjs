@@ -22,8 +22,8 @@ test("successor rollback baseline stays on the authoritative verified commit", (
   assert.equal(ROLLBACK_BASELINE_HEAD, "926c01738b9be9a8b1c3668ec61c2b66d17dce63");
   assert.equal(extractRollbackBaseline(roadmap), ROLLBACK_BASELINE_HEAD);
   const changedClause = roadmap.replace(
-    `Rollback baseline은 \`${ROLLBACK_BASELINE_HEAD}\`의 normal \`origin/main\`이다.`,
-    "Rollback baseline은 `0000000000000000000000000000000000000000`의 normal `origin/main`이다."
+    `The rollback baseline is the normal \`origin/main\` at \`${ROLLBACK_BASELINE_HEAD}\`.`,
+    "The rollback baseline is the normal `origin/main` at `0000000000000000000000000000000000000000`."
   );
   assert.equal(
     extractRollbackBaseline(changedClause),
@@ -37,7 +37,7 @@ test("successor rollback baseline stays on the authoritative verified commit", (
   );
   assert.throws(
     () => extractRollbackBaseline(
-      `\`\`\`md\n## 현재 blocker와 rollback\nRollback baseline은 \`${ROLLBACK_BASELINE_HEAD}\`의 normal \`origin/main\`이다.\n\`\`\`\n\n## 실제 다른 섹션\n`
+      `\`\`\`md\n## Current blockers and rollback\nThe rollback baseline is the normal \`origin/main\` at \`${ROLLBACK_BASELINE_HEAD}\`.\n\`\`\`\n\n## Some other section\n`
     ),
     /authoritative rollback section is missing/u
   );

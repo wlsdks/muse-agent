@@ -9,8 +9,10 @@ import {
 import { basename, dirname, join, relative, sep } from "node:path";
 
 export const ROLLBACK_BASELINE_HEAD = "926c01738b9be9a8b1c3668ec61c2b66d17dce63";
+// Both wordings are accepted: the roadmap was translated to English on 2026-07-30, and the
+// English sentence wraps mid-line, so this must not anchor to end-of-line.
 const ROLLBACK_BASELINE_CLAUSE =
-  /^Rollback baseline은 `([0-9a-f]{40})`의 normal `origin\/main`이다\.$/u;
+  /^(?:The rollback baseline is the normal `origin\/main` at `([0-9a-f]{40})`\.|Rollback baseline은 `([0-9a-f]{40})`의 normal `origin\/main`이다\.)/u;
 
 export function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -31,7 +33,9 @@ export function extractRollbackBaseline(roadmapText) {
     }
     if (fence) continue;
     if (/^##[ \t]+/u.test(line)) {
-      if (line.trim() === "## 현재 blocker와 rollback") {
+      // The roadmap headings were translated to English on 2026-07-30; the Korean form is
+      // accepted so an older revision of the document still parses.
+      if (line.trim() === "## Current blockers and rollback" || line.trim() === "## 현재 blocker와 rollback") {
         if (sectionFound) throw new Error("authoritative rollback section is ambiguous");
         sectionFound = true;
         inSection = true;
@@ -41,8 +45,8 @@ export function extractRollbackBaseline(roadmapText) {
       continue;
     }
     if (!inSection) continue;
-    const match = line.match(ROLLBACK_BASELINE_CLAUSE);
-    if (match) matches.push(match);
+    const match = line.trim().match(ROLLBACK_BASELINE_CLAUSE);
+    if (match) matches.push([match[0], match[1] ?? match[2]]);
   }
   if (!sectionFound) throw new Error("authoritative rollback section is missing");
   if (matches.length !== 1) {

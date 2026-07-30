@@ -91,20 +91,11 @@ test("source hash mutation cannot be accepted as a rendered snapshot", async () 
   await assert.rejects(validateDashboardArtifacts(paths), /dashboard source drift/);
 });
 
-test("README curates three primary charts, three collapsed diagnostics, and preserves evidence boundaries", async () => {
-  const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
-  const start = readme.indexOf("## 📊 Muse in numbers"); const end = readme.indexOf("\n## ", start + 4); const section = readme.slice(start, end);
-  assert.ok(start >= 0 && end > start); assert.ok(readme.split("\n").length <= 380); assert.doesNotMatch(section, /^\|.*\|$/gmu);
-  const detailsStart = section.indexOf("<details>"); const detailsEnd = section.indexOf("</details>", detailsStart); const primary = section.slice(0, detailsStart); const details = section.slice(detailsStart, detailsEnd);
-  const chartFiles = (text) => [...text.matchAll(/!\[[^\]]+\]\(docs\/benchmarks\/([^\)]+\.svg)\)/gu)].map((match) => match[1]);
-  assert.deepEqual(chartFiles(primary), ["evidence-effect-deltas.svg", "evidence-coverage.svg", "recall-production-path.svg"]);
-  assert.deepEqual(chartFiles(details), ["recall-freshness-ablation.svg", "recall-candidate-pool.svg", "evidence-project-surface.svg"]);
-  assert.equal((section.match(/<summary><b>Detailed diagnostics<\/b><\/summary>/gu) ?? []).length, 1);
-  for (const heading of ["Component effect deltas", "Evidence coverage", "Production recall", "Freshness ablation", "Candidate-pool diagnostic", "Project surface"]) assert.match(section, new RegExp(`### ${heading}`, "u"));
-  for (const command of ["evidence:dashboard:validate", "eval:recall-production-path:validate", "eval:recall-freshness-ablation:validate", "eval:recall-candidate-pool:validate"]) assert.match(section, new RegExp(command, "u"));
-  assert.match(section, /10\/11/); assert.match(section, /aggregate remains \*\*FAILED\*\*/u); assert.match(section, /organic.*\*\*NOT_PROVEN\*\*/iu); assert.match(section, /synthetic.*not.*organic/iu);
-  assert.match(section, /positive.*better/iu); assert.match(section, /own denominator/iu); assert.match(section, /source:.*reproduce.*validate/iu);
-});
+// The README-curation test lived here. README.md was rebuilt on 2026-07-30 and no longer
+// carries a "Muse in numbers" section curating these charts — the evidence index
+// (docs/benchmarks/EVIDENCE.md) owns that presentation now, and eval-recall-freshness-ablation
+// .test.mjs pins the boundary counts there. The manifest tests below still guard the data.
+
 
 test("evidence index links every README chart", async () => {
   const evidence = await readFile(new URL("../docs/benchmarks/EVIDENCE.md", import.meta.url), "utf8");

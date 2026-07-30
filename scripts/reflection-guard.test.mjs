@@ -59,7 +59,7 @@ const REFLECTION_SURFACES = [
     verifierMarker: "opts.reverify("
   },
   {
-    file: "packages/proactivity/src/proactive-notice-loop.ts",
+    file: "packages/proactivity/src/notice-synthesis.ts",
     retryMarker: "synthesizeNoticeText",
     surface: "proactive Phase D synthesized notice (unasked push)",
     verifierMarker: "options.reverify("

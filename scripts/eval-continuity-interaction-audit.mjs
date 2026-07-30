@@ -76,7 +76,14 @@ export function buildSyntheticInteractionCohort(index, random) {
 
 export function independentInteractionAuditOracle(items) {
   const byThreadKind = Object.fromEntries(KINDS.map((kind) => {
-    const exact = items.filter((item) => item.threadKind === kind && item.interaction.state === "exact");
+    // Production also demands organic provenance on BOTH the delivery and the receipt — the
+    // "controlled evidence is never organic" invariant. The oracle drifted behind that
+    // tightening and counted controlled interactions as coverage.
+    const exact = items.filter((item) =>
+      item.threadKind === kind &&
+      item.interaction.state === "exact" &&
+      item.deliveryEvidenceClass === "organic" &&
+      item.interaction.receipt?.evidenceClass === "organic");
     const dates = new Set(exact.map((item) => item.openedAt.slice(0, 10)));
     return [kind, {
       distinctUtcOpenedDates: dates.size,

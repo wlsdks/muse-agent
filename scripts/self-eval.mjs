@@ -272,6 +272,12 @@ function main() {
   // time and every live smoke gate silently rots with it — surface that as a
   // scoreboard regression, not a surprise at the next manual smoke run.
   gates.apiBoot = gateExit("pnpm -s check:api-boot");
+  // The scripts/*.test.mjs suite guards the gates themselves — the doc/ledger/reflection/
+  // evidence checkers. Nothing ran it automatically, so five real defects sat red in it
+  // unnoticed: a reflection-guard registry pointing at a refactored-away file, an evidence
+  // oracle that drifted behind a production tightening, and three fixtures broken by the
+  // docs-to-English sweep. A guard nobody runs is not a guard.
+  gates.scriptGuards = gateExit("pnpm -s self-eval:test");
   gates.testFiles = { status: "pass", value: countTestFiles() };
   // The prescribed CAPABILITIES.md ledger was intentionally removed (f4c195df —
   // "so the agent discovers work itself"). Only emit this count WHEN the file
