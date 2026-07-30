@@ -241,6 +241,13 @@ elif ! resolve_pnpm; then
   echo "pre-push: BLOCKED — pnpm not found; deterministic gates are required for this push" >&2
   exit 1
 else
+  if [ -f scripts/check-refs.mjs ] && command -v node >/dev/null 2>&1; then
+    echo "pre-push: reference graph — node scripts/check-refs.mjs" >&2
+    if ! node scripts/check-refs.mjs >&2; then
+      echo "pre-push: BLOCKED — a project reference is missing (tsc -b would skip that rebuild)" >&2
+      exit 1
+    fi
+  fi
   echo "pre-push: compile gate — pnpm -s typecheck:fast" >&2
   if ! pnpm -s typecheck:fast; then
     echo "pre-push: BLOCKED — typecheck:fast failed" >&2

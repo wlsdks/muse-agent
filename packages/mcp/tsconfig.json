@@ -17,7 +17,16 @@
       "path": "../db"
     },
     {
+      "path": "../domain-tools"
+    },
+    {
       "path": "../mcp-shared"
+    },
+    {
+      "path": "../memory"
+    },
+    {
+      "path": "../messaging"
     },
     {
       "path": "../proactivity"

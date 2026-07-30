@@ -20,6 +20,12 @@
       "path": "../cache"
     },
     {
+      "path": "../fs"
+    },
+    {
+      "path": "../mcp-shared"
+    },
+    {
       "path": "../memory"
     },
     {

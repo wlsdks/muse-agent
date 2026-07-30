@@ -17,6 +17,9 @@
       "path": "../agent-core"
     },
     {
+      "path": "../attunement"
+    },
+    {
       "path": "../memory"
     },
     {
@@ -30,6 +33,9 @@
     },
     {
       "path": "../stores"
+    },
+    {
+      "path": "../tools"
     }
   ]
 }
