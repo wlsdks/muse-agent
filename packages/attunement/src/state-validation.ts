@@ -13,6 +13,10 @@ import { CONTINUITY_EVIDENCE_CLASSES } from "./evidence-provenance.js";
 import { continuityOutcomeId } from "./outcome-id.js";
 import { isValidExperienceLearningPolicyAudit } from "./experience-learning-policy-audit.js";
 import {
+  parseExperienceLearningPromotionHandle,
+  type ExperienceLearningPromotionHandle
+} from "./experience-learning-promotion-handle.js";
+import {
   ARTIFACT_ROLES,
   ARTIFACT_TYPES,
   DETAIL_LEVELS,
@@ -271,6 +275,8 @@ function assertUnique(values: readonly string[], label: string): void {
 
 function validateStateRelations(state: AttunementState): void {
   const experienceLearningPolicyAudits = state.experienceLearningPolicyAudits ?? [];
+  const experienceLearningPromotionHandles =
+    state.experienceLearningPromotionHandles ?? [];
   assertUnique(state.threads.map((thread) => thread.id), "thread ids");
   assertUnique(state.deliveries.map((delivery) => delivery.id), "delivery ids");
   assertUnique(
@@ -292,6 +298,14 @@ function validateStateRelations(state: AttunementState): void {
   assertUnique(
     experienceLearningPolicyAudits.map((audit) => audit.id),
     "experience learning policy audit ids"
+  );
+  assertUnique(
+    experienceLearningPromotionHandles.map((handle) => handle.handleId),
+    "experience learning promotion handle ids"
+  );
+  assertUnique(
+    experienceLearningPromotionHandles.map((handle) => handle.promotionAuditId),
+    "experience learning promotion audit bindings"
   );
   assertUnique(state.resetReceipts.map((receipt) => receipt.id), "reset receipt ids");
   assertUnique(
@@ -430,6 +444,23 @@ function validateStateRelations(state: AttunementState): void {
       .filter((audit) => audit.kind === "promotion")
       .map((audit) => [audit.id, audit])
   );
+  for (const handle of experienceLearningPromotionHandles) {
+    const promotion = promotions.get(handle.promotionAuditId);
+    if (!promotion
+      || promotion.threadId !== handle.threadId
+      || promotion.candidateId !== handle.candidateId
+      || promotion.occurredAt !== handle.appliedAt
+      || promotion.activeBehaviorDigestBefore
+        !== handle.activeBehaviorDigestBefore
+      || promotion.activeBehaviorDigestAfter
+        !== handle.activeBehaviorDigestAfter
+      || !samePolicy(promotion.policyBefore, handle.policyBefore)
+      || !samePolicy(promotion.policyAfter, handle.policyAfter)) {
+      invalid(
+        `experience learning promotion handle '${handle.handleId}' has an invalid promotion audit binding`
+      );
+    }
+  }
   for (const audit of experienceLearningPolicyAudits) {
     if (!threads.has(audit.threadId)) {
       invalid(`experience learning audit '${audit.id}' references a missing thread`);
@@ -503,9 +534,19 @@ export function parseAttunementState(value: unknown): AttunementState {
   const schemaVersion = isRecord(value) && typeof value.schemaVersion === "number"
     ? value.schemaVersion
     : 0;
+  const rawPromotionHandles = isRecord(value)
+    && Array.isArray(value.experienceLearningPromotionHandles)
+    ? value.experienceLearningPromotionHandles
+    : undefined;
+  const promotionHandles = rawPromotionHandles === undefined
+    ? undefined
+    : Array.from(
+        rawPromotionHandles,
+        (handle) => parseExperienceLearningPromotionHandle(handle)
+      );
   if (
     !isRecord(value)
-    || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(schemaVersion)
+    || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].includes(schemaVersion)
     || !Array.isArray(value.threads)
     || !value.threads.every((thread) => isThread(thread, schemaVersion))
     || !Array.isArray(value.deliveries)
@@ -521,6 +562,13 @@ export function parseAttunementState(value: unknown): AttunementState {
       && (
         !Array.isArray(value.experienceLearningPolicyAudits)
         || !value.experienceLearningPolicyAudits.every(isExperienceLearningPolicyAudit)
+      )
+    )
+    || (
+      schemaVersion >= 13
+      && (
+        promotionHandles === undefined
+        || promotionHandles.some((handle) => handle === undefined)
       )
     )
     || (
@@ -556,6 +604,9 @@ export function parseAttunementState(value: unknown): AttunementState {
     experienceLearningPolicyAudits: schemaVersion >= 12
       ? value.experienceLearningPolicyAudits as unknown as readonly ExperienceLearningPolicyAudit[]
       : [],
+    experienceLearningPromotionHandles: schemaVersion >= 13
+      ? promotionHandles as readonly ExperienceLearningPromotionHandle[]
+      : [],
     interactionReceipts: schemaVersion >= 2
       ? (value.interactionReceipts as unknown as readonly ContinuityInteractionReceipt[])
           .map((receipt) => ({
@@ -565,7 +616,7 @@ export function parseAttunementState(value: unknown): AttunementState {
       : [],
     nextPolicyVersion: value.nextPolicyVersion,
     resetReceipts: value.resetReceipts,
-    schemaVersion: 12,
+    schemaVersion: 13,
     threads: value.threads,
     undoResetReceipts: value.undoResetReceipts
   };

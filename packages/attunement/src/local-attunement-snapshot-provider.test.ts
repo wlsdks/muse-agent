@@ -212,7 +212,7 @@ describe("local Attunement snapshot Provider", () => {
         Buffer.byteLength(capture.normalizedStateJson)
       );
       expect(JSON.parse(capture.normalizedStateJson)).toMatchObject({
-        schemaVersion: 12,
+        schemaVersion: 13,
         threads: [{ id: THREAD_ID }]
       });
     });

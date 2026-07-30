@@ -136,10 +136,11 @@ export interface ThreadInspection {
 const EMPTY_STATE: AttunementState = {
   deliveries: [],
   experienceLearningPolicyAudits: [],
+  experienceLearningPromotionHandles: [],
   interactionReceipts: [],
   nextPolicyVersion: 1,
   resetReceipts: [],
-  schemaVersion: 12,
+  schemaVersion: 13,
   threads: [],
   undoResetReceipts: []
 };

@@ -5,6 +5,8 @@
  * time.
  */
 
+import type { ExperienceLearningPromotionHandle } from "./experience-learning-promotion-handle.js";
+
 export const THREAD_KINDS = ["life", "work"] as const;
 export type PersonalThreadKind = (typeof THREAD_KINDS)[number];
 
@@ -205,11 +207,13 @@ export interface AttunementState {
   readonly deliveries: readonly ContinuityDelivery[];
   /** Absent only on legacy in-memory schema-v11 fixtures; authoritative reads normalize to []. */
   readonly experienceLearningPolicyAudits?: readonly ExperienceLearningPolicyAudit[];
+  /** Absent only on legacy in-memory fixtures; authoritative reads normalize to []. */
+  readonly experienceLearningPromotionHandles?: readonly ExperienceLearningPromotionHandle[];
   readonly interactionReceipts: readonly ContinuityInteractionReceipt[];
   /** The next globally monotonic policy version. Initial thread policies use 0. */
   readonly nextPolicyVersion: number;
   readonly resetReceipts: readonly PolicyResetReceipt[];
-  readonly schemaVersion: 11 | 12;
+  readonly schemaVersion: 11 | 12 | 13;
   readonly threads: readonly PersonalThread[];
   readonly undoResetReceipts: readonly UndoResetReceipt[];
 }

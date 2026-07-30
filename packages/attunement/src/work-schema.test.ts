@@ -22,7 +22,7 @@ describe("Attunement schema v11 Work references", () => {
     await writeFile(file, JSON.stringify(state));
     await expect(readAttunementState(file)).rejects.toThrow();
     await writeFile(file, JSON.stringify({ ...state, schemaVersion: 11 }));
-    await expect(readAttunementState(file)).resolves.toMatchObject({ schemaVersion: 12 });
+    await expect(readAttunementState(file)).resolves.toMatchObject({ schemaVersion: 13 });
     const link2 = { ...link, threadId: "thread_2" };
     const thread2 = { ...thread, id: "thread_2", links: [link2], title: "Two" };
     await writeFile(file, JSON.stringify({ ...state, schemaVersion: 11, threads: [thread, thread2] }));

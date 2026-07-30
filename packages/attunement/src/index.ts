@@ -146,6 +146,14 @@ export {
   rollbackExperienceLearningPromotion
 } from "./experience-learning-promotion.js";
 export {
+  createExperienceLearningPromotionHandle,
+  parseExperienceLearningPromotionHandle
+} from "./experience-learning-promotion-handle.js";
+export type {
+  CreateExperienceLearningPromotionHandleInput,
+  ExperienceLearningPromotionHandle
+} from "./experience-learning-promotion-handle.js";
+export {
   promoteApprovedExperienceLearningContinuityPolicy,
   rollbackExperienceLearningContinuityPolicy
 } from "./experience-learning-policy-store.js";
