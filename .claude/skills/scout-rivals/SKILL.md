@@ -11,7 +11,7 @@ ledger fuel for the building skills. This skill NEVER builds product code —
 its ship is the intelligence itself.
 
 The exhaustive base already exists: the 2026-06-23 teardown
-(`docs/goals/competitor-teardown.md`, 420 files → 231 judged opportunities in
+(`internal/goals/competitor-teardown.md`, 420 files → 231 judged opportunities in
 `growth-backlog.md` + `judgment-lens.md`). Re-deriving
 that ground is the documented waste this skill exists to prevent — scout the
 DELTA, never the base.
@@ -19,7 +19,7 @@ DELTA, never the base.
 ## The cycle
 
 1. **ANCHOR** — run `date` (never assume); read the watermark block at the
-   top of `docs/goals/rival-watch.md` (last scout date, per-repo upstream
+   top of `internal/goals/rival-watch.md` (last scout date, per-repo upstream
    SHAs, roster + reference shelf). Resolve the operator-configured rival root
    as `$MUSE_RIVAL_ROOT`, then `git -C "$MUSE_RIVAL_ROOT/<name>" fetch origin`
    for EVERY roster and shelf clone now — the fire reads today's
@@ -73,7 +73,7 @@ DELTA, never the base.
      stage the reservoir until re-judged `build`.
    - Rival hardening/reliability tricks Muse lacks → one `- [open]
      src=scout for=improve-muse :: ...` record each in
-     `docs/goals/backlog.md` (template: goals README).
+     `internal/goals/backlog.md` (template: goals README).
    - Update the rival-watch.md watermark (date, SHAs, roster changes,
      queries run) and prune anything the delta obsoleted.
    - Commit the ledger updates (docs commit) and push on green gates.

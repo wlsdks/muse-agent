@@ -68,7 +68,7 @@ Read all of it. Do not sample — 진안 wants the full history reflected.
 Drop these lines entirely (they are process, not product):
 
 - `chore(release):` (the release commits themselves)
-- `docs(loops)` / anything touching only `docs/goals/loops/**` (loop journals)
+- `docs(loops)` / anything touching only `internal/goals/loops/**` (loop journals)
 - pure CI/tooling `chore:` with zero user-facing effect
 - `Merge ...` (already excluded by `--no-merges`)
 

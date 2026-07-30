@@ -216,7 +216,7 @@ const preimage = {
   personalAfterSha256: personalDigest,
   personalBeforeSha256: personalDigest,
   retainedLogReceipts,
-  roadmapSha256: fileSha(resolve(scratch, "docs/goals/personal-agent-successor-roadmap.md")),
+  roadmapSha256: fileSha(resolve(scratch, "internal/goals/personal-agent-successor-roadmap.md")),
   sourceHead: head,
   sourceTree: tree
 };

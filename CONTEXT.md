@@ -127,4 +127,4 @@ Canonical contracts:
 - [Attunement Graph design](docs/design/attunement-graph.md)
 - [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md)
 - [MAG language and runtime boundary](docs/adr/0002-mag-language-runtime-boundary.md)
-- [Wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)
+- [Wow + graph roadmap](internal/goals/attunement-wow-graph-roadmap.md)

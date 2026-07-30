@@ -328,4 +328,4 @@ arbitrary desktop control is part of the first loop.
 Trace each observation decision, feature version, candidate evidence, intervention policy,
 outcome, adaptation, and deletion cascade. Product metrics must be derivable without storing
 raw content. The implementation gates are defined in the
-[implementation plan](../goals/attunement-implementation-plan.md).
+[implementation plan](../../internal/goals/attunement-implementation-plan.md).

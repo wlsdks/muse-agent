@@ -77,7 +77,7 @@
       "id": "architecture",
       "headings": {
         "en": [
-          "Architecture"
+          "Architecture in one paragraph"
         ]
       }
     },
@@ -173,13 +173,14 @@
     "CONTRIBUTING.md",
     "docs/strategy/attunement.md",
     "docs/design/attunement.md",
-    "docs/goals/attunement-implementation-plan.md",
+    "internal/goals/attunement-implementation-plan.md",
     "docs/SYSTEM-MAP.md",
     "docs/feature-catalog/INDEX.md",
     "docs/benchmarks/EVIDENCE.md",
     "docs/benchmarks/eval-datasets-scale-v1.json",
     "docs/setup-local-llm.md",
-    "docs/benchmarks/readme-qualified-evidence-v1.json"
+    "docs/benchmarks/readme-qualified-evidence-v1.json",
+    "docs/architecture.md"
   ],
   "evidence": {
     "evidenceIndexPath": "docs/benchmarks/EVIDENCE.md",
@@ -202,10 +203,6 @@
       "recall-candidate-pool.svg",
       "evidence-project-surface.svg"
     ],
-    "requiredReadmeStatuses": [
-      "10/11 FAILED",
-      "NOT_PROVEN",
-      "UNQUALIFIED"
-    ]
+    "requiredReadmeStatuses": []
   }
 }

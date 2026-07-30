@@ -76,7 +76,7 @@ is wanted, cut `v1.0.0-rc.1` instead. `alpha`/`beta`/`rc` suffixes are ONLY for
 the runway into a specific major, never during `0.x`.
 
 If there are **no releasable commits** since the last tag (only the tag commit
-itself, or nothing but loop-journal `docs/goals/loops/**` churn), say so and
+itself, or nothing but loop-journal `internal/goals/loops/**` churn), say so and
 stop — an empty release is noise.
 
 The full top-to-bottom decision algorithm (with the exact `grep` for detecting

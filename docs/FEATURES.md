@@ -509,7 +509,7 @@ Mostly operator-facing screens, but used directly for cost and quality decisions
   Observe O1 collects app category, time, and duration for the exact thread, opt-in and locally,
   with inspect/pause/resume/forget. But rhythm/friction hypotheses, automatic linking, more data
   sources, usefulness/rhythm/timing improvement, and proactive delivery are still roadmap in the
-  [implementation plan](goals/attunement-implementation-plan.md).
+  [implementation plan](../internal/goals/attunement-implementation-plan.md).
 - **Generic desktop computer use is not implemented** — the real Chrome is operated via semantic
   snapshots and fail-close target matching, but action trees for arbitrary apps outside the
   browser, state restoration, and cross-app workflow compilation are not provided.
@@ -562,7 +562,7 @@ thread, not a hidden global preference.
 The key sentence: **Muse doesn't remember apps; it remembers the state I meant to continue.**
 The detailed product contract and module design follow [Attunement](strategy/attunement.md),
 [Attunement Graph](design/attunement-graph.md), and the
-[separate execution roadmap](goals/attunement-wow-graph-roadmap.md). These items are not shipped
+[separate execution roadmap](../internal/goals/attunement-wow-graph-roadmap.md). These items are not shipped
 features yet.
 
 The first flow: **user picks a life thread → context pack prepared → usage recorded → next pack
@@ -572,7 +572,7 @@ that improve timing after this flow's value is confirmed.
 Today's memory, pattern, proactivity, browser, and trace are the substrate of this loop, not the
 whole loop. The concrete privacy contract and per-stage gates/kill criteria follow the
 [Attunement design](design/attunement.md) and the
-[implementation plan](goals/attunement-implementation-plan.md).
+[implementation plan](../internal/goals/attunement-implementation-plan.md).
 
 ### The foundation already in place
 

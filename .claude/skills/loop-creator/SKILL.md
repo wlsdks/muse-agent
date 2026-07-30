@@ -67,7 +67,7 @@ cost.
 | Item | Default |
 |---|---|
 | One-line purpose + main track | from the input (owner emphasis verbatim) |
-| slug / worktree / journal | `<slug>` / `/tmp/muse-<slug>` / `docs/goals/loops/<slug>.md` + INDEX row |
+| slug / worktree / journal | `<slug>` / `/tmp/muse-<slug>` / `internal/goals/loops/<slug>.md` + INDEX row |
 | Stop condition (deterministic commands only) | `pnpm self-eval` exit 0 + theme eval (`pnpm <real script>`) ≥ threshold + backlog items Done (independently judged) — **an LLM alone never declares completion** |
 | Gating judge | independent Opus subagent (fresh context · adversarial · adaptive · own mutation-RED ≥1) — PASS gates the commit; FAIL names the concrete violation + rollback |
 | Tier | Tier1 default / Tier2 / Tier2+ (owner-approval quote required). Hard floor: autonomous outbound · banking · `--no-verify` are never allowed |
@@ -115,7 +115,7 @@ design docs).
    verification evidence + mutation-RED result · re-check lint + byte-hygiene
    on the staged diff immediately before committing · after push, clean up the
    worktree/branch/demo server · do not restart the live server (note 'restart
-   pending' in the notification). Journal docs/goals/loops/<slug>.md entry
+   pending' in the notification). Journal internal/goals/loops/<slug>.md entry
    (## fire N · date · skill v<this skill's current version> · commit +
    meta(value-class·pkg·kind·verdict·firesSinceDrill) + ratchet(test·eval
    deltas) + what/why/review-points/risks; rollbacks and no-ships add a

@@ -90,7 +90,7 @@ the code cannot carry the information itself.
 information a competent reader genuinely needs, rewrite it as one
 short WHY line. Otherwise it goes.
 
-`docs/goals/*.md` is where goal/iteration context belongs — never
+`internal/goals/*.md` is where goal/iteration context belongs — never
 in source comments.
 
 ## Naming

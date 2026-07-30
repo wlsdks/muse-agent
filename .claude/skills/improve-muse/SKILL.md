@@ -38,8 +38,8 @@ a coherent unit, not the narrowest edit.
       dead affordance) outranks every ledger line. Fixed this fire ⇒ the
       commit is the record; NOT fixed ⇒ one terse `- [open]` record so the
       next probe doesn't re-pick it.
-   4. `docs/goals/backlog.md` — grep `- [open]` records (hardening kinds)
-      ONLY; never load the whole file. Record grammar: docs/goals/README.md
+   4. `internal/goals/backlog.md` — grep `- [open]` records (hardening kinds)
+      ONLY; never load the whole file. Record grammar: internal/goals/README.md
       (\`- [status] date key=value :: text\`, no emoji). Before committing
       to any item, cross-check git log + codegraph: already shipped means
       move it to the archive as [done] and keep finding.

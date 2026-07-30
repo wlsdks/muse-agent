@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Drift guard for docs/goals/CAPABILITIES.md — the loop's success metric.
+// Drift guard for internal/goals/CAPABILITIES.md — the loop's success metric.
 //
 // Each CAPABILITIES line cites the exact test / smoke file that PROVES
 // the capability. If that file is renamed or deleted the line silently
@@ -13,7 +13,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = process.cwd();
-const CAP = join(ROOT, "docs/goals/CAPABILITIES.md");
+const CAP = join(ROOT, "internal/goals/CAPABILITIES.md");
 
 // 1. Index every test-file basename under the workspace source roots.
 const SOURCE_ROOTS = ["packages", "apps"];
@@ -32,7 +32,7 @@ for (const root of SOURCE_ROOTS) {
 }
 
 // 2. Parse capability lines; collect cited test files + script paths.
-// A MISSING ledger is a clean baseline, not drift: docs/goals/CAPABILITIES.md
+// A MISSING ledger is a clean baseline, not drift: internal/goals/CAPABILITIES.md
 // was intentionally removed (the task-list docs are deliberately deleted per
 // EXPANSION-PLAYBOOK). Before this guard, readFileSync ENOENT-crashed the
 // process, which self-eval recorded as a permanent `capabilities: fail` — a red

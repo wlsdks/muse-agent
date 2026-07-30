@@ -24,7 +24,7 @@ auto-linking, inferred outcomes, proactive delivery, or Slice B.
 The input-manifest digest is the SHA-256 of the ordered per-file SHA-256 manifest for:
 
 - `docs/strategy/attunement.md`
-- `docs/goals/attunement-implementation-plan.md`
+- `internal/goals/attunement-implementation-plan.md`
 - `packages/attunement/src/attunement-store.ts`
 - `packages/attunement/src/continuity-pack.ts`
 - `packages/attunement/src/continuity-preparation.ts`

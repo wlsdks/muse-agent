@@ -172,7 +172,7 @@ function safeRead(path) {
 }
 
 function buildOnce(refreshSeconds) {
-  const backlogMd = safeRead("docs/goals/backlog.md");
+  const backlogMd = safeRead("internal/goals/backlog.md");
   let scoreboard = [];
   try { scoreboard = JSON.parse(safeRead("docs/self-eval-scoreboard.json") || "[]"); } catch { /* keep empty */ }
 

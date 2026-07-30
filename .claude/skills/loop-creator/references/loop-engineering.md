@@ -47,7 +47,7 @@ point.
 | **Skill** | Reuse project knowledge (`SKILL.md`) — avoids re-deriving context every cycle | `.claude/skills/` (improve-muse), [`dev-loop.md`](../../../../harness/host/dev-loop.md) |
 | **Connector** | *Actually act* on external tools (issue tracker · DB · Slack) via MCP | MCP (codegraph etc.), [`skills-and-mcp.md`](../../../../harness/reference/skills-and-mcp.md) |
 | **Sub-agent** | Agents with different instructions/models **separate ideation from verification** | harness planner→worker→evaluator ([`team-roles.md`](../../../../harness/core/team-roles.md)), the Agent tool. **Fan out only for *context isolation / contamination avoidance*, never for raw parallelism**: at equal budget a single agent ≥ multi-agent (2604.02460); hand-off **topology strongly affects constraint survival** (linear chain > converging DAG — minority-source constraints get lost in synthesis — 2605.08647). Keep maker≠judge separation, but mindless fan-out is token waste. |
-| **State/Memory** | "The model forgets everything between runs — memory lives on **disk**, not in context" | [`backlog.md`](../../../../docs/goals/backlog.md), `MEMORY.md`, self-eval-scoreboard, per-loop journals, [`session-persistence.md`](../../../../harness/reference/session-persistence.md). **Learn from failures too (§4.5-13)**: a rolled-back / no-ship fire distils a *reusable lesson* into backlog/MEMORY — don't just accumulate fire logs (ReasoningBank). |
+| **State/Memory** | "The model forgets everything between runs — memory lives on **disk**, not in context" | [`backlog.md`](../../../../internal/goals/backlog.md), `MEMORY.md`, self-eval-scoreboard, per-loop journals, [`session-persistence.md`](../../../../harness/reference/session-persistence.md). **Learn from failures too (§4.5-13)**: a rolled-back / no-ship fire distils a *reusable lesson* into backlog/MEMORY — don't just accumulate fire logs (ReasoningBank). |
 
 > Token budget is the seventh axis — an unattended loop's cost swings hard with
 > how "token rich/poor" you are. The caps are owned by
@@ -175,7 +175,7 @@ sharper." Every loop design must carry an **explicit guard** for each.
    comprehension debt is handled with a *readable review surface*, never a
    *loop halt* (practitioners run unlimited autonomy + async PR merging —
    Cherny). (a) **Every fire appends one entry to its own per-loop journal** —
-   `docs/goals/loops/<slug>.md` (schema: header
+   `internal/goals/loops/<slug>.md` (schema: header
    `## fire N · date · skill vX.Y.Z · commit` +
    `meta:` (value-class·pkg·kind·verdict·firesSinceDrill, grep-able counts) +
    `ratchet:` + what/why/review-points/risks). **Never write to a shared
@@ -183,7 +183,7 @@ sharper." Every loop design must carry an **explicit guard** for each.
    conflicted and version↔output correlation was contaminated (the 2026
    multi-agent observability consensus: structured logs with an agent ID +
    isolated paths are the fundamental control). Convention:
-   [`loops/README.md`](../../../../docs/goals/loops/README.md). (b) **Every N fires (default 3),
+   [`loops/README.md`](../../../../internal/goals/loops/README.md). (b) **Every N fires (default 3),
    without blocking**, send a PushNotification saying "N accumulated" and
    **keep going** — never spin waiting for a human. Whether/when to read and
    merge is the human's async choice; the loop does not stop.
@@ -286,9 +286,9 @@ the hook/secret/connector surface?"
 - [ ] **Gating verifier** — a separate stronger-tier (Opus) adversarial judge
       GATES the commit, FAIL = rollback. §3-1.
 - [ ] **Comprehension surface (async · non-blocking)** — every fire appends a
-      schema entry to its **per-loop journal** `docs/goals/loops/<slug>.md`
+      schema entry to its **per-loop journal** `internal/goals/loops/<slug>.md`
       (not a shared digest) + its own INDEX row + a notification every N fires
-      (without blocking). §3-2 · [loops/README.md](../../../../docs/goals/loops/README.md).
+      (without blocking). §3-2 · [loops/README.md](../../../../internal/goals/loops/README.md).
 - [ ] **Autonomy tier chosen** — Tier1 (local commits, default) or Tier2
       (branch + draft PR, opt-in). §3.5. Judge the boundary with Rule-of-Two.
 - [ ] **Unattended-loop security** — untrusted text isolated as data ·
@@ -314,7 +314,7 @@ the hook/secret/connector surface?"
 - [ ] **judge-drill hard counter** — `firesSinceDrill≥10 OR consecutive
       allPASS≥8` ⇒ a non-deferrable drill; reset on completion. §4.5-5.
 - [ ] **State files** — the thin shared queue
-      [`backlog.md`](../../../../docs/goals/backlog.md) (open ◦ + one-line `✓ Fixed` ledger) +
+      [`backlog.md`](../../../../internal/goals/backlog.md) (open ◦ + one-line `✓ Fixed` ledger) +
       the per-loop journal (fire detail). Done = backlog ◦→`✓` one line, detail
       in the journal.
 - [ ] **Invariants untouchable** — the fabrication=0 floor + IMMUTABLE-CORE

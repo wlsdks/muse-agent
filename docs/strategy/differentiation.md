@@ -2,7 +2,7 @@
 
 > **Status: CLOSED ledger (2026-07-17).** The differentiation loop stopped after L1–L7
 > (last substantive entry 2026-06-13); no new L-entries are being appended. Rival deltas
-> now flow through the scout-rivals skill into `docs/goals/rival-watch.md`.
+> now flow through the scout-rivals skill into `internal/goals/rival-watch.md`.
 
 > **Current product direction (2026-07-29): Attunement.** Muse's signature roadmap is
 > Shadow Muse → Continuity Capsule → Policy Card: learn when to stay quiet, restore the
@@ -12,7 +12,7 @@
 > Engine connects time, relationship, provenance, policy, and authority as a lightweight
 > personal context compiler. See [the product contract](attunement.md),
 > [graph design](../design/attunement-graph.md), and
-> [separate execution roadmap](../goals/attunement-wow-graph-roadmap.md).
+> [separate execution roadmap](../../internal/goals/attunement-wow-graph-roadmap.md).
 >
 > The L1–L7 entries below are a historical, evidence-oriented trust ledger. They remain
 > valuable foundations—grounding, privacy enforcement, correction, tamper evidence, and

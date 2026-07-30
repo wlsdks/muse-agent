@@ -99,7 +99,7 @@ Their underlying [Muse Attunement Graph (MAG)](../design/attunement-graph.md) ha
 library substrates, including the worker-isolated durable projection-journal foundation,
 but not yet the complete Source Adapter, Policy Card, maintenance, qualification, or
 product-composition program. Dependency-ordered work lives in the
-[wow + graph roadmap](../goals/attunement-wow-graph-roadmap.md).
+[wow + graph roadmap](../../internal/goals/attunement-wow-graph-roadmap.md).
 
 ## The compounding loop
 
@@ -199,4 +199,4 @@ or process boundary and is not a shipped claim.
 Attunement succeeds only when people carry less context in their heads and its help becomes
 more useful over time. More observations, more notifications, and more agent actions are
 not success metrics. The dependency-ordered delivery gates and kill criteria live in the
-[implementation plan](../goals/attunement-implementation-plan.md).
+[implementation plan](../../internal/goals/attunement-implementation-plan.md).

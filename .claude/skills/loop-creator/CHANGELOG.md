@@ -1,7 +1,7 @@
 # loop-creator — CHANGELOG
 
 스킬 + 번들된 `references/loop-engineering.md` 계약의 버전별 기록. 루프를 많이 돌린
-뒤 이 이력 ↔ per-loop 저널(`docs/goals/loops/<slug>.md`)의 fire 결과(각 엔트리에
+뒤 이 이력 ↔ per-loop 저널(`internal/goals/loops/<slug>.md`)의 fire 결과(각 엔트리에
 `skill vX.Y.Z` 스탬프)를 대조해 무엇이 산출을 좋게/나쁘게 했는지 보고 개선한다.
 (구 공유 `loop-digest.md`는 2026-07-18 삭제 — git history.)
 
@@ -107,7 +107,7 @@ disclosure). 지금 추가 분리 불요; SKILL.md가 ~300줄 넘으면 그때 �
 `loop-digest.md`·`backlog.md`에 append → 매 fire 머지 충돌 + "버전↔산출 상관"이 다른 루프 항목에
 오염(TOOL fire의 RATCHET 집계가 cognition fire와 섞임). 2026 멀티에이전트 관측성 합의(agent-ID 박힌
 구조화 로그 + 격리 경로 = "실패 귀속 + 병렬 편집 무손상"의 fundamental control)를 적용.
-- **per-loop 저널** `docs/goals/loops/<slug>.md` — 루프 슬러그(테마)별 append-only. 날짜·fire·버전은
+- **per-loop 저널** `internal/goals/loops/<slug>.md` — 루프 슬러그(테마)별 append-only. 날짜·fire·버전은
   *엔트리 메타*(파일명 아님). 고정 스키마: `## fire N · 날짜 · skill vX.Y.Z · commit` + `meta:`
   (value-class·pkg·kind·verdict·firesSinceDrill, **grep-가능 카운트**) + `ratchet:` + 무엇/왜/리뷰지점/리스크.
 - **backlog = 얇은 공유 큐**(open ◦ + `✓ Fixed` 한 줄 dedup 원장). per-fire Done 상세는 저널로 — backlog

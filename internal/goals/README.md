@@ -1,4 +1,4 @@
-# docs/goals — 작업 선정의 복리 장부 (the work ledgers)
+# internal/goals — 작업 선정의 복리 장부 (the work ledgers)
 
 > 이름은 역사적 잔재("goal 번호" 시대). 실체는 **"다음에 뭘 만들지 / 뭘 만들었지 /
 > 뭘 왜 버렸지"가 세션을 넘어 살아남는 곳**이다. 어떤 파일도 통째로 읽지 말 것 —

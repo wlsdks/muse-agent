@@ -49,7 +49,7 @@ function git(args) {
 async function openGoals() {
   let md = "";
   try {
-    md = await readFile(join(repoRoot, "docs/goals/README.md"), "utf8");
+    md = await readFile(join(repoRoot, "internal/goals/README.md"), "utf8");
   } catch {
     return [];
   }
@@ -192,7 +192,7 @@ ul{list-style:none;margin:0;padding:0} li{padding:6px 0;border-bottom:1px solid 
 <ul>${doneRows || `<li class="dim">nothing yet</li>`}</ul>
 <h2>Latest activity</h2>
 <ul>${feed || `<li class="dim">nothing yet</li>`}</ul>
-<p class="foot">Read-only view. Generated from git history + docs/goals on each request.</p>
+<p class="foot">Read-only view. Generated from git history + internal/goals on each request.</p>
 </div></body></html>`;
 }
 

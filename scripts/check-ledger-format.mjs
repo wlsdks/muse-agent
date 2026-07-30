@@ -6,7 +6,7 @@
 // are free detail prose. Section headers (##) and blockquotes are free.
 import { readFileSync } from "node:fs";
 
-const FILES = ["docs/goals/backlog.md", "docs/goals/backlog-archive.md"];
+const FILES = ["internal/goals/backlog.md", "internal/goals/backlog-archive.md"];
 const BANNED = /[★◦✓✅⚠⏳⛔✗✔①②③④⑤⑥⑦⑧⑨→\u{1F000}-\u{1FAFF}\u23F8\u2696\u24D8\u25D1]/u;
 const RECORD = /^- \[(open|done|blocked|decision|rejected|superseded)\](\s+\d{4}-\d{2}-\d{2})?(\s+[a-z-]+=("[^"]*"|\S+))*(\s+::\s+.*)?$/u;
 

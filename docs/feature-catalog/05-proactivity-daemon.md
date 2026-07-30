@@ -2,7 +2,7 @@
 
 > Proactivity is an Attunement delivery substrate, not the closed loop. This snapshot does
 > not prove observation → rhythm → friction → outcome adaptation. See the
-> [Attunement roadmap](../goals/attunement-implementation-plan.md).
+> [Attunement roadmap](../../internal/goals/attunement-implementation-plan.md).
 
 Catalogued 2026-06-14 against `main` (HEAD 2828a04b). CLI built (`apps/cli/dist/index.js`, 2026-06-13).
 Verification: `node apps/cli/dist/index.js <cmd> --help </dev/null` for every command + read-only live runs.

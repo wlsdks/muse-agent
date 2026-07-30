@@ -36,9 +36,9 @@ repository is intentionally deferred until clean-room package, dependency-isolat
 conformance, packed-artifact, export/rebuild, and license/documentation gates pass. Focused
 MAG and Muse-integration commits preserve history for that later split without imposing
 dual-repository version churn during rapid development. The accepted boundary is
-[ADR 0001](../adr/0001-mag-product-module-boundary.md). The TypeScript-first Engine,
+[ADR 0001](../../docs/adr/0001-mag-product-module-boundary.md). The TypeScript-first Engine,
 worker-isolated SQLite Store, and benchmark-gated Rust hot-kernel policy are fixed in
-[ADR 0002](../adr/0002-mag-language-runtime-boundary.md).
+[ADR 0002](../../docs/adr/0002-mag-language-runtime-boundary.md).
 
 ## Program boundary
 
@@ -249,7 +249,7 @@ Shadow ledger or durable database:
   results receive one bounded `exact-compared-evidence-unavailable` Capsule result.
 
 The full decision and dissent are in
-[Muse Agent-Native Graph Core](../design/agent-native-graph-core.md). Those earlier
+[Muse Agent-Native Graph Core](../../docs/design/agent-native-graph-core.md). Those earlier
 fail-closed findings produced AWG-045a/045b and the now verified
 AWG-050a1/050a2a/050a2b1/050a2b2/050a2c seams rather than being bypassed. The Provider
 capture and head-revalidation are trusted host seams, while the graph compiler remains
@@ -855,7 +855,7 @@ Before selecting algorithms or storage:
 7. adapt mechanisms, not proprietary code or vendor claims.
 
 Current starting references and limitations are recorded in
-[the graph design](../design/attunement-graph.md). Research is refreshed at storage
+[the graph design](../../docs/design/attunement-graph.md). Research is refreshed at storage
 selection and qualification gates because projects, APIs, and benchmark results drift.
 
 ## Continuous integration with `main`

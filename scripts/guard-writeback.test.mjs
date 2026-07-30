@@ -19,7 +19,7 @@ test("recognizes a verify-/eval- golden-case battery", () => {
 });
 
 test("recognizes the backlog ledger advancing", () => {
-  assert.equal(stagesCompoundingArtifact(["docs/goals/backlog.md"]), true);
+  assert.equal(stagesCompoundingArtifact(["internal/goals/backlog.md"]), true);
 });
 
 test("a feat with ONLY product source and no compounding artifact is NOT recognized", () => {

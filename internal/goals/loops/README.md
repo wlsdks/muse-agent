@@ -11,7 +11,7 @@ fire and pollutes the "skill-version ↔ fire-outcome" correlation. This convent
 
 ## The rules
 
-1. **One append-only journal per loop, keyed by a stable slug** — `docs/goals/loops/<slug>.md`.
+1. **One append-only journal per loop, keyed by a stable slug** — `internal/goals/loops/<slug>.md`.
    The slug is the loop's *theme* (`tool-hardening`, `cognition`, `test-hardening`, `docs`), NOT a
    package (a loop spans many packages) and NOT a date (dates explode the filename). Date / fire# /
    version live **inside** the entry, not in the filename.
@@ -64,5 +64,5 @@ fire and pollutes the "skill-version ↔ fire-outcome" correlation. This convent
 
 For analysis (PASS-rate over time, value-class distribution, the cold-eval's commit spot-check),
 the `meta:` line is already grep-able. A loop MAY also append a JSONL twin
-(`docs/goals/loops/<slug>.jsonl`, one object per fire) if it wants structured queries without
+(`internal/goals/loops/<slug>.jsonl`, one object per fire) if it wants structured queries without
 parsing markdown — not required, but the schema maps 1:1.

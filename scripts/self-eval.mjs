@@ -130,7 +130,7 @@ export function countDifferentiationBatteries(scriptSources) {
 /**
  * Gate names allowed to go present→missing without counting as a regression.
  * `verifiedCapabilities` is intentionally conditional (self-eval only emits
- * it when docs/goals/CAPABILITIES.md exists — the ledger was deliberately
+ * it when internal/goals/CAPABILITIES.md exists — the ledger was deliberately
  * removed in f4c195df so the agent discovers work itself); without this
  * allowlist its absence would read as a permanent regression on every run.
  * Exported so a test can prove the allowlist itself is load-bearing.
@@ -278,7 +278,7 @@ function main() {
   // exists: an absent ledger otherwise reads as a permanent 35→0 regression on
   // EVERY run, poisoning the loop's fitness signal. The count auto-resumes if a
   // ledger is ever restored; the pure helper + its test stay valid meanwhile.
-  const capabilitiesPath = join(ROOT, "docs/goals/CAPABILITIES.md");
+  const capabilitiesPath = join(ROOT, "internal/goals/CAPABILITIES.md");
   if (existsSync(capabilitiesPath)) {
     gates.verifiedCapabilities = { status: "pass", value: countVerifiedCapabilityLines(readFileSync(capabilitiesPath, "utf8")) };
   }

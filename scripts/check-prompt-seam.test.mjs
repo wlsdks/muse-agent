@@ -60,3 +60,11 @@ test("flags a direct buildSystemPrompt( call, not composeSurfacePrompt", () => {
   assert.ok(lineCallsBuildSystemPrompt("const p = buildSystemPrompt({ basePrompt });"));
   assert.ok(!lineCallsBuildSystemPrompt("const p = composeSurfacePrompt('chat', {});"));
 });
+
+test("a comment naming buildSystemPrompt( is documentation, not a call", () => {
+  assert.ok(!lineCallsBuildSystemPrompt(" * `buildSystemPrompt({ includeCacheBoundary: true })` injects a marker"));
+  assert.ok(!lineCallsBuildSystemPrompt("// buildSystemPrompt( used to be called here"));
+  assert.ok(!lineCallsBuildSystemPrompt("/* buildSystemPrompt( */"));
+  // still caught when the call is real code, even with a trailing comment
+  assert.ok(lineCallsBuildSystemPrompt("const p = buildSystemPrompt({}); // legacy"));
+});

@@ -122,7 +122,7 @@ export function classifyReleaseFindingSlice({
   const remainingUnclassified = release.findings.length - findings.length;
   const roadmap = requireSafeInput(
     root,
-    join(root.lexical, "docs/goals/personal-agent-successor-roadmap.md"),
+    join(root.lexical, "internal/goals/personal-agent-successor-roadmap.md"),
   );
   const inputHashPreimage = {
     archiveSha256: release.candidate.sha256,

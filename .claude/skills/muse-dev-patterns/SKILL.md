@@ -5,7 +5,7 @@ description: The distilled per-slice engineering discipline of the Muse repo —
 
 # muse-dev-patterns — the recurring slice discipline
 
-Distilled from 200+ loop fires (docs/goals/loops/*), the backlog's dedup
+Distilled from 200+ loop fires (internal/goals/loops/*), the backlog's dedup
 ledger, and live sessions. `improve-muse` decides WHAT to build and drives
 the end-to-end cycle; THIS skill is the HOW at each step — the moves that
 kept working, and the failure classes each one exists to prevent.

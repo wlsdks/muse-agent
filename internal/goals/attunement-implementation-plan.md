@@ -157,7 +157,7 @@ web next steps retain only the safe exact reference marker; timing preview opens
 no delivery. Post-window delivery 21
 confirmed the rendering but was honestly scored `adjusted`, so automation stays
 held. Full evidence and the raw/strict audit:
-[`../evaluations/continuity-first-20-2026-07-17.md`](../evaluations/continuity-first-20-2026-07-17.md).
+[`../evaluations/continuity-first-20-2026-07-17.md`](../../docs/evaluations/continuity-first-20-2026-07-17.md).
 
 A shared longitudinal evidence gate now makes the remaining collection gap explicit without
 changing that ledger: the real read-only state is `life 6/10` and `work 15/10` feedback,
@@ -177,7 +177,7 @@ recorded eight exact receipts, zero explicit outcomes, no permission/grant
 fields, byte-stable report reads, and receipt-stable replays. This passes the
 implementation shadow gate only; the same-session timing distribution is not
 natural resumption evidence and cannot release Slice B or autonomy. Details:
-[`../evaluations/continuity-interaction-shadow-24-2026-07-18.md`](../evaluations/continuity-interaction-shadow-24-2026-07-18.md).
+[`../evaluations/continuity-interaction-shadow-24-2026-07-18.md`](../../docs/evaluations/continuity-interaction-shadow-24-2026-07-18.md).
 
 The shared report now exposes the remaining interaction evidence gap directly:
 each kind needs ten exact receipts across two UTC opened dates before moving from
@@ -187,7 +187,7 @@ zero mismatches and caught an off-by-one mutation, while an aggregate-only read 
 the actual default state preserved both Attunement and tasks bytes. Actual coverage
 is still life `0/10`, work `0/10`, and `0/2` dates for both, so no usefulness,
 naturalness, permission, or automation claim is released. Evidence:
-[`../evaluations/continuity-interaction-longitudinal-audit-2026-07-18.md`](../evaluations/continuity-interaction-longitudinal-audit-2026-07-18.md).
+[`../evaluations/continuity-interaction-longitudinal-audit-2026-07-18.md`](../../docs/evaluations/continuity-interaction-longitudinal-audit-2026-07-18.md).
 
 The web review now closes the natural collection path without fabricating any
 evidence: it renders that shared audit separately from outcome readiness and
@@ -198,7 +198,7 @@ that a receipt persisted. Chromium interaction tests cover the success, retry,
 recorder-failure, divergent-gate, and fail-closed cases. The actual read-only
 audit remains life `0/10`, work `0/10`, and `0/2` dates for both, so the next
 evidence must come from ordinary use rather than fixtures. Evidence:
-[`../evaluations/continuity-natural-evidence-loop-2026-07-18.md`](../evaluations/continuity-natural-evidence-loop-2026-07-18.md).
+[`../evaluations/continuity-natural-evidence-loop-2026-07-18.md`](../../docs/evaluations/continuity-natural-evidence-loop-2026-07-18.md).
 
 The factual completion path is now crash-recoverable rather than best-effort.
 API, local CLI, and loopback completion prepare an exact bounded sidecar event
@@ -209,7 +209,7 @@ new untracked completions before their task write. Tests cover restart recovery,
 old-done no-synthesis, open/mismatch classification, recorder-success-before-ack
 replay, queue bounds, and exact-one receipts. This improves evidence durability
 only; actual natural coverage remains unchanged. Evidence:
-[`../evaluations/continuity-interaction-outbox-2026-07-18.md`](../evaluations/continuity-interaction-outbox-2026-07-18.md).
+[`../evaluations/continuity-interaction-outbox-2026-07-18.md`](../../docs/evaluations/continuity-interaction-outbox-2026-07-18.md).
 
 The first actual post-outbox collection cycle is now open on the sole existing
 user-authored work next-step that was still exact and open. A fail-closed
@@ -219,7 +219,7 @@ deliveries and from zero to one `none` interaction; tasks and the receipt outbox
 were unchanged, no receipt or outcome was created, and exact coverage remains
 life `0/10`, work `0/10`. This is collection readiness, not natural completion
 evidence or permission. Evidence:
-[`../evaluations/continuity-natural-collection-cycle-1-2026-07-18.md`](../evaluations/continuity-natural-collection-cycle-1-2026-07-18.md).
+[`../evaluations/continuity-natural-collection-cycle-1-2026-07-18.md`](../../docs/evaluations/continuity-natural-collection-cycle-1-2026-07-18.md).
 
 The shared exact-artifact resolver boundary now revalidates artifact id, type,
 provider, and role before evidence can become available or a delivery can open.
@@ -230,7 +230,7 @@ evaluation covered all 126 public preview/open signatures and 10,000 core
 stress cases with zero mismatch omissions, control drift, evidence laundering,
 or oracle mismatches. Its generated corpus is ignored synthetic evidence only;
 it does not change natural coverage, outcomes, policy, or permission. Evidence:
-[`../evaluations/continuity-provider-boundary-2026-07-18.md`](../evaluations/continuity-provider-boundary-2026-07-18.md).
+[`../evaluations/continuity-provider-boundary-2026-07-18.md`](../../docs/evaluations/continuity-provider-boundary-2026-07-18.md).
 
 Continuity evidence now carries durable provenance independently on delivery,
 outcome, interaction receipt, and the crash-recovery outbox. Readiness requires
@@ -242,7 +242,7 @@ technical evidence. A reproducible aggregate evaluation kept 10,080 controlled
 exact pairs at readiness 0 and classified 1,000 ordinary-input attempts as
 unclassified, with no change to the real local store. This still does not
 authorize Slice B, proactive delivery, or autonomy. Evidence:
-[`../evaluations/continuity-evidence-provenance-2026-07-18.md`](../evaluations/continuity-evidence-provenance-2026-07-18.md).
+[`../evaluations/continuity-evidence-provenance-2026-07-18.md`](../../docs/evaluations/continuity-evidence-provenance-2026-07-18.md).
 
 ## Slice B — safe observation and better timing
 

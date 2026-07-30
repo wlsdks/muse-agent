@@ -10,7 +10,7 @@
  *   A `feat:` or `fix:` commit MUST stage at least one of:
  *     - a test file            (*.test.ts / *.test.tsx)         — a regression lock, OR
  *     - a golden-case battery  (scripts|apps/cli/scripts/verify-*.mjs or eval-*.mjs), OR
- *     - the living ledger      (docs/goals/backlog.md)          — item advanced / recorded.
+ *     - the living ledger      (internal/goals/backlog.md)          — item advanced / recorded.
  *
  *   Escape for a genuinely trivial / measurement-only slice (mirrors guard-immutable's
  *   [core-change: human]): put `[writeback: n/a]` (or `[writeback: trivial]`) in the message.
@@ -28,12 +28,12 @@ import { readFileSync } from "node:fs";
  *  - a regression-lock test — `*.test.ts(x)` OR the `scripts/*` node:test
  *    convention `*.test.mjs` (run by `pnpm self-eval:test`),
  *  - a golden-case battery — `(scripts|apps/cli/scripts)/(verify-|eval-)*.mjs`,
- *  - the living ledger — `docs/goals/backlog.md` advanced.
+ *  - the living ledger — `internal/goals/backlog.md` advanced.
  */
 export function stagesCompoundingArtifact(stagedFiles) {
   const hasTest = stagedFiles.some((f) => /\.test\.(tsx?|mjs)$/.test(f));
   const hasGoldenCase = stagedFiles.some((f) => /(scripts|apps\/cli\/scripts)\/(verify-|eval-)[\w-]+\.mjs$/.test(f));
-  const advancedLedger = stagedFiles.some((f) => f === "docs/goals/backlog.md");
+  const advancedLedger = stagedFiles.some((f) => f === "internal/goals/backlog.md");
   return hasTest || hasGoldenCase || advancedLedger;
 }
 
@@ -75,7 +75,7 @@ function main() {
       "  A non-trivial feat/fix must leave the learning behind — stage at least one of:\n" +
       "    • a *.test.ts(x) / scripts/*.test.mjs regression lock,\n" +
       "    • a verify-*.mjs / eval-*.mjs golden case, or\n" +
-      "    • docs/goals/backlog.md (advance the item to Done / record the direction).\n" +
+      "    • internal/goals/backlog.md (advance the item to Done / record the direction).\n" +
       "  Genuinely trivial or measurement-only? Add [writeback: n/a] to the commit message.\n"
   );
   process.exit(1);

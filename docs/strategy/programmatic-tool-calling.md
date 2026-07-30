@@ -5,7 +5,7 @@
 > copied. Picked 2026-06-30 by Jinan as the "big bet" from the openclaw/hermes capability comparison.
 >
 > **What shipped** (all phases independently maker≠judge verified; journal:
-> `docs/goals/loops/programmatic-tool-calling.md`):
+> `internal/goals/loops/programmatic-tool-calling.md`):
 > - Phase 1 — pure plan schema + DAG interpreter (`agent-core/tool-plan.ts`): backward-`$`-ref-only
 >   (acyclic by construction), value-level substitution (injection guard).
 > - Phase 2 — `AgentRuntime.executeToolPlanGated`: every step reuses the native gated path

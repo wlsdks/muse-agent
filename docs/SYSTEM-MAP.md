@@ -55,7 +55,7 @@ Attunement Graph (MAG)** behind it is not a heavy server duplicating existing st
 agent-native personal context compiler that links time, relationships and provenance as a
 regenerable projection and builds only the small Working Graph each turn needs
 ([graph design](design/attunement-graph.md) ·
-[separate execution roadmap](goals/attunement-wow-graph-roadmap.md)).
+[separate execution roadmap](../internal/goals/attunement-wow-graph-roadmap.md)).
 
 ## The big picture — what layers Muse is made of
 

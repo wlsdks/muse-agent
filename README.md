@@ -9,7 +9,7 @@
 <p>Muse holds the threads you didn't finish, answers from your own notes with receipts you can open,<br/>
 and asks before it does anything on your behalf. You choose the model and where it runs.</p>
 
-<p><a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-22c55e.svg" /></a> <a href="package.json"><img alt="Node ≥ 22.12" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-43853d.svg" /></a> <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178c6.svg" /></a> <a href="#architecture"><img alt="Provider-neutral" src="https://img.shields.io/badge/architecture-provider--neutral-6f42c1.svg" /></a></p>
+<p><a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-22c55e.svg" /></a> <a href="package.json"><img alt="Node ≥ 22.12" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-43853d.svg" /></a> <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178c6.svg" /></a> <a href="#architecture-in-one-paragraph"><img alt="Provider-neutral" src="https://img.shields.io/badge/architecture-provider--neutral-6f42c1.svg" /></a></p>
 
 </div>
 
@@ -53,7 +53,7 @@ model and cloud voice egress into a hard error.
 | **Get going** | [Install](#install) · [Local or cloud](#local-or-cloud--your-choice) · [Everyday commands](#everyday-commands) |
 | **The idea** | [Continuity, the one thing Muse is for](#continuity--the-one-thing-muse-is-for) · [How Muse answers](#how-muse-answers) · [Where this is going](#where-this-is-going) |
 | **The truth** | [Status: what's real today](#status--whats-real-today) · [Evidence and numbers](#evidence-and-numbers) · [What Muse will never do](#what-muse-will-never-do) |
-| **The code** | [Architecture](#architecture) · [Repository layout](#repository-layout) · [Build and verify](#build-and-verify) · [Documentation](#documentation) |
+| **The code** | [Architecture](#architecture-in-one-paragraph) · [Build and verify](#build-and-verify) · [Documentation](#documentation) |
 
 ---
 
@@ -243,7 +243,7 @@ What is verified today, and what those words do **not** mean:
 - Resume baselines are per-process, capped at 16 threads, and not persisted. None of this is action
   authority, automatic behaviour, or evidence that it is useful in real life.
 
-Sequenced in the [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).
+Sequenced in the [wow + graph roadmap](internal/goals/attunement-wow-graph-roadmap.md).
 
 </details>
 
@@ -284,8 +284,9 @@ Source: [canonical scale JSON](docs/benchmarks/eval-datasets-scale-v1.json)
 
 ### What these numbers do not mean
 
-- The agent aggregate is **10/11 FAILED**. Organic effectiveness is **NOT_PROVEN**. Recall
-  correction remains **UNQUALIFIED**.
+- They are controlled results, not proof the agent helps in real life. The agent battery is not
+  fully green today, and recall correction is not yet qualified — the per-battery record, including
+  the failures, is in the [evidence index](docs/benchmarks/EVIDENCE.md).
 - Controlled synthetic integrity is not personal learning, and controlled evidence is not organic
   effectiveness.
 - **1,111,000 records are not 1,111,000 agent runs.**
@@ -311,74 +312,20 @@ Enforced as deterministic code, never as a prompt instruction:
 
 ---
 
-## Architecture
+## Architecture in one paragraph
 
-### Supported models, one boundary
+`agent-core` never talks to a vendor SDK — everything goes through one `ModelProvider` interface, so
+swapping models does not touch agent logic. Adapters ship for OpenAI, Anthropic, Gemini, OpenRouter,
+Ollama and supported OpenAI-compatible endpoints (LM Studio is that adapter with a local
+`baseUrl`, not a dedicated one); missing capabilities degrade explicitly rather than silently. Your data stays in plain files under `~/.muse/`, with memory, episodes and the action
+log encrypted at rest and credentials in the OS keychain. CLI, web/API chat, messaging channels,
+scheduled jobs and delegated workers all share one composition root, so guards, approvals and traces
+are identical on every surface; risky local execution goes through the Rust `runner` as a child
+process. MCP works both directions — external servers behind an allowlist, and `muse mcp serve`
+exposing read-only grounded recall to other agents.
 
-`agent-core` never talks to a vendor SDK. Everything goes through one `ModelProvider` interface, so
-swapping models does not touch agent logic.
-
-```ts
-interface ModelProvider {
-  id: string;
-  listModels(): Promise<ModelInfo[]>;
-  generate(request: ModelRequest): Promise<ModelResponse>;
-  stream(request: ModelRequest): AsyncIterable<ModelEvent>;
-}
-```
-
-Adapters ship for OpenAI, Anthropic, Gemini, OpenRouter, Ollama, and supported OpenAI-compatible
-endpoints. LM Studio uses that compatible adapter with a local `baseUrl`; it is not a dedicated
-adapter. Select one with `MUSE_MODEL=<provider>/<model>` plus its usual API-key
-variable; override explicitly with `MUSE_MODEL_PROVIDER_ID`, `MUSE_MODEL_API_KEY` and
-`MUSE_MODEL_BASE_URL`. Missing capabilities degrade explicitly — no native tool calling falls back
-to a strictly parsed text protocol, no structured output falls back to a parser plus validator.
-
-No vendor owns the runtime, and no vendor is required by it. Storage and processing placement are
-explicit deployment choices, not the product's identity.
-
-### Where your data lives
-
-| What | Where |
-| --- | --- |
-| Notes | `~/.muse/notes/` |
-| Tasks | `~/.muse/tasks.json` |
-| Reminders | `~/.muse/reminders.json` |
-| Memory | `~/.muse/user-memory.json` |
-| Config | `~/.config/muse/config.json` |
-| Run state | `.muse/runs/*.jsonl` |
-
-Plain files. Memory, episodes and the action log are encrypted at rest; credentials live in the OS
-keychain or an encrypted auth store, never in plain text.
-
-### One runtime, every surface
-
-CLI, web/API chat, messaging channels, scheduled jobs and delegated workers all share the same
-composition root — the same guards, approvals and traces. Risky local execution goes through the
-Rust `runner` as a child process. Tool output is treated as untrusted input, and every tool loop has
-an explicit step limit and timeout.
-
-### MCP in both directions
-
-Muse consumes external MCP servers behind an allowlist, and `muse mcp serve` exposes read-only
-grounded recall, search and user-model access to other agents.
-
----
-
-## Repository layout
-
-| Path | What lives there |
-| --- | --- |
-| `packages/agent-core` | The model-agnostic runtime: loops, guards, approvals, traces |
-| `packages/model` | Provider adapters — the only place a vendor SDK is allowed |
-| `packages/attunement`, `packages/attunement-graph` | Continuity threads and the MAG graph engine |
-| `packages/recall`, `packages/memory`, `packages/stores` | Grounded recall, personal memory, file-backed stores |
-| `packages/tools`, `packages/browser`, `packages/mcp` | Tool surface, browser control, MCP both ways |
-| `apps/cli`, `apps/api`, `apps/web`, `apps/desktop` | The four surfaces, all on one runtime |
-| `crates/runner` | Sandboxed local execution |
-| `harness/` | The vendor-neutral agent operating harness used to build Muse |
-
-39 workspace packages in total; [the system map](docs/SYSTEM-MAP.md) is the guided tour.
+**Full detail:** [architecture and repository layout](docs/architecture.md) — the provider contract,
+where every file lives on disk, the one-runtime rule, and a map of the 39 workspace packages.
 
 ---
 
@@ -401,9 +348,10 @@ pnpm eval:agent       # judge meta-eval, must-refuse battery, plan quality
 ```
 
 `smoke:live` deliberately uses local Ollama and skips when it is unreachable — a skip is not a pass.
-The latest recorded `eval:agent` aggregate is **10 passed, 1 failed, 0 unverified**, so it stands as
-**FAILED**. `pnpm qualify:personal-agent` is a read-only, fail-closed check of current capability,
-resident runtime and delivery safety. Test counts are not proof of agent effect.
+`eval:agent` is the nightly/manual battery and is not fully green today; its current per-battery
+record lives in the [evidence index](docs/benchmarks/EVIDENCE.md). `pnpm qualify:personal-agent` is a
+read-only, fail-closed check of current capability, resident runtime and delivery safety. Test counts
+are not proof of agent effect.
 
 ---
 
@@ -412,8 +360,8 @@ resident runtime and delivery safety. Test counts are not proof of agent effect.
 | | |
 | --- | --- |
 | **Start here** | [System map](docs/SYSTEM-MAP.md) · [Local model setup](docs/setup-local-llm.md) · [Environment variables](docs/ENV.md) |
-| **The product** | [Attunement contract](docs/strategy/attunement.md) · [Architecture and gaps](docs/design/attunement.md) · [Implementation plan](docs/goals/attunement-implementation-plan.md) |
-| **The graph** | [Attunement Graph](docs/design/attunement-graph.md) · [Agent-native core blueprint](docs/design/agent-native-graph-core.md) · [Roadmap](docs/goals/attunement-wow-graph-roadmap.md) |
+| **The product** | [Attunement contract](docs/strategy/attunement.md) · [Architecture and gaps](docs/design/attunement.md) · [Implementation plan](internal/goals/attunement-implementation-plan.md) |
+| **The graph** | [Attunement Graph](docs/design/attunement-graph.md) · [Agent-native core blueprint](docs/design/agent-native-graph-core.md) · [Roadmap](internal/goals/attunement-wow-graph-roadmap.md) |
 | **Trust** | [Grounding gate](docs/grounding-gate.md) · [Privacy and data](docs/privacy-and-data.md) · [Evidence index](docs/benchmarks/EVIDENCE.md) · [Security](SECURITY.md) |
 | **Audits** | [Full feature audit](docs/feature-catalog/INDEX.md) — a dated 2026-06-14 snapshot, written in Korean · [Personal-agent qualification](docs/development/personal-agent-qualification.md) |
 

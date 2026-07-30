@@ -20,12 +20,12 @@ evidence.
 - **The full loop is a roadmap, not a shipped claim.** Current memory, pattern, proactivity,
   browser, trace and checkpoint systems are its substrates. Product contract:
   [`docs/strategy/attunement.md`](docs/strategy/attunement.md). Implementation:
-  [`docs/goals/attunement-implementation-plan.md`](docs/goals/attunement-implementation-plan.md).
+  [`internal/goals/attunement-implementation-plan.md`](internal/goals/attunement-implementation-plan.md).
 - **`@muse/attunement-graph` is a lightweight agent-native temporal/provenance graph** and personal
   context compiler — not a generic graph-DB claim. Existing personal stores remain authoritative;
   the graph is a rebuildable projection. Contract:
   [`docs/design/attunement-graph.md`](docs/design/attunement-graph.md). Program:
-  [`docs/goals/attunement-wow-graph-roadmap.md`](docs/goals/attunement-wow-graph-roadmap.md).
+  [`internal/goals/attunement-wow-graph-roadmap.md`](internal/goals/attunement-wow-graph-roadmap.md).
 
 Runtime invariants, always:
 
@@ -139,7 +139,7 @@ roadmap's own execution-order table and scope-specific gates outrank raw task nu
   readings lead to materially different work. If a task seems mistaken, say so briefly and continue
   as specified — never silently narrow, widen or transform it.
 
-### Model routing for [`personal-agent-productization-roadmap.md`](docs/goals/personal-agent-productization-roadmap.md)
+### Model routing for [`personal-agent-productization-roadmap.md`](internal/goals/personal-agent-productization-roadmap.md)
 
 Do not hand that unsliced 300-task program to one default worker configuration. The roadmap's own
 model-routing section is authoritative for fallbacks, escalation and stage-specific defaults.

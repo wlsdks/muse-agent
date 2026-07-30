@@ -44,7 +44,7 @@ not a stub.
       thread → Continuity Pack → outcome → adaptation is still
       substrate-only? Build the missing stage; NEVER relabel existing
       substrate as the loop.
-   4. **Parity reservoir** — grep `docs/goals/growth-backlog.md`
+   4. **Parity reservoir** — grep `internal/goals/growth-backlog.md`
       filtered by `judgment-lens.md` (build/core/strengthens
       only; never full-load). Cross-check git log + codegraph first —
       already shipped ⇒ flip ✓, keep sourcing. Reservoir dry or stale

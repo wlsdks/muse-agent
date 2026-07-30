@@ -16,7 +16,7 @@ import {
 
 test("successor rollback baseline stays on the authoritative verified commit", () => {
   const roadmap = readFileSync(
-    new URL("../docs/goals/personal-agent-successor-roadmap.md", import.meta.url),
+    new URL("../internal/goals/personal-agent-successor-roadmap.md", import.meta.url),
     "utf8"
   );
   assert.equal(ROLLBACK_BASELINE_HEAD, "926c01738b9be9a8b1c3668ec61c2b66d17dce63");

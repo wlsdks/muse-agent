@@ -27,7 +27,7 @@ from docs alone**:
 5. [`SYSTEM-MAP.md`](SYSTEM-MAP.md) — the feature structure on one page
 6. [`grounding-gate.md`](grounding-gate.md) — the trust floor (grounding gate) as one flow
 7. [`FEATURES.md`](FEATURES.md) → [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md) — feature detail + exhaustive verification evidence
-8. Then go deeper: [`design/attunement.md`](design/attunement.md) · [`design/attunement-graph.md`](design/attunement-graph.md) · [`goals/attunement-implementation-plan.md`](goals/attunement-implementation-plan.md) · [`goals/attunement-wow-graph-roadmap.md`](goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
+8. Then go deeper: [`design/attunement.md`](design/attunement.md) · [`design/attunement-graph.md`](design/attunement-graph.md) · [`goals/attunement-implementation-plan.md`](../internal/goals/attunement-implementation-plan.md) · [`goals/attunement-wow-graph-roadmap.md`](../internal/goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
 
 ## To understand the product
 
@@ -36,8 +36,8 @@ from docs alone**:
 | **[strategy/attunement.md](strategy/attunement.md)** | Muse's wedge, user moments, current/experimental/roadmap boundary | Product, design, and dev alike |
 | **[design/attunement.md](design/attunement.md)** | The privacy and closed-loop technical contract of the implemented Slice A and the follow-on Observe | Dev, security, AI agents |
 | **[design/attunement-graph.md](design/attunement-graph.md)** | Module contract and research basis of the agent-native time/provenance graph and personal context compiler | Product, dev, security |
-| **[goals/attunement-implementation-plan.md](goals/attunement-implementation-plan.md)** | Dependency-ordered vertical slices, gates, kill criterion | Execution and evaluation owners |
-| **[goals/attunement-wow-graph-roadmap.md](goals/attunement-wow-graph-roadmap.md)** | The separate long-horizon execution order for Shadow Muse, Capsule, Policy Card, Graph Engine | Execution and evaluation owners |
+| **[goals/attunement-implementation-plan.md](../internal/goals/attunement-implementation-plan.md)** | Dependency-ordered vertical slices, gates, kill criterion | Execution and evaluation owners |
+| **[goals/attunement-wow-graph-roadmap.md](../internal/goals/attunement-wow-graph-roadmap.md)** | The separate long-horizon execution order for Shadow Muse, Capsule, Policy Card, Graph Engine | Execution and evaluation owners |
 | **[SYSTEM-MAP.md](SYSTEM-MAP.md)** | Structural map of Muse's features at a glance (words only, for quick orientation) | Planners and devs / first-time readers |
 | **[glossary.md](glossary.md)** | Single definition of Muse-specific terms (one line per term + where it lives) | First-time readers / AI agents |
 | **[grounding-gate.md](grounding-gate.md)** | How the grounding gate — the trust floor — handles one question: flow + worked example | Anyone who wants the core behavior / AI agents |
@@ -59,7 +59,7 @@ are **the design rationale for features already shipped** (why it was built that
 [background-review-engine](design/background-review-engine.md) is the one design currently in
 progress. For a feature's "what," see the product docs above; for the "why," look here:
 
-- Attunement: [architecture and data contract](design/attunement.md), [graph engine](design/attunement-graph.md), [implementation slices](goals/attunement-implementation-plan.md), [wow + graph roadmap](goals/attunement-wow-graph-roadmap.md), [continuity-timing-loop](design/continuity-timing-loop.md), [muse-work](design/muse-work.md)
+- Attunement: [architecture and data contract](design/attunement.md), [graph engine](design/attunement-graph.md), [implementation slices](../internal/goals/attunement-implementation-plan.md), [wow + graph roadmap](../internal/goals/attunement-wow-graph-roadmap.md), [continuity-timing-loop](design/continuity-timing-loop.md), [muse-work](design/muse-work.md)
 - Memory and perception: [episodic-memory](design/episodic-memory.md), [proactive-surfacing](design/proactive-surfacing.md), [pattern-detection](design/pattern-detection.md), [context-engineering-roadmap](design/context-engineering-roadmap.md), [resumable-notes-indexing](design/resumable-notes-indexing.md)
 - Proactivity and follow-up: [agent-self-followup](design/agent-self-followup.md), [reminder-firing](design/reminder-firing.md), [background-review-engine](design/background-review-engine.md), [progressive-autonomy-p0](design/progressive-autonomy-p0.md)
 - Channels and voice: [messaging](design/messaging.md), [line-webhook](design/line-webhook.md), [voice-mode](design/voice-mode.md), [phase-d-chat-stream-routing](design/phase-d-chat-stream-routing.md)
@@ -70,6 +70,7 @@ progress. For a feature's "what," see the product docs above; for the "why," loo
 | Folder | What is in it |
 |---|---|
 | [`strategy/`](strategy/) | Product direction and positioning: the [Attunement contract](strategy/attunement.md), [differentiation](strategy/differentiation.md), [agent-principles-2026](strategy/agent-principles-2026.md), [context-doctrine](strategy/context-doctrine.md), [prompt-architecture](strategy/prompt-architecture.md), [programmatic-tool-calling](strategy/programmatic-tool-calling.md), [secret-source](strategy/secret-source.md), plus dated competitive reads |
+| [`architecture.md`](architecture.md) | The provider contract, on-disk data locations, the one-runtime rule and the package map (moved out of the README to keep it a landing page) |
 | [`development/`](development/) | How we verify: [testing-strategy](development/testing-strategy.md), [ai-agent-testing-strategy](development/ai-agent-testing-strategy.md), [typescript-7](development/typescript-7.md), [personal-agent-qualification](development/personal-agent-qualification.md), [agent-capability-baseline](development/agent-capability-baseline.md), [verification-command-catalog](development/verification-command-catalog.md) |
 | [`evaluations/`](evaluations/) | Dated evaluation records — one file per run, kept as evidence rather than rewritten |
 | [`benchmarks/`](benchmarks/) | Published charts and the [evidence index](benchmarks/EVIDENCE.md) that keeps failed and unchanged results visible |
@@ -93,7 +94,7 @@ the current setup at a glance → [diagram & self-assessment (architecture)](../
 These documents are the operating machinery of the autonomous loops that expand Muse itself (not
 product-feature descriptions):
 
-- [`goals/`](goals/) — work ledgers (backlog · growth-backlog · rival-watch) and active loop journals — map at [`goals/README.md`](goals/README.md)
+- [`goals/`](../internal/goals/) — work ledgers (backlog · growth-backlog · rival-watch) and active loop journals — map at [`goals/README.md`](../internal/goals/README.md)
 
 ---
 

@@ -9,7 +9,7 @@ updated: 2026-06-08
 # Development Loop
 
 > **HOST-SPECIFIC** — this file is the host's (Muse's) development loop and references paths
-> outside the harness (`docs/goals/backlog.md`, `.claude/rules/*`, etc.). When taking the harness
+> outside the harness (`internal/goals/backlog.md`, `.claude/rules/*`, etc.). When taking the harness
 > to a new project, do not use it as-is — **rewrite it as your project's loop**
 > ([INSTALL §1](../INSTALL.md)).
 
@@ -29,12 +29,12 @@ ANALYZE+COMPOUND half is missing** → every session re-pays the orientation cos
 
 1. **Direction doesn't accumulate.** No single entrypoint, and the persistent backlog had been
    deleted, so "what's next" was re-discovered per slice by an expensive scout subagent and thrown
-   away. → Fix: write [`backlog.md`](../../docs/goals/backlog.md) once and the next fire reads it
+   away. → Fix: write [`backlog.md`](../../internal/goals/backlog.md) once and the next fire reads it
    first.
 2. **Data doesn't pick the slice.** Traces pile up in `.muse/runs/` but nobody reads them, and
    work is picked by "feels high-value". → Fix (incremental): outcome-logging instrumentation →
    failure clustering picks the slice. (No labels yet, so the backlog takes priority for now; see
-   [`backlog.md`](../../docs/goals/backlog.md).)
+   [`backlog.md`](../../internal/goals/backlog.md).)
 
 ## 1. Principles (the consensus across public methodology — follow them)
 
@@ -131,7 +131,7 @@ sourcing ladder and permission boundaries.
 6. **WRITE-BACK (completion gate — no done declaration without it)** — (a) the fixed failure
    becomes a STABLE-3/3 golden case; (b) Jinan's repeated correction becomes one line in
    `.claude/rules/*.md` (after-correction); (c) chosen + discarded directions + sources go to
-   [`backlog.md`](../../docs/goals/backlog.md), durable facts to MEMORY.md; (d) before→after to
+   [`backlog.md`](../../internal/goals/backlog.md), durable facts to MEMORY.md; (d) before→after to
    the self-eval scoreboard. When a set grows, prune one stale line.
 7. **COMMIT + PUSH** — one Conventional Commit + `git push` (current branch). The `improve-muse` /
    `grow-muse` skills hold standing push authorization (2026-06-27, Jinan) — but push **only when

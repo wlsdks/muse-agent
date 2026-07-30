@@ -30,7 +30,15 @@ export function lineAssertsIdentity(line) {
   return IDENTITY_STRING_PATTERNS.some((re) => re.test(line));
 }
 
+/**
+ * A line whose first non-space characters open a comment. A comment cannot call
+ * anything, so naming `buildSystemPrompt(` while explaining the seam is documentation,
+ * not drift — and flagging it trains readers to ignore this gate.
+ */
+const COMMENT_LINE_PATTERN = /^\s*(?:\/\/|\/\*|\*)/u;
+
 /** True when a source line calls buildSystemPrompt( directly (bypassing composeSurfacePrompt). */
 export function lineCallsBuildSystemPrompt(line) {
+  if (COMMENT_LINE_PATTERN.test(line)) return false;
   return BUILD_SYSTEM_PROMPT_PATTERN.test(line);
 }

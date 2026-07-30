@@ -15,7 +15,7 @@ related: [../FEATURES.md, ../SYSTEM-MAP.md, ../../README.md]
 
 > **Status boundary:** this catalog is a 2026-06-14 shipped-evidence snapshot. Attunement's full
 > Observe → Rhythm → Friction → outcome → adaptation loop is not included and is managed as
-> [roadmap](../goals/attunement-implementation-plan.md).
+> [roadmap](../../internal/goals/attunement-implementation-plan.md).
 
 > **What is this document?** At the point where 5,166 commits had accumulated (3,934 in the last 30
 > days alone), this master document **actually ran and verified every Muse feature, recording each
