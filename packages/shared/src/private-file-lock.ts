@@ -7,6 +7,11 @@ import { sleep } from "./sleep.js";
 
 export interface PrivateFileLockOptions {
   readonly giveUpMs?: number;
+  /**
+   * Reclaim an exact owner-private lock only when its v1 owner PID no longer
+   * exists. Malformed, legacy, live, replaced and unsafe locks stay contended.
+   */
+  readonly reclaimDeadProcess?: boolean;
   readonly retryDelayMs?: (attempt: number) => number;
 }
 
@@ -43,6 +48,7 @@ type LockStat = Readonly<{
   isDirectory: () => boolean;
   isFile: () => boolean;
   mode: number | bigint;
+  nlink: number | bigint;
   size: number | bigint;
   uid: number | bigint;
 }>;
@@ -61,7 +67,10 @@ function isOwnedByCurrentUser(stat: LockStat): boolean {
 }
 
 function isPrivateRegularFile(stat: LockStat): boolean {
-  return stat.isFile() && (Number(stat.mode) & 0o777) === 0o600 && isOwnedByCurrentUser(stat);
+  return stat.isFile()
+    && Number(stat.nlink) === 1
+    && (Number(stat.mode) & 0o777) === 0o600
+    && isOwnedByCurrentUser(stat);
 }
 
 function isOwnedRegularFile(stat: LockStat): boolean {
@@ -132,18 +141,85 @@ async function assertParentIdentity(parent: ValidatedParent, code: PrivateFileLo
   }
 }
 
-type ExistingLockProbe = "safe" | "vanished";
+type ExistingLockProbe =
+  | Readonly<{ identity: FileIdentity; state: "safe" }>
+  | Readonly<{ state: "vanished" }>;
 
 /** Inspect only directory metadata. A pre-existing lock is never opened or read. */
 async function probeExistingLock(file: string): Promise<ExistingLockProbe> {
   try {
     const stat = await fs.lstat(file);
     if (!isPrivateRegularFile(stat)) throw new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
-    return "safe";
+    return { identity: identityOf(stat), state: "safe" };
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return "vanished";
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return { state: "vanished" };
     if (cause instanceof PrivateFileLockError) throw cause;
     throw new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
+  }
+}
+
+function ownerPidFromNonce(value: Buffer): number | undefined {
+  const match = /^v1:([1-9]\d*):[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.exec(
+    value.toString("utf8")
+  );
+  if (!match) return undefined;
+  const pid = Number(match[1]);
+  return Number.isSafeInteger(pid) ? pid : undefined;
+}
+
+function processIsLive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (cause) {
+    return (cause as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+async function reclaimDeadProcessLock(
+  file: string,
+  identity: FileIdentity,
+  parent: ValidatedParent
+): Promise<boolean> {
+  let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+  try {
+    await assertParentIdentity(parent, "PRIVATE_FILE_LOCK_UNSAFE");
+    handle = await fs.open(
+      file,
+      constants.O_RDONLY | constants.O_NONBLOCK | noFollowFlag()
+    );
+    const [pathStat, opened] = await Promise.all([fs.lstat(file), handle.stat()]);
+    if (
+      !isPrivateRegularFile(pathStat)
+      || !isPrivateRegularFile(opened)
+      || !sameIdentity(identity, pathStat)
+      || !sameIdentity(identity, opened)
+      || Number(opened.size) > 128
+    ) {
+      throw new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
+    }
+    const nonce = Buffer.alloc(Number(opened.size));
+    const { bytesRead } = await handle.read(nonce, 0, nonce.byteLength, 0);
+    if (bytesRead !== nonce.byteLength) {
+      throw new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
+    }
+    const pid = ownerPidFromNonce(nonce);
+    if (pid === undefined || processIsLive(pid)) return false;
+    await handle.close();
+    handle = undefined;
+    await quarantineAndRemoveOwnedEntry(
+      file,
+      identity,
+      parent,
+      "PRIVATE_FILE_LOCK_UNSAFE",
+      nonce
+    );
+    return true;
+  } catch (cause) {
+    if (cause instanceof PrivateFileLockError) throw cause;
+    throw new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
+  } finally {
+    await handle?.close().catch(() => undefined);
   }
 }
 
@@ -248,12 +324,15 @@ export async function withPrivateFileLock<T>(
   options: PrivateFileLockOptions = {}
 ): Promise<T> {
   const giveUpMs = resolveGiveUpMs(options.giveUpMs);
+  if (options.reclaimDeadProcess !== undefined && typeof options.reclaimDeadProcess !== "boolean") {
+    throw new PrivateFileLockError("PRIVATE_FILE_LOCK_INVALID_OPTIONS");
+  }
   const retryDelayMs = options.retryDelayMs ?? defaultRetryDelayMs;
   if (typeof retryDelayMs !== "function") {
     throw new PrivateFileLockError("PRIVATE_FILE_LOCK_INVALID_OPTIONS");
   }
   const parent = await openValidatedParent(file);
-  const nonce = Buffer.from(randomUUID(), "utf8");
+  const nonce = Buffer.from(`v1:${process.pid.toString()}:${randomUUID()}`, "utf8");
   const startedAt = performance.now();
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
   let createdIdentity: FileIdentity | undefined;
@@ -272,7 +351,14 @@ export async function withPrivateFileLock<T>(
         if ((cause as NodeJS.ErrnoException).code !== "EEXIST") {
           throw new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
         }
-        if ((await probeExistingLock(file)) === "vanished") continue;
+        const probe = await probeExistingLock(file);
+        if (probe.state === "vanished") continue;
+        if (
+          options.reclaimDeadProcess === true
+          && await reclaimDeadProcessLock(file, probe.identity, parent)
+        ) {
+          continue;
+        }
         const elapsedMs = performance.now() - startedAt;
         if (elapsedMs >= giveUpMs) {
           throw new PrivateFileLockError("PRIVATE_FILE_LOCK_CONTENDED");

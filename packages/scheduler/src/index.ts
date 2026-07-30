@@ -297,6 +297,11 @@ export {
 export { DynamicScheduler, createSchedulerTools } from "./dynamic-scheduler.js";
 export { buildDuplicateJobInput, type DuplicateJobOptions } from "./duplicate-job.js";
 export { ActiveRunTracker, type DrainOutcome } from "./active-run-tracker.js";
+export {
+  TriggerControlFileStore,
+  TriggerControlFileStoreError,
+  type TriggerControlFileStoreErrorCode
+} from "./trigger-control-file-store.js";
 
 export {
   createNodeOnExitSpawner,

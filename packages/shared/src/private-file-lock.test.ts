@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
-import { chmod, lstat, mkdir, mkdtemp, readFile, symlink, unlink, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, mkdtemp, readFile, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -50,6 +50,68 @@ describe("withPrivateFileLock", () => {
 
     expect(ran).toBe(false);
     expect(await readFile(lockFile, "utf8")).toBe("other-owner");
+  });
+
+  it("reclaims only an exact private v1 lock owned by a dead process", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "muse-private-lock-dead-owner-"));
+    const lockFile = join(directory, "state.lock");
+    await writeFile(
+      lockFile,
+      "v1:2147483647:00000000-0000-4000-8000-000000000000",
+      { mode: 0o600 }
+    );
+
+    await expect(withPrivateFileLock(
+      lockFile,
+      async () => "recovered",
+      { reclaimDeadProcess: true }
+    )).resolves.toBe("recovered");
+    await expect(lstat(lockFile)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not reclaim a valid private v1 lock owned by a live process", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "muse-private-lock-live-owner-"));
+    const lockFile = join(directory, "state.lock");
+    const contents = `v1:${process.pid.toString()}:00000000-0000-4000-8000-000000000000`;
+    await writeFile(lockFile, contents, { mode: 0o600 });
+
+    await expect(withPrivateFileLock(
+      lockFile,
+      async () => undefined,
+      { giveUpMs: 1, reclaimDeadProcess: true, retryDelayMs: () => 0 }
+    )).rejects.toMatchObject({ code: "PRIVATE_FILE_LOCK_CONTENDED" });
+    expect(await readFile(lockFile, "utf8")).toBe(contents);
+  });
+
+  it("does not reclaim a malformed dead-owner nonce that only has UUID length", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "muse-private-lock-malformed-owner-"));
+    const lockFile = join(directory, "state.lock");
+    const contents = "v1:2147483647:------------------------------------";
+    await writeFile(lockFile, contents, { mode: 0o600 });
+
+    await expect(withPrivateFileLock(
+      lockFile,
+      async () => undefined,
+      { giveUpMs: 1, reclaimDeadProcess: true, retryDelayMs: () => 0 }
+    )).rejects.toMatchObject({ code: "PRIVATE_FILE_LOCK_CONTENDED" });
+    expect(await readFile(lockFile, "utf8")).toBe(contents);
+  });
+
+  it.skipIf(process.platform === "win32")("rejects a hard-linked lock even when dead-owner reclaim is enabled", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "muse-private-lock-hardlink-"));
+    const target = join(directory, "target");
+    const lockFile = join(directory, "state.lock");
+    const contents = "v1:2147483647:00000000-0000-4000-8000-000000000000";
+    await writeFile(target, contents, { mode: 0o600 });
+    await link(target, lockFile);
+
+    await expect(withPrivateFileLock(
+      lockFile,
+      async () => undefined,
+      { reclaimDeadProcess: true }
+    )).rejects.toMatchObject({ code: "PRIVATE_FILE_LOCK_UNSAFE" });
+    expect(await readFile(lockFile, "utf8")).toBe(contents);
+    expect(await readFile(target, "utf8")).toBe(contents);
   });
 
   it.skipIf(process.platform === "win32")("rejects and preserves an existing symlink without exposing its path", async () => {
