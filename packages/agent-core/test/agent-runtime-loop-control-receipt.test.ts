@@ -23,7 +23,7 @@ function sequenceProvider(responses: readonly ModelResponse[]): ModelProvider {
   };
 }
 
-function streamingProvider(response: ModelResponse): ModelProvider {
+function streamingProvider(response: ModelResponse, onStream?: () => void): ModelProvider {
   return {
     id: "loop-receipt-stream-test",
     async generate() {
@@ -33,6 +33,7 @@ function streamingProvider(response: ModelResponse): ModelProvider {
       return [];
     },
     async *stream(request) {
+      onStream?.();
       if (response.output.length > 0) {
         yield { text: response.output, type: "text-delta" };
       }
@@ -482,6 +483,111 @@ describe("AgentRuntime loop control receipt wiring", () => {
     expect(first.loopControlReceipt).toBeDefined();
     expect(second.fromCache).toBe(true);
     expect(second.loopControlReceipt).toBeUndefined();
+  });
+
+  it("bypasses cache reads and writes for each exact scheduled run", async () => {
+    const responseCache = new InMemoryResponseCache();
+    const cacheGet = vi.spyOn(responseCache, "get");
+    const cachePut = vi.spyOn(responseCache, "put");
+    const generate = vi.fn(async () => ({
+      id: `answer-${generate.mock.calls.length}`,
+      model: "test/model",
+      output: "fresh scheduled answer"
+    }));
+    const runtime = createAgentRuntime({
+      modelProvider: {
+        id: "scheduled-cache-test",
+        generate,
+        async listModels() {
+          return [];
+        },
+        async *stream() {}
+      },
+      responseCache
+    });
+
+    const first = await runtime.run({
+      ...input,
+      metadata: { scheduler: true },
+      runId: "scheduled-cache-run-1"
+    });
+    const second = await runtime.run({
+      ...input,
+      metadata: { scheduler: true },
+      runId: "scheduled-cache-run-2"
+    });
+
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(first.fromCache).not.toBe(true);
+    expect(second.fromCache).not.toBe(true);
+    expect(first.loopControlReceipt).toBeDefined();
+    expect(second.loopControlReceipt).toBeDefined();
+    expect(cacheGet).not.toHaveBeenCalled();
+    expect(cachePut).not.toHaveBeenCalled();
+    expect(responseCache.size()).toBe(0);
+  });
+
+  it("does not treat truthy non-boolean scheduler metadata as cache authority", async () => {
+    const responseCache = new InMemoryResponseCache();
+    const generate = vi.fn(async () => ({
+      id: "ordinary-answer",
+      model: "test/model",
+      output: "cacheable"
+    }));
+    const runtime = createAgentRuntime({
+      modelProvider: {
+        id: "strict-scheduled-metadata-test",
+        generate,
+        async listModels() {
+          return [];
+        },
+        async *stream() {}
+      },
+      responseCache
+    });
+    const metadata = { scheduler: "true" };
+
+    await runtime.run({ ...input, metadata, runId: "non-boolean-scheduler-1" });
+    const second = await runtime.run({ ...input, metadata, runId: "non-boolean-scheduler-2" });
+
+    expect(generate).toHaveBeenCalledOnce();
+    expect(second.fromCache).toBe(true);
+  });
+
+  it("bypasses the same cache boundary for streamed scheduled runs", async () => {
+    const responseCache = new InMemoryResponseCache();
+    const cacheGet = vi.spyOn(responseCache, "get");
+    const cachePut = vi.spyOn(responseCache, "put");
+    const onStream = vi.fn();
+    const runtime = createAgentRuntime({
+      modelProvider: streamingProvider({
+        id: "stream-answer",
+        model: "test/model",
+        output: "fresh stream answer"
+      }, onStream),
+      responseCache
+    });
+    const receipts = [];
+
+    for (const runId of ["scheduled-stream-1", "scheduled-stream-2"]) {
+      const events = [];
+      for await (const event of runtime.stream({
+        ...input,
+        metadata: { scheduler: true },
+        runId
+      })) {
+        events.push(event);
+      }
+      const done = events.find((event) => event.type === "done");
+      if (!done || done.type !== "done") throw new Error("missing done event");
+      receipts.push(done.loopControlReceipt);
+    }
+
+    expect(onStream).toHaveBeenCalledTimes(2);
+    expect(receipts.every((receipt) => receipt !== undefined)).toBe(true);
+    expect(cacheGet).not.toHaveBeenCalled();
+    expect(cachePut).not.toHaveBeenCalled();
+    expect(responseCache.size()).toBe(0);
   });
 
   it("observes each finalized non-cache receipt once and ignores observer failures", async () => {

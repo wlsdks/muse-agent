@@ -799,7 +799,12 @@ export class AgentRuntime {
       recordPromptBudgetSpanAttributes(runSpan, promptBudgetSpanAttributes(promptBudget));
     }
     const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
-    const cached = await this.readCache(cacheKey, selected.model);
+    // Event-driven runs must observe the event that admitted this exact
+    // execution. Replaying a prior same-prompt response would skip the model
+    // loop and omit fresh terminal evidence for the new trigger.
+    const cached = summaryAppliedContext.input.metadata?.scheduler === true
+      ? undefined
+      : await this.readCache(cacheKey, selected.model);
 
     return {
       cached,
@@ -939,7 +944,9 @@ export class AgentRuntime {
       guarded.output
     );
     if (!completionFailed) {
-      await this.writeCache(cacheKey, guarded, execution.toolsUsed);
+      if (context.input.metadata?.scheduler !== true) {
+        await this.writeCache(cacheKey, guarded, execution.toolsUsed);
+      }
       if (preparedRequest.contextWindow?.summaryInserted) {
         await persistConversationSummaryFromRequestFn(
           context,
