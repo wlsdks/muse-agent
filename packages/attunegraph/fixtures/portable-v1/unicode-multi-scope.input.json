@@ -1,0 +1,288 @@
+{
+  "schemaVersion": 1,
+  "case": "unicode-multi-scope",
+  "projections": [
+    {
+      "schemaVersion": 1,
+      "snapshot": {
+        "schemaVersion": 1,
+        "scope": {
+          "sourceId": "𐀀",
+          "threadId": "source-order"
+        },
+        "generation": 1,
+        "commitId": "attunegraph-commit:attunegraph-observation:db078997cf1c525d7256d3a780cd7744a3310d92da9277de1adb36bda7ed3bba"
+      },
+      "observationId": "attunegraph-observation:db078997cf1c525d7256d3a780cd7744a3310d92da9277de1adb36bda7ed3bba",
+      "canonicalProjection": "{\"assertions\":[{\"derivation\":{\"kind\":\"projection\",\"version\":\"test@1\"},\"epistemicClass\":\"source-observed\",\"id\":\"unicode-0\",\"object\":{\"id\":\"source-order\",\"kind\":\"thread\"},\"predicate\":\"LINKED_TO\",\"recordedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"sourceRefs\":[{\"id\":\"source-unicode-0\",\"namespace\":\"test.source\"}],\"subject\":{\"id\":\"artifact-unicode-0\",\"kind\":\"artifact\"}}],\"observationId\":\"attunegraph-observation:db078997cf1c525d7256d3a780cd7744a3310d92da9277de1adb36bda7ed3bba\",\"observationKey\":\"unicode-0\",\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"scope\":{\"sourceId\":\"𐀀\",\"threadId\":\"source-order\"},\"sourceFreshness\":{\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"state\":\"fresh\"}}",
+      "projectionFingerprint": "attunegraph-observation:db078997cf1c525d7256d3a780cd7744a3310d92da9277de1adb36bda7ed3bba",
+      "observedAt": "2026-07-30T00:00:00.000Z",
+      "sourceFreshness": {
+        "state": "fresh",
+        "observedAt": "2026-07-30T00:00:00.000Z"
+      },
+      "assertions": [
+        {
+          "schemaVersion": 1,
+          "id": "unicode-0",
+          "subject": {
+            "id": "artifact-unicode-0",
+            "kind": "artifact"
+          },
+          "predicate": "LINKED_TO",
+          "object": {
+            "id": "source-order",
+            "kind": "thread"
+          },
+          "epistemicClass": "source-observed",
+          "sourceRefs": [
+            {
+              "id": "source-unicode-0",
+              "namespace": "test.source"
+            }
+          ],
+          "recordedAt": "2026-07-30T00:00:00.000Z",
+          "derivation": {
+            "kind": "projection",
+            "version": "test@1"
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "snapshot": {
+        "schemaVersion": 1,
+        "scope": {
+          "sourceId": "tied",
+          "threadId": "𐀀"
+        },
+        "generation": 1,
+        "commitId": "attunegraph-commit:attunegraph-observation:ede7e4eee030c4ab83d5d151a1b27958f7a078a5f39bfdfe9f7604fc773b5daa"
+      },
+      "observationId": "attunegraph-observation:ede7e4eee030c4ab83d5d151a1b27958f7a078a5f39bfdfe9f7604fc773b5daa",
+      "canonicalProjection": "{\"assertions\":[{\"derivation\":{\"kind\":\"projection\",\"version\":\"test@1\"},\"epistemicClass\":\"source-observed\",\"id\":\"unicode-1\",\"object\":{\"id\":\"𐀀\",\"kind\":\"thread\"},\"predicate\":\"LINKED_TO\",\"recordedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"sourceRefs\":[{\"id\":\"source-unicode-1\",\"namespace\":\"test.source\"}],\"subject\":{\"id\":\"artifact-unicode-1\",\"kind\":\"artifact\"}}],\"observationId\":\"attunegraph-observation:ede7e4eee030c4ab83d5d151a1b27958f7a078a5f39bfdfe9f7604fc773b5daa\",\"observationKey\":\"unicode-1\",\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"scope\":{\"sourceId\":\"tied\",\"threadId\":\"𐀀\"},\"sourceFreshness\":{\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"state\":\"fresh\"}}",
+      "projectionFingerprint": "attunegraph-observation:ede7e4eee030c4ab83d5d151a1b27958f7a078a5f39bfdfe9f7604fc773b5daa",
+      "observedAt": "2026-07-30T00:00:00.000Z",
+      "sourceFreshness": {
+        "state": "fresh",
+        "observedAt": "2026-07-30T00:00:00.000Z"
+      },
+      "assertions": [
+        {
+          "schemaVersion": 1,
+          "id": "unicode-1",
+          "subject": {
+            "id": "artifact-unicode-1",
+            "kind": "artifact"
+          },
+          "predicate": "LINKED_TO",
+          "object": {
+            "id": "𐀀",
+            "kind": "thread"
+          },
+          "epistemicClass": "source-observed",
+          "sourceRefs": [
+            {
+              "id": "source-unicode-1",
+              "namespace": "test.source"
+            }
+          ],
+          "recordedAt": "2026-07-30T00:00:00.000Z",
+          "derivation": {
+            "kind": "projection",
+            "version": "test@1"
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "snapshot": {
+        "schemaVersion": 1,
+        "scope": {
+          "sourceId": "é",
+          "threadId": "normalization"
+        },
+        "generation": 1,
+        "commitId": "attunegraph-commit:attunegraph-observation:f58821b02c276166d3f967295a66931c7027d89919f6ddda9e2485ed68f05bad"
+      },
+      "observationId": "attunegraph-observation:f58821b02c276166d3f967295a66931c7027d89919f6ddda9e2485ed68f05bad",
+      "canonicalProjection": "{\"assertions\":[{\"derivation\":{\"kind\":\"projection\",\"version\":\"test@1\"},\"epistemicClass\":\"source-observed\",\"id\":\"unicode-2\",\"object\":{\"id\":\"normalization\",\"kind\":\"thread\"},\"predicate\":\"LINKED_TO\",\"recordedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"sourceRefs\":[{\"id\":\"source-unicode-2\",\"namespace\":\"test.source\"}],\"subject\":{\"id\":\"artifact-unicode-2\",\"kind\":\"artifact\"}}],\"observationId\":\"attunegraph-observation:f58821b02c276166d3f967295a66931c7027d89919f6ddda9e2485ed68f05bad\",\"observationKey\":\"unicode-2\",\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"scope\":{\"sourceId\":\"é\",\"threadId\":\"normalization\"},\"sourceFreshness\":{\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"state\":\"fresh\"}}",
+      "projectionFingerprint": "attunegraph-observation:f58821b02c276166d3f967295a66931c7027d89919f6ddda9e2485ed68f05bad",
+      "observedAt": "2026-07-30T00:00:00.000Z",
+      "sourceFreshness": {
+        "state": "fresh",
+        "observedAt": "2026-07-30T00:00:00.000Z"
+      },
+      "assertions": [
+        {
+          "schemaVersion": 1,
+          "id": "unicode-2",
+          "subject": {
+            "id": "artifact-unicode-2",
+            "kind": "artifact"
+          },
+          "predicate": "LINKED_TO",
+          "object": {
+            "id": "normalization",
+            "kind": "thread"
+          },
+          "epistemicClass": "source-observed",
+          "sourceRefs": [
+            {
+              "id": "source-unicode-2",
+              "namespace": "test.source"
+            }
+          ],
+          "recordedAt": "2026-07-30T00:00:00.000Z",
+          "derivation": {
+            "kind": "projection",
+            "version": "test@1"
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "snapshot": {
+        "schemaVersion": 1,
+        "scope": {
+          "sourceId": "é",
+          "threadId": "normalization"
+        },
+        "generation": 1,
+        "commitId": "attunegraph-commit:attunegraph-observation:b48bccaa72023693120541d44127037f108f75a01fd037b918efb340040d955f"
+      },
+      "observationId": "attunegraph-observation:b48bccaa72023693120541d44127037f108f75a01fd037b918efb340040d955f",
+      "canonicalProjection": "{\"assertions\":[{\"derivation\":{\"kind\":\"projection\",\"version\":\"test@1\"},\"epistemicClass\":\"source-observed\",\"id\":\"unicode-3\",\"object\":{\"id\":\"normalization\",\"kind\":\"thread\"},\"predicate\":\"LINKED_TO\",\"recordedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"sourceRefs\":[{\"id\":\"source-unicode-3\",\"namespace\":\"test.source\"}],\"subject\":{\"id\":\"artifact-unicode-3\",\"kind\":\"artifact\"}}],\"observationId\":\"attunegraph-observation:b48bccaa72023693120541d44127037f108f75a01fd037b918efb340040d955f\",\"observationKey\":\"unicode-3\",\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"scope\":{\"sourceId\":\"é\",\"threadId\":\"normalization\"},\"sourceFreshness\":{\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"state\":\"fresh\"}}",
+      "projectionFingerprint": "attunegraph-observation:b48bccaa72023693120541d44127037f108f75a01fd037b918efb340040d955f",
+      "observedAt": "2026-07-30T00:00:00.000Z",
+      "sourceFreshness": {
+        "state": "fresh",
+        "observedAt": "2026-07-30T00:00:00.000Z"
+      },
+      "assertions": [
+        {
+          "schemaVersion": 1,
+          "id": "unicode-3",
+          "subject": {
+            "id": "artifact-unicode-3",
+            "kind": "artifact"
+          },
+          "predicate": "LINKED_TO",
+          "object": {
+            "id": "normalization",
+            "kind": "thread"
+          },
+          "epistemicClass": "source-observed",
+          "sourceRefs": [
+            {
+              "id": "source-unicode-3",
+              "namespace": "test.source"
+            }
+          ],
+          "recordedAt": "2026-07-30T00:00:00.000Z",
+          "derivation": {
+            "kind": "projection",
+            "version": "test@1"
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "snapshot": {
+        "schemaVersion": 1,
+        "scope": {
+          "sourceId": "tied",
+          "threadId": ""
+        },
+        "generation": 1,
+        "commitId": "attunegraph-commit:attunegraph-observation:deaeb3ad8413f038abd18e39932133644b9ffbfa640d7dc00395452d3da55c8c"
+      },
+      "observationId": "attunegraph-observation:deaeb3ad8413f038abd18e39932133644b9ffbfa640d7dc00395452d3da55c8c",
+      "canonicalProjection": "{\"assertions\":[{\"derivation\":{\"kind\":\"projection\",\"version\":\"test@1\"},\"epistemicClass\":\"source-observed\",\"id\":\"unicode-4\",\"object\":{\"id\":\"\",\"kind\":\"thread\"},\"predicate\":\"LINKED_TO\",\"recordedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"sourceRefs\":[{\"id\":\"source-unicode-4\",\"namespace\":\"test.source\"}],\"subject\":{\"id\":\"artifact-unicode-4\",\"kind\":\"artifact\"}}],\"observationId\":\"attunegraph-observation:deaeb3ad8413f038abd18e39932133644b9ffbfa640d7dc00395452d3da55c8c\",\"observationKey\":\"unicode-4\",\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"scope\":{\"sourceId\":\"tied\",\"threadId\":\"\"},\"sourceFreshness\":{\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"state\":\"fresh\"}}",
+      "projectionFingerprint": "attunegraph-observation:deaeb3ad8413f038abd18e39932133644b9ffbfa640d7dc00395452d3da55c8c",
+      "observedAt": "2026-07-30T00:00:00.000Z",
+      "sourceFreshness": {
+        "state": "fresh",
+        "observedAt": "2026-07-30T00:00:00.000Z"
+      },
+      "assertions": [
+        {
+          "schemaVersion": 1,
+          "id": "unicode-4",
+          "subject": {
+            "id": "artifact-unicode-4",
+            "kind": "artifact"
+          },
+          "predicate": "LINKED_TO",
+          "object": {
+            "id": "",
+            "kind": "thread"
+          },
+          "epistemicClass": "source-observed",
+          "sourceRefs": [
+            {
+              "id": "source-unicode-4",
+              "namespace": "test.source"
+            }
+          ],
+          "recordedAt": "2026-07-30T00:00:00.000Z",
+          "derivation": {
+            "kind": "projection",
+            "version": "test@1"
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "snapshot": {
+        "schemaVersion": 1,
+        "scope": {
+          "sourceId": "",
+          "threadId": "source-order"
+        },
+        "generation": 1,
+        "commitId": "attunegraph-commit:attunegraph-observation:809f229aa33e75ffcb79fb4ace3ae356570077a902bc03b0733a4c89d06b0a88"
+      },
+      "observationId": "attunegraph-observation:809f229aa33e75ffcb79fb4ace3ae356570077a902bc03b0733a4c89d06b0a88",
+      "canonicalProjection": "{\"assertions\":[{\"derivation\":{\"kind\":\"projection\",\"version\":\"test@1\"},\"epistemicClass\":\"source-observed\",\"id\":\"unicode-5\",\"object\":{\"id\":\"source-order\",\"kind\":\"thread\"},\"predicate\":\"LINKED_TO\",\"recordedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"sourceRefs\":[{\"id\":\"source-unicode-5\",\"namespace\":\"test.source\"}],\"subject\":{\"id\":\"artifact-unicode-5\",\"kind\":\"artifact\"}}],\"observationId\":\"attunegraph-observation:809f229aa33e75ffcb79fb4ace3ae356570077a902bc03b0733a4c89d06b0a88\",\"observationKey\":\"unicode-5\",\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"scope\":{\"sourceId\":\"\",\"threadId\":\"source-order\"},\"sourceFreshness\":{\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"state\":\"fresh\"}}",
+      "projectionFingerprint": "attunegraph-observation:809f229aa33e75ffcb79fb4ace3ae356570077a902bc03b0733a4c89d06b0a88",
+      "observedAt": "2026-07-30T00:00:00.000Z",
+      "sourceFreshness": {
+        "state": "fresh",
+        "observedAt": "2026-07-30T00:00:00.000Z"
+      },
+      "assertions": [
+        {
+          "schemaVersion": 1,
+          "id": "unicode-5",
+          "subject": {
+            "id": "artifact-unicode-5",
+            "kind": "artifact"
+          },
+          "predicate": "LINKED_TO",
+          "object": {
+            "id": "source-order",
+            "kind": "thread"
+          },
+          "epistemicClass": "source-observed",
+          "sourceRefs": [
+            {
+              "id": "source-unicode-5",
+              "namespace": "test.source"
+            }
+          ],
+          "recordedAt": "2026-07-30T00:00:00.000Z",
+          "derivation": {
+            "kind": "projection",
+            "version": "test@1"
+          }
+        }
+      ]
+    }
+  ]
+}

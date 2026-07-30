@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "sourceModules": [
+    "attunegraph-local-profile.mjs",
+    "attunegraph-local-projection.mjs",
+    "attunegraph-local-protocol.mjs",
+    "attunegraph-local-sqlite.mjs",
+    "attunegraph-local-worker.mjs"
+  ],
+  "publicLocalRuntimeExports": [
+    "openLocalAttuneGraph"
+  ],
+  "publicLocalTypeExports": [
+    "OpenLocalAttuneGraphOptions",
+    "openLocalAttuneGraph"
+  ],
+  "sqliteExecutionModule": "attunegraph-local-sqlite.mjs",
+  "workerEntryModule": "attunegraph-local-worker.mjs"
+}

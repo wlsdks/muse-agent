@@ -8,6 +8,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Renamed the graph product and every current code, package, path, and persisted/wire
+  identity to **AttuneGraph**, with no compatibility alias. The dependency-free engine,
+  SQLite/Worker persistence, portable format, and conformance surface now live in
+  `@attunegraph/core`; Muse-specific Continuity, Shadow, Capsule, evidence, and lineage
+  composition live in `@muse/attunegraph`. Superseded databases and portable artifacts
+  fail closed before mutation.
+
 - Added the independently verified AWG-070a3a1a4e2b2 package-private,
   dedicated Admin Worker/application over the parent-owned offline snapshot lease.
   The parent alone acquires and releases the snapshot; the Worker receives only its
@@ -24,7 +31,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   whole-package result.
 
 - Added the independently verified AWG-070a3a1a4e2b1 package-private,
-  parent-owned offline MAG snapshot lease for explicitly closed, quiescent SQLite
+  parent-owned offline AttuneGraph snapshot lease for explicitly closed, quiescent SQLite
   stores. The lease admits owner-private local POSIX profiles, copies the exact
   main/journal/WAL/SHM set into a private directory, verifies completed destination
   bytes independently, rechecks source identity and content before publication, and
@@ -35,7 +42,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   add a real Admin Worker/application, live-store snapshotting, public export,
   CLI/API/UI, generation activation, or production-scale proof.
 
-- Added the independently verified AWG-070a3a1a4e2a package-private MAG v1
+- Added the independently verified AWG-070a3a1a4e2a package-private AttuneGraph v1
   physical-schema manifest, classifier, and caller-owned read-only snapshot inspector
   core. Serving and Admin inspection now share exact DDL, identity, object, and
   foreign-key truth; bounded schema/FK sentinels reject excess metadata before
@@ -77,7 +84,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   non-POSIX profiles, and production-scale qualification remain later work.
 
 - Added the independently verified AWG-070a3a1a4c package-private SQLite indexed
-  `.magx` validation sink. It transfers ownership of a caller-opened empty
+  `.atgx` validation sink. It transfers ownership of a caller-opened empty
   `DatabaseSync`, stages one exact raw-UTF-8-BLOB-keyed final identity per scope,
   validates final heads/counts/profile in one transaction, and closes on success or
   best-effort rollback/cleanup. Qualification covers Unicode golden input, a
@@ -91,7 +98,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   excluded for later slices.
 
 - Added the independently verified AWG-070a3a1a4b structural streaming qualification
-  for the package-private `.magx` decoder. Valid and representative corrupt artifacts
+  for the package-private `.atgx` decoder. Valid and representative corrupt artifacts
   now produce exact-equal reports, terminal failures, and sink traces across one-chunk,
   bytewise, LF/multibyte-boundary, and irregular chunking. Closed retained-state ledgers
   reject hidden record, projection, or identity history, while two fresh current-only
@@ -99,7 +106,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   retention with deterministic corroboration, not RSS, empirical asymptotics,
   production scale, or cross-runtime behavior.
 
-- Added the independently verified AWG-070a3a1a4a package-private streaming `.magx` v1
+- Added the independently verified AWG-070a3a1a4a package-private streaming `.atgx` v1
   decoder.
   It incrementally validates fatal UTF-8 canonical NDJSON, record/store/state identities,
   order, counts, and reduced limits while driving a captured async validation sink with
@@ -110,7 +117,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   AWG-070a3a1a4b work; filesystem, SQLite, Worker, Admin, and public exports remain absent.
 
 - Added the independently verified AWG-070a3a1a3b shared-path reduced-budget
-  qualification for the `.magx` encoder. Production and qualification wrappers now
+  qualification for the `.atgx` encoder. Production and qualification wrappers now
   share one private implementation factory; a hostile immutable seven-axis budget
   snapshot proves exact projection, head, scope, total-record, portable-line, edge-line,
   and artifact-byte boundaries plus precedence, retry, and terminal-abort behavior.
@@ -129,7 +136,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   admin, export, or rebuild claim. A fresh evaluator found one reference-identity gap;
   the repaired test then passed independently with no P0/P1 findings.
 
-- Added the independently verified AWG-070a3a1a3a0b production `.magx`
+- Added the independently verified AWG-070a3a1a3a0b production `.atgx`
   golden-corpus generator and three-way production/clean-room/checked-in integration.
   Package-local modes fail closed around read-only comparison, isolated external
   generation, and explicit checked-in refresh. Refresh stages on the same filesystem,
@@ -142,24 +149,24 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   limits, decoder, runtime filesystem/SQLite/Worker integration, admin, and public
   export/rebuild remain pending; runtime behavior and public exports are unchanged.
 
-- Added the independently verified AWG-070a3a1a3a0a clean-room `.magx` v1
+- Added the independently verified AWG-070a3a1a3a0a clean-room `.atgx` v1
   compatibility corpus and package-local oracle. Trusted stored-projection inputs
   cover empty, two-generation, raw UTF-8 Unicode ordering, and normalization-distinct
   scopes. The Node-built-ins-only verifier independently derives store/record/state
   identities, exact bytes, final heads, and a per-line byte ledger without importing
-  production MAG code or claiming to verify Engine admission. A fresh evaluator
+  production AttuneGraph code or claiming to verify Engine admission. A fresh evaluator
   recomputed every artifact and manifest field, exercised framing/path/mutation
   failures, and found no P0/P1 blocker. Runtime behavior, public exports, and
   portable-format status are unchanged.
 
-- Documented the required standalone MAG Admin surface. A shared future `./admin` core
+- Documented the required standalone AttuneGraph Admin surface. A shared future `./admin` core
   will back CLI and local UI/API surfaces, remain read-only by default, expose health,
   scope/head/provenance/integrity/storage state, and control verify, export, rebuild,
   backup, physical forget, and compaction. Destructive maintenance requires impact
   preview, application-boundary confirmation, an immutable audit receipt, and a verified
   recovery or replacement path; it is never an agent/model tool.
 
-- Added the independently verified AWG-070a3a1a2 package-private transactional `.magx`
+- Added the independently verified AWG-070a3a1a2 package-private transactional `.atgx`
   encoder core. It prepares canonical bytes, counters, total length, report, and copied
   SHA-256 state before every mandatory identity-sink callback; sink success is followed
   only by non-throwing local state assignment. Every failure after first sink engagement,
@@ -174,20 +181,20 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 - Added the independently verified AWG-070a3a1a0 package-private foundations for a future
   portable codec: an internal canonical helper may override only the body/full byte
   ceilings, and exact portable projection admission returns the Engine-normalized
-  projection with detached scope, generation, commit, and `mag-store:` identity.
-  Existing canonical defaults, `openMag`, and public exports remain unchanged. A future
+  projection with detached scope, generation, commit, and `attunegraph-store:` identity.
+  Existing canonical defaults, `openAttuneGraph`, and public exports remain unchanged. A future
   encoder must still require caller `expectedScope` and a mandatory exact-head validation
   sink; no codec, filesystem, SQLite, Worker, admin, or public export ships here.
 
 - Added the independently verified AWG-070a3a0 portable-format foundation. The exact
-  stored-projection normalizer used by `openMag` is now a package-private seam with
-  direct corruption tests, and `packages/attunement-graph/PORTABLE-FORMAT.md` fixes the
-  normative `.magx` v1 byte, schema, identity, limit, streaming-sink, and future
+  stored-projection normalizer used by `openAttuneGraph` is now a package-private seam with
+  direct corruption tests, and `packages/attunegraph/PORTABLE-FORMAT.md` fixes the
+  normative `.atgx` v1 byte, schema, identity, limit, streaming-sink, and future
   admin-contract semantics. This does not ship a codec, export/rebuild, filesystem or
   SQLite staging, Worker/admin runtime, or public `./admin`. A fresh evaluator passed
   after the normative projection order was fixed to UTF-8 scope bytes then generation.
 
-- Hardened the AWG-070a1 local MAG Store with AWG-070a2 typed runtime boundaries.
+- Hardened the AWG-070a1 local AttuneGraph Store with AWG-070a2 typed runtime boundaries.
   The former 976-line blanket-untyped Worker is now a thin dispatch over a closed
   checked-JSDoc protocol, reviewed filesystem/runtime profile, and one Worker-only SQLite
   execution Implementation. A fail-closed manifest verifies source/dist runtime and
@@ -197,8 +204,8 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   This is a maintainability and compatibility hardening slice, not export, backup,
   physical forget, Source Adapters, default Muse composition, or user-value evidence.
 
-- Added the AWG-070a1 **durable projection-journal foundation** for MAG. The public
-  `@muse/attunement-graph/local` subpath now opens an explicit absolute database path and
+- Added the AWG-070a1 **durable projection-journal foundation** for AttuneGraph. The public
+  `@attunegraph/core/local` subpath now opens an explicit absolute database path and
   exact scope, then exposes the same closed `project | execute | close` Interface as the
   neutral Engine. SQLite stays inside one long-lived Worker; the Adapter fail-closes on
   unsupported Node/SQLite, path, ownership, permission, operating-system, or filesystem
@@ -212,7 +219,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   destructive migration, complete physical-profile qualification, Source Adapters,
   Muse default-path composition, and the 10K/100K/1M benchmark matrix remain.
 
-- Added the independently verified neutral **MAG lifecycle**. A non-Muse caller can now
+- Added the independently verified neutral **AttuneGraph lifecycle**. A non-Muse caller can now
   open one exact scope over an explicit opaque Store capability, commit a bounded
   `canonical-projection@1` through atomic compare-and-swap, execute a pinned
   `working-graph@1`, and idempotently close after accepted work drains. Store output is
@@ -225,7 +232,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   and lifecycle defects before the final PASS. Final evidence: 325/325 package tests,
   11/11 focused lifecycle tests, build, package/root typechecks, `test:changed` (380),
   focused lint, diff check, forbidden source/dist dependency scans, and public/private
-  subpath probes. After Attunement schema v12 landed on `main`, MAG source accounting was
+  subpath probes. After Attunement schema v12 landed on `main`, AttuneGraph source accounting was
   rebaselined to accept and count `experienceLearningPolicyAudits` without projecting
   those audits as policy evidence; legacy v1-v11 inputs still normalize through the
   authoritative parser. Eight stale v11 Attunement test fixtures were mechanically
@@ -235,7 +242,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   projected into graph evidence.
   This is not SQLite durability or standalone qualification.
 
-- Fixed MAG's language/runtime boundary as **TypeScript-first, worker-isolated SQLite,
+- Fixed AttuneGraph's language/runtime boundary as **TypeScript-first, worker-isolated SQLite,
   benchmark-gated Rust**. ADR 0002 keeps semantics and the public Interface in TypeScript,
   requires synchronous SQLite work to stay off the application thread, and permits only
   measured proof-closure, canonical-hash, compression, export/rebuild, or physical-forget
@@ -244,23 +251,23 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   units, activation evidence, and select/reject/defer decisions. No Rust kernel is
   currently activated or claimed faster.
 
-- Reworked the package-owned MAG README into a standalone-repository-ready product and
+- Reworked the package-owned AttuneGraph README into a standalone-repository-ready product and
   engineering guide: differentiation from RAG/general Graph DBs, minimal lifecycle
   example, Engine/Store/Source Adapter boundaries, language and performance policy,
   invariants, conformance, extraction gates, and honest shipped/roadmap status now live
   with the Module rather than depending on Muse application knowledge.
 
-- Defined **Muse Attunement Graph (MAG)** as an independently extractable product Module.
+- Defined **AttuneGraph** as an independently extractable product Module.
   Muse remains its first consumer and dogfood environment while one monorepo owns rapid
   development. ADR 0001 fixes the future standalone repository boundary, a closed
-  `open → project → execute → close` product Interface, hidden SQLite MAG Store,
+  `open → project → execute → close` product Interface, hidden SQLite AttuneGraph Store,
   in-memory oracle, Source/Store Adapter separation, clean-room packed-artifact gate, and
   history-preserving split strategy. The package is still private and not independently
   publishable today.
 
-- Added the bounded **MAG Shadow decision receipt** foundation. Fresh timing
+- Added the bounded **AttuneGraph Shadow decision receipt** foundation. Fresh timing
   decisions retain a rule-v3 decision-time policy snapshot while legacy rule-v1/v2 files
-  remain readable and ineligible for retrospective MAG binding. A dedicated package
+  remain readable and ineligible for retrospective AttuneGraph binding. A dedicated package
   subpath binds `silent | digest | offer`, reason, counterfactual, consent, and at most two
   category-only observation IDs/digest only to the original process-local compared result
   that owns its Pack and four Source/Graph receipts. Copies, proxies, mismatched scope/time,
@@ -270,7 +277,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   naked serialized receipt fails closed. They grant no delivery, feedback, policy, or
   action authority. This is not automatic timing, a portable restart verifier, a return
   signal, a Shadow-to-Return card, durability, or real-life usefulness evidence.
-  An independent completion gate passed the full Attunement suite (334/334), full MAG
+  An independent completion gate passed the full Attunement suite (334/334), full AttuneGraph
   suite (313/313), changed-scope tests, package/root typechecks, both builds, focused
   lint, the public/private export probe, and adversarial provenance/dependency probes.
 
@@ -564,7 +571,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   source I/O, automatic observation, persistence, or Capsule behavior. The existing query,
   seal, and verify contracts remain unchanged.
 
-- Added `@muse/attunement-graph/continuity-changes`, the first verified
+- Added `@muse/attunegraph/continuity-changes`, the first verified
   personal-temporal operator. It compares two exact Continuity observations through a
   version-bound caller boundary, normalizes no-op re-observation, distinguishes
   world-valid from learned-after changes, conservatively pairs revisions, and returns one
@@ -572,14 +579,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   replay records equal 1.0 flat/graph detection precision and recall, with exact full-path
   coverage 1.0 for graph versus 0.75 for flat; no model or embedding calls are made.
 
-- Added the first `@muse/attunement-graph` reference kernel with closed temporal and
+- Added the first `@muse/attunegraph` reference kernel with closed temporal and
   provenance assertions, atomic/idempotent in-memory storage, compact exact-seed indexes,
   bounded traversal, derivation-aware forgetting, a reusable backend conformance suite,
   and a token-budgeted Activation Subgraph compiler. It is not yet wired to authoritative
   personal stores or any user-facing Attunement experience.
 
 - Defined Muse's signature roadmap as Shadow Muse, Continuity Capsule, and
-  Policy Card, backed by a proposed lightweight Attunement Graph Engine and a
+  Policy Card, backed by a proposed lightweight AttuneGraph Engine and a
   separate research, modularization, storage-bake-off, and dogfood program.
   These documents explicitly remain roadmap contracts rather than shipped
   capability claims.

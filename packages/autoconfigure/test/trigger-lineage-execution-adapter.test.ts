@@ -1,7 +1,7 @@
 import {
   projectTriggerControlLineage,
   TriggerControlLineageProjectionError
-} from "@muse/attunement-graph/loop-lineage";
+} from "@muse/attunegraph/loop-lineage";
 import type { ScheduledJobExecution } from "@muse/scheduler";
 import {
   admitTriggerControl,

@@ -1,16 +1,20 @@
-# MUSE_* environment variables — the generated inventory
+# Muse and AttuneGraph environment variables — generated inventory
 
 **Generated file — do not edit by hand.** Regenerate with `pnpm docs:env`;
 `pnpm check:env` (CI / self-eval) fails when this file no longer matches the
-source. Every `MUSE_*` referenced in product source (`packages/`, `apps/`;
-tests excluded) is listed with the workspaces that read it. Descriptions and
+source. Every `MUSE_*` or `ATTUNEGRAPH_*` referenced in product source
+(`packages/`, `apps/`; tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **651** variables.
+Total: **654** variables.
 
 | Variable | Read by |
 | --- | --- |
+| `ATTUNEGRAPH_INPUT_TYPE_CHILD` | packages/attunegraph |
+| `ATTUNEGRAPH_PHYSICAL_SCHEMA_V1` | packages/attunegraph |
+| `ATTUNEGRAPH_SHADOW_TIMING_PROJECTIONS` | packages/attunement |
+| `ATTUNEGRAPH_SHADOW_TIMING_PROJECTION_VERSION` | packages/attunement |
 | `MUSE_A2A_COUNCIL` | apps/cli, packages/a2a |
 | `MUSE_A2A_COUNCIL_GROUNDED` | apps/cli |
 | `MUSE_A2A_ENABLED` | apps/cli, packages/a2a, packages/agent-core |
@@ -331,7 +335,6 @@ Total: **651** variables.
 | `MUSE_MACOS_ACTUATORS` | apps/cli, packages/prompts |
 | `MUSE_MACOS_CALENDAR_NAME` | apps/cli, packages/autoconfigure |
 | `MUSE_MAC_HELPER` | packages/macos |
-| `MUSE_MAG_INPUT_TYPE_CHILD` | packages/attunement-graph |
 | `MUSE_MATH_ENABLED` | packages/autoconfigure |
 | `MUSE_MATRIX_ACCESS_TOKEN` | packages/autoconfigure |
 | `MUSE_MATRIX_HOMESERVER_URL` | packages/autoconfigure |

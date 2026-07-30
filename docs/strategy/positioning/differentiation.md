@@ -8,11 +8,11 @@
 > Shadow Muse → Continuity Capsule → Policy Card: learn when to stay quiet, restore the
 > state the user intended to continue, and make collaboration learning visible, scoped,
 > and reversible. A procedural skill improves how an agent performs a task; an Attunement
-> Policy improves how Muse collaborates with this person. The proposed Attunement Graph
+> Policy improves how Muse collaborates with this person. The proposed AttuneGraph
 > Engine connects time, relationship, provenance, policy, and authority as a lightweight
 > personal context compiler. See [the product contract](../attunement.md),
-> [graph design](../../design/attunement/attunement-graph.md), and
-> [separate execution roadmap](../../../internal/goals/attunement-wow-graph-roadmap.md).
+> [graph design](../../design/attunement/attunegraph.md), and
+> [separate execution roadmap](../../../internal/goals/attunegraph-roadmap.md).
 >
 > The L1–L7 entries below are a historical, evidence-oriented trust ledger. They remain
 > valuable foundations—grounding, privacy enforcement, correction, tamper evidence, and

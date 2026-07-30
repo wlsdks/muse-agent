@@ -555,15 +555,15 @@ thread, not a hidden global preference.
   work, and estimated time.
 - **Policy Card** — shows the grounds and scope of a learned collaboration rule, with
   try/edit/reject/undo.
-- **Muse Attunement Graph (MAG)** — a proposed agent-only module that links time, relations,
+- **AttuneGraph** — a proposed agent-only module that links time, relations,
   provenance, and policy on top of existing stores, building only the small Working Graph a turn
-  needs. The current private library substrate is partial; the SQLite MAG Store and a standalone
+  needs. The current private library substrate is partial; the SQLite AttuneGraph Store and a standalone
   release are roadmap.
 
 The key sentence: **Muse doesn't remember apps; it remembers the state I meant to continue.**
 The detailed product contract and module design follow [Attunement](../strategy/attunement.md),
-[Attunement Graph](../design/attunement/attunement-graph.md), and the
-[separate execution roadmap](../../internal/goals/attunement-wow-graph-roadmap.md). These items are not shipped
+[AttuneGraph](../design/attunement/attunegraph.md), and the
+[separate execution roadmap](../../internal/goals/attunegraph-roadmap.md). These items are not shipped
 features yet.
 
 The first flow: **user picks a life thread → context pack prepared → usage recorded → next pack

@@ -121,7 +121,7 @@ export interface TimingPolicySnapshot {
  * Schema-v3 timing decisions retain the exact, bounded policy values used by
  * the existing reducer. They add provenance only; delivery remains elsewhere.
  */
-export interface MagShadowTimingCandidate extends TimingCandidateBase {
+export interface AttuneGraphShadowTimingCandidate extends TimingCandidateBase {
   readonly counterfactual: TimingCounterfactual;
   readonly policySnapshot: TimingPolicySnapshot;
   readonly reason: TimingDecisionReason;
@@ -131,13 +131,13 @@ export interface MagShadowTimingCandidate extends TimingCandidateBase {
 export type TimingCandidate =
   | LegacyTimingCandidate
   | ShadowTimingCandidate
-  | MagShadowTimingCandidate;
+  | AttuneGraphShadowTimingCandidate;
 
-export const MAG_SHADOW_TIMING_PROJECTION_VERSION =
-  "muse.mag-shadow-timing-projection.v1" as const;
+export const ATTUNEGRAPH_SHADOW_TIMING_PROJECTION_VERSION =
+  "muse.attunegraph.shadow-timing-projection.v1" as const;
 
 /** Safe, content-addressed timing input for Graph receipt capture. */
-export type MagShadowTimingProjectionV1 = Readonly<{
+export type AttuneGraphShadowTimingProjectionV1 = Readonly<{
   readonly candidate: Readonly<{
     readonly counterfactual: TimingCounterfactual;
     readonly createdAt: string;
@@ -156,7 +156,7 @@ export type MagShadowTimingProjectionV1 = Readonly<{
     readonly sessionId: string;
     readonly threadId: string;
   }>[];
-  readonly projectionVersion: typeof MAG_SHADOW_TIMING_PROJECTION_VERSION;
+  readonly projectionVersion: typeof ATTUNEGRAPH_SHADOW_TIMING_PROJECTION_VERSION;
   readonly schemaVersion: 1;
   readonly sessionConsentVersion: number;
 }>;
@@ -165,7 +165,7 @@ type PersistedTimingStateStamp = Readonly<{
   readonly digest: string;
 }>;
 
-type MagShadowTimingProjectionStamp = Readonly<{
+type AttuneGraphShadowTimingProjectionStamp = Readonly<{
   readonly candidateId: string;
   readonly state: TimingState;
   readonly stateDigest: string;
@@ -235,8 +235,8 @@ const MAX_COOLDOWN_MS = 24 * 60 * 60_000;
 const MIN_COOLDOWN_MS = 30 * 60_000;
 
 const PERSISTED_TIMING_STATES = new WeakMap<object, PersistedTimingStateStamp>();
-const MAG_SHADOW_TIMING_PROJECTIONS =
-  new WeakMap<object, MagShadowTimingProjectionStamp>();
+const ATTUNEGRAPH_SHADOW_TIMING_PROJECTIONS =
+  new WeakMap<object, AttuneGraphShadowTimingProjectionStamp>();
 
 const EMPTY_STATE: TimingState = freezeTimingState({
   candidates: [],
@@ -488,18 +488,18 @@ export function inspectTimingSession(state: TimingState, sessionId: string): {
  * capture input. The source state remains authoritative; callers receive no
  * raw desktop content and older candidates deliberately cannot opt in.
  */
-export function projectMagShadowTimingDecision(
+export function projectAttuneGraphShadowTimingDecision(
   state: TimingState,
   candidateId: string
-): MagShadowTimingProjectionV1 | undefined {
+): AttuneGraphShadowTimingProjectionV1 | undefined {
   if (typeof state !== "object" || state === null || typeof candidateId !== "string") {
     return undefined;
   }
   const stamp = PERSISTED_TIMING_STATES.get(state);
   if (stamp === undefined || timingStateDigest(state) !== stamp.digest) return undefined;
-  const projection = projectMagShadowTimingDecisionFromState(state, candidateId);
+  const projection = projectAttuneGraphShadowTimingDecisionFromState(state, candidateId);
   if (projection === undefined) return undefined;
-  MAG_SHADOW_TIMING_PROJECTIONS.set(projection, Object.freeze({
+  ATTUNEGRAPH_SHADOW_TIMING_PROJECTIONS.set(projection, Object.freeze({
     candidateId,
     state,
     stateDigest: stamp.digest
@@ -512,11 +512,11 @@ export function projectMagShadowTimingDecision(
  * This is intentionally identity-bound: structural lookalikes cannot become
  * provenance for a graph receipt.
  */
-export function verifyMagShadowTimingProjection(
+export function verifyAttuneGraphShadowTimingProjection(
   value: unknown
-): MagShadowTimingProjectionV1 | undefined {
+): AttuneGraphShadowTimingProjectionV1 | undefined {
   if (typeof value !== "object" || value === null) return undefined;
-  const stamp = MAG_SHADOW_TIMING_PROJECTIONS.get(value);
+  const stamp = ATTUNEGRAPH_SHADOW_TIMING_PROJECTIONS.get(value);
   if (
     stamp === undefined
     || PERSISTED_TIMING_STATES.get(stamp.state)?.digest !== stamp.stateDigest
@@ -524,7 +524,7 @@ export function verifyMagShadowTimingProjection(
   ) {
     return undefined;
   }
-  const recomputed = projectMagShadowTimingDecisionFromState(
+  const recomputed = projectAttuneGraphShadowTimingDecisionFromState(
     stamp.state,
     stamp.candidateId
   );
@@ -534,13 +534,13 @@ export function verifyMagShadowTimingProjection(
   ) {
     return undefined;
   }
-  return value as MagShadowTimingProjectionV1;
+  return value as AttuneGraphShadowTimingProjectionV1;
 }
 
-function projectMagShadowTimingDecisionFromState(
+function projectAttuneGraphShadowTimingDecisionFromState(
   state: TimingState,
   candidateId: string
-): MagShadowTimingProjectionV1 | undefined {
+): AttuneGraphShadowTimingProjectionV1 | undefined {
   const candidate = state.candidates.find((entry) => entry.id === candidateId);
   if (candidate === undefined) return undefined;
   const session = state.sessions.find((entry) => entry.id === candidate.sessionId);
@@ -604,7 +604,7 @@ function projectMagShadowTimingDecisionFromState(
     candidate: projectedCandidate,
     observationDigest: timingObservationDigest(exactObservations),
     observations: Object.freeze(projectedObservations),
-    projectionVersion: MAG_SHADOW_TIMING_PROJECTION_VERSION,
+    projectionVersion: ATTUNEGRAPH_SHADOW_TIMING_PROJECTION_VERSION,
     schemaVersion: 1 as const,
     sessionConsentVersion: session.consentVersion
   });
@@ -620,7 +620,7 @@ function decideTiming(
   const latest = observations.at(-1);
   const prior = observations.at(-2);
   const evidenceObservationIds = latest ? prior ? [prior.id, latest.id] : [latest.id] : [];
-  const decision = (decision: TimingDecision, reason: TimingDecisionReason): MagShadowTimingCandidate => ({
+  const decision = (decision: TimingDecision, reason: TimingDecisionReason): AttuneGraphShadowTimingCandidate => ({
     counterfactual: {
       action: counterfactualActionForDecision(decision),
       evaluatedAt: createdAt

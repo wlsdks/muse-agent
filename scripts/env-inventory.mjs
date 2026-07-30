@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// The MUSE_* environment-variable inventory + drift guard.
+// The Muse + AttuneGraph environment-variable inventory + drift guard.
 //
-// Muse's configuration surface is hundreds of MUSE_* variables read across the
-// workspace with no central registry — undiscoverable for a user and free to
-// drift for a developer. This script makes the surface ENUMERATED and GUARDED:
-// it extracts every MUSE_* referenced in product source (packages/ + apps/,
-// tests excluded), renders docs/setup/ENV.md from that ground truth, and in --check
-// mode fails when the doc no longer matches the source — so a new (or removed)
-// variable cannot land without the inventory following it.
+// Muse's configuration surface is hundreds of MUSE_* variables, while the
+// standalone-neutral AttuneGraph core owns ATTUNEGRAPH_* variables. Both are
+// read across the workspace without a central registry. This script makes the
+// complete product surface ENUMERATED and GUARDED: it extracts every supported
+// namespace referenced in product source (packages/ + apps/, tests excluded),
+// renders docs/setup/ENV.md from that ground truth, and in --check mode fails
+// when the doc no longer matches the source.
 //
 //   node scripts/env-inventory.mjs --write   # regenerate docs/setup/ENV.md
 //   node scripts/env-inventory.mjs --check   # exit 1 when docs/setup/ENV.md is stale
@@ -21,9 +21,9 @@ const ROOT = process.cwd();
 const DOC = join(ROOT, "docs/setup/ENV.md");
 const SOURCE_ROOTS = ["packages", "apps"];
 
-const ENV_RE = /\bMUSE_[A-Z0-9_]+\b/g;
+const ENV_RE = /\b(?:ATTUNEGRAPH|MUSE)_[A-Z0-9_]+\b/g;
 
-/** Every distinct MUSE_* token in one source string. */
+/** Every distinct product-owned environment token in one source string. */
 export function extractEnvVars(source) {
   return [...new Set(source.match(ENV_RE) ?? [])];
 }
@@ -67,12 +67,12 @@ export function collectInventory(root = ROOT) {
 export function renderEnvDoc(inventory) {
   const names = [...inventory.keys()].sort();
   const lines = [
-    "# MUSE_* environment variables — the generated inventory",
+    "# Muse and AttuneGraph environment variables — generated inventory",
     "",
     "**Generated file — do not edit by hand.** Regenerate with `pnpm docs:env`;",
     "`pnpm check:env` (CI / self-eval) fails when this file no longer matches the",
-    "source. Every `MUSE_*` referenced in product source (`packages/`, `apps/`;",
-    "tests excluded) is listed with the workspaces that read it. Descriptions and",
+    "source. Every `MUSE_*` or `ATTUNEGRAPH_*` referenced in product source",
+    "(`packages/`, `apps/`; tests excluded) is listed with the workspaces that read it. Descriptions and",
     "value contracts are curated incrementally in code (`.claude/rules/` /",
     "per-module docs); this inventory is the discoverability + drift floor.",
     "",
@@ -99,7 +99,7 @@ if (mode === "--write" || mode === "--check") {
     console.log("✓ docs/setup/ENV.md matches the source-of-truth inventory.");
     process.exit(0);
   }
-  console.error("✗ docs/setup/ENV.md is stale — the MUSE_* surface changed without the inventory following.");
+  console.error("✗ docs/setup/ENV.md is stale — the product environment surface changed without the inventory following.");
   console.error("  Regenerate with: pnpm docs:env");
   process.exit(1);
 }

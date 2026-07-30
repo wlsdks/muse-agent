@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "case": "one-scope-two-generations",
+  "projections": [
+    {
+      "schemaVersion": 1,
+      "snapshot": {
+        "schemaVersion": 1,
+        "scope": {
+          "sourceId": "source-a",
+          "threadId": "thread-a"
+        },
+        "generation": 1,
+        "commitId": "attunegraph-commit:attunegraph-observation:a904e54fe43bd9a2be7daa10508b022cc85e2970739545c7b18ec9db2667cd4e"
+      },
+      "observationId": "attunegraph-observation:a904e54fe43bd9a2be7daa10508b022cc85e2970739545c7b18ec9db2667cd4e",
+      "canonicalProjection": "{\"assertions\":[{\"derivation\":{\"kind\":\"projection\",\"version\":\"test@1\"},\"epistemicClass\":\"source-observed\",\"id\":\"one\",\"object\":{\"id\":\"thread-a\",\"kind\":\"thread\"},\"predicate\":\"LINKED_TO\",\"recordedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"sourceRefs\":[{\"id\":\"source-one\",\"namespace\":\"test.source\"}],\"subject\":{\"id\":\"artifact-one\",\"kind\":\"artifact\"}}],\"observationId\":\"attunegraph-observation:a904e54fe43bd9a2be7daa10508b022cc85e2970739545c7b18ec9db2667cd4e\",\"observationKey\":\"one\",\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"scope\":{\"sourceId\":\"source-a\",\"threadId\":\"thread-a\"},\"sourceFreshness\":{\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"state\":\"fresh\"}}",
+      "projectionFingerprint": "attunegraph-observation:a904e54fe43bd9a2be7daa10508b022cc85e2970739545c7b18ec9db2667cd4e",
+      "observedAt": "2026-07-30T00:00:00.000Z",
+      "sourceFreshness": {
+        "state": "fresh",
+        "observedAt": "2026-07-30T00:00:00.000Z"
+      },
+      "assertions": [
+        {
+          "schemaVersion": 1,
+          "id": "one",
+          "subject": {
+            "id": "artifact-one",
+            "kind": "artifact"
+          },
+          "predicate": "LINKED_TO",
+          "object": {
+            "id": "thread-a",
+            "kind": "thread"
+          },
+          "epistemicClass": "source-observed",
+          "sourceRefs": [
+            {
+              "id": "source-one",
+              "namespace": "test.source"
+            }
+          ],
+          "recordedAt": "2026-07-30T00:00:00.000Z",
+          "derivation": {
+            "kind": "projection",
+            "version": "test@1"
+          }
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "snapshot": {
+        "schemaVersion": 1,
+        "scope": {
+          "sourceId": "source-a",
+          "threadId": "thread-a"
+        },
+        "generation": 2,
+        "commitId": "attunegraph-commit:attunegraph-observation:519c13a7ffb98628ebd8dc0a3c9d0d24b4baa732bea3f7c7635efb9854d86f77"
+      },
+      "observationId": "attunegraph-observation:519c13a7ffb98628ebd8dc0a3c9d0d24b4baa732bea3f7c7635efb9854d86f77",
+      "canonicalProjection": "{\"assertions\":[{\"derivation\":{\"kind\":\"projection\",\"version\":\"test@1\"},\"epistemicClass\":\"source-observed\",\"id\":\"two\",\"object\":{\"id\":\"thread-a\",\"kind\":\"thread\"},\"predicate\":\"LINKED_TO\",\"recordedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"sourceRefs\":[{\"id\":\"source-two\",\"namespace\":\"test.source\"}],\"subject\":{\"id\":\"artifact-two\",\"kind\":\"artifact\"}}],\"observationId\":\"attunegraph-observation:519c13a7ffb98628ebd8dc0a3c9d0d24b4baa732bea3f7c7635efb9854d86f77\",\"observationKey\":\"two\",\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"schemaVersion\":1,\"scope\":{\"sourceId\":\"source-a\",\"threadId\":\"thread-a\"},\"sourceFreshness\":{\"observedAt\":\"2026-07-30T00:00:00.000Z\",\"state\":\"fresh\"}}",
+      "projectionFingerprint": "attunegraph-observation:519c13a7ffb98628ebd8dc0a3c9d0d24b4baa732bea3f7c7635efb9854d86f77",
+      "observedAt": "2026-07-30T00:00:00.000Z",
+      "sourceFreshness": {
+        "state": "fresh",
+        "observedAt": "2026-07-30T00:00:00.000Z"
+      },
+      "assertions": [
+        {
+          "schemaVersion": 1,
+          "id": "two",
+          "subject": {
+            "id": "artifact-two",
+            "kind": "artifact"
+          },
+          "predicate": "LINKED_TO",
+          "object": {
+            "id": "thread-a",
+            "kind": "thread"
+          },
+          "epistemicClass": "source-observed",
+          "sourceRefs": [
+            {
+              "id": "source-two",
+              "namespace": "test.source"
+            }
+          ],
+          "recordedAt": "2026-07-30T00:00:00.000Z",
+          "derivation": {
+            "kind": "projection",
+            "version": "test@1"
+          }
+        }
+      ]
+    }
+  ]
+}

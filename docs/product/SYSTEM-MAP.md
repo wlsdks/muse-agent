@@ -50,12 +50,12 @@ using it for pack delivery, automatic linking, and timing improvements are all s
 
 The signature roadmap experience is **Shadow Muse → Continuity Capsule → Policy Card**: Muse first
 learns in silence, then restores the state the user meant to continue along with what changed since,
-then shows the next collaboration rule with its evidence, scope and rollback. The proposed **Muse
-Attunement Graph (MAG)** behind it is not a heavy server duplicating existing stores; it is an
+then shows the next collaboration rule with its evidence, scope and rollback. **AttuneGraph**
+behind it is not a heavy server duplicating existing stores; it is an
 agent-native personal context compiler that links time, relationships and provenance as a
 regenerable projection and builds only the small Working Graph each turn needs
-([graph design](../design/attunement/attunement-graph.md) ·
-[separate execution roadmap](../../internal/goals/attunement-wow-graph-roadmap.md)).
+([graph design](../design/attunement/attunegraph.md) ·
+[separate execution roadmap](../../internal/goals/attunegraph-roadmap.md)).
 
 ## The big picture — what layers Muse is made of
 

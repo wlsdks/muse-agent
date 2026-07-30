@@ -16,7 +16,7 @@ turns raw personal-store evidence into the policy Muse actually acts on.
   `openContinuityDelivery`, `readAttunementState` — the `AttunementStoreError`-backed thread
   store (`attunement-store.ts`).
 - `startTimingSession`, `evaluateTimingSession`, `recordTimingObservation`,
-  `projectMagShadowTimingDecision` — the Shadow-timing session store and MAG projection.
+  `projectAttuneGraphShadowTimingDecision` — the Shadow-timing session store and AttuneGraph projection.
 - `startObserveSessionSafe`, `pauseObserveSession`, `forgetObserveSession`, `observeStatus` —
   the pausable/forgettable Observe session lifecycle.
 - `proposeExperienceLearningCandidate`, `promoteApprovedExperienceLearningContinuityPolicy`,

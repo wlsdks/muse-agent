@@ -51,7 +51,11 @@ export function createContinuityLearningRollbackTool(
       inputSchema: {
         additionalProperties: false,
         properties: {
-          promotion: { type: "object" }
+          promotion: {
+            description:
+              "The exact prior promotion receipt whose bounded thread policy should be restored.",
+            type: "object"
+          }
         },
         required: ["promotion"],
         type: "object"

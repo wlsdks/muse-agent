@@ -32,8 +32,13 @@ const scriptsOf = (dir) => {
 };
 
 const rootScripts = scriptsOf(".");
-const workspaceDirs = execFileSync("git", ["ls-files", "*/package.json", "*/*/package.json"], { cwd: ROOT, encoding: "utf8" })
-  .split("\n").filter(Boolean).map((p) => p.replace(/\/package\.json$/u, ""));
+const workspaceDirs = execFileSync(
+  "git",
+  ["ls-files", "--cached", "--others", "--exclude-standard", "--", "*/package.json", "*/*/package.json"],
+  { cwd: ROOT, encoding: "utf8" }
+).split("\n")
+  .filter((file) => file.length > 0 && existsSync(join(ROOT, file)))
+  .map((path) => path.replace(/\/package\.json$/u, ""));
 const byPackageName = new Map();
 for (const dir of workspaceDirs) {
   const manifest = JSON.parse(readFileSync(join(ROOT, dir, "package.json"), "utf8"));
@@ -58,7 +63,12 @@ const commandCandidates = (raw) => {
 };
 
 const problems = [];
-for (const file of execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean)) {
+const markdownFiles = execFileSync(
+  "git",
+  ["ls-files", "--cached", "--others", "--exclude-standard", "--", "*.md"],
+  { cwd: ROOT, encoding: "utf8" }
+).split("\n").filter((file) => file.length > 0 && existsSync(join(ROOT, file)));
+for (const file of markdownFiles) {
   if (!NORMATIVE(file)) continue;
   commandCandidates(readFileSync(join(ROOT, file), "utf8")).forEach(({ line, text }) => {
     for (const match of text.matchAll(/\bpnpm(?=\s)([^|;&\n]*)/gu)) {

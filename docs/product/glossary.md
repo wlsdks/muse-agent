@@ -3,7 +3,7 @@ title: Muse glossary
 audience: [AI agents, developers, product]
 purpose: One definition per Muse-specific term, so a new agent understands without grepping
 updated: 2026-07-30
-related: [../strategy/attunement.md, ../design/attunement/attunement-graph.md, SYSTEM-MAP.md, ../trust/grounding-gate.md]
+related: [../strategy/attunement.md, ../design/attunement/attunegraph.md, SYSTEM-MAP.md, ../trust/grounding-gate.md]
 ---
 
 # Muse glossary
@@ -30,24 +30,24 @@ Muse*. Each entry is one definition plus where it lives. Exact verification evid
   view (**roadmap**).
 - **Policy Card** — the **roadmap** surface that shows how Muse proposes to change the way it works
   with this person, with evidence and scope, offering trial, edit, reject and rollback.
-- **Muse Attunement Graph (MAG)** — the official name for Muse's own agent-native graph architecture
-  and its future standalone open-source product. It does not replace existing personal stores; it
+- **AttuneGraph** — the official name for the agent-native graph architecture Muse
+  consumes and dogfoods, and its future standalone open-source product. It does not replace existing personal stores; it
   links time, relationships, provenance, change, return and policy, and compiles only the relations
-  one turn needs into a Working Graph. The library core is **partial** today; the durable MAG Store
-  and the standalone package gate are **roadmap**.
-- **MAG Engine** — the execution layer combining MAG's ontology, receipt projection,
+  one turn needs into a Working Graph. Its neutral engine package is `@attunegraph/core`;
+  Muse-specific composition lives in `@muse/attunegraph`.
+- **AttuneGraph Engine** — the execution layer combining AttuneGraph's ontology, receipt projection,
   temporal/relationship indexes, bounded operators, completeness/abstention and the Working Graph
   compiler.
-- **MAG Store** — Muse's embedded persistence layer, with `node:sqlite` selected as the default
-  physical store. It is the **roadmap** feature that will provide a Muse-owned append journal,
-  restart recovery, indexes, migration, export/rebuild and physical forget. PostgreSQL is an
-  optional adapter; an external graph DB, Redis and MySQL are not required.
-- **MAG Source Adapter** — a replaceable module that reads an authoritative source and produces
+- **AttuneGraph Store** — the engine's embedded persistence layer, with `node:sqlite`
+  selected as the default physical store and synchronous work isolated from the application
+  thread. PostgreSQL is an optional future adapter; an external graph DB, Redis and MySQL are
+  not required.
+- **AttuneGraph Source Adapter** — a replaceable module that reads an authoritative source and produces
   bounded observations with exact identity. Markdown/Obsidian/Notion adapters are planned source
-  connections, not MAG Stores. The existing Markdown notes and Notion providers do **not** mean a
-  MAG round-trip adapter is finished.
+  connections, not AttuneGraph Stores. The existing Markdown notes and Notion providers do **not** mean a
+  AttuneGraph round-trip adapter is finished.
 - **Receipt** — input evidence binding a point-in-time source observation, decision or interaction
-  into a bounded immutable envelope with a content ID. A receipt is not itself a graph DB; MAG
+  into a bounded immutable envelope with a content ID. A receipt is not itself a graph DB; AttuneGraph
   projects verified receipts into nodes and relations of the Evidence Graph.
 - **Evidence Graph** — the long-lived layer of facts, time, provenance and relationships,
   regenerable from receipts and authoritative sources.

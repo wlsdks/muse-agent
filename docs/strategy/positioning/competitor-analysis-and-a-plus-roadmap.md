@@ -5,7 +5,7 @@
 > Written 2026-07-11 by absorbing the earlier scattered planning documents, and its
 > §10.3 program is 61/67 done. New rival findings go to
 > [`../../../internal/goals/rival-watch.md`](../../../internal/goals/rival-watch.md)
-> (the successor `differentiation.md` names); the MAG landscape has its own dated
+> (the successor `differentiation.md` names); the AttuneGraph landscape has its own dated
 > snapshot. Kept ONLY for the residual open items in §10.3 and the §11 queue — the
 > rival snapshot below is frozen at clone HEADs from 2026-07-07 and its Muse-side
 > claims have been overtaken by its own executed roadmap. Do not ground on it for

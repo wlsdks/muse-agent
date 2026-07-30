@@ -39,7 +39,12 @@ const sectionNumbers = (absolute) => {
 };
 
 const problems = [];
-for (const file of execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean)) {
+const markdownFiles = execFileSync(
+  "git",
+  ["ls-files", "--cached", "--others", "--exclude-standard", "--", "*.md"],
+  { cwd: ROOT, encoding: "utf8" }
+).split("\n").filter((file) => file.length > 0 && existsSync(join(ROOT, file)));
+for (const file of markdownFiles) {
   if (!NORMATIVE(file)) continue;
   const dir = dirname(file);
   readFileSync(join(ROOT, file), "utf8").split("\n").forEach((line, index) => {

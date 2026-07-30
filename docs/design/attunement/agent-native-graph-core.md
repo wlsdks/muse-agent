@@ -1,13 +1,13 @@
 ---
-title: Muse Attunement Graph (MAG) Core — semantic engine and local storage blueprint
+title: AttuneGraph Core — semantic engine and local storage blueprint
 audience: [engineering, product, security, agents]
 purpose: Fix the core architecture and staged delivery plan for Muse's built-in graph engine
 status: partial-implementation
 updated: 2026-07-30
-related: [attunement-graph.md, ../../../internal/goals/attunement-wow-graph-roadmap.md, ../../../CONTEXT.md]
+related: [attunegraph.md, ../../../internal/goals/attunegraph-roadmap.md, ../../../CONTEXT.md]
 ---
 
-# Muse Attunement Graph (MAG) Core
+# AttuneGraph Core
 
 > **Decision:** Muse owns the graph semantics, temporal/provenance model, operator
 > algebra, completeness rules, portable journal, and local lifecycle. A small embedded
@@ -15,13 +15,13 @@ related: [attunement-graph.md, ../../../internal/goals/attunement-wow-graph-road
 > graph product, public API, or a requirement for the flagship experience.
 
 This is the implementation blueprint beneath
-[Muse Attunement Graph (MAG)](attunement-graph.md). It synthesizes independent Sol-class
+[AttuneGraph](attunegraph.md). It synthesizes independent Sol-class
 architecture reviews, direct source inspection, and current primary-source research. It
 now records the shipped AWG-070a1 durable projection-journal foundation without claiming
 the remaining durable-engine program is complete.
 
-Canonical naming: **Muse Attunement Graph (MAG)** is the whole product architecture,
-**MAG Engine** is its semantics/operators/compiler, and **MAG Store** is its embedded
+Canonical naming: **AttuneGraph** is the whole product architecture,
+**AttuneGraph Engine** is its semantics/operators/compiler, and **AttuneGraph Store** is its embedded
 journal/index layer. The local Store exists at a deliberately bounded foundation stage.
 
 The target is not a smaller Neo4j. It is a graph engine optimized for an AI agent that must
@@ -101,7 +101,7 @@ binding contract.
 
 ### Deep Modules
 
-`@muse/attunement-graph` should expose product operators and keep general traversal,
+`@attunegraph/core` exposes product operators and keeps general traversal,
 storage queries, SQL, and backend capabilities internal.
 
 - **Projection Module:** validates and commits deterministic deltas against one expected
@@ -289,15 +289,15 @@ different bytes is a collision and fails closed.
 
 ### Selected default
 
-Use a Muse-owned schema over capability-gated `node:sqlite` as the default MAG Store.
+Use a Muse-owned schema over capability-gated `node:sqlite` as the default AttuneGraph Store.
 SQLite supplies crash consistency, atomic transactions, compact indexes, and a single-file
 local deployment. It does not define graph semantics, expose SQL publicly, or become a
 required external Graph DB.
 
 AWG-070a1 implements the durable projection-journal foundation behind
-`@muse/attunement-graph/local`. `openLocalMag` accepts an explicit absolute
-`databasePath` and exact `MagScope`, privately owns one Worker-backed Adapter, and returns
-the same closed `project | execute | close` Interface as `openMag`. The local Module
+`@attunegraph/core/local`. `openLocalAttuneGraph` accepts an explicit absolute
+`databasePath` and exact `AttuneGraphScope`, privately owns one Worker-backed Adapter, and returns
+the same closed `project | execute | close` Interface as `openAttuneGraph`. The local Module
 composes the existing Engine rather than reimplementing graph meaning.
 
 The shipped physical profile is intentionally narrow and fails closed:
@@ -494,10 +494,10 @@ be required for the local flagship path.
 
 ### Redis and MySQL
 
-Neither is a MAG Store target. Redis may be an optional disposable cache/queue, but its
+Neither is a AttuneGraph Store target. Redis may be an optional disposable cache/queue, but its
 daemon and independent persistence lifecycle add no value to the single-user local source
 of truth; RedisGraph is also documented as deprecated. MySQL can represent the schema but
-adds a server and maintenance surface without improving MAG's bounded operators. A future
+adds a server and maintenance surface without improving AttuneGraph's bounded operators. A future
 Adapter requires a demonstrated deployment need, not generic database freedom.
 
 ### Raw JSON or NDJSON
@@ -666,7 +666,7 @@ Do not build the database first.
    evidence, the Shadow-to-Return card, and durability remain.
 5. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
    reject, rollback, and no hidden promotion.
-6. **AWG-070a — SQLite MAG Store conformance (`partial`):** AWG-070a1 ships the
+6. **AWG-070a — SQLite AttuneGraph Store conformance (`partial`):** AWG-070a1 ships the
    Worker-isolated durable projection-journal foundation: exact scoped heads,
    compare-and-swap, restart/replay, same-file writer races, corruption/future-state
    rejection, crash-boundary fail-stop behavior, and a bounded byte-identical command

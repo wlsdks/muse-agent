@@ -94,17 +94,33 @@ export function createContinuityLearningApplyTool(
       inputSchema: {
         additionalProperties: false,
         properties: {
-          draft: { type: "object" },
-          evidenceCases: { items: { type: "object" }, minItems: 10, type: "array" },
+          draft: {
+            description:
+              "The exact bounded collaboration-policy draft that was shown in the approved preview.",
+            type: "object"
+          },
+          evidenceCases: {
+            description:
+              "The frozen evidence cases used to reproduce the approved strict replay before applying the draft.",
+            items: { type: "object" },
+            minItems: 10,
+            type: "array"
+          },
           opportunityId: {
+            description:
+              "The exact current learning opportunity identifier approved for this application.",
             pattern: "^learning_opportunity_[a-f0-9]{64}$",
             type: "string"
           },
           previewId: {
+            description:
+              "The exact owner-reviewed preview identifier that authorizes this bounded application.",
             pattern: "^learning_preview_[a-f0-9]{64}$",
             type: "string"
           },
           replayInputHash: {
+            description:
+              "The SHA-256 digest binding this application to the exact replay inputs the owner reviewed.",
             pattern: "^[a-f0-9]{64}$",
             type: "string"
           }

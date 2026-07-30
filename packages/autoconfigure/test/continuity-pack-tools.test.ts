@@ -12,7 +12,7 @@ import {
 import type {
   ContinuityResumeRuntimeResultV1,
   ContinuityResumeRuntimeUnavailableReason
-} from "@muse/attunement-graph/continuity-resume-runtime";
+} from "@muse/attunegraph/continuity-resume-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createMuseRuntimeAssembly } from "../src/index.js";

@@ -10,12 +10,12 @@ import {
   evaluateTimingSession,
   forgetTimingSession,
   pauseTimingSession,
-  projectMagShadowTimingDecision,
+  projectAttuneGraphShadowTimingDecision,
   readTimingState,
   recordTimingFeedback as recordTimingFeedbackImpl,
   recordTimingObservation,
   startTimingSession,
-  verifyMagShadowTimingProjection
+  verifyAttuneGraphShadowTimingProjection
 } from "./timing-store.js";
 
 const recordTimingFeedback = (
@@ -156,7 +156,7 @@ describe("thread-scoped continuity timing store", () => {
     if (candidate.ruleVersion !== 3) throw new Error("fresh timing candidate must be v3");
     const timing = await readTimingState(file);
     const observations = timing.observations.filter((entry) => entry.sessionId === session.id);
-    const projection = projectMagShadowTimingDecision(timing, candidate.id);
+    const projection = projectAttuneGraphShadowTimingDecision(timing, candidate.id);
     expect(projection).toMatchObject({
       candidate: {
         evidenceObservationIds: observations.map((entry) => entry.id),
@@ -167,13 +167,13 @@ describe("thread-scoped continuity timing store", () => {
       sessionConsentVersion: 2
     });
     expect(Object.isFrozen(projection?.candidate.policySnapshot)).toBe(true);
-    expect(verifyMagShadowTimingProjection(projection)).toBe(projection);
-    expect(projectMagShadowTimingDecision(structuredClone(timing), candidate.id)).toBeUndefined();
-    expect(verifyMagShadowTimingProjection(structuredClone(projection))).toBeUndefined();
+    expect(verifyAttuneGraphShadowTimingProjection(projection)).toBe(projection);
+    expect(projectAttuneGraphShadowTimingDecision(structuredClone(timing), candidate.id)).toBeUndefined();
+    expect(verifyAttuneGraphShadowTimingProjection(structuredClone(projection))).toBeUndefined();
     const restarted = await readTimingState(file);
-    const restartedProjection = projectMagShadowTimingDecision(restarted, candidate.id);
+    const restartedProjection = projectAttuneGraphShadowTimingDecision(restarted, candidate.id);
     expect(restartedProjection).toBeDefined();
-    expect(verifyMagShadowTimingProjection(restartedProjection)).toBe(restartedProjection);
+    expect(verifyAttuneGraphShadowTimingProjection(restartedProjection)).toBe(restartedProjection);
     const traps = { get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 };
     const proxy = new Proxy(timing, {
       get() {
@@ -189,7 +189,7 @@ describe("thread-scoped continuity timing store", () => {
         throw new Error("projection must not inspect keys");
       }
     });
-    expect(projectMagShadowTimingDecision(proxy, candidate.id)).toBeUndefined();
+    expect(projectAttuneGraphShadowTimingDecision(proxy, candidate.id)).toBeUndefined();
     expect(traps).toEqual({ get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 });
   });
 
@@ -314,7 +314,7 @@ describe("thread-scoped continuity timing store", () => {
     expect(await readFile(file, "utf8")).toBe(raw);
   });
 
-  it("reads legacy rule-v2 candidates byte-for-byte and keeps them MAG-ineligible", async () => {
+  it("reads legacy rule-v2 candidates byte-for-byte and keeps them AttuneGraph-ineligible", async () => {
     const { file, options } = fixture();
     const session = await startTimingSession(
       file,
@@ -348,7 +348,7 @@ describe("thread-scoped continuity timing store", () => {
     expect(persisted).toEqual(legacyV2);
     expect(await readFile(file, "utf8")).toBe(raw);
     expect(
-      projectMagShadowTimingDecision(persisted, "candidate_legacy_v2")
+      projectAttuneGraphShadowTimingDecision(persisted, "candidate_legacy_v2")
     ).toBeUndefined();
   });
 

@@ -4,7 +4,7 @@ audience: [product, design, engineering, agents]
 purpose: Define Muse's product wedge without claiming roadmap capabilities are shipped
 status: north-star
 updated: 2026-07-30
-related: [../design/attunement/README.md, ../design/attunement/attunement-graph.md, ../../internal/goals/attunement-implementation-plan.md, ../../internal/goals/attunement-wow-graph-roadmap.md, ../trust/privacy-and-data.md]
+related: [../design/attunement/README.md, ../design/attunement/attunegraph.md, ../../internal/goals/attunement-implementation-plan.md, ../../internal/goals/attunegraph-roadmap.md, ../trust/privacy-and-data.md]
 ---
 
 # Muse Attunement
@@ -95,11 +95,11 @@ A procedural skill teaches an agent how to do a task better. An Attunement Polic
 Muse how to collaborate with this person better.
 
 These three product mechanisms remain target architecture rather than a shipped wow claim.
-Their underlying [Muse Attunement Graph (MAG)](../design/attunement/attunement-graph.md) has bounded
+Their underlying [AttuneGraph](../design/attunement/attunegraph.md) has bounded
 library substrates, including the worker-isolated durable projection-journal foundation,
 but not yet the complete Source Adapter, Policy Card, maintenance, qualification, or
 product-composition program. Dependency-ordered work lives in the
-[wow + graph roadmap](../../internal/goals/attunement-wow-graph-roadmap.md).
+[wow + graph roadmap](../../internal/goals/attunegraph-roadmap.md).
 
 ## The compounding loop
 
@@ -164,9 +164,9 @@ execution location. Provider-specific behavior stays behind adapters.
 
 | Status | What it means in Muse today |
 |---|---|
-| **Available now** | Provider-neutral runtime; local personal stores; user memory; grounded recall; guarded browser control; traces/checkpoints; Personal Continuity Slice A; and Observe O1: explicit consent for one exact thread, category/time/duration-only local sessions, inspect/pause/resume/forget, and one fenced app-only collector. O1 performs no hypothesis, policy, delivery, model call, send, or action. Packs remain user-invoked with four explicit outcomes and a narrow display-policy update. Explicit Pack Preview now also dogfoods a bounded process-local Attunement Graph baseline, returns semantic resume comparison facts, and can explicitly produce a verified English/Korean Capsule render-data presentation without opening or delivering the Pack. |
+| **Available now** | Provider-neutral runtime; local personal stores; user memory; grounded recall; guarded browser control; traces/checkpoints; Personal Continuity Slice A; and Observe O1: explicit consent for one exact thread, category/time/duration-only local sessions, inspect/pause/resume/forget, and one fenced app-only collector. O1 performs no hypothesis, policy, delivery, model call, send, or action. Packs remain user-invoked with four explicit outcomes and a narrow display-policy update. Explicit Pack Preview now also dogfoods a bounded process-local AttuneGraph baseline, returns semantic resume comparison facts, and can explicitly produce a verified English/Korean Capsule render-data presentation without opening or delivering the Pack. |
 | **Experimental substrates** | Pattern suggestions, proactive surfacing, background review, and self-followup. They contribute signals or delivery paths, but are not an Attunement loop. |
-| **Roadmap** | Shadow Muse, automatic stop capture and the full Continuity Capsule product/UI, Policy Card, durable MAG storage, more Continuity source adapters, Observe hypothesis/correction controls, Personal Rhythm Model, Friction Discovery, usefulness qualification, and timing-aware help. The current process-local MAG-backed Preview and explicit Capsule render data are neither durable memory nor proactive timing. Exact browsing context and O1 category collection do not themselves ship proactive timing. |
+| **Roadmap** | Shadow Muse, automatic stop capture and the full Continuity Capsule product/UI, Policy Card, durable AttuneGraph storage, more Continuity source adapters, Observe hypothesis/correction controls, Personal Rhythm Model, Friction Discovery, usefulness qualification, and timing-aware help. The current process-local AttuneGraph-backed Preview and explicit Capsule render data are neither durable memory nor proactive timing. Exact browsing context and O1 category collection do not themselves ship proactive timing. |
 
 ## What Continuity, Muse Work, and Observe mean
 

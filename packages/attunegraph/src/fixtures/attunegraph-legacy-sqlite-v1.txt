@@ -1,0 +1,11 @@
+AttuneGraph incompatible physical-profile fixture
+
+- Created from commit: 486315cca2fa3fdc51f01584c42ff27781328f9e
+- Original database SHA-256: 0b44d5cf634fbbed3c38125613250727739bb4e014a2846bc0d343521da63504
+- Original database bytes: 20480
+- Encoding: gzip bytes represented as base64 in `attunegraph-legacy-sqlite-v1.base64`
+
+The base64 database is rejection evidence only. Tests identify its superseded
+application identity numerically, reject it before mutation, and compare the
+database bytes, schema, pragmas, table contents, and directory entries before
+and after the attempted open.

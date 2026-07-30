@@ -107,6 +107,8 @@ export function createContinuityLearningPreviewTool(
         properties: {
           draft: {
             additionalProperties: false,
+            description:
+              "The exact bounded collaboration-policy draft previously composed for this opportunity.",
             properties: {
               expectedBenefit: { maxLength: 500, minLength: 1, type: "string" },
               expiresAt: { type: "string" },
@@ -139,6 +141,8 @@ export function createContinuityLearningPreviewTool(
             type: "object"
           },
           opportunityId: {
+            description:
+              "The exact current learning opportunity identifier that the draft is intended to address.",
             pattern: "^learning_opportunity_[a-f0-9]{64}$",
             type: "string"
           }

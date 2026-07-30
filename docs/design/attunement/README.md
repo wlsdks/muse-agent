@@ -4,7 +4,7 @@ audience: [engineering, product, security, agents]
 purpose: Define the closed loop, privacy boundary, and implementation seams for Attunement
 status: partial-implementation
 updated: 2026-07-29
-related: [../../strategy/attunement.md, attunement-graph.md, ../../../internal/goals/attunement-implementation-plan.md, ../../../internal/goals/attunement-wow-graph-roadmap.md, ../../trust/privacy-and-data.md]
+related: [../../strategy/attunement.md, attunegraph.md, ../../../internal/goals/attunement-implementation-plan.md, ../../../internal/goals/attunegraph-roadmap.md, ../../trust/privacy-and-data.md]
 ---
 
 # Attunement architecture and data contract
@@ -49,11 +49,12 @@ The roadmap experience has three consumers of the existing Attunement loop:
 - **Policy Card** proposes a scoped, reversible policy delta; it never hides learning in a
   prompt or silently widens observation or authority.
 
-Their shared relationship/time/provenance layer is the proposed
-[`@muse/attunement-graph`](attunement-graph.md) module. Existing stores remain authoritative;
-the graph is a rebuildable projection. It must keep user assertions, source observations,
-deterministic derivations, and model hypotheses distinct, and it must never convert
-correlation into outcome, causality, or permission.
+Their shared relationship/time/provenance layer is
+[`@attunegraph/core`](attunegraph.md), with Muse-specific composition in
+`@muse/attunegraph`. Existing stores remain authoritative; the graph is a rebuildable
+projection. It must keep user assertions, source observations, deterministic derivations,
+and model hypotheses distinct, and it must never convert correlation into outcome,
+causality, or permission.
 
 ## Reusable current seams
 

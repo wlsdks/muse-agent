@@ -11,8 +11,11 @@ import { dirname, join, normalize, relative } from "node:path";
 import { execFileSync } from "node:child_process";
 
 const ROOT = process.cwd();
-const files = execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" })
-  .split("\n").filter(Boolean);
+const files = execFileSync(
+  "git",
+  ["ls-files", "--cached", "--others", "--exclude-standard", "--", "*.md"],
+  { cwd: ROOT, encoding: "utf8" }
+).split("\n").filter((file) => file.length > 0 && existsSync(join(ROOT, file)));
 
 const stripCode = (text) => text.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "");
 

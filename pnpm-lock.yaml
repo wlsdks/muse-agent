@@ -342,6 +342,8 @@ importers:
         specifier: ^0.29.2
         version: 0.29.2
 
+  packages/attunegraph: {}
+
   packages/attunement:
     dependencies:
       '@muse/calendar':
@@ -359,15 +361,6 @@ importers:
       '@muse/stores':
         specifier: workspace:*
         version: link:../stores
-
-  packages/attunement-graph:
-    dependencies:
-      '@muse/attunement':
-        specifier: workspace:*
-        version: link:../attunement
-      '@muse/shared':
-        specifier: workspace:*
-        version: link:../shared
 
   packages/auth:
     dependencies:
@@ -389,12 +382,12 @@ importers:
       '@muse/agent-specs':
         specifier: workspace:*
         version: link:../agent-specs
+      '@muse/attunegraph':
+        specifier: workspace:*
+        version: link:../muse-attunegraph
       '@muse/attunement':
         specifier: workspace:*
         version: link:../attunement
-      '@muse/attunement-graph':
-        specifier: workspace:*
-        version: link:../attunement-graph
       '@muse/auth':
         specifier: workspace:*
         version: link:../auth
@@ -742,6 +735,18 @@ importers:
       fast-check:
         specifier: ^4.9.0
         version: 4.9.0
+
+  packages/muse-attunegraph:
+    dependencies:
+      '@attunegraph/core':
+        specifier: workspace:*
+        version: link:../attunegraph
+      '@muse/attunement':
+        specifier: workspace:*
+        version: link:../attunement
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/observability:
     dependencies:

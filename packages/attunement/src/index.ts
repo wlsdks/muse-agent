@@ -226,7 +226,7 @@ export {
 } from "./progressive-autonomy.js";
 export {
   DEFAULT_TIMING_POLICY,
-  MAG_SHADOW_TIMING_PROJECTION_VERSION,
+  ATTUNEGRAPH_SHADOW_TIMING_PROJECTION_VERSION,
   TIMING_APP_CATEGORIES,
   TIMING_DECISIONS,
   TIMING_SESSION_STATUSES,
@@ -235,8 +235,8 @@ export {
   forgetTimingSession,
   inspectTimingSession,
   pauseTimingSession,
-  projectMagShadowTimingDecision,
-  verifyMagShadowTimingProjection,
+  projectAttuneGraphShadowTimingDecision,
+  verifyAttuneGraphShadowTimingProjection,
   readTimingState,
   recordTimingFeedback,
   recordTimingObservation,
@@ -245,8 +245,8 @@ export {
 } from "./timing-store.js";
 export type {
   RecordTimingObservationInput,
-  MagShadowTimingCandidate,
-  MagShadowTimingProjectionV1,
+  AttuneGraphShadowTimingCandidate,
+  AttuneGraphShadowTimingProjectionV1,
   StartTimingSessionInput,
   ThreadTimingSession,
   TimingAppCategory,

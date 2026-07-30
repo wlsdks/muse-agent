@@ -39,9 +39,9 @@ rival-watch remembers where the next scout starts.**
   MUST add a row. `prompt-system.md` is an active journal still used in Jinan-direct mode even after the loop ended.
 - `attunement-implementation-plan.md`, `attunement-slice-b-safety-contract.md` —
   human-directed design/planning docs (a closed planning doc is deleted — remaining items become backlog records)
-- `attunement-wow-graph-roadmap.md` — **separate active long-running program.** Researches/builds/dogfoods
+- `attunegraph-roadmap.md` — **separate active long-running program.** Researches/builds/dogfoods
   Shadow Muse·Continuity Capsule·Policy Card and the
-  agent-native **Muse Attunement Graph (MAG)** in stages, without duplicating Core100/legacy-300's
+  agent-native **AttuneGraph** in stages, without duplicating Core100/legacy-300's
   general foundation work.
 - `personal-agent-successor-roadmap.md` — **current authoritative execution doc.** Core100-100
   concluded with the decision `continue-with-successor`, so PA-S001..S008 is the live order; the

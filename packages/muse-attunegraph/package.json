@@ -1,0 +1,49 @@
+{
+  "name": "@muse/attunegraph",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./continuity": {
+      "types": "./dist/continuity-projection.d.ts",
+      "import": "./dist/continuity-projection.js"
+    },
+    "./continuity-changes": {
+      "types": "./dist/continuity-change-query.d.ts",
+      "import": "./dist/continuity-change-query.js"
+    },
+    "./continuity-observations": {
+      "types": "./dist/continuity-observation.d.ts",
+      "import": "./dist/continuity-observation.js"
+    },
+    "./continuity-capsules": {
+      "types": "./dist/continuity-capsule-presentation.d.ts",
+      "import": "./dist/continuity-capsule-presentation.js"
+    },
+    "./continuity-resume-runtime": {
+      "types": "./dist/continuity-resume-runtime.d.ts",
+      "import": "./dist/continuity-resume-runtime.js"
+    },
+    "./shadow-decision-receipt": {
+      "types": "./dist/shadow-decision-receipt.d.ts",
+      "import": "./dist/shadow-decision-receipt.js"
+    },
+    "./loop-lineage": {
+      "types": "./dist/trigger-control-lineage-projection.d.ts",
+      "import": "./dist/trigger-control-lineage-projection.js"
+    }
+  },
+  "scripts": {
+    "benchmark:continuity-changes": "pnpm build && node scripts/benchmark-continuity-changes.mjs",
+    "build": "tsc -b",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:continuity-capsules": "pnpm build && node scripts/verify-continuity-capsules.mjs",
+    "verify:continuity-resume-runtime": "pnpm build && node scripts/verify-continuity-resume-runtime.mjs"
+  },
+  "dependencies": {
+    "@attunegraph/core": "workspace:*",
+    "@muse/attunement": "workspace:*",
+    "@muse/shared": "workspace:*"
+  }
+}

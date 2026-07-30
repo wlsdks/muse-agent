@@ -19,6 +19,10 @@
     "./continuity-snapshots": {
       "types": "./dist/continuity-snapshots.d.ts",
       "import": "./dist/continuity-snapshots.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
     }
   },
   "scripts": { "build": "tsc -b", "test": "vitest run", "typecheck": "tsc -p tsconfig.json --noEmit" },

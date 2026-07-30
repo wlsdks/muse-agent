@@ -38,7 +38,7 @@ import {
   createContinuityResumeRuntimeCaptureAdapter,
   createContinuityResumeRuntimeCoordinator,
   getContinuityResumeRuntimePack
-} from "@muse/attunement-graph/continuity-resume-runtime";
+} from "@muse/attunegraph/continuity-resume-runtime";
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { createCalendarMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createHistoryMcpServer, createMathMcpServer, createMessagingMcpServer, createNotesMcpServer, createNotesRegistryMcpServer, createPatternsMcpServer, createProactiveMcpServer, createRemindersMcpServer, createStatusMcpServer, createTasksMcpServer, createTasksRegistryMcpServer, createSearchMcpServer, createWebReadMcpServer, type MessageApprovalGate } from "@muse/domain-tools";
 import { mirrorNoteToApple, mirrorReminderToApple } from "@muse/macos";

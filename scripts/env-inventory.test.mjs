@@ -6,13 +6,20 @@ import test from "node:test";
 
 import { collectInventory, extractEnvVars, renderEnvDoc, workspaceOf } from "./env-inventory.mjs";
 
-test("extractEnvVars finds each distinct MUSE_* token once", () => {
-  const src = 'process.env.MUSE_MODEL ?? env.MUSE_MODEL; "MUSE_LOCAL_ONLY=true"; // MUSE_EVAL_REPEAT';
-  assert.deepEqual(extractEnvVars(src).sort(), ["MUSE_EVAL_REPEAT", "MUSE_LOCAL_ONLY", "MUSE_MODEL"]);
+test("extractEnvVars finds distinct Muse and AttuneGraph tokens once", () => {
+  const src = 'process.env.MUSE_MODEL ?? env.MUSE_MODEL; "MUSE_LOCAL_ONLY=true"; // ATTUNEGRAPH_INPUT_TYPE_CHILD';
+  assert.deepEqual(extractEnvVars(src).sort(), [
+    "ATTUNEGRAPH_INPUT_TYPE_CHILD",
+    "MUSE_LOCAL_ONLY",
+    "MUSE_MODEL"
+  ]);
 });
 
-test("extractEnvVars ignores non-MUSE and lowercase lookalikes", () => {
-  assert.deepEqual(extractEnvVars("OLLAMA_BASE_URL muse_model MUSEUM MUSE_ MUSE_X"), ["MUSE_X"]);
+test("extractEnvVars ignores foreign, incomplete, and lowercase lookalikes", () => {
+  assert.deepEqual(
+    extractEnvVars("OLLAMA_BASE_URL muse_model attunegraph_mode MUSEUM MUSE_ ATTUNEGRAPH_ MUSE_X"),
+    ["MUSE_X"]
+  );
 });
 
 test("workspaceOf keys by the two-segment workspace root", () => {
@@ -35,6 +42,10 @@ test("renderEnvDoc is byte-deterministic and sorted", () => {
 
 test("collectInventory over the real repo finds the load-bearing vars and excludes tests", () => {
   const inv = collectInventory();
+  assert.ok(
+    inv.has("ATTUNEGRAPH_INPUT_TYPE_CHILD"),
+    "ATTUNEGRAPH_INPUT_TYPE_CHILD must be inventoried"
+  );
   assert.ok(inv.has("MUSE_LOCAL_ONLY"), "MUSE_LOCAL_ONLY must be inventoried");
   assert.ok(inv.has("MUSE_MODEL_TIMEOUT_MS"), "MUSE_MODEL_TIMEOUT_MS must be inventoried");
   assert.ok(inv.size > 100, `expected a large surface, got ${inv.size}`);

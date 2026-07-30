@@ -189,7 +189,7 @@ None of the three is finished. The next section says exactly how far each one go
 
 | Area | Where it actually stands |
 | --- | --- |
-| Attunement Graph engine | Exact projection, *"what changed since I stopped"*, content-addressed observation receipts, resume compiler and a durable projection journal — all verified, all still process-local substrate |
+| AttuneGraph engine | Exact projection, *"what changed since I stopped"*, content-addressed receipts, bounded resume compilation, canonical `.atgx`, and a worker-isolated SQLite journal — verified engine substrate; public Admin UI and default automatic delivery remain roadmap |
 | Continuity Capsule | Render data returned from an explicit API call. No product UI, no automatic timing |
 | Shadow Muse | The ledger records the decision. It does not surface anything on its own yet |
 
@@ -199,24 +199,27 @@ Policy Card · automatic thread detection · a durable current-world graph · st
 graph engine · organic-use evidence.
 
 <details>
-<summary><b>The fine print on the graph engine (MAG)</b></summary>
+<summary><b>The fine print on the graph engine (AttuneGraph)</b></summary>
 
 <br/>
 
-The [Muse Attunement Graph](docs/design/attunement/attunement-graph.md) is an agent-native temporal/provenance
-graph and personal context compiler — not a third-party graph DB. RAG can find *likely* context; MAG
+The [AttuneGraph](docs/design/attunement/attunegraph.md) is an agent-native temporal/provenance
+graph and personal context compiler — not a third-party graph DB. RAG can find *likely* context; AttuneGraph
 has to prove the exact thread, time, change, source and policy relation. It runs on an embedded
 SQLite store behind an isolated worker, with no external graph server required
 ([blueprint](docs/design/attunement/agent-native-graph-core.md)).
 
 It is deliberately built as an independently extractable module — Muse is its first consumer and
 dogfood environment. The public interface, adapter boundaries and repository-split plan are fixed in
-[ADR 0001](docs/architecture/adr/0001-mag-product-module-boundary.md); TypeScript-first with Rust only for
-benchmark-proven hot kernels in [ADR 0002](docs/architecture/adr/0002-mag-language-runtime-boundary.md).
+[ADR 0001](docs/architecture/adr/0001-attunegraph-product-module-boundary.md); TypeScript-first with Rust only for
+benchmark-proven hot kernels in [ADR 0002](docs/architecture/adr/0002-attunegraph-language-runtime-boundary.md).
+The monorepo already enforces that boundary: `@attunegraph/core` contains the dependency-free
+engine, persistence, portable format, and conformance surface; `@muse/attunegraph` contains only
+Muse's Continuity, Shadow, Capsule, evidence, and lineage integration.
 
 What is verified today, and what those words do **not** mean:
 
-- The neutral lifecycle `openMag({ scope, store }) → project → execute → close`, plus a durable
+- The neutral lifecycle `openAttuneGraph({ scope, store }) → project → execute → close`, plus a durable
   projection journal and typed worker boundary. Portable export/rebuild, backup, physical forget and
   the 10K/100K/1M benchmarks are still pending.
 - Observation receipts are *caller-declared* integrity evidence. They prove bytes and boundaries —
@@ -227,7 +230,7 @@ What is verified today, and what those words do **not** mean:
 - Resume baselines are per-process, capped at 16 threads, and not persisted. None of this is action
   authority, automatic behaviour, or evidence that it is useful in real life.
 
-Sequenced in the [wow + graph roadmap](internal/goals/attunement-wow-graph-roadmap.md).
+Sequenced in the [wow + graph roadmap](internal/goals/attunegraph-roadmap.md).
 
 </details>
 
@@ -346,7 +349,7 @@ are not proof of agent effect.
 | --- | --- |
 | **Start here** | [Documentation index](docs/README.md) — the guided reading order · [System map](docs/product/SYSTEM-MAP.md) · [Local model setup](docs/setup/setup-local-llm.md) · [Environment variables](docs/setup/ENV.md) |
 | **The product** | [Attunement contract](docs/strategy/attunement.md) · [Architecture and gaps](docs/design/attunement/README.md) · [Implementation plan](internal/goals/attunement-implementation-plan.md) |
-| **The graph** | [Attunement Graph](docs/design/attunement/attunement-graph.md) · [Agent-native core blueprint](docs/design/attunement/agent-native-graph-core.md) · [Roadmap](internal/goals/attunement-wow-graph-roadmap.md) |
+| **The graph** | [AttuneGraph](docs/design/attunement/attunegraph.md) · [Agent-native core blueprint](docs/design/attunement/agent-native-graph-core.md) · [Roadmap](internal/goals/attunegraph-roadmap.md) |
 | **Trust** | [Grounding gate](docs/trust/grounding-gate.md) · [Privacy and data](docs/trust/privacy-and-data.md) · [Evidence index](docs/benchmarks/EVIDENCE.md) · [Security](SECURITY.md) |
 | **Audits** | [Personal-agent qualification](docs/development/personal-agent-qualification.md) — a read-only, fail-closed check of current capability |
 

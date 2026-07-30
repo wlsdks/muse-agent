@@ -3,7 +3,7 @@ title: Muse documentation guide (index)
 audience: [AI agents]
 purpose: Where to look for what — written for the agents that do the work here
 updated: 2026-07-30
-related: [strategy/attunement.md, design/attunement/attunement-graph.md, ../internal/goals/attunement-wow-graph-roadmap.md, product/SYSTEM-MAP.md, product/FEATURES.md]
+related: [strategy/attunement.md, design/attunement/attunegraph.md, ../internal/goals/attunegraph-roadmap.md, product/SYSTEM-MAP.md, product/FEATURES.md]
 ---
 
 # Muse documentation guide
@@ -54,7 +54,7 @@ as soon as you can answer the question you came for.
 6. [`product/SYSTEM-MAP.md`](product/SYSTEM-MAP.md) — the feature structure on one page
 7. [`trust/grounding-gate.md`](trust/grounding-gate.md) — the trust floor (grounding gate) as one flow
 8. [`product/FEATURES.md`](product/FEATURES.md) — per-feature detail, and [`benchmarks/EVIDENCE.md`](benchmarks/EVIDENCE.md) for what is actually proven
-9. Then go deeper: [`design/attunement/README.md`](design/attunement/README.md) · [`design/attunement/attunement-graph.md`](design/attunement/attunement-graph.md) · [`../internal/goals/attunement-implementation-plan.md`](../internal/goals/attunement-implementation-plan.md) · [`../internal/goals/attunement-wow-graph-roadmap.md`](../internal/goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../.claude/harness/contract.md`](../.claude/harness/contract.md)
+9. Then go deeper: [`design/attunement/README.md`](design/attunement/README.md) · [`design/attunement/attunegraph.md`](design/attunement/attunegraph.md) · [`../internal/goals/attunement-implementation-plan.md`](../internal/goals/attunement-implementation-plan.md) · [`../internal/goals/attunegraph-roadmap.md`](../internal/goals/attunegraph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../.claude/harness/contract.md`](../.claude/harness/contract.md)
 
 ## To understand the product
 
@@ -62,9 +62,9 @@ as soon as you can answer the question you came for.
 |---|---|
 | **[strategy/attunement.md](strategy/attunement.md)** | Muse's wedge, user moments, current/experimental/roadmap boundary |
 | **[design/attunement/README.md](design/attunement/README.md)** | The privacy and closed-loop technical contract of the implemented Slice A and the follow-on Observe |
-| **[design/attunement-graph.md](design/attunement/attunement-graph.md)** | Module contract and research basis of the agent-native time/provenance graph and personal context compiler |
+| **[design/attunegraph.md](design/attunement/attunegraph.md)** | Module contract and research basis of the agent-native time/provenance graph and personal context compiler |
 | **[goals/attunement-implementation-plan.md](../internal/goals/attunement-implementation-plan.md)** | Dependency-ordered vertical slices, gates, kill criterion |
-| **[goals/attunement-wow-graph-roadmap.md](../internal/goals/attunement-wow-graph-roadmap.md)** | The separate long-horizon execution order for Shadow Muse, Capsule, Policy Card, Graph Engine |
+| **[goals/attunegraph-roadmap.md](../internal/goals/attunegraph-roadmap.md)** | The separate long-horizon execution order for Shadow Muse, Capsule, Policy Card, Graph Engine |
 | **[SYSTEM-MAP.md](product/SYSTEM-MAP.md)** | Structural map of Muse's features at a glance (words only, for quick orientation) |
 | **[glossary.md](product/glossary.md)** | Single definition of Muse-specific terms (one line per term + where it lives) |
 | **[grounding-gate.md](trust/grounding-gate.md)** | How the grounding gate — the trust floor — handles one question: flow + worked example |
@@ -86,7 +86,7 @@ others it interacts with:
 
 | Folder | Notes |
 |---|---|
-| [`design/attunement/`](design/attunement/README.md) | The architecture and data contract, the [graph engine](design/attunement/attunement-graph.md) and its [core](design/attunement/agent-native-graph-core.md), [continuity-timing-loop](design/attunement/continuity-timing-loop.md), [observe-o1](design/attunement/observe-o1.md), [muse-work](design/attunement/muse-work.md) |
+| [`design/attunement/`](design/attunement/README.md) | The architecture and data contract, the [graph engine](design/attunement/attunegraph.md) and its [core](design/attunement/agent-native-graph-core.md), [continuity-timing-loop](design/attunement/continuity-timing-loop.md), [observe-o1](design/attunement/observe-o1.md), [muse-work](design/attunement/muse-work.md) |
 | [`design/memory/`](design/memory/) | [resumable-notes-indexing](design/memory/resumable-notes-indexing.md), [background-review-engine](design/memory/background-review-engine.md) — the one design still in progress |
 | [`design/proactive/`](design/proactive/) | [progressive-autonomy-p0](design/proactive/progressive-autonomy-p0.md) |
 | [`design/channels/`](design/channels/) | [voice-mode](design/channels/voice-mode.md) — Phase F wake-word is the unbuilt part |

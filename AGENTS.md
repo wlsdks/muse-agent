@@ -56,11 +56,12 @@ evidence.
   browser, trace and checkpoint systems are its substrates. Product contract:
   [`docs/strategy/attunement.md`](docs/strategy/attunement.md). Implementation:
   [`internal/goals/attunement-implementation-plan.md`](internal/goals/attunement-implementation-plan.md).
-- **`@muse/attunement-graph` is a lightweight agent-native temporal/provenance graph** and personal
-  context compiler — not a generic graph-DB claim. Existing personal stores remain authoritative;
-  the graph is a rebuildable projection. Contract:
-  [`docs/design/attunement/attunement-graph.md`](docs/design/attunement/attunement-graph.md). Program:
-  [`internal/goals/attunement-wow-graph-roadmap.md`](internal/goals/attunement-wow-graph-roadmap.md).
+- **AttuneGraph is a lightweight agent-native temporal/provenance graph**, not a generic
+  graph-DB claim. The neutral engine is `@attunegraph/core`; Muse consumes it through the
+  explicit `@muse/attunegraph` Continuity/Shadow integration package. Existing personal stores
+  remain authoritative and the graph is a rebuildable projection. Contract:
+  [`docs/design/attunement/attunegraph.md`](docs/design/attunement/attunegraph.md). Program:
+  [`internal/goals/attunegraph-roadmap.md`](internal/goals/attunegraph-roadmap.md).
 
 Runtime invariants, always:
 
@@ -90,7 +91,7 @@ appear inside `packages/model/src/adapter-<name>.ts`, is owned by
 | --- | --- |
 | `agent-core` | Guard, Hook, ReAct + Plan-Execute loops, message integrity, context transforms |
 | `model` | The `ModelProvider` interface and every provider wire adapter — the only place a vendor SDK may appear |
-| `attunement` · `attunement-graph` | Continuity threads, exact source links, delivery/outcome receipts · the storage-neutral temporal/provenance graph kernel and Activation Subgraph compiler |
+| `attunement` · `attunegraph` · `muse-attunegraph` | Continuity threads and receipts · the dependency-free temporal/provenance engine · Muse-only Continuity/Shadow graph integration |
 | `recall` · `memory` · `stores` | Grounded recall, conversation state and checkpoints, file-backed personal stores |
 | `tools` · `mcp` · `mcp-shared` · `browser` | Tool registry and built-ins, MCP transport plus loopback servers, real-Chrome control |
 | `policy` · `secrets` · `auth` | Approval, permissions, guardrails, credential handling |

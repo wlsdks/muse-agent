@@ -68,7 +68,7 @@ grounded recall, search and user-model access to other agents.
 | --- | --- |
 | `packages/agent-core` | The model-agnostic runtime: loops, guards, approvals, traces |
 | `packages/model` | Provider adapters — the only place a vendor SDK is allowed |
-| `packages/attunement`, `packages/attunement-graph` | Continuity threads and the MAG graph engine |
+| `packages/attunement`, `packages/attunegraph` | Continuity threads and the AttuneGraph graph engine |
 | `packages/recall`, `packages/memory`, `packages/stores` | Grounded recall, personal memory, file-backed stores |
 | `packages/tools`, `packages/browser`, `packages/mcp` | Tool surface, browser control, MCP both ways |
 | `apps/cli`, `apps/api`, `apps/web`, `apps/desktop` | The four surfaces, all on one runtime |

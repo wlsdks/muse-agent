@@ -1,4 +1,4 @@
-import type { TriggerSchedulerTerminalReceipt } from "@muse/attunement-graph/loop-lineage";
+import type { TriggerSchedulerTerminalReceipt } from "@muse/attunegraph/loop-lineage";
 import type { ScheduledJobExecution } from "@muse/scheduler";
 
 /**

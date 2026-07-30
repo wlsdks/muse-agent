@@ -76,13 +76,21 @@ export function createContinuityLearningReplayPreviewTool(
       inputSchema: {
         additionalProperties: false,
         properties: {
-          draft: { type: "object" },
+          draft: {
+            description:
+              "The exact bounded collaboration-policy draft to evaluate against the supplied replay evidence.",
+            type: "object"
+          },
           evidenceCases: {
+            description:
+              "Caller-supplied frozen baseline and challenger evidence cases for this exact opportunity and draft.",
             items: { type: "object" },
             minItems: 1,
             type: "array"
           },
           opportunityId: {
+            description:
+              "The exact current learning opportunity identifier bound to the draft and replay evidence.",
             pattern: "^learning_opportunity_[a-f0-9]{64}$",
             type: "string"
           }

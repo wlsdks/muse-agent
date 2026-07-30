@@ -20,7 +20,10 @@
       "path": "./packages/attunement"
     },
     {
-      "path": "./packages/attunement-graph"
+      "path": "./packages/attunegraph"
+    },
+    {
+      "path": "./packages/muse-attunegraph"
     },
     {
       "path": "./packages/auth"

@@ -50,22 +50,22 @@ invariants and adds the dependency direction that code must not violate.
   through an unversioned new rule.
 - The **Evidence Graph** holds rebuildable provenance and temporal assertions. The
   **Working Graph** is an expiring, token-budgeted decision slice.
-- **Muse Attunement Graph (MAG)** is the canonical name for the whole agent-native graph
-  architecture. **MAG Engine** is the semantics/operators/compiler; **MAG Store** is the
+- **AttuneGraph** is the canonical name for the whole agent-native graph
+  architecture. **AttuneGraph Engine** is the semantics/operators/compiler; **AttuneGraph Store** is the
   built-in durable journal and index layer whose selected default is capability-gated
   `node:sqlite`. The AWG-070a1 worker-isolated projection-journal foundation exists;
   export/rebuild, backup, physical forget, complete benchmarks, and default Muse composition
   remain. PostgreSQL is optional; Redis/MySQL/external Graph DBs are not required. A
-  receipt is evidence projected into MAG, not a database.
-- MAG is an independently extractable product Module developed inside Muse until its
-  clean-room package gate passes. Muse applications depend on the MAG public Interface;
+  receipt is evidence projected into AttuneGraph, not a database.
+- AttuneGraph is an independently extractable product Module developed inside Muse until its
+  clean-room package gate passes. Muse applications depend on the AttuneGraph public Interface;
   the Engine never depends on Muse API/web/CLI/scheduler/autoconfigure/model/UI packages.
   Planned Markdown, Obsidian, and Notion integrations are Source Adapters, not Store
-  Implementations; their MAG-specific contracts are not shipped. See
-  [ADR 0001](docs/architecture/adr/0001-mag-product-module-boundary.md). The Engine remains
+  Implementations; their AttuneGraph-specific contracts are not shipped. See
+  [ADR 0001](docs/architecture/adr/0001-attunegraph-product-module-boundary.md). The Engine remains
   TypeScript-first, synchronous SQLite work is isolated from the application thread, and
   only measured hot kernels may move behind a byte-stable Rust Implementation; see
-  [ADR 0002](docs/architecture/adr/0002-mag-language-runtime-boundary.md).
+  [ADR 0002](docs/architecture/adr/0002-attunegraph-language-runtime-boundary.md).
 - The long-term Observe target is a consented local 24-hour event stream over approved
   sources. It feeds Muse-owned append-oriented Graph storage with pause, retention, export,
   rebuild, and physical-forget controls; it is not indiscriminate screen capture.
@@ -90,18 +90,20 @@ Dependency direction is one-way:
 authoritative stores
   → source-specific resolvers
   → @muse/attunement source projection and receipts
-  → @muse/attunement-graph assertions/operators
+  → @attunegraph/core assertions/operators
+  → @muse/attunegraph Continuity/Shadow integration
   → bounded Capsule/Shadow/Policy presentation
   → existing approval and action boundaries
 ```
 
 - `@muse/attunement` owns Personal Continuity and `ResolvedArtifact` semantics, including
   the internal all-source projection contract.
-- `@muse/attunement-graph` owns storage-neutral graph invariants, projections, bounded
-  operators, explanations, backend conformance, the internal AWG-040b Capsule compiler,
-  the AWG-040c pure render-data presentation Module, and the bounded process-local resume
-  coordinator. `@muse/autoconfigure` owns the narrow explicit Preview composition—not
-  personal-store authority, UI, or a second application composition root.
+- `@attunegraph/core` owns storage-neutral graph invariants, projections, bounded
+  operators, explanations, persistence, portable interchange, and backend conformance.
+  It has no Muse dependency.
+- `@muse/attunegraph` owns Muse-specific Continuity, Shadow, Capsule, evidence, and
+  lineage integration. `@muse/autoconfigure` owns the narrow explicit Preview
+  composition—not personal-store authority, UI, or a second application composition root.
 - Muse's own local graph default must support the complete flagship experience. External
   Graph DBs and hosted graph services are optional, removable storage/interoperability
   Adapters; no Capsule, Shadow Muse, Policy Card, or qualification gate may require one.
@@ -126,7 +128,7 @@ loading unrelated personal context into the model.
 Canonical contracts:
 
 - [Attunement strategy](docs/strategy/attunement.md)
-- [Attunement Graph design](docs/design/attunement/attunement-graph.md)
+- [AttuneGraph design](docs/design/attunement/attunegraph.md)
 - [Agent-Native Graph Core blueprint](docs/design/attunement/agent-native-graph-core.md)
-- [MAG language and runtime boundary](docs/architecture/adr/0002-mag-language-runtime-boundary.md)
-- [Wow + graph roadmap](internal/goals/attunement-wow-graph-roadmap.md)
+- [AttuneGraph language and runtime boundary](docs/architecture/adr/0002-attunegraph-language-runtime-boundary.md)
+- [Wow + graph roadmap](internal/goals/attunegraph-roadmap.md)

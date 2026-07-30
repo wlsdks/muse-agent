@@ -1,0 +1,184 @@
+# ADR 0001: AttuneGraph is an independently extractable product Module
+
+- Status: accepted
+- Date: 2026-07-30
+- Decision owners: Muse architecture
+- Related:
+  [AttuneGraph](../../design/attunement/attunegraph.md),
+  [Agent-Native Graph Core](../../design/attunement/agent-native-graph-core.md),
+  [language and runtime boundary](0002-attunegraph-language-runtime-boundary.md),
+  [wow + graph roadmap](../../../internal/goals/attunegraph-roadmap.md),
+  [standalone readiness audit](../../evaluations/attunegraph-standalone-readiness-2026-07-30.md)
+
+## Context
+
+Muse needs an embedded graph optimized for an AI agent's temporal, provenance, policy,
+and context-compilation work. The graph must remain lightweight enough for one local
+person, work without an external Graph DB, and later be releasable as a focused open-source
+project.
+
+Creating a second Git repository during rapid product development would add package
+publishing, version synchronization, and cross-repository integration commits to every
+semantic change. Leaving AttuneGraph as an ordinary Muse-internal folder would create the opposite
+problem: Muse application dependencies and product-specific composition would leak into
+the engine until clean extraction became impractical.
+
+## Decision
+
+**AttuneGraph** is developed inside the Muse monorepo as an independent
+product Module. Muse is AttuneGraph's first consumer and dogfood environment, not the owner of its
+storage semantics.
+
+The eventual standalone repository is provisionally `attunegraph`. The neutral code
+package is `@attunegraph/core`; Muse-specific product integration is isolated in
+`@muse/attunegraph`. Registry availability is not an ownership claim and must be
+verified before public release. We will create the repository only after the standalone
+qualification gate passes. Until then, one monorepo is the authoritative history.
+
+The public product Interface converges on a small lifecycle:
+
+```ts
+const attuneGraph = await openAttuneGraph(options);
+await attuneGraph.project(command);
+const result = await attuneGraph.execute(command);
+await attuneGraph.close();
+```
+
+There are no compatibility aliases for the superseded product vocabulary. Persisted
+operator and projector identifiers are exact immutable versions such as
+`resume-context@2`; they never store a `latest` alias.
+
+Source naming follows one contract:
+
+- prose/product: `AttuneGraph`;
+- TypeScript symbols: `AttuneGraphScope`, `AttuneGraphSnapshot`, `AttuneGraphStore`, `AttuneGraphSourceAdapter`,
+  `AttuneGraphOperatorResult`, and `AttuneGraphError`;
+- factories and values: `openAttuneGraph`, `openLocalAttuneGraph`, `createAttuneGraphEngine`;
+- packages: neutral `@attunegraph/core`, Muse integration `@muse/attunegraph`;
+- durable identifiers: lower-case versioned keys such as `resume-context@2`;
+- Activation Subgraph remains a descriptive query result, not an alternate product name.
+
+The Interface is intentionally closed:
+
+- callers select one explicit `AttuneGraphScope` and immutable `AttuneGraphSnapshot`;
+- projectors turn verified observations into deterministic AttuneGraph projections;
+- versioned operators answer agent questions such as `changes-since`, `resume-context`,
+  `decision-counterfactual`, `policy-evidence`, and `forget-impact`;
+- results report freshness and `complete | partial | abstained`;
+- raw SQL, Cypher, arbitrary predicates, model prompts, and storage traversal plans are not
+  product Interfaces.
+
+## Module topology
+
+| Module | Package or subpath | Status | Responsibility |
+| --- | --- | --- | --- |
+| AttuneGraph Engine | `@attunegraph/core` | shipped in the monorepo | Canonical values, projections, versioned operators, proof closure, completeness, errors |
+| Local AttuneGraph | `@attunegraph/core/local` | shipped | `openLocalAttuneGraph()` with SQLite isolated behind a worker boundary |
+| Store Kit | `@attunegraph/core/backend` | shipped expert seam | Transactional journal/snapshot adapter contract |
+| Conformance | `@attunegraph/core/testing` | shipped | In-memory semantic oracle and store conformance |
+| Extension Kit | `@attunegraph/core/extension-kit` | shipped narrow seam | Canonical envelopes, settlement, normalization, and witness-path helpers |
+| Muse integration | `@muse/attunegraph/*` | shipped explicit subpaths | Continuity, Shadow, Capsule, evidence, and lineage composition |
+| Markdown source | future standalone adapter | target | Portable Markdown/frontmatter/link observations |
+| Obsidian source | future standalone adapter | target | Vault-relative wiki-link, embed, heading, and stable block-ref observations |
+| Notion source | future standalone adapter | target | Opt-in sync preserving workspace/database/page/block identities |
+| PostgreSQL backend | future optional adapter | deferred until demonstrated need | Optional deployment adapter |
+
+SQLite is the selected local AttuneGraph Store but is hidden behind `openLocalAttuneGraph()`. Its tables,
+WAL/checkpoint policy, migrations, and connection objects must not leak into the AttuneGraph Engine
+Interface. The in-memory implementation is an executable semantic oracle, not a silent
+durability fallback. Redis, MySQL, and an external property-graph service are not required.
+
+Markdown, Obsidian, and Notion are Source Adapters, not graph storage Adapters. Source
+documents remain authoritative; AttuneGraph stores exact references, immutable evidence, and
+rebuildable relations rather than becoming a second document database.
+
+## Dependency direction
+
+```text
+Muse applications and product composition
+  -> AttuneGraph public Interface
+    -> AttuneGraph Engine semantics and versioned operators
+      -> private Store Interface
+        -> SQLite or in-memory oracle
+
+Markdown / Obsidian / Notion
+  -> Source Adapter
+    -> verified bounded observation
+      -> AttuneGraph projector
+```
+
+The AttuneGraph Engine cannot import Muse API, web, CLI, scheduler, autoconfigure, model-provider,
+or user-interface packages. Source and backend packages may depend on the AttuneGraph Interface;
+the AttuneGraph Engine must not depend on their SDKs.
+
+Where existing AttuneGraph semantics currently depend on `@muse/attunement`, extraction work must
+move only the smallest durable receipt/value contracts into a neutral AttuneGraph contract Module
+or accept them through a narrow Adapter. Attunement-specific parsing, local-store I/O,
+capture minting, and current Continuity compatibility subpaths move behind the Muse
+Attunement bridge. The split must not copy or fork Attunement validation.
+
+## Interface invariants
+
+- Evidence Graph state is rebuildable and never outranks its authoritative source.
+- Every ordinary projection and operator is confined to one `(sourceId, threadId)`.
+- Every operator pins one generation and commit snapshot.
+- Published Working Graphs are proof-closed; a mandatory source, policy, freshness, scope,
+  or authority branch is never silently truncated.
+- Absence is claimable only for a complete pinned snapshot; current-world absence also
+  requires fresh source coverage.
+- Factual interaction never becomes feedback, permission, policy promotion, usefulness,
+  or causality.
+- Exact operators make no model or embedding call.
+- Corrupt or future-version durable state becomes unavailable; it is never replaced with an
+  empty in-memory graph.
+- Portable export and deterministic rebuild exist before the SQLite format becomes a
+  default user-data commitment.
+
+## Standalone qualification gate
+
+AttuneGraph is ready to split into its own repository only when all of the following are true:
+
+1. the AttuneGraph package builds and tests from a generated clean-room workspace without the Muse
+   application graph;
+2. public API extraction tests prove no import from Muse apps, UI, scheduler,
+   autoconfigure, model providers, or private paths;
+3. in-memory and SQLite implementations pass the same byte-stable conformance corpus;
+4. package metadata, README, changelog, security policy, contribution guide, license, and
+   third-party notices are complete;
+5. portable journal export, rebuild, corruption/future-version handling, migration, and
+   physical-forget behavior pass;
+6. at least one minimal non-Muse example agent uses only the public package;
+7. the packed artifact installs and runs in a fresh project with no workspace dependency.
+
+Before this gate, documentation must say “standalone-ready target,” not “independently
+publishable today.”
+
+## Git and release strategy
+
+AttuneGraph Engine, AttuneGraph Adapter, and AttuneGraph-only documentation changes should use focused commits.
+Muse integration changes should be separate commits whenever practical. This preserves a
+meaningful history for later extraction without slowing current development with dual-repo
+version churn.
+
+At qualification:
+
+1. freeze one verified Muse commit;
+2. extract only the AttuneGraph packages, AttuneGraph-owned docs, tests, examples, and required neutral
+   contracts with history-preserving repository filtering;
+3. create the new repository once;
+4. run the clean-room and packed-artifact gates against the extracted commit;
+5. publish an immutable initial package version;
+6. change Muse from workspace composition to the released package in a separate integration
+   commit.
+
+No automated bidirectional mirroring is planned. After extraction, the standalone AttuneGraph
+repository becomes authoritative and Muse consumes released versions.
+
+## Consequences
+
+The boundary adds conformance work now, especially for the in-memory/SQLite Store seam and
+neutral receipt contracts. In return it gives AttuneGraph real Depth, Leverage, and Locality:
+removing the Engine would force every caller to recreate scope, snapshots, provenance,
+temporal meaning, proof closure, completeness, authority filtering, canonical IDs, and
+error behavior, while removing one Store or Source Adapter affects only that
+Implementation.

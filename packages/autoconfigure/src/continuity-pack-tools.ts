@@ -8,11 +8,11 @@ import type {
 import type {
   ContinuityResumeRuntimeCapsuleRequestV1,
   ContinuityResumeRuntimeResultV1
-} from "@muse/attunement-graph/continuity-resume-runtime";
+} from "@muse/attunegraph/continuity-resume-runtime";
 import {
   presentContinuityResumeRuntimeCapsule,
   validateContinuityResumeRuntimeCapsuleRequest
-} from "@muse/attunement-graph/continuity-resume-runtime";
+} from "@muse/attunegraph/continuity-resume-runtime";
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 

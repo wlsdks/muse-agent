@@ -34,7 +34,7 @@ build the runtime" that every entry point (`apps/cli`, `apps/api`) calls into id
 - `@muse/memory`, `@muse/stores`, `@muse/db`, `kysely` — the persistence layers wired in.
 - `@muse/mcp`, `@muse/domain-tools`, `@muse/messaging`, `@muse/voice`, `@muse/macos` — the
   concrete tool/channel/voice implementations composed into the registry.
-- `@muse/attunement`, `@muse/attunement-graph`, `@muse/recall`, `@muse/proactivity`,
+- `@muse/attunement`, `@muse/attunegraph`, `@muse/recall`, `@muse/proactivity`,
   `@muse/scheduler` — the continuity, recall, proactive, and scheduling subsystems.
 - `@muse/auth`, `@muse/cache`, `@muse/observability`, `@muse/resilience`,
   `@muse/runtime-settings`, `@muse/runtime-state`, `@muse/skills`, `@muse/calendar`,

@@ -10,8 +10,9 @@ Attunement: Shadow Muse → Continuity Capsule → visible Policy Card. Product 
   exact Muse-local artifacts plus optional browser history; Work Resumption is one mode, not the
   product boundary. Never reduce the whole product to a work assistant, a productivity tracker or a
   computer-use agent, and never make Observe a prerequisite for the user-invoked Continuity Pack.
-- **The Attunement Graph is a rebuildable temporal/provenance projection** and personal context
-  compiler; existing stores stay authoritative.
+- **AttuneGraph is a rebuildable temporal/provenance projection** and personal context
+  compiler. The neutral engine is `@attunegraph/core`; Muse integration is
+  `@muse/attunegraph`; existing stores stay authoritative.
 
 ## Trust floor — never traded for a feature
 

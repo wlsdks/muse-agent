@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "corpus": "attunegraph-portable-fixtures",
+  "corpusVersion": 1,
+  "cases": [
+    {
+      "case": "empty",
+      "file": "empty.atgx",
+      "input": "empty.input.json",
+      "artifactBytes": 828,
+      "artifactSha256": "c51eacc1f03a3b9ab104855e09f9bc29bfa79636cece291629362e3d35e5577d",
+      "stateId": "attunegraph-state:3966b30a30df0bdac32c1ce329d7ed70cd54b480670b70e53c1f8d7665da9662",
+      "exportId": "attunegraph-portable-record:1f1ccb22b9caead45e15e3712fa24b27073a45d49f585035c5c8e6948a907d3d",
+      "scopeCount": 0,
+      "projectionCount": 0,
+      "headCount": 0,
+      "recordCount": 2,
+      "lines": [
+        {
+          "kind": "manifest",
+          "sequence": 0,
+          "unsignedBodyBytes": 271,
+          "envelopeBytes": 377,
+          "lineBytes": 378,
+          "recordId": "attunegraph-portable-record:7e208f781efabc9c14594799392c3aeef3df87448d56e41a396a4249de542870"
+        },
+        {
+          "kind": "footer",
+          "sequence": 1,
+          "unsignedBodyBytes": 343,
+          "envelopeBytes": 449,
+          "lineBytes": 450,
+          "recordId": "attunegraph-portable-record:1f1ccb22b9caead45e15e3712fa24b27073a45d49f585035c5c8e6948a907d3d"
+        }
+      ]
+    },
+    {
+      "case": "one-scope-two-generations",
+      "file": "one-scope-two-generations.atgx",
+      "input": "one-scope-two-generations.input.json",
+      "artifactBytes": 5262,
+      "artifactSha256": "61def2a2eaa6b738a056814e0f614de79558152f6e792a70920886f3315d36f6",
+      "stateId": "attunegraph-state:6af5ac0d0495f6fd1e98c07031ccf35347eff1dc3227d93950eb2f6b9042debb",
+      "exportId": "attunegraph-portable-record:19dfe43ef208f1306e8c6b84865ea07bc96f61941b104a5b69528e6f3a070ff5",
+      "scopeCount": 1,
+      "projectionCount": 2,
+      "headCount": 1,
+      "recordCount": 5,
+      "lines": [
+        {
+          "kind": "manifest",
+          "sequence": 0,
+          "unsignedBodyBytes": 271,
+          "envelopeBytes": 377,
+          "lineBytes": 378,
+          "recordId": "attunegraph-portable-record:7e208f781efabc9c14594799392c3aeef3df87448d56e41a396a4249de542870"
+        },
+        {
+          "kind": "projection",
+          "sequence": 1,
+          "unsignedBodyBytes": 1888,
+          "envelopeBytes": 1994,
+          "lineBytes": 1995,
+          "recordId": "attunegraph-portable-record:34c858f6f360d86cf6be0c2f0557160445b4b347265c2c09c6678d14edec2ec0"
+        },
+        {
+          "kind": "projection",
+          "sequence": 2,
+          "unsignedBodyBytes": 1888,
+          "envelopeBytes": 1994,
+          "lineBytes": 1995,
+          "recordId": "attunegraph-portable-record:0d73b1527a0236c32b82dc39533bf01cc77fc29bea4ea5cfe488a32343555ccb"
+        },
+        {
+          "kind": "head",
+          "sequence": 3,
+          "unsignedBodyBytes": 336,
+          "envelopeBytes": 442,
+          "lineBytes": 443,
+          "recordId": "attunegraph-portable-record:79bddb9709197b14832f3cc611899c12722510518a7511d7931c9c53be439d60"
+        },
+        {
+          "kind": "footer",
+          "sequence": 4,
+          "unsignedBodyBytes": 344,
+          "envelopeBytes": 450,
+          "lineBytes": 451,
+          "recordId": "attunegraph-portable-record:19dfe43ef208f1306e8c6b84865ea07bc96f61941b104a5b69528e6f3a070ff5"
+        }
+      ]
+    },
+    {
+      "case": "unicode-multi-scope",
+      "file": "unicode-multi-scope.atgx",
+      "input": "unicode-multi-scope.input.json",
+      "artifactBytes": 15676,
+      "artifactSha256": "be3afb069cd02bd5a5c7a12765cbe83aa973982f8492c215339281ef8d619f6a",
+      "stateId": "attunegraph-state:392eb9cf6b587e51f8fcc711cad510b8b5329e6a5534720f60c3f7f73632d34a",
+      "exportId": "attunegraph-portable-record:c893f84010f6f379b312922bbadd8770e565a6ccdb06bb19841792019769e025",
+      "scopeCount": 6,
+      "projectionCount": 6,
+      "headCount": 6,
+      "recordCount": 14,
+      "lines": [
+        {
+          "kind": "manifest",
+          "sequence": 0,
+          "unsignedBodyBytes": 271,
+          "envelopeBytes": 377,
+          "lineBytes": 378,
+          "recordId": "attunegraph-portable-record:7e208f781efabc9c14594799392c3aeef3df87448d56e41a396a4249de542870"
+        },
+        {
+          "kind": "projection",
+          "sequence": 1,
+          "unsignedBodyBytes": 1940,
+          "envelopeBytes": 2046,
+          "lineBytes": 2047,
+          "recordId": "attunegraph-portable-record:3353df9f0dc2e89007a1b8ba5abf650e94fba817ee79332cd5396bcd76d90f6c"
+        },
+        {
+          "kind": "projection",
+          "sequence": 2,
+          "unsignedBodyBytes": 1902,
+          "envelopeBytes": 2008,
+          "lineBytes": 2009,
+          "recordId": "attunegraph-portable-record:4490e78c87f51d0b840b355c248f39e668d7998ffae856b93f202023cd2ec28c"
+        },
+        {
+          "kind": "projection",
+          "sequence": 3,
+          "unsignedBodyBytes": 1906,
+          "envelopeBytes": 2012,
+          "lineBytes": 2013,
+          "recordId": "attunegraph-portable-record:00043cefb166654713973de571454f7d232230b95e596bf3e91d52d16e2e3137"
+        },
+        {
+          "kind": "projection",
+          "sequence": 4,
+          "unsignedBodyBytes": 1938,
+          "envelopeBytes": 2044,
+          "lineBytes": 2045,
+          "recordId": "attunegraph-portable-record:a00584ea7f87a7891a3f81953c445e02ce85d8f3efc8c921b7306b5951b5948d"
+        },
+        {
+          "kind": "projection",
+          "sequence": 5,
+          "unsignedBodyBytes": 1936,
+          "envelopeBytes": 2042,
+          "lineBytes": 2043,
+          "recordId": "attunegraph-portable-record:da961f272f16e9537bc7e433151edfe37eaaab08ccacef58c311d4ce10a7f29e"
+        },
+        {
+          "kind": "projection",
+          "sequence": 6,
+          "unsignedBodyBytes": 1938,
+          "envelopeBytes": 2044,
+          "lineBytes": 2045,
+          "recordId": "attunegraph-portable-record:641917829f33bc90c236c0bcc27505d0d69ebff2e6b74b924ac44667cb86ca20"
+        },
+        {
+          "kind": "head",
+          "sequence": 7,
+          "unsignedBodyBytes": 336,
+          "envelopeBytes": 442,
+          "lineBytes": 443,
+          "recordId": "attunegraph-portable-record:9156d49cba55b15ea768f3d453eccd5a7d1d5523813b3f48c2eb97948b910db5"
+        },
+        {
+          "kind": "head",
+          "sequence": 8,
+          "unsignedBodyBytes": 327,
+          "envelopeBytes": 433,
+          "lineBytes": 434,
+          "recordId": "attunegraph-portable-record:c198c9b55b379e2497de9460a6eba4b92c41672e26c12f87454c6c49deee551f"
+        },
+        {
+          "kind": "head",
+          "sequence": 9,
+          "unsignedBodyBytes": 328,
+          "envelopeBytes": 434,
+          "lineBytes": 435,
+          "recordId": "attunegraph-portable-record:9422b9e114c953961198630033ec6eaab53cfa627de3823fa6e0f86decddb16b"
+        },
+        {
+          "kind": "head",
+          "sequence": 10,
+          "unsignedBodyBytes": 336,
+          "envelopeBytes": 442,
+          "lineBytes": 443,
+          "recordId": "attunegraph-portable-record:4991b793999a49e4c376bc9369097025d1a6ea4d024a74bde8568c464ec3955e"
+        },
+        {
+          "kind": "head",
+          "sequence": 11,
+          "unsignedBodyBytes": 336,
+          "envelopeBytes": 442,
+          "lineBytes": 443,
+          "recordId": "attunegraph-portable-record:e85b04c8a60a2990d9d1b78a437b9460c0726e45b83b69fb9a013b8982430578"
+        },
+        {
+          "kind": "head",
+          "sequence": 12,
+          "unsignedBodyBytes": 337,
+          "envelopeBytes": 443,
+          "lineBytes": 444,
+          "recordId": "attunegraph-portable-record:78b2eae6f4bfc90c3e8fee3a23f217fd048bcdfca2010aae46eb1a1a1954d5c4"
+        },
+        {
+          "kind": "footer",
+          "sequence": 13,
+          "unsignedBodyBytes": 347,
+          "envelopeBytes": 453,
+          "lineBytes": 454,
+          "recordId": "attunegraph-portable-record:c893f84010f6f379b312922bbadd8770e565a6ccdb06bb19841792019769e025"
+        }
+      ]
+    }
+  ]
+}
