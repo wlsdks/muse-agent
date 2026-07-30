@@ -650,6 +650,7 @@ export {
   type AgentRuntimeStreamEvent,
   type EgressAdvisory,
   type EgressAdvisorySink,
+  type LoopOutcomeToolEvidence,
   type LoopOutcomeVerificationInput,
   type LoopOutcomeVerifier,
   type ToolApprovalGate,

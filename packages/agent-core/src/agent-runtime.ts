@@ -207,6 +207,7 @@ export type {
   AgentRuntimeStreamEvent,
   EgressAdvisory,
   EgressAdvisorySink,
+  LoopOutcomeToolEvidence,
   LoopOutcomeVerificationInput,
   LoopOutcomeVerifier,
   ToolApprovalGate,
@@ -1278,7 +1279,20 @@ export class AgentRuntime {
           output: response.output,
           runId: context.runId,
           signal,
-          toolsUsed: Object.freeze([...execution.toolsUsed])
+          toolEvidence: Object.freeze(execution.toolResults.map(({ result, toolCall }) =>
+            Object.freeze({
+              ...(result.effectVerification
+                ? { effectVerification: Object.freeze({ ...result.effectVerification }) }
+                : {}),
+              risk: this.toolRegistry?.get(toolCall.name)?.definition.risk ?? "unknown",
+              status: result.status,
+              toolCallId: toolCall.id,
+              toolName: toolCall.name
+            }))),
+          toolsUsed: Object.freeze([...execution.toolsUsed]),
+          userMessages: Object.freeze(context.input.messages
+            .filter((message) => message.role === "user")
+            .map((message) => message.content))
         })),
         this.loopOutcomeVerifierTimeoutMs
       );

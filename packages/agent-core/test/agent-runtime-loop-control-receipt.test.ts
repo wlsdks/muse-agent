@@ -52,8 +52,12 @@ describe("AgentRuntime loop control receipt wiring", () => {
     const runtime = createAgentRuntime({
       loopOutcomeVerifier: (verificationInput) => {
         expect(Object.isFrozen(verificationInput)).toBe(true);
+        expect(Object.isFrozen(verificationInput.toolEvidence)).toBe(true);
         expect(Object.isFrozen(verificationInput.toolsUsed)).toBe(true);
+        expect(Object.isFrozen(verificationInput.userMessages)).toBe(true);
         expect(verificationInput.output).toBe("done");
+        expect(verificationInput.toolEvidence).toEqual([]);
+        expect(verificationInput.userMessages).toEqual(["help me"]);
         return { evidenceId: "terminal-eval:pass", status: "passed" };
       },
       modelProvider: sequenceProvider([{ id: "answer", model: "test/model", output: "done" }])
@@ -64,6 +68,58 @@ describe("AgentRuntime loop control receipt wiring", () => {
 
     expect(receipt.terminal).toEqual({ reason: "goal-verified", status: "completed" });
     expect(receipt.verification).toEqual({ evidenceId: "terminal-eval:pass", status: "passed" });
+  });
+
+  it("supplies minimal immutable effect evidence without tool arguments or output", async () => {
+    const verify = vi.fn((verificationInput) => {
+      expect(verificationInput.userMessages).toEqual(["help me"]);
+      expect(verificationInput.toolEvidence).toEqual([{
+        effectVerification: { status: "verified" },
+        risk: "read",
+        status: "completed",
+        toolCallId: "call-private",
+        toolName: "read_note"
+      }]);
+      expect(Object.isFrozen(verificationInput.toolEvidence[0])).toBe(true);
+      expect(Object.isFrozen(verificationInput.toolEvidence[0]!.effectVerification)).toBe(true);
+      expect(JSON.stringify(verificationInput)).not.toContain("private-argument");
+      expect(JSON.stringify(verificationInput)).not.toContain("private-tool-output");
+      return { evidenceId: "terminal-eval:minimal-evidence", status: "passed" as const };
+    });
+    const toolRegistry = new ToolRegistry([{
+      definition: {
+        description: "Read a note",
+        inputSchema: { type: "object" },
+        name: "read_note",
+        risk: "read"
+      },
+      execute: async () => "private-tool-output",
+      verifyEffect: () => ({ status: "verified" })
+    }]);
+    const runtime = createAgentRuntime({
+      loopOutcomeVerifier: verify,
+      maxToolCalls: 2,
+      modelProvider: sequenceProvider([
+        {
+          id: "call",
+          model: "test/model",
+          output: "",
+          toolCalls: [{
+            arguments: { secret: "private-argument" },
+            id: "call-private",
+            name: "read_note"
+          }]
+        },
+        { id: "answer", model: "test/model", output: "done" }
+      ]),
+      toolRegistry
+    });
+
+    const result = await runtime.run({ ...input, runId: "minimal-effect-evidence-run" });
+    const receipt = parseLoopControlReceipt(result.loopControlReceipt);
+
+    expect(receipt.terminal).toEqual({ reason: "goal-verified", status: "completed" });
+    expect(verify).toHaveBeenCalledOnce();
   });
 
   it("records an explicit verifier failure and keeps verifier errors pending", async () => {
@@ -204,7 +260,11 @@ describe("AgentRuntime loop control receipt wiring", () => {
 
   it("settles the streamed receipt through the same explicit verifier", async () => {
     const runtime = createAgentRuntime({
-      loopOutcomeVerifier: () => ({ evidenceId: "stream-eval:pass", status: "passed" }),
+      loopOutcomeVerifier: (verificationInput) => {
+        expect(verificationInput.userMessages).toEqual(["help me"]);
+        expect(verificationInput.toolEvidence).toEqual([]);
+        return { evidenceId: "stream-eval:pass", status: "passed" };
+      },
       modelProvider: sequenceProvider([
         { id: "plan", model: "test/model", output: "[]" },
         { id: "answer", model: "test/model", output: "direct answer" }

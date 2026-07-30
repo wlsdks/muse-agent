@@ -315,7 +315,26 @@ export interface LoopOutcomeVerificationInput {
   readonly output: string;
   readonly runId: string;
   readonly signal: AbortSignal;
+  /**
+   * User-role request text only. Internal system/context layers and binary
+   * attachments are intentionally excluded from this verifier boundary.
+   */
+  readonly userMessages: readonly string[];
+  /**
+   * Minimal terminal evidence for admitted tool calls. Arguments and tool
+   * output stay out of this boundary: they are untrusted, potentially
+   * sensitive, and unnecessary for effect-receipt verification.
+   */
+  readonly toolEvidence: readonly LoopOutcomeToolEvidence[];
   readonly toolsUsed: readonly string[];
+}
+
+export interface LoopOutcomeToolEvidence {
+  readonly effectVerification?: NonNullable<ToolExecutionResult["effectVerification"]>;
+  readonly risk: ToolRiskLevel | "unknown";
+  readonly status: ToolExecutionResult["status"];
+  readonly toolCallId: string;
+  readonly toolName: string;
 }
 
 export type LoopOutcomeVerifier = (
