@@ -1,85 +1,96 @@
 ---
-title: 평가자(LLM-as-judge) 보정 (Judge Calibration)
-audience: [개발자, AI 에이전트]
-purpose: 평가자가 "유효는 통과·무효는 탈락"을 사람 라벨 대비 얼마나 맞히나 — TPR/TNR로 측정
+title: Judge Calibration (LLM-as-judge)
+audience: [developers, AI agents]
+purpose: How well the evaluator gets "valid passes, invalid fails" against human labels — measured as TPR/TNR
 updated: 2026-06-13
 ---
 
-# 평가자 보정 (Judge Calibration)
+# Judge Calibration
 
-> 참고: Muse 프로젝트에서는 이 주제의 더 상세한 최신판이
-> [`.claude/rules/agent-testing.md`](../../.claude/rules/agent-testing.md)(메타-평가·fault-injection
-> 드릴·보정 근거)에 있다 — 이 파일은 하네스의 이식용(portable) 축약본.
+> Note: in the Muse project, a more detailed and current version of this topic lives in
+> [`.claude/rules/agent-testing.md`](../../.claude/rules/agent-testing.md) (meta-evaluation,
+> fault-injection drills, calibration evidence) — this file is the harness's portable condensed
+> version.
 
-> **왜 필요한가(2026 발견):** 일반적인 LLM 판정자는 **유효한 출력은 잘 통과(TPR>96%)시키지만 무효한
-> 출력을 잡아내는 능력이 형편없습니다(TNR<25%)** — "그럴듯하면 통과" 편향. 그래서 판정자를
-> **사람 라벨이 붙은 보정셋**으로 측정해야 합니다(혼동행렬 역산·Rogan–Gladen). 우리 하네스의 강점은
-> 바로 이 무효 탐지(TNR)이므로, 그게 실제로 높은지 수치로 증명합니다.
+> **Why it is needed (2026 finding):** a typical LLM judge **passes valid outputs well (TPR>96%)
+> but is terrible at catching invalid outputs (TNR<25%)** — the "plausible → pass" bias. So the
+> judge must be measured against a **human-labeled calibration set** (confusion-matrix inversion,
+> Rogan–Gladen). Our harness's strength is exactly this invalid-detection (TNR), so we prove with
+> numbers that it is actually high.
 
-> **주의:** 아래 보정셋의 빌드(코드 조각)들은 **평가자를 시험하는 픽스처(워크로드)**일 뿐, 하네스가
-> 만들어내는 산출물이 아닙니다. 측정 대상은 "평가자(하네스의 검증 부품)가 무효를 제대로 잡나"이지
-> 그 코드 자체의 품질이 아닙니다.
+> **Caution:** the builds (code snippets) in the calibration set below are only **fixtures
+> (workload) that test the evaluator** — not artifacts the harness produces. What is measured is
+> "does the evaluator (the harness's verification component) actually catch invalid work", not
+> the quality of that code itself.
 
-## 방법
+## Method
 
-1. 정답(PASS/FAIL) 라벨이 달린 작은 보정셋을 둡니다(유효 + **미묘하게 무효**한 케이스 섞어서).
-2. 평가자 역할에 "각 수용 기준을 하나씩 대조하고 **엣지 케이스를 실제로 따져라**, 일부라도 어기면
-   PASS 금지"라는 루브릭을 주고 각 케이스를 판정시킵니다.
-3. 라벨과 비교해 **TPR**(유효를 PASS로)·**TNR**(무효를 FAIL로)·정확도를 계산합니다.
+1. Keep a small calibration set with ground-truth (PASS/FAIL) labels (a mix of valid and
+   **subtly invalid** cases).
+2. Give the evaluator role a rubric — "check each acceptance criterion one by one and **actually
+   work through the edge cases**; if any is violated, no PASS" — and have it judge each case.
+3. Compare against the labels and compute **TPR** (valid→PASS), **TNR** (invalid→FAIL), and
+   accuracy.
 
-## 보정셋 (라벨 = 사람 정답)
+## Calibration set (labels = human ground truth)
 
-| ID | 수용 기준 | 빌드 | 라벨 | 함정 |
+| ID | Acceptance criterion | Build | Label | Trap |
 |---|---|---|---|---|
-| V1 | 두 정수의 합 | `return a+b` | PASS | — |
-| V2 | 문자열 뒤집기·유니코드·빈→빈 | `return s[::-1]` | PASS | — |
-| I1 | 소수 판정(1·9·2 정확히) | `return n % 2 != 0` | FAIL | 홀수≠소수(9→T·2→F·1→T 오판) |
-| I2 | 단어수·연속/앞뒤 공백 무시·빈→0 | `len(s.split(" "))` | FAIL | 인자 split이 빈 토큰 양산 |
-| I3 | 회문·대소문자/공백 무시 | `return s == s[::-1]` | FAIL | 정규화 누락 |
-| I4 | 리스트 최댓값·빈→예외 | `return l[0]` | FAIL | 첫 원소≠최댓값 |
-| V3 | 팩토리얼·0!=1·5!=120 | 루프 `r*=i` (0→1) | PASS | — |
+| V1 | Sum of two integers | `return a+b` | PASS | — |
+| V2 | Reverse a string · Unicode · empty→empty | `return s[::-1]` | PASS | — |
+| I1 | Primality test (exact on 1·9·2) | `return n % 2 != 0` | FAIL | odd≠prime (misjudges 9→T · 2→F · 1→T) |
+| I2 | Word count · ignore repeated/leading/trailing spaces · empty→0 | `len(s.split(" "))` | FAIL | split with an argument mass-produces empty tokens |
+| I3 | Palindrome · ignore case/spaces | `return s == s[::-1]` | FAIL | normalization missing |
+| I4 | List maximum · empty→exception | `return l[0]` | FAIL | first element ≠ maximum |
+| V3 | Factorial · 0!=1 · 5!=120 | loop `r*=i` (0→1) | PASS | — |
 | V4 | clamp(x,lo,hi) | `max(lo,min(x,hi))` | PASS | — |
-| I5 | 윤년(100·400 규칙) | `return y % 4 == 0` | FAIL | 세기 규칙 누락(1900→T 오판) |
-| I6 | 이진탐색·인덱스/-1 반환 | `return x in arr` | FAIL | bool 반환(인덱스 아님)·선형 |
-| I7 | 평균·빈 리스트→0.0 | `sum(nums)/len(nums)` | FAIL | 빈→ZeroDivisionError |
-| I8 | slugify·영숫자+하이픈만 | `lower().replace(' ','-')` | FAIL | 특수문자 미제거('!'잔존) |
+| I5 | Leap year (100·400 rules) | `return y % 4 == 0` | FAIL | century rule missing (misjudges 1900→T) |
+| I6 | Binary search · return index/-1 | `return x in arr` | FAIL | returns bool (not an index) · linear |
+| I7 | Average · empty list→0.0 | `sum(nums)/len(nums)` | FAIL | empty→ZeroDivisionError |
+| I8 | slugify · alphanumerics+hyphens only | `lower().replace(' ','-')` | FAIL | special chars not removed ('!' remains) |
 
-## 측정 (2026-05-31, 실제 Claude Code — n=12)
+## Measurement (2026-05-31, real Claude Code — n=12)
 
-| 지표 | 결과 |
+| Metric | Result |
 |---|---|
-| TPR (유효→PASS) | **4/4 = 100%** |
-| TNR (무효→FAIL) | **8/8 = 100%** |
-| 정확도 | **12/12 = 100%** |
+| TPR (valid→PASS) | **4/4 = 100%** |
+| TNR (invalid→FAIL) | **8/8 = 100%** |
+| Accuracy | **12/12 = 100%** |
 
-처음 6케이스(V1·V2·I1~I4) 측정 후 6케이스(V3·V4·I5~I8) 추가 측정 — 둘 다 전부 정답. 무효 8건
-(소수·공백·회문·최댓값·윤년·이진탐색·빈리스트나눗셈·slugify)을 **모두 FAIL**로 잡고 매번 구체 반례를
-제시(1900→윤년 오판, `x in arr`는 bool 등). 무효 표본(TNR 분모)이 4→8로 커졌는데도 100% 유지.
+Measured the first 6 cases (V1·V2·I1–I4), then added 6 more (V3·V4·I5–I8) — all correct in both
+rounds. All 8 invalid cases (prime · spaces · palindrome · maximum · leap year · binary search ·
+empty-list division · slugify) were caught as **FAIL**, each time with a concrete counterexample
+(1900 misjudged as leap, `x in arr` returns bool, etc.). Even as the invalid sample (TNR
+denominator) grew 4→8, 100% held.
 
-평가자는 미묘한 무효 4건(소수·공백·회문·최댓값)을 **전부 FAIL**로 잡고 매번 **어긴 기준을 구체 근거**로
-지목했습니다("9를 True로 오판", "split이 빈 토큰 양산" 등). 일반 판정자의 TNR<25% 기준선을 크게 상회 —
-원인은 "그럴듯하면 통과"가 아니라 **기준 대조 + 엣지 직접 검증**을 강제하는 루브릭입니다.
+The evaluator caught all 4 subtle invalid cases (prime · spaces · palindrome · maximum) as
+**FAIL**, and each time named **the violated criterion with concrete evidence** ("misjudges 9 as
+True", "split mass-produces empty tokens", etc.). Well above the typical judge's TNR<25% baseline
+— the cause is not "plausible → pass" but the rubric that forces **criterion-by-criterion
+checking + direct edge verification**.
 
-> **정직한 한계:** n=12 보정셋(무효 8)입니다 — 처음 n=6에서 키웠고 TNR 100% 유지. 신뢰구간을 더
-> 좁히려면 무효 케이스를 계속 늘리고 여러 번 반복해 비결정성까지 봐야 합니다. 이 문서는 그
-> **방법·데이터·재현 레시피**를 고정해 둡니다(케이스 추가 시 이 표에 한 줄씩).
+> **Honest limitation:** this is an n=12 calibration set (8 invalid) — grown from the initial
+> n=6, with TNR held at 100%. To tighten the confidence interval, keep adding invalid cases and
+> repeat multiple times to also cover non-determinism. This document pins the **method, data, and
+> reproduction recipe** (one table row per added case).
 
-## 주기적 스트레스 (일회 측정이 아니라 배터리)
+## Periodic stress (a battery, not a one-off measurement)
 
-판정자 신뢰도는 한 번의 합의율 숫자가 아니라 **반복 스트레스 배터리**로 관리합니다(Judge
-Reliability Harness, 2603.05399). 어려운 응답 쌍에선 강한 판정자도 동전던지기 근처입니다
-(최고 ~64%, GPT-4o는 무작위 수준 — JudgeBench 2410.12784). 그래서: 보정셋을 키울 때
-"미묘하게 무효"를 계속 추가하고, **하네스 프롬프트나 모델이 바뀔 때마다 이 표를 재측정**합니다
-— 보정은 자산이 아니라 구독입니다.
+Judge reliability is managed by a **repeated stress battery**, not a single agreement number
+(Judge Reliability Harness, 2603.05399). On hard response pairs even strong judges are near
+coin-flip (best ~64%, GPT-4o at random level — JudgeBench 2410.12784). So: as the calibration set
+grows, keep adding "subtly invalid" cases, and **re-measure this table whenever the harness
+prompt or the model changes** — calibration is a subscription, not an asset.
 
-## 재현 레시피
+## Reproduction recipe
 
-평가자 역할 프롬프트([role-prompts](../core/role-prompts.md))에 위 루브릭을 주고 표의 각 (기준, 빌드)을
-판정시킨 뒤 라벨과 비교해 TPR/TNR을 셉니다. 무효 케이스를 더 넣을수록 TNR 추정이 단단해집니다.
-판정자도 [golden-set](golden-set.md)의 G8~G12와 함께 회귀로 관리합니다.
+Give the evaluator role prompt ([role-prompts](../core/role-prompts.md)) the rubric above, have it
+judge each (criterion, build) pair in the table, then compare against labels and count TPR/TNR.
+The more invalid cases you add, the firmer the TNR estimate. The judge is also managed as a
+regression alongside G8–G12 of the [golden-set](golden-set.md).
 
-## 출처
+## Sources
 
-- Hamel Husain — [Using LLM-as-a-Judge](https://hamel.dev/blog/posts/llm-judge/) (사람 라벨 대비 보정)
-- [How to Correctly Report LLM-as-a-Judge Evaluations](https://arxiv.org/pdf/2511.21140) · [futureagi — LLM-as-Judge Best Practices 2026](https://futureagi.com/blog/llm-as-judge-best-practices-2026) (TPR>96%/TNR<25% 편향, 혼동행렬 역산·Rogan–Gladen)
-- [JudgeBench (2410.12784)](https://arxiv.org/abs/2410.12784) (어려운 쌍에서 판정자 ~무작위 — 메타평가 없인 신뢰 금지) · [Judge Reliability Harness (2603.05399)](https://arxiv.org/abs/2603.05399) (반복 스트레스 배터리)
+- Hamel Husain — [Using LLM-as-a-Judge](https://hamel.dev/blog/posts/llm-judge/) (calibration against human labels)
+- [How to Correctly Report LLM-as-a-Judge Evaluations](https://arxiv.org/pdf/2511.21140) · [futureagi — LLM-as-Judge Best Practices 2026](https://futureagi.com/blog/llm-as-judge-best-practices-2026) (TPR>96%/TNR<25% bias, confusion-matrix inversion · Rogan–Gladen)
+- [JudgeBench (2410.12784)](https://arxiv.org/abs/2410.12784) (judges ~random on hard pairs — never trust without meta-evaluation) · [Judge Reliability Harness (2603.05399)](https://arxiv.org/abs/2603.05399) (repeated stress battery)

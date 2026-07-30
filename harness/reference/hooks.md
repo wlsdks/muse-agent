@@ -1,53 +1,59 @@
 ---
-title: 훅 (Hooks — PreToolUse / PostToolUse)
-audience: [개발자, AI 에이전트]
-purpose: 도구 호출 전/후에 끼어 우회 불가로 막거나 관측하는 정통 하네스 레이어
+title: Hooks — PreToolUse / PostToolUse
+audience: [developers, AI agents]
+purpose: The canonical harness layer that intercepts tool calls before/after execution to block them un-bypassably or observe them
 updated: 2026-06-13
 ---
 
-# 훅 (Hooks)
+# Hooks
 
-정통 하네스의 다섯 레이어(메모리·도구·권한·**훅**·관측) 중 하나. 2026 합의(Boris Cherny/Claude Code)는
-**"메모리 + 훅부터 시작하라"** — 가장 흔한 실패를 이 둘이 막기 때문입니다. 핵심: **PreToolUse 훅은
-도구 호출을 *무조건* 막을 수 있는 유일한 메커니즘이고, 우회할 수 없습니다.**
+One of the canonical harness's five layers (memory · tools · permissions · **hooks** ·
+observability). The 2026 consensus (Boris Cherny / Claude Code) is **"start with memory + hooks"**
+— because these two prevent the most common failures. The key point: **a PreToolUse hook is the
+only mechanism that can block a tool call *unconditionally*, and it cannot be bypassed.**
 
-## 무엇인가
+## What it is
 
-- **PreToolUse** — 도구가 실행되기 *전에* 돈다. 하나라도 거부(또는 예외)하면 호출이 **차단**되고
-  실제 실행은 일어나지 않는다(fail-closed).
-- **PostToolUse** — 도구 실행 *후에* 돈다. 관측용(로그·트레이스)이며, 던져도 결과를 막거나 망치지 않는다.
+- **PreToolUse** — runs *before* the tool executes. If any hook rejects (or throws), the call is
+  **blocked** and no actual execution happens (fail-closed).
+- **PostToolUse** — runs *after* the tool executes. For observation (logging, tracing); throwing
+  does not block or corrupt the result.
 
-## 왜 게이트와 별개인가
+## Why it is separate from the gates
 
-권한 게이트([permission-matrix](../core/permission-matrix.md))는 "이 등급을 허용하나"를 판정하는 규칙이고,
-훅은 그 규칙들을 **모든 도구 호출 길목에 끼우는 실행 장치**다. 그래서 우리 코드에선 **권한 게이트가
-곧 기본 PreToolUse 훅**(`permissionHook`)으로 들어가 있다 — 권한 enforcement = 훅의 한 사례.
+The permission gate ([permission-matrix](../core/permission-matrix.md)) is the rule that judges
+"is this tier allowed"; hooks are the **execution mechanism that inserts those rules into the path
+of every tool call**. So in our code the **permission gate ships as the default PreToolUse hook**
+(`permissionHook`) — permission enforcement = one instance of a hook.
 
-## 어떻게 쓰나 (코드)
+## How to use it (code)
 
-[runner/hooks.mjs](../runner/hooks.mjs) (의존성 0):
+[runner/hooks.mjs](../runner/hooks.mjs) (zero dependencies):
 
 - `createHookPipeline()` → `onPreToolUse(fn)` · `onPostToolUse(fn)`
-- `dispatchTool(pipeline, call, execute)` — **도구를 도는 유일한 정식 경로**. pre-훅이 막으면
-  `execute()`에 도달하지 않으므로 enforcement를 건너뛸 수 없다.
-- `permissionHook` — 권한 게이트를 PreToolUse 훅으로 쓰는 기본 제공품.
+- `dispatchTool(pipeline, call, execute)` — **the only sanctioned path a tool runs through**. If a
+  pre-hook blocks, `execute()` is never reached, so enforcement cannot be skipped.
+- `permissionHook` — the built-in that uses the permission gate as a PreToolUse hook.
 
 ```
 const p = createHookPipeline();
-p.onPreToolUse(permissionHook);            // 은행=거부, 외부전송=확정+확인 필요
+p.onPreToolUse(permissionHook);            // banking=refused, outbound=requires confirmed + resolved
 p.onPostToolUse((call, res) => trace(call, res));
 const r = await dispatchTool(p, { kind: 'outbound', recipientResolved: true, confirmed: true }, send);
-// pre-훅 통과 → send 실행 → post-훅 관측. 막히면 r.blocked=true, send 미실행.
+// pre-hook passes → send executes → post-hook observes. If blocked: r.blocked=true, send never runs.
 ```
 
-## 검증
+## Verification
 
 [runner/hooks.test.mjs](../runner/hooks.test.mjs) — `node --test "harness/runner/*.test.mjs"`:
-PreToolUse 거부가 실행을 막음·통과 시 실행+PostToolUse 관측·훅 예외는 fail-closed 차단·다중 훅
-첫 거부 우선·권한 훅(은행/외부전송 차단·read 허용)·PostToolUse 예외는 결과 불변. **6/6.**
+PreToolUse rejection blocks execution · on pass, execution + PostToolUse observation · a hook
+exception blocks fail-closed · with multiple hooks the first rejection wins · the permission hook
+(banking/outbound blocked, read allowed) · a PostToolUse exception leaves the result unchanged.
+**6/6.**
 
-## 한계 / 다음
+## Limits / next
 
-이건 호스트가 자기 도구 디스패치를 `dispatchTool`로 감싸야 효력이 난다(우리가 강제하는 건 "감싸면
-못 빠져나간다"는 것). 에이전트 CLI를 직접 쓰는 경우의 자동 후킹은 호스트 런타임 몫. (관측·세션 영속·메모리·도구도
-이후 전부 코드로 채워짐 — [architecture §4](architecture.md).)
+This takes effect only when the host wraps its own tool dispatch in `dispatchTool` (what we
+enforce is "once wrapped, there is no escape"). Automatic hooking when using an agent CLI directly
+is the host runtime's job. (Observability, session persistence, memory, and tools are all also
+filled in as code later — [architecture §4](architecture.md).)

@@ -1,168 +1,199 @@
 ---
-title: 개발 루프 — 매일 Muse를 더 강하게 만드는 방법 (Development Loop)
-audience: [AI 에이전트, 개발자]
-purpose: "다음에 뭘 개발하지"를 매번 즉흥적으로 정하는 비효율을 없애고, 공개된 에이전트-개발 방법론에 근거한 하나의 루프로 고정한다. `improve-muse`·`grow-muse` 두 스킬이 활성화하는 본체.
+title: Development Loop — how Muse gets stronger every day
+audience: [AI agents, developers]
+purpose: Remove the inefficiency of deciding "what to build next" ad hoc every time, and fix it as one loop grounded in the published agent-development methodology. The body that the two skills `improve-muse` and `grow-muse` activate.
 format: harness layer (vendor-neutral)
 updated: 2026-06-08
 ---
 
-# 개발 루프 — Development Loop
+# Development Loop
 
-> **HOST-SPECIFIC** — 이 파일은 호스트(Muse) 전용 개발 루프라 레포 밖 경로
-> (`docs/goals/backlog.md`·`.claude/rules/*` 등)를 참조합니다. 하네스를 새 프로젝트로
-> 가져가면 그대로 쓰지 말고 **당신 프로젝트의 루프로 재작성**하세요([INSTALL §1](../INSTALL.md)).
+> **HOST-SPECIFIC** — this file is the host's (Muse's) development loop and references paths
+> outside the harness (`docs/goals/backlog.md`, `.claude/rules/*`, etc.). When taking the harness
+> to a new project, do not use it as-is — **rewrite it as your project's loop**
+> ([INSTALL §1](../INSTALL.md)).
 
-> **이 파일은 "무엇을·어떻게 개발하는가"의 계약입니다.** [`AGENTS.md`](../AGENTS.md)가
-> *역할·핸드오프·게이트*(한 슬라이스를 어떻게 실행하나)라면, 이 파일은 *그 슬라이스를
-> 어떻게 고르고, 검증하고, 학습을 누적하나*입니다. `.claude/skills/improve-muse`(HARDEN)·
-> `grow-muse`(GROW) 두 스킬이 각각 0–7단계를 end-to-end로 완주합니다(pick → BUILD →
-> VERIFY → COMMIT+PUSH) — "할 게 없다"는 금지 출력. 매번 "뭘 만들지" 프롬프트를 쓰지 않게.
+> **This file is the contract for "what to build and how".** Where [`AGENTS.md`](../AGENTS.md) is
+> *roles, handoff, gates* (how one slice is executed), this file is *how that slice is chosen,
+> verified, and its learning accumulated*. The two skills `.claude/skills/improve-muse` (HARDEN)
+> and `grow-muse` (GROW) each run stages 0–7 end-to-end (pick → BUILD → VERIFY → COMMIT+PUSH) —
+> "nothing to do" is a forbidden output. So that no "what should I build" prompt is ever written
+> again.
 
-## 0. 이 루프가 고치는 비효율 (왜 만들었나)
+## 0. The inefficiency this loop fixes (why it was made)
 
-증상(진안, 2026-06-08): *"내가 비효율적으로 개발하고 있다는 느낌. 매번 뭘 개발할지
-프롬프트로 알아봐야 한다."* 근본 원인 = **MEASURE 절반은 강한데 ANALYZE+COMPOUND
-절반이 없다** → 매 세션이 오리엔테이션 비용을 처음부터 다시 낸다(treadmill). 두 얼굴:
+Symptom (Jinan, 2026-06-08): *"The feeling that I'm developing inefficiently. Every time I have to
+find out by prompt what to develop."* Root cause = **the MEASURE half is strong, but the
+ANALYZE+COMPOUND half is missing** → every session re-pays the orientation cost from scratch
+(treadmill). Two faces:
 
-1. **방향이 누적되지 않는다.** 단일 진입점이 없고, 영속 backlog가 삭제돼 있어 "다음에 뭘"을
-   매 슬라이스마다 비싼 scout 서브에이전트로 재발견하고 버린다. → 고친다: [`backlog.md`](../../docs/goals/backlog.md)를
-   한 번 쓰면 다음 fire가 먼저 읽는다.
-2. **데이터가 슬라이스를 안 고른다.** `.muse/runs/`에 트레이스가 쌓이는데 아무도 안 읽고,
-   "느낌상 가치 높은 것"으로 고른다. → 고친다(점진적): 결과 로깅 계측 → 실패 클러스터링이
-   슬라이스를 고르게. (지금은 라벨이 없으니 backlog가 우선; [`backlog.md`](../../docs/goals/backlog.md) 참고.)
+1. **Direction doesn't accumulate.** No single entrypoint, and the persistent backlog had been
+   deleted, so "what's next" was re-discovered per slice by an expensive scout subagent and thrown
+   away. → Fix: write [`backlog.md`](../../docs/goals/backlog.md) once and the next fire reads it
+   first.
+2. **Data doesn't pick the slice.** Traces pile up in `.muse/runs/` but nobody reads them, and
+   work is picked by "feels high-value". → Fix (incremental): outcome-logging instrumentation →
+   failure clustering picks the slice. (No labels yet, so the backlog takes priority for now; see
+   [`backlog.md`](../../docs/goals/backlog.md).)
 
-## 1. 원칙 (공개 방법론 전반의 합의 — 따를 것)
+## 1. Principles (the consensus across public methodology — follow them)
 
-모두 1차 출처로 교차 검증됨(§4). 충돌 시 [`CLAUDE.md`](../../CLAUDE.md) + `.claude/rules/*.md`가 우선.
+All cross-verified against primary sources (§4). On conflict, [`CLAUDE.md`](../../CLAUDE.md) +
+`.claude/rules/*.md` win.
 
-1. **데이터가 슬라이스를 고른다, 느낌이 아니라.** 자기 트레이스를 읽고 → 실패를 분류하고 →
-   빈도로 순위를 매겨 Pareto가 일을 고르게. AI 개발에서 가장 ROI 높은 활동(Husain; NurtureBoss는
-   3개 모드 고쳐 실패 60%+ 제거). 라벨이 충분히 쌓이기 전엔 backlog 최상단 항목으로 대체.
-2. **고정된 작은 모델에서는 *하네스*가 레버다 — 모델 크기가 아니라.** 에이전트=LLM이 도구를
-   루프로 도는 것; 역량=도구×플래너(Weng·Willison·Huyen·Ng; Ng의 "GPT-3.5 루프 > GPT-4 zero-shot").
-   약한 모델일수록 하네스 품질에 성능이 크게 흔들린다(METR ~23.8pt). 단, 첫 액션을 맞혀라 —
-   8B는 3+스텝 추론에서 일관성이 무너진다([`tool-calling.md`](../../.claude/rules/tool-calling.md)).
-3. **뺄셈으로 개선한다.** 도구를 ablate해 기여 없는 건 제거(Huyen); CLAUDE.md 100줄 상한;
-   subtractive correction-decay. 계약·스킬·backlog는 늘리기만 하면 8B가 무시하는 소음이 된다 —
-   한 줄 추가하면 한 줄 쳐낸다.
-4. **안쪽 루프는 단일 스레드 기본. 서브에이전트는 *병렬·읽기 위주·독립* 탐색에만.** 긴밀히
-   결합된 build/fix 결정은 한 에이전트에 둔다(Cognition "Don't Build Multi-Agents"; Anthropic 멀티에이전트는
-   +90%지만 ~15× 토큰, 병렬 가능한 일에만). gap-finding 같은 폭넓은 조사가 서브에이전트의 올바른 쓰임.
-   컨텍스트 공학(write/select/compress/isolate)·context rot 주의.
-5. **검증하고 나서 주장한다 — fail-closed, maker≠judge, pass^k.** 터미널 상태/결과를 채점;
-   이진 판정(temp 0); green 배터리 없으면 done 아님; evaluator는 worker와 다른 인스턴스 +
-   eval:judge 메타평가로 같은-모델 판정을 보정. "tested"는 절대 tsc-only가 아니다.
-6. **학습을 write-back으로 누적한다 — 모두가 빼먹고, treadmill을 flywheel로 바꾸는 그 단계.**
-   실패는 영구 golden case로, 반복 교정은 rule 한 줄로, 고른/버린 방향+출처 URL은 backlog로.
-   Voyager의 스킬 라이브러리·Generative-Agents의 memory+reflection이 이 누적의 학술 뿌리.
-   누구도 신뢰할 자동 자기개선은 없으니([[obra/superpowers는 수동 의식]]), write-back은 *완료 게이트*다.
-7. **load-bearing 조각은 코드로 소유한다 — 프레임워크 마법이나 프롬프트 부탁이 아니라**(12-Factor).
-   정책·게이트·surface→battery 맵은 버전관리에 둔다(머릿속이 아니라).
+1. **Data picks the slice, not feelings.** Read your own traces → classify failures → rank by
+   frequency so Pareto picks the work. The highest-ROI activity in AI development (Husain;
+   NurtureBoss removed 60%+ of failures by fixing 3 modes). Until enough labels accumulate,
+   substitute the top backlog item.
+2. **On a fixed small model, the *harness* is the lever — not model size.** Agent = an LLM looping
+   over tools; capability = tools × planner (Weng · Willison · Huyen · Ng; Ng's "GPT-3.5 loop >
+   GPT-4 zero-shot"). The weaker the model, the more performance swings on harness quality
+   (METR ~23.8pt). But get the first action right — an 8B's coherence collapses at 3+ steps of
+   reasoning ([`tool-calling.md`](../../.claude/rules/tool-calling.md)).
+3. **Improve by subtraction.** Ablate tools and remove the ones contributing nothing (Huyen); the
+   CLAUDE.md 100-line cap; subtractive correction-decay. Contracts, skills, and backlog become
+   noise an 8B ignores if they only ever grow — add a line, prune a line.
+4. **The inner loop is single-threaded by default. Subagents only for *parallel, read-heavy,
+   independent* exploration.** Keep tightly coupled build/fix decisions in one agent (Cognition
+   "Don't Build Multi-Agents"; Anthropic's multi-agent is +90% but ~15× tokens, only for
+   parallelizable work). Broad investigation like gap-finding is the right use of subagents. Mind
+   context engineering (write/select/compress/isolate) and context rot.
+5. **Verify, then claim — fail-closed, maker≠judge, pass^k.** Grade terminal states/outcomes;
+   binary verdicts (temp 0); no green battery, not done; the evaluator is a different instance
+   from the worker + same-model verdicts calibrated via the eval:judge meta-eval. "Tested" is
+   never tsc-only.
+6. **Accumulate learning as write-back — the step everyone skips, and the one that turns the
+   treadmill into a flywheel.** Failures become permanent golden cases, repeated corrections
+   become one rule line, chosen/discarded directions + source URLs go to the backlog. Voyager's
+   skill library and Generative Agents' memory+reflection are the academic roots of this
+   accumulation. No automatic self-improvement anyone trusts exists ([[obra/superpowers is a
+   manual ritual]]), so write-back is a *completion gate*.
+7. **Own the load-bearing pieces as code — not framework magic or prompt requests** (12-Factor).
+   Policy, gates, and the surface→battery map live in version control (not in someone's head).
 
-## 2. 정전(正典) 지도 — 기법 → 출처 → Muse 상태
+## 2. Canon map — technique → source → Muse status
 
-개발-루프 기법과 평가 기법. HAVE=있음 / PARTIAL=부분 / MISSING=없음 / N-A=무관.
+Dev-loop techniques and eval techniques. HAVE = present / PARTIAL = partial / MISSING = absent /
+N-A = irrelevant.
 
-| 기법 | dev/eval | 출처 | Muse |
+| Technique | dev/eval | Source | Muse |
 |---|---|---|---|
-| ReAct (추론↔행동 교차) | dev | arXiv 2210.03629 | HAVE (plan-execute/model-loop) |
-| Reflexion (피드백→언어적 자기강화) | dev | 2303.11366 | HAVE (correction-decay) |
-| Self-Refine (생성→비평→수정) | dev | 2303.17651 | HAVE (ask --repair + judge) |
-| Voyager (성장하는 callable 스킬 라이브러리) | dev | 2305.16291 | HAVE (playbook/skills) |
+| ReAct (interleaved reasoning↔acting) | dev | arXiv 2210.03629 | HAVE (plan-execute/model-loop) |
+| Reflexion (feedback→verbal self-reinforcement) | dev | 2303.11366 | HAVE (correction-decay) |
+| Self-Refine (generate→critique→revise) | dev | 2303.17651 | HAVE (ask --repair + judge) |
+| Voyager (growing callable skill library) | dev | 2305.16291 | HAVE (playbook/skills) |
 | Generative Agents (memory stream+reflection) | dev | 2304.03442 | HAVE (episodic+reflection) |
-| Self-RAG / CRAG (신뢰 게이트 retrieval) | dev | 2310.11511 / 2401.15884 | HAVE (grounding gate) |
-| 에러분석 플라이휠 (look at your data) | dev | Husain · Yan · Google AgentOps | **PARTIAL — fuel 없음(트레이스 라벨링 필요)** |
-| pass^k 신뢰도 | eval | τ-bench 2406.12045 | HAVE (MUSE_EVAL_REPEAT) |
-| 이진 LLM-judge + 메타평가 | eval | Husain · Google rubric_v1 | HAVE (eval:judge) |
-| trajectory vs final 분리 + match 모드 | eval | Google ADK criteria | **MISSING (backlog)** |
-| 문장단위 groundedness (hallucinations_v1) | eval | Google ADK | **MISSING (backlog)** |
-| 비용통제 평가 (단순 베이스라인 먼저) | eval | "AI Agents That Matter" 2407.01502 | PARTIAL |
+| Self-RAG / CRAG (trust-gated retrieval) | dev | 2310.11511 / 2401.15884 | HAVE (grounding gate) |
+| Error-analysis flywheel (look at your data) | dev | Husain · Yan · Google AgentOps | **PARTIAL — no fuel (trace labeling needed)** |
+| pass^k reliability | eval | τ-bench 2406.12045 | HAVE (MUSE_EVAL_REPEAT) |
+| Binary LLM-judge + meta-eval | eval | Husain · Google rubric_v1 | HAVE (eval:judge) |
+| Trajectory vs final separation + match modes | eval | Google ADK criteria | **MISSING (backlog)** |
+| Sentence-level groundedness (hallucinations_v1) | eval | Google ADK | **MISSING (backlog)** |
+| Cost-controlled evaluation (simple baselines first) | eval | "AI Agents That Matter" 2407.01502 | PARTIAL |
 
-> 핵심 읽기: **개발-루프 기법은 거의 다 HAVE다.** 비어 있는 곳은 *평가 정밀화*와 *에러분석
-> 플라이휠의 연료*다. 그래서 다음 일은 "또 기법 추가"가 아니라 "측정과 누적의 구멍 메우기".
+> The key reading: **the dev-loop techniques are almost all HAVE.** What's empty is *eval
+> refinement* and *the fuel of the error-analysis flywheel*. So the next work is not "add another
+> technique" but "fill the holes in measurement and accumulation".
 
-## 3. THE LOOP — 매일 한 번의 fire
+## 3. THE LOOP — one fire per day
 
-각 fire = 검증된 슬라이스 하나. 비용 낮은 단계부터, fail-closed.
-진입점은 **두 스킬**이다(2026-07-17 분리): `improve-muse`(HARDEN — 기존 것의 신뢰성/부채/삭제)와
-`grow-muse`(GROW — 새 사용자-대면 역량). 각각 0–7단계를 end-to-end로 자율 실행하며(pick →
-BUILD → VERIFY → COMMIT + **PUSH**) "할 게 없다"를 출력하지 않는다. 하나의 루프는 한 축만
-움직이므로 두 축을 다 움직이려면 루프를 짝짓거나 번갈아 호출한다. 이 문서는 공용 실행
-계약(0–7)의 상세이고, 각 스킬 `SKILL.md`가 소싱 사다리와 권한 경계를 소유한다.
+Each fire = one verified slice. Cheapest stage first, fail-closed.
+The entrypoints are **two skills** (split 2026-07-17): `improve-muse` (HARDEN — reliability, debt,
+and deletion of what exists) and `grow-muse` (GROW — new user-facing capability). Each runs stages
+0–7 autonomously end-to-end (pick → BUILD → VERIFY → COMMIT + **PUSH**) and never outputs "nothing
+to do". One loop moves one axis, so to move both axes, pair the loops or alternate the calls. This
+document is the detail of the shared execution contract (0–7); each skill's `SKILL.md` owns the
+sourcing ladder and permission boundaries.
 
-0. **PRE-FLIGHT** — Ollama 가동 확인(`curl -s localhost:11434/api/tags`); `git fetch`로
-   동시 auto-push 루프와 reconcile; 만진 의존 패키지 rebuild(stale dist가 버그로 위장하는 세금 제거).
-1. **ORIENT (회귀 우선)** — `pnpm self-eval`. 이전에 통과하던 게이트가 떨어졌으면 *그걸* 고치는 게
-   이번 fire의 전부 — 여기서 멈추고 고친다.
-2. **FIND WORK (자율)** — 소싱 사다리는 호출한 스킬이 소유한다: `improve-muse`는 회귀 →
-   실패 시그널 → 라이브 페인 프로브 → hardening 백로그 → subtraction, `grow-muse`는 오너 지시 →
-   dogfood 결핍 → 북극성 갭 → parity 저수지(D/T/N/C 채점). gap-finding과 capability-parity
-   저수지는 grow-muse 소관이다. **사람에게 "뭘 만들까" 안 묻는다 — 프로브와 데이터가 고른다.**
-3. **PLAN** — WHAT+WHY+강화할 게이트를 [`handoff-template.md`](../core/handoff-template.md)에 한 줄 계약으로.
-   사소하면(오타·한 줄) 생략하고 5로 단락(skill 자가 게이트).
-4. **BUILD** — 한 수직 슬라이스, 최소 범위, 결정론 코드(프롬프트 아님). 프롬프트/스키마/제어흐름을
-   소유; 게이트 하나를 강화하거나 verb_noun 도구 하나 추가. 새 프레임워크 추상화 금지.
-5. **VERIFY (fail-closed)** — `node scripts/pick-evals.mjs`가 diff→정확한 eval/smoke 부분집합을
-   매핑해 출력(외워서가 아니라 코드; grounding/safety엔 MUSE_EVAL_REPEAT=3 자동) + 불변식
-   (fabrication=0 *실트레이스에도*, lint 0/0, **`pnpm test:changed`**(vitest related — 변경 파일 관련 테스트만, 패키지 전체 suite 아님), 커밋-전/교차패키지면 `pnpm check`).
-   grounding/safety는 pass^k k≥3. 독립 evaluator = harness-evaluator 서브에이전트(write 도구 없음),
-   eval:judge 메타평가로 보정. green 아니면 done 아님.
-6. **WRITE-BACK (완료 게이트 — 이거 없이 done 선언 불가)** — (a) 고친 실패를 STABLE-3/3 golden case로;
-   (b) 진안의 반복 교정을 `.claude/rules/*.md` 한 줄로(after-correction); (c) 고른+버린 방향+출처를
-   [`backlog.md`](../../docs/goals/backlog.md)에, 영속 사실을 MEMORY.md에; (d) before→after를 self-eval 스코어보드에.
-   set이 늘면 stale 한 줄 prune.
-7. **COMMIT + PUSH** — Conventional Commit 하나 + `git push`(현재 브랜치). `improve-muse`/
-   `grow-muse` 스킬은 standing push 권한을 가진다(2026-06-27 진안) — 단 **VERIFY green일 때만** push,
-   red면 push 금지. 비-FF면 `git pull --rebase` 후 재시도(force 금지). + 짧은 한국어 보고
-   (무엇/왜+URL/before→after/잔여 리스크). 다음 fire의 ORIENT는 더 두꺼운 rule·golden suite·backlog를
-   읽으니 *엄밀히 더 싸다*.
+0. **PRE-FLIGHT** — confirm Ollama is up (`curl -s localhost:11434/api/tags`); reconcile with
+   concurrent auto-push loops via `git fetch`; rebuild touched dependency packages (removing the
+   tax of stale dist masquerading as a bug).
+1. **ORIENT (regression first)** — `pnpm self-eval`. If a previously passing gate dropped, fixing
+   *that* is this fire's entire work — stop here and fix it.
+2. **FIND WORK (autonomous)** — the sourcing ladder is owned by the invoking skill:
+   `improve-muse` goes regression → failure signals → live pain probe → hardening backlog →
+   subtraction; `grow-muse` goes owner direction → dogfood friction → north-star gap → parity
+   reservoir (D/T/N/C scored). Gap-finding and the capability-parity reservoir belong to
+   grow-muse. **Never ask the human "what should I build" — probes and data pick.**
+3. **PLAN** — WHAT+WHY+the gate to strengthen, as a one-line contract in
+   [`handoff-template.md`](../core/handoff-template.md). If trivial (a typo, one line), skip and
+   short-circuit to 5 (skill self-gate).
+4. **BUILD** — one vertical slice, minimal scope, deterministic code (not prompts). Own the
+   prompt/schema/control flow; strengthen one gate or add one verb_noun tool. No new framework
+   abstractions.
+5. **VERIFY (fail-closed)** — `node scripts/pick-evals.mjs` maps the diff → the exact eval/smoke
+   subset and prints it (code, not memory; grounding/safety gets MUSE_EVAL_REPEAT=3
+   automatically) + the invariants (fabrication=0 *on real traces too*, lint 0/0,
+   **`pnpm test:changed`** (vitest related — only the tests related to changed files, not a whole
+   package suite), and `pnpm check` pre-commit / when cross-package). Grounding/safety is pass^k
+   k≥3. Independent evaluator = the harness-evaluator subagent (no write tools), calibrated via
+   the eval:judge meta-eval. Not green, not done.
+6. **WRITE-BACK (completion gate — no done declaration without it)** — (a) the fixed failure
+   becomes a STABLE-3/3 golden case; (b) Jinan's repeated correction becomes one line in
+   `.claude/rules/*.md` (after-correction); (c) chosen + discarded directions + sources go to
+   [`backlog.md`](../../docs/goals/backlog.md), durable facts to MEMORY.md; (d) before→after to
+   the self-eval scoreboard. When a set grows, prune one stale line.
+7. **COMMIT + PUSH** — one Conventional Commit + `git push` (current branch). The `improve-muse` /
+   `grow-muse` skills hold standing push authorization (2026-06-27, Jinan) — but push **only when
+   VERIFY is green**; red means no push. On non-FF, `git pull --rebase` then retry (no force).
+   Plus a short report in Korean (what/why + URL / before→after / residual risk). The next fire's
+   ORIENT reads a thicker rule set, golden suite, and backlog, so it is *strictly cheaper*.
 
-## 4. 안티패턴 (이 루프가 스스로를 망치는 길 — 막을 것)
+## 4. Anti-patterns (how this loop ruins itself — block them)
 
-- **사소한 일에 의식(ceremony).** 한 줄 수정에 orient→analyze→spec→handoff는 순수 오버헤드.
-  → 스킬이 자가 게이트: 사소하면 build+verify+commit로 단락. 안 그러면 우회당하고 스킬은 죽는다.
-- **얇은 데이터로 에러분석 연극.** 실패 4개를 "택소노미"로 만드는 건 가짜 엄밀. ~20-30개 미만이면
-  손으로 읽고 명백한 것 하나 고치고 backlog로 폴백. NurtureBoss 수치를 법칙처럼 베끼지 말 것.
-- **프라이버시 누출 (가장 Muse적인 리스크).** 트레이스 원문을 클라우드 모델에 보내거나 taxonomy에
-  그대로 커밋하면 정체성 위반("다 털어놔도 된다"+MUSE_LOCAL_ONLY). → 클러스터링은 LOCAL gemma4만,
-  taxonomy는 redacted 라벨+카운트만. 코드로 강제(프롬프트 아님).
-- **maker=judge 붕괴.** 단일 로컬 모델이라 evaluator·judge가 worker를 고무도장 찍을 수 있다(TNR<25%).
-  → 결정론 스코어러 먼저; judge는 tie-breaker + eval:judge 메타평가 통과 후에만 신뢰. 같은-모델 judge를
-  fabrication-critical 주장의 유일 게이트로 두지 말 것.
-- **golden suite 과적합.** write-back이 back-catalog만 추가하면 suite가 굳어 새 drift를 못 잡는다.
-  → 매 fire 신선한 트레이스 재샘플; suite는 *분포*로 성장.
-- **계약/스킬 비대화.** 누적이 8B가 감당할 한계를 넘으면 역효과. → 한 줄 추가 시 한 줄 prune;
-  SKILL.md가 everything-doc로 자라면 progressive disclosure가 무너진다.
-- **하네스 무한 연마.** scaffold 이득은 일찍 compound하고 곧 saturate(METR은 이미 elicited된
-  에이전트에 +8pp 비유의). 루프가 타이트해지면 메타 엔지니어링을 멈추고 capability로 복귀.
+- **Ceremony on trivial work.** Orient→analyze→spec→handoff on a one-line fix is pure overhead.
+  → The skill self-gates: if trivial, short-circuit to build+verify+commit. Otherwise it gets
+  bypassed and the skill dies.
+- **Error-analysis theater on thin data.** Turning 4 failures into a "taxonomy" is fake rigor.
+  Below ~20–30, read by hand, fix the one obvious thing, and fall back to the backlog. Do not copy
+  the NurtureBoss numbers as if they were law.
+- **Privacy leakage (the most Muse-specific risk).** Sending raw trace text to a cloud model, or
+  committing it verbatim into a taxonomy, violates the identity ("you can tell it everything" +
+  MUSE_LOCAL_ONLY). → Clustering on LOCAL gemma4 only; the taxonomy holds redacted labels + counts
+  only. Enforced in code (not prompts).
+- **maker=judge collapse.** With a single local model, the evaluator/judge can rubber-stamp the
+  worker (TNR<25%). → Deterministic scorers first; trust the judge only as a tie-breaker and only
+  after it passes the eval:judge meta-eval. Never make a same-model judge the sole gate on a
+  fabrication-critical claim.
+- **Golden-suite overfitting.** If write-back only adds back-catalog, the suite ossifies and stops
+  catching new drift. → Re-sample fresh traces every fire; grow the suite as a *distribution*.
+- **Contract/skill bloat.** Accumulation past what an 8B can carry backfires. → Add a line, prune
+  a line; if SKILL.md grows into an everything-doc, progressive disclosure collapses.
+- **Infinite harness polishing.** Scaffold gains compound early and saturate soon (METR: +8pp
+  non-significant on an already-elicited agent). Once the loop is tight, stop the
+  meta-engineering and return to capability.
 
-## 5. 정직한 한계 (2026-06-08 will-it-work 적대적 리뷰)
+## 5. Honest limits (2026-06-08 will-it-work adversarial review)
 
-이 루프가 *무엇을 못 하는지* — 6-경로 리뷰가 코드로 확인한 천장. 무시하면 깨진다.
+What this loop *cannot* do — the ceiling a 6-path review confirmed in code. Ignore it and it breaks.
 
-- **네트워크/데이터 절.** `MUSE_LOCAL_ONLY`는 **LLM/음성 egress만** 막는다 — 공개 eval 데이터셋
-  내려받기는 허용. 단 `apps/cli/scripts/fixtures/`에 vendoring + checksum 고정 + 커밋해 오프라인
-  재현 가능하게. (이 절이 없으면 에이전트가 스킬이 세운 게이트에 *스스로* 막혀 멈춘다.)
-- **단일 모델에선 maker=judge — `eval:judge`는 advisory.** 같은 gemma가 같은 gemma를 toy
-  fixture로 채점하니 이번 슬라이스의 진위에 신호가 거의 없다. fabrication-critical 주장은
-  **결정론 스코어러 우선**, 아니면 **opus harness-evaluator(별도의 더 강한 모델 세션, write 도구 제거)**.
-  이게 환원 불가능한 "더 강한 모델/사람이 필요한 지점"이다 — 고정 12B는 자기가 막 만든 grounding
-  주장을 self-certify 못 한다.
-- **WRITE-BACK은 이제 기계적이다.** `scripts/guard-writeback.mjs`(commit-msg 훅)가 non-trivial
-  `feat`/`fix`에 test/golden-case/backlog 갱신 중 하나를 스테이지하도록 강제(escape `[writeback: n/a]`).
-  prose 게이트가 아니라 코드. 그래도 *내용*(좋은 golden case인가)은 사람/리뷰의 판단.
-- **자율은 시드 길이만큼만.** write-back은 *소비한* 항목의 출처를 적을 뿐 새 actionable 일을
-  만들지 않는다("한 줄 추가 시 한 줄 prune"이 성장을 캡). 영속 refill은 error-analysis인데 그건
-  트레이스 결과 로깅에 막혀 있고, 그 연료는 *진안이 Muse를 쓰는 데서* 쌓이지 dev fire에서가 아니다.
-  → `[open]` 레코드가 마르면 refill fire(gap-scout 또는 사람 방향)가 그 자체로 일. 자율을 "무한 자기개선"으로
-  과대평가하지 말 것 — 이건 *검증된 슬라이스 실행을 싸게 + 누적되게* 만드는 도구지, 감독 없는 자기진화가 아니다.
+- **Network/data clause.** `MUSE_LOCAL_ONLY` blocks **LLM/voice egress only** — downloading public
+  eval datasets is allowed. But vendor them into `apps/cli/scripts/fixtures/` + pin checksums +
+  commit, so reproduction is offline. (Without this clause the agent gets blocked *by its own*
+  skill-erected gate and stalls.)
+- **On a single model, maker=judge — `eval:judge` is advisory.** The same gemma grading the same
+  gemma on toy fixtures carries almost no signal about this slice's truth. Fabrication-critical
+  claims take **deterministic scorers first**, otherwise an **opus harness-evaluator (a separate,
+  stronger model session, write tools removed)**. This is the irreducible "needs a stronger
+  model/human" point — a fixed 12B cannot self-certify the grounding claim it just made.
+- **WRITE-BACK is now mechanical.** `scripts/guard-writeback.mjs` (a commit-msg hook) forces a
+  non-trivial `feat`/`fix` to stage one of test/golden-case/backlog updates (escape
+  `[writeback: n/a]`). Code, not a prose gate. Still, the *content* (is it a good golden case?)
+  remains human/review judgment.
+- **Autonomy lasts only as long as the seed.** Write-back records the sources of *consumed* items
+  but creates no new actionable work ("add a line, prune a line" caps growth). The durable refill
+  is error-analysis, which is blocked on trace outcome logging, and that fuel accumulates *from
+  Jinan using Muse*, not from dev fires. → When `[open]` records run dry, a refill fire
+  (gap-scout or human direction) is itself the work. Do not overrate the autonomy as "infinite
+  self-improvement" — this is a tool that makes *verified slice execution cheap + cumulative*,
+  not unsupervised self-evolution.
 
-## 6. 출처 (1차, 검증됨)
+## 6. Sources (primary, verified)
 
 - Anthropic: [Building effective agents](https://www.anthropic.com/research/building-effective-agents) · [Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) · [Writing tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents)
-- OpenAI: [A practical guide to building agents](https://cdn.openai.com/business-guides-and-resources/a-practical-guide-to-building-agents.pdf) · Google: [ADK eval criteria](https://google.github.io/adk-docs/evaluate/) · [Agents Companion 백서](https://www.kaggle.com/whitepaper-agent-companion)
+- OpenAI: [A practical guide to building agents](https://cdn.openai.com/business-guides-and-resources/a-practical-guide-to-building-agents.pdf) · Google: [ADK eval criteria](https://google.github.io/adk-docs/evaluate/) · [Agents Companion whitepaper](https://www.kaggle.com/whitepaper-agent-companion)
 - 12-Factor Agents (Dex Horthy/HumanLayer): https://github.com/humanlayer/12-factor-agents
 - Eval-driven: Hamel Husain [Your AI product needs evals](https://hamel.dev/blog/posts/evals/) · [LLM-as-judge](https://hamel.dev/blog/posts/llm-judge/) · Eugene Yan [LLM-evaluators](https://eugeneyan.com/writing/llm-evaluators/) · Shreya Shankar (who-validates-the-validators)
-- 실무자: Lilian Weng [LLM Powered Autonomous Agents](https://lilianweng.github.io/posts/2023-06-23-agent/) · Chip Huyen [Agents](https://huyenchip.com/2025/01/07/agents.html) · Simon Willison (agent 정의) · Andrew Ng (4 agentic patterns) · Jason Liu (RAG flywheel)
-- 멀티에이전트/컨텍스트: Cognition [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) · LangChain (context engineering) · Chroma [Context Rot](https://research.trychroma.com/context-rot)
-- 하네스: SWE-agent/ACI (2405.15793) · METR task-harness · 논문 canon: ReAct 2210.03629 · Reflexion 2303.11366 · Self-Refine 2303.17651 · Voyager 2305.16291 · Generative Agents 2304.03442 · τ-bench 2406.12045 · "AI Agents That Matter" 2407.01502
+- Practitioners: Lilian Weng [LLM Powered Autonomous Agents](https://lilianweng.github.io/posts/2023-06-23-agent/) · Chip Huyen [Agents](https://huyenchip.com/2025/01/07/agents.html) · Simon Willison (agent definition) · Andrew Ng (4 agentic patterns) · Jason Liu (RAG flywheel)
+- Multi-agent/context: Cognition [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) · LangChain (context engineering) · Chroma [Context Rot](https://research.trychroma.com/context-rot)
+- Harness: SWE-agent/ACI (2405.15793) · METR task-harness · paper canon: ReAct 2210.03629 · Reflexion 2303.11366 · Self-Refine 2303.17651 · Voyager 2305.16291 · Generative Agents 2304.03442 · τ-bench 2406.12045 · "AI Agents That Matter" 2407.01502

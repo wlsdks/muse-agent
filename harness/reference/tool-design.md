@@ -1,120 +1,139 @@
 ---
-title: 도구 설계 규약 (Tool Design)
-audience: [개발자, AI 에이전트]
-purpose: 에이전트가 한 번에 올바른 도구를 고르고 인자를 채우도록, 도구를 어떻게 설계·노출하나
+title: Tool Design Contract
+audience: [developers, AI agents]
+purpose: How to design and expose tools so the agent picks the right tool and fills its arguments in one shot
 status: draft
 updated: 2026-06-13
-sources_basis: [호스트 .claude(예: Muse)/rules/tool-calling.md, Anthropic building-effective-agents (ACI), Anthropic multi-agent research system (tool descriptions), awesome-harness-engineering (tool design category)]
+sources_basis: [host .claude (e.g. Muse)/rules/tool-calling.md, Anthropic building-effective-agents (ACI), Anthropic multi-agent research system (tool descriptions), awesome-harness-engineering (tool design category)]
 related: [../core/team-roles.md, ../core/verification-and-guardrails.md, architecture.md, ../README.md]
 ---
 
-# 도구 설계 규약 (Tool Design)
+# Tool Design Contract
 
-> **왜 이게 빠진 칸이었나?** [architecture](architecture.md) 자가평가에서 "도구 설계"가 ⬜ 갭이었습니다.
-> 하네스가 아무리 역할·핸드오프가 좋아도, **에이전트가 도구를 한 번에 못 고르면** 무너집니다.
-> 로컬 소형 모델을 쓰는 호스트(예: Muse)라면 이건 특히 사활적입니다 — 호스트(예: Muse)의 도구 규약(`tool-calling.md`)을
-> 근거로, 검증된 2026 원칙과 함께 정리합니다. 말로만(도구 설명 예시만 인용 형태).
+> **Why was this a missing slot?** In the [architecture](architecture.md) self-assessment,
+> "tool design" was a ⬜ gap. However good the harness's roles and handoffs, it collapses **if
+> the agent can't pick the tool in one shot**. For a host running a small local model (e.g.
+> Muse) this is especially existential — organized from the host's (e.g. Muse's) tool contract
+> (`tool-calling.md`) together with verified 2026 principles. Prose only (tool-description
+> examples in quoted form only).
 
-## 0. 한 줄 원칙
+## 0. The one-line principle
 
-**첫 번째 도구 호출이 맞도록 설계한다.** 작은 모델은 추론 라운드가 늘수록 느리고 덜 정확하므로,
-"생각해서 찾아가게" 두지 않고 **한 번에 올바른 도구를 고르고 인자를 채우게** 만듭니다.
+**Design so the FIRST tool call is correct.** A small model gets slower and less accurate with
+each extra reasoning round, so don't leave it to "think its way there" — make it **pick the
+right tool and fill the arguments in one shot**.
 
-## 1. 노출은 작게 (한 턴 ≤ 5~7개)
+## 1. Expose few (≤ 5–7 per turn)
 
-- 한 번에 모델에 보여주는 도구 수를 적게 유지합니다 — 도구가 많을수록 오선택 확률이 오릅니다.
-- 전체 도구를 다 던지지 말고 **요청 맥락에 맞는 것만** 추려 노출합니다(관련성 필터).
-- 많이 필요하면 한 프롬프트를 넓히지 말고 **맥락별로 나눕니다**.
+- Keep the number of tools shown to the model at once small — more tools raise the
+  wrong-selection probability.
+- Don't dump the whole tool set; expose **only what fits the request context** (relevance
+  filter).
+- If many are needed, **split by context** instead of widening one prompt.
 
-## 2. 이름은 모호하지 않게 (동사_명사, 한 가지 일)
+## 2. Unambiguous names (verb_noun, one job)
 
-- `home_state`·`web_action`·`knowledge_search`처럼 **동사_명사, 한 도구 한 일**.
-- 모델이 헷갈릴 두 도구를 같이 두지 않습니다(`find`+`search`, `remove`+`delete` 동시 금지).
-- 이름·설명의 **동음이의가 오선택 1위 원인**입니다.
+- Like `home_state` · `web_action` · `knowledge_search` — **verb_noun, one tool one job**.
+- Never ship two tools the model could confuse (no `find`+`search`, no `remove`+`delete`
+  together).
+- **Homonyms in names/descriptions are the #1 cause of wrong selection.**
 
-## 3. 풍부하고 제약된 입력 스키마
+## 3. A rich, constrained input schema
 
-- **항상 `required`를 선언**합니다 — 필수 데이터를 옵션에 기대지 않습니다.
-- 명시적 타입, 고정 선택지엔 `enum`, 범위엔 최소/최대·패턴.
-- 모든 속성 설명에 **구체적 예시**를 답니다 — "그 엔티티"가 아니라 "대상 식별자, 예: `lock.front_door`".
-- 줄임말 금지(`product_name`, `pn` 아님). "잘못된 인자"가 두 번째 오류이며 여기서 막힙니다.
+- **Always declare `required`** — never lean on optionals for mandatory data.
+- Explicit types, `enum` for fixed choices, min/max/pattern for ranges.
+- Every property description carries a **concrete example** — "target identifier, e.g.
+  `lock.front_door`", not "the entity".
+- No abbreviations (`product_name`, not `pn`). "Invalid arguments" is the second-biggest error
+  and is stopped here.
 
-## 4. 설명에 "쓸 때 / 안 쓸 때"를 적는다
+## 4. The description says "when to use / when not"
 
-- 도구 설명에 한 줄 **"이럴 때 쓰고 … 이럴 땐 쓰지 마라"**를 넣습니다.
-- 인사·의도 없는 입력에 도구를 성급히 부르는 것(eager invocation)을 막고 선택을 날카롭게 합니다.
+- Put a one-line **"use when … ; do not use for …"** in the tool description.
+- It prevents eager invocation on greetings/intent-free input and sharpens selection.
 
-## 5. 한 응답에 한 도구 (정말 다단계가 아니면)
+## 5. One tool per response (unless genuinely multi-step)
 
-- 작은 모델이 3개 이상 도구를 연쇄하게 설계하지 않습니다.
-- 한 도구가 한 일을 끝내게 하거나, 단계를 여러 턴으로 나눕니다.
+- Don't design flows that make a small model chain 3+ tools.
+- Let one tool finish one job, or split the steps across turns.
 
-## 5.5 응답 쪽도 설계한다 (도구 출력 토큰 예산)
+## 5.5 Design the response side too (tool-output token budget)
 
-입력 스키마만큼 **응답이 컨텍스트를 차지합니다** — 도구가 무엇을 얼마나 돌려줄지도 규약입니다:
+**Responses occupy context** just like input schemas — what and how much a tool returns is also
+part of the contract:
 
-- 모든 조회 도구에 **페이지네이션·범위·필터·절단 기본값**을 둡니다(참고: Claude Code의 도구 응답
-  기본 캡은 25K 토큰).
-- 절단했으면 **다음에 무엇을 좁혀 물을지 안내를 함께** 돌려줍니다 — 무음 절단 금지(§런타임
-  `expose`의 dropped 보고와 같은 원칙).
-- `response_format: concise|detailed` 같은 **상세도 enum**, UUID 대신 **의미 있는 식별자**
-  (semantic ID)를 씁니다 — 모델이 결과를 다음 호출에 재사용할 수 있게.
-- 도구가 많아지면 정의를 통째로 싣지 말고 **필요할 때 읽는 점진 공개**로 — 도구를 코드
-  API/검색 대상으로 노출하면 정의 토큰 98.7% 절감 실측(Anthropic code-execution-with-MCP).
+- Give every query tool **pagination, range, filter, and truncation defaults** (reference:
+  Claude Code's default tool-response cap is 25K tokens).
+- When truncating, **return guidance on what to narrow next** along with it — no silent
+  truncation (same principle as the runtime `expose`'s dropped report).
+- Use a **verbosity enum** like `response_format: concise|detailed`, and **meaningful
+  identifiers** (semantic IDs) instead of UUIDs — so the model can reuse results in the next
+  call.
+- As tools multiply, don't inline every definition; use **progressive disclosure read on
+  demand** — exposing tools as a code API/search target measured a 98.7% reduction in
+  definition tokens (Anthropic code-execution-with-MCP).
 
-## 6. 위험 등급 + 게이트 (도구 설계의 일부)
+## 6. Risk tier + gate (part of tool design)
 
-- 모든 도구를 **읽기 / 쓰기 / 실행**으로 분류합니다(위험 taxonomy).
-- 상태를 바꾸는 도구는 [verification-and-guardrails](../core/verification-and-guardrails.md)의 게이트를 거칩니다
-  (읽기 통과 / 실행은 신뢰목록 / 차단목록 거부, 외부 전송은 draft-first).
+- Classify every tool as **read / write / execute** (risk taxonomy).
+- State-changing tools pass the gates of
+  [verification-and-guardrails](../core/verification-and-guardrails.md) (read passes /
+  execute needs the trustlist / denylist refused; outbound is draft-first).
 
-## 7. 검증은 코드로 (재추론 루프 금지)
+## 7. Validate in code (no re-reasoning loops)
 
-- 도구 인자를 스키마에 맞춰 **코드로 파싱·검증**하고, 잘못되면 결정론적으로 한 번 복구/재요청합니다.
-- 모델이 모양을 추측하며 라운드를 태우지 않게 — 스키마+파서가 계약입니다.
+- **Parse and validate tool arguments in code** against the schema; on invalid input, repair or
+  re-request deterministically, at most once.
+- Never let the model burn rounds guessing the shape — the schema + parser are the contract.
 
-## 8. 도구를 추가할 때 (체크리스트)
+## 8. When adding a tool (checklist)
 
-1. 겹치지 않는 동사_명사 이름.
-2. `required` 소수 + 각 속성에 예시·가장 좁은 타입/enum/범위.
-3. "쓸 때 / 안 쓸 때" 한 줄.
-4. 올바른 위험 등급(읽기/쓰기/실행), 상태변경은 fail-close.
-5. **모델이 실제로 그 도구를 고르는지** 검증 — 핸들러 단위테스트가 아니라 실제 선택을 확인하는
-   라운드트립(골든 프롬프트→기대 도구, 부정·혼동 케이스 포함). [harness-acceptance](harness-acceptance.md)의
-   골든 과제로 편입.
+1. A non-overlapping verb_noun name.
+2. Few `required` params + an example and the tightest type/enum/range per property.
+3. A one-line "use when / not when".
+4. The correct risk tier (read/write/execute); state changes fail-close.
+5. Verify **the model actually selects it** — not a handler unit test but a round-trip that
+   confirms real selection (golden prompt → expected tool, including negative and confusable
+   cases). Absorbed into the golden tasks of [harness-acceptance](harness-acceptance.md).
 
-## 한 줄 요약 (도구 설계 체크리스트)
+## One-line summary (tool-design checklist)
 
-1. 한 턴에 보이는 도구가 **5~7개 이하**인가?
-2. 이름이 **동사_명사·한 일**이고 혼동 도구가 없나?
-3. `required` + **예시 박힌** 스키마인가?
-4. 설명에 **쓸 때/안 쓸 때**가 있나?
-5. 위험 등급 + 게이트가 걸렸나?
-6. **모델이 첫 시도에 그 도구를 고르는지** 골든 과제로 검증되나?
+1. Are **≤ 5–7 tools** visible per turn?
+2. Are names **verb_noun, one job**, with no confusable pairs?
+3. Is the schema `required` + **example-bearing**?
+4. Does the description say **when to use / when not**?
+5. Are risk tiers + gates in place?
+6. Is "**the model picks it on the first try**" verified by a golden task?
 
 ---
 
-## 런타임 컴포넌트 (코드)
+## Runtime component (code)
 
-위 규약을 결정론 코드로: [runner/tools.mjs](../runner/tools.mjs) (의존성 0). 모델은 도구를 고르고 채우고,
-코드는 **등록·스키마 검증·allow/deny·소수 노출·위험등급**을 결정론적으로 강제.
+The contract above as deterministic code: [runner/tools.mjs](../runner/tools.mjs) (zero
+dependencies). The model picks and fills tools; the code deterministically enforces
+**registration, schema validation, allow/deny, few-exposed, risk tiers**.
 
-- `register(tool)` — `name`은 **verb_noun**(정규식 강제)·중복 거부, `description`·`inputSchema` 필수,
-  `risk`는 읽기/쓰기/실행/외부전송/금지 중 하나. 잘못된 선언은 거부(fail-closed).
-- `validateArgs(name, args)` — required 누락·타입·enum·min/max를 **실행 가능한 에러**로 반환(Anthropic
-  "actionable errors") — 결정론 검증·수리 계약.
-- `isAllowed(name)` — **denylist가 allowlist를 이김**, 빈 allowlist=전체 허용(opt-in, MCP 레지스트리 규범).
-- `expose(names?)` — `maxExposed`(기본 7)까지만 노출하고 **잘린 수를 보고**(소수 노출·무음 절단 금지).
-- `riskOf(name)` — 도구 위험등급을 [permission-matrix](../core/permission-matrix.md) 게이트/훅에 넘김.
+- `register(tool)` — `name` must be **verb_noun** (regex-enforced), duplicates rejected;
+  `description` and `inputSchema` required; `risk` is one of read/write/execute/outbound/
+  forbidden. Invalid declarations rejected (fail-closed).
+- `validateArgs(name, args)` — returns missing-required/type/enum/min-max as **actionable
+  errors** (Anthropic "actionable errors") — the deterministic validate-and-repair contract.
+- `isAllowed(name)` — **denylist beats allowlist**; empty allowlist = all allowed (opt-in, MCP
+  registry norm).
+- `expose(names?)` — exposes only up to `maxExposed` (default 7) and **reports the dropped
+  count** (few-exposed, no silent truncation).
+- `riskOf(name)` — passes a tool's risk tier to the
+  [permission-matrix](../core/permission-matrix.md) gate/hooks.
 
-검증: [runner/tools.test.mjs](../runner/tools.test.mjs) — `node --test "harness/runner/*.test.mjs"`: 등록 거부·denylist
-우선·빈 allowlist=전체·validateArgs(required/타입/enum/범위)·expose 캡+dropped·위험등급 권한게이트 합성.
-**6/6**(러너 스위트 누적 **56/56**).
+Verification: [runner/tools.test.mjs](../runner/tools.test.mjs) —
+`node --test "harness/runner/*.test.mjs"`: registration rejection · denylist precedence · empty
+allowlist=all · validateArgs (required/type/enum/range) · expose cap+dropped · risk-tier
+permission-gate composition. **6/6** (runner suite cumulative **56/56**).
 
-## 출처 (검증 기반)
+## Sources (verified basis)
 
-- 호스트 규약(예: Muse) — `.claude/rules/tool-calling.md` (소형 모델 한-shot 선택: ≤5~7 노출·동사_명사·예시-스키마·쓸때/안쓸때·코드 검증)
-- Anthropic — [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (ACI: 도구 인터페이스를 HCI 수준으로 설계)
-- Anthropic — [Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (도구 설명이 행동을 좌우 — 나쁜 설명은 엉뚱한 길)
-- [awesome-harness-engineering](https://github.com/ai-boost/awesome-harness-engineering) (tool design 카테고리)
-- Anthropic — [Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents) (응답 토큰 예산·페이지네이션/절단+후속 안내·response_format·semantic ID) · [Code execution with MCP](https://www.anthropic.com/engineering/code-execution-with-mcp) (점진 공개 — 정의 토큰 98.7% 절감)
+- Host rules (e.g. Muse) — `.claude/rules/tool-calling.md` (small-model one-shot selection: ≤5–7 exposed · verb_noun · example-bearing schemas · use-when/not-when · code validation)
+- Anthropic — [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (ACI: design tool interfaces to HCI standards)
+- Anthropic — [Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (tool descriptions steer behavior — bad descriptions send agents astray)
+- [awesome-harness-engineering](https://github.com/ai-boost/awesome-harness-engineering) (tool design category)
+- Anthropic — [Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents) (response token budget · pagination/truncation + follow-up guidance · response_format · semantic IDs) · [Code execution with MCP](https://www.anthropic.com/engineering/code-execution-with-mcp) (progressive disclosure — 98.7% definition-token reduction)

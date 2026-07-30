@@ -1,64 +1,74 @@
 ---
-title: 하네스 ↔ Muse 런타임 매핑 (Harness ↔ Muse)
-audience: [개발자, AI 에이전트]
-purpose: 추상 하네스 역할을, Muse가 이미 가진 실제 멀티에이전트 런타임 부품에 연결
+title: Harness ↔ Muse Runtime Mapping
+audience: [developers, AI agents]
+purpose: Connect the abstract harness roles to the real multi-agent runtime parts Muse already has
 status: draft
 updated: 2026-07-17
 related: [../core/team-roles.md, ../core/role-prompts.md, ../core/handoff-template.md, ../README.md]
 ---
 
-# 하네스 ↔ Muse 런타임 매핑 (Harness ↔ Muse)
+# Harness ↔ Muse Runtime Mapping
 
-> **왜 이게 필요한가?** [team-roles](../core/team-roles.md)·[role-prompts](../core/role-prompts.md)·[handoff-template](../core/handoff-template.md)는
-> 벤더 중립의 "이상적 팀"입니다. 그런데 Muse에는 **이미 멀티에이전트 런타임이 있습니다.** 이 문서는
-> 추상 역할이 Muse의 어느 실제 부품과 맞물리는지, 그래서 무엇이 곧바로 가능하고 무엇이 아직
-> 양식(문서) 단계인지 정직하게 짚습니다. (코드는 코드베이스를 직접 확인했고, 여기서는 말로만 옮깁니다.)
+> **Why is this needed?** [team-roles](../core/team-roles.md) ·
+> [role-prompts](../core/role-prompts.md) · [handoff-template](../core/handoff-template.md) are
+> the vendor-neutral "ideal team". But Muse **already has a multi-agent runtime.** This document
+> honestly pins down which real Muse part each abstract role engages with — and therefore what is
+> possible right now versus what is still at the form (document) stage. (The code was verified
+> directly in the codebase; here it is carried over in prose only.)
 
-> 계약이 **필수로 요구**하는 건 워커·독립 평가자 둘뿐입니다([team-roles §1](../core/team-roles.md)).
-> 아래 표는 그 둘을 포함해, L-size 슬라이스에서 선택적으로 쓸 수 있는 오케스트레이터/큐레이터 같은
-> 확장 역할이 Muse 런타임 어디에 이미 있는지의 매핑입니다.
+> The contract **requires** only two roles: worker and independent evaluator
+> ([team-roles §1](../core/team-roles.md)). The table below maps those two plus the optional
+> extension roles usable on L-size slices — orchestrator/curator and the like — to where they
+> already exist in the Muse runtime.
 
-## 역할 → Muse 부품 매핑
+## Role → Muse part mapping
 
-| 하네스 역할 | Muse에 이미 있는 부품 | 상태 |
+| Harness role | Part Muse already has | Status |
 |---|---|---|
-| 오케스트레이터 / 감독자 | 일을 워커들에게 나눠 돌리고 결과를 종합하는 **감독자(supervisor)** + 오케스트레이터 런타임. 최소 신뢰도·최대 핸드오프 수 같은 한도를 가진다. | ✅ 런타임 존재 |
-| 워커 / 제너레이터 | 등록된 **워커 에이전트** — 감독자가 골라 실행한다. | ✅ 런타임 존재 |
-| 일의 모양(순차/병렬/경쟁) | 오케스트레이션이 **순차·병렬·경쟁(가장 먼저 끝난 것 채택)** 모드를 실제로 지원한다. | ✅ 런타임 존재 |
-| 에이전트 명세 | 역할·도구·지시문을 가진 **에이전트 명세 레지스트리** — 요청에 맞는 것을 골라 쓴다. | ✅ 런타임 존재 |
-| 에이전트 간 직접 메시지 | 인메모리 **메시지 버스**로 워커끼리/감독자와 주고받는다. | ✅ 런타임 존재 |
-| 모델 티어링 | 한 작업에서 간단한 일은 빠른 모델, 깊은 추론은 강한 모델로 **자동 배분**한다. | ✅ 런타임 존재 |
-| 이력·관측 | 각 오케스트레이션의 모드·소요시간·성공/실패 수를 남기는 **이력 저장소**. | ✅ 런타임 존재 |
-| 평가자(만든 자 ≠ 판정하는 자) | `.claude/agents/harness-evaluator.md` — 쓰기 도구 없는 독립 서브에이전트(도구 권한으로 분리 강제) + 보정 n=12 TPR/TNR 100%([judge-calibration](../reference/judge-calibration.md)). | ✅ 존재 |
-| 큐레이터/학습자(작업에서 배움) | **실재** — 스킬 자작·정돈(보관/통합), 플레이북 보상/감쇠(통한 전략 강화·교정 전략 약화), 회고 합성이 런타임에 있다. 받은 스킬은 사람 승격 전 격리. | ✅ 런타임 존재 |
-| 핸드오프 아티팩트(컨텍스트 리셋) | 단일 양식([handoff-template](../core/handoff-template.md)) + 러너가 손상된 양식·단계 건너뛰기를 코드로 거부([runner-spec §7](../reference/runner-spec.md)). | ✅ 코드 강제 |
-| 검증 게이트(완료 훅·체크포인트) | [runner/](../runner/)의 `orchestrator.mjs`(자동 구동)·`hooks.mjs`(PreToolUse 차단)·`session.mjs`(체크포인트 재개) — 스위트 64/64. | ✅ 코드 강제 |
-| 에이전트 평가 증거 | `scripts/eval-harness.mjs`의 attempt별 setup/teardown과 로컬 JSONL, `eval:evidence`의 human-reviewed redacted case 승격과 per-case delta, strict `pass^k`; offline CI와 local live 모델은 분리. | ✅ 코드 강제 |
+| Orchestrator / supervisor | A **supervisor** + orchestrator runtime that distributes work across workers and synthesizes results. Carries limits like minimum confidence and maximum handoff count. | ✅ runtime exists |
+| Worker / generator | Registered **worker agents** — the supervisor picks and runs them. | ✅ runtime exists |
+| Shape of work (sequential/parallel/race) | Orchestration actually supports **sequential, parallel, and race (first-to-finish wins)** modes. | ✅ runtime exists |
+| Agent specs | An **agent-spec registry** with roles, tools, and instructions — the fitting one is picked per request. | ✅ runtime exists |
+| Direct agent-to-agent messages | Workers exchange with each other/the supervisor over an in-memory **message bus**. | ✅ runtime exists |
+| Model tiering | Within one task, simple work is **automatically routed** to a fast model and deep reasoning to a strong one. | ✅ runtime exists |
+| History & observability | A **history store** recording each orchestration's mode, duration, and success/failure counts. | ✅ runtime exists |
+| Evaluator (maker ≠ judge) | `.claude/agents/harness-evaluator.md` — an independent subagent with no write tools (separation enforced via tool permissions) + calibration n=12 TPR/TNR 100% ([judge-calibration](../reference/judge-calibration.md)). | ✅ exists |
+| Curator/learner (learning from tasks) | **Real** — skill self-authoring and tidying (archive/consolidate), playbook reward/decay (reinforce strategies that worked, weaken corrected ones), and retrospective synthesis exist in the runtime. Received skills are quarantined before human promotion. | ✅ runtime exists |
+| Handoff artifact (context reset) | The single form ([handoff-template](../core/handoff-template.md)) + the runner rejecting corrupted forms and stage-skipping in code ([runner-spec §7](../reference/runner-spec.md)). | ✅ code-enforced |
+| Verification gates (completion hooks · checkpoints) | [runner/](../runner/)'s `orchestrator.mjs` (automatic driving), `hooks.mjs` (PreToolUse blocking), `session.mjs` (checkpoint resume) — suite 69/69. | ✅ code-enforced |
+| Agent-eval evidence | Per-attempt setup/teardown and local JSONL in `scripts/eval-harness.mjs`, human-reviewed redacted case promotion and per-case delta in `eval:evidence`, strict `pass^k`; offline CI and local live models kept separate. | ✅ code-enforced |
 
-## 그래서 지금 무엇이 가능한가
+## So what is possible right now
 
-- **곧바로 가능**: 감독자가 워커들을 순차/병렬/경쟁으로 돌리고, 명세로 적합한 워커를 고르고,
-  메시지 버스로 주고받고, 모델 티어링으로 비용을 아끼고, 이력으로 관측 — 이 흐름은 Muse 런타임이
-  이미 합니다. 즉 하네스의 **오케스트레이터-워커 + 일의 모양 + 위임/메시지** 축은 실재합니다.
-- **이후 채워진 것(2026-05-31~)**: 독립 평가자(쓰기 권한 없는 서브에이전트), 핸드오프 양식의
-  코드 강제, 검증 게이트의 자동 실행(러너) — 한때 "마지막 간극"이던 세 가지가 전부
-  [runner/](../runner/)와 `.claude/agents/`로 닫혔습니다([harness-acceptance §7.5](../reference/harness-acceptance.md)).
-- **에이전트 평가 P0(2026-07-17)**: 결정론 계약은 `eval:agent:offline`로 양 OS CI에서 실행하고,
-  live 모델 평가는 로컬/self-hosted로 분리했습니다. `MUSE_EVAL_RESULTS_DIR` 또는 `artifact.resultsDir`를
-  명시할 때만 privacy-safe JSONL을 남기며, skip이나 artifact 실패를 green으로 바꾸지 않습니다.
-  첫 실제 적용은 `eval:adversarial`의 secret-persistence 저장소 격리입니다. Ollama를 끈 결정론 실측에서
-  25 cases × strict 3 runs = 75/75 attempts가 통과했고, JSONL은 75 trial + 1 summary, POSIX
-  파일/디렉터리는 `0600`/`0700`, 종료 후 scratch 잔존은 0이었습니다.
-- **에이전트 평가 P1 첫 슬라이스(2026-07-17)**: `eval:evidence`가 완결된 P0 artifact만 받아 terminal
-  fail을 후보화하고, exact candidate-bound redaction review 뒤에만 `muse.eval.case/v1`을 만듭니다.
-  raw trace ref는 읽지 않으며, baseline/current는 composite case key별 개선·회귀·신규·미검증으로 비교하고
-  current 실패·회귀·누락·safety floor가 있으면 delta를 fail-close합니다. Evidence 출력은 POSIX `0600`,
-  Windows protected owner-only ACL로 제한합니다.
+- **Possible immediately**: the supervisor runs workers sequentially/in parallel/in race mode,
+  picks the fitting worker by spec, exchanges over the message bus, saves cost via model tiering,
+  and observes via history — the Muse runtime already does this flow. That is, the harness's
+  **orchestrator-workers + shape-of-work + delegation/messaging** axes are real.
+- **Filled in since (2026-05-31~)**: the independent evaluator (a subagent with no write
+  permission), code enforcement of the handoff form, and automatic execution of the verification
+  gates (the runner) — the three things once called "the last gap" are all closed by
+  [runner/](../runner/) and `.claude/agents/`
+  ([harness-acceptance §7.5](../reference/harness-acceptance.md)).
+- **Agent-eval P0 (2026-07-17)**: deterministic contracts run on both-OS CI via
+  `eval:agent:offline`, and live model evaluation is split off to local/self-hosted. Privacy-safe
+  JSONL is written only when `MUSE_EVAL_RESULTS_DIR` or `artifact.resultsDir` is explicit, and
+  neither a skip nor an artifact failure is turned green. The first real application is
+  `eval:adversarial`'s secret-persistence store isolation. In a deterministic measurement with
+  Ollama off, 25 cases × strict 3 runs = 75/75 attempts passed; the JSONL held 75 trials + 1
+  summary, POSIX files/directories were `0600`/`0700`, and scratch residue after exit was 0.
+- **Agent-eval P1 first slice (2026-07-17)**: `eval:evidence` accepts only a complete P0 artifact,
+  candidates terminal fails, and mints `muse.eval.case/v1` only after an exact candidate-bound
+  redaction review. It never reads raw trace refs; baseline/current are compared per composite
+  case key as improved/regressed/new/unverified, and the delta fail-closes on any current failure,
+  regression, omission, or safety floor. Evidence output is restricted to POSIX `0600` and a
+  Windows protected owner-only ACL.
 
-## 정직한 간극 (남은 것)
+## Honest gaps (what remains)
 
-1. 대형 **실 코드베이스 규모**의 다단계 작업 실측(지금까지는 소~중 과제 중심).
-2. 판정자 보정셋 **n 확대 + 반복**(현재 n=12, 1회 측정).
+1. Measured multi-stage work at large **real-codebase scale** (so far centered on small-to-medium
+   tasks).
+2. Judge calibration set: **expand n + repeat** (currently n=12, measured once).
 
-> 이 매핑은 코드 사실에 근거합니다(직접 확인). 런타임이 바뀌면 위 표의 상태(✅/⚙️)를 갱신하세요.
-> 기능 관점 설명은 SYSTEM-MAP #11, 역할 정의는 [team-roles](../core/team-roles.md).
+> This mapping is grounded in code facts (verified directly). When the runtime changes, update the
+> status (✅/⚙️) in the table above. The feature-level description is SYSTEM-MAP #11; role
+> definitions are [team-roles](../core/team-roles.md).

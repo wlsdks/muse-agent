@@ -1,124 +1,145 @@
 ---
-title: 하네스 러너 스펙 (Harness Runner)
-audience: [개발자, AI 에이전트]
-purpose: 핸드오프·역할·게이트를 "사람이 양식을 채움"에서 "런타임이 강제"로 올리는 실행 규약
+title: Harness Runner Spec
+audience: [developers, AI agents]
+purpose: The execution contract that elevates handoff, roles, and gates from "a human fills the form" to "the runtime enforces it"
 status: draft
 updated: 2026-06-13
-sources_basis: [harness-acceptance 실측 9회, team-roles·role-prompts·handoff-template·verification-and-guardrails·loop-budget, Anthropic 3-agent harness(컨텍스트 리셋·핸드오프 아티팩트)]
+sources_basis: [harness-acceptance 9 measured runs, team-roles · role-prompts · handoff-template · verification-and-guardrails · loop-budget, Anthropic 3-agent harness (context reset · handoff artifacts)]
 related: [../core/team-roles.md, ../core/handoff-template.md, ../core/role-prompts.md, ../core/verification-and-guardrails.md, loop-budget.md, architecture.md, ../README.md]
 ---
 
-# 하네스 러너 스펙 (Harness Runner)
+# Harness Runner Spec
 
-> **왜 이 칸인가?** 지금 하네스는 역할·양식·게이트가 다 정의됐고 실제 Claude Code로 9회 돌아갔지만,
-> 그 흐름을 **사람이 손으로** 이어붙였습니다([harness-acceptance §7.5](harness-acceptance.md)의 연쇄가
-> 그 증거). "엄청나게 좋은 하네스"가 되려면 그 사이클을 **런타임이 강제**해야 합니다 — 누가 돌려도
-> 같은 양식·같은 게이트가 자동으로 적용되도록. 이 문서는 그 러너의 **동작 규약**(무엇을 강제하나)을
-> 말로 정의합니다. 구현이 아니라 "러너가 반드시 지킬 계약"입니다.
+> **Why this slot?** The harness now has roles, forms, and gates all defined, and has run 9 times
+> with real Claude Code — but that flow was stitched together **by hand** (the chains in
+> [harness-acceptance §7.5](harness-acceptance.md) are the evidence). To become "an exceptionally
+> good harness", the cycle must be **enforced by a runtime** — the same forms and the same gates
+> applied automatically no matter who runs it. This document defines that runner's **behavioral
+> contract** (what it enforces) in prose. Not an implementation — "the contract the runner must
+> keep".
 
-## 0. 한 줄 원칙
+## 0. The one-line principle
 
-**사이클은 사람이 아니라 러너가 돌린다.** 역할 프롬프트·핸드오프 양식·게이트·한도를 러너가 자동으로
-끼우고, 사람은 승인 지점에서만 개입합니다.
+**The runner turns the cycle, not a human.** The runner automatically inserts role prompts, the
+handoff form, gates, and limits; humans intervene only at approval points.
 
-## 1. 한 작업의 강제 사이클
+## 1. The enforced cycle of one task
 
-러너는 한 작업을 다음 순서로 돌리고, **각 전이마다 게이트를 통과해야** 다음으로 갑니다.
+The runner drives a task in the following order, and **each transition must pass its gate** to
+proceed.
 
 ```
-요청 ─▶ [PLAN] 플래너 ──(계획 게이트)──▶ [BUILD] 워커 ──▶ [EVAL] 평가자
-                                                              │
-                                  PASS ─▶ [LEARN] 큐레이터 ─▶ DONE
-                                  FAIL ─▶ 피드백 → [BUILD] (반복 한도까지)
+request ─▶ [PLAN] planner ──(plan gate)──▶ [BUILD] worker ──▶ [EVAL] evaluator
+                                                                  │
+                                    PASS ─▶ [LEARN] curator ─▶ DONE
+                                    FAIL ─▶ feedback → [BUILD] (until the retry cap)
 ```
 
-- ([LEARN] 큐레이터는 DONE *이후*의 비차단 학습 단계 — 러너 상태기계는 DONE까지를 강제하고,
-  학습은 게이트가 아니다.)
-- 각 단계는 [role-prompts](../core/role-prompts.md)의 해당 블록을 **자동 주입**받는다(사람이 안 붙임).
-- 단계 산출은 [handoff-template](../core/handoff-template.md)의 자기 섹션에만 기록되고, 다음 단계는 그
-  양식만 입력으로 받는다(컨텍스트 리셋).
+- ([LEARN] curator is a non-blocking learning stage *after* DONE — the runner state machine
+  enforces up to DONE; learning is not a gate.)
+- Each stage receives its block from [role-prompts](../core/role-prompts.md) **auto-injected**
+  (no human attaches it).
+- Each stage's output is recorded only in its own section of
+  [handoff-template](../core/handoff-template.md), and the next stage receives **only that form**
+  as input (context reset).
 
-## 2. 러너가 강제하는 것 (계약)
+## 2. What the runner enforces (the contract)
 
-- **양식 강제** — 각 역할의 출력이 핸드오프 양식 스키마에 맞아야 한다. 안 맞으면 한 번 재요청, 그래도
-  안 되면 BLOCKED.
-- **계획 게이트(앞단)** — BUILD 전에 계획의 **자체 정합성**을 점검(수용 기준이 서로 모순 없나, 예시와
-  기준이 일치하나). 통과해야 BUILD 진입. (※ 골든 측정에서 본 "계획이 틀리면 하류가 다 어긋난다"의
-  방어 — [golden-set] 관찰 참고.)
-- **완료 게이트(뒷단)** — 평가자 PASS + (가능하면) 자동 채점이 통과해야 DONE. 불확실은 막힘 우선.
-- **만든 자 ≠ 판정하는 자** — BUILD와 EVAL은 서로 다른 에이전트 인스턴스로 강제(평가자가 자기 빌드를
-  못 본다).
-- **루프 한도** — 횟수·시간·예산 하드 캡([loop-budget](loop-budget.md)). BUILD↔EVAL 반복도 상한, 넘으면
-  BLOCKED로 사람에게 올림.
-- **압축·체크포인트** — 길어지면 압축([context-compaction](context-compaction.md)), 분기점마다
-  체크포인트(실패 시 재개).
+- **Form enforcement** — each role's output must match the handoff-form schema. If not, one
+  re-request; if it still fails, BLOCKED.
+- **Plan gate (front)** — before BUILD, check the plan's **internal consistency** (are the
+  acceptance criteria mutually non-contradictory; do examples and criteria agree). Only a pass
+  enters BUILD. (※ The defense against "a wrong plan skews everything downstream" seen in golden
+  measurement — see the [golden-set] observations.)
+- **Completion gate (back)** — evaluator PASS + (where possible) automated grading must pass for
+  DONE. Uncertainty blocks first.
+- **Maker ≠ judge** — BUILD and EVAL are enforced as different agent instances (the evaluator
+  never sees its own build).
+- **Loop limits** — hard caps on iterations, time, and budget
+  ([loop-budget](loop-budget.md)). The BUILD↔EVAL repetition is also capped; past it, BLOCKED and
+  escalated to a human.
+- **Compaction & checkpoints** — compact when things get long
+  ([context-compaction](context-compaction.md)); checkpoint at each branch point (resume on
+  failure).
 
-## 3. 사람이 개입하는 지점 (HITL)
+## 3. Where humans intervene (HITL)
 
-러너는 자동이되, **이 셋은 반드시 사람**:
-- **외부 전송/상태 변경** — draft-first, 사람 확인 후에만([verification-and-guardrails](../core/verification-and-guardrails.md)).
-- **받은 노하우 승격** — 격리된 스킬은 사람이 올려야 활성([skills-and-mcp](skills-and-mcp.md)).
-- **BLOCKED 해소** — 열린 질문·한도 초과는 사람이 판단.
+The runner is automatic, but **these three are always human**:
+- **Outbound sends / state changes** — draft-first, only after human confirmation
+  ([verification-and-guardrails](../core/verification-and-guardrails.md)).
+- **Promoting received know-how** — a quarantined skill activates only when a human promotes it
+  ([skills-and-mcp](skills-and-mcp.md)).
+- **Resolving BLOCKED** — open questions and limit overruns are judged by a human.
 
-## 4. 관측 (러너가 남기는 것)
+## 4. Observability (what the runner leaves behind)
 
-- 모든 전이·도구 호출·게이트 판정을 **상관 ID 하나로** 추적([debugging-and-dx](debugging-and-dx.md)).
-- 각 실행은 **재현 가능한 트레이스** + 비용·단계 기록. 골든 과제로 회귀([harness-acceptance](harness-acceptance.md)).
+- Trace every transition, tool call, and gate verdict **under one correlation ID**
+  ([debugging-and-dx](debugging-and-dx.md)).
+- Each run gets a **reproducible trace** + cost and stage records. Regression via the golden
+  tasks ([harness-acceptance](harness-acceptance.md)).
 
-## 5. 지금과의 간극 (정직)
+## 5. The gap from here (honest)
 
-- **출발점(2026-05-31 이전)**: 역할·양식·게이트가 문서로 정의됐고 사람이 claude를 손으로 이어 9회 돌려 흐름을 입증.
-- **이 스펙이 정의하는 것**: 그 강제·자동 끼움·게이트 통과를 **러너가** 하는 계약.
-- **이제 된 것(2026-05-31)**: 최소 **코드 러너**가 이 계약을 강제합니다 — [`runner/`](../runner/)의
-  `harness-runner.mjs`(의존성 0)가 상태기계·계획/완료/권한 게이트를 결정론 코드로 거부하고,
-  전체 runner test가 §7 거부 매트릭스를 포함해 **69/69 통과**(`node --test "harness/runner/*.test.mjs"`). 즉
-  게이트가 "지시"에서 "코드 강제"로 올라갔습니다.
-- **아직 아닌 것**: 러너를 실제 오케스트레이션 런타임(프로세스 스폰·도구 배선)에 붙이는 것은 호스트
-  몫 — 이 러너는 그 위에서 전이 허용을 판정하는 게이트 코어입니다.
+- **Starting point (before 2026-05-31)**: roles, forms, and gates were defined in documents and
+  a human hand-chained claude 9 times to prove the flow.
+- **What this spec defines**: the contract in which **the runner** does that enforcement,
+  auto-insertion, and gate passage.
+- **Now done (2026-05-31)**: a minimal **code runner** enforces this contract —
+  [`runner/`](../runner/)'s `harness-runner.mjs` (zero dependencies) rejects via the state
+  machine and the plan/completion/permission gates as deterministic code, and the full runner
+  test passes **69/69** including the §7 rejection matrix
+  (`node --test "harness/runner/*.test.mjs"`). The gates have risen from "instruction" to
+  "code enforcement".
+- **Not yet**: attaching the runner to a real orchestration runtime (process spawning, tool
+  wiring) is the host's job — this runner is the gate core that judges transition admission on
+  top of it.
 
-## 6. 적합성 — 게이트가 실제로 막는다는 증거 (conformance)
+## 6. Conformance — evidence the gates actually block
 
-스펙이 "막는다"고 적는 것과 게이트가 **실제로 막는 것**은 다릅니다. 핵심 게이트의 거부 행동은 이미
-실제 Claude Code 실측으로 확인됐고([harness-acceptance §7.5](harness-acceptance.md)), 아래처럼 스펙
-게이트에 결속됩니다. 즉 이 규약은 가설이 아니라 **이미 작동을 본 행동의 명문화**입니다.
+A spec *saying* "it blocks" and a gate **actually blocking** are different things. The core
+gates' rejection behavior has already been confirmed by real Claude Code measurement
+([harness-acceptance §7.5](harness-acceptance.md)) and is bound to the spec gates as below. So
+this contract is not a hypothesis but **the codification of behavior already seen working**.
 
-| 스펙 게이트/규약 | 요구 행동 | 결속된 실측 증거 |
+| Spec gate/contract | Required behavior | Bound measured evidence |
 |---|---|---|
-| 계획 게이트 — 불완전 slice 거부 | WHAT·WHY·PASS·범위 밖·검증 명령·근거 회계·rollback 또는 active/command/validation 분 예산 중 하나라도 없거나 예산이 20/12/6 상한을 넘으면 다음 단계로 못 감 | G10 빈 기준 → "검증 불가" **pass^5**(추측 통과 0) + runner field-by-field conformance |
-| 완료 게이트 — 틀린 빌드 FAIL | 기준 위반 산출물은 PASS 안 됨 | G8 null 빌드 → **pass^10** FAIL · G9 올바른 빌드 → pass^5 PASS |
-| 외부전송 게이트(HITL) | 자동 전송 금지·draft-first | 권한 실측: outbound→approve·은행→refuse([permission-matrix §4.5](../core/permission-matrix.md)) |
+| Plan gate — reject incomplete slice | If any of WHAT · WHY · PASS · out-of-scope · verify command · evidence accounting · rollback, or any of the active/command/validation minute budgets is missing, or a budget exceeds the 20/12/6 caps, no advance to the next stage | G10 empty criteria → "unverifiable" **pass^5** (0 speculative passes) + runner field-by-field conformance |
+| Completion gate — wrong build FAILs | An artifact violating the criteria never PASSes | G8 null build → **pass^10** FAIL · G9 correct build → pass^5 PASS |
+| Outbound gate (HITL) | No automatic sends · draft-first | Permission measurement: outbound→approve · banking→refuse ([permission-matrix §4.5](../core/permission-matrix.md)) |
 
-## 7. 코드 러너가 통과해야 할 적합성 매트릭스 (미래 구현 계약)
+## 7. The conformance matrix a code runner must pass (future implementation contract)
 
-이 스펙을 코드로 구현할 때, **행복경로만이 아니라 거부 경로**를 증명해야 합니다([verification-and-guardrails]
-의 fail-closed 원칙과 동형). 구현은 다음 거부 케이스를 전부 통과해야 인정됩니다.
+When implementing this spec as code, prove **the rejection paths, not just the happy path**
+(isomorphic to [verification-and-guardrails]'s fail-closed principle). An implementation is
+recognized only when it passes all of the following rejection cases.
 
-| 케이스 | 입력 | 기대(fail-closed) |
+| Case | Input | Expected (fail-closed) |
 |---|---|---|
-| 단계 건너뛰기 | PLAN 없이 BUILD 요청 | 거부, 상태 유지 |
-| 빈 acceptance slice | 필수 필드 하나라도 누락/공백인 계획 게이트 | 전이 거부 + 필드 사유 로그 |
-| 무제한 activation | `activeBudgetMinutes`·`commandTimeoutMinutes`·`validationMinutes` 누락/비정수/0/20·12·6 초과 | 전이 거부 + 해당 budget field 사유 로그 |
-| 미평가 머지 | 평가 PASS 없이 DONE 요청 | 거부(완료 게이트) |
-| 자기 채점 | BUILD와 같은 인스턴스가 EVAL | 거부(만든 자≠판정하는 자) |
-| 손상된 양식 | 상태 로그 파손/알 수 없는 상태 | 진행 금지 + 사람 개입 |
-| 재개 멱등성 | 같은 전이 2회 실행 | 부작용 1회만(중복 금지) |
+| Stage skipping | BUILD requested without PLAN | Reject, state unchanged |
+| Empty acceptance slice | Plan gate with any required field missing/blank | Transition rejected + field reason logged |
+| Unbounded activation | `activeBudgetMinutes` · `commandTimeoutMinutes` · `validationMinutes` missing/non-integer/0/over 20·12·6 | Transition rejected + that budget field's reason logged |
+| Unevaluated merge | DONE requested without an evaluation PASS | Reject (completion gate) |
+| Self-grading | The same instance as BUILD does EVAL | Reject (maker ≠ judge) |
+| Corrupted form | Status log damaged / unknown state | No progress + human intervention |
+| Resume idempotency | The same transition executed twice | Side effect once only (no duplication) |
 
-> 행복경로 통과만으로는 러너가 "delivered"가 아닙니다 — 위 거부 매트릭스가 모두 초록일 때만.
+> Passing the happy path alone does not make the runner "delivered" — only when the rejection
+> matrix above is all green.
 
-## 한 줄 요약 (러너 체크리스트)
+## One-line summary (runner checklist)
 
-1. 역할 프롬프트가 **자동 주입**되나(사람이 안 붙임)?
-2. 단계 전이마다 **게이트 통과**가 강제되나(계획 앞·완료 뒤)?
-3. BUILD≠EVAL 인스턴스가 **강제 분리**되나?
-4. 루프 **하드 캡** + 압축·체크포인트가 걸리나?
-5. 외부전송·승격·BLOCKED만 **사람**에게 가나?
-6. 전 과정이 **상관 ID 트레이스**로 남나?
+1. Are role prompts **auto-injected** (no human attaches them)?
+2. Is **gate passage enforced** at every stage transition (plan in front, completion behind)?
+3. Are BUILD≠EVAL instances **forcibly separated**?
+4. Are loop **hard caps** + compaction and checkpoints in place?
+5. Do only outbound sends, promotion, and BLOCKED go **to a human**?
+6. Is the whole flow left as a **correlation-ID trace**?
 
 ---
 
-## 출처 (근거)
+## Sources (basis)
 
-- [harness-acceptance §7.5](harness-acceptance.md) (실제 Claude Code 9회 실측 — 현재는 사람이 사이클을 이어붙임)
-- [team-roles](../core/team-roles.md) · [handoff-template](../core/handoff-template.md) · [role-prompts](../core/role-prompts.md) (강제 대상)
-- [verification-and-guardrails](../core/verification-and-guardrails.md) · [loop-budget](loop-budget.md) · [debugging-and-dx](debugging-and-dx.md) (게이트·한도·관측)
-- Anthropic — [3-agent harness](https://www.infoq.com/news/2026/04/anthropic-three-agent-harness-ai/) (컨텍스트 리셋 + 구조화 핸드오프 아티팩트)
+- [harness-acceptance §7.5](harness-acceptance.md) (9 real Claude Code measured runs — currently a human stitches the cycle)
+- [team-roles](../core/team-roles.md) · [handoff-template](../core/handoff-template.md) · [role-prompts](../core/role-prompts.md) (what gets enforced)
+- [verification-and-guardrails](../core/verification-and-guardrails.md) · [loop-budget](loop-budget.md) · [debugging-and-dx](debugging-and-dx.md) (gates, limits, observability)
+- Anthropic — [3-agent harness](https://www.infoq.com/news/2026/04/anthropic-three-agent-harness-ai/) (context reset + structured handoff artifacts)

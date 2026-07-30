@@ -1,60 +1,72 @@
 ---
-title: 세션 영속 (Session Persistence — 체크포인트·재개)
-audience: [개발자, AI 에이전트]
-purpose: 실행 상태를 체크포인트로 남겨, 멈춘/죽은 실행을 완료 단계 재실행 없이 재개
+title: Session Persistence — checkpoint & resume
+audience: [developers, AI agents]
+purpose: Leave run state as checkpoints so a stopped/dead run resumes without re-executing completed stages
 updated: 2026-06-13
 ---
 
-# 세션 영속 (Session Persistence)
+# Session Persistence
 
-정통 하네스 제어플레인의 핵심 정의 중 하나 — "turn을 가로지르는 **상태 유지**", Anthropic
-effective-harnesses의 "여러 컨텍스트 윈도를 가로지르는 **일관된 진행**". 긴 작업이 중간에 끊겨도
-**이미 끝낸 단계(특히 비싼 에이전트 호출)를 다시 돌리지 않고 이어서** 진행하게 합니다. 관측
-트레이스([observability](observability.md))가 "무슨 일이 있었나"라면, 세션 영속은 "어디서부터 다시"입니다.
+One of the core definitions of the canonical harness control plane — "**state maintenance** across
+turns", Anthropic effective-harnesses' "**coherent progress** across multiple context windows". It
+lets a long task, when interrupted midway, **continue without re-running already-completed stages
+(especially expensive agent calls)**. Where the observability trace
+([observability](observability.md)) answers "what happened", session persistence answers "resume
+from where".
 
-## 무엇인가
+## What it is
 
-[runner/session.mjs](../runner/session.mjs) (의존성 0 — fs는 Node 내장):
+[runner/session.mjs](../runner/session.mjs) (zero dependencies — fs is Node built-in):
 
-- **스냅샷** `snapshot({runId, phase, criteria, attempt, build, verdict})` — 재개에 필요한 최소 상태.
-  계획 단계(criteria)·재시도 횟수·이미 만든 빌드를 담아 **재계획·재빌드를 건너뛸** 수 있게 함.
-- `serializeSession` / `deserializeSession` — JSON 직렬화·검증(버전 `v:1`, 잘못된 건 거부).
-- **스토어(주입식, 포터블)** — `createMemoryStore()`(테스트용), `createFileStore(dir)`(runId당 JSON 파일).
-  호스트가 DB 스토어를 끼워도 됨(인터페이스: `save(s)`·`load(runId)`·`list()`).
+- **Snapshot** `snapshot({runId, phase, criteria, attempt, build, verdict})` — the minimal state
+  needed to resume. It carries the plan stage (criteria), the retry count, and any build already
+  produced, so **re-planning and re-building can be skipped**.
+- `serializeSession` / `deserializeSession` — JSON serialization + validation (version `v:1`,
+  invalid input rejected).
+- **Store (injected, portable)** — `createMemoryStore()` (for tests), `createFileStore(dir)`
+  (one JSON file per runId). The host may plug in a DB store (interface: `save(s)` · `load(runId)`
+  · `list()`).
 
-## 어떻게 배선됐나
+## How it is wired
 
-- `runCycle(task, { checkpoint })` — 각 단계(PLANNED·BUILT·EVALUATED·DONE)마다 `checkpoint(snapshot)`을
-  호출. 호스트가 그걸 스토어에 저장.
-- `runCycle(task, { resume: snapshot })` — 재개. **phase가 PLANNED 이상이면 플래너를 다시 안 부르고**
-  저장된 criteria를 재사용하고, **빌드가 이미 있으면 워커를 건너뛰고** 평가로 바로 간다(`resumed` 이벤트 기록).
-- `run.mjs`는 실행마다 `sessions/<runId>.session.json`에 체크포인트를 남긴다(gitignore된 산출물). 재개하려면
-  그 스냅샷을 로드해 `resume`으로 넘기면 됨.
+- `runCycle(task, { checkpoint })` — calls `checkpoint(snapshot)` at each stage (PLANNED · BUILT ·
+  EVALUATED · DONE). The host saves it to a store.
+- `runCycle(task, { resume: snapshot })` — resume. **If phase is PLANNED or later, the planner is
+  not called again** and the saved criteria are reused; **if a build already exists, the worker is
+  skipped** and evaluation runs directly (a `resumed` event is recorded).
+- `run.mjs` leaves a checkpoint at `sessions/<runId>.session.json` per run (a gitignored
+  artifact). To resume, load that snapshot and pass it as `resume`.
 
-## 검증
+## Verification
 
 [runner/session.test.mjs](../runner/session.test.mjs) — `node --test "harness/runner/*.test.mjs"`:
-스냅샷 라운드트립·잘못된 스냅샷 거부 / 메모리 스토어 save·load·list / 파일 스토어 디스크 영속 /
-오케스트레이터가 4단계 체크포인트 / **PLANNED 재개 시 플래너 미호출(criteria 재사용)** / **빌드 보유
-재개 시 워커 미호출**. **6/6**(러너 스위트 누적 **45/45**).
+snapshot round-trip · invalid snapshot rejected / memory store save·load·list / file store disk
+persistence / orchestrator checkpoints all 4 stages / **resume at PLANNED does not call the
+planner (criteria reused)** / **resume with an existing build does not call the worker**. **6/6**
+(runner suite cumulative **45/45**).
 
-## 컨텍스트 윈도를 넘는 작업 (구조적 상태 — 압축만으론 부족)
+## Work that exceeds a context window (structural state — compaction alone is not enough)
 
-여러 컨텍스트 윈도에 걸치는 긴 작업은 체크포인트+압축으로 부족합니다(Anthropic
-effective-harnesses: "compaction isn't sufficient"). 구조적 스캐폴딩을 함께 둡니다:
+Long work spanning multiple context windows is not covered by checkpoint + compaction alone
+(Anthropic effective-harnesses: "compaction isn't sufficient"). Keep structural scaffolding
+alongside:
 
-- **기능 목록 파일** — 끝-대-끝 기능 묶음을 구조화 파일(JSON)로 두되 **전부 '실패' 상태로
-  시작** — 이른 "done" 선언을 구조로 막습니다(골든셋 진행표와 동형). 신중한 검증 후에만
-  'passing' 전환.
-- **진행 파일 + git 로그가 곧 핸드오프** — 새 세션은 git log와 진행 파일을 *먼저 읽고* 시작.
-  작동 상태마다 커밋(복구 지점).
-- **세션당 기능 하나** — 한 세션이 여러 기능을 벌리지 않게(컨텍스트·검증 둘 다를 위해).
-- **첫 세션은 초기화 전담** — 환경 셋업만 하는 initializer 세션을 분리(이후 세션은 일만).
+- **A feature-list file** — keep the end-to-end feature bundle in a structured file (JSON), but
+  **start everything in 'failing' state** — early "done" declarations are blocked structurally
+  (isomorphic to the golden-set progress table). Flip to 'passing' only after careful
+  verification.
+- **The progress file + git log ARE the handoff** — a new session starts by *reading* the git log
+  and progress file first. Commit at every working state (recovery points).
+- **One feature per session** — a session never opens multiple features (for both context and
+  verification).
+- **The first session does initialization only** — split off an initializer session that does
+  environment setup only (later sessions just work).
 
-출처: Anthropic — [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) (2025-11).
+Source: Anthropic — [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) (2025-11).
 
-## 한계 / 다음
+## Limits / next
 
-스냅샷은 단계 경계 상태까지(전체 트레이스 재구성은 아님 — 그건 관측 트레이스의 몫). 비용 누계·부분
-토큰 상태의 정밀 재개는 호스트 런타임 몫. (메모리 런타임도 이후 `memory.mjs`로 코드화 —
-[memory-layers §런타임](memory-layers.md).)
+Snapshots go up to stage-boundary state (not full trace reconstruction — that is the
+observability trace's job). Precise resume of cumulative cost and partial-token state is the host
+runtime's job. (The memory runtime is also codified later as `memory.mjs` —
+[memory-layers §runtime](memory-layers.md).)

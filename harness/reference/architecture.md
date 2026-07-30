@@ -1,178 +1,211 @@
 ---
-title: 하네스 구성도 & 자가평가 (Architecture & Self-Assessment)
-audience: [기획자, 개발자, AI 에이전트]
-purpose: 하네스가 어떻게 짜였는지 한눈에(구성도) + 2026 권위 체크리스트 대비 무엇이 있고 무엇이 빠졌는지
+title: Harness Architecture & Self-Assessment
+audience: [planners, developers, AI agents]
+purpose: How the harness is put together at a glance (diagram) + what exists and what is missing against the authoritative 2026 checklist
 status: draft
 updated: 2026-06-13
 sources_basis: [awesome-harness-engineering (component checklist), Agent Harness Engineering — AI Control Plane (Masood 2026), Atlan harness tools 2026, Braintrust observability 2026, Anthropic harness-design-long-running-apps 2026-03 (pruning), Anthropic managed-agents 2026-04 (staleness)]
 related: [../README.md, ../core/team-roles.md, ../core/handoff-template.md, ../core/role-prompts.md, ../core/verification-and-guardrails.md, failure-modes-and-observability.md, harness-acceptance.md, ../host/muse-mapping.md]
 ---
 
-# 하네스 구성도 & 자가평가 (Architecture & Self-Assessment)
+# Harness Architecture & Self-Assessment
 
-> **이 문서는?** 지금까지 만든 하네스가 **어떻게 짜였는지 한 장으로** 보여주고(구성도), 2026년
-> 권위 있는 체크리스트(awesome-harness-engineering의 12개 카테고리 등)에 비춰 **무엇이 채워졌고
-> 무엇이 빠졌는지** 정직하게 평가합니다. 말로만(코드 없음). 출처는 끝에.
+> **What is this document?** It shows **on one page how** the harness built so far is put
+> together (the diagram), and honestly assesses **what is filled and what is missing** against
+> the authoritative 2026 checklist (awesome-harness-engineering's 12 categories, etc.). Prose
+> only (no code). Sources at the end.
 
-## 1. 한 장 구성도 (한 작업이 흐르는 길)
+## 1. The one-page diagram (the path one task flows through)
 
 ```
                  ┌──────────────────────────────────────────────┐
-                 │            오케스트레이터 (지휘자)            │
-                 │   전체 맥락·계획 소유 / 위임 / 결과 종합       │
+                 │           Orchestrator (conductor)           │
+                 │  owns full context & plan / delegates /      │
+                 │  synthesizes results                         │
                  └───────────────┬──────────────────────────────┘
-            위임(목표·출력·도구·경계)│        ▲ 압축 요약 반환
+   delegation (goal·output·tools·boundaries)│   ▲ compressed summary returned
                  ┌────────────────┼────────────────┐
                  ▼                ▼                ▼
             ┌─────────┐     ┌─────────┐     ┌──────────┐
-            │ 플래너  │ ──▶ │  워커   │ ──▶ │  평가자  │   (만든 자 ≠ 판정하는 자)
-            │ 계획    │     │ 빌드    │ ◀── │  PASS/   │
-            └─────────┘     └─────────┘ 피드백│  FAIL   │
+            │ Planner │ ──▶ │ Worker  │ ──▶ │Evaluator │   (maker ≠ judge)
+            │ plan    │     │ build   │ ◀── │  PASS/   │
+            └─────────┘     └─────────┘ feedback  FAIL │
                  │                │           └────┬─────┘
                  └────────────────┴────────────────┘
-                          모두 같은 한 장을 채움
+                        all fill the same one page
                  ┌──────────────────────────────────────────────┐
-                 │      핸드오프 아티팩트 (작업당 1장, 상태 소유)  │
-                 │  계획 → 빌드 → 평가 → 리뷰 + 열린질문 + 상태로그│
+                 │  Handoff artifact (1 per task, owns state)   │
+                 │  plan → build → eval → review + open         │
+                 │  questions + status log                      │
                  └──────────────────────────────────────────────┘
-   가로지르는 토대(모든 단계에 적용):
-   · 가드레일: 입력/출력 검사 + 트립와이어(즉시 중단)
-   · 게이트: 계획 승인(앞) · 완료(뒤), 막힘 우선(fail-closed)
-   · 관측: 도구·추론·계층 트레이스 + 비용 + 상태 전이
-   · 복구: 체크포인트 재개 · 멱등성 · 격리(worktree)
-   · 검증: 골든 과제 + 6층 테스트로 하네스 자체를 평가
+   Cross-cutting foundations (apply to every stage):
+   · Guardrails: input/output checks + tripwires (immediate stop)
+   · Gates: plan approval (front) · completion (back), blocked-first (fail-closed)
+   · Observability: tool/reasoning/hierarchy traces + cost + state transitions
+   · Recovery: checkpoint resume · idempotency · isolation (worktree)
+   · Verification: golden tasks + 6-layer tests grade the harness itself
 ```
 
-**읽는 법:** 한 작업은 오케스트레이터가 **핸드오프 한 장**을 열며 시작 → 플래너가 계획 칸 → 워커가
-빌드 칸 → 평가자가 평가 칸(만든 워커와 다른 에이전트) → **큐레이터/학습자**가 통한 전략을 강화하고
-배운 절차를 정돈해 **다음 작업을 더 낫게** 만듭니다(Muse 고유의 자기학습 환류). 모든 단계가 가드레일·게이트·관측·복구라는
-**가로 토대** 위에서 돌고, 하네스 자체는 검증(골든 과제·6층)으로 점검됩니다.
+**How to read it:** a task starts with the orchestrator opening **one handoff page** → the
+planner fills the plan section → the worker the build section → the evaluator the evaluation
+section (a different agent from the worker who built it) → the **curator/learner** reinforces
+the strategies that worked and organizes learned procedures to make **the next task better**
+(Muse's own self-learning feedback loop). Every stage runs on the **cross-cutting foundations**
+of guardrails, gates, observability, and recovery, and the harness itself is checked by
+verification (golden tasks, 6 layers).
 
-## 2. 문서 → 구성 요소 지도
+## 2. Document → component map
 
-| 구성 요소 | 담은 문서 |
+| Component | Document |
 |---|---|
-| 역할·패턴·경계(큐레이터/학습자 포함 7역할) | [team-roles](../core/team-roles.md) |
-| 역할별 붙여넣기 프롬프트 | [role-prompts](../core/role-prompts.md) |
-| 자기학습 환류(스킬·플레이북·회고) | [team-roles](../core/team-roles.md) 큐레이터/학습자 + [muse-mapping](../host/muse-mapping.md) |
-| 도구 설계 / 외부 도구(스킬·MCP) | [tool-design](tool-design.md) · [skills-and-mcp](skills-and-mcp.md) |
-| 루프 종료·예산 / 컨텍스트 압축 | [loop-budget](loop-budget.md) · [context-compaction](context-compaction.md) |
-| 권한 매트릭스 / 메모리 계층 | [permission-matrix](../core/permission-matrix.md) · [memory-layers](memory-layers.md) |
-| 디버깅·DX | [debugging-and-dx](debugging-and-dx.md) |
-| 작업 상태(핸드오프) | [handoff-template](../core/handoff-template.md) |
-| 가드레일·게이트 | [verification-and-guardrails](../core/verification-and-guardrails.md) |
-| 실패 모드·관측·복구 | [failure-modes-and-observability](failure-modes-and-observability.md) |
-| 하네스 자체 검증 | [harness-acceptance](harness-acceptance.md) |
-| Muse 런타임 매핑 | [muse-mapping](../host/muse-mapping.md) |
+| Roles, patterns, boundaries (7 roles incl. curator/learner) | [team-roles](../core/team-roles.md) |
+| Paste-in prompts per role | [role-prompts](../core/role-prompts.md) |
+| Self-learning feedback loop (skills, playbook, retrospective) | [team-roles](../core/team-roles.md) curator/learner + [muse-mapping](../host/muse-mapping.md) |
+| Tool design / external tools (skills·MCP) | [tool-design](tool-design.md) · [skills-and-mcp](skills-and-mcp.md) |
+| Loop termination & budget / context compaction | [loop-budget](loop-budget.md) · [context-compaction](context-compaction.md) |
+| Permission matrix / memory layers | [permission-matrix](../core/permission-matrix.md) · [memory-layers](memory-layers.md) |
+| Debugging & DX | [debugging-and-dx](debugging-and-dx.md) |
+| Task state (handoff) | [handoff-template](../core/handoff-template.md) |
+| Guardrails & gates | [verification-and-guardrails](../core/verification-and-guardrails.md) |
+| Failure modes, observability, recovery | [failure-modes-and-observability](failure-modes-and-observability.md) |
+| Verifying the harness itself | [harness-acceptance](harness-acceptance.md) |
+| Muse runtime mapping | [muse-mapping](../host/muse-mapping.md) |
 
-## 3. 자가평가 — 2026 체크리스트 대비
+## 3. Self-assessment — against the 2026 checklist
 
-권위 체크리스트(awesome-harness-engineering의 12개 카테고리)에 비춘 현재 상태:
+Current state against the authoritative checklist (awesome-harness-engineering's 12
+categories):
 
-| # | 권위 카테고리 | 우리 하네스 | 상태 |
+| # | Authority category | Our harness | Status |
 |---|---|---|---|
-| 1 | 에이전트 루프 | team-roles 패턴 + [loop-budget](loop-budget.md)(횟수·시간·예산 하드캡·회로차단) | ✅ |
-| 2 | 계획·분해 | 플래너 역할 + 핸드오프 계획 칸 | ✅ |
-| 3 | 컨텍스트·압축 | [context-compaction](context-compaction.md) — 선제·주기·예산인지·중요도 가중 보존 (+실측: 결정·출처 보존 pass^2) | ✅ |
-| 4 | 도구 설계 | [tool-design](tool-design.md) — 한-shot 선택·예시스키마·위험등급 | ✅ |
-| 5 | 스킬·MCP | [skills-and-mcp](skills-and-mcp.md) — 2단계 허용목록·격리·최소권한·불신출력 | ✅ |
-| 6 | 권한·승인 | [permission-matrix](../core/permission-matrix.md) — 위험등급×처리·최소권한·감사 (+실측: outbound=막힘우선·금융=거부) | ✅ |
-| 7 | 메모리·상태 | [memory-layers](memory-layers.md) + 핸드오프 상태로그 — 5계층·쓰기/읽기/정리 (+실측: 쓰기 규칙 pass^2) | ✅ |
-| 8 | 오케스트레이션 | team-roles + muse-mapping | ✅ |
-| 9 | 검증·CI | verification + acceptance(6층) | ✅ |
-| 10 | 관측·트레이스 | failure-modes 관측 | ✅ |
-| 11 | 디버깅·DX | [debugging-and-dx](debugging-and-dx.md) — 트레이스→격리→결정론 재현→회귀 | ✅ |
-| 12 | 사람 개입(HITL) | 게이트·승인·체크인 | ✅ |
+| 1 | Agent loop | team-roles patterns + [loop-budget](loop-budget.md) (iteration/time/budget hard caps · circuit breaker) | ✅ |
+| 2 | Planning & decomposition | planner role + handoff plan section | ✅ |
+| 3 | Context & compaction | [context-compaction](context-compaction.md) — pre-emptive · periodic · budget-aware · importance-weighted preservation (+measured: decisions/sources preserved pass^2) | ✅ |
+| 4 | Tool design | [tool-design](tool-design.md) — one-shot selection · example schemas · risk tiers | ✅ |
+| 5 | Skills & MCP | [skills-and-mcp](skills-and-mcp.md) — two-stage allowlist · isolation · least privilege · distrusted output | ✅ |
+| 6 | Permissions & approval | [permission-matrix](../core/permission-matrix.md) — risk tier × handling · least privilege · audit (+measured: outbound=blocked-first · finance=refused) | ✅ |
+| 7 | Memory & state | [memory-layers](memory-layers.md) + handoff status log — 5 layers · write/read/prune (+measured: write rules pass^2) | ✅ |
+| 8 | Orchestration | team-roles + muse-mapping | ✅ |
+| 9 | Verification & CI | verification + acceptance (6 layers) | ✅ |
+| 10 | Observability & traces | failure-modes observability | ✅ |
+| 11 | Debugging & DX | [debugging-and-dx](debugging-and-dx.md) — trace → isolate → deterministic replay → regression | ✅ |
+| 12 | Human-in-the-loop (HITL) | gates, approvals, check-ins | ✅ |
 
-**한 줄 결론:** **12개 카테고리 전부 ✅ 문서화** (⬜ 0 / 🟡 0) **+ 실제 Claude Code로 다수 실측 통과**
-(평가자 양방향·빈기준 막힘·워커 수렴·3역할 연쇄 + 권한·메모리·압축 게이트 — 반복 pass^k 포함,
-[harness-acceptance §7.5](harness-acceptance.md)). **그리고 이제 참고 문서가 아니라 활성·포터블**:
-진입점 [AGENTS.md](../AGENTS.md)로 에이전트가 읽고 따르며(이 저장소는 루트 `AGENTS.md`·`CLAUDE.md`에서
-연결), [INSTALL](../INSTALL.md)로 어떤 프로젝트에든 `harness/` 폴더째 복사해 재사용합니다.
+**One-line conclusion:** **all 12 categories ✅ documented** (⬜ 0 / 🟡 0) **+ many measured
+passes with real Claude Code** (evaluator both directions · empty-criteria block · worker
+convergence · 3-role chain + permission/memory/compaction gates — including repeated pass^k,
+[harness-acceptance §7.5](harness-acceptance.md)). **And now active and portable, not a
+reference document**: agents read and follow it via the entrypoint [AGENTS.md](../AGENTS.md)
+(this repository links it from the root `AGENTS.md` · `CLAUDE.md`), and via
+[INSTALL](../INSTALL.md) the whole `harness/` folder is copied into any project for reuse.
 
-## 4. 다음에 채울 것 (우선순위)
+## 4. What to fill next (priority)
 
-1. ~~도구 설계 규약~~ → [tool-design](tool-design.md) ✅.
-2. ~~스킬/MCP 통합~~ → [skills-and-mcp](skills-and-mcp.md) ✅.
-3. ~~디버깅/DX~~ → [debugging-and-dx](debugging-and-dx.md) ✅.
-4. ~~루프 종료·예산~~ → [loop-budget](loop-budget.md) ✅.
-5. ~~컨텍스트 압축~~ → [context-compaction](context-compaction.md) ✅.
-6. ~~권한 매트릭스~~ → [permission-matrix](../core/permission-matrix.md) ✅ · ~~메모리 계층~~ → [memory-layers](memory-layers.md) ✅.
+1. ~~Tool design contract~~ → [tool-design](tool-design.md) ✅.
+2. ~~Skills/MCP integration~~ → [skills-and-mcp](skills-and-mcp.md) ✅.
+3. ~~Debugging/DX~~ → [debugging-and-dx](debugging-and-dx.md) ✅.
+4. ~~Loop termination & budget~~ → [loop-budget](loop-budget.md) ✅.
+5. ~~Context compaction~~ → [context-compaction](context-compaction.md) ✅.
+6. ~~Permission matrix~~ → [permission-matrix](../core/permission-matrix.md) ✅ · ~~memory layers~~ → [memory-layers](memory-layers.md) ✅.
 
-**모든 칸 ✅ + 활성·포터블 + 코드 강제까지 완료:** ① **최소 코드 러너 구현·검증** — [runner/](../runner/)가
-게이트를 결정론 코드로 강제, §7 거부 매트릭스 `node --test` **13/13** ② **평가자 사람-라벨 보정** —
-[judge-calibration](judge-calibration.md) 당시 n=6 TPR 2/2·TNR 4/4 → 현재 **n=12 TPR 4/4·TNR 8/8=100%**(일반 판정자 TNR<25% 기준선 상회)
-③ **모호 골든 확장** — G11(부분충족)·G12(의미버그/TNR).
+**All slots ✅ + active/portable + code enforcement complete:** ① **minimal code runner
+implemented & verified** — [runner/](../runner/) enforces the gates as deterministic code, §7
+rejection matrix `node --test` **13/13** ② **evaluator human-label calibration** —
+[judge-calibration](judge-calibration.md) then n=6 TPR 2/2 · TNR 4/4 → now **n=12 TPR 4/4 · TNR
+8/8=100%** (above the typical judge's TNR<25% baseline) ③ **ambiguous golden expansion** — G11
+(partial satisfaction) · G12 (semantic bug/TNR).
 
-**L4 실행통합·CI·적대까지(2026-05-31):** ④ **러너가 실제 구동** — [runner/orchestrator.mjs](../runner/orchestrator.mjs)가
-plan→build→eval을 코드 게이트로 막으며 실제 `claude -p`로 구동, end-to-end **3/3 DONE** + 트레이스
-⑤ **적대 9/9 차단**(게이트 우회 시도 전부 BLOCKED) ⑥ **CI 게이트** harness.yml(`node --test` 당시 27/27 — 현재 64/64).
-성숙도: 설계/근거/코드강제 + **실행통합·CI·적대**까지 도달. **L5 진행:** 실전형 과제 G13·G14를 통합
-러너로 실제 구동(누적 5/5 DONE)·판정자 보정 n=6→**12**(TPR 4/4·TNR 8/8). 남은 것: 대형 다단계·실
-코드베이스 작업, 보정셋 더 키우기+반복, 트레이스 관측 확장.
+**Through L4 execution-integration, CI, and adversarial (2026-05-31):** ④ **the runner actually
+drives** — [runner/orchestrator.mjs](../runner/orchestrator.mjs) drives plan→build→eval with
+code gates using real `claude -p`, end-to-end **3/3 DONE** + traces ⑤ **adversarial 9/9
+blocked** (all gate-bypass attempts BLOCKED) ⑥ **CI gate** harness.yml (`node --test` then
+27/27 — now 69/69). Maturity: design/evidence/code-enforcement + **execution-integration, CI,
+adversarial** reached. **L5 in progress:** real-world tasks G13·G14 actually driven by the
+integrated runner (cumulative 5/5 DONE) · judge calibration n=6→**12** (TPR 4/4 · TNR 8/8).
+Remaining: large multi-step and real-codebase work, growing the calibration set further +
+repeats, expanding trace observability.
 
-**정통 5계층(Boris Cherny/Claude Code) 대비 현황:** **권한** [permission-matrix](../core/permission-matrix.md)+`permissionGate` 코드 ✅ · **훅** [hooks](hooks.md)+`hooks.mjs` 코드 ✅(PreToolUse
-우회불가·fail-closed) · **관측** [observability](observability.md)+`tracer.mjs` 코드 ✅(상관 ID·요약·
-redaction, 오케스트레이터 배선) — 처음 규약-단계였던 **메모리·도구도 아래처럼 코드로 채워짐**.
-추가 제어플레인 요소 **세션 영속**(체크포인트·재개, [session-persistence](session-persistence.md)+
-`session.mjs`)도 코드 ✅ — 멈춘 실행을 완료 단계 재실행 없이 재개. **메모리 런타임**([memory-layers](memory-layers.md)+`memory.mjs`)도 코드 ✅. **도구 레지스트리**([tool-design](tool-design.md)+`tools.mjs`:
-등록·스키마검증·allow/deny·소수노출·위험등급)도 코드 ✅. → **정통 5계층(메모리·도구·권한·훅·관측) 전부
-코드 + 제어플레인 세션 영속.** **다단계 오케스트레이션**([runner/project.mjs](../runner/project.mjs))도 코드 ✅ — 큰 작업을 서브태스크로
-분해→각각 게이트 사이클로 구동→합성(map-reduce-and-manage), **서브태스크 공유 컨텍스트**(앞 산출→뒤
-입력, `shareContext`)까지. 러너 코드 스위트 **64/64** + 실제 다단계 e2e(인메모리 TODO 4개 분해→전부
-DONE; **의존 체인** `c_to_f`→`batch_c_to_f`가 앞 함수 재사용해 DONE, real claude).
+**Status against the canonical 5 layers (Boris Cherny/Claude Code):** **permissions**
+[permission-matrix](../core/permission-matrix.md)+`permissionGate` code ✅ · **hooks**
+[hooks](hooks.md)+`hooks.mjs` code ✅ (PreToolUse un-bypassable · fail-closed) ·
+**observability** [observability](observability.md)+`tracer.mjs` code ✅ (correlation ID ·
+summary · redaction, orchestrator-wired) — **memory and tools, initially contract-stage, are
+also now filled in as code** as below. The additional control-plane element **session
+persistence** (checkpoint · resume,
+[session-persistence](session-persistence.md)+`session.mjs`) is also code ✅ — a stopped run
+resumes without re-executing completed stages. The **memory runtime**
+([memory-layers](memory-layers.md)+`memory.mjs`) is also code ✅. The **tool registry**
+([tool-design](tool-design.md)+`tools.mjs`: registration · schema validation · allow/deny ·
+few-exposed · risk tiers) is also code ✅. → **All canonical 5 layers (memory · tools ·
+permissions · hooks · observability) in code + control-plane session persistence.**
+**Multi-stage orchestration** ([runner/project.mjs](../runner/project.mjs)) is also code ✅ —
+decompose a large task into subtasks → drive each through the gate cycle → synthesize
+(map-reduce-and-manage), including **subtask shared context** (earlier output → later input,
+`shareContext`). Runner code suite **69/69** + real multi-stage e2e (in-memory TODO decomposed
+into 4 → all DONE; **dependency chain** `c_to_f`→`batch_c_to_f` reusing the earlier function to
+DONE, real claude).
 
-## 스코프 — 이 하네스는 Claude Code 전용
+## Scope — this harness is Claude-Code-only
 
-Muse 하네스는 **Claude Code 위에서만** 돈다. 그래서 일반 프로덕션 하네스의 일부 레이어는 **우리가
-만들 대상이 아니라 Claude Code에 위임**된다(갭이 아니라 설계):
+The Muse harness runs **only on Claude Code**. So some layers of a general production harness
+are **delegated to Claude Code, not things we build** (design, not gaps):
 
-- **샌드박스 실행 격리 / 비용·구독** — Claude Code 제공. 우리 책임 아님.
-- **MCP 통합** — Claude Code에 연결된 MCP만 사용. 우리 [tool-design](tool-design.md) 레지스트리는 "무엇을
-  노출·허용·검증할지"의 거버넌스만 담당(MCP 클라이언트를 새로 만들지 않음).
-- **병렬·격리 서브에이전트** — Claude Code의 **네이티브 서브에이전트·에이전트 팀**을 활용. 하네스 역할을
-  실제 `.claude/agents/harness-{planner,worker,evaluator,curator}.md` 서브에이전트로 박았다(최소권한 도구·
-  자동위임 description·model). 평가자는 워커와 다른 서브에이전트(쓰기 권한 X)라 만든 자≠판정하는 자가
-  도구 권한으로도 강제됨. 독립 서브태스크는 병렬·의존은 순차(`shareContext`와 정합). 우리가 병렬 런타임을
-  새로 만들지 않는다 → [claude-code-integration](claude-code-integration.md).
+- **Sandboxed execution isolation / cost & subscription** — provided by Claude Code. Not our
+  responsibility.
+- **MCP integration** — only MCP connected to Claude Code is used. Our
+  [tool-design](tool-design.md) registry owns only the governance of "what to expose, allow, and
+  validate" (we do not build a new MCP client).
+- **Parallel, isolated subagents** — leverage Claude Code's **native subagents/agent teams**.
+  The harness roles are pinned as real
+  `.claude/agents/harness-{planner,worker,evaluator,curator}.md` subagents (least-privilege
+  tools · auto-delegation description · model). The evaluator is a different subagent from the
+  worker (no write permissions), so maker ≠ judge is enforced by tool permissions too.
+  Independent subtasks run in parallel; dependent ones sequentially (consistent with
+  `shareContext`). We do not build a new parallel runtime →
+  [claude-code-integration](claude-code-integration.md).
 
-→ **Claude-Code-only 기준 재채점:** 위는 위임이므로 갭에서 제외. 남은 실제 작업은 **서브태스크 의존성**
-(이번 완료) 정도였고, 이제 더 큰 규모·실 코드베이스 검증과 반복 표본이 완성도의 핵심.
+→ **Re-scored on a Claude-Code-only basis:** the above are delegations, so excluded from gaps.
+The remaining real work was about **subtask dependencies** (completed this round); now
+larger-scale, real-codebase verification and repeat samples are the core of completeness.
 
-## 5. 가지치기 원칙 (Pruning — 하네스도 부패한다)
+## 5. The pruning principle (Pruning — harnesses rot too)
 
-**"하네스의 모든 컴포넌트는 '모델이 스스로 못 하는 것'에 대한 가정을 인코딩한다 — 그 가정은
-스트레스 테스트할 가치가 있다"**(Anthropic, 2026-03). 모델이 좋아지면 하중을 받던 부품이 죽은
-무게가 된다 — Sonnet 4.5의 context-anxiety 우회책이 Opus 4.6에선 불필요해진 실례(Anthropic
-managed-agents는 이를 "harness staleness"라는 1급 리스크로 명명). 채우기(§3·§4)의 반대 방향도
-규약이다:
+**"Every component of the harness encodes an assumption about what the model cannot do on its
+own — that assumption is worth stress-testing"** (Anthropic, 2026-03). As models improve, a
+part that carried load becomes dead weight — the real case of Sonnet 4.5's context-anxiety
+workaround becoming unnecessary on Opus 4.6 (Anthropic managed-agents names this "harness
+staleness" as a first-class risk). The reverse direction of filling (§3·§4) is also a
+contract:
 
-- **한 번에 한 컴포넌트씩 ablate** — 빼고 골든셋/러너로 델타를 측정해, 기여가 없으면 삭제한다
-  ([harness-acceptance §6](harness-acceptance.md)의 "한 변수씩"을 *제거*에도 적용).
-- **추가는 실패에서만(래칫)** — 새 규칙·게이트 한 줄은 관찰된 실패 하나를 가리켜야 한다
-  (Hashimoto "AGENTS.md의 모든 줄은 나쁜 행동 하나에서 왔다" · Huntley의 "signs"). 실패 근거
-  없는 선제 컴포넌트가 제1 부패 후보다.
-- **모델/런타임 업그레이드 = 재심사 트리거** — 기본 모델이 바뀌면 "모델 약점 보완용" 컴포넌트
-  목록을 다시 심사한다(Osmani: "모델 약점을 보완하던 스캐폴딩은 모델이 좋아지면 죽는다").
+- **Ablate one component at a time** — remove it, measure the delta with the golden set/runner,
+  and delete it if it contributes nothing (applying
+  [harness-acceptance §6](harness-acceptance.md)'s "one variable at a time" to *removal* too).
+- **Additions come only from failures (the ratchet)** — a new rule/gate line must point to one
+  observed failure (Hashimoto "every line of AGENTS.md came from one bad behavior" · Huntley's
+  "signs"). A pre-emptive component with no failure evidence is the #1 rot candidate.
+- **Model/runtime upgrade = re-audit trigger** — when the base model changes, re-audit the list
+  of components that existed to "compensate for model weaknesses" (Osmani: "scaffolding that
+  compensated for model weaknesses dies when the model gets better").
 
-> 이 자가평가는 외부 권위 체크리스트로 측정한 것이며, 칸이 채워질 때마다 위 표의 상태를 갱신합니다.
-> 측정 가능한 진전(빈 칸 → 채움)이 곧 "최고의 하네스"로 가는 길입니다 — 그리고 §5의 가지치기로
-> 같은 속도로 빼야 그 길이 유지됩니다.
+> This self-assessment is measured against an external authoritative checklist, and the status
+> in the table above is updated as slots are filled. Measurable progress (empty slot → filled)
+> is the road to "the best harness" — and it stays that road only when §5's pruning removes at
+> the same speed.
 
-## 출처 (자가평가 기준)
+## Sources (self-assessment basis)
 
-- [awesome-harness-engineering](https://github.com/ai-boost/awesome-harness-engineering) (12개 하네스 카테고리 체크리스트)
-- Adnan Masood — [Agent Harness Engineering: The Rise of the AI Control Plane](https://medium.com/@adnanmasood/agent-harness-engineering-the-rise-of-the-ai-control-plane-938ead884b1d) (15-모듈 컴포넌트 모델·위험 taxonomy)
+- [awesome-harness-engineering](https://github.com/ai-boost/awesome-harness-engineering) (the 12-category harness checklist)
+- Adnan Masood — [Agent Harness Engineering: The Rise of the AI Control Plane](https://medium.com/@adnanmasood/agent-harness-engineering-the-rise-of-the-ai-control-plane-938ead884b1d) (15-module component model · risk taxonomy)
 - Atlan — [Best AI Agent Harness Tools 2026](https://atlan.com/know/best-ai-agent-harness-tools-2026/)
 - Braintrust — [Agent Observability 2026](https://www.braintrust.dev/articles/agent-observability-complete-guide-2026)
-- Anthropic — [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) · [Effective context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) (컨텍스트 리셋·구조화 핸드오프·압축)
-- Anthropic — [Harness design for long-running apps](https://www.anthropic.com/engineering/harness-design-long-running-apps) (2026-03; "모든 컴포넌트는 모델이 못 하는 것에 대한 가정" — 한 컴포넌트씩 빼고 영향 측정) · [Scaling Managed Agents](https://www.anthropic.com/engineering/managed-agents) (2026-04; harness staleness — 모델 개선으로 죽은 무게가 된 우회책)
-- Mitchell Hashimoto — [My AI Adoption Journey](https://mitchellh.com/writing/my-ai-adoption-journey) (2026-02; Agent = Model + Harness 명명, AGENTS.md = 실패 카탈로그 래칫)
-- [AGENTS.md](https://agents.md/) — OpenAI 발원·Linux Foundation 표준, 6만+ 레포가 채택한 교차도구 에이전트 지시 포맷(이 하네스의 진입점 형식)
-- Addy Osmani — [Agent Harness Engineering](https://addyosmani.com/blog/agent-harness-engineering/) ("모델이 아니라 설정 문제" — 에이전트 실패의 ~60%가 하네스에서 비롯)
-- Cognition — [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) → [Multi-Agents: What's Actually Working](https://cognition.ai/blog/multi-agents-working) (2026: 쓰기는 단일 스레드, 보조 에이전트는 행위가 아닌 지능을 더하는 map-reduce-and-manage)
-- Hamel Husain — [Using LLM-as-a-Judge](https://hamel.dev/blog/posts/llm-judge/) (판정자를 사람 라벨에 보정)
-- OpenAI — [Harness engineering: leveraging Codex in an agent-first world](https://openai.com/index/harness-engineering/) (결정론 스캐폴딩·구조적 게이트·~100줄 AGENTS.md 맵·하네스>모델)
-- Andrej Karpathy — [agentic engineering / autonomy slider](https://www.nextbigfuture.com/2026/03/andrej-karpathy-on-code-agents-autoresearch-and-the-self-improvement-loopy-era-of-ai.html) ("권한 늘리기 전에 evals부터"·자율성 슬라이더·tight leash)
-- Boris Cherny (Claude Code 창시자) — [workflow/harness](https://karozieminski.substack.com/p/boris-cherny-claude-code-workflow) (thin harness·smart model·loop 중심; Claude Code 하네스 5계층)
-- [Faramesh: protocol-agnostic execution control plane](https://arxiv.org/pdf/2601.17744) (non-bypassable·fail-closed 권한 — 게이트 코드화의 근거)
+- Anthropic — [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) · [Effective context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) (context reset · structured handoff · compaction)
+- Anthropic — [Harness design for long-running apps](https://www.anthropic.com/engineering/harness-design-long-running-apps) (2026-03; "every component is an assumption about what the model can't do" — remove one component at a time and measure impact) · [Scaling Managed Agents](https://www.anthropic.com/engineering/managed-agents) (2026-04; harness staleness — workarounds turned dead weight by model improvement)
+- Mitchell Hashimoto — [My AI Adoption Journey](https://mitchellh.com/writing/my-ai-adoption-journey) (2026-02; naming Agent = Model + Harness, AGENTS.md = failure-catalog ratchet)
+- [AGENTS.md](https://agents.md/) — OpenAI-originated · Linux Foundation standard, the cross-tool agent-instruction format adopted by 60k+ repos (the entrypoint format of this harness)
+- Addy Osmani — [Agent Harness Engineering](https://addyosmani.com/blog/agent-harness-engineering/) ("a configuration problem, not a model problem" — ~60% of agent failures originate in the harness)
+- Cognition — [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) → [Multi-Agents: What's Actually Working](https://cognition.ai/blog/multi-agents-working) (2026: writes on a single thread; auxiliary agents add intelligence not action — map-reduce-and-manage)
+- Hamel Husain — [Using LLM-as-a-Judge](https://hamel.dev/blog/posts/llm-judge/) (calibrate the judge against human labels)
+- OpenAI — [Harness engineering: leveraging Codex in an agent-first world](https://openai.com/index/harness-engineering/) (deterministic scaffolding · structural gates · ~100-line AGENTS.md map · harness > model)
+- Andrej Karpathy — [agentic engineering / autonomy slider](https://www.nextbigfuture.com/2026/03/andrej-karpathy-on-code-agents-autoresearch-and-the-self-improvement-loopy-era-of-ai.html) ("evals before more permissions" · autonomy slider · tight leash)
+- Boris Cherny (creator of Claude Code) — [workflow/harness](https://karozieminski.substack.com/p/boris-cherny-claude-code-workflow) (thin harness · smart model · loop-centric; Claude Code's 5 harness layers)
+- [Faramesh: protocol-agnostic execution control plane](https://arxiv.org/pdf/2601.17744) (non-bypassable · fail-closed permissions — the basis for codifying gates)

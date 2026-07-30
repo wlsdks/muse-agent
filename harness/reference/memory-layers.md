@@ -1,89 +1,112 @@
 ---
-title: 메모리 계층 (Memory Layers)
-audience: [개발자, AI 에이전트]
-purpose: 에이전트가 무엇을 어디에 기억하고, 언제 쓰고 줄이나 — 계층별 메모리 구조
+title: Memory Layers
+audience: [developers, AI agents]
+purpose: What the agent remembers where, and when it writes and prunes — the layered memory structure
 status: draft
 updated: 2026-06-13
 sources_basis: [Muse UserMemoryStore/ConversationSummaryStore/EpisodicRecallProvider/selectPromotableMemories/UserModelSlot, Muse SYSTEM-MAP #5, 2026 layered-memory refs]
 related: [context-compaction.md, ../core/handoff-template.md, ../core/team-roles.md, architecture.md, ../README.md]
 ---
 
-# 메모리 계층 (Memory Layers)
+# Memory Layers
 
-> **왜 이 칸인가?** [architecture](architecture.md) 자가평가에서 비어 있던 칸(현재 ✅). 에이전트가 "무엇을 어디에 기억하나"가
-> 계층으로 정리돼 있지 않으면, 맥락이 부풀거나 정작 필요한 걸 못 떠올립니다. Muse는 이미 사실·세션요약·
-> 회상·승격·구조화 모델을 갖췄으니(아래), 그 구조를 **계층 메모리**로 명문화합니다. 말로만(코드 없음).
+> **Why this slot?** A slot that was empty in the [architecture](architecture.md) self-assessment
+> (now ✅). If "what the agent remembers where" is not organized into layers, context bloats or
+> the thing you actually need cannot be recalled. Muse already has facts, session summaries,
+> recall, promotion, and a structured model (below), so this codifies that structure as **layered
+> memory**. Prose only (no code).
 
-## 0. 한 줄 원칙
+## 0. The one-line principle
 
-**작게 늘 켜두고, 나머지는 필요할 때 불러온다.** 항상 곁에 두는 작은 코어 + 필요 시 관련성으로
-끌어오는 보관층 — 쓸 때 기록하고, 읽을 때 관련성으로 검색하고, 중복은 통합해 부풀지 않게.
+**Keep a small core always on; load the rest on demand.** A small core always at hand + an
+archival layer pulled in by relevance when needed — record at write time, retrieve by relevance
+at read time, and consolidate duplicates so nothing bloats.
 
-## 1. 계층 (Layers)
+## 1. Layers
 
-- **작업 메모리(working)** — 지금 작업의 살아있는 문맥 창. 한도·압축의 대상([context-compaction](context-compaction.md)·[loop-budget](loop-budget.md)).
-- **단기(short-term)** — 최근 대화·세션 스크래치패드. 핸드오프 양식의 상태 로그가 여기에 해당
-  ([handoff-template](../core/handoff-template.md)).
-- **장기(long-term)** — 세션을 가로지르는 **사실·선호**. Muse는 이를 사실 저장소로 보존하고 답에
-  반영합니다.
-- **구조화 사용자 모델(user model)** — 흩어진 사실과 별개로, 선호·금기·목표를 **신뢰도·갱신시각이
-  붙은 타입 슬롯**으로(바래고 재확인되는). "이 사람은 이렇다"를 페르소나에 실음.
-- **에피소드(episodic)** — 과거 세션의 **압축 요약**을, 비슷한 주제가 나오면 관련성으로 회상.
+- **Working memory** — the live context window of the current task. Subject to limits and
+  compaction ([context-compaction](context-compaction.md) · [loop-budget](loop-budget.md)).
+- **Short-term** — recent conversation, the session scratchpad. The handoff form's status log
+  belongs here ([handoff-template](../core/handoff-template.md)).
+- **Long-term** — **facts and preferences** that cross sessions. Muse preserves these in a fact
+  store and reflects them in answers.
+- **Structured user model** — separate from scattered facts: preferences, taboos, and goals as
+  **typed slots carrying confidence and update time** (fading and re-confirmed). Carries "this is
+  who this person is" into the persona.
+- **Episodic** — **compressed summaries** of past sessions, recalled by relevance when a similar
+  topic comes up.
 
-## 2. 언제 무엇을 하나 (쓰기·읽기·정리)
+## 2. When to do what (write · read · prune)
 
-- **쓰기(write-time)** — 대화에서 드러난 내구성 있는 사실·선호를 자동 추출해 저장.
-- **읽기(read-time)** — 필요할 때 관련성으로 검색해 끌어옴(쿼리 매칭 + 통합 코퍼스).
-- **정리(consolidate)** — 거의 같은 요약을 합쳐 부풀림을 막음(중복 기억 정리).
-- **승격(promote)** — 자주·최근 떠올린 기억을 **늘-켜진 코어**로 올림(드리밍, 입증된 유용성 기반).
-- **감쇠(decay)** — 추론한 선호는 신뢰도가 반감기로 바래 점점 빠지고, 모아 재확인.
+- **Write-time** — automatically extract and store durable facts/preferences surfaced in
+  conversation.
+- **Read-time** — retrieve by relevance when needed (query matching + a unified corpus).
+- **Consolidate** — merge near-identical summaries to prevent bloat (duplicate-memory cleanup).
+- **Promote** — raise frequently/recently recalled memories into the **always-on core**
+  (dreaming, based on proven usefulness).
+- **Decay** — inferred preferences fade by confidence half-life and gradually drop out;
+  accumulate and re-confirm.
 
-## 3. 부풀지 않게 (계층과 압축의 관계)
+## 3. Keeping it from bloating (how layers relate to compaction)
 
-- 작업/단기 메모리는 [context-compaction](context-compaction.md)으로 줄입니다(중요도 가중·요약).
-- 장기/에피소드는 **정리·승격·감쇠**로 관리해, 항상-켜진 코어는 작게 유지하고 나머지는 페이징.
+- Working/short-term memory is reduced via [context-compaction](context-compaction.md)
+  (importance weighting + summarization).
+- Long-term/episodic memory is managed by **consolidation, promotion, and decay** — keep the
+  always-on core small and page in the rest.
 
-## 4. 한 줄 요약 (메모리 체크리스트)
+## 4. One-line summary (memory checklist)
 
-1. 작업·단기·장기·구조화모델·에피소드 **계층이 구분**되나?
-2. **쓸 때 추출 / 읽을 때 관련성 검색**이 되나?
-3. **정리·승격·감쇠**로 부풀림을 막나?
-4. 항상-켜진 **코어는 작고**, 나머지는 필요 시 불러오나?
-5. 작업/단기는 **압축**과 맞물려 한도를 지키나?
+1. Are the layers — working, short-term, long-term, structured model, episodic —
+   **distinguished**?
+2. Does it **extract at write time / retrieve by relevance at read time**?
+3. Does it prevent bloat with **consolidation, promotion, decay**?
+4. Is the always-on **core small**, with the rest loaded on demand?
+5. Do working/short-term mesh with **compaction** to stay within limits?
 
-## 5. 실측 (실제 Claude Code로 쓰기 규칙 검증, 2026-05-31)
+## 5. Measured (write rules verified with real Claude Code, 2026-05-31)
 
-메모리의 핵심 위험은 **아무거나 다 장기 저장해 부풀거나, 약한 추론을 사실처럼 굳히는 것**입니다.
-큐레이터 역할에 §2의 쓰기 규칙을 주고 세 후보를 분류시켜, 규칙이 실제 에이전트에서 작동하는지 봤습니다.
+Memory's core risk is **storing everything long-term until it bloats, or hardening weak
+inferences into facts**. We gave the curator role the §2 write rules, had it classify three
+candidates, and checked that the rules actually work in a real agent.
 
-- **입력 세 후보:** ① "나는 항상 다크 모드를 쓴다"(명시·반복 선호) ② "오늘 점심 김밥"(일회성 디테일)
-  ③ (추론) "짧은 답을 선호하는 듯"(약한 1회 신호).
-- **결과(2회 반복 동일):** `장기 저장=①`·`드롭=②`·`낮은 신뢰도 보류=③`. 내구성 선호만 장기로 올리고,
-  일회성은 버리고, **약한 추론은 사실로 굳히지 않고 보류**(추측 저장 0). pass^2.
+- **Three input candidates:** ① "I always use dark mode" (explicit, repeated preference)
+  ② "kimbap for lunch today" (one-off detail) ③ (inference) "seems to prefer short answers"
+  (weak single signal).
+- **Result (identical over 2 repeats):** `long-term store=①` · `drop=②` · `hold at low
+  confidence=③`. Only the durable preference goes long-term, the one-off is discarded, and the
+  **weak inference is held, not hardened into fact** (0 speculative stores). pass^2.
 
-> 의미: 메모리 계층이 문서뿐 아니라 **쓰기 시점에 무엇을 남기고 무엇을 버릴지** 규칙대로 가른다는 증거.
-> 부풀림 방지(일회성 드롭)와 추측 방지(약한 신호 보류)가 실측으로 확인됨. [harness-acceptance §7.5](harness-acceptance.md).
+> Meaning: evidence that the memory layers separate **what to keep and what to discard at write
+> time** by rule, not just on paper. Bloat prevention (one-off dropped) and speculation
+> prevention (weak signal held) confirmed by measurement.
+> [harness-acceptance §7.5](harness-acceptance.md).
 
 ---
 
-## 런타임 컴포넌트 (코드)
+## Runtime component (code)
 
-위 계층·동작을 결정론 코드로 구현: [runner/memory.mjs](../runner/memory.mjs) (의존성 0). **모델이 무엇을
-기억할지 판단**하고, **코드가 저장/검색/정리/감쇠/승격을 결정론적으로** 수행합니다.
+The layers/behaviors above implemented as deterministic code:
+[runner/memory.mjs](../runner/memory.mjs) (zero dependencies). **The model judges what to
+remember**, and **the code performs store/retrieve/consolidate/decay/promote deterministically**.
 
-- `write({text, kind, durable, confidence, source})` — 쓰기. **`durable:false`(일회성)는 장기 저장 안 함**,
-  빈 텍스트는 거부(부풀림·쓰레기 방지).
-- `read(query, {limit})` — 토큰 겹침 기반 관련성 검색(최근성·신뢰도 타이브레이크), 회상 카운트 증가.
-- `consolidate()` — 동일 정규화 텍스트 중복 병합(최고 신뢰도 유지·회상 합산).
-- `decay({at})` — **추론(inference)** 항목만 신뢰도 반감기로 감쇠, 바닥 미만 드롭. 명시 사실/선호는 불변.
-- `promote({minRecalls})` — 자주 회상된 항목을 **항상-켜진 코어**로 승격. `core()`로 조회.
+- `write({text, kind, durable, confidence, source})` — write. **`durable:false` (one-off) is
+  never stored long-term**; empty text is rejected (bloat/garbage prevention).
+- `read(query, {limit})` — token-overlap relevance retrieval (recency/confidence tiebreak),
+  increments recall count.
+- `consolidate()` — merges duplicates with identical normalized text (keeps highest confidence,
+  sums recalls).
+- `decay({at})` — only **inference** entries decay by confidence half-life; dropped below the
+  floor. Explicit facts/preferences are immutable.
+- `promote({minRecalls})` — promotes frequently recalled entries into the **always-on core**.
+  Query via `core()`.
 
-검증: [runner/memory.test.mjs](../runner/memory.test.mjs) — `node --test "harness/runner/*.test.mjs"`:
-쓰기(일회성 드롭·빈 거부)·관련성 읽기+회상·중복 병합·추론 감쇠(반감기·바닥 드롭, 사실 불변)·승격.
-**5/5**(러너 스위트 누적 **50/50**).
+Verification: [runner/memory.test.mjs](../runner/memory.test.mjs) —
+`node --test "harness/runner/*.test.mjs"`: write (one-off dropped, empty rejected) · relevance
+read + recall · duplicate merge · inference decay (half-life, floor drop, facts immutable) ·
+promotion. **5/5** (runner suite cumulative **50/50**).
 
-## 출처 (검증 기반)
+## Sources (verified basis)
 
-- Muse 제품 — SYSTEM-MAP #5 (자동 사실 학습·구조화 사용자 모델·과거 세션 회상·중복 정리·드리밍 승격·신뢰도 감쇠)
-- Muse 런타임 — 사실 저장소 / 세션요약 저장소 / 에피소드 회상 / 사용성 기반 승격 / 타입 슬롯 사용자 모델 (코드 확인됨)
-- 2026 — layered memory(working/short/long/episodic) + hierarchical core/archival/recall, write-time 추출·read-time 검색·consolidation
+- Muse product — SYSTEM-MAP #5 (automatic fact learning · structured user model · past-session recall · duplicate cleanup · dreaming promotion · confidence decay)
+- Muse runtime — fact store / session-summary store / episodic recall / usefulness-based promotion / typed-slot user model (code-verified)
+- 2026 — layered memory (working/short/long/episodic) + hierarchical core/archival/recall, write-time extraction · read-time retrieval · consolidation

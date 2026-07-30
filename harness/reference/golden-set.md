@@ -1,100 +1,115 @@
 ---
-title: 골든 과제 묶음 (Golden Set)
-audience: [개발자, AI 에이전트]
-purpose: 하네스를 실측으로 키우는 대표 과제 묶음 — 결과+경로를 반복 측정해 신뢰도를 쌓는다
+title: Golden Set (representative task bundle)
+audience: [developers, AI agents]
+purpose: The representative task bundle that grows the harness by measurement — repeatedly grading outcome+path to build reliability
 status: draft
 updated: 2026-06-13
-sources_basis: [harness-acceptance (Data/Task/Scores·10~20 골든·pass@k/pass^k), 실제 Claude Code 실측]
+sources_basis: [harness-acceptance (Data/Task/Scores · 10–20 golden · pass@k/pass^k), real Claude Code measurements]
 related: [harness-acceptance.md, ../core/role-prompts.md, ../core/handoff-template.md, architecture.md, ../README.md]
 ---
 
-# 골든 과제 묶음 (Golden Set)
+# Golden Set
 
-> **왜 이게 약점을 메우나?** [architecture](architecture.md) 자가평가는 12칸 전부 문서화됐지만, 실측은
-> 단발 4종(소형·인위적)뿐이라 **비결정성에 견디는지**가 미검증이었습니다. 이 묶음은 [harness-acceptance]
-> (harness-acceptance.md)의 "골든 과제 10~20개 + 반복(pass^k)" 원칙을 실제로 돌리기 위한 **고정 과제집**입니다.
-> 각 과제는 평가자가 그대로 채점할 수 있게 **검증 가능한 수용 기준**으로 적습니다.
+> **Why does this fill the weakness?** The [architecture](architecture.md) self-assessment had
+> all 12 slots documented, but measurement was only 4 one-off kinds (small, artificial), so
+> **tolerance to non-determinism** was unverified. This bundle is the **fixed task set** for
+> actually running [harness-acceptance](harness-acceptance.md)'s "10–20 golden tasks + repeats
+> (pass^k)" principle. Each task is written with **verifiable acceptance criteria** so the
+> evaluator can grade it directly.
 
-> **주의 — 이건 픽스처(도메인 워크로드)이지 하네스 자체가 아닙니다.** add·뒤집기·backoff 같은 과제는
-> 하네스(루프·게이트·검증 인프라)를 통과하는 **충돌 더미**일 뿐 — "게이트/평가자/러너가 제대로 도는지"
-> 확인하려고 흘려보내는 입력입니다. 하네스는 그 워크로드를 *구동·게이트·검증*하지만, 워크로드 결과물
-> 자체(backoff 함수 등)는 하네스가 아닙니다. 더미가 앱 코드처럼 보여도 본질은 하네스의 자기검증 셋입니다.
+> **Caution — these are fixtures (domain workload), not the harness itself.** Tasks like add,
+> reverse, and backoff are only **crash dummies** passing through the harness (loop, gates,
+> verification infrastructure) — inputs fed through to confirm "do the gates/evaluator/runner
+> actually run correctly". The harness *drives, gates, and verifies* that workload, but the
+> workload artifacts themselves (the backoff function, etc.) are not the harness. Even when a
+> dummy looks like app code, it is in essence the harness's self-verification set.
 
-## 쓰는 법
+## How to use
 
-- 각 과제를 [role-prompts](../core/role-prompts.md)의 역할(플래너/워커/평가자)로 실제 돌리고, 결과를
-  [harness-acceptance §7.5](harness-acceptance.md)에 누적합니다.
-- **반복 측정**: 같은 과제를 여러 번 돌려 `pass@k`(한 번이라도 성공)와 `pass^k`(매번 성공)를 기록.
-  고객 대면 신뢰엔 `pass^k`가 기준.
-- 개발/튜닝에 쓰는 예시와 **분리**(오염 금지). 새 실패가 나오면 그 케이스를 여기 추가(회귀 고정).
+- Actually run each task through the roles (planner/worker/evaluator) of
+  [role-prompts](../core/role-prompts.md), and accumulate results into
+  [harness-acceptance §7.5](harness-acceptance.md).
+- **Repeat measurement**: run the same task multiple times and record `pass@k` (succeeded at
+  least once) and `pass^k` (succeeded every time). For customer-facing reliability, `pass^k` is
+  the standard.
+- Keep it **separate** from examples used for development/tuning (no contamination). When a new
+  failure appears, add that case here (regression pinning).
 
-## 과제 (G1~G14)
+## Tasks (G1–G14)
 
-각 줄: **ID — 요청 — 수용 기준(검증 가능) — 함정(평가자가 봐야 할 것)**.
+Each line: **ID — request — acceptance criteria (verifiable) — trap (what the evaluator must
+watch for)**.
 
-- **G1 — 두 수 더하기** — `add(2,3)→5`, 빈 인자·문자열은 거부/명확 처리 — 곱셈·문자열 연결로 새지 않나.
-- **G2 — 리스트 짝수 거르기** — `[1,2,3,4]→[2,4]`, 순서 보존, 빈 리스트→빈 리스트 — 홀수 포함·null 반환 아님.
-- **G3 — 문자열 뒤집기** — `"abc"→"cba"`, 유니코드 한 글자 보존 — 빈 문자열·공백 깨짐 없나.
-- **G4 — 최댓값 찾기** — 정수 리스트의 최댓값, 빈 리스트는 명확한 신호(예외/None) — 첫 값만 반환 아님.
-- **G5 — 회문 판정** — 대소문자·공백 무시 회문 true/false — "A man a plan"류 통과하나.
-- **G6 — 단어 수 세기** — 공백 기준 단어 수, 연속 공백·앞뒤 공백 무시 — 빈 문자열=0인가.
-- **G7 — 키워드 메모 검색(설계만)** — 플래너가 기준 산출: 대소문자 무시·다중 키워드 AND·무매칭 빈결과+출처 — 임베딩/생성요약을 범위 밖으로 두나.
-- **G8 — 평가자 적대 케이스** — 기준 "빈 입력→빈 배열"에 빌드 "null 반환" 제시 — 반드시 FAIL을 내나(후한 통과 금지).
-- **G9 — 평가자 정상 케이스** — 기준 충족 빌드 제시 — 근거 없이 FAIL 내지 않고 PASS+근거 내나.
-- **G10 — 빈 기준 방어** — 평가자에 빈 수용 기준 전달 — 추측 통과 대신 "검증 불가"로 막히나(fail-closed).
-- **G11 — 평가자 부분충족 함정** — 그럴듯하지만 틀린 빌드(단어수에 `split(" ")` — 기준 "연속/앞뒤 공백 무시·빈→0"을 미묘하게 위반) 제시 — "split 썼으니 통과" 식 후한 판정 대신 어느 기준을 어떻게 어겼는지 짚어 FAIL을 내나.
-- **G12 — 평가자 의미버그 탐지(무효 탐지/TNR)** — "소수 판정" 기준에 `n % 2 != 0`(홀수≠소수: 9→True·2→False·1→True 오판) 제시 — 형태만 보고 통과시키지 않고 **엣지(1·2·9)를 직접 따져 FAIL**을 내나. 2026 발견(판정자 TNR<25%)을 겨눈 케이스 → [judge-calibration](judge-calibration.md).
-- **G13 — 실전: 지수 백오프(통합 러너 end-to-end)** — `backoff(attempt,base,cap)=min(base*2^attempt,cap)`, attempt 0부터, cap 상한 — 장난감이 아닌 실무형 다기준 과제를 [runner/](../runner/)가 plan→build→eval로 실제 구동해 DONE까지 가나.
-- **G14 — 실전: 쿼리스트링 파싱(통합 러너 end-to-end)** — `parse_query('a=1&b=2&a=3')→{'a':['1','3'],'b':['2']}`(모든 값 리스트·중복 키 병합·빈→빈dict) — 통합 러너가 실제 에이전트로 구동해 DONE까지 가나.
+- **G1 — Add two numbers** — `add(2,3)→5`, empty args/strings rejected or handled explicitly — does it leak into multiplication or string concatenation?
+- **G2 — Filter evens from a list** — `[1,2,3,4]→[2,4]`, order preserved, empty list→empty list — no odd numbers included, not a null return.
+- **G3 — Reverse a string** — `"abc"→"cba"`, Unicode single characters preserved — empty string/whitespace unbroken?
+- **G4 — Find the maximum** — maximum of an integer list, empty list gives an explicit signal (exception/None) — not just returning the first value.
+- **G5 — Palindrome test** — case/space-insensitive palindrome true/false — does "A man a plan" style pass?
+- **G6 — Count words** — word count by whitespace, ignoring repeated and leading/trailing spaces — is empty string = 0?
+- **G7 — Keyword note search (design only)** — the planner produces criteria: case-insensitive · multi-keyword AND · no-match yields empty result + source — does it scope embeddings/generated summaries out?
+- **G8 — Evaluator adversarial case** — present criterion "empty input→empty array" with build "returns null" — does it reliably FAIL (no generous pass)?
+- **G9 — Evaluator normal case** — present a build meeting the criteria — does it PASS with evidence rather than FAILing without grounds?
+- **G10 — Empty-criteria defense** — hand the evaluator empty acceptance criteria — does it block as "unverifiable" instead of a speculative pass (fail-closed)?
+- **G11 — Evaluator partial-satisfaction trap** — present a plausible-but-wrong build (word count via `split(" ")` — subtly violating "ignore repeated/leading/trailing spaces · empty→0") — does it FAIL naming which criterion was violated and how, instead of a generous "it used split, pass"?
+- **G12 — Evaluator semantic-bug detection (invalid detection/TNR)** — present `n % 2 != 0` for the "primality" criterion (odd≠prime: misjudges 9→True · 2→False · 1→True) — does it **work the edges (1·2·9) directly and FAIL** rather than passing on form? A case aimed at the 2026 finding (judge TNR<25%) → [judge-calibration](judge-calibration.md).
+- **G13 — Real-world: exponential backoff (integrated runner end-to-end)** — `backoff(attempt,base,cap)=min(base*2^attempt,cap)`, attempt from 0, capped — does [runner/](../runner/) actually drive a practical multi-criteria (not toy) task through plan→build→eval to DONE?
+- **G14 — Real-world: query-string parsing (integrated runner end-to-end)** — `parse_query('a=1&b=2&a=3')→{'a':['1','3'],'b':['2']}` (all values as lists · duplicate keys merged · empty→empty dict) — does the integrated runner drive a real agent to DONE?
 
-> 범위: 작고 결정론적으로 채점 가능한 과제 위주(코드 채점 우선). 큰 다단계·실제 Muse 작업으로는
-> 신뢰가 쌓인 뒤 확장합니다([harness-acceptance §3 결과+경로]).
+> Scope: mostly small, deterministically gradable tasks (code grading first). Expand to large
+> multi-step and real Muse tasks after reliability accumulates
+> ([harness-acceptance §3 outcome+path]).
 
-## 진행 현황 (실측 누적)
+## Progress (measured, cumulative)
 
-| 과제 | 역할 | 실측 횟수 | pass^k | 비고 |
+| Task | Roles | Runs | pass^k | Notes |
 |---|---|---|---|---|
-| G1 | 플래너→워커→평가자 | 1 | 1/1 | 첫 3역할 연쇄(곱셈 빌드는 FAIL로 잡음 포함) |
-| G2 | 플래너→워커→평가자 | 6 | 6/6 | 3역할 연쇄 **5회 추가 반복 전부 PASS**(pass^6); 플래너 기준 매번 자체생성→워커 구현→평가자 PASS |
-| G3 | 워커 4 / 연쇄 1 | 4 | 4/4 | 워커 단독 **3회 반복 전부 `s[::-1]`**(pass^4); 유니코드 보존·빈→빈 충족, 매번 동일 정답 |
-| G4 | 플래너→워커→평가자 | 1 | 1/1 | 플래너가 빈 리스트 방어까지 기준에 포함 → 워커 ValueError 가드 → 평가자 PASS+근거 |
-| G5 | 워커 4 / 연쇄 1 | 4 | 4/4 | 워커 단독 **3회 반복 전부 올바른 회문 구현**(pass^4); 표현은 2변형(`''.join(s.split()).lower()` ×2·문자필터 ×1)이나 셋 다 대소문자·공백 무시·빈→True 충족 — 형태는 비결정, 정답은 매번 |
-| G6 | 워커 4 / 연쇄 1 | 4 | 4/4 | 워커 단독 **3회 반복 전부 `len(s.split())`**(pass^4); 비결정성에도 올바른 한 구현으로 수렴(연속·앞뒤 공백 무시, 빈/공백만→0) |
-| G7 | 플래너(설계만) | 1 | 1/1 | 기준=대소문자 무시·제목/본문 포함·무매칭 빈목록; 범위밖=임베딩/정규식/랭킹/CRUD 분리 |
-| G8 | 평가자 | 10 | 10/10 | null 반환 → **10회 연속 FAIL**(pass^10); 비결정성에도 틀린 빌드를 한 번도 안 통과시킴 |
-| G9 | 평가자 | 5 | 5/5 | 올바른 빌드(2,3→5) → **5회 연속 PASS**(pass^5); 근거 없이 FAIL 안 냄 |
-| G10 | 평가자 | 5 | 5/5 | 빈 기준 → **5회 연속 "검증 불가"(UNVERIFIABLE)** fail-closed(pass^5); 빌드가 실제론 맞아도(`add(2,3)→5`) 기준 없으면 추측 통과 0 |
-| G11 | 평가자 | 3 | 3/3 | 그럴듯하지만 틀린 `split(" ")` → **3회 연속 FAIL**(pass^3); 매번 어긴 기준을 구체 근거로 지목(`"a  b"→3`·`""→1`), "split 썼으니 통과" 후한 판정 0 |
-| G12 | 평가자 | 1 | 1/1 | 의미버그 `n%2!=0`(소수) → FAIL+근거(9→T·2→F 오판); 판정자 보정 12케이스 일부로 **TNR 8/8=100%**([judge-calibration](judge-calibration.md)) |
-| G13 | 통합 러너 e2e | 1 | 1/1 | 지수 백오프 — 실제 `claude -p` 3역할로 plan→build→eval→**DONE/PASS**(통합 러너 실측 5/5 중) |
-| G14 | 통합 러너 e2e | 1 | 1/1 | 쿼리스트링 파싱 — 통합 러너 실제 구동 → **DONE/PASS**; 워커 산출은 격리 디렉터리(레포 무오염) |
+| G1 | planner→worker→evaluator | 1 | 1/1 | First 3-role chain (including catching a multiplication build as FAIL) |
+| G2 | planner→worker→evaluator | 6 | 6/6 | 3-role chain, **5 additional repeats all PASS** (pass^6); planner criteria self-generated each time → worker implements → evaluator PASS |
+| G3 | worker 4 / chain 1 | 4 | 4/4 | Worker standalone, **3 repeats all `s[::-1]`** (pass^4); Unicode preservation · empty→empty met, same correct answer every time |
+| G4 | planner→worker→evaluator | 1 | 1/1 | Planner included empty-list defense in the criteria → worker's ValueError guard → evaluator PASS+evidence |
+| G5 | worker 4 / chain 1 | 4 | 4/4 | Worker standalone, **3 repeats all correct palindrome implementations** (pass^4); 2 surface variants (`''.join(s.split()).lower()` ×2 · char-filter ×1) but all three meet case/space-insensitive · empty→True — form non-deterministic, answer correct every time |
+| G6 | worker 4 / chain 1 | 4 | 4/4 | Worker standalone, **3 repeats all `len(s.split())`** (pass^4); converged on one correct implementation despite non-determinism (repeated/leading/trailing spaces ignored, empty/spaces-only→0) |
+| G7 | planner (design only) | 1 | 1/1 | Criteria = case-insensitive · includes title/body · no-match empty list; out of scope = embeddings/regex/ranking/CRUD split out |
+| G8 | evaluator | 10 | 10/10 | Null return → **10 consecutive FAILs** (pass^10); never once passed the wrong build despite non-determinism |
+| G9 | evaluator | 5 | 5/5 | Correct build (2,3→5) → **5 consecutive PASSes** (pass^5); no groundless FAILs |
+| G10 | evaluator | 5 | 5/5 | Empty criteria → **5 consecutive "UNVERIFIABLE"** fail-closed (pass^5); even though the build was actually right (`add(2,3)→5`), 0 speculative passes without criteria |
+| G11 | evaluator | 3 | 3/3 | Plausible-but-wrong `split(" ")` → **3 consecutive FAILs** (pass^3); each time named the violated criterion with concrete evidence (`"a  b"→3` · `""→1`), 0 generous "it used split, pass" verdicts |
+| G12 | evaluator | 1 | 1/1 | Semantic bug `n%2!=0` (prime) → FAIL+evidence (misjudges 9→T · 2→F); part of the 12-case judge calibration — **TNR 8/8=100%** ([judge-calibration](judge-calibration.md)) |
+| G13 | integrated runner e2e | 1 | 1/1 | Exponential backoff — real `claude -p` 3 roles through plan→build→eval→**DONE/PASS** (among the integrated runner's measured 5/5) |
+| G14 | integrated runner e2e | 1 | 1/1 | Query-string parsing — integrated runner real drive → **DONE/PASS**; worker output in an isolated directory (repo uncontaminated) |
 
-> 관찰(G4): 플래너가 시키지 않아도 **빈 리스트는 ValueError/None으로 명시 신호, 임의값·0 반환 금지**까지
-> 기준에 넣었고, 워커가 그 가드를 정확히 구현, 평가자가 두 조건을 다 대조해 PASS. 엣지 케이스를
-> 스스로 챙기는 좋은 신호.
+> Observation (G4): unprompted, the planner added to the criteria that **an empty list must
+> signal explicitly via ValueError/None, never return an arbitrary value or 0**, the worker
+> implemented exactly that guard, and the evaluator checked both conditions before PASS. A good
+> sign of self-directed edge-case care.
 
-> 이 표가 실측 신뢰도의 단일 지표입니다. **G1~G12 전부 측정 완료**, 그중 핵심 6종은 반복으로
-> pass^k 확보: **G8 pass^10(적대 케이스 매번 FAIL)·G2 pass^6(3역할 연쇄)·G9 pass^5(정상 PASS)·
-> G10 pass^5(빈 기준 매번 막힘)·G6/G5/G3 각 pass^4(워커 단독 매번 올바른 구현)·G11 pass^3(부분충족 함정)**.
-> 안전 게이트(틀린 빌드 거부·올바른 빌드 통과·기준 없으면 차단·미묘한 부분충족/의미버그 거부)가
-> 비결정성에도 한 번도 새지 않음. G11·G12는 판정자의 무효 탐지(TNR)를 겨눈 함정 — [judge-calibration]
-> (judge-calibration.md)에서 **n=12로 TPR 4/4·TNR 8/8** 정량화. G13·G14는 **통합 러너 end-to-end 실측**
-> (실제 에이전트 5/5 DONE). 다음: 보정셋·실전 과제 계속 확대.
+> This table is the single indicator of measured reliability. **G1–G12 all measured**, with 6
+> core ones repeated for pass^k: **G8 pass^10 (adversarial case FAILs every time) · G2 pass^6
+> (3-role chain) · G9 pass^5 (normal PASS) · G10 pass^5 (empty criteria blocked every time) ·
+> G6/G5/G3 pass^4 each (worker standalone, correct implementation every time) · G11 pass^3
+> (partial-satisfaction trap)**. The safety gates (reject wrong builds · pass correct builds ·
+> block without criteria · reject subtle partial-satisfaction/semantic bugs) never leaked once
+> despite non-determinism. G11·G12 are traps aimed at the judge's invalid detection (TNR) —
+> quantified in [judge-calibration](judge-calibration.md) as **TPR 4/4 · TNR 8/8 at n=12**.
+> G13·G14 are **integrated-runner end-to-end measurements** (real agent 5/5 DONE). Next: keep
+> expanding the calibration set and real-world tasks.
 
-## 유지보수 — 골든셋은 감가상각 자산
+## Maintenance — the golden set is a depreciating asset
 
-고정 벤치마크는 부패합니다 — 모델/프롬프트가 셋에 과적합하고, 오염이 점수를 부풀립니다
-(SWE-rebench가 frontier 모델들의 오염 인플레이션을 실측; Anthropic "evals are a living
-artifact"). 규칙:
+Fixed benchmarks rot — models/prompts overfit to the set, and contamination inflates scores
+(SWE-rebench measured contamination inflation in frontier models; Anthropic "evals are a living
+artifact"). Rules:
 
-- 새 케이스는 **신선한 실제 실패**에서만 — 상상으로 늘리지 않습니다([dev-loop §6 write-back](../host/dev-loop.md)과 동일 관문).
-- 주기적으로 **변형(mutation)** — 같은 불변식을 다른 표면(다른 함수·다른 함정)으로 갈아 끼워
-  암기를 무효화합니다(benchmark-mutation, 2510.08996).
-- 한 케이스가 오래 100%면 **더 어려운 변형으로 승급하거나 은퇴** — suite는 백카탈로그가 아니라
-  *분포*로 성장합니다([dev-loop §4 과적합 안티패턴](../host/dev-loop.md)).
+- New cases come **only from fresh real failures** — never grown from imagination (same gate as
+  [dev-loop §6 write-back](../host/dev-loop.md)).
+- Periodically **mutate** — swap the same invariant onto a different surface (different
+  function, different trap) to invalidate memorization (benchmark-mutation, 2510.08996).
+- If a case stays at 100% for a long time, **promote it to a harder variant or retire it** — the
+  suite grows as a *distribution*, not a back catalog
+  ([dev-loop §4 overfitting anti-patterns](../host/dev-loop.md)).
 
-## 출처
+## Sources
 
-- [harness-acceptance](harness-acceptance.md) (Data/Task/Scores·골든 10~20·pass@k/pass^k·코드우선 채점)
-- 실측 기록: [harness-acceptance §7.5](harness-acceptance.md) (실제 Claude Code 4종)
-- 벤치마크 부패 — [SWE-rebench (2505.20411)](https://arxiv.org/abs/2505.20411) (오염 인플레이션 실측) · [Saving SWE-Bench: benchmark mutation (2510.08996)](https://arxiv.org/abs/2510.08996) · Anthropic — [Demystifying evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) (living artifact·실제 실패 20~50개에서 시작)
+- [harness-acceptance](harness-acceptance.md) (Data/Task/Scores · 10–20 golden · pass@k/pass^k · code-first grading)
+- Measurement record: [harness-acceptance §7.5](harness-acceptance.md) (real Claude Code, 4 kinds)
+- Benchmark rot — [SWE-rebench (2505.20411)](https://arxiv.org/abs/2505.20411) (contamination inflation measured) · [Saving SWE-Bench: benchmark mutation (2510.08996)](https://arxiv.org/abs/2510.08996) · Anthropic — [Demystifying evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) (living artifact · start from 20–50 real failures)
