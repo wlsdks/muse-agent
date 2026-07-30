@@ -369,11 +369,13 @@ Capabilities that send something to a third party or change external system stat
   monitoring, per-step execution records (traces), tool success rates, failure reproduction,
   configuration health checks (doctor), backup and restore, a status dashboard and the morning
   brief.
-- **Surfaces** — the terminal (CLI, 100+ commands), the web app (13 panels: chat, tasks, reminders,
-  calendar, notes, memory, messaging, tools, activity, autonomy, today, dashboard, settings — voice
-  is CLI-only), and the API server (HTTP and live streams, with the standard cards other agents
-  integrate against). Potentially dangerous local commands run only in a separate isolated sandbox
-  (with time and output limits). There is also a native macOS desktop companion (floating).
+- **Surfaces** — the terminal (CLI, 100+ commands), the web app (25 views registered in `VIEW_IDS`:
+  home, chat, chats, tasks, board, agents, calendar, reminders, messaging, integrations, notes,
+  continuity, journey, activity, autonomy, flows, work, dashboard, tools, mcp, self-improvement,
+  skills, prompt-lab, scheduler, settings — voice is CLI-only), and the API server (HTTP and live
+  streams, with the standard cards other agents integrate against). Potentially dangerous local
+  commands run only in a separate isolated sandbox (with time and output limits). There is also a
+  native macOS desktop companion (floating).
 - **Guided first run (onboard)** — walks a first-time user through it step by step (point at a notes
   folder → bulk ingest → first question), getting them from installation to **a private, cited first
   answer**.

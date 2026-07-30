@@ -78,7 +78,8 @@ muse onboard
 ```
 
 `pnpm install:muse` requires a clean `main`. Preview it with `pnpm install:muse -- --dry-run`,
-update later with `muse update`, or watch the narrated tour with `pnpm demo`.
+update later with `muse update`, or watch the narrated tour with `pnpm demo`. If anything looks
+wrong afterwards, `muse doctor` diagnoses and repairs the local setup in one pass.
 
 ### Local or cloud — your choice
 

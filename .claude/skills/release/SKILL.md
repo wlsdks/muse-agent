@@ -97,7 +97,7 @@ pnpm --filter @muse/<touched-pkg> test   # the package(s) this release actually 
 ```
 
 **MINOR / milestone / first cut after an install-path or dependency change** —
-the full fresh-clone gate (see [`README §Verification`](../../../README.md#-verification)):
+the full fresh-clone gate (see [`README §Verification`](../../../README.md#build-and-verify)):
 ```bash
 cd /tmp && rm -rf muse-rel && git clone --depth 1 https://github.com/wlsdks/Muse.git muse-rel && cd muse-rel
 pnpm install        # must wire build scripts with NO "approve-builds" step and NO error

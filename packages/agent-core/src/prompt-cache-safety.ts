@@ -1,5 +1,5 @@
 /**
- * Pre-provider message sanitizer (iter 10).
+ * Pre-provider message sanitizer.
  *
  * `MUSE_CACHE_BOUNDARY_MARKER` is a textual split-point that
  * `buildSystemPrompt({ includeCacheBoundary: true })` injects so a
