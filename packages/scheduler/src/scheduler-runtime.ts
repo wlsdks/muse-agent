@@ -168,9 +168,15 @@ export class ScheduledJobDispatcher {
     // that gate existed) or a hand-edited row could still carry an
     // unbounded / non-finite count. Defend the dispatch loop directly
     // so a stale row can't become a retry-storm.
-    const attempts = job.retryOnFailure
-      ? Math.min(maxRetryCountCeiling, Math.max(1, Number.isFinite(job.maxRetryCount) ? Math.trunc(job.maxRetryCount) : 1))
-      : 1;
+    // MCP tools may perform a write before returning a transient error. Until
+    // scheduled effects have a durable idempotency ledger, retrying here could
+    // apply that effect more than once. Agent jobs remain retryable because
+    // their model run has not crossed this direct tool-effect boundary.
+    const attempts = job.jobType === "mcp_tool"
+      ? 1
+      : job.retryOnFailure
+        ? Math.min(maxRetryCountCeiling, Math.max(1, Number.isFinite(job.maxRetryCount) ? Math.trunc(job.maxRetryCount) : 1))
+        : 1;
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {

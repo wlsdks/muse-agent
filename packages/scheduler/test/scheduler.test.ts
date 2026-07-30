@@ -253,6 +253,44 @@ describe("ScheduledJobDispatcher", () => {
     expect(attempts).toBe(2);
   });
 
+  it("does not retry direct MCP tool effects without a durable idempotency ledger", async () => {
+    let attempts = 0;
+    const dispatcher = new ScheduledJobDispatcher({
+      agentExecutor: { execute: async () => "agent path must not run" },
+      mcpInvoker: new ScheduledMcpToolInvoker(
+        new McpManager(new InMemoryMcpServerStore(), {
+          connector: { connect: async () => ({ listTools: async () => [] }) }
+        }),
+        {
+          extraTools: () => [{
+            definition: {
+              description: "Mutates local state before a transient response failure",
+              inputSchema: { properties: {}, type: "object" },
+              name: "local.mutate",
+              risk: "write"
+            },
+            execute: () => {
+              attempts += 1;
+              throw new Error("temporary failure after effect");
+            }
+          }]
+        }
+      ),
+      retryDelayMs: 0,
+      sleep: async () => {}
+    });
+    const job = createAgentJob({
+      jobType: "mcp_tool",
+      maxRetryCount: 5,
+      mcpServerName: "local",
+      retryOnFailure: true,
+      toolName: "mutate"
+    });
+
+    await expect(dispatcher.runWithTimeoutAndRetry(job)).rejects.toThrow("temporary failure after effect");
+    expect(attempts).toBe(1);
+  });
+
   it("clamps the dispatch loop to maxRetryCountCeiling even when a legacy / hand-edited DB row carries an unbounded maxRetryCount — the create-time gate can't protect rows that predate it, so the runtime must defend itself against a retry-storm", async () => {
     let attempts = 0;
     const dispatcher = new ScheduledJobDispatcher({
