@@ -69,7 +69,7 @@ progress. For a feature's "what," see the product docs above; for the "why," loo
 
 | Folder | What is in it |
 |---|---|
-| [`strategy/`](strategy/) | Product direction and positioning: the [Attunement contract](strategy/attunement.md), [differentiation](strategy/differentiation.md), [agent-principles-2026](strategy/agent-principles-2026.md), [context-doctrine](strategy/context-doctrine.md), [prompt-architecture](strategy/prompt-architecture.md), [programmatic-tool-calling](strategy/programmatic-tool-calling.md), [secret-source](strategy/secret-source.md), plus dated competitive reads |
+| [`strategy/`](strategy/) | Product direction and positioning: the [Attunement contract](strategy/attunement.md), [differentiation](strategy/differentiation.md), [agent-principles-2026](strategy/agent-principles-2026.md), [context-doctrine](strategy/context-doctrine.md), [prompt-architecture](strategy/prompt-architecture.md), [secret-source](strategy/secret-source.md), plus dated competitive reads |
 | [`architecture.md`](architecture.md) | The provider contract, on-disk data locations, the one-runtime rule and the package map (moved out of the README to keep it a landing page) |
 | [`development/`](development/) | How we verify: [testing-strategy](development/testing-strategy.md), [ai-agent-testing-strategy](development/ai-agent-testing-strategy.md), [typescript-7](development/typescript-7.md), [personal-agent-qualification](development/personal-agent-qualification.md), [agent-capability-baseline](development/agent-capability-baseline.md), [verification-command-catalog](development/verification-command-catalog.md) |
 | [`evaluations/`](evaluations/) | Dated evaluation records — one file per run, kept as evidence rather than rewritten |
@@ -77,9 +77,8 @@ progress. For a feature's "what," see the product docs above; for the "why," loo
 | [`adr/`](adr/) | Architecture decision records (the MAG module and language/runtime boundaries) |
 | Generated | [`ENV.md`](ENV.md) is the generated `MUSE_*` inventory — regenerate with `pnpm docs:env`, and `pnpm check:env` fails when it drifts. Do not hand-edit it. |
 
-Two design records sit outside those groups: [recall-extraction-design](recall-extraction-design.md)
-(shipped through phase 3; the module names it proposes differ from the names that landed) and
-[security-sweep-2-plan](strategy/security-sweep-2-plan.md).
+One record sits outside those groups: [security-sweep-2-plan](strategy/security-sweep-2-plan.md),
+kept because finding #4 is still open.
 
 ## Agent harness (operating structure)
 
