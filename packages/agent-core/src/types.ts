@@ -10,6 +10,7 @@ import type { JsonObject } from "@muse/shared";
 import type { EgressAuthority, ToolExecutionResult } from "@muse/tools";
 import type { EgressAdvisorySink, ToolApprovalGate } from "./agent-runtime-types.js";
 import type { TaintLedger } from "./taint-ledger.js";
+import type { LoopControlReceipt } from "./loop-control-receipt.js";
 
 /**
  * Public runtime interface types for `@muse/agent-core` submodules to share.
@@ -226,6 +227,8 @@ export interface AgentContextWindowReport {
 export interface AgentRunResult {
   readonly runId: string;
   readonly response: ModelResponse;
+  /** Content-bound terminal truth for the model/tool loop. Omitted on cache hits because no loop ran. */
+  readonly loopControlReceipt?: LoopControlReceipt;
   readonly agentSpec?: AgentSpecRunReport;
   readonly contextWindow?: AgentContextWindowReport;
   readonly fromCache?: boolean;

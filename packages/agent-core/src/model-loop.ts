@@ -239,11 +239,13 @@ function interruptedExecution(
   request: ModelRequest,
   intermediateMessages: ModelMessage[],
   toolResults: ExecutedToolResult[],
-  toolsUsed: readonly string[]
+  toolsUsed: readonly string[],
+  toolCallCount: number
 ): ModelLoopExecution {
   return {
     finalResponse: { id: "interrupted", model: request.model, output: "(run interrupted)" },
     intermediateMessages,
+    toolCallCount,
     toolResults,
     toolsUsed: [...new Set(toolsUsed)]
   };
@@ -259,7 +261,8 @@ function postCompactionAbortedExecution(
   request: ModelRequest,
   intermediateMessages: ModelMessage[],
   toolResults: ExecutedToolResult[],
-  toolsUsed: readonly string[]
+  toolsUsed: readonly string[],
+  toolCallCount: number
 ): ModelLoopExecution {
   return {
     finalResponse: {
@@ -268,6 +271,7 @@ function postCompactionAbortedExecution(
       output: `Stopped: post-compaction loop detected — identical tool call repeated ${POST_COMPACTION_GUARD_WINDOW.toString()} times after context compaction.`
     },
     intermediateMessages,
+    toolCallCount,
     toolResults,
     toolsUsed: [...new Set(toolsUsed)]
   };
@@ -282,7 +286,8 @@ function pingPongAbortedExecution(
   request: ModelRequest,
   intermediateMessages: ModelMessage[],
   toolResults: ExecutedToolResult[],
-  toolsUsed: readonly string[]
+  toolsUsed: readonly string[],
+  toolCallCount: number
 ): ModelLoopExecution {
   return {
     finalResponse: {
@@ -291,6 +296,7 @@ function pingPongAbortedExecution(
       output: "Stopped: the agent was ping-ponging between two tool calls without progress."
     },
     intermediateMessages,
+    toolCallCount,
     toolResults,
     toolsUsed: [...new Set(toolsUsed)]
   };
@@ -384,7 +390,7 @@ async function* runToolBatch(
   // sequentially — N calls each hitting a slow/hung MCP server —
   // the remaining calls are skipped so the wall-clock cap is a
   // real execution bound, not just a between-turn boundary.
-  const batchStartedPastDeadline = deadlineMs !== undefined && now() > deadlineMs;
+  const batchStartedPastDeadline = deadlineMs !== undefined && now() >= deadlineMs;
   // Conflicting-write guard (AgentSpec arXiv:2503.18666): a 2nd write to the same
   // target with conflicting args in this batch is withheld (zero side-effect) so
   // a double-act can't reach a write actuator.
@@ -446,7 +452,7 @@ async function* runToolBatch(
     for (const toolCall of segment) {
       const remaining = runner.maxToolCalls - toolCallCount;
       const crossedDeadlineMidBatch = !batchStartedPastDeadline
-        && deadlineMs !== undefined && now() > deadlineMs;
+        && deadlineMs !== undefined && now() >= deadlineMs;
       const conflicting = conflictingIds.has(toolCall.id);
       // Deterministic pre-call policy gate: a middleware may veto this call
       // before it runs. Empty chain → null → unchanged execution.
@@ -660,7 +666,7 @@ export async function executeModelLoop(
     // Cooperative interrupt: a caller-aborted signal stops the loop cleanly
     // here — before any further model call or tool — and returns what we have.
     if (context.input.signal?.aborted) {
-      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed);
+      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
     }
     // Wall-clock deadline cuts the loop short BEFORE the next model
     // call — disables tools for the final synthesis turn so the
@@ -670,7 +676,7 @@ export async function executeModelLoop(
     // No-progress early-exit (arXiv:2505.17616): a stalled read loop (the last
     // window observations near-identical) also disables tools → forces a clean
     // synthesis instead of burning the rest of the budget on spin.
-    const wallclockExceeded = deadlineMs !== undefined && now() > deadlineMs;
+    const wallclockExceeded = deadlineMs !== undefined && now() >= deadlineMs;
     // Tool-failure-streak circuit breaker (arXiv:2509.25370): a tool that has
     // failed N times in a row is withheld for the next turn (the model keeps its
     // OTHER tools) so a cascading tool failure can't burn the whole budget.
@@ -724,6 +730,7 @@ export async function executeModelLoop(
       return {
         finalResponse: response,
         intermediateMessages,
+        toolCallCount,
         toolResults,
         toolsUsed: [...new Set(toolsUsed)]
       };
@@ -756,10 +763,10 @@ export async function executeModelLoop(
     messages = step.value.messages;
     toolCallCount = step.value.toolCallCount;
     if (step.value.postCompactionLoopDetected) {
-      return postCompactionAbortedExecution(request, intermediateMessages, toolResults, toolsUsed);
+      return postCompactionAbortedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
     }
     if (step.value.pingPongLoopDetected) {
-      return pingPongAbortedExecution(request, intermediateMessages, toolResults, toolsUsed);
+      return pingPongAbortedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
     }
     // Per-step checkpoint: the messages now include this batch's tool results, so a
     // crash before the next model call can resume from here without re-running tools.
@@ -767,7 +774,7 @@ export async function executeModelLoop(
       await recordCheckpoint({ checkpointStore: runner.checkpointStore, context, messages, phase: "act", step: toolCallCount });
     }
     if (step.value.interrupted) {
-      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed);
+      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
     }
   }
 }
@@ -803,11 +810,11 @@ export async function* executeStreamingModelLoop(
 
   while (true) {
     if (context.input.signal?.aborted) {
-      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed);
+      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
     }
     // No-progress early-exit (arXiv:2505.17616): a stalled read loop disables
     // tools for this turn → clean synthesis instead of spinning the budget.
-    const wallclockExceeded = deadlineMs !== undefined && now() > deadlineMs;
+    const wallclockExceeded = deadlineMs !== undefined && now() >= deadlineMs;
     // Tool-failure-streak circuit breaker (arXiv:2509.25370): a tool that has
     // failed N times in a row is withheld for the next turn (the model keeps its
     // OTHER tools) so a cascading tool failure can't burn the whole budget.
@@ -860,6 +867,7 @@ export async function* executeStreamingModelLoop(
       return {
         finalResponse: response,
         intermediateMessages,
+        toolCallCount,
         toolResults,
         toolsUsed: [...new Set(toolsUsed)]
       };
@@ -886,10 +894,10 @@ export async function* executeStreamingModelLoop(
     messages = batchResult.messages;
     toolCallCount = batchResult.toolCallCount;
     if (batchResult.postCompactionLoopDetected) {
-      return postCompactionAbortedExecution(request, intermediateMessages, toolResults, toolsUsed);
+      return postCompactionAbortedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
     }
     if (batchResult.pingPongLoopDetected) {
-      return pingPongAbortedExecution(request, intermediateMessages, toolResults, toolsUsed);
+      return pingPongAbortedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
     }
     // Per-step checkpoint (streaming parity): resume mid-loop after a crash without
     // re-running already-completed tools (their results are in the replayed messages).
@@ -897,7 +905,7 @@ export async function* executeStreamingModelLoop(
       await recordCheckpoint({ checkpointStore: runner.checkpointStore, context, messages, phase: "act", step: toolCallCount });
     }
     if (batchResult.interrupted) {
-      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed);
+      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
     }
   }
 }

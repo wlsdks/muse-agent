@@ -7,6 +7,7 @@ import type { PlanStep, StepExecutionResult } from "./plan-execute.js";
 import { toAgentSpecRunReport } from "./runtime-helpers.js";
 import { extractToolInsights, extractVerifiedSources } from "./tool-output-evidence.js";
 import type { AgentContextWindowReport, AgentRunResult, VerifiedSource } from "./types.js";
+import type { LoopControlReceipt } from "./loop-control-receipt.js";
 
 /**
  * Internal AgentRuntime types and helpers.
@@ -25,6 +26,8 @@ export interface ExecutedToolResult {
 export interface ModelLoopExecution {
   readonly finalResponse: ModelResponse;
   readonly intermediateMessages: readonly ModelMessage[];
+  /** Tool-call budget slots actually admitted by the loop; blocked calls do not consume it. */
+  readonly toolCallCount: number;
   readonly toolResults: readonly ExecutedToolResult[];
   readonly toolsUsed: readonly string[];
 }
@@ -184,6 +187,7 @@ export function createRunResult(
   agentSpec: AgentSpecResolution | undefined,
   execution: {
     readonly fromCache?: boolean;
+    readonly loopControlReceipt?: LoopControlReceipt;
     readonly toolsUsed?: readonly string[];
     readonly toolResults?: readonly ExecutedToolResult[];
     readonly inboxSources?: readonly { readonly source: string; readonly text: string }[];
@@ -197,6 +201,7 @@ export function createRunResult(
   ];
   const base = {
     ...(execution.fromCache ? { fromCache: true } : {}),
+    ...(execution.loopControlReceipt ? { loopControlReceipt: execution.loopControlReceipt } : {}),
     ...(execution.toolsUsed && execution.toolsUsed.length > 0 ? { toolsUsed: execution.toolsUsed } : {}),
     ...(groundingSources.length > 0 ? { groundingSources } : {}),
     ...(execution.playbookInjectedIds && execution.playbookInjectedIds.length > 0

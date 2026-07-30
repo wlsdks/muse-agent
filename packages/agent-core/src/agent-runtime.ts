@@ -127,6 +127,12 @@ import {
 } from "./model-loop.js";
 import { isPlanExecuteMode } from "./plan-execute.js";
 import {
+  createLoopControlReceipt,
+  type LoopControlReceipt,
+  type LoopKind,
+  type LoopTerminalState
+} from "./loop-control-receipt.js";
+import {
   executePlanExecuteLoop as executePlanExecuteLoopFn,
   streamPlanExecute as streamPlanExecuteFn
 } from "./plan-execute-loop.js";
@@ -448,9 +454,19 @@ export class AgentRuntime {
         ...(layeredContext.input.signal ? { signal: layeredContext.input.signal } : {})
       };
       const compactionOccurred = preparedRequest.contextWindow?.summaryInserted === true;
-      const execution = isPlanExecuteMode(layeredContext.input.metadata)
+      const isPlanExecuteRun = isPlanExecuteMode(layeredContext.input.metadata);
+      const loopStartedAtMs = Date.now();
+      const execution = isPlanExecuteRun
         ? await executePlanExecuteLoopFn(this.modelLoopRunner(compactionOccurred, retryBudget), layeredContext, selected.provider, loopRequest)
         : await executeModelLoopFn(this.modelLoopRunner(compactionOccurred, retryBudget), layeredContext, selected.provider, loopRequest);
+      const loopControlReceipt = this.createLoopControlReceipt(
+        layeredContext,
+        execution,
+        isPlanExecuteRun ? "plan-execute" : "react",
+        retryBudget,
+        loopStartedAtMs,
+        Date.now()
+      );
       const guardedResponse = await this.finalizeInvocation({
         cacheKey,
         context: layeredContext,
@@ -467,7 +483,13 @@ export class AgentRuntime {
         guardedResponse,
         preparedRequest.contextWindow,
         layeredContext.agentSpec,
-        { inboxSources: inboxGroundingSources, playbookInjectedIds, toolResults: execution.toolResults, toolsUsed: execution.toolsUsed }
+        {
+          inboxSources: inboxGroundingSources,
+          loopControlReceipt,
+          playbookInjectedIds,
+          toolResults: execution.toolResults,
+          toolsUsed: execution.toolsUsed
+        }
       );
     } catch (error) {
       await this.handleRunError(context, runSpan, error, startedAtMs);
@@ -520,6 +542,7 @@ export class AgentRuntime {
       let execution: ModelLoopExecution;
       const isPlanExecuteRun = isPlanExecuteMode(layeredContext.input.metadata);
       const compactionOccurred = preparedRequest.contextWindow?.summaryInserted === true;
+      const loopStartedAtMs = Date.now();
       if (isPlanExecuteRun) {
         const planStream = streamPlanExecuteFn(this.modelLoopRunner(compactionOccurred, retryBudget), layeredContext, selected.provider, streamLoopRequest);
         let next = await planStream.next();
@@ -543,6 +566,14 @@ export class AgentRuntime {
         }
         execution = next.value;
       }
+      const loopControlReceipt = this.createLoopControlReceipt(
+        layeredContext,
+        execution,
+        isPlanExecuteRun ? "plan-execute" : "react",
+        retryBudget,
+        loopStartedAtMs,
+        Date.now()
+      );
       const response = await this.finalizeInvocation({
         cacheKey,
         context: layeredContext,
@@ -557,7 +588,13 @@ export class AgentRuntime {
       if ((!forwardTextDeltas || isPlanExecuteRun) && response.output.length > 0) {
         yield { runId: layeredContext.runId, text: response.output, type: "text-delta" };
       }
-      yield { ...(playbookInjectedIds ? { playbookInjectedIds } : {}), response, runId: layeredContext.runId, type: "done" };
+      yield {
+        loopControlReceipt,
+        ...(playbookInjectedIds ? { playbookInjectedIds } : {}),
+        response,
+        runId: layeredContext.runId,
+        type: "done"
+      };
     } catch (error) {
       await this.handleRunError(context, runSpan, error, startedAtMs);
       throw error;
@@ -816,6 +853,7 @@ export class AgentRuntime {
     await this.recordRunComplete(context, {
       finalResponse: guarded,
       intermediateMessages: [],
+      toolCallCount: 0,
       toolResults: [],
       toolsUsed: cached.toolsUsed
     });
@@ -1116,6 +1154,50 @@ export class AgentRuntime {
       ...(this.checkpointStore ? { checkpointStore: this.checkpointStore } : {}),
       tracer: this.tracer
     };
+  }
+
+  private createLoopControlReceipt(
+    context: AgentRunContext,
+    execution: ModelLoopExecution,
+    loopKind: LoopKind,
+    retryBudget: RetryBudget,
+    startedAtMs: number,
+    endedAtMs: number
+  ): LoopControlReceipt {
+    const elapsedMs = Math.max(0, endedAtMs - startedAtMs);
+    const interrupted = execution.finalResponse.id === "interrupted";
+    const loopGuardStopped =
+      execution.finalResponse.id === "ping-pong-loop-guard" ||
+      execution.finalResponse.id === "post-compaction-loop-guard";
+    const deadlineExceeded =
+      execution.finalResponse.id === "plan-deadline-exceeded" ||
+      elapsedMs >= this.maxRunWallclockMs;
+    const toolBudgetExhausted = execution.toolCallCount >= this.maxToolCalls;
+    const terminal: LoopTerminalState = interrupted
+      ? { reason: "caller-cancelled", status: "cancelled" }
+      : loopGuardStopped
+        ? { reason: "execution-error", status: "failed" }
+        : deadlineExceeded
+          ? { reason: "deadline-exceeded", status: "failed" }
+          : toolBudgetExhausted
+            ? { reason: "budget-exhausted", status: "failed" }
+            : { reason: "verification-pending", status: "held" };
+    const retrySnapshot = retryBudget.snapshot();
+
+    return createLoopControlReceipt({
+      budget: {
+        retries: { limit: retrySnapshot.maxRetries, used: retrySnapshot.usedRetries },
+        steps: null,
+        tools: { limit: this.maxToolCalls, used: execution.toolCallCount },
+        wallclockLimitMs: this.maxRunWallclockMs
+      },
+      endedAt: new Date(endedAtMs).toISOString(),
+      loopKind,
+      runId: context.runId,
+      startedAt: new Date(startedAtMs).toISOString(),
+      terminal,
+      verification: { status: "pending" }
+    });
   }
 
 

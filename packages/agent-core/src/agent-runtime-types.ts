@@ -51,6 +51,7 @@ import type { PlanCacheProvider } from "./plan-cache.js";
 import type { EpisodicRecallProvider } from "./episodic-recall.js";
 import type { HookRegistry } from "./hook-registry.js";
 import type { InboxContextProvider } from "./inbox-context.js";
+import type { LoopControlReceipt } from "./loop-control-receipt.js";
 import type { PlanStep } from "./plan-execute.js";
 import type { SkillCatalogProvider } from "./skills-context.js";
 import type { ToolExemplar } from "./tool-exemplars.js";
@@ -396,6 +397,8 @@ export type AgentRuntimeStreamEvent =
   | { readonly runId: string; readonly type: "synthesis-started" }
   | ({
       readonly runId: string;
+      /** Content-bound terminal truth for this streamed model/tool loop. Omitted on cache hits. */
+      readonly loopControlReceipt?: LoopControlReceipt;
       /** Store ids of the playbook strategies injected into this run's prompt (see `AgentRunResult.playbookInjectedIds`). */
       readonly playbookInjectedIds?: readonly string[];
     } & Extract<ModelEvent, { readonly type: "done" }>)

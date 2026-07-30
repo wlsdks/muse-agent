@@ -54,6 +54,8 @@ import type { AgentRunContext } from "./types.js";
 
 export interface PlanExecuteRunner {
   readonly maxToolCalls: number;
+  readonly maxRunWallclockMs?: number;
+  readonly now?: () => number;
   readonly retryBudget?: RetryBudget;
   /** Optional plan-template cache (Agentic Plan Caching) — injects a similar past plan as a planning exemplar and records successful plans. */
   readonly planCacheProvider?: PlanCacheProvider;
@@ -94,6 +96,35 @@ export type PlanExecuteStreamEvent =
   | { readonly runId: string; readonly stepIndex: number; readonly success: boolean; readonly type: "plan-step-result" }
   | { readonly runId: string; readonly type: "synthesis-started" };
 
+function runIsAborted(context: AgentRunContext): boolean {
+  return context.input.signal?.aborted === true;
+}
+
+function planControlStop(
+  context: AgentRunContext,
+  request: ModelRequest,
+  now: () => number,
+  deadlineMs: number | undefined,
+  steps: readonly PlanStep[],
+  executed: readonly PlanExecuteStepRecord[],
+  toolCallCount: number
+): ModelLoopExecution | undefined {
+  const interrupted = runIsAborted(context);
+  const deadlineExceeded = deadlineMs !== undefined && now() >= deadlineMs;
+  if (!interrupted && !deadlineExceeded) return undefined;
+  return {
+    finalResponse: {
+      id: interrupted ? "interrupted" : "plan-deadline-exceeded",
+      model: request.model,
+      output: interrupted ? "(run interrupted)" : "(plan-execute deadline exceeded)"
+    },
+    intermediateMessages: steps.length > 0 ? planExecuteIntermediateMessages(steps, executed) : [],
+    toolCallCount,
+    toolResults: executed.map((entry) => entry.executed),
+    toolsUsed: [...new Set(executed.map((entry) => entry.executed.toolCall.name))]
+  };
+}
+
 export async function executePlanExecuteLoop(
   runner: PlanExecuteRunner,
   context: AgentRunContext,
@@ -114,12 +145,21 @@ export async function* streamPlanExecute(
   provider: ModelProvider,
   request: ModelRequest
 ): AsyncGenerator<PlanExecuteStreamEvent, ModelLoopExecution> {
+  const now = runner.now ?? Date.now;
+  const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
+    ? now() + runner.maxRunWallclockMs
+    : undefined;
+  const initialStop = planControlStop(context, request, now, deadlineMs, [], [], 0);
+  if (initialStop) return initialStop;
+
   const userPrompt = latestUserPrompt(request.messages);
   const tools = request.tools ?? [];
   const toolDescriptions = renderToolDescriptionsForPlanning(tools);
   const userId = metadataString(context.input.metadata, "userId");
 
   const plan = await generatePlan(runner, context, provider, request, userPrompt, toolDescriptions, userId);
+  const postPlanStop = planControlStop(context, request, now, deadlineMs, [], [], 0);
+  if (postPlanStop) return postPlanStop;
   if (plan === null) {
     throw new PlanExecutionError("PLAN_GENERATION_FAILED", "Plan generation parsing failed");
   }
@@ -135,11 +175,16 @@ export async function* streamPlanExecute(
   yield { plan: steps, runId: context.runId, type: "plan-generated" };
 
   if (steps.length === 0) {
+    const preDirectStop = planControlStop(context, request, now, deadlineMs, steps, [], 0);
+    if (preDirectStop) return preDirectStop;
     yield { runId: context.runId, type: "synthesis-started" };
     const directResponse = await directAnswerForPlanExecute(runner, context, provider, request);
+    const postDirectStop = planControlStop(context, request, now, deadlineMs, steps, [], 0);
+    if (postDirectStop) return postDirectStop;
     return {
       finalResponse: directResponse,
       intermediateMessages: [],
+      toolCallCount: 0,
       toolResults: [],
       toolsUsed: []
     };
@@ -172,6 +217,8 @@ export async function* streamPlanExecute(
       validation = validatePlan({ availableToolNames, steps, toolArgumentAliases, toolRisks, toolSchemas });
       steps = validation.steps;
     }
+    const postRepairStop = planControlStop(context, request, now, deadlineMs, steps, [], 0);
+    if (postRepairStop) return postRepairStop;
   }
   if (!validation.valid) {
     throw new PlanValidationFailedError(validation.errors, steps);
@@ -180,6 +227,8 @@ export async function* streamPlanExecute(
   const executed: PlanExecuteStepRecord[] = [];
   let toolCallCount = 0;
   for (let index = 0; index < steps.length; index += 1) {
+    const preStepStop = planControlStop(context, request, now, deadlineMs, steps, executed, toolCallCount);
+    if (preStepStop) return preStepStop;
     const step = steps[index];
     if (!step) {
       continue;
@@ -235,12 +284,12 @@ export async function* streamPlanExecute(
     let attempts = 0;
     let retryBudgetDenied = false;
     do {
-      if (attempts > 0 && runner.retryBudget) {
+      if (attempts > 0) {
         let reservation: ReturnType<RetryBudget["reserve"]> | undefined;
         try {
-          reservation = runner.retryBudget.reserve({ backoffMs: 0, cause: new Error("plan read retry") });
+          reservation = runner.retryBudget?.reserve({ backoffMs: 0, cause: new Error("plan read retry") });
           context.input.signal?.throwIfAborted();
-          reservation.commit();
+          reservation?.commit();
         } catch (error) {
           reservation?.cancel();
           if (error instanceof RetryBudgetExhaustedError) {
@@ -256,7 +305,12 @@ export async function* streamPlanExecute(
       completed = toolResult.result.status === "completed";
       effect = completed ? classifyStepEffect(toolResult.result.output) : { effectFailed: false };
       success = completed && !effect.effectFailed;
-    } while (!success && attempts < maxAttempts && toolCallCount < runner.maxToolCalls);
+    } while (
+      !success &&
+      attempts < maxAttempts &&
+      toolCallCount < runner.maxToolCalls &&
+      (deadlineMs === undefined || now() < deadlineMs)
+    );
     // ADAPTIVE RE-DECOMPOSITION (carry-to-done): a READ step that still failed
     // after the bounded retry gets ONE alternative read-only sub-plan to reach
     // the same intent a different way. Only a read-step failure triggers this
@@ -264,11 +318,30 @@ export async function* streamPlanExecute(
     // double-act); the re-plan is filtered to read-risk tools, so recovery can't
     // act on the world. Skipped on the happy path (a succeeding step never
     // replans → no latency added to the common case).
-    if (!success && retryable && !retryBudgetDenied && toolCallCount < runner.maxToolCalls) {
-      const recovered = await replanFailedReadStep(runner, context, provider, request, userPrompt, step, effect.reason ?? "STEP_EFFECT_FAILED", tools, toolCallCount);
-      if (recovered) {
-        toolCallCount = recovered.toolCallCount;
-        executed.push({ executed: recovered.executed, step, stepResult: recovered.stepResult });
+    if (
+      !success &&
+      retryable &&
+      !retryBudgetDenied &&
+      toolCallCount < runner.maxToolCalls &&
+      !runIsAborted(context) &&
+      (deadlineMs === undefined || now() < deadlineMs)
+    ) {
+      const recovery = await replanFailedReadStep(
+        runner,
+        context,
+        provider,
+        request,
+        userPrompt,
+        step,
+        effect.reason ?? "STEP_EFFECT_FAILED",
+        tools,
+        toolCallCount,
+        deadlineMs,
+        now
+      );
+      toolCallCount = recovery.toolCallCount;
+      if (recovery.executed && recovery.stepResult) {
+        executed.push({ executed: recovery.executed, step, stepResult: recovery.stepResult });
         yield { runId: context.runId, stepIndex: index, success: true, type: "plan-step-result" };
         continue;
       }
@@ -285,6 +358,8 @@ export async function* streamPlanExecute(
       }
     });
     yield { runId: context.runId, stepIndex: index, success, type: "plan-step-result" };
+    const postStepStop = planControlStop(context, request, now, deadlineMs, steps, executed, toolCallCount);
+    if (postStepStop) return postStepStop;
   }
 
   if (executed.length > 0 && executed.every((entry) => !entry.stepResult.success)) {
@@ -294,6 +369,8 @@ export async function* streamPlanExecute(
     );
   }
 
+  const preSynthesisStop = planControlStop(context, request, now, deadlineMs, steps, executed, toolCallCount);
+  if (preSynthesisStop) return preSynthesisStop;
   yield { runId: context.runId, type: "synthesis-started" };
   const finalResponse = await synthesizePlanResults(
     runner,
@@ -303,6 +380,8 @@ export async function* streamPlanExecute(
     userPrompt,
     executed
   );
+  const postSynthesisStop = planControlStop(context, request, now, deadlineMs, steps, executed, toolCallCount);
+  if (postSynthesisStop) return postSynthesisStop;
 
   // Agentic Plan Caching (arXiv 2506.14852): record the plan that just
   // executed so a similar future request can reuse it as a planning exemplar.
@@ -324,6 +403,7 @@ export async function* streamPlanExecute(
   return {
     finalResponse,
     intermediateMessages: planExecuteIntermediateMessages(steps, executed),
+    toolCallCount,
     toolResults: executed.map((entry) => entry.executed),
     toolsUsed: [...new Set(executed.map((entry) => entry.executed.toolCall.name))]
   };
@@ -353,11 +433,22 @@ async function replanFailedReadStep(
   failedStep: PlanStep,
   reason: string,
   tools: readonly ModelTool[],
-  toolCallCount: number
-): Promise<{ readonly executed: ExecutedToolResult; readonly stepResult: StepExecutionResult; readonly toolCallCount: number } | undefined> {
+  toolCallCount: number,
+  deadlineMs: number | undefined,
+  now: () => number
+): Promise<{
+  readonly executed?: ExecutedToolResult;
+  readonly stepResult?: StepExecutionResult;
+  readonly toolCallCount: number;
+}> {
   const readTools = tools.filter((tool) => tool.risk === "read");
-  if (readTools.length === 0 || toolCallCount >= runner.maxToolCalls) {
-    return undefined;
+  if (
+    readTools.length === 0 ||
+    toolCallCount >= runner.maxToolCalls ||
+    runIsAborted(context) ||
+    (deadlineMs !== undefined && now() >= deadlineMs)
+  ) {
+    return { toolCallCount };
   }
   const replanPrompt = [
     `The original request was: ${userPrompt}`,
@@ -368,15 +459,22 @@ async function replanFailedReadStep(
   try {
     altPlan = await generatePlan(runner, context, provider, request, replanPrompt, renderToolDescriptionsForPlanning(readTools), undefined);
   } catch {
-    return undefined;
+    return { toolCallCount };
   }
   if (!altPlan || altPlan.length === 0) {
-    return undefined;
+    return { toolCallCount };
+  }
+  if (runIsAborted(context) || (deadlineMs !== undefined && now() >= deadlineMs)) {
+    return { toolCallCount };
   }
   const readToolNames = new Set(readTools.map((tool) => tool.name));
   let count = toolCallCount;
   for (const altStep of altPlan.slice(0, PLAN_REPLAN_MAX_STEPS)) {
-    if (count >= runner.maxToolCalls) {
+    if (
+      count >= runner.maxToolCalls ||
+      runIsAborted(context) ||
+      (deadlineMs !== undefined && now() >= deadlineMs)
+    ) {
       break;
     }
     if (!readToolNames.has(altStep.tool)) {
@@ -400,7 +498,7 @@ async function replanFailedReadStep(
       };
     }
   }
-  return undefined;
+  return { toolCallCount: count };
 }
 
 async function generatePlan(
