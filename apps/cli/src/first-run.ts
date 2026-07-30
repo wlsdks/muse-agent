@@ -17,8 +17,8 @@
  *      NO_COLOR / non-TTY / reduced-motion safe.
  *
  * Fail-soft is the contract: any error or declined step writes the marker and
- * returns — the caller falls back into chat on the local default. Nothing here
- * forces cloud; Local stays pre-selected and recommended.
+ * returns without inventing a provider selection. The runtime's documented
+ * zero-config local fallback remains separate from this provider-neutral picker.
  */
 
 import { existsSync } from "node:fs";
@@ -26,7 +26,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { LOCAL_FIRST_DEFAULT_MODEL } from "@muse/autoconfigure";
+import { DEFAULT_LOCAL_MODEL } from "@muse/autoconfigure";
 
 import { CLOUD_PROVIDERS, planCloudSetup } from "./commands-setup-cloud.js";
 import { runDataSetupInFlagMode, type DataSetupFlags, type DataSetupResult } from "./commands-setup-data.js";
@@ -169,14 +169,14 @@ export const FIRST_RUN_STEP_HEADERS = {
 } as const;
 
 /** The provider picker's instruction line — the step number lives in the step-1 divider above it (KO · EN). */
-export const FIRST_RUN_PICK_MESSAGE = "하나 고르세요 — 로컬이 안전한 기본값   ·   Pick one — Local is the safe default";
+export const FIRST_RUN_PICK_MESSAGE = "실행 방식을 고르세요   ·   Choose how Muse should run";
 
 export type FirstRunChoice = "local" | "cloud" | "codex" | "skip";
 
 /**
  * The designed provider options — a bilingual titled line + a short dim
- * subtitle each, Local first (pre-selected). Exported so the premium copy is
- * pinned by a test and can't silently regress to a plain list.
+ * subtitle each. Exported so the provider-neutral copy is pinned by a test
+ * and can't silently regress to a plain list.
  */
 export const FIRST_RUN_PROVIDER_OPTIONS: readonly {
   readonly value: Exclude<FirstRunChoice, "skip">;
@@ -185,7 +185,7 @@ export const FIRST_RUN_PROVIDER_OPTIONS: readonly {
 }[] = [
   {
     hint: "내 Mac에서 직접 실행 · 아무것도 밖으로 안 나가요 · most private",
-    label: "🔒 로컬 (Ollama) — 추천   ·   Local (recommended)",
+    label: "🔒 로컬 (Ollama)   ·   Local",
     value: "local"
   },
   {
@@ -307,18 +307,17 @@ async function runFirstRunWizardBody(deps: FirstRunWizardDeps, helpers: WizardHe
 
   prompts.step?.(FIRST_RUN_STEP_HEADERS.pick);
   const choice = await prompts.select<FirstRunChoice>({
-    initialValue: "local",
     message: FIRST_RUN_PICK_MESSAGE,
     options: FIRST_RUN_PROVIDER_OPTIONS.map((option) => ({ hint: option.hint, label: option.label, value: option.value }))
   });
 
   if (prompts.isCancel(choice)) {
-    prompts.outro?.("괜찮아요 — 로컬 기본값으로 시작할게요. 언제든 `muse setup` 으로 바꿀 수 있어요.  ·  No problem — starting on the local default.");
+    prompts.outro?.("설정을 변경하지 않았어요. 언제든 `muse setup`으로 다시 시작할 수 있어요.  ·  No setup changes made — run `muse setup` anytime.");
     return finish({ choice: "skip" });
   }
 
   if (choice === "local") {
-    const model = LOCAL_FIRST_DEFAULT_MODEL;
+    const model = DEFAULT_LOCAL_MODEL;
     const config = await deps.readConfig();
     await deps.writeConfig({ ...config, defaultModel: model });
     const head = `Muse는 로컬 ${model} 에서 생각해요  ·  thinking locally on ${model}.`;
@@ -339,7 +338,7 @@ async function runFirstRunWizardBody(deps: FirstRunWizardDeps, helpers: WizardHe
       options: CLOUD_PROVIDERS.map((p) => ({ label: p.label, value: p.id }))
     });
     if (prompts.isCancel(providerId)) {
-      prompts.outro?.("건너뛰었어요 — 로컬 기본값으로 시작할게요.  ·  Skipped — starting on the local default.");
+      prompts.outro?.("제공자를 선택하지 않았어요. 언제든 `muse setup`으로 다시 시작할 수 있어요.  ·  No provider selected — run `muse setup` anytime.");
       return finish({ choice: "skip" });
     }
     const plan = planCloudSetup(providerId, deps.env);
@@ -371,24 +370,24 @@ async function runFirstRunWizardBody(deps: FirstRunWizardDeps, helpers: WizardHe
   const readiness = await detectCodex();
   if (!readiness.ready) {
     prompts.note?.(codexSetupSteps(readiness), "Codex 아직 준비 안 됨 · not ready yet");
-    prompts.outro?.("지금은 로컬 기본값으로 시작할게요 — `codex login` 후 `muse setup start` 를 다시 실행하세요.  ·  Starting local; re-run after `codex login`.");
+    prompts.outro?.("Codex 설정을 저장하지 않았어요 — `codex login` 후 `muse setup start`를 다시 실행하세요.  ·  Codex was not configured; re-run after `codex login`.");
     return finish({ choice: "codex", codexReady: false });
   }
 
   const confirmed = prompts.confirm
-    ? await prompts.confirm({ initialValue: false, message: "codex CLI 로 라우팅할까요? (로컬이 안전한 기본값)   ·   Route Muse through your codex CLI?" })
+    ? await prompts.confirm({ initialValue: false, message: "codex CLI로 라우팅할까요?   ·   Route Muse through your codex CLI?" })
     : true;
   if (prompts.isCancel(confirmed) || confirmed === false) {
-    prompts.outro?.("알겠어요 — 로컬 기본값으로 시작할게요.  ·  No worries — starting on the local default.");
+    prompts.outro?.("Codex 설정을 변경하지 않았어요.  ·  Codex settings were not changed.");
     return finish({ choice: "codex", codexReady: true });
   }
 
   await writeCodexConfig(deps.home);
   prompts.note?.(
     "Codex 위임을 저장했어요. codex CLI가 준비된 동안(설치 + 로그인) Muse는 codex로 라우팅하고,\n" +
-    "준비가 안 되면 자동으로 로컬 기본값으로 돌아가요. Muse는 ChatGPT 토큰을 저장하지 않아요 — 공식 codex CLI 소유.\n" +
+    "준비가 안 되면 Muse의 설정된 fallback을 사용해요. Muse는 ChatGPT 토큰을 저장하지 않아요 — 공식 codex CLI 소유.\n" +
     "Codex delegation saved. Muse routes through codex while the CLI is ready (installed + logged in),\n" +
-    "and falls back to the local default when it isn't. Muse never stores the ChatGPT token.",
+    "and uses Muse's configured fallback when it isn't. Muse never stores the ChatGPT token.",
     "Codex 설정됨 · configured"
   );
   return finishWithValue(deps, helpers, { choice: "codex", codexReady: true });

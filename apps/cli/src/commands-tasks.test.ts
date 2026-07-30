@@ -135,7 +135,7 @@ describe("muse tasks list --local --search — filters the real store", () => {
   });
 });
 
-describe("muse tasks — API-unreachable falls back to the local store (local-first reliability)", () => {
+describe("muse tasks — API-unreachable falls back to the local store (file-backed reliability)", () => {
   const prev = process.env.MUSE_TASKS_FILE;
   const prevAttunement = process.env.MUSE_ATTUNEMENT_FILE;
   afterEach(() => {

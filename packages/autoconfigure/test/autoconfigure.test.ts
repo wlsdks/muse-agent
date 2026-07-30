@@ -124,7 +124,7 @@ describe("autoconfigure", () => {
 
     expect(assembly.authService).toBeUndefined();
     expect(assembly.requireAuth).toBe(false);
-    // Local-first: with zero config (and local-only on by default) the runtime
+    // Local fallback: with zero config the runtime
     // resolves the local Ollama default model, so a working agentRuntime IS
     // assembled — no cloud key, no env needed.
     expect(assembly.agentRuntime).toBeTruthy();
@@ -132,7 +132,7 @@ describe("autoconfigure", () => {
     expect(assembly.cache.responseCache.size()).toBe(0);
     expect(assembly.observability.metrics.recordedEvents()).toEqual([]);
     expect(assembly.observability.followupSuggestionStore.aggregateStats().totalImpressions).toBe(0);
-    // The local-first default provider registers its own generate breaker.
+    // The default local provider registers its own generate breaker.
     expect(assembly.resilience.circuitBreakerRegistry.names()).toEqual(["model.generate"]);
     expect(await assembly.scheduler.store.list()).toEqual([]);
     expect(assembly.scheduler.service).toBeTruthy();

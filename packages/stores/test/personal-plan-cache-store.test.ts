@@ -65,7 +65,7 @@ describe("personal-plan-cache-store (Agentic Plan Caching, arXiv 2506.14852)", (
 
   it("preserves an external template committed while this process waits for the file lock", async () => {
     const file = await tmpFile();
-    await recordPlanTemplate(file, entry("local-first", "first"));
+    await recordPlanTemplate(file, entry("local-one", "first"));
     await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
     const localTemplate = recordPlanTemplate(file, entry("local-second", "second"));
     await sleep(300);
@@ -74,6 +74,6 @@ describe("personal-plan-cache-store (Agentic Plan Caching, arXiv 2506.14852)", (
     await unlink(`${file}.lock`);
 
     await localTemplate;
-    expect((await readPlanCache(file)).map(({ id }) => id)).toEqual(["local-first", "external", "local-second"]);
+    expect((await readPlanCache(file)).map(({ id }) => id)).toEqual(["local-one", "external", "local-second"]);
   });
 });

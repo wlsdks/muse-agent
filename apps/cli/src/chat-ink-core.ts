@@ -37,9 +37,9 @@ export * from "./ink-input-state.js";
 
 /**
  * The first screen a brand-new user sees: `muse` with no model configured.
- * Leads with the local-first identity (not a generic error), frames local
- * as the free/private default and cloud as opt-in, and points at a guided
- * wizard. Every command named is real (`muse setup local|model|wizard`).
+ * Leads with the provider-neutral identity (not a generic error), presents
+ * local and cloud as explicit choices, and points at a guided wizard. Every
+ * command named is real (`muse setup local|model|wizard`).
  * Pure + exported so the copy is gradeable without spawning the CLI.
  */
 export function formatNoModelMessage(): string {
@@ -48,7 +48,7 @@ export function formatNoModelMessage(): string {
     "",
     "No model configured yet — pick one to get started:",
     "  • Local (free, private):  muse setup local     installs / points at an Ollama model",
-    "  • Cloud (opt-in):         muse setup model     OpenAI / Anthropic / Gemini key",
+    "  • Cloud (API key):        muse setup model     OpenAI / Anthropic / Gemini / compatible",
     "",
     "Then run `muse` again  ·  or `muse setup wizard` for guided setup.",
     ""

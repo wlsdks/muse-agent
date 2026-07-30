@@ -61,7 +61,7 @@ export function catalogModelsByProvider(providerId: string): ModelInfo[] {
   return MODEL_CATALOG.filter((m) => m.providerId === providerId);
 }
 
-/** Catalog models that run locally (no cloud egress) — the local-first subset. */
+/** Catalog models that run locally (no cloud egress) — the local-only subset. */
 export function localCatalogModels(): ModelInfo[] {
   return MODEL_CATALOG.filter((m) => m.capabilities.local);
 }

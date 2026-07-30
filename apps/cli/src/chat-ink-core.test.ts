@@ -996,14 +996,14 @@ describe("buildTurnMessages with image attachments", () => {
 });
 
 describe("formatNoModelMessage — first-run onboarding for a brand-new user", () => {
-  it("leads with the local-first identity and names only real setup commands", () => {
+  it("leads with the provider-neutral identity and names only real setup commands", () => {
     const out = formatNoModelMessage();
     expect(out).toContain(MUSE_TAGLINE);                 // identity lead, not a bare error
     expect(out.startsWith("muse: ")).toBe(false);        // not the old generic-error opener
     expect(out).toContain("muse setup local");           // real command
     expect(out).toContain("muse setup model");           // real command
     expect(out).toContain("muse setup wizard");          // real command
-    expect(out).toMatch(/local.*free|free.*local/i);     // local framed as the free/private default
+    expect(out).toMatch(/local.*free|free.*local/i);     // local remains a supported free/private choice
   });
 });
 

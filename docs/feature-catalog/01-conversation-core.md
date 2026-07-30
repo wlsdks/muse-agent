@@ -79,13 +79,13 @@ Test-suite health (run this session):
 - **Evidence:** `head adapter-ollama.ts`; grep of `/api/chat`, `tool_calls`, `think`, `images`.
 
 ### B5. Local-only policy (fail-close cloud-egress gate)
-- **What it does:** `local-only-policy.ts` — `classifyProviderLocality(providerId, effectiveBaseUrl)` → `local|cloud`. Local-inference ids `{ollama, lmstudio, diagnostic}` are local only on loopback; cloud ids `{openai, anthropic, gemini, openrouter}` always cloud; openai-compatible/unknown local only on loopback. `isLoopbackUrl` handles bare host, ::1, 127/8, 0.0.0.0, `.localhost`. `LocalOnlyViolationError` (code `LOCAL_ONLY_VIOLATION`) thrown loudly at runtime assembly under `MUSE_LOCAL_ONLY` (default on).
+- **What it does:** `local-only-policy.ts` — `classifyProviderLocality(providerId, effectiveBaseUrl)` → `local|cloud`. Local-inference ids `{ollama, lmstudio, diagnostic}` are local only on loopback; cloud ids `{openai, anthropic, gemini, openrouter}` always cloud; openai-compatible/unknown local only on loopback. `isLoopbackUrl` handles bare host, ::1, 127/8, 0.0.0.0, `.localhost`. `LocalOnlyViolationError` (code `LOCAL_ONLY_VIOLATION`) is thrown loudly at runtime assembly when the user opts into `MUSE_LOCAL_ONLY=true`.
 - **Status:** 🧪 — `local-only-policy.test.ts`.
 
-### B6. Default-model resolution (local-first)
-- **What it does:** `resolveDefaultModel` (autoconfigure pkg) — explicit `MUSE_MODEL`/`MUSE_DEFAULT_MODEL` wins; else if local-only (default true) → `LOCAL_FIRST_DEFAULT_MODEL = "ollama/gemma4:12b"`, **ignoring ambient cloud keys**; only under `MUSE_LOCAL_ONLY=false` does `inferDefaultModelFromCredentials` apply (GEMINI→`gemini-2.0-flash`, OPENAI→`gpt-4o-mini`, ANTHROPIC→`claude-haiku-4-5-20251001`, OPENROUTER→`gemini-2.0-flash-001`, OLLAMA_BASE_URL→`llama3.2`, then OAI-compat presets).
+### B6. Default-model resolution (local fallback)
+- **What it does:** `resolveDefaultModel` (autoconfigure pkg) — explicit `MUSE_MODEL`/`MUSE_DEFAULT_MODEL` wins; opt-in local-only forces `DEFAULT_LOCAL_MODEL = "ollama/gemma4:12b"`; otherwise the saved user choice wins, then ambient provider credentials may select a cloud model, with the local model retained as the final zero-config fallback.
 - **Status:** 🧪 ✅ — value confirmed in built dist + src.
-- **Evidence:** `LOCAL_FIRST_DEFAULT_MODEL = "ollama/gemma4:12b"` at `autoconfigure-model-provider.ts:42`.
+- **Evidence:** `DEFAULT_LOCAL_MODEL = "ollama/gemma4:12b"` at `autoconfigure-model-provider.ts:42`.
 - **NOTE:** lives in `packages/autoconfigure` (adjacent to this domain) but is the model-selection brain — recorded here for completeness.
 
 ### B7. OpenAI-compatible presets (Groq/DeepSeek/Together/Mistral/Moonshot/Cerebras)
@@ -146,7 +146,7 @@ Test-suite health (run this session):
 
 ## E. DOC DRIFT (cross-check vs README / README.ko / FEATURES.md / SYSTEM-MAP.md)
 
-1. ✅ FIXED 2026-06-14 — README demo comment now reads "runs on your local default model, gemma4:12b via Ollama" (was the stale "auto-picks any local Ollama Qwen 2.5"). The demo shells out to `muse ask` which uses `LOCAL_FIRST_DEFAULT_MODEL = "ollama/gemma4:12b"`.
+1. ✅ FIXED 2026-06-14 — README demo comment now reads "runs on your local default model, gemma4:12b via Ollama" (was the stale "auto-picks any local Ollama Qwen 2.5"). The demo shells out to `muse ask` which uses `DEFAULT_LOCAL_MODEL = "ollama/gemma4:12b"`.
 
 2. **Not a README drift (correction):** the `qwen2.5:7b` "15× faster" line lives ONLY in the `--no-tools` flag DESCRIPTION (`program.ts:313`, shown in `--help`) — it is NOT in README. It's a benchmark anecdote in a flag description, not a default-model claim. Optional: refresh the example model.
 

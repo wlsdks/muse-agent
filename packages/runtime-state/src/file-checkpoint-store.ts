@@ -1,5 +1,5 @@
 /**
- * A disk-backed CheckpointStore for the LOCAL-FIRST product. The Kysely store keeps
+ * A disk-backed CheckpointStore for file-backed deployments. The Kysely store keeps
  * checkpoints in Postgres, and the no-DB default fell back to InMemory — which dies
  * with the process, so a crashed local run could never resume. This persists each
  * run's checkpoints to `<dir>/<runId>.json` so a mid-run crash + restart can replay

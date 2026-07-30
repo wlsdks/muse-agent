@@ -240,7 +240,7 @@ describe("muse remind add — missing args gets usage + a when-grammar example, 
   });
 });
 
-describe("muse remind — API-unreachable falls back to the local store (local-first reliability)", () => {
+describe("muse remind — API-unreachable falls back to the local store (file-backed reliability)", () => {
   const prevEnv = process.env.MUSE_REMINDERS_FILE;
   afterEach(() => {
     if (prevEnv === undefined) delete process.env.MUSE_REMINDERS_FILE;

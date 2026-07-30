@@ -11,7 +11,7 @@
  *
  * Minimal local type defs (a subset of the A2A v1.0 AgentCard) — we align to the
  * spec WITHOUT taking the execution-first `@a2a-js/sdk` as a load-bearing dep,
- * keeping Muse lean + local-first. Per the spec, A2A conformance is best-effort
+ * keeping Muse lean and owner-controlled. Per the spec, A2A conformance is best-effort
  * interop, never a dependency of the safety core.
  */
 
@@ -73,7 +73,7 @@ function knowHowSkill(kind: A2APayloadKind): A2AAgentSkill {
  * Build Muse's Agent Card. Intentionally MINIMAL (no PII, no real provider
  * identity, no internal tool names — the card is A2A's primary recon surface).
  * `streaming` + `pushNotifications` are false (a webhook target is an SSRF /
- * egress hole Muse's local-first posture must not open). The required extension
+ * egress hole Muse's owner-controlled posture must not open). The required extension
  * tells any A2A client: this agent only accepts know-how and never executes.
  */
 export function buildMuseAgentCard(options: { readonly url: string; readonly name?: string }): A2AAgentCard {
@@ -96,7 +96,7 @@ export function buildMuseAgentCard(options: { readonly url: string; readonly nam
     },
     defaultInputModes: [KNOW_HOW_MEDIA_TYPE],
     defaultOutputModes: [KNOW_HOW_MEDIA_TYPE],
-    description: "A private, local-first assistant. Accepts ONLY know-how (skills / strategies / reasoning), never executes remote tasks.",
+    description: "A private, provider-neutral assistant. Accepts ONLY know-how (skills / strategies / reasoning), never executes remote tasks.",
     name: options.name ?? "Muse",
     protocolVersion: MUSE_A2A_PROTOCOL_VERSION,
     securitySchemes: {

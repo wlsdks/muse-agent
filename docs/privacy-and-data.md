@@ -9,8 +9,9 @@ related: [design/attunement.md, SYSTEM-MAP.md, FEATURES.md, strategy/differentia
 # 내 데이터는 어디 있나 (프라이버시 요약)
 
 Muse는 한 사용자의 개인 데이터와 작업 리듬을 다루므로, “무엇을 관찰하고 어디에 저장하며
-어디로 보낼 수 있는가”가 제품 기능만큼 중요합니다. 개인 store는 local-first이고 모델 provider는
-선택 가능하며, 강한 온디바이스 경계는 `MUSE_LOCAL_ONLY=true`로 fail-close합니다.
+어디로 보낼 수 있는가”가 제품 기능만큼 중요합니다. 현재 개인 store는 기본적으로 파일 기반이고
+모델 provider는 사용자가 선택합니다. 강한 온디바이스 경계가 필요하면
+`MUSE_LOCAL_ONLY=true`가 fail-close합니다.
 
 자세한 동작은 [기능 구조 지도](SYSTEM-MAP.md)와 [기능 정의서](FEATURES.md)를, "왜 이렇게
 설계했나"는 [차별점 문서](strategy/differentiation.md)를 보세요.
@@ -76,8 +77,8 @@ Observe O1은 사용자가 고른 정확한 PersonalThread 하나에 대해 앱 
 intervention outcome, notice, action을 만들지 않습니다. 향후 Personal Rhythm/타이밍 단계는 다음 다섯
 속성을 계속 릴리스 gate로 삼습니다.
 
-1. **Local-first** — owner-only local store와 source별 TTL. observation data가 cloud model context에
-   자동 포함되지 않는다.
+1. **Owner-controlled placement** — 현재는 owner-only local store와 source별 TTL을 사용한다.
+   외부 provider 경로는 별도 opt-in이며 observation data가 cloud model context에 자동 포함되지 않는다.
 2. **Visible** — 활성 source, 수집 field, retention, 마지막 읽기, 파생 가설을 한곳에서 보여준다.
 3. **Pausable** — pause는 다음 tick까지 OS 읽기를 멈추고, disabled 상태의 source polling은 0회다.
 4. **Inspectable** — 모든 리듬·마찰 가설이 redacted evidence ID와 rule version으로 돌아간다.
@@ -136,6 +137,7 @@ Browser history는 현재처럼 별도 명시적 opt-in source이며 O1 collecto
 
 ---
 
-*요약: 개인 store는 local-first이고 모델 provider는 사용자가 고릅니다. `MUSE_LOCAL_ONLY=true`는
-cloud egress를 fail-close하며, 향후 Observe는 visible·pausable·inspectable·forgettable하지 않으면
-출시하지 않습니다. 남에게 가는 행동은 언제나 내 확인을 거칩니다.*
+*요약: 개인 store는 현재 파일 기반이 기본이고 모델 provider와 배포 방식은 사용자가 고릅니다.
+`MUSE_LOCAL_ONLY=true`는 cloud egress를 fail-close하며, 향후 Observe는
+visible·pausable·inspectable·forgettable하지 않으면 출시하지 않습니다. 남에게 가는 행동은 언제나
+내 확인을 거칩니다.*

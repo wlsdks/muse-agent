@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { apiWasExplicitlyConfigured } from "./commands-today.js";
 
-describe("apiWasExplicitlyConfigured — local-first stays silent; an explicit API warns when down", () => {
+describe("apiWasExplicitlyConfigured — file-backed mode stays silent; an explicit API warns when down", () => {
   it("false when neither the flag nor MUSE_API_URL is set (the default CLI user)", () => {
     expect(apiWasExplicitlyConfigured(undefined, undefined)).toBe(false);
     expect(apiWasExplicitlyConfigured("", "")).toBe(false);

@@ -110,7 +110,7 @@ export function createTracingPipeline(db: Kysely<MuseDatabase> | undefined, loca
   }
 
   const traceSink: QueryableTraceEventSink = new InMemoryTraceEventSink();
-  // Local-first (no DB): persist usage to a JSONL file so `muse cost` survives
+  // File-backed mode (no DB): persist usage to a JSONL file so `muse cost` survives
   // the process; the JSONL sink also mirrors in-memory so the in-process query
   // still works. Falls back to InMemory when no path is given (e.g. tests).
   const tokenSink = localUsageFile ? new JsonlTokenUsageSink(localUsageFile) : new InMemoryTokenUsageSink();

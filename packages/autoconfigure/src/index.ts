@@ -327,8 +327,8 @@ export { describeOfficialMcpPosture, type OfficialMcpPresetPosture } from "./off
 export {
   createModelProvider,
   createModelProviderFor,
-  LOCAL_FIRST_DEFAULT_MODEL,
-  LOCAL_FIRST_VISION_MODEL,
+  DEFAULT_LOCAL_MODEL,
+  DEFAULT_LOCAL_VISION_MODEL,
   resolveAnswerTemperature,
   resolveAuxiliaryModel,
   resolveDefaultModel,

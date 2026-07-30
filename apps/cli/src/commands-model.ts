@@ -14,7 +14,7 @@
 import {
   activeModelEnvOverride,
   fetchInstalledOllamaModels,
-  LOCAL_FIRST_DEFAULT_MODEL,
+  DEFAULT_LOCAL_MODEL,
   readMuseCliConfigFile,
   resolveDefaultModel,
   resolveModelSwitchTarget,
@@ -66,7 +66,7 @@ export function resolveCurrentDefaultModel(
     return { model: cliConfigDefaultModel, source: "CLI config (~/.config/muse/config.json defaultModel)" };
   }
   return {
-    model: resolveDefaultModel(env) ?? LOCAL_FIRST_DEFAULT_MODEL,
+    model: resolveDefaultModel(env) ?? DEFAULT_LOCAL_MODEL,
     source: "built-in default (no MUSE_MODEL/MUSE_DEFAULT_MODEL set, no CLI config default)"
   };
 }

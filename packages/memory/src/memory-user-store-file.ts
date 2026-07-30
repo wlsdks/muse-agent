@@ -1230,7 +1230,7 @@ export class FileUserMemoryStore implements UserMemoryStore {
     return this.createIfAbsent(userId, "preference", rawKey, value);
   }
 
-  // Typed user-model slots — the local-first write path. The slots
+  // Typed user-model slots — the file-backed write path. The slots
   // round-trip through this file store already; these add the missing
   // mutators so the local JARVIS can actually accrue a typed model
   // (preferences / schedule / vetoes / goals) that the persona renders.

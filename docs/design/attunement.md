@@ -303,8 +303,9 @@ third-party effects.
 
 Observe follows five testable properties:
 
-1. **Local-first:** observation state is an owner-only local store; cloud use follows the
-   existing provider choice and must never silently receive observation data.
+1. **Owner-controlled placement:** observation state currently uses an owner-only local
+   store. Any external provider path must be explicit and must never silently receive
+   observation data.
 2. **Visible:** status shows enabled sources, fields, retention, last sample, and derived
    hypotheses.
 3. **Pausable:** pause stops OS reads by the next tick; disabled means zero source polling.

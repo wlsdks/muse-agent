@@ -16,7 +16,7 @@ describe("createModelProvider — MUSE_LOCAL_ONLY fail-close", () => {
   });
 
   it("an AMBIENT cloud key never leaks under local-only — the default resolves LOCAL, not cloud", () => {
-    // The local-first fix: without an explicit MUSE_MODEL, a stray
+    // The local-only fix: without an explicit MUSE_MODEL, a stray
     // GEMINI_API_KEY/OPENAI_API_KEY in the environment must NOT make the
     // default a cloud model (which would then be refused, breaking zero-config).
     // It resolves to the local Ollama model and builds a local provider.

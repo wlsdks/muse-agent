@@ -75,7 +75,7 @@ export function resolveNotesDir(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_NOTES_DIR", "notes");
 }
 
-/** Local-first token-usage ledger (JSONL) — where the no-DB product persists
+/** File-backed token-usage ledger (JSONL) — where the no-DB mode persists
  *  per-call usage so `muse cost` works without the API server. */
 export function resolveTokenUsageFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_TOKEN_USAGE_FILE", "token-usage.jsonl");
@@ -90,7 +90,7 @@ export function resolveUserMemoryAutoExtractOutcomesFile(env: MuseEnvironment): 
   );
 }
 
-/** Local-first checkpoint directory — where the no-DB product persists per-run
+/** File-backed checkpoint directory — where the no-DB mode persists per-run
  *  execution checkpoints so a crashed run can resume (one JSON file per runId). */
 export function resolveCheckpointsDir(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_CHECKPOINTS_DIR", "checkpoints");

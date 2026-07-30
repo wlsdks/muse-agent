@@ -46,7 +46,7 @@ describe("episodes store under concurrency", () => {
 
   it("preserves an external upsert committed while this process waits for the file lock", async () => {
     const file = freshFile();
-    await upsertEpisode(file, episode("local-first"));
+    await upsertEpisode(file, episode("local-one"));
 
     await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
     const localAppend = upsertEpisode(file, episode("local-second"));
@@ -57,6 +57,6 @@ describe("episodes store under concurrency", () => {
     await unlink(`${file}.lock`);
 
     await localAppend;
-    expect((await readEpisodes(file)).map(({ id }) => id)).toEqual(["local-first", "external", "local-second"]);
+    expect((await readEpisodes(file)).map(({ id }) => id)).toEqual(["local-one", "external", "local-second"]);
   });
 });

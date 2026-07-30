@@ -607,8 +607,9 @@ storage.
 
 ### Lightweight reference profile
 
-Muse is single-user and local-first, so the first useful engine does not need a distributed
-graph server or a general-purpose query language. The reference profile should use:
+Muse is single-user and its reference profile is intentionally lightweight, so the first
+useful engine does not need a distributed graph server or a general-purpose query language.
+The reference profile should use:
 
 - an append-only assertion log with checksummed, atomic snapshots;
 - typed integer/string IDs and compact adjacency/time indexes in memory;

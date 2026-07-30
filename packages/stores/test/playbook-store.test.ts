@@ -151,7 +151,7 @@ describe("concurrent playbook mutation", () => {
 
   it("preserves an external strategy committed while this process waits for the file lock", async () => {
     const file = freshFile();
-    await recordPlaybookStrategy(file, entry("local-first"));
+    await recordPlaybookStrategy(file, entry("local-one"));
     await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
     const localStrategy = recordPlaybookStrategy(file, entry("local-second"));
     await sleep(300);
@@ -160,7 +160,7 @@ describe("concurrent playbook mutation", () => {
     await unlink(`${file}.lock`);
 
     await localStrategy;
-    expect((await readPlaybook(file)).map(({ id }) => id)).toEqual(["local-first", "external", "local-second"]);
+    expect((await readPlaybook(file)).map(({ id }) => id)).toEqual(["local-one", "external", "local-second"]);
   }, CONCURRENT_FS_TIMEOUT_MS);
 });
 

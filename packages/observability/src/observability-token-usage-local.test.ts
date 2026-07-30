@@ -18,7 +18,7 @@ const rec = (over: Partial<TokenUsageRecord> = {}): TokenUsageRecord => ({
   ...over
 });
 
-describe("JsonlTokenUsageSink — persists usage across processes (local-first, no DB)", () => {
+describe("JsonlTokenUsageSink — persists usage across processes (file-backed, no DB)", () => {
   it("appends each record as JSONL and a fresh reader recovers them (survives process exit)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-usage-"));
     try {

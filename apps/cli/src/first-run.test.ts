@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { LOCAL_FIRST_DEFAULT_MODEL } from "@muse/autoconfigure";
+import { DEFAULT_LOCAL_MODEL } from "@muse/autoconfigure";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { CodexReadiness } from "./codex-cli.js";
@@ -68,9 +68,10 @@ describe("firstRunSkipRequested — never hijack a non-interactive / test run", 
   });
 });
 
-describe("premium picker copy — bilingual KO · EN, Local first", () => {
-  it("offers exactly local/cloud/codex with Local pre-selectable first", () => {
+describe("provider-neutral picker copy — bilingual KO · EN", () => {
+  it("offers exactly local/cloud/codex without labeling one as recommended", () => {
     expect(FIRST_RUN_PROVIDER_OPTIONS.map((o) => o.value)).toEqual(["local", "cloud", "codex"]);
+    expect(FIRST_RUN_PROVIDER_OPTIONS.map((o) => o.label).join(" ")).not.toMatch(/추천|recommended/i);
   });
 
   it("each option is a titled line + a dim subtitle, both carrying Korean AND English", () => {
@@ -194,8 +195,8 @@ describe("runFirstRunWizard — picker → config", () => {
   it("Local writes the local default model and marks first-run done", async () => {
     const state: StubState = {};
     const result = await runFirstRunWizard(makeDeps(["local"], { state }));
-    expect(result).toMatchObject({ choice: "local", markerWritten: true, wroteDefaultModel: LOCAL_FIRST_DEFAULT_MODEL });
-    expect(state.written).toEqual({ defaultModel: LOCAL_FIRST_DEFAULT_MODEL });
+    expect(result).toMatchObject({ choice: "local", markerWritten: true, wroteDefaultModel: DEFAULT_LOCAL_MODEL });
+    expect(state.written).toEqual({ defaultModel: DEFAULT_LOCAL_MODEL });
     expect(state.markerChoice).toBe("local");
   });
 
@@ -446,7 +447,7 @@ describe("runFirstRunWizard — the install→first-value tail (data-connect · 
       select: ["local"],
       state
     }));
-    expect(result).toMatchObject({ choice: "local", markerWritten: true, wroteDefaultModel: LOCAL_FIRST_DEFAULT_MODEL });
+    expect(result).toMatchObject({ choice: "local", markerWritten: true, wroteDefaultModel: DEFAULT_LOCAL_MODEL });
     expect(state.markerChoice).toBe("local");
     // The tail swallowed the error and still reached the success screen.
     expect(state.celebrated).toBe(true);

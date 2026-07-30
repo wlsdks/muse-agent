@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>一个会逐渐理解你的生活与工作方式，并学会何时、如何提供帮助的个人 AI。</b><br/>
-  <i>本地优先，不绑定模型提供方，也不会把尚未实现的能力说成已经可用。</i>
+  <i>不绑定模型提供方，部署方式灵活，也不会把尚未实现的能力说成已经可用。</i>
 </p>
 
 <p align="center">
@@ -134,7 +134,7 @@ muse proactive watch --user me --interval 60
 - **受保护的动作：** fail-close guard、fail-open hook、明确 approval、不信任 tool output、有限 loop/timeout 和 trace。
 - **一个 runtime：** CLI、API/web chat、messaging、scheduled job 与 delegated worker 共用同一个 composition root。
 - **双向 MCP：** 内置 <code>muse.*</code> 工具，同时可通过 <code>muse mcp serve</code> 向其他 agent 提供只读召回、搜索和 user-model access。
-- **本地优先：** 文件型个人存储不需要云账号；<code>MUSE_LOCAL_ONLY=true</code> 会拒绝云模型提供方。
+- **不绑定部署位置的隐私控制：** 文件型个人存储不需要云账号，local/cloud 模型提供方共享同一抽象边界；<code>MUSE_LOCAL_ONLY=true</code> 是用户可选的 fail-close 模式。
 
 ## Muse 不会做什么（边界）
 
@@ -146,9 +146,11 @@ muse proactive watch --user me --interval 60
 
 强制执行的边界见 [outbound safety](.claude/rules/outbound-safety.md) 和 [Attunement 设计](docs/design/attunement.md)。
 
-## 🧩 模型提供方与本地运行
+## 🧩 模型提供方与部署模式
 
 通过 <code>MUSE_MODEL=&lt;provider&gt;/&lt;model&gt;</code> 和相应的 API key 环境变量选择 provider。<code>MUSE_MODEL_PROVIDER_ID</code>、<code>MUSE_MODEL_API_KEY</code>、<code>MUSE_MODEL_BASE_URL</code> 可显式覆盖。云 provider 与 <code>MUSE_LOCAL_ONLY=true</code> 不兼容。
+
+local-only 运行是用户可选择的隐私姿态，而不是 Muse 的产品身份。
 
 使用 Ollama 的免费离线路径：
 

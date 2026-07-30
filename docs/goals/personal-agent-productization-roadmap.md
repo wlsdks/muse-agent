@@ -1985,7 +1985,7 @@ multi-agent가 single-agent보다 held-out 결과를 실질적으로 개선한�
   - **검증:** evaluator가 maker scratch/context 없이 재현하고 write/effect tool이 없다.
   - **선행:** 008, 232, 237.
 
-- [ ] **239. remote/hosted subagent는 local-first threat model을 통과할 때만 연다.** — `P2`
+- [ ] **239. remote/hosted subagent는 owner-controlled egress threat model을 통과할 때만 연다.** — `P2`
   - **이유:** source와 personal data가 외부 sandbox로 이동할 수 있다.
   - **산출물:** data classification, upload manifest, secrets exclusion, retention/deletion, explicit opt-in.
   - **검증:** local-only profile에서는 remote dispatch 0이고 approved subset 밖 file이 전송되지 않는다.

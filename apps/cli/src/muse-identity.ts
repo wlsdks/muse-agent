@@ -4,9 +4,8 @@
  * and the REPL splash tagline. Kept as a single source so the two
  * surfaces can never drift into two different self-descriptions.
  *
- * Wording is grounded in the product identity (CLAUDE.md): Muse is the
- * personal AI that learns YOU, and runs local-first / private by
- * default — not a generic "model-agnostic AI agent". No claim here
- * that the code doesn't hold (local-by-default is the enforced floor).
+ * Wording is grounded in the product identity (AGENTS.md): Muse is the
+ * personal AI that learns YOU, remains provider-neutral, and keeps the
+ * owner in control — not a generic vendor-specific AI wrapper.
  */
-export const MUSE_TAGLINE = "The personal AI that learns you — local-first, private by default";
+export const MUSE_TAGLINE = "The personal AI that learns you — any model, under your control";

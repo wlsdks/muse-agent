@@ -153,8 +153,9 @@ STAY as on-demand surfaces.
 - **Answer is never blocked / never altered.** Review is post-`afterComplete`,
   fire-and-forget, fail-soft (a thrown distiller is swallowed). Same as
   Hermes' "main conversation + prompt cache never touched".
-- **Local-first.** All review LLM calls go through the same local-Qwen
-  provider; no cloud egress (respect `MUSE_LOCAL_ONLY`).
+- **Provider policy is explicit.** Review LLM calls use the configured provider
+  boundary. `MUSE_LOCAL_ONLY=true` fails closed before cloud egress; otherwise an
+  owner-configured external provider may receive the review context.
 - **No fabrication.** Reuse the existing NONE-aware distillers verbatim; the
   engine only decides WHEN to call them, not a new judgment.
 - **Outbound-safety untouched.** Review may write to LOCAL stores

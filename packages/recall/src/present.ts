@@ -156,7 +156,7 @@ export function formatSourceReceipts(
 }
 
 /**
- * An always-VISIBLE corroboration POSTURE (the realistic, local-first answer to
+ * An always-VISIBLE corroboration POSTURE (the realistic owner-controlled answer to
  * GROUNDED≠TRUE): the grounding gate proves a claim MATCHES its cited source,
  * never that the source is TRUE — but a claim independently backed by ≥2
  * distinct sources is harder for a single poisoned/stale note to fake than a

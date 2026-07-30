@@ -2,7 +2,7 @@
  * A ModelProvider decorator that records token usage to a TokenUsageSink on EVERY
  * generate / stream completion. It exists because the local answer path calls
  * `provider.generate/stream` DIRECTLY — bypassing the runtime's model-loop, the
- * only place that called `recordTokenUsageEvent` — so the local-first product
+ * only place that called `recordTokenUsageEvent` — so the file-backed runtime
  * captured ZERO usage. Wrapping the provider once makes every call point record.
  *
  * Dedup with the runtime: model-loop already records its own calls via

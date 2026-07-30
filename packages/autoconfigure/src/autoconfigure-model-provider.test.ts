@@ -1,31 +1,31 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { clearConfiguredDefaultModelCache, createModelProvider, createModelProviderFor, LOCAL_FIRST_DEFAULT_MODEL, LOCAL_FIRST_VISION_MODEL, resolveDefaultModel, resolveVisionModel } from "./autoconfigure-model-provider.js";
+import { clearConfiguredDefaultModelCache, createModelProvider, createModelProviderFor, DEFAULT_LOCAL_MODEL, DEFAULT_LOCAL_VISION_MODEL, resolveDefaultModel, resolveVisionModel } from "./autoconfigure-model-provider.js";
 
 // The vision-model knob (MUSE_VISION_MODEL) + measured local default. Pure so the
 // swap policy AND the fail-soft path (optional model not pulled → fall back to the
 // chat model, never crash) are pinned without a live model.
 describe("resolveVisionModel — MUSE_VISION_MODEL knob + fail-soft", () => {
   it("no env, chat model IS the local default → the vision default (currently == chat default, no-op swap per the 2026-07 measurement)", () => {
-    expect(resolveVisionModel({ env: {} as never, sessionModel: LOCAL_FIRST_DEFAULT_MODEL })).toBe(LOCAL_FIRST_VISION_MODEL);
-    expect(LOCAL_FIRST_VISION_MODEL).toBe(LOCAL_FIRST_DEFAULT_MODEL);
+    expect(resolveVisionModel({ env: {} as never, sessionModel: DEFAULT_LOCAL_MODEL })).toBe(DEFAULT_LOCAL_VISION_MODEL);
+    expect(DEFAULT_LOCAL_VISION_MODEL).toBe(DEFAULT_LOCAL_MODEL);
   });
   it("explicit MUSE_VISION_MODEL wins (the manual override — e.g. pin qwen3-vl)", () => {
-    expect(resolveVisionModel({ env: { MUSE_VISION_MODEL: "ollama/qwen3-vl:8b" } as never, sessionModel: LOCAL_FIRST_DEFAULT_MODEL })).toBe("ollama/qwen3-vl:8b");
+    expect(resolveVisionModel({ env: { MUSE_VISION_MODEL: "ollama/qwen3-vl:8b" } as never, sessionModel: DEFAULT_LOCAL_MODEL })).toBe("ollama/qwen3-vl:8b");
   });
   it("an explicit non-default chat model is respected (no vision override)", () => {
     expect(resolveVisionModel({ env: {} as never, sessionModel: "anthropic/claude-haiku-4-5-20251001" })).toBe("anthropic/claude-haiku-4-5-20251001");
     expect(resolveVisionModel({ env: {} as never, sessionModel: "ollama/qwen3:8b" })).toBe("ollama/qwen3:8b");
   });
   it("FAIL-SOFT: a MUSE_VISION_MODEL override not pulled → falls back to the chat model", () => {
-    expect(resolveVisionModel({ availableModels: ["gemma4:12b"], env: { MUSE_VISION_MODEL: "ollama/does-not-exist:8b" } as never, sessionModel: LOCAL_FIRST_DEFAULT_MODEL })).toBe(LOCAL_FIRST_DEFAULT_MODEL);
+    expect(resolveVisionModel({ availableModels: ["gemma4:12b"], env: { MUSE_VISION_MODEL: "ollama/does-not-exist:8b" } as never, sessionModel: DEFAULT_LOCAL_MODEL })).toBe(DEFAULT_LOCAL_MODEL);
   });
   it("a MUSE_VISION_MODEL override IS pulled (tags may carry the ollama/ prefix) → used", () => {
-    expect(resolveVisionModel({ availableModels: ["qwen3-vl:8b", "gemma4:12b"], env: { MUSE_VISION_MODEL: "ollama/qwen3-vl:8b" } as never, sessionModel: LOCAL_FIRST_DEFAULT_MODEL })).toBe("ollama/qwen3-vl:8b");
-    expect(resolveVisionModel({ availableModels: ["ollama/qwen3-vl:8b"], env: { MUSE_VISION_MODEL: "ollama/qwen3-vl:8b" } as never, sessionModel: LOCAL_FIRST_DEFAULT_MODEL })).toBe("ollama/qwen3-vl:8b");
+    expect(resolveVisionModel({ availableModels: ["qwen3-vl:8b", "gemma4:12b"], env: { MUSE_VISION_MODEL: "ollama/qwen3-vl:8b" } as never, sessionModel: DEFAULT_LOCAL_MODEL })).toBe("ollama/qwen3-vl:8b");
+    expect(resolveVisionModel({ availableModels: ["ollama/qwen3-vl:8b"], env: { MUSE_VISION_MODEL: "ollama/qwen3-vl:8b" } as never, sessionModel: DEFAULT_LOCAL_MODEL })).toBe("ollama/qwen3-vl:8b");
   });
   it("a non-ollama MUSE_VISION_MODEL override is passed through (no ollama availability check applies)", () => {
-    expect(resolveVisionModel({ availableModels: ["gemma4:12b"], env: { MUSE_VISION_MODEL: "gemini/gemini-2.0-flash" } as never, sessionModel: LOCAL_FIRST_DEFAULT_MODEL })).toBe("gemini/gemini-2.0-flash");
+    expect(resolveVisionModel({ availableModels: ["gemma4:12b"], env: { MUSE_VISION_MODEL: "gemini/gemini-2.0-flash" } as never, sessionModel: DEFAULT_LOCAL_MODEL })).toBe("gemini/gemini-2.0-flash");
   });
 });
 
@@ -67,8 +67,8 @@ describe("createModelProvider — codex delegation routing", () => {
       .toThrowError(/LocalOnly|local-only|local only/i);
   });
   it("resolveDefaultModel NEVER returns codex when unconfigured (local stays the default)", () => {
-    expect(resolveDefaultModel({} as never)).toBe(LOCAL_FIRST_DEFAULT_MODEL);
-    expect(resolveDefaultModel({ MUSE_LOCAL_ONLY: "true" } as never)).toBe(LOCAL_FIRST_DEFAULT_MODEL);
+    expect(resolveDefaultModel({} as never)).toBe(DEFAULT_LOCAL_MODEL);
+    expect(resolveDefaultModel({ MUSE_LOCAL_ONLY: "true" } as never)).toBe(DEFAULT_LOCAL_MODEL);
   });
 });
 
@@ -76,7 +76,7 @@ describe("createModelProvider — codex delegation routing", () => {
 // reverse proxy, Cloudflare-Access service-token auth) needs a header beyond the
 // standard `Authorization: Bearer <apiKey>`. These pin the FULL path from the env
 // var down to the actual fetch call for the custom OpenAI-compatible endpoint —
-// the real-world local-first scenario this closes.
+// the real-world local-only scenario this closes.
 describe("createModelProvider — MUSE_MODEL_EXTRA_HEADERS (LAN gateway auth header)", () => {
   async function generateAndCaptureHeaders(env: Record<string, string | undefined>): Promise<Record<string, string> | undefined> {
     const originalFetch = globalThis.fetch;
@@ -216,7 +216,7 @@ describe("resolveDefaultModel — config.json rung (config beats a stale ambient
   it("MUSE_LOCAL_ONLY forces local even when the config saves a cloud model", async () => {
     const file = await write(JSON.stringify({ defaultModel: "gemini/gemini-2.0-flash" }));
     const env = { MUSE_CLI_CONFIG_FILE: file, MUSE_LOCAL_ONLY: "true" } as never;
-    expect(resolveDefaultModel(env)).toBe(LOCAL_FIRST_DEFAULT_MODEL);
+    expect(resolveDefaultModel(env)).toBe(DEFAULT_LOCAL_MODEL);
   });
 
   it("a malformed or missing config file falls through to ambient inference", async () => {
@@ -227,6 +227,6 @@ describe("resolveDefaultModel — config.json rung (config beats a stale ambient
 
   it("an empty-string defaultModel in config is ignored (falls through)", async () => {
     const file = await write(JSON.stringify({ defaultModel: "  " }));
-    expect(resolveDefaultModel({ MUSE_CLI_CONFIG_FILE: file } as never)).toBe(LOCAL_FIRST_DEFAULT_MODEL);
+    expect(resolveDefaultModel({ MUSE_CLI_CONFIG_FILE: file } as never)).toBe(DEFAULT_LOCAL_MODEL);
   });
 });

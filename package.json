@@ -1,7 +1,7 @@
 {
   "name": "muse",
   "version": "0.2.42",
-  "description": "Building a personal AI that learns how you live and work, then gets better at knowing when and how to help. Local-first, any model.",
+  "description": "A provider-neutral personal AI that learns how you live and work, then gets better at knowing when and how to help.",
   "private": true,
   "license": "MIT",
   "homepage": "https://github.com/wlsdks/Muse",

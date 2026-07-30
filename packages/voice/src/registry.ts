@@ -93,7 +93,7 @@ export class VoiceProviderRegistry {
    * order (the given ids, else every registered provider in registration
    * order) and return the FIRST success. When one fails (binary missing,
    * transient error), move to the next instead of failing the whole call
-   * — a local-first resilience win when several TTS backends are
+   * — a local-provider resilience win when several TTS backends are
    * installed. Throws only when every provider failed or none is
    * registered, naming each attempt's failure.
    */

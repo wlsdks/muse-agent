@@ -102,7 +102,7 @@ describe("appendLastProactiveDelivery", () => {
   }, 30_000);
 
   it("preserves an external delivery committed while this process waits for the file lock", async () => {
-    await appendLastProactiveDelivery(file, { at: NOW, outcome: "delivered", sourceKey: "local-first" });
+    await appendLastProactiveDelivery(file, { at: NOW, outcome: "delivered", sourceKey: "local-one" });
     await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
     const localDelivery = appendLastProactiveDelivery(file, { at: new Date(NOW.getTime() + 2_000), outcome: "delivered", sourceKey: "local-second" });
     await sleep(300);
@@ -111,6 +111,6 @@ describe("appendLastProactiveDelivery", () => {
     await unlink(`${file}.lock`);
 
     await localDelivery;
-    expect((await readLastProactiveDeliveries(file)).map(({ sourceKey }) => sourceKey)).toEqual(["local-first", "external", "local-second"]);
+    expect((await readLastProactiveDeliveries(file)).map(({ sourceKey }) => sourceKey)).toEqual(["local-one", "external", "local-second"]);
   });
 });

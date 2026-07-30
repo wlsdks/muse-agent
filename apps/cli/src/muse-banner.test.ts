@@ -9,7 +9,7 @@ describe("renderMuseBanner", () => {
     // A stable row from the block wordmark.
     expect(out).toContain("███████╗");
     expect(out).toContain(MUSE_TAGLINE);
-    // the splash leads with the learns-you / local-first identity, not a generic label
+    // the splash leads with the learns-you / provider-neutral identity, not a generic label
     expect(out).toContain("learns you");
     // Tagline shares the art's 2-space left margin (aligned with the recap /
     // input column below it) — exactly 2 spaces, not the old stray 3.

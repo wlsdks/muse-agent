@@ -8,14 +8,14 @@
 
 <p align="center">
   <b>당신이 살아가고 일하는 방식을 배우며, 언제 어떻게 도울지 점점 더 잘 맞추는 개인 AI.</b><br/>
-  <i>로컬 우선, 모델 제공자 중립, 아직 완성되지 않은 부분은 솔직하게.</i>
+  <i>모델 제공자 중립, 배포 방식 유연성, 아직 완성되지 않은 부분은 솔직하게.</i>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="MIT 라이선스" src="https://img.shields.io/badge/License-MIT-green.svg" /></a>
   <a href="package.json"><img alt="Node 22.12 이상" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-43853d.svg" /></a>
   <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/built%20with-TypeScript-3178c6.svg" /></a>
-  <a href="#muse가-하지-않는-일"><img alt="로컬 우선" src="https://img.shields.io/badge/privacy-local--first-6f42c1.svg" /></a>
+  <a href="#모델-제공자와-배포-방식"><img alt="모델 제공자 중립" src="https://img.shields.io/badge/architecture-provider--neutral-6f42c1.svg" /></a>
   <a href="https://ollama.com"><img alt="Ollama 지원" src="https://img.shields.io/badge/runs%20on-Ollama-000000.svg" /></a>
   &nbsp;·&nbsp; <a href="README.md">English</a>
   &nbsp;·&nbsp; <b>한국어</b>
@@ -145,7 +145,7 @@ muse proactive watch --user me --interval 60
 - **보호된 행동:** fail-close guard, fail-open hook, 명시적 승인, 신뢰하지 않는 도구 출력, 반복·시간 제한, 추적 기록을 적용합니다.
 - **하나의 런타임:** CLI, API·웹 채팅, 메시징, 예약 작업, 위임 워커가 같은 구성 루트를 사용합니다.
 - **양방향 MCP:** 내장 `muse.*` 도구를 쓰고, `muse mcp serve`로 다른 에이전트에 읽기 전용 회상·검색·사용자 모델을 제공할 수 있습니다.
-- **로컬 우선:** 개인 저장소는 클라우드 계정 없이 작동하며 `MUSE_LOCAL_ONLY=true`는 클라우드 모델 제공자를 거부합니다.
+- **배포 방식에 독립적인 프라이버시:** 파일 기반 개인 저장소는 클라우드 계정 없이 작동하고, 로컬·클라우드 모델 제공자는 같은 추상화 뒤에 있으며, `MUSE_LOCAL_ONLY=true`는 사용자가 선택하는 fail-close 모드입니다.
 
 ## Muse가 하지 않는 일
 
@@ -159,9 +159,11 @@ muse proactive watch --user me --interval 60
 
 ---
 
-## 🧩 모델 제공자와 로컬 사용
+## 🧩 모델 제공자와 배포 방식
 
 `MUSE_MODEL=<provider>/<model>`과 각 제공자의 일반 API 키 환경 변수로 모델을 선택합니다. 명시적 덮어쓰기는 `MUSE_MODEL_PROVIDER_ID`, `MUSE_MODEL_API_KEY`, `MUSE_MODEL_BASE_URL`을 사용합니다. `MUSE_LOCAL_ONLY=true`에서는 클라우드 모델을 쓸 수 없습니다.
+
+로컬 전용 실행은 Muse의 제품 정체성이 아니라 사용자가 선택할 수 있는 프라이버시 자세입니다.
 
 Ollama를 이용한 무료 오프라인 경로:
 

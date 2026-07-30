@@ -31,7 +31,7 @@ describe("recordPatternFired under concurrency", () => {
 
   it("preserves an external fire committed while this process waits for the file lock", async () => {
     const file = freshFile();
-    await recordPatternFired(file, "local-first", 1);
+    await recordPatternFired(file, "local-one", 1);
     await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
     const localFire = recordPatternFired(file, "local-second", 3);
     await sleep(300);
@@ -40,7 +40,7 @@ describe("recordPatternFired under concurrency", () => {
     await unlink(`${file}.lock`);
 
     await localFire;
-    expect((await readPatternsFired(file)).map(({ patternId }) => patternId)).toEqual(["local-first", "external", "local-second"]);
+    expect((await readPatternsFired(file)).map(({ patternId }) => patternId)).toEqual(["local-one", "external", "local-second"]);
   });
 });
 

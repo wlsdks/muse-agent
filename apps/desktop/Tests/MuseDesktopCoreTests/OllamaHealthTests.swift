@@ -40,7 +40,7 @@ final class OllamaHealthTests: XCTestCase {
     }
 
     func testRequiredModelIsCurrentDefault() {
-        // Must match the CLI's LOCAL_FIRST_DEFAULT_MODEL (ollama/gemma4:12b),
+        // Must match the CLI's DEFAULT_LOCAL_MODEL (ollama/gemma4:12b),
         // bare tag — else the companion health-checks/onboards a stale model.
         XCTAssertEqual(OllamaHealth.requiredModel, "gemma4:12b")
     }

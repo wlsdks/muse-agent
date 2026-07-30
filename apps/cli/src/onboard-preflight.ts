@@ -10,7 +10,7 @@
 import { constants as fsConstants, promises as fs } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
-import { LOCAL_FIRST_DEFAULT_MODEL, resolveDefaultModel, resolveModelProvider } from "@muse/autoconfigure";
+import { DEFAULT_LOCAL_MODEL, resolveDefaultModel, resolveModelProvider } from "@muse/autoconfigure";
 
 import { defaultDaemonTemporaryRoots, validateDaemonCliEntry } from "./commands-daemon-autostart.js";
 import { cloudSyncFolderCheck, volatileMountCheck } from "./commands-doctor-checks.js";
@@ -165,7 +165,7 @@ export async function collectOnboardPreflight(options: OnboardPreflightOptions =
   const homeTemporaryRoots = options.museHomeTemporaryRoots
     ?? defaultDaemonTemporaryRoots(env as NodeJS.ProcessEnv);
   const home = await museHomeCheck(env, fileSystem, platform, options.readMounts, homeTemporaryRoots);
-  const model = resolveDefaultModel(env as Record<string, string | undefined>) ?? LOCAL_FIRST_DEFAULT_MODEL;
+  const model = resolveDefaultModel(env as Record<string, string | undefined>) ?? DEFAULT_LOCAL_MODEL;
   const configuredProviders = configuredProviderNames(env);
   let modelCheck: OnboardPreflightCheck;
   let provider: string | undefined;

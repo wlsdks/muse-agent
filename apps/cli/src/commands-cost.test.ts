@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 import { formatTokenUsageSummary, registerCostCommands, type CostCommandHelpers } from "./commands-cost.js";
 import type { ProgramIO } from "./program.js";
 
-describe("formatTokenUsageSummary — local-first cost report", () => {
+describe("formatTokenUsageSummary — file-backed cost report", () => {
   const empty = { byDay: [], byModel: [], byRun: [], calls: 0, completionTokens: 0, estimatedCostUsd: 0, promptTokens: 0, reasoningTokens: 0, totalTokens: 0 };
   it("guides the user when nothing is recorded yet", () => {
-    expect(formatTokenUsageSummary(empty)).toContain("No local token usage recorded yet");
+    expect(formatTokenUsageSummary(empty)).toContain("No file-backed token usage recorded yet");
     expect(formatTokenUsageSummary(empty)).toContain("token-usage.jsonl");
   });
   it("summarizes totals + per-model/day for recorded usage ($0 for local)", () => {

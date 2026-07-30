@@ -32,7 +32,7 @@ import { canonicalizeLocalOnlyModelBaseUrl, evaluateWebEgressPosture, isInteract
 
 import { resolveEmbedderBase } from "./embedder-base.js";
 import { OPENAI_COMPAT_PRESETS } from "./openai-compat-presets.js";
-import { createModelProvider, LOCAL_FIRST_DEFAULT_MODEL, resolveDefaultModel } from "./autoconfigure-model-provider.js";
+import { createModelProvider, DEFAULT_LOCAL_MODEL, resolveDefaultModel } from "./autoconfigure-model-provider.js";
 import { resolveHomeAssistantEnvironment, type ResolvedHomeAssistantEnvironment } from "./home-assistant-environment.js";
 
 // A supplied ResolvedIntegrationEnvironment is the only authority for the
@@ -689,13 +689,13 @@ export function buildModelSection(
     resolvedModel = configModel;
     modelSource = "config";
   } else {
-    resolvedModel = resolveDefaultModel(env) ?? LOCAL_FIRST_DEFAULT_MODEL;
+    resolvedModel = resolveDefaultModel(env) ?? DEFAULT_LOCAL_MODEL;
     // `resolveDefaultModel` returns the local default unless an ambient cloud
     // credential was inferred (only possible when local-only is off).
-    modelSource = !localOnly && resolvedModel !== LOCAL_FIRST_DEFAULT_MODEL ? "cloud" : "local-default";
+    modelSource = !localOnly && resolvedModel !== DEFAULT_LOCAL_MODEL ? "cloud" : "local-default";
   }
 
-  // Next-step guidance must NOT lead a local-first user toward cloud vendors.
+  // Next-step guidance must NOT lead a local-only user toward cloud vendors.
   // On the local default it is a soft "customize" nudge; cloud discovery stays
   // available but secondary.
   const nextStep = modelSource === "local-default"

@@ -12,7 +12,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { LOCAL_FIRST_DEFAULT_MODEL, resolveNotesDir } from "@muse/autoconfigure";
+import { DEFAULT_LOCAL_MODEL, resolveNotesDir } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
 import { isNoInput } from "./cli-context.js";
@@ -147,7 +147,7 @@ async function gatherState(io: ProgramIO): Promise<OnboardingState> {
     ollamaReachable = true;
     installedModels = probeResult.models.map((model) => model.name);
   }
-  const chatModel = (env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL ?? LOCAL_FIRST_DEFAULT_MODEL).replace(/^ollama\//u, "");
+  const chatModel = (env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL ?? DEFAULT_LOCAL_MODEL).replace(/^ollama\//u, "");
   const embedModel = env.MUSE_EPISODIC_RECALL_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
   const notesDir = resolveNotesDir(env as Record<string, string | undefined>);
   const noteFileCount = countCorpusFiles(notesDir);

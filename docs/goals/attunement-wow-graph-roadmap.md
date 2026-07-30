@@ -812,7 +812,8 @@ Every source-changing slice must preserve:
 - deterministic projection where deterministic evidence exists;
 - LLM extraction isolated behind a replaceable port and never treated as authority;
 - portable export, migration, forget cascade, and rollback;
-- provider-neutral core and local-first default.
+- provider-neutral core, explicit deployment placement, and a fully supported opt-in
+  local-only posture.
 
 ## Dogfood loop
 

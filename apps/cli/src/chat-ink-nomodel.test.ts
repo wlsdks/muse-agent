@@ -16,7 +16,7 @@ const { runChatInk } = await import("./chat-ink.js");
 describe("runChatInk — no-model first run emits the wired onboarding message", () => {
   afterEach(() => { vi.restoreAllMocks(); process.exitCode = 0; });
 
-  it("writes the local-first onboarding screen (not the old generic error) to stderr", async () => {
+  it("writes the provider-neutral onboarding screen (not the old generic error) to stderr", async () => {
     let captured = "";
     vi.spyOn(process.stderr, "write").mockImplementation(((chunk: string | Uint8Array) => {
       captured += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");

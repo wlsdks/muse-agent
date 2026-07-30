@@ -18,7 +18,7 @@
 
 import { totalmem } from "node:os";
 
-import { LOCAL_FIRST_DEFAULT_MODEL } from "@muse/autoconfigure";
+import { DEFAULT_LOCAL_MODEL } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
 import type { ConfigCommandHelpers } from "./commands-config.js";
@@ -27,11 +27,11 @@ import type { ProgramIO } from "./program.js";
 
 /**
  * Muse's pinned zero-config local model (the bare Ollama tag of
- * `LOCAL_FIRST_DEFAULT_MODEL`). When it is already pulled, `muse setup local`
+ * `DEFAULT_LOCAL_MODEL`). When it is already pulled, `muse setup local`
  * credits it as the ready recommendation instead of pushing a multi-GB
  * power-tier download — kept in sync with the runtime default it mirrors.
  */
-export const DOCUMENTED_DEFAULT_TAG = LOCAL_FIRST_DEFAULT_MODEL.replace(/^ollama\//u, "");
+export const DOCUMENTED_DEFAULT_TAG = DEFAULT_LOCAL_MODEL.replace(/^ollama\//u, "");
 
 const DOCUMENTED_DEFAULT_PRESET: LocalModelPreset = {
   approxSizeGb: 8.1,

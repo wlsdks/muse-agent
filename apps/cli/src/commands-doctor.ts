@@ -41,7 +41,7 @@ import { isRecord , errorMessage} from "@muse/shared";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { buildMessagingRegistry, describeOfficialMcpPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveActionLogFile, resolveBriefingSidecarFile, resolveContactsFile, resolveDefaultModel, resolveEpisodesFile, resolveIntegrationEnvironment, resolveLearningPauseFile, resolveMuseCliConfigFilePath, resolveNotesDir, resolveRecallHitsFile, resolveReflectionsFile, resolveUserMemoryAutoExtractOutcomesFile, resolveWeaknessesFile, type MuseEnvironment, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
+import { buildMessagingRegistry, describeOfficialMcpPosture, DEFAULT_LOCAL_MODEL, mergeModelKeysFromFile, parseBoolean, resolveActionLogFile, resolveBriefingSidecarFile, resolveContactsFile, resolveDefaultModel, resolveEpisodesFile, resolveIntegrationEnvironment, resolveLearningPauseFile, resolveMuseCliConfigFilePath, resolveNotesDir, resolveRecallHitsFile, resolveReflectionsFile, resolveUserMemoryAutoExtractOutcomesFile, resolveWeaknessesFile, type MuseEnvironment, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
 import { isLearningPaused, isMasteredWeakness, readBackgroundProcesses, readEpisodes, readPendingLearnEvents, readSchedulerPauseState, readWeaknesses, resolveLearnQueueFile, selectDevFixableWeaknesses, type DevFixableWeakness, type WeaknessEntry } from "@muse/stores";
 import { readUserMemoryAutoExtractHealth } from "@muse/memory";
 import { isLocalOnlyEnabled } from "@muse/model";
@@ -415,7 +415,7 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
         try {
           response = await helpers.apiRequest(io, command, path);
         } catch (error) {
-          // Local-first: a CLI-only user has no API daemon running, so the
+          // CLI-only mode: a user may have no API daemon running, so the
           // default doctor must not dead-end. Fall back to the local probe
           // (read-only diagnostics) exactly as the read commands do.
           if (isApiUnreachable(error)) {
@@ -561,7 +561,7 @@ async function runGroundingDoctor(io: ProgramIO): Promise<"ok" | "fail" | "unver
     return "unverified";
   }
 
-  const model = process.env.MUSE_DEFAULT_MODEL ?? process.env.MUSE_MODEL ?? LOCAL_FIRST_DEFAULT_MODEL;
+  const model = process.env.MUSE_DEFAULT_MODEL ?? process.env.MUSE_MODEL ?? DEFAULT_LOCAL_MODEL;
   process.env.MUSE_DEFAULT_MODEL ??= model;
   const modelProvider = createMuseRuntimeAssembly().modelProvider;
   if (!modelProvider) {

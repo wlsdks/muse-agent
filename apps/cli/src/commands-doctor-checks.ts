@@ -2,7 +2,7 @@ import { isCalibratedEmbedder, resolveRecallConfidentAt } from "@muse/agent-core
 import {
   evaluateLocalOnlyPosture,
   evaluateWebEgressStatus,
-  LOCAL_FIRST_DEFAULT_MODEL,
+  DEFAULT_LOCAL_MODEL,
   parseBoolean,
   resolveCheckpointsDir,
   resolveDefaultModel,
@@ -238,7 +238,7 @@ export function modelEnvCheck(env: Record<string, string | undefined>): LocalChe
   }
   if (parseBoolean(env.MUSE_LOCAL_ONLY, false)) {
     return {
-      detail: `${resolveDefaultModel(env) ?? LOCAL_FIRST_DEFAULT_MODEL} (local-only on — ambient cloud keys ignored)`,
+      detail: `${resolveDefaultModel(env) ?? DEFAULT_LOCAL_MODEL} (local-only on — ambient cloud keys ignored)`,
       name: "model env",
       status: "ok"
     };
@@ -249,7 +249,7 @@ export function modelEnvCheck(env: Record<string, string | undefined>): LocalChe
   ].find((k) => (env[k] ?? "").trim().length > 0);
   return anyKey
     ? { detail: `inferred from ${anyKey} (cloud allowed — set MUSE_LOCAL_ONLY=true to force local)`, name: "model env", status: "warn" }
-    : { detail: `${LOCAL_FIRST_DEFAULT_MODEL} (local default — no cloud key set)`, name: "model env", status: "ok" };
+    : { detail: `${DEFAULT_LOCAL_MODEL} (local default — no cloud key set)`, name: "model env", status: "ok" };
 }
 
 /**
@@ -260,7 +260,7 @@ export function modelEnvCheck(env: Record<string, string | undefined>): LocalChe
  * not-pulled model.
  */
 export function visionModelCheck(env: Record<string, string | undefined>): LocalCheck {
-  const sessionModel = resolveDefaultModel(env) ?? LOCAL_FIRST_DEFAULT_MODEL;
+  const sessionModel = resolveDefaultModel(env) ?? DEFAULT_LOCAL_MODEL;
   const visionModel = resolveVisionModel({ env, sessionModel });
   const detail = visionModel === sessionModel
     ? `${visionModel} (same as chat model)`

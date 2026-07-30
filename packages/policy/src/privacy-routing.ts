@@ -1,5 +1,5 @@
 /**
- * Privacy-tiered routing policy. Muse is local-first for privacy: a request
+ * Privacy-tiered routing policy. Muse keeps provider placement explicit: a request
  * that carries ANY personal payload must never ride a cloud request. This is
  * a fail-close SECURITY classification — deterministic code, never a model
  * judgment — so "unsure" always resolves to `"personal"` / `"local"`.

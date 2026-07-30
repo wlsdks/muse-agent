@@ -46,14 +46,14 @@ export function resolveAnswerTemperature(env: MuseEnvironment): number {
 import type { MuseEnvironment } from "./index.js";
 
 /**
- * The zero-config local model for a local-first install (Ollama + Gemma 4 12B).
+ * The zero-config local model fallback (Ollama + Gemma 4 12B).
  * Chosen over qwen3:8b on measured edge: stricter grounding (faithfulness 0.94
  * vs 0.88 on the held-out corpus) AND native multimodal (vision / document /
  * OCR / chart) — the future capability unlock — at the cost of ~38% slower
  * generation and a tool-selection gap that Muse's tool descriptions are being
  * tuned to close. Still fully local (Ollama), so the local-only stance holds.
  */
-export const LOCAL_FIRST_DEFAULT_MODEL = "ollama/gemma4:12b";
+export const DEFAULT_LOCAL_MODEL = "ollama/gemma4:12b";
 
 /**
  * The zero-config VISION model. Muse's image surface (`muse ask --image`,
@@ -68,16 +68,16 @@ export const LOCAL_FIRST_DEFAULT_MODEL = "ollama/gemma4:12b";
  * (consistent EMPTY output on the constrained calendar/event schema — BOTH the
  * English AND Korean flyer, 3/3, so not a Hangul gap) + 5/5 grounding. gemma4
  * ALSO already handles the Korean receipt/flyer cleanly. So the flip is NOT
- * warranted: gemma4 stays the vision default and this equals `LOCAL_FIRST_DEFAULT_MODEL`.
+ * warranted: gemma4 stays the vision default and this equals `DEFAULT_LOCAL_MODEL`.
  *
- * Keep it EQUAL to `LOCAL_FIRST_DEFAULT_MODEL` (a no-op swap) unless a future
+ * Keep it EQUAL to `DEFAULT_LOCAL_MODEL` (a no-op swap) unless a future
  * measurement shows a different local model wins WITHOUT regressing any surface —
  * then a one-line change here flips it. The auto-swap only fires when the chat
  * default IS the local default (an explicit `--model` / cloud model is respected
  * as-is) and fails soft to the chat model when the chosen model isn't pulled.
  * The `MUSE_VISION_MODEL` env is the always-available manual override.
  */
-export const LOCAL_FIRST_VISION_MODEL = LOCAL_FIRST_DEFAULT_MODEL;
+export const DEFAULT_LOCAL_VISION_MODEL = DEFAULT_LOCAL_MODEL;
 
 function ollamaTag(modelId: string): string | undefined {
   return modelId.startsWith("ollama/") ? modelId.slice("ollama/".length) : undefined;
@@ -90,7 +90,7 @@ function ollamaTag(modelId: string): string | undefined {
  *
  *  1. Explicit `MUSE_VISION_MODEL` wins (any provider — the escape hatch).
  *  2. Else, when the session model is the LOCAL chat default, swap to
- *     `LOCAL_FIRST_VISION_MODEL` (the measured best local vision model). An
+ *     `DEFAULT_LOCAL_VISION_MODEL` (the measured best local vision model). An
  *     explicit `--model`/`MUSE_MODEL` or a cloud model is RESPECTED unchanged —
  *     we never override a deliberate model choice for vision.
  *  3. FAIL-SOFT: if the chosen vision model differs from the session model, is an
@@ -108,7 +108,7 @@ export function resolveVisionModel(params: {
 }): string {
   const { sessionModel, env, availableModels } = params;
   const explicit = parseOptionalString(env.MUSE_VISION_MODEL);
-  const desired = explicit ?? (sessionModel === LOCAL_FIRST_DEFAULT_MODEL ? LOCAL_FIRST_VISION_MODEL : sessionModel);
+  const desired = explicit ?? (sessionModel === DEFAULT_LOCAL_MODEL ? DEFAULT_LOCAL_VISION_MODEL : sessionModel);
   if (desired === sessionModel) {
     return sessionModel;
   }
@@ -164,7 +164,7 @@ function classifyModelRoute(model: string): "local" | "cloud" {
  *     straight through to the session model.
  *  3. The session model.
  *
- * LOCAL-FIRST invariant (fail-close): an auxiliary knob can select a model
+ * LOCAL-ONLY invariant (fail-close): an auxiliary knob can select a model
  * for a task the operator doesn't think of as "the chat model", so it is an
  * easy place to accidentally leak a personal-context task to the cloud
  * (e.g. `MUSE_AUX_VISION_MODEL=gemini/...` on a photo of a private document).
@@ -287,7 +287,7 @@ export function resolveDefaultModel(env: MuseEnvironment): string | undefined {
     return explicit;
   }
   if (parseBoolean(env.MUSE_LOCAL_ONLY, false)) {
-    return LOCAL_FIRST_DEFAULT_MODEL;
+    return DEFAULT_LOCAL_MODEL;
   }
   const configured = readConfiguredDefaultModel(env);
   if (configured) {
@@ -297,7 +297,7 @@ export function resolveDefaultModel(env: MuseEnvironment): string | undefined {
   // credential, but ALWAYS fall back to the local default so a fresh box with no
   // cloud key (and no OLLAMA_BASE_URL) still boots on gemma4:12b — never a
   // no-default-model dead end.
-  return inferDefaultModelFromCredentials(env) ?? LOCAL_FIRST_DEFAULT_MODEL;
+  return inferDefaultModelFromCredentials(env) ?? DEFAULT_LOCAL_MODEL;
 }
 
 // Cache keyed by resolved config path so hot paths don't re-stat the file on

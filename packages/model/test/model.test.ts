@@ -2115,7 +2115,7 @@ describe("readFiniteNumber (provider usage-token boundary)", () => {
   });
 });
 
-describe("model capability presets (local-first invariants)", () => {
+describe("model capability presets (local-provider invariants)", () => {
   it("the local preset declares reasoning/vision OFF and local/free, but inherits tool-calling, streaming, and structured output", async () => {
     const { localModelCapabilities, defaultRemoteModelCapabilities } = await import("../src/provider-shared.js");
     const local = localModelCapabilities();

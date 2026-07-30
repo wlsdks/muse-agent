@@ -216,7 +216,7 @@ export function withGroundingReceipt(
   const label = korean ? "노트" : "from";
   let receipt = `${answer}\n\n📎 ${label}: ${sources.join(", ")}`;
   // POSITIVE corroboration signal (default-on, parity with the ask wedge): a claim
-  // backed by ≥2 INDEPENDENT sources is the realistic local-first hedge against
+  // backed by ≥2 INDEPENDENT sources is the realistic evidence hedge against
   // GROUNDED≠TRUE (a single poisoned/stale note can't fake independent agreement).
   // Non-noisy — fires only on the multi-source minority, rewards corroboration
   // rather than penalizing a legitimately single-source fact.

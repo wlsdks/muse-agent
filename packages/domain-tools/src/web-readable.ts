@@ -2,7 +2,7 @@
  * Minimal, dependency-free HTML → readable-text extraction for
  * `muse.web.read`. A local model grounds far better on clean prose than
  * on raw markup, and pulling in a DOM (jsdom + readability) for a
- * single-user local assistant is a heavy, non-local-first dependency.
+ * single-user assistant is a heavy optional dependency.
  * This strips the noise (script/style/nav chrome), turns block
  * boundaries into newlines, and decodes the common entities — enough to
  * answer "summarize this page" without a browser.

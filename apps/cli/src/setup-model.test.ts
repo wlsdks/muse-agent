@@ -70,7 +70,7 @@ describe("SETUP_MODEL_PROVIDER_SPECS", () => {
   it("every spec.suggestedModel matches what resolveDefaultModel picks when only that provider's env key is set", () => {
     for (const spec of SETUP_MODEL_PROVIDER_SPECS) {
       // Cloud-credential inference is gated behind the local-only opt-out;
-      // local-first ignores ambient cloud keys by default.
+      // local-only mode ignores ambient cloud keys.
       const env: Record<string, string> = { MUSE_LOCAL_ONLY: "false", [spec.envKey]: "test-token" };
       const inferred = resolveDefaultModel(env);
       expect(inferred, `${spec.id} default-model contract drift`).toBe(spec.suggestedModel);

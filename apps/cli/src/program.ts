@@ -155,16 +155,16 @@ export { defaultConfigPath } from "./program-helpers.js";
  * The "first 60 seconds" quickstart block appended to `muse --help` /
  * the piped (non-TTY) first screen. The discovery surface for someone
  * who runs `muse` in a script / CI / `muse | cat` — commander's bare
- * command list alone doesn't say what to DO first or that Muse is
- * local-first. Every line is a REAL command (no fabricated guidance),
- * leads with the local-by-default identity, and orders the steps by
- * fastest-path-to-value. Pure string → directly testable.
+ * command list alone doesn't say what to DO first or that Muse supports
+ * multiple deployment modes. Every line is a REAL command (no fabricated
+ * guidance) and orders the steps by fastest-path-to-value. Pure string →
+ * directly testable.
  */
 export function museQuickstartHelp(): string {
   return [
-    "Quickstart (local-first — your data stays on your machine):",
-    "  muse                  start chatting with your local model",
-    "  muse setup local      install / point at a local Ollama model",
+    "Quickstart (choose your model and privacy posture):",
+    "  muse                  start chatting with your configured model",
+    "  muse setup            choose a local, cloud, or compatible model",
     "  muse remember \"...\"    teach Muse a fact or preference about you",
     "  muse status           see what Muse knows + your privacy posture",
     "",
@@ -172,7 +172,7 @@ export function museQuickstartHelp(): string {
     "  muse today                                  morning briefing — tasks, calendar, notes",
     "  muse chats                                  list + resume past conversations",
     "  muse scheduler add \"...\" --every \"daily 9am\"  a recurring prompt, no cron syntax",
-    "Muse runs on a LOCAL model by default; cloud egress is refused unless you opt out.",
+    "Local and cloud providers are supported; MUSE_LOCAL_ONLY=true refuses cloud egress.",
     "Run `muse update` to pull the latest Muse; `muse <command> --help` for any command's options."
   ].join("\n");
 }

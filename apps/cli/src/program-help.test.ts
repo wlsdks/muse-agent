@@ -41,9 +41,10 @@ describe("formatUnknownCommand — typo nudge vs discovery on-ramp", () => {
 });
 
 describe("MUSE_TAGLINE (first-screen identity)", () => {
-  it("states the learns-you, local-first identity rather than a generic label", () => {
+  it("states the learns-you, provider-neutral identity rather than a generic label", () => {
     expect(MUSE_TAGLINE.toLowerCase()).toContain("learns you");
-    expect(MUSE_TAGLINE.toLowerCase()).toContain("local-first");
+    expect(MUSE_TAGLINE.toLowerCase()).toContain("any model");
+    expect(MUSE_TAGLINE.toLowerCase()).toContain("under your control");
     // the stale generic self-description must not come back
     expect(MUSE_TAGLINE).not.toContain("Model-agnostic");
   });
@@ -62,18 +63,18 @@ describe("muse --help header (wiring)", () => {
 describe("museQuickstartHelp", () => {
   it("lists the real fastest-path commands in value order", () => {
     const help = museQuickstartHelp();
-    for (const cmd of ["muse setup local", "muse remember", "muse status"]) {
+    for (const cmd of ["muse setup", "muse remember", "muse status"]) {
       expect(help).toContain(cmd);
     }
     // setup-before-status ordering (you configure a model before the dashboard means anything)
-    expect(help.indexOf("muse setup local")).toBeLessThan(help.indexOf("muse status"));
+    expect(help.indexOf("muse setup")).toBeLessThan(help.indexOf("muse status"));
   });
 
-  it("leads with the local-first identity, not a cloud default", () => {
+  it("presents provider choice while preserving the strict local-only posture", () => {
     const help = museQuickstartHelp();
-    expect(help).toContain("local-first");
-    expect(help).toMatch(/LOCAL model by default/);
-    expect(help).toContain("cloud egress is refused");
+    expect(help).toContain("choose your model and privacy posture");
+    expect(help).toContain("Local and cloud providers are supported");
+    expect(help).toContain("MUSE_LOCAL_ONLY=true refuses cloud egress");
   });
 
   it("lists the daily-use trio + muse update, and stays a tight funnel (<=12 lines)", () => {
@@ -92,8 +93,8 @@ describe("muse --help first screen (wiring)", () => {
     const program = createProgram(io);
     program.outputHelp();
     const text = out.join("");
-    expect(text).toContain("Quickstart (local-first");
-    expect(text).toContain("muse setup local");
+    expect(text).toContain("Quickstart (choose your model");
+    expect(text).toContain("muse setup");
   });
 });
 

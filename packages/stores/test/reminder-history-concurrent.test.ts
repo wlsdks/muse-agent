@@ -46,7 +46,7 @@ describe("appendReminderHistory under concurrency", () => {
 
   it("preserves an external delivery committed while this process waits for the file lock", async () => {
     const file = freshFile();
-    await appendReminderHistory(file, entry("local-first"));
+    await appendReminderHistory(file, entry("local-one"));
     await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
     const localDelivery = appendReminderHistory(file, entry("local-second"));
     await sleep(300);
@@ -55,7 +55,7 @@ describe("appendReminderHistory under concurrency", () => {
     await unlink(`${file}.lock`);
 
     await localDelivery;
-    expect((await readReminderHistory(file)).map(({ reminderId }) => reminderId)).toEqual(["local-second", "external", "local-first"]);
+    expect((await readReminderHistory(file)).map(({ reminderId }) => reminderId)).toEqual(["local-second", "external", "local-one"]);
   });
 });
 

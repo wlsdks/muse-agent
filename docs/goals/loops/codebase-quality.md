@@ -470,13 +470,13 @@ ratchet: testFiles 944 · fabrication 0 · groundedSurfaces 27 · commands-docto
   Rolled back (git reset --hard). (real) Decomposed the commands-doctor env-posture trio — `LocalCheck`
   interface + `modelEnvCheck` + `localOnlyCheck` → the fire-15 sibling `commands-doctor-checks.ts`;
   re-exported (tests import them from commands-doctor); dropped the now-orphaned `evaluateLocalOnlyPosture`
-  import (parseBoolean/resolveDefaultModel/LOCAL_FIRST_DEFAULT_MODEL stay — used elsewhere).
+  import (parseBoolean/resolveDefaultModel/DEFAULT_LOCAL_MODEL stay — used elsewhere).
 - **Why:** drill validates the maker≠judge control (3rd drill, all 3 caught). The doctor decompose
   diversifies off the recent compose@recall streak + continues shrinking the doctor god-file (980→939).
 - **Review point:** drill judge FAIL confirmed on the bad slice (load-bearing security WHY, not rot);
   real slice 4b judge — classifier bodies byte-identical, re-export keeps commands-doctor.test green
   (2590 cli tests), LocalCheck now sibling-owned (no external importer), evaluateLocalOnlyPosture orphan
-  removed cleanly, parseBoolean/resolveDefaultModel/LOCAL_FIRST_DEFAULT_MODEL still used so kept.
+  removed cleanly, parseBoolean/resolveDefaultModel/DEFAULT_LOCAL_MODEL still used so kept.
 - **Risk:** low — pure relocation; modelEnvCheck's local-only privacy WHY JSDoc moved verbatim with it.
 
 ## fire 26 · 2026-06-13 · loop-creator v1.14.0 · f3080fbb

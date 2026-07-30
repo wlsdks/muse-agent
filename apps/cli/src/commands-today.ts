@@ -223,7 +223,7 @@ Examples:
           // happening, but never fail the command.
           if (isApiUnreachable(cause)) {
               // Only warn when the user EXPLICITLY pointed Muse at an API
-              // (--api-url / MUSE_API_URL). The default is local-first with no
+              // (--api-url / MUSE_API_URL). The default is file-backed with no
               // daemon, so "API not reachable" on every plain `muse today` reads
               // as broken to the CLI-only user the product targets — silently use
               // the on-disk briefing instead.
@@ -579,7 +579,7 @@ async function fetchRemoteBriefing(
 
 /**
  * True only when the user EXPLICITLY pointed Muse at an API endpoint
- * (`--api-url` flag or `MUSE_API_URL`). Local-first is the default and runs with
+ * (`--api-url` flag or `MUSE_API_URL`). File-backed mode is the default and runs with
  * no daemon, so a plain `muse today` falling back to the on-disk briefing is the
  * EXPECTED path — warning "API not reachable" there reads as broken. Pure +
  * exported for direct coverage.

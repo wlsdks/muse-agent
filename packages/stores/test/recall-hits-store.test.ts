@@ -77,7 +77,7 @@ describe("recall-hits store", () => {
     });
 
     it("preserves an external hit committed while this process waits for the file lock", async () => {
-      await recordRecallHits(file, [{ key: "local-first" }], 1_000);
+      await recordRecallHits(file, [{ key: "local-one" }], 1_000);
       await writeFile(`${file}.lock`, "external writer", { flag: "wx" });
       const localHit = recordRecallHits(file, [{ key: "local-second" }], 3_000);
       await sleep(300);
@@ -86,7 +86,7 @@ describe("recall-hits store", () => {
       await unlink(`${file}.lock`);
 
       await localHit;
-      expect((await readRecallHits(file)).map(({ key }) => key)).toEqual(["local-first", "external", "local-second"]);
+      expect((await readRecallHits(file)).map(({ key }) => key)).toEqual(["local-one", "external", "local-second"]);
     });
   });
 

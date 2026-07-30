@@ -22,11 +22,13 @@ Muse spans one person's daily life and work. In plain language, Attunement means
 how to fit help into one person's life**. It is not another word for memory, personality,
 productivity tracking, or sending more notifications.
 
-The target operating mode is a consented, local, 24-hour personal continuity recorder over
+The target operating mode is consented, user-controlled, 24-hour personal continuity over
 approved sources. Muse should continuously retain the event and relationship structure
 needed to resume life and work, while pause, source scope, retention, export, and physical
-forget remain visible owner controls. It does not mean recording every screen byte or
-shipping personal activity to an external Graph DB.
+forget remain visible owner controls. Storage and processing placement must be explicit:
+local files, self-hosted services, and selected cloud providers are deployment choices,
+not Muse's identity. This does not mean recording every screen byte or silently shipping
+personal activity to an external service.
 
 ## The user need
 
@@ -141,8 +143,23 @@ improve its timing; they are not prerequisites for testing whether the pack is u
    support it. “You seem stuck” without evidence is forbidden.
 4. **The user keeps authorship.** Muse removes mechanical friction; consequential choices
    stay with the user. Third-party sends remain draft-first and fail-close.
-5. **Observation stays controllable.** Observe is local-first, visible, pausable,
-   inspectable, and forgettable. Sensitive sources are opt-in.
+5. **Observation stays controllable.** Observe is data-minimized, visible, pausable,
+   inspectable, and forgettable. Sensitive sources and any external processing are opt-in.
+
+## Provider and deployment contract
+
+Muse is provider-neutral and deployment-flexible. The core reasoning, approval, evidence,
+and adaptation contracts do not depend on a particular model vendor, storage vendor, or
+execution location. Provider-specific behavior stays behind adapters.
+
+- Local file stores and Ollama remain fully supported deployment choices.
+- Cloud and self-hosted providers are first-class choices when the owner configures them.
+- `MUSE_LOCAL_ONLY=true` remains a strict opt-in privacy posture that fails closed before
+  prohibited egress; it is a safety feature, not the product tagline.
+- Every external data path must state what leaves the device, which provider receives it,
+  and which owner control disables or revokes it.
+- Multi-device sync and hosted personal storage are not shipped claims until their
+  encryption, identity, conflict, deletion, export, and recovery contracts pass a gate.
 
 ## Current, experimental, roadmap
 

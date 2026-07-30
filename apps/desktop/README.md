@@ -82,7 +82,7 @@ swift run MuseDesktop --render out.png 24   # render the Muse sprite to a PNG (n
 ## Layout
 
 - `Sources/MuseDesktopCore/` — the headless, unit-tested bridge to the `muse`
-  CLI (`MuseBridge`: builds the local-first invocation, runs it, cleans output).
+  CLI (`MuseBridge`: builds the file-backed invocation, runs it, cleans output).
 - `Sources/MuseDesktop/` — the AppKit app: `FloatingPanel` (the transparent,
   always-on-top, draggable window), `CharacterView` (the placeholder pixel
   mascot with idle/listening/thinking/speaking states), `main` (the accessory

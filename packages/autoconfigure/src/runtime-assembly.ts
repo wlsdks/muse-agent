@@ -1321,7 +1321,7 @@ function buildAgentRuntime(params: {
     ? createAgentRuntime({
       agentSpecResolver,
       // Persist execution checkpoints so a crashed/interrupted run can resume from
-      // its last step (the langgraph fault-tolerance gap). Local-first uses a file
+      // its last step (the langgraph fault-tolerance gap). File-backed mode uses a file
       // store (the no-DB default previously persisted NOTHING — every checkpoint
       // was a silent no-op); the server keeps its DB path untouched.
       ...(db ? {} : {

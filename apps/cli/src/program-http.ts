@@ -169,7 +169,7 @@ export function isApiUnreachable(error: unknown): boolean {
 }
 
 /**
- * Local-first reliability for an actuator subcommand: run `api()`, but when the
+ * File-backed reliability for an actuator subcommand: run `api()`, but when the
  * Muse API server isn't running, transparently fall back to `local()` — the
  * local store is the source of truth on the default (server-less) setup. `--local`
  * skips the API entirely; ONLY a genuine "unreachable" (connection refused)

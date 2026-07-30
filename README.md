@@ -8,14 +8,14 @@
 
 <p align="center">
   <b>A personal AI that learns how you live and work—and gets better at knowing when and how to help.</b><br/>
-  <i>Local-first, provider-neutral, and honest about what is not built yet.</i>
+  <i>Provider-neutral, deployment-flexible, and honest about what is not built yet.</i>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg" /></a>
   <a href="package.json"><img alt="Node ≥ 22.12" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-43853d.svg" /></a>
   <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/built%20with-TypeScript-3178c6.svg" /></a>
-  <a href="#what-muse-will-not-do-boundaries"><img alt="Local-first" src="https://img.shields.io/badge/privacy-local--first-6f42c1.svg" /></a>
+  <a href="#providers-and-deployment-modes"><img alt="Provider-neutral" src="https://img.shields.io/badge/architecture-provider--neutral-6f42c1.svg" /></a>
   <a href="https://ollama.com"><img alt="Runs on Ollama" src="https://img.shields.io/badge/runs%20on-Ollama-000000.svg" /></a>
   &nbsp;·&nbsp; <b>English</b>
   &nbsp;·&nbsp; <a href="README.ko.md">한국어</a>
@@ -25,10 +25,11 @@
 
 Muse is a continuing personal agent for one person's life and work, not only a work assistant. Its north star is **Attunement**: learning when help fits, when quiet is better, and whether the last suggestion actually helped.
 
-The destination is consented, local 24-hour continuity: approved activity sources feed
+The destination is consented, user-controlled 24-hour continuity: approved activity sources feed
 Muse's own agent-native temporal/provenance graph, with pause, retention, export, and
-forget controls. RAG can find likely context; MAG must prove the exact thread,
-time, change, source, and policy relation without requiring an external Graph DB.
+forget controls. Storage and processing location remain explicit deployment choices.
+RAG can find likely context; MAG must prove the exact thread, time, change, source,
+and policy relation without requiring a particular hosted or local Graph DB.
 
 The first proof point is **Personal Continuity**. You choose a life or work thread and link its exact local tasks and notes; Muse can then help you resume it without reconstructing everything. Automatic thread detection, observation, and timing remain roadmap work.
 
@@ -212,7 +213,7 @@ muse proactive watch --user me --interval 60
 - **Guarded action:** fail-close guards, fail-open hooks, explicit approvals, untrusted tool-output handling, bounded loops, timeouts, and traces.
 - **One runtime:** CLI, API/web chat, messaging, scheduled jobs, and delegated workers share the same composition root.
 - **MCP both ways:** built-in local `muse.*` tools plus `muse mcp serve` for read-only grounded recall, search, and user-model access from other agents.
-- **Local-first operation:** file-backed personal stores work without a cloud account; strict `MUSE_LOCAL_ONLY=true` refuses cloud model providers.
+- **Deployment-flexible privacy:** file-backed personal stores work without a cloud account, local and cloud model providers share one adapter boundary, and strict `MUSE_LOCAL_ONLY=true` remains an opt-in fail-close mode.
 
 ## What Muse will not do (boundaries)
 
@@ -226,11 +227,11 @@ See [outbound safety](.claude/rules/outbound-safety.md) and the [Attunement desi
 
 ---
 
-## 🧩 Providers and local path
+## 🧩 Providers and deployment modes
 
 Select a provider with `MUSE_MODEL=<provider>/<model>` and its normal API-key environment variable. `MUSE_MODEL_PROVIDER_ID`, `MUSE_MODEL_API_KEY`, and `MUSE_MODEL_BASE_URL` provide explicit overrides. Cloud providers are incompatible with `MUSE_LOCAL_ONLY=true`.
 
-Free, offline path with Ollama:
+Local-only is a supported privacy posture, not Muse's product identity. A free, offline path with Ollama:
 
 ```bash
 brew install ollama

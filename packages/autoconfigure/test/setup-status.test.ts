@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { LOCAL_FIRST_DEFAULT_MODEL, resolveDefaultModel } from "../src/autoconfigure-model-provider.js";
+import { DEFAULT_LOCAL_MODEL, resolveDefaultModel } from "../src/autoconfigure-model-provider.js";
 import { buildModelSection, collectSetupStatusJson, detectTailscaleBinaryPresent, evaluateLocalOnlyPosture, evaluateWebEgressStatus, readActuatorReadiness, readConfigDefaultModel, readMessagingProviderState, readModelKeyState, readWebSearchEnvSnapshot, resolveEmailSetupStatus, resolveRemoteSetupStatus, resolveVoiceStatus } from "../src/setup-status.js";
 import { resolveIntegrationEnvironment } from "../src/integration-environment.js";
 
@@ -256,12 +256,12 @@ describe("buildModelSection — model section mirrors `muse doctor`'s resolver",
     // configured" while doctor reported the local default as ready.
     const section = buildModelSection({}, { keysFile: KEYS_FILE, providerKeys: [] });
     expect(section.status).toBe("ok");
-    expect(section.resolvedModel).toBe(LOCAL_FIRST_DEFAULT_MODEL);
+    expect(section.resolvedModel).toBe(DEFAULT_LOCAL_MODEL);
     expect(section.resolvedModel).toBe("ollama/gemma4:12b");
     expect(section.modelSource).toBe("local-default");
     // muse_model stays env-truthful — it is NOT set from the default.
     expect(section.muse_model).toBeUndefined();
-    // The next step must not push cloud vendors on a local-first user; it is a
+    // The next step must not push cloud vendors on a local-only user; it is a
     // soft customize nudge that leads with the local path.
     expect(section.nextStep).toContain("local default");
     expect(section.nextStep).not.toMatch(/^Run `muse setup model`/u);
@@ -298,7 +298,7 @@ describe("buildModelSection — model section mirrors `muse doctor`'s resolver",
       { keysFile: KEYS_FILE, providerKeys: ["gemini (env)"] }
     );
     expect(section.modelSource).toBe("local-default");
-    expect(section.resolvedModel).toBe(LOCAL_FIRST_DEFAULT_MODEL);
+    expect(section.resolvedModel).toBe(DEFAULT_LOCAL_MODEL);
   });
 
   it("explicit MUSE_MODEL wins over a persisted config default", () => {

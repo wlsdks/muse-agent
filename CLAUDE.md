@@ -9,9 +9,10 @@ first vertical remains user-chosen Personal Continuity with exact Muse-local art
 browser history. Work Resumption is one specialized mode, not the product
 boundary.
 
-Provider/MCP-neutrality, local-first ownership, deterministic grounding, correction, and
-draft-first action are the TRUST FLOOR. Muse can use cloud or local models; `MUSE_LOCAL_ONLY=true`
-explicitly refuses cloud egress in code. Supported grounded personal-data paths must cite their
+Provider/MCP-neutrality, owner-controlled data placement, deterministic grounding, correction,
+and draft-first action are the TRUST FLOOR. Muse can use cloud, self-hosted, or local models;
+`MUSE_LOCAL_ONLY=true` is a strict opt-in posture that explicitly refuses cloud egress in code.
+Supported grounded personal-data paths must cite their
 sources, lower weak matches, and drop invalid citations — do not claim universal citation coverage
 or fabrication=0, fast uncited chat still has a documented gap. Keep the existing per-surface
 grounding ratchets intact. Observe must be visible, pausable, inspectable, forgettable, and must

@@ -1,5 +1,5 @@
 /**
- * `muse trace` — local-first run inspector ("time-travel debugging"). Reads the
+ * `muse trace` — file-backed run inspector ("time-travel debugging"). Reads the
  * local run-log (.muse/runs/*.jsonl) + per-step checkpoints (.muse/checkpoints) the
  * agent now persists, so you can see — with NO server — WHY a run answered the way
  * it did: the query, the answer, which sources were RETRIEVED at what score, which

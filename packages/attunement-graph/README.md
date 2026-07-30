@@ -1,8 +1,9 @@
 # Muse Attunement Graph
 
-**Muse Attunement Graph (MAG)** is a local-first, agent-native temporal and provenance
-graph. It compiles a small, verified **Working Graph** for one agent decision instead of
-making a model search an unbounded personal knowledge graph.
+**Muse Attunement Graph (MAG)** is a deployment-flexible, agent-native temporal and
+provenance graph. Its current reference store is local and replaceable. MAG compiles a
+small, verified **Working Graph** for one agent decision instead of making a model search
+an unbounded personal knowledge graph.
 
 MAG is designed for the questions a continuing personal agent must answer safely:
 

@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>暮らし方と働き方を学び、いつ、どのように手伝うべきかを少しずつ合わせていくパーソナル AI。</b><br/>
-  <i>ローカルファースト、プロバイダー非依存。そして、まだできないことを曖昧にしません。</i>
+  <i>プロバイダー非依存、柔軟な配置。そして、まだできないことを曖昧にしません。</i>
 </p>
 
 <p align="center">
@@ -136,7 +136,7 @@ muse proactive watch --user me --interval 60
 - **ガードされた操作:** fail-close guard、fail-open hook、明示的 approval、untrusted tool output、loop/timeout 上限、trace。
 - **一つの runtime:** CLI、API/web chat、messaging、scheduled job、delegated worker は同じ composition root を共有します。
 - **双方向 MCP:** built-in <code>muse.*</code> tool と、他の agent に read-only recall/search/user-model access を提供する <code>muse mcp serve</code>。
-- **ローカルファースト:** file-backed personal store は cloud account なしで動作し、<code>MUSE_LOCAL_ONLY=true</code> は cloud model provider を拒否します。
+- **配置に依存しないプライバシー:** file-backed personal store は cloud account なしで動作し、local/cloud model provider は同じ抽象境界を使い、<code>MUSE_LOCAL_ONLY=true</code> はユーザーが選べる fail-close mode です。
 
 ## Muse がしないこと（境界）
 
@@ -148,9 +148,11 @@ muse proactive watch --user me --interval 60
 
 強制される境界は [outbound safety](.claude/rules/outbound-safety.md) と [Attunement 設計](docs/design/attunement.md) を参照してください。
 
-## 🧩 プロバイダーとローカル実行
+## 🧩 プロバイダーと配置モード
 
 <code>MUSE_MODEL=&lt;provider&gt;/&lt;model&gt;</code> と通常の API key 環境変数で provider を選びます。<code>MUSE_MODEL_PROVIDER_ID</code>、<code>MUSE_MODEL_API_KEY</code>、<code>MUSE_MODEL_BASE_URL</code> で明示的に上書きできます。cloud provider と <code>MUSE_LOCAL_ONLY=true</code> は併用できません。
+
+local-only 実行は Muse の製品アイデンティティではなく、ユーザーが選択できる privacy posture です。
 
 Ollama を使う無料・オフライン経路:
 

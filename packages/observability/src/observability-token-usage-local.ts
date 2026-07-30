@@ -1,5 +1,5 @@
 /**
- * Local-first token-usage persistence. The Kysely sink keeps usage in Postgres,
+ * File-backed token-usage persistence. The Kysely sink keeps usage in Postgres,
  * but the DEFAULT product runs local-only with no DB, where usage went to an
  * InMemory sink and died with the process — so `muse cost` (an /api/admin/* wrapper)
  * showed the local user nothing. This sink appends each model call's usage to a

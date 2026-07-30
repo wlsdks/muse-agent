@@ -8102,7 +8102,7 @@ describe("cli program", () => {
     delete process.env.OPENROUTER_API_KEY;
     delete process.env.OLLAMA_BASE_URL;
     // This case tests CLOUD-key inference, which is gated behind the
-    // local-only opt-out (local-first ignores ambient cloud keys by default).
+    // local-only opt-out (the strict posture ignores ambient cloud keys).
     process.env.MUSE_LOCAL_ONLY = "false";
     process.env.MUSE_MODEL_KEYS_FILE = path.join(await mkdtemp(path.join(tmpdir(), "muse-status-modelinf-")), "missing.json");
     try {

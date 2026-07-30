@@ -1,10 +1,10 @@
 /**
- * Local-first robustness audit (#26) — with NO paid-cloud credentials set, does
+ * Local-only robustness audit (#26) — with NO paid-cloud credentials set, does
  * Muse still stand up on local compute only? Unsets every cloud key, builds the
  * runtime assembly, and asserts the default model + embeddings resolve to a
  * LOCAL provider (Ollama / nomic-embed) and nothing hard-requires a paid key.
  *
- *   node apps/cli/scripts/verify-local-first.mjs
+ *   node apps/cli/scripts/verify-local-only.mjs
  *
  * Exit 0 = fully local, 1 = a cloud dependence surfaced, 2 = setup error.
  * No network/model call — pure assembly inspection.
@@ -18,7 +18,7 @@ for (const k of [
   "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY",
   "OPENROUTER_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "COHERE_API_KEY"
 ]) delete process.env[k];
-// Realistic local-first setup: a local Ollama model configured, ZERO cloud keys.
+// Realistic local-only setup: a local Ollama model configured, ZERO cloud keys.
 process.env.MUSE_DEFAULT_MODEL = "ollama/gemma4:12b";
 process.env.HOME = mkdtempSync(path.join(os.tmpdir(), "muse-lf-"));
 
@@ -67,5 +67,5 @@ check("recall embeddings resolve to a non-empty LOCAL embed model (no cloud embe
 check("tool registry stands up locally", (asm.toolRegistry?.list().length ?? 0) > 0, `${asm.toolRegistry?.list().length ?? 0} tools`);
 check("agent runtime available locally", Boolean(asm.agentRuntime));
 
-console.log(fails.length === 0 ? `\nLOCAL-FIRST PASS — Muse stands up fully on local compute with zero cloud credentials` : `\nLOCAL-FIRST GAPS: ${fails.join("; ")}`);
+console.log(fails.length === 0 ? `\nLOCAL-ONLY PASS — Muse stands up fully on local compute with zero cloud credentials` : `\nLOCAL-ONLY GAPS: ${fails.join("; ")}`);
 process.exit(fails.length === 0 ? 0 : 1);

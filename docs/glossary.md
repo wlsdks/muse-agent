@@ -56,8 +56,11 @@ Muse 문서·코드·커밋에서 반복되는 **Muse-고유 용어**의 정의.
   단계를 준비하는 첫 사용자 경험(**roadmap**). 업무·일정·생활 계획을 모두 담을 수 있다.
 - **Muse Work / Work Resumption (업무 복귀)** — Personal Continuity를 업무에 특화해 쓰는 모드.
   Muse 전체가 업무 도우미라는 뜻도, 컴퓨터 전체를 자동 조작한다는 뜻도 아니다.
-- **Local-first** — 개인 store와 로컬 모델 경로를 우선 지원하지만 provider-neutral 선택을 유지한다.
-  “항상 로컬” 보장은 `MUSE_LOCAL_ONLY=true`를 사용한 명시적 자세에서만 주장한다.
+- **Deployment-flexible (배포 방식 유연성)** — 로컬, self-hosted, cloud provider를 동등한 adapter
+  경계 뒤에 두고 저장·처리 위치를 사용자가 명시적으로 선택한다. 아직 구현되지 않은 sync나 hosted
+  storage를 뜻하지 않는다.
+- **Local-only mode (로컬 전용 모드)** — Muse의 제품 정체성이 아니라 사용자가 선택하는 강한
+  프라이버시 자세다. “항상 로컬” 보장은 `MUSE_LOCAL_ONLY=true`를 사용한 경우에만 주장한다.
 - **MUSE_LOCAL_ONLY** — 클라우드 송출 fail-close 정책 플래그. 켜져 있으면 model-router가
   클라우드 provider 인스턴스화 *전에* `LocalOnlyViolationError`를 던진다. 음성/임베딩도 로컬로 강제.
 - **Provider-neutral / model-agnostic** — `agent-core`는 vendor SDK를 직접 부르지 않고 Muse 소유의

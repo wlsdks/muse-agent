@@ -316,7 +316,7 @@ describe("recentFeedHeadlines", () => {
   });
 });
 
-describe("corroborationReceiptLine — always-VISIBLE corroboration posture (the local-first hedge against GROUNDED≠TRUE)", () => {
+describe("corroborationReceiptLine — always-VISIBLE corroboration posture (the owner-controlled hedge against GROUNDED≠TRUE)", () => {
   it("fires 'corroborated' when ≥2 INDEPENDENT sources back the answer (quorum)", () => {
     expect(corroborationReceiptLine(["a.md", "b.md"])).toContain("corroborated by 2 independent sources");
     expect(corroborationReceiptLine(["a.md", "b.md", "c.md"])).toContain("corroborated by 3 independent sources");

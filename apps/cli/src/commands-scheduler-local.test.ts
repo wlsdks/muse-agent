@@ -49,7 +49,7 @@ afterEach(() => {
   else process.env.MUSE_SCHEDULED_JOBS_FILE = savedFile;
 });
 
-describe("muse scheduler add — local-first, no API server required (AC4)", () => {
+describe("muse scheduler add — file-backed, no API server required (AC4)", () => {
   it("creates a job directly against the local file store, never touching the API", async () => {
     const { io, out } = captureIo();
     const apiCalls: string[] = [];
@@ -102,7 +102,7 @@ describe("muse scheduler add — local-first, no API server required (AC4)", () 
   });
 });
 
-describe("muse scheduler list / remove — local-first (AC4)", () => {
+describe("muse scheduler list / remove — file-backed (AC4)", () => {
   it("list shows a created job and its cron; empty store shows onboarding guidance", async () => {
     const { io: emptyIo, out: emptyOut } = captureIo();
     await run(emptyIo, [], ["scheduler", "list"]);
@@ -135,7 +135,7 @@ describe("muse scheduler list / remove — local-first (AC4)", () => {
     expect(raw.jobs).toHaveLength(0);
   });
 
-  it("the 'delete' alias resolves to the same local-first remove", async () => {
+  it("the 'delete' alias resolves to the same file-backed remove", async () => {
     const { io: addIo, out: addOut } = captureIo();
     await run(addIo, [], ["scheduler", "add", "alias-test", "--every", "hourly"]);
     const id = /Scheduled '.*' \(([^)]+)\)/.exec(addOut.join(""))?.[1];

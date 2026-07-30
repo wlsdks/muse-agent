@@ -103,7 +103,7 @@ export interface SchedulerSetupHelpers {
 
 /**
  * `add` / `list` / `delete` / `pause` / `resume` / `pause-status` are
- * LOCAL-FIRST: they read/write `~/.muse/scheduled-jobs.json`
+ * FILE-BACKED: they read/write `~/.muse/scheduled-jobs.json`
  * (`FileScheduledJobStore`) directly, no API server required — this is the
  * product requirement ("no API server, no Postgres, no cron syntax
  * knowledge required"). `create-agent` / `trigger` / `dry-run` /
@@ -555,7 +555,7 @@ export function formatSetupStatusLines(snap: SetupStatusSnapshot): string[] {
   };
 
   // model — always name the resolved model + where it came from, so a
-  // local-first box (no MUSE_MODEL, no cloud key) reads a real value, not a
+  // local-provider box (no MUSE_MODEL, no cloud key) reads a real value, not a
   // blank detail. Mirrors `doctor`'s resolver (setup-status.buildModelSection).
   if (snap.model.status === "ok") {
     const detail: string[] = [];
@@ -757,4 +757,3 @@ function formatBytes(bytes: number): string {
   }
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
-

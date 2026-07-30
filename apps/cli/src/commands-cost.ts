@@ -13,7 +13,7 @@ import type { ProgramIO } from "./program.js";
  *  for direct testing (the aggregation already has unit coverage upstream). */
 export function formatTokenUsageSummary(summary: TokenUsageSummary): string {
   if (summary.calls === 0) {
-    return "No local token usage recorded yet.\nRun `muse ask` / `muse chat` and usage lands in ~/.muse/token-usage.jsonl (local-first, no server).";
+    return "No file-backed token usage recorded yet.\nRun `muse ask` / `muse chat` and usage lands in ~/.muse/token-usage.jsonl (no server required).";
   }
   const n = (v: number) => v.toLocaleString("en-US");
   const lines: string[] = [
@@ -74,7 +74,7 @@ export function registerCostCommands(program: Command, io: ProgramIO, helpers: C
 
   cost
     .command("local")
-    .description("Local-first token usage from ~/.muse/token-usage.jsonl — totals + per-model/day, NO server needed")
+    .description("File-backed token usage from ~/.muse/token-usage.jsonl — totals + per-model/day, no server required")
     .option("--json", "Emit the raw aggregate as JSON")
     .action(async (options: { readonly json?: boolean }) => {
       const summary = aggregateTokenUsage(await readLocalTokenUsage(resolveTokenUsageFile(process.env)));
