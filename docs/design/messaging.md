@@ -1,5 +1,10 @@
 # Messaging integrations
 
+> **Reference note (audited 2026-07-30):** the env name(s) `MUSE_MESSAGING_PROVIDERS` in this design were never
+> implemented under those names. The generated [`ENV.md`](../ENV.md) inventory is authoritative for
+> what the code actually reads.
+
+
 Personal-Muse can act as a JARVIS-style sender into the user's
 chat platforms (Telegram / Discord / Slack / LINE) so a daily
 brief, a scheduler reminder, or a long-running agent task can

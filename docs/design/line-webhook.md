@@ -1,5 +1,10 @@
 # LINE inbound — webhook + persisted inbox
 
+> **Reference note (audited 2026-07-30):** the env name(s) `MUSE_LINE_INBOX_CAPACITY` in this design were never
+> implemented under those names. The generated [`ENV.md`](../ENV.md) inventory is authoritative for
+> what the code actually reads.
+
+
 LINE is the only Phase 2 platform that can't be polled — its
 Messaging API only delivers via webhook. Telegram/Discord/Slack
 all let `fetchInbound` pull recent messages on demand; for LINE

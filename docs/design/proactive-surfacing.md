@@ -56,7 +56,7 @@ is the user currently on?" signal that doesn't exist yet.
 | --- | --- | --- | --- |
 | Trigger | `setInterval` 60s | same | same |
 | Signal source | `CalendarProviderRegistry.listEvents` | `TaskMemoryStore` | both |
-| Lead window | `MUSE_PROACTIVE_CALENDAR_LEAD_MINUTES` (default 10) | `MUSE_PROACTIVE_TASK_LEAD_MINUTES` (default 10) | (uses Phase 1/2 fires) |
+| Lead window | `MUSE_PROACTIVE_LEAD_MINUTES` (default 10, shared) | `MUSE_PROACTIVE_LEAD_MINUTES` (default 10, shared) | (uses Phase 1/2 fires) |
 | Dedupe | sidecar JSON `proactive-fired.json` keyed by `{kind, id, firedFor}` | same | same |
 | Delivery | `MessagingProviderRegistry.send` (same as reminder) | same | new `agentRuntime.stream` invocation |
 | Quiet hours | reuses `MUSE_REMINDER_QUIET_HOURS` (or new `MUSE_PROACTIVE_QUIET_HOURS` if they should diverge) | same | same |
@@ -73,9 +73,10 @@ is the user currently on?" signal that doesn't exist yet.
   as `reminder-history.json` but tracks which `{kind:'calendar', id, dueIso}`
   tuples have fired so a restart-then-restart loop doesn't double-fire.
 - Off by default: activates only when `MUSE_PROACTIVE_PROVIDER` +
-  `MUSE_PROACTIVE_DESTINATION` are set AND
-  `MUSE_PROACTIVE_ENABLED=true`. Boot is fail-open; missing config = no
-  daemon (same posture as the reminder tick).
+  `MUSE_PROACTIVE_DESTINATION` are set. Boot is fail-open; missing config = no
+  daemon (same posture as the reminder tick). (The design's separate
+  `MUSE_PROACTIVE_ENABLED` flag was not implemented — a configured destination
+  is the enable signal. See the generated [ENV inventory](../ENV.md).)
 - Phase A scope is *calendar events only*. Tasks come in Phase B once
   the calendar version has been dogfooded.
 
@@ -129,7 +130,7 @@ is the user currently on?" signal that doesn't exist yet.
 - **Notification spam.** A user with 8 events in a day gets 8 pings.
   Mitigations: quiet hours (Phase D of reminder design), lead-minutes
   tunable, per-event opt-out (Phase C). Operators can also set the
-  daemon's `MUSE_PROACTIVE_ENABLED=false`.
+  daemon's destination (`MUSE_PROACTIVE_DESTINATION`) to stop delivery.
 - **Drift between calendar provider clocks.** Calendar providers can
   return events with a timezone string + naïve time; the imminence
   check must use the same TZ resolution `DefaultActiveContextProvider`

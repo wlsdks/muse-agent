@@ -18,8 +18,9 @@ claims about a person — and reasons to intervene — is the **grounding gate**
 test-level evidence lives in [feature-catalog/02](feature-catalog/02-knowledge-rag.md); terms live
 in the [glossary](glossary.md).
 
-> The key point: on this path the gate is **deterministic code, not a model call**
-> (`verifyGrounding`, `packages/agent-core/src/knowledge-recall.ts`). When retrieval evidence is
+> The key point: on this path the gate is **deterministic code, not a model call**:
+> `verifyGrounding` in `packages/agent-core/src/grounding-verifier.ts`, called from
+> `knowledge-recall.ts`. When retrieval evidence is
 > weak or a citation is wrong, the answer is downgraded or dropped. This document does not claim
 > that every uncited sentence of free-form chat is verified.
 

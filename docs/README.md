@@ -59,11 +59,26 @@ are **the design rationale for features already shipped** (why it was built that
 [background-review-engine](design/background-review-engine.md) is the one design currently in
 progress. For a feature's "what," see the product docs above; for the "why," look here:
 
-- Attunement: [architecture and data contract](design/attunement.md), [graph engine](design/attunement-graph.md), [implementation slices](goals/attunement-implementation-plan.md), [wow + graph roadmap](goals/attunement-wow-graph-roadmap.md), [continuity-timing-loop](design/continuity-timing-loop.md)
-- Memory and perception: [episodic-memory](design/episodic-memory.md), [proactive-surfacing](design/proactive-surfacing.md), [pattern-detection](design/pattern-detection.md), [context-engineering-roadmap](design/context-engineering-roadmap.md)
-- Proactivity and follow-up: [agent-self-followup](design/agent-self-followup.md), [reminder-firing](design/reminder-firing.md), [background-review-engine](design/background-review-engine.md)
+- Attunement: [architecture and data contract](design/attunement.md), [graph engine](design/attunement-graph.md), [implementation slices](goals/attunement-implementation-plan.md), [wow + graph roadmap](goals/attunement-wow-graph-roadmap.md), [continuity-timing-loop](design/continuity-timing-loop.md), [muse-work](design/muse-work.md)
+- Memory and perception: [episodic-memory](design/episodic-memory.md), [proactive-surfacing](design/proactive-surfacing.md), [pattern-detection](design/pattern-detection.md), [context-engineering-roadmap](design/context-engineering-roadmap.md), [resumable-notes-indexing](design/resumable-notes-indexing.md)
+- Proactivity and follow-up: [agent-self-followup](design/agent-self-followup.md), [reminder-firing](design/reminder-firing.md), [background-review-engine](design/background-review-engine.md), [progressive-autonomy-p0](design/progressive-autonomy-p0.md)
 - Channels and voice: [messaging](design/messaging.md), [line-webhook](design/line-webhook.md), [voice-mode](design/voice-mode.md), [phase-d-chat-stream-routing](design/phase-d-chat-stream-routing.md)
-- Multi-agent and federation: [a2a-swarm](design/a2a-swarm.md)
+- Action and platform: [actuator-modes](design/actuator-modes.md), [macos-control](design/macos-control.md), [a2a-swarm](design/a2a-swarm.md), [mascot](design/mascot.md)
+
+## Strategy, development and evidence
+
+| Folder | What is in it |
+|---|---|
+| [`strategy/`](strategy/) | Product direction and positioning: the [Attunement contract](strategy/attunement.md), [differentiation](strategy/differentiation.md), [agent-principles-2026](strategy/agent-principles-2026.md), [context-doctrine](strategy/context-doctrine.md), [prompt-architecture](strategy/prompt-architecture.md), [programmatic-tool-calling](strategy/programmatic-tool-calling.md), [secret-source](strategy/secret-source.md), plus dated competitive reads |
+| [`development/`](development/) | How we verify: [testing-strategy](development/testing-strategy.md), [ai-agent-testing-strategy](development/ai-agent-testing-strategy.md), [typescript-7](development/typescript-7.md), [personal-agent-qualification](development/personal-agent-qualification.md), [agent-capability-baseline](development/agent-capability-baseline.md), [verification-command-catalog](development/verification-command-catalog.md) |
+| [`evaluations/`](evaluations/) | Dated evaluation records — one file per run, kept as evidence rather than rewritten |
+| [`benchmarks/`](benchmarks/) | Published charts and the [evidence index](benchmarks/EVIDENCE.md) that keeps failed and unchanged results visible |
+| [`adr/`](adr/) | Architecture decision records (the MAG module and language/runtime boundaries) |
+| Generated | [`ENV.md`](ENV.md) is the generated `MUSE_*` inventory — regenerate with `pnpm docs:env`, and `pnpm check:env` fails when it drifts. Do not hand-edit it. |
+
+Two design records sit outside those groups: [recall-extraction-design](recall-extraction-design.md)
+(shipped through phase 3; the module names it proposes differ from the names that landed) and
+[security-sweep-2-plan](strategy/security-sweep-2-plan.md).
 
 ## Agent harness (operating structure)
 

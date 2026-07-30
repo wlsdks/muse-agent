@@ -1,5 +1,10 @@
 # Episodic memory cross-session recall
 
+> **Reference note (audited 2026-07-30):** the env name(s) `MUSE_EPISODIC_MEMORY_LLM_BUDGET_PER_DAY` in this design were never
+> implemented under those names. The generated [`ENV.md`](../ENV.md) inventory is authoritative for
+> what the code actually reads.
+
+
 Status: **all 5 steps shipped + persona surfacing + LLM-judge
 paraphrase recall.** Audit finding #26 (Tier 3). The chain
 captures + surfaces + manages prior-session summaries:

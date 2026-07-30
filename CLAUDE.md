@@ -60,9 +60,8 @@ north-star gap → parity). One slice end-to-end; "nothing to do" is forbidden.
   task; stop short of what is clearly beyond it.
 - Stop and surface to the owner: destructive actions, scope changes, decisions that are his to make.
 - **Opus 5** — delegate only large, genuinely independent, parallelizable tracks; never for work a
-  handful of tool calls finishes; never a subagent to verify your own output; prefer one subagent
-  over several. Effort: `low`/`medium` liberally wherever quality holds; `xhigh` only for the most
-  demanding coding/agentic work.
+  handful of tool calls finishes; never a subagent to verify your own output; prefer one over several.
+  Effort: `low`/`medium` liberally wherever quality holds, `xhigh` only for the most demanding work.
 - **Fable 5** — delegate freely and keep subagents long-lived across subtasks. Effort: `high` is the
   everyday setting; `xhigh` for the hardest tasks.
 - Keep responses concise. Written documents match length to what the task needs — no filler
@@ -74,8 +73,7 @@ north-star gap → parity). One slice end-to-end; "nothing to do" is forbidden.
   make OpenAI / Anthropic / Vercel-AI-SDK / LangGraph the runtime owner.
 - Guards are fail-close. Hooks are fail-open. Security is deterministic code, never prompt text.
 - Tool output is untrusted; tool loops have explicit limits and timeouts.
-- Risky local execution flows through `crates/runner`. Server, CLI and any future surface share the
-  same `agent-core` runtime.
+- Risky local execution flows through `crates/runner`; every surface shares one `agent-core` runtime.
 - Outbound to a third party (send, submit, book, post) is fail-close and draft-first per
   [`outbound-safety.md`](.claude/rules/outbound-safety.md) — never an autonomous send. Banking /
   brokerage access and money movement are permanently out of scope.
@@ -87,12 +85,15 @@ north-star gap → parity). One slice end-to-end; "nothing to do" is forbidden.
 ## Read further under `.claude/rules/` (loaded on demand, not duplicated here)
 
 [`architecture.md`](.claude/rules/architecture.md) package layout + ModelProvider contract ·
+[`product-identity.md`](.claude/rules/product-identity.md) what Muse is and is not ·
 [`testing.md`](.claude/rules/testing.md) verification gates · [`agent-testing.md`](.claude/rules/agent-testing.md)
-evaluating the AGENT (outcomes, `pass^k`) · [`tool-calling.md`](.claude/rules/tool-calling.md) one-shot
-tool choice for the local model · [`commits.md`](.claude/rules/commits.md) push policy ·
-[`code-style.md`](.claude/rules/code-style.md) lint/comment policy (the linter owns style) ·
-[`cli-product.md`](.claude/rules/cli-product.md) CLI surface · [`codegraph.md`](.claude/rules/codegraph.md)
-CodeGraph before grep · [`harness.md`](.claude/rules/harness.md) multi-step operating harness.
+evaluating the AGENT (outcomes, `pass^k`) · [`self-eval.md`](.claude/rules/self-eval.md) the scoreboard that
+fails closed on a drop · [`tool-calling.md`](.claude/rules/tool-calling.md) one-shot tool choice for the local
+model · [`outbound-safety.md`](.claude/rules/outbound-safety.md) the fail-close send gate ·
+[`commits.md`](.claude/rules/commits.md) push policy · [`code-style.md`](.claude/rules/code-style.md)
+lint/comment policy (the linter owns style) · [`cli-product.md`](.claude/rules/cli-product.md) CLI surface ·
+[`codegraph.md`](.claude/rules/codegraph.md) CodeGraph before grep ·
+[`harness.md`](.claude/rules/harness.md) multi-step operating harness.
 
 This contract stays under 100 lines — depth goes in `.claude/rules/*.md`, and a recurring owner
 correction is absorbed as a rule there. Read the cross-session learning index first:

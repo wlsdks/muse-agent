@@ -2,7 +2,7 @@
 
 ## The problem
 
-`buildActuatorTools` (apps/cli/src/actuator-tools.ts, 609 lines) assembles the
+`buildActuatorTools` (`apps/cli/src/actuator-tools.ts`) assembles the
 tools that let Muse act on the world — `email_send` / `email_reply` /
 `email_forward`, `web_action`, `home_action`, and the `mac_*` family.
 

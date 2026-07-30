@@ -92,15 +92,15 @@ Muse*. Each entry is one definition plus where it lives. Exact verification evid
 
 The full flow is in [grounding-gate.md](grounding-gate.md); this section is terms only.
 
-- **Grounding gate** — `verifyGrounding`
-  (`packages/agent-core/src/knowledge-recall.ts`), which takes an answer plus its evidence and
-  returns a deterministic three-way verdict with no model call. The trust floor that stops
+- **Grounding gate** — `verifyGrounding` in `packages/agent-core/src/grounding-verifier.ts` (called
+  from `knowledge-recall.ts`), which takes an answer plus its evidence and returns a deterministic
+  three-way verdict with no model call. The trust floor that stops
   Attunement inventing hypotheses about a person.
 - **Three-way verdict** — **grounded** (enough evidence) / **weak** (only weakly supported → "I'm
   not sure") / **ungrounded** (no evidence, forged citation, or a claim beyond the evidence →
   dropped). Evaluated in fail-close order.
-- **Four-criterion rubric** — the inputs to the verdict: `confidence` (retrieval cosine confidence,
-  CRAG-style) · `coverage` (share of answer tokens present in the evidence, floor 0.5) ·
+- **Four-criterion rubric** — the inputs to the verdict: `confidence` (retrieval cosine confidence, CRAG-style,
+  `DEFAULT_CONFIDENT_AT = 0.55` in `recall-confidence.ts`) · `coverage` (share of answer tokens present in the evidence, floor 0.5) ·
   `answerability` (share of question tokens the evidence covers, floor 0.34) · `citationValidity`
   (whether cited sources were actually retrieved — one forged citation means ungrounded).
 - **Citation (receipt)** — the *actual source* an answer points at. If a citation does not resolve

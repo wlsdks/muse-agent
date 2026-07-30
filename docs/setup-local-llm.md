@@ -373,7 +373,7 @@ The four steps are:
    (Korean) are common picks.
 
 Override paths with env: `MUSE_WHISPER_CPP_PATH`,
-`MUSE_WHISPER_CPP_MODEL_PATH`, `MUSE_PIPER_PATH`, `MUSE_PIPER_VOICE_PATH`.
+`MUSE_WHISPER_CPP_MODEL`, `MUSE_PIPER_PATH`, `MUSE_PIPER_VOICE`.
 The voice provider tests pass with mocked runners (no binaries) so
 the integration shape is verified even when the toolchain is missing.
 

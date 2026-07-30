@@ -1,5 +1,12 @@
 # Voice Mode — Design Doc
 
+> **Reference note (audited 2026-07-30):** the env names `MUSE_VOICE_WAKE_ENGINE`,
+> `MUSE_VOICE_WAKE_PROMPT_WINDOW_MS`, `MUSE_WHISPER_CPP_MODEL_URL` and `MUSE_VOICE_LIVE` in this
+> design were never implemented under those names — the shipped surface is `MUSE_VOICE_STT` /
+> `MUSE_VOICE_TTS` / `MUSE_WHISPER_CPP_MODEL` / `MUSE_WHISPER_CPP_PATH` / `MUSE_PIPER_PATH` /
+> `MUSE_PIPER_VOICE`. The generated [`ENV.md`](../ENV.md) inventory is authoritative.
+
+
 Status: **Phase F.1 + F.2 + F.3 first cuts shipped.**
 - F.1: `muse listen --wake "hey muse"` text-scan detector.
   openWakeWord / Porcupine ONNX adapter is future work.
