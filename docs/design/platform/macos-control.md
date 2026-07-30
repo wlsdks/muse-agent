@@ -167,11 +167,17 @@ Reminders.app. The mirror is one-way Muse→Apple. Which answer the user gets
 depends on which tool the model happened to pick — a correctness bug wearing a
 tool-selection costume.
 
-**Decision (owner)**: Apple's apps are the source of truth for reminders,
-calendar, notes, contacts. `muse.reminders` is re-pointed at EventKit through
-the helper; `~/.muse/reminders.json` is migrated once and retired. The user's
-data then lives where they already look at it, and syncs to their phone and
-watch for free.
+**Decision (owner, 2026-07): Apple's apps become the source of truth** —
+`muse.reminders` re-pointed at EventKit, `~/.muse/reminders.json` migrated once
+and retired.
+
+**REVERSED IN IMPLEMENTATION — the code is the truth here.**
+`packages/macos/src/macos-reminders-mirror.ts` keeps **Muse's own store
+authoritative** ("the proactive loops keep reading it") and gives Apple a
+best-effort, **create-only, one-way** copy, opt-in behind
+`MUSE_APPLE_REMINDERS_MIRROR`. The migration never happened and the two-answers
+problem above is therefore still open — the mirror narrows it for
+Muse-originated reminders only. Re-decide before building on either reading.
 
 ### P4 — Tool surface: 12 mac tools against a 5–7 guidance
 

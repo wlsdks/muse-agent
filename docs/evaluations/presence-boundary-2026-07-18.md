@@ -24,7 +24,7 @@ sink, cache-expiry regression, and a presence file created as `0644`.
 ```sh
 pnpm --filter @muse/proactivity build
 pnpm --filter @muse/api build
-node .muse-dev/evals/presence-boundary/dogfood.mjs
+# then the presence-boundary dogfood driver — see the note below
 ```
 
 The fixed-seed rerun (`0x5eedc0de`) completed in 3.478 seconds with
@@ -53,7 +53,9 @@ Focused verification passed:
 - API and proactivity type checks, scoped ESLint, and `git diff --check`.
 
 Raw cases and the machine-readable summary remain only under
-`.muse-dev/evals/presence-boundary/`. The directory is `0700`; `cases.jsonl` and
+`.muse-dev/evals/presence-boundary/`. **That directory is gitignored local scratch and is not
+in this checkout, so this record is NOT reproducible as written** — unlike every other
+evaluation record here, whose repro is a real `pnpm` script. The directory was `0700`; `cases.jsonl` and
 `summary.json` are `0600` and git-ignored.
 
 ## Boundary

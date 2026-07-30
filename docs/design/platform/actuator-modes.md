@@ -162,8 +162,10 @@ Each step lands green on its own.
    `ask`. This is the missing link and it alone restores the capability: the
    model can propose a call, the gate confirms or stages it, and
    `muse approvals approve` already executes it.
-3. **Risk-class split** — extend `OUTBOUND_SEND_TOOL_NAMES` to cover
-   `email_reply` / `email_forward` / `mac_message_send`; gate branches on it.
+3. ~~**Risk-class split** — extend `OUTBOUND_SEND_TOOL_NAMES` to cover
+   `email_reply` / `email_forward` / `mac_message_send`.~~ **DONE** — all three
+   are in the list (`actuator-provenance-gate.ts:30-38`). What remains of this
+   step is only the gate branching on the class.
 4. **`auto` for recoverable** — mode=auto skips the confirm for the recoverable
    class only.
 5. **Standing-grant path** — mode=auto consults `evaluateProgressiveAutonomy`

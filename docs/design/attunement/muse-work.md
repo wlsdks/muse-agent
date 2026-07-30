@@ -2,7 +2,8 @@
 
 > **Status: SHIPPING IN SLICES (2026-07-22).** The local Work store, the CLI/API verbs, outcome
 > recording, flow-deletion cleanup and the exact Personal Continuity context link have shipped. A
-> dedicated web Work detail view and chat promotion are still roadmap.
+> dedicated web Work view shipped too (`apps/web/src/views/Work.tsx` — list, detail, goal header
+> and outcome timeline). Chat promotion is the one part still unbuilt.
 
 ## Why
 
