@@ -5,6 +5,7 @@ import { createSearchMcpServer, createWebReadMcpServer } from "@muse/domain-tool
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { resolveToolExposureAuthority } from "@muse/policy";
 import type { ScheduledJob, TriggerInvocation } from "@muse/scheduler";
+import { createTriggerEnvelope } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { createScheduledAgentExecutor } from "./runtime-wiring.js";
@@ -93,6 +94,50 @@ describe("createScheduledAgentExecutor — no payload (byte-identical to before)
       { content: "", role: "user" }
     ]);
     expect("toolExposureAuthority" in lastInput()).toBe(false);
+  });
+
+  it("carries one validated trigger correlation key into the agent run and metadata", async () => {
+    const { runtime, lastInput } = fakeRuntime();
+    const executor = createScheduledAgentExecutor(() => runtime, "gemma4:12b");
+    const trigger = createTriggerEnvelope({
+      generation: "2026-07-30T09:00:00.000Z",
+      occurredAt: new Date("2026-07-30T09:00:00.000Z"),
+      provenance: { kind: "local-scheduler", ref: "job_1" },
+      receivedAt: new Date("2026-07-30T09:00:00.000Z"),
+      source: "cron",
+      sourceId: "job_1"
+    });
+
+    await executor.execute(job(), { trigger });
+
+    expect(lastInput()).toMatchObject({
+      metadata: {
+        jobId: "job_1",
+        scheduler: true,
+        triggerDedupKey: trigger.dedupKey,
+        triggerSource: "cron"
+      },
+      runId: trigger.dedupKey
+    });
+    expect(lastInput().runId).toMatch(/^trigger:[a-f0-9]{64}$/u);
+    expect("toolExposureAuthority" in lastInput()).toBe(false);
+  });
+
+  it("rejects a forged trigger identity before starting the agent", async () => {
+    const { runtime } = fakeRuntime();
+    const executor = createScheduledAgentExecutor(() => runtime, "gemma4:12b");
+    const trigger = createTriggerEnvelope({
+      generation: "2026-07-30T09:00:00.000Z",
+      occurredAt: new Date("2026-07-30T09:00:00.000Z"),
+      receivedAt: new Date("2026-07-30T09:00:00.000Z"),
+      source: "cron",
+      sourceId: "job_1"
+    });
+
+    await expect(executor.execute(job(), {
+      trigger: { ...trigger, dedupKey: `trigger:${"f".repeat(64)}` }
+    })).rejects.toThrow(/trigger envelope is invalid/u);
+    expect(runtime.run).not.toHaveBeenCalled();
   });
 });
 

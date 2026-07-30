@@ -37,6 +37,7 @@ import { DEFAULT_WORKING_BUDGET_RATIO, type ConversationTrimOptions } from "@mus
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { createToolExposureAuthority } from "@muse/policy";
 import { parseNotificationChannel, type MessageSender, type ScheduledAgentExecutor, type ScheduledJob, type TriggerInvocation } from "@muse/scheduler";
+import { isTriggerEnvelope } from "@muse/shared";
 import {
   createDefaultToolExposurePolicy,
   type MuseTool,
@@ -110,6 +111,10 @@ export function createScheduledAgentExecutor(
       }
 
       const payload = invocation?.webhookPayload;
+      const trigger = invocation?.trigger;
+      if (trigger !== undefined && !isTriggerEnvelope(trigger)) {
+        throw new TypeError("scheduled agent trigger envelope is invalid");
+      }
       const userContent = payload === undefined
         ? job.agentPrompt ?? ""
         : `${job.agentPrompt ?? ""}\n\n${buildWebhookEventBlock(payload)}`;
@@ -121,9 +126,16 @@ export function createScheduledAgentExecutor(
         ],
         metadata: {
           jobId: job.id,
-          scheduler: true
+          scheduler: true,
+          ...(trigger
+            ? {
+                triggerDedupKey: trigger.dedupKey,
+                triggerSource: trigger.source
+              }
+            : {})
         },
         model: job.agentModel ?? defaultModel ?? "default",
+        ...(trigger ? { runId: trigger.dedupKey } : {}),
         ...(payload === undefined ? {} : { toolExposureAuthority: toolLessWebhookAuthority() })
       });
 
