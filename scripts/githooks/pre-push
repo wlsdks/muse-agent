@@ -224,6 +224,13 @@ elif [ "$needs_doc_links" -eq 1 ]; then
   fi
   # An agent filename that disagrees with its frontmatter name breaks subagent
   # resolution without failing any test.
+  if [ -f scripts/check-doc-sections.mjs ]; then
+    echo "pre-push: reference gate — node scripts/check-doc-sections.mjs" >&2
+    if ! node scripts/check-doc-sections.mjs >&2; then
+      echo "pre-push: BLOCKED — a §N reference points at a section that does not exist" >&2
+      exit 1
+    fi
+  fi
   if [ -f scripts/check-agent-registry.mjs ]; then
     echo "pre-push: reference gate — node scripts/check-agent-registry.mjs" >&2
     if ! node scripts/check-agent-registry.mjs >&2; then

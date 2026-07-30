@@ -51,7 +51,8 @@ Cheapest stage first, fail-closed.
 6. **WRITE-BACK (completion gate)** — the fixed failure becomes a STABLE-3/3 golden case; a
    repeated correction from the owner becomes one line in `.claude/rules/`; chosen *and* discarded
    directions with their sources go to
-   [`../../internal/goals/backlog.md`](../../internal/goals/backlog.md). When a set grows, prune a
+   [`../../internal/goals/backlog.md`](../../internal/goals/backlog.md), and a durable fact about the
+   owner or the project goes to the memory index. When a set grows, prune a
    stale line. `scripts/guard-writeback.mjs` enforces this at commit-msg time; `[writeback: n/a]`
    is the explicit escape.
 7. **COMMIT + PUSH** — one Conventional Commit, then push **only when VERIFY is green**. On

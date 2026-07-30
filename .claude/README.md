@@ -44,7 +44,7 @@ The other becomes a pointer, or dies.
 1. Put it in the matching `rules/<concern>/` file. A new file needs a new line in
    CLAUDE.md's "Read further" index.
 2. Prefer promoting it to a gate. A rule stored away from the request survives
-   multi-step work poorly (`.claude/harness/contract.md` §4 has the measurements), so a
+   multi-step work poorly (`.claude/harness/contract.md` §7 has the measurements), so a
    check that fails closed is worth more than a paragraph.
 3. Keep CLAUDE.md under 100 lines — that cap is the reason this directory exists.
 

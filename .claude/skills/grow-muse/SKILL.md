@@ -69,7 +69,7 @@ not a stub.
    tool-calling feasible? simpler alternative?). Small slices skip the
    reviewer, never the written criteria.
 
-5. **BUILD + VERIFY** — per `.claude/harness/dev-loop.md` §3. A new tool
+5. **BUILD + VERIFY** — per `.claude/harness/dev-loop.md` §2. A new tool
    ships with the `tool-calling.md` checklist + an `eval:tools` case
    STABLE k=3. **Live-path proof is mandatory** — a handler the model
    never selects, or a flow never driven end-to-end, is not delivered

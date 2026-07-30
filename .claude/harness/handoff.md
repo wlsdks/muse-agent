@@ -53,8 +53,9 @@ inline field, not a separate pass. The worker fills only its section; the evalua
 ## 2. Verification and recovery
 
 - **Verification commands:** <what the evaluator re-runs unchanged>
-- **Budgets:** active minutes · single-command timeout · PLAN-review passes (default 1) ·
-  BUILD↔EVAL passes (default 2). Two separate counters — never borrow one for the other.
+- **Budgets:** active minutes (≤20) · single command (≤12) · validation (≤6) · PLAN-review passes
+  (default 1) · BUILD↔EVAL passes (default 2). The last two are separate counters — never borrow
+  one for the other.
 - **Progress:** `material-progress | no-progress` — material progress closes a previous blocker or
   makes acceptance measurable; no-progress is the same blocker with no new evidence.
 - **Rollback:** <what to revert, what data to preserve, when to resume>

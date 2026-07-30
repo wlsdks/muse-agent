@@ -54,7 +54,7 @@ a coherent unit, not the narrowest edit.
 3. **SCOPE** — one coherent goal = one commit, acceptance criteria up
    front, and **name the gate this slice moves**. No nameable gate ⇒ too vague.
 
-4. **BUILD + VERIFY** — per `.claude/harness/dev-loop.md` §3: `pnpm
+4. **BUILD + VERIFY** — per `.claude/harness/dev-loop.md` §2: `pnpm
    test:changed` + build + lint; mutation-RED the new test; independent
    evaluator per `harness.md` risk-tiering (silent-failure classes
    mandatory, pure internal refactor may use the lighter tier — record

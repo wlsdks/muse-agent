@@ -109,7 +109,8 @@ worker is the session doing the work, which already has this contract in context
 `planner` is also confusable with the host's built-in `Plan` agent.
 
 The full ceremony (separate planner pass + heavy multi-stage handoff) is **reserved for L-size or
-security-grade slices**. Details and the onboarding checklist for a new agent: [roles](roles.md).
+security-grade slices**. Per-surface write boundaries for each role, and the counter-principles
+where the obvious move is wrong: [roles](roles.md).
 
 ## 3. Gates (fail-closed — this is the core safety mechanism)
 
@@ -165,14 +166,11 @@ BUILD↔EVAL has its own iteration/time/cost caps, separate from PLAN. The evalu
 **blockers bundled — everything reasonably discoverable in one pass**. If a later pass raises a
 new blocker, record why it could not have been found earlier (did a prior fix open a new path; did
 required evidence appear late). Concrete accounting fields: [handoff](handoff.md); termination judgment for an
-unattended loop: [loop-engineering](../skills/loop-creator/references/loop-engineering.md) §1.5.
+unattended loop: [loop-engineering](../skills/loop-creator/references/loop-engineering.md) §2.
 
-The volume of evaluation data is separate from evidence quality. More synthetic
-families/profiles/journeys/turns or controlled replay never becomes organic user evidence or an
-agent PASS. `realismProxy` is only the name of deterministic transition coverage, not a proof of
-realism. Account the immutable `dataOrigin` (provenance) and `executionEvidence` (did it actually
-run) as independent axes, and never convert a factual interaction receipt into
-feedback/outcome/policy promotion.
+Evaluation VOLUME is not evidence quality — synthetic scale and controlled replay never become
+organic evidence or an agent PASS. The accounting that keeps them apart is defined in
+[agent-testing](../rules/verification/agent-testing.md), which is auto-loaded.
 
 ## 4. Foundations (progressive disclosure)
 
@@ -183,7 +181,7 @@ when the task actually touches that risk or feature.
   run and records which. The BUILD↔EVAL default is **2 retry passes** — a contract default, not a
   value read from code, so a loop that needs it enforced writes its own cap and a test for it. An
   unattended loop fire may declare up to 3 and must record which it used
-  (→ [loop-engineering](../skills/loop-creator/references/loop-engineering.md) §1.5).
+  (→ [loop-engineering](../skills/loop-creator/references/loop-engineering.md) §1).
 - **Tools, skills, MCP** — names/schemas selectable in one shot; allowlists and isolation.
   → [tool-calling](../rules/safety/tool-calling.md) ·
   [skills-and-mcp](../skills/loop-creator/references/skills-and-mcp.md).
