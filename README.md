@@ -347,7 +347,7 @@ are not proof of agent effect.
 | **The product** | [Attunement contract](docs/strategy/attunement.md) · [Architecture and gaps](docs/design/attunement/README.md) · [Implementation plan](internal/goals/attunement-implementation-plan.md) |
 | **The graph** | [Attunement Graph](docs/design/attunement/attunement-graph.md) · [Agent-native core blueprint](docs/design/attunement/agent-native-graph-core.md) · [Roadmap](internal/goals/attunement-wow-graph-roadmap.md) |
 | **Trust** | [Grounding gate](docs/trust/grounding-gate.md) · [Privacy and data](docs/trust/privacy-and-data.md) · [Evidence index](docs/benchmarks/EVIDENCE.md) · [Security](SECURITY.md) |
-| **Audits** | [Full feature audit](docs/feature-catalog/INDEX.md) — a dated 2026-06-14 snapshot, written in Korean · [Personal-agent qualification](docs/development/personal-agent-qualification.md) |
+| **Audits** | [Personal-agent qualification](docs/development/personal-agent-qualification.md) — a read-only, fail-closed check of current capability |
 
 ## Contributing
 

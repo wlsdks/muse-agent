@@ -82,6 +82,10 @@ north-star gap → parity). One slice end-to-end; "nothing to do" is forbidden.
   without explicit approval; verified normal pushes follow the standing authorization in
   [`.claude/rules/engineering/commits.md`](.claude/rules/engineering/commits.md). Never commit live workspace credentials.
 - All documentation is English — every `.md`, new ones included (quoted UI strings excepted).
+- **Docs are written for agents, not for a human reader.** One owner per fact; point at the gate
+  that enforces a rule instead of restating it; delete a record that no longer matches the code
+  rather than annotating it — an agent will ground on whatever is there. `README.md` is the one
+  page written for a human visitor.
 
 ## Read further — `.claude/rules/` is auto-loaded, grouped by concern
 

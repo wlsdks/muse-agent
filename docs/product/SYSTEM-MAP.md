@@ -8,7 +8,7 @@ status_legend:
   "⚙️": needs external integration or configuration
   "⚠️": known gap (not yet trustworthy)
 updated: 2026-07-30
-related: [../strategy/attunement.md, ../design/attunement/README.md, FEATURES.md, ../README.md, ../feature-catalog/INDEX.md, ../strategy/positioning/differentiation.md]
+related: [../strategy/attunement.md, ../design/attunement/README.md, FEATURES.md, ../README.md, ../strategy/positioning/differentiation.md]
 ---
 
 # Muse at a glance (system map)
@@ -18,8 +18,8 @@ related: [../strategy/attunement.md, ../design/attunement/README.md, FEATURES.md
 > behave**, in words. Product people, developers and AI agents should all be able to get the whole
 > outline of "what Muse can do" from this one page.
 >
-> - Deeper per-feature descriptions: [`FEATURES.md`](FEATURES.md) · **the verified full inventory
->   with evidence (audited 2026-06-14): [`../feature-catalog/INDEX.md`](../feature-catalog/INDEX.md)** ·
+> - Deeper per-feature descriptions: [`FEATURES.md`](FEATURES.md) ·
+>   published evidence: [`../benchmarks/EVIDENCE.md`](../benchmarks/EVIDENCE.md) ·
 >   product identity and strategy: [`../strategy/positioning/differentiation.md`](../strategy/positioning/differentiation.md) ·
 >   documentation index: [`../README.md`](../README.md)
 >
@@ -340,7 +340,7 @@ Capabilities that send something to a third party or change external system stat
 - **Multi-agent collaboration** — specialist agents run **sequentially or in parallel**, and each
   collaboration's mode, duration and success/failure counts are kept in a history. (Race mode is
   currently parked deliberately and falls back to sequential — details in
-  [`../feature-catalog/INDEX.md`](../feature-catalog/INDEX.md).)
+  [`../design/channels/a2a-swarm.md`](../design/channels/a2a-swarm.md).)
 - **Model tiering** — within one task, simple lookups go to a fast model and deep reasoning to a
   strong one, automatically.
 - **Agent specs** — agents with a role, tools and instructions can be registered, and the right one

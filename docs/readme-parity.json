@@ -175,7 +175,6 @@
     "docs/design/attunement/README.md",
     "internal/goals/attunement-implementation-plan.md",
     "docs/product/SYSTEM-MAP.md",
-    "docs/feature-catalog/INDEX.md",
     "docs/benchmarks/EVIDENCE.md",
     "docs/benchmarks/eval-datasets-scale-v1.json",
     "docs/setup/setup-local-llm.md",

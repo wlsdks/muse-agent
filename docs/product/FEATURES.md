@@ -7,7 +7,7 @@ status_legend:
   "⚙️": needs external integration/setup
   "⚠️": known gap (not yet trustworthy enough)
 updated: 2026-07-13
-related: [../strategy/attunement.md, ../design/attunement/README.md, SYSTEM-MAP.md, ../README.md, ../feature-catalog/INDEX.md, ../strategy/positioning/differentiation.md]
+related: [../strategy/attunement.md, ../design/attunement/README.md, SYSTEM-MAP.md, ../README.md, ../strategy/positioning/differentiation.md]
 ---
 
 # Muse feature definitions (for planners)
@@ -21,12 +21,12 @@ related: [../strategy/attunement.md, ../design/attunement/README.md, SYSTEM-MAP.
 >
 > **Related documents:** product direction is [`../strategy/attunement.md`](../strategy/attunement.md) ·
 > **the verified full feature inventory (with evidence) is
-> [`../feature-catalog/INDEX.md`](../feature-catalog/INDEX.md)** (exhaustive verification, 2026-06-14).
+> [`../benchmarks/EVIDENCE.md`](../benchmarks/EVIDENCE.md)** (published evidence, with the failures kept visible).
 >
 > ⚠️ This document is a high-level narrative and does not enumerate every CLI command 1:1.
 > Additional command surfaces — `anomaly` · `recap` · `week` · `daemon` · `watch-folder` ·
 > `webhook` · `feeds` · `routine` · `history`/`open` · `propose`/`approvals` etc. — and per-command
-> evidence live in the feature-catalog above.
+> evidence live in the evidence index above.
 
 ## Contents
 

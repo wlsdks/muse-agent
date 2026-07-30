@@ -3,7 +3,7 @@ title: Muse glossary
 audience: [AI agents, developers, product]
 purpose: One definition per Muse-specific term, so a new agent understands without grepping
 updated: 2026-07-30
-related: [../strategy/attunement.md, ../design/attunement/attunement-graph.md, SYSTEM-MAP.md, ../trust/grounding-gate.md, ../feature-catalog/INDEX.md]
+related: [../strategy/attunement.md, ../design/attunement/attunement-graph.md, SYSTEM-MAP.md, ../trust/grounding-gate.md]
 ---
 
 # Muse glossary
@@ -14,7 +14,7 @@ one-way dependency direction between modules — see [`CONTEXT.md`](../../CONTEX
 the plain-English entry point, that one is the precise one. Generic
 terms (RAG, embedding …) are left out; this collects only what carries *a particular meaning inside
 Muse*. Each entry is one definition plus where it lives. Exact verification evidence is in the
-[feature catalog](../feature-catalog/INDEX.md); the end-to-end flow is in
+[evidence index](../benchmarks/EVIDENCE.md); the end-to-end flow is in
 [grounding-gate](../trust/grounding-gate.md).
 
 ## 1. Identity — what Muse is
