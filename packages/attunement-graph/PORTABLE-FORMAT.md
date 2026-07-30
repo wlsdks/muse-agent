@@ -2,8 +2,8 @@
 
 Status: **encoder core, golden integration, streaming/order qualification,
 shared-path reduced-budget qualification, package-private decoder implementation, and
-structural decoder non-retention qualification verified-current**. This document fixes
-the portable wire contract.
+structural decoder non-retention qualification, and SQLite indexed validation substrate
+verified-current**. This document fixes the portable wire contract.
 AWG-070a3a1a2 implements its independently verified
 package-private transactional encoder core and mandatory exact-head identity-sink
 boundary. AWG-070a3a1a3a0b adds an independently verified production generator and
@@ -17,8 +17,18 @@ chunk-boundary families, closed retained-state ledgers, and two current-only
 4,096-generation runs are independently verified by AWG-070a3a1a4b. This is structural
 JavaScript-heap evidence with deterministic corroboration, not RSS, empirical
 asymptotic, production-scale, or cross-runtime proof. No runtime filesystem publisher,
-SQLite staging sink, Worker command, public administration API, or public
-decoder/export exists.
+filesystem staging owner, serving/Admin Worker command, public administration API, or
+public decoder/export exists.
+
+AWG-070a3a1a4c adds an independently verified package-private indexed validation substrate:
+it accepts ownership of a caller-opened empty `DatabaseSync`, stores only the current
+final identity and `head_seen` per exact raw-UTF-8-BLOB scope, and closes validated
+transactional staging after exact head/count/profile checks. It is designed to run in a
+future separate Admin Worker; it does not reuse the serving MAG Worker or import
+projection bodies. This is structural JavaScript-heap evidence only. SQLite native
+allocator/page-cache/statement memory and RSS are outside the claim, and no filesystem
+staging ownership, destination publication, cleanup, crash recovery, Admin API, or
+production-scale qualification ships here.
 
 ## 1. Purpose and boundary
 
@@ -267,8 +277,10 @@ interface MagPortableValidationSink {
 - `abort(cause)` discards all partial sink state on every parse, validation, timeout, or
   I/O failure.
 
-The `O(max-line)` claim excludes sink storage. A SQLite importer is expected to use
-indexed staging state and publish only after `finish`. An exporter is expected to use a
+The `O(max-line)` claim excludes sink storage. The independently verified
+package-private AWG-070a3a1a4c indexed sink supplies transactional SQLite staging and
+exact final-head validation; a later Admin operation still owns the file and publishes
+only after both decoder and sink completion. An exporter is expected to use a
 pinned ordered cursor so concurrent source changes cannot mix states in one artifact.
 A future encoder MUST accept caller-supplied `expectedScope` for every projection and a
 mandatory exact-head validation sink; it must not infer scope from an unadmitted value or

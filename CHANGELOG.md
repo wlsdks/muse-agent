@@ -8,6 +8,20 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a4c package-private SQLite indexed
+  `.magx` validation sink. It transfers ownership of a caller-opened empty
+  `DatabaseSync`, stages one exact raw-UTF-8-BLOB-keyed final identity per scope,
+  validates final heads/counts/profile in one transaction, and closes on success or
+  best-effort rollback/cleanup. Qualification covers Unicode golden input, a
+  decoder-driven 4,096-generation stream, 4,096 distinct scopes, hostile inputs,
+  lifecycle/count/head failures, ownership transfer, reentry/nullish terminal pinning,
+  and deterministic SQLite operation faults. Fresh evaluation found and repaired
+  pre-ownership fault leakage, accepted TEMP/attached schemas, finished-state overwrite,
+  and missing negative precedence rows. This is structural JavaScript-heap
+  evidence only; SQLite native memory/RSS, filesystem ownership, destination
+  publication, serving Worker reuse, Admin API, and production-scale proof remain
+  excluded for later slices.
+
 - Added the independently verified AWG-070a3a1a4b structural streaming qualification
   for the package-private `.magx` decoder. Valid and representative corrupt artifacts
   now produce exact-equal reports, terminal failures, and sink traces across one-chunk,
