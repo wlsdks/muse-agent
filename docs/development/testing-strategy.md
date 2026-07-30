@@ -31,7 +31,7 @@ The technique table chooses a tool. This matrix decides the **minimum evidence
 depth** for a change. Apply every touched row; when rows overlap, use the
 highest-risk evaluator and live/preflight rule while retaining each
 platform-specific gate. The role and write boundaries come from
-[`.claude/harness/roles.md` §1.5](../../.claude/harness/roles.md).
+[`.claude/harness/roles.md` §2](../../.claude/harness/roles.md).
 
 | Change surface | Deterministic base | Required real platform | Failure, corruption, and rollback | Controlled-live / preflight | Independent evaluator and PASS rule |
 | --- | --- | --- | --- | --- | --- |

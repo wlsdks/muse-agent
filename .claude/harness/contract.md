@@ -146,19 +146,11 @@ The harness operates in two layers:
 The enforced layer is what survives a headless run, where an instruction enforces nothing. Any
 autonomous loop therefore has to land on a real gate, never on a promise in prose.
 
-## 3.6 When the evaluator is mandatory — risk tiering
+## 3.6 When the evaluator is mandatory
 
-An independent evaluator (separate instance) is **unconditionally required** when the diff touches
-any of: user-visible strings/i18n, on-disk/persisted formats (stores, checkpoints, credentials),
-advertised public flags/CLI/API/UI contracts, security/permission/guard/outbound paths,
-process/scheduler/concurrency, harness gates, anything irreversible, release. For internal
-refactors, type plumbing, and pure test changes that satisfy all of §1.6, a thinner tier is
-enough: the worker runs an explicit adversarial self-check ("find an input where this is wrong")
-and the controller/lead skims the diff. **Always record which tier was used in the commit body** —
-this is not optional ceremony. The independent evaluator is a real cost (a second full-context
-pass) — spend it where it pays. Evidence: in one session, all 4 real evaluator catches were
-**silent-failure classes** (data corruption, a dead locale string, a lying flag, a timing bug) —
-exactly the class a green test suite does not surface.
+The tier list is in [the harness rule](../rules/engineering/harness.md), which is
+loaded into every session — you already have it before opening this file, which is why it lives
+there and not here. **Record which tier was used in the commit body.**
 
 ## 3.7 PLAN review and BUILD↔EVAL are separate budgets
 
@@ -201,19 +193,13 @@ when the task actually touches that risk or feature.
   line → promoted to a gate when it repeats), and a rule that no longer carries load as models
   improve gets **deleted**, not archived. A contract that only grows stops being read.
 
-## 5. Verification (does it really work — unverified means not done)
+## 5. Verification
 
-- **"Done" for an individual task is judged by the §3 completion gate** (FULL: independent PASS;
-  FAST S/M: `thin-review`; both actually execute the named verification method).
-- Grade the **outcome** — the resulting state and final answer — not the exact path the agent took.
-  Pin a step order only where a step genuinely depends on a prior one.
-- For a grounding- or safety-critical case, reliability is **pass^k**: run the same case k times
-  and require **all k** to pass. "Succeeded at least once" (`pass@k`) is not reliability.
-- A gate that skips is not a gate that passed. Record the skip as unverified and fix the
-  environment; that repair is itself the work.
-
-Which command proves what: [testing](../rules/verification/testing.md). How to evaluate the agent
-rather than the code: [agent-testing](../rules/verification/agent-testing.md).
+"Done" is the §3 completion gate: FULL needs an independent PASS, FAST S/M needs `thin-review`,
+and both actually execute the named verification method. Everything else about proving it —
+grading outcomes over paths, `pass^k`, why a skip is not a pass — is owned by
+[testing](../rules/verification/testing.md) and
+[agent-testing](../rules/verification/agent-testing.md), which are auto-loaded.
 
 ## 6. Adapting to this project
 
@@ -237,23 +223,17 @@ GPT-5.6 family guidance); re-audit it on every model upgrade (§4 ratchet & prun
   — keep them all; ② the **independent evaluator** (§3.6) is a *different* instance with a fresh
   context judging a finished build against acceptance criteria — that is not self-verification, and
   its recorded catches (4/4 silent-failure classes) justify its cost at the §3.6 risk tiers.
-- **Delegation posture differs per model — state which applies.**
-  - *Claude Opus 5*: delegates readily and must be **capped** — delegate only large, genuinely
-    independent, parallelizable tracks; never work finishable in a handful of tool calls; never a
-    subagent to verify your own output; prefer one subagent over several; keep spawn counts low.
-  - *Claude Fable 5*: the opposite — delegate freely and keep subagents **long-lived across
-    subtasks** instead of respawning per step.
+- **Delegation posture and effort levels are per-model and live in
+  [CLAUDE.md](../../CLAUDE.md)**, which is auto-loaded — restating them here would be a second
+  owner of a fact you already have. What CLAUDE.md does not carry: GPT-5.6 maps Luna to low-risk
+  repeatable transformation, Terra to everyday implementation, and Sol to complex refactors,
+  architecture, security and release decisions — that is the `Sol/high` / `Sol/xhigh` gate-strength
+  shorthand used in [roles §2](roles.md).
 - **Long autonomous runs (Fable 5)** need three things this harness already encodes — wire them,
   don't improvise: explicit **stopping points** (destructive actions, scope changes, decisions
   that belong to the human → the §3 permission gate and blocked-first rule), a **learning
   repository** where each run's lessons land (→ curator write-back, commit body), and the **why**
   of the work stated up front (→ the WHY field in the handoff header).
-- **Effort levels** (cost lever, host maps these in its adapter): Claude Opus 5 — use low/medium
-  liberally as the main cost lever, xhigh only for the hardest coding/agentic work. Claude
-  Fable 5 — high for everyday work, xhigh for the hardest. GPT-5.6 — Luna for low-risk repeatable
-  transformation, Terra for everyday implementation, Sol for complex refactors, architecture,
-  security, and release decisions (this is the `Sol/high`/`Sol/xhigh` gate-strength shorthand in
-  [roles §1.5](roles.md)).
 - **A rule in a document is followed unreliably — a gate is not.** The limit is not how many
   rules a model can hold; it is whether policy stored *away from the request* survives a
   multi-step task. On HANDBOOK.md, built for exactly that setup, the best frontier configuration
@@ -271,9 +251,3 @@ GPT-5.6 family guidance); re-audit it on every model upgrade (§4 ratchet & prun
   Anthropic's own guidance for the current generation is that scaffolding built for weaker models
   now costs quality; the method that finds it is deleting a section and checking whether any gate
   or observed behavior actually moves.
-
----
-
-> Summary: **if you read this, follow it.** Classify risk first → FAST via compact card and
-> `thin-review`, FULL via roles, form, and independent evaluation → actually verify the relevant
-> gate. The links above resolve the details.

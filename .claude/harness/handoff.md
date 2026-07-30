@@ -1,153 +1,89 @@
 ---
-title: Handoff Artifact
-audience: [developers, AI agents]
-purpose: The single form through which, on the FULL tier, worker → independent evaluator exchange a "defined state" across the context reset
-status: draft
+title: Handoff — the form a slice is carried in
+audience: [AI agents]
+purpose: The compact card every slice fills, and the FULL form that survives a context reset between worker and independent evaluator
 updated: 2026-07-30
 related: [contract.md, roles.md]
 ---
 
-# Handoff Artifact
+# Handoff
 
-## FAST S/M compact card
+Two forms. Which one applies is decided by the risk tiering in
+[`contract.md`](contract.md) §1.6 and §3.6, not by preference.
 
-A task that satisfies **all** conditions of [`contract.md` §1.6](contract.md) creates no separate
-handoff file; record only the 7 items below in chat/scratch. This path has no independent
-evaluator, so the result is `review-tier: thin-review`, not `PASS`. If any condition is broken,
-escalate to the FULL form below.
+## FAST S/M — the compact card
 
-- **Task / goal + missing delta:**
+A slice that satisfies **every** §1.6 condition creates no file. Record these seven in chat or
+scratch and go. There is no independent evaluator on this path, so the result is
+`review-tier: thin-review` — never `PASS`. Break any condition and escalate to the FULL form.
+
+- **Task / goal + the missing delta:**
 - **Acceptance:**
-- **Scope / out-of-scope:**
+- **Scope / out of scope:**
 - **Named verify command:**
-- **Budget:** active ≤20 min, command timeout ≤12 min
-- **Risk tier:** why this is FAST S/M, with the exclusion boundaries checked
+- **Budget:** active ≤20 min, single command ≤12 min
+- **Risk tier:** why this is FAST S/M, with the excluded boundaries checked
 - **Rollback / no-op:**
 
-> **Why is this the skeleton?** The harness runs the same way "whichever agent comes in" because
-> **context is cut, not merged, and the next role picks up from a defined state via a structured
-> artifact** ([team-roles §3](roles.md)). This file is the **single form** for FULL-tier
-> artifacts — fill one copy per task and pass it on. Every handoff starts from reading this
-> document, not "the previous agent's head".
->
-> **The default is only these 5 sections (below).** Since the mandatory roles shrank to worker +
-> independent evaluator ([team-roles §1](roles.md)), there is no separate planner pass and no
-> review/learning section in the default form — PLAN goes in the "Header" section below, and LEARN
-> goes in the **commit body** after completion per
-> [muse-dev-patterns §8](../skills/muse-dev-patterns/SKILL.md). **The full ceremony
-> (separate planner pass + the review and learning sections of a heavy multi-stage handoff) is for
-> L-size or security-grade slices only** — in that case append the "Appendix: full ceremony"
-> section at the end of this document.
+## FULL — the form
 
-## How to use
+One file per slice, in the slice's worktree or scratch. **Do not commit it.** Seven instances were
+committed and then deleted on 2026-07-18 — not one had been referenced after its merge. The
+durable record is the commit body. When delegating, **pass this file's path**: it is the only
+input the context-reset next role reads.
 
-1. For each FULL-tier task (feature/bug/slice), copy this form into one file — **a working file,
-   not a permanent record**: keep it in the slice's worktree (or scratchpad) and **do not commit
-   it to the repo**. The permanent record is the commit body (acceptance criteria, verification
-   results, learnings — [muse-dev-patterns §8](../skills/muse-dev-patterns/SKILL.md)).
-   The 7 previously committed instances were deleted (2026-07-18 — never once referenced after
-   merge, so the committing practice itself was stopped; git history preserves them). **When
-   delegating, always pass this file's path along** — it is the only input the context-reset next
-   role will read.
-2. The delegating side (orchestrator or the worker itself; no separate planner unless L-size)
-   fills **header + acceptance criteria + verification method** first. The worker fills only its
-   section; the evaluator only its section (boundaries).
-3. The next role starts from this document + the code only. If stuck, write it under
-   `## Open questions` and stop (no guessing).
-4. Status accumulates one line at a time in `## Status log` (who, when, what). Keep it revertible.
+The delegating side fills the header, acceptance and verification up front — that is the planner
+inline field, not a separate pass. The worker fills only its section; the evaluator only its own.
 
 ---
 
-## Header (goal + context)
+## Header
 
-- **Task name:** <short and unique>
-- **One-line goal (WHAT / `what`):** <what can the user do once this task is done>
-- **Product context (WHY / `why`):** <why this is needed, who it is for>
-- **Current phase:** `BUILD | EVAL | DONE | BLOCKED`
-- **Owner (current):** <role/agent>
+- **Task:** <short and unique>
+- **WHAT:** <what can the owner do once this is done>
+- **WHY:** <why it is needed, and for whom>
+- **Phase:** `BUILD | EVAL | DONE | BLOCKED`
 
-## 1. Acceptance criteria (PASS / `passCriteria`)
+## 1. Acceptance criteria
 
-- <"what must be true to pass" — concrete, verifiable, as a checklist>
-  - [ ] <criterion 1>
-  - [ ] <criterion 2>
-- **Out of scope (`outOfScope`):** <the boundary of what will not be done. Write "none" explicitly
-  if none>
+- <what must be true to pass — concrete enough for the evaluator to grade as-is>
+  - [ ] <criterion>
+- **Out of scope:** <the boundary. Write "none" explicitly if there is none>
 
-## 2. Verification, evidence, recovery
+## 2. Verification and recovery
 
-- **Verification commands (`verificationCommands`):** <commands/observations the evaluator re-runs
-  as-is>
-- **Active budget (`activeBudgetMinutes`):** <positive integer, max 20>
-- **Single-command timeout (`commandTimeoutMinutes`):** <positive integer, max 12>
-- **Validation budget (`validationMinutes`):** <positive integer, max 6>
-- **PLAN-review budget:** <default 1 pass / within the active budget; override only when a
-  different cap is needed>
-- **BUILD↔EVAL budget:** <default 2 passes / within the active budget; override only when a
-  different cap is needed>
-- **Progress judgment:** `material-progress | no-progress` — material progress is a change that
-  closes a previous blocker or makes acceptance/accounting measurable; no-progress is the same
-  blocker repeating with no new evidence or fix
-- **Evidence accounting (`evidenceAccounting`, agent/eval/replay/policy work only):** <semantic
-  family / surface variant / profile / journey / turn counts; the `realismProxy` name; immutable
-  `dataOrigin`; independent `executionEvidence`; controlled replay / organic production evidence;
-  receipts kept separate from feedback>
-- **Rollback / recovery (`rollback`):** <what to revert on failure/regression, what data to
-  preserve, resume conditions>
+- **Verification commands:** <what the evaluator re-runs unchanged>
+- **Budgets:** active minutes · single-command timeout · PLAN-review passes (default 1) ·
+  BUILD↔EVAL passes (default 2). Two separate counters — never borrow one for the other.
+- **Progress:** `material-progress | no-progress` — material progress closes a previous blocker or
+  makes acceptance measurable; no-progress is the same blocker with no new evidence.
+- **Rollback:** <what to revert, what data to preserve, when to resume>
 
-## 3. Worker notes (filled by the worker/builder)
+For agent/eval/replay work only, also record the evidence accounting the
+[agent-testing rule](../rules/verification/agent-testing.md) defines — immutable `dataOrigin` and
+independent `executionEvidence` are the two that get conflated.
 
-- **Scope touched:** <files/modules — keep narrow>
-- **What was done:** one line per acceptance criterion
-  - <criterion 1> → <what was done>
-- **Decisions/assumptions:** <non-obvious choices and why>
-- **Verification run results:** <commands run + results. If not run, write "not run">
-- **Where the evaluator should look hardest:** <handed to the next role>
+## 3. Worker notes
 
-## 4. Evaluator verdict (filled by the independent evaluator — MUST be a different agent than the worker)
+- **Scope touched:** <files — keep narrow>
+- **Per criterion:** <criterion> → <what was done>
+- **Decisions and assumptions:** <the non-obvious ones, and why>
+- **Verification results:** <commands run and what happened. If not run, write "not run">
+- **Where the evaluator should look hardest:**
 
-- **Verdict:** `PASS | FAIL`
-- **Criteria check:** for each criterion in §1, met/not met + evidence
-  - <criterion 1> → met? <evidence (what was actually run or checked)>
-- **Concrete feedback (on FAIL, so the worker can fix immediately):**
-  - <bundle the blockers reasonably discoverable in one pass: what is wrong, why, and where>
-- **New-blocker provenance:** <if a later pass raised a new blocker, why it could not have been
-  found in the earlier pass; otherwise "none">
-- **Iteration count:** <which BUILD↔EVAL cycle this is>
+## 4. Evaluator verdict — a DIFFERENT instance from the worker
 
----
+- **Verdict:** `PASS | FAIL | UNVERIFIABLE`
+- **Per criterion:** <criterion> → met? <what was actually run or checked>
+- **On FAIL:** <every blocker discoverable in this pass, bundled — what, why, where>
+- **New-blocker provenance:** <if a later pass raised a new one, why it could not have been found
+  earlier; otherwise "none">
+- **Iteration:** <which BUILD↔EVAL cycle>
 
-## Open questions (when BLOCKED)
+## Open questions — when BLOCKED
 
-- <if there is no answer, do not guess — write it here and stop; a human/orchestrator resolves it>
+- <no answer? do not guess. Write it here and stop.>
 
-## Status log (append-only; only on BLOCKED or retry)
+## Status log — append only, on BLOCKED or retry
 
-- <YYYY-MM-DD HH:MM> · <role> · <PLAN-review | BUILD↔EVAL> · <cumulative budget> ·
-  <material-progress | no-progress> · <one line: blocker closed / new evidence>
-
----
-
-## Appendix: full ceremony (L-size · security-grade slices only)
-
-Only large work where the default 5 sections are not enough (multiple workers, human merge
-approval required, high-regression-risk security/persisted-format changes) appends the two
-sections below. Not used on ordinary slices.
-
-### Appendix A. Merge review (reviewer/human)
-
-- **Pre-merge check:** <risks seen in full context>
-- **Approval:** <who, when>
-
-### Appendix B. Learning (default is the commit body — use this only to collect multiple workers' learnings in one place)
-
-- **Strategies that worked (reinforce):** <use more often next time>
-- **Corrections/failures (weaken/ratchet):** <strategies to weaken / failures to pin as a one-line
-  rule>
-- **Reusable procedure:** <skill/procedure extracted from this task — "none" if none>
-
----
-
-> Rule: this form interlocks 1:1 with the roles and gates in [team-roles](roles.md). If the
-> form changes, update there too. Per the compressed-return / external-file principle
-> ([team-roles §3](roles.md)), point to links instead of inlining anything large.
+- <date · role · which budget · cumulative use · material-progress|no-progress · one line>
