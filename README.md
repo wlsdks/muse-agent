@@ -106,6 +106,8 @@ Most assistants start from zero every time. Muse is built around the opposite: y
 thread matters, and it gives that thread back to you later — where you stopped, what changed since,
 the next step, and every source it used.
 
+<p align="center"><img src="docs/images/muse-continue.gif" alt="A real terminal session: starting a thread, linking a note and a task, then muse continue handing the thread back with its next step and sources" width="880" /></p>
+
 ### 1. Start a thread and link what belongs to it
 
 ```bash
