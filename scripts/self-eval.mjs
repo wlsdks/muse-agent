@@ -314,6 +314,11 @@ function main() {
   // oracle that drifted behind a production tightening, and three fixtures broken by the
   // docs-to-English sweep. A guard nobody runs is not a guard.
   gates.scriptGuards = gateExit("pnpm -s self-eval:test");
+  // Both were REAL, working gates that nothing ran — the same disease as the guard suite and
+  // check-readme-parity. evidence:dashboard:validate was RED on main and nobody knew, because
+  // its only caller was a human typing the command. Each takes ~1s.
+  gates.evidenceDashboard = gateExit("pnpm -s evidence:dashboard:validate");
+  gates.toolExposure = gateExit("pnpm -s verify:tool-exposure");
   gates.testFiles = { status: "pass", value: countTestFiles() };
   // The prescribed CAPABILITIES.md ledger was intentionally removed (f4c195df —
   // "so the agent discovers work itself"). Only emit this count WHEN the file
