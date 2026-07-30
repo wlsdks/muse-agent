@@ -1,13 +1,11 @@
 import { createHash } from "node:crypto";
 
 import {
-  parseTriggerAdmissionJournal,
-  serializeTriggerAdmissionJournal,
+  normalizeTriggerAdmissionJournal,
   type TriggerAdmissionJournal
 } from "./trigger-admission-journal.js";
 import {
-  parseTriggerWorkState,
-  serializeTriggerWorkState,
+  normalizeTriggerWorkState,
   type TriggerWorkState
 } from "./trigger-work-state.js";
 
@@ -174,11 +172,9 @@ function eventHealth(
   if (!input) {
     return eventComponent("unknown", ["event-evidence-missing"], zeroEventCounts(), 0);
   }
-  const journal = parseTriggerAdmissionJournal(
-    serializeTriggerAdmissionJournal(input.journal)
-  );
+  const journal = normalizeTriggerAdmissionJournal(input.journal);
   const workStates = input.workStates.map((state) =>
-    parseTriggerWorkState(serializeTriggerWorkState(state)));
+    normalizeTriggerWorkState(state));
   const workKeys = workStates.map((state) => state.dedupKey);
   if (new Set(workKeys).size !== workKeys.length) {
     throw new TypeError("duplicate event work state");

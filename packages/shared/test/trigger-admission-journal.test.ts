@@ -195,4 +195,16 @@ describe("trigger admission journal", () => {
     expect(Object.isFrozen(result.journal.entries)).toBe(true);
     expect(Object.isFrozen(result.journal.entries[0]?.envelope.payload)).toBe(true);
   });
+
+  it("does not trust caller-frozen journal lookalikes", () => {
+    const journal = createTriggerAdmissionJournal({ maxPending: 1 });
+    const forged = Object.freeze({
+      ...journal,
+      overflowCount: 1
+    });
+    expect(() => admitTriggerToJournal(forged, {
+      envelope: envelope("g1"),
+      now: NOW
+    })).toThrow(/integrity/u);
+  });
 });

@@ -194,4 +194,16 @@ describe("trigger work state", () => {
     });
     expect(Object.isFrozen(completed)).toBe(true);
   });
+
+  it("does not trust caller-frozen work-state lookalikes", () => {
+    const forged = Object.freeze({
+      ...lease(),
+      leaseToken: "attacker"
+    });
+    expect(() => settleTriggerWork(forged, {
+      at: new Date("2026-07-30T12:00:00.500Z"),
+      leaseToken: "attacker",
+      outcome: "succeeded"
+    })).toThrow(/integrity/u);
+  });
 });

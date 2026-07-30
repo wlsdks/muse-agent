@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 
 import {
-  parseTriggerAdmissionJournal,
-  serializeTriggerAdmissionJournal,
+  normalizeTriggerAdmissionJournal,
   type TriggerAdmissionJournal
 } from "./trigger-admission-journal.js";
 import { isRecord, type JsonValue } from "./json-utils.js";
@@ -61,12 +60,13 @@ export interface CancelTriggerWorkInput {
 }
 
 const STATE_ID_PREFIX = "trigger-work:";
+const trustedWorkStates = new WeakSet<object>();
 
 export function claimTriggerWork(
   journal: TriggerAdmissionJournal,
   input: ClaimTriggerWorkInput
 ): TriggerWorkState {
-  const admitted = parseTriggerAdmissionJournal(serializeTriggerAdmissionJournal(journal));
+  const admitted = normalizeTriggerAdmissionJournal(journal);
   const dedupKey = nonEmpty(input.dedupKey, "dedupKey");
   const entry = admitted.entries.find((candidate) => candidate.envelope.dedupKey === dedupKey);
   if (!entry) {
@@ -97,7 +97,7 @@ export function resumeTriggerWork(
   state: TriggerWorkState,
   input: ResumeTriggerWorkInput
 ): TriggerWorkState {
-  const current = normalizeState(state);
+  const current = normalizeTriggerWorkState(state);
   const at = canonicalTimestamp(input.at, "at");
   if (current.status !== "leased" && current.status !== "retry-wait") {
     throw new TypeError("only leased or retry-wait trigger work can be resumed");
@@ -146,7 +146,7 @@ export function settleTriggerWork(
   state: TriggerWorkState,
   input: SettleTriggerWorkInput
 ): TriggerWorkState {
-  const current = normalizeState(state);
+  const current = normalizeTriggerWorkState(state);
   const at = canonicalTimestamp(input.at, "at");
   if (current.status !== "leased") {
     throw new TypeError("only leased trigger work can be settled");
@@ -206,7 +206,7 @@ export function cancelTriggerWork(
   state: TriggerWorkState,
   input: CancelTriggerWorkInput
 ): TriggerWorkState {
-  const current = normalizeState(state);
+  const current = normalizeTriggerWorkState(state);
   if (current.status !== "leased" && current.status !== "retry-wait") {
     throw new TypeError("only active trigger work can be cancelled");
   }
@@ -226,7 +226,7 @@ export function cancelTriggerWork(
 }
 
 export function serializeTriggerWorkState(state: TriggerWorkState): string {
-  return JSON.stringify(normalizeState(state));
+  return JSON.stringify(normalizeTriggerWorkState(state));
 }
 
 export function parseTriggerWorkState(text: string): TriggerWorkState {
@@ -278,6 +278,13 @@ export function parseTriggerWorkState(text: string): TriggerWorkState {
     throw new TypeError("trigger work state integrity check failed");
   }
   return state;
+}
+
+export function normalizeTriggerWorkState(state: TriggerWorkState): TriggerWorkState {
+  if (state !== null && typeof state === "object" && trustedWorkStates.has(state)) {
+    return state;
+  }
+  return parseTriggerWorkState(JSON.stringify(state));
 }
 
 type TriggerWorkStateBody = Omit<TriggerWorkState, "stateId">;
@@ -346,11 +353,9 @@ function stateFromBody(body: TriggerWorkStateBody): TriggerWorkState {
   const stateId = `${STATE_ID_PREFIX}${createHash("sha256")
     .update(JSON.stringify(stableBody))
     .digest("hex")}`;
-  return Object.freeze({ ...stableBody, stateId });
-}
-
-function normalizeState(state: TriggerWorkState): TriggerWorkState {
-  return parseTriggerWorkState(JSON.stringify(state));
+  const state = Object.freeze({ ...stableBody, stateId });
+  trustedWorkStates.add(state);
+  return state;
 }
 
 function addDuration(

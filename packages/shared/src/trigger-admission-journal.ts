@@ -63,6 +63,7 @@ export interface SettleTriggerAdmissionInput {
 const DEFAULT_MAX_ENTRIES = 4_096;
 const MAX_JOURNAL_ENTRIES = DEFAULT_MAX_ENTRIES;
 const SNAPSHOT_ID_PREFIX = "trigger-journal:";
+const trustedJournals = new WeakSet<object>();
 const ADMISSION_REASONS = new Set<TriggerAdmissionReason>([
   "budget-exhausted",
   "cooldown-active",
@@ -103,7 +104,7 @@ export function admitTriggerToJournal(
   journal: TriggerAdmissionJournal,
   input: JournalTriggerAdmissionInput
 ): JournalTriggerAdmissionResult {
-  const currentJournal = normalizeJournal(journal);
+  const currentJournal = normalizeTriggerAdmissionJournal(journal);
   if (!isStrictTriggerEnvelope(input.envelope)) {
     return Object.freeze({
       decision: freezeDecision({ action: "reject", dedupKey: null, reasons: ["invalid"] }),
@@ -166,7 +167,7 @@ export function settleTriggerAdmission(
   journal: TriggerAdmissionJournal,
   input: SettleTriggerAdmissionInput
 ): TriggerAdmissionJournal {
-  const currentJournal = normalizeJournal(journal);
+  const currentJournal = normalizeTriggerAdmissionJournal(journal);
   if (input.outcome !== "completed" && input.outcome !== "dead-lettered") {
     throw new TypeError("invalid trigger admission settlement outcome");
   }
@@ -208,7 +209,7 @@ export function settleTriggerAdmission(
 }
 
 export function serializeTriggerAdmissionJournal(journal: TriggerAdmissionJournal): string {
-  return JSON.stringify(journal);
+  return JSON.stringify(normalizeTriggerAdmissionJournal(journal));
 }
 
 export function parseTriggerAdmissionJournal(text: string): TriggerAdmissionJournal {
@@ -258,6 +259,20 @@ export function parseTriggerAdmissionJournal(text: string): TriggerAdmissionJour
   return journal;
 }
 
+/**
+ * Returns module-minted immutable snapshots without repeating an O(n) JSON
+ * round-trip. Caller-created objects still traverse the strict parser and
+ * content-integrity check before becoming trusted.
+ */
+export function normalizeTriggerAdmissionJournal(
+  journal: TriggerAdmissionJournal
+): TriggerAdmissionJournal {
+  if (journal !== null && typeof journal === "object" && trustedJournals.has(journal)) {
+    return journal;
+  }
+  return parseTriggerAdmissionJournal(JSON.stringify(journal));
+}
+
 type JournalBody = Omit<TriggerAdmissionJournal, "snapshotId">;
 
 function journalFromBody(body: JournalBody): TriggerAdmissionJournal {
@@ -271,7 +286,9 @@ function journalFromBody(body: JournalBody): TriggerAdmissionJournal {
   const snapshotId = `${SNAPSHOT_ID_PREFIX}${createHash("sha256")
     .update(JSON.stringify(frozenBody))
     .digest("hex")}`;
-  return Object.freeze({ ...frozenBody, snapshotId });
+  const journal = Object.freeze({ ...frozenBody, snapshotId });
+  trustedJournals.add(journal);
+  return journal;
 }
 
 function parseEntry(value: JsonValue): TriggerAdmissionJournalEntry {
@@ -348,10 +365,6 @@ function freezeDecision(decision: TriggerAdmissionDecision): TriggerAdmissionDec
 function cloneEnvelope(value: unknown): TriggerEnvelope {
   if (!isStrictTriggerEnvelope(value)) throw new TypeError("invalid trigger envelope");
   return deepFreeze(JSON.parse(JSON.stringify(value)) as TriggerEnvelope);
-}
-
-function normalizeJournal(journal: TriggerAdmissionJournal): TriggerAdmissionJournal {
-  return parseTriggerAdmissionJournal(JSON.stringify(journal));
 }
 
 function isStrictTriggerEnvelope(value: unknown): value is TriggerEnvelope {
