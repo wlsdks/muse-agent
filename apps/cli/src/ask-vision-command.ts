@@ -9,7 +9,15 @@
  */
 
 import { extractStructuredFromImage } from "@muse/agent-core";
-import { buildCalendarRegistry, resolveContactsFile, resolveNotesDir, resolveVisionModel, type MuseEnvironment } from "@muse/autoconfigure";
+import {
+  buildCalendarRegistry,
+  createModelProviderFor,
+  resolveAuxiliaryModel,
+  resolveContactsFile,
+  resolveNotesDir,
+  resolveVisionModel,
+  type MuseEnvironment
+} from "@muse/autoconfigure";
 import type { ModelProvider } from "@muse/model";
 
 import type { ProgramIO } from "./program.js";
@@ -23,19 +31,80 @@ import type { ProgramIO } from "./program.js";
  * latency. A probe failure/timeout leaves the pure resolver's choice, whose own
  * fail-soft (the vision primitive returns `{ ok:false }`, never throws) backstops.
  */
-export async function resolveSessionVisionModel(sessionModel: string, env: MuseEnvironment): Promise<string> {
-  const desired = resolveVisionModel({ env, sessionModel });
+export interface SessionVisionModelRoute {
+  readonly model: string;
+  readonly fallbackReason?: "local-only-cloud-egress-blocked";
+}
+
+/**
+ * Bind the vision surface to the shared auxiliary-model egress gate. The
+ * legacy resolver still supplies Muse's optional local vision default, but an
+ * explicit cloud override cannot bypass MUSE_LOCAL_ONLY.
+ */
+export async function resolveSessionVisionModelRoute(
+  sessionModel: string,
+  env: MuseEnvironment
+): Promise<SessionVisionModelRoute> {
+  const auxiliary = resolveAuxiliaryModel({
+    env,
+    sessionModel,
+    task: "vision"
+  });
+  if (auxiliary.keptLocalForPrivacy) {
+    return {
+      fallbackReason: "local-only-cloud-egress-blocked",
+      model: auxiliary.model
+    };
+  }
+  const desired = auxiliary.source === "session"
+    ? resolveVisionModel({ env, sessionModel })
+    : auxiliary.model;
   if (desired === sessionModel || !desired.startsWith("ollama/")) {
-    return desired;
+    return { model: desired };
   }
   const baseUrl = env.OLLAMA_BASE_URL ?? "http://localhost:11434";
   try {
     const res = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(2000) });
     const body = (await res.json()) as { models?: ReadonlyArray<{ name?: string }> };
     const availableModels = (body.models ?? []).map((m) => m.name ?? "").filter(Boolean);
-    return resolveVisionModel({ availableModels, env, sessionModel });
+    return {
+      model: resolveVisionModel({
+        availableModels,
+        env: {
+          ...env,
+          MUSE_VISION_MODEL: desired
+        },
+        sessionModel
+      })
+    };
   } catch {
-    return desired;
+    return { model: desired };
+  }
+}
+
+/** Backward-compatible model-only view for existing callers. */
+export async function resolveSessionVisionModel(sessionModel: string, env: MuseEnvironment): Promise<string> {
+  return (await resolveSessionVisionModelRoute(sessionModel, env)).model;
+}
+
+/**
+ * Keep model and physical provider identity aligned. A provider override must
+ * never be sent through the session provider's endpoint.
+ */
+export function resolveSessionVisionProvider(
+  sessionModel: string,
+  visionModel: string,
+  sessionProvider: ModelProvider,
+  env: MuseEnvironment,
+  createProvider: typeof createModelProviderFor = createModelProviderFor
+): ModelProvider | undefined {
+  if (visionModel === sessionModel) {
+    return sessionProvider;
+  }
+  try {
+    return createProvider(visionModel, env);
+  } catch {
+    return undefined;
   }
 }
 

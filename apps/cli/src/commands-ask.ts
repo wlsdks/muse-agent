@@ -79,7 +79,11 @@ import { CITATION_INSTRUCTION_LINES } from "./ask-prompt-constants.js";
 import { buildSessionFeedReflectionGrounding } from "./ask-session-grounding.js";
 import { captureTemporalClaimContext, retrieveAndRankNotes } from "./ask-note-retrieval.js";
 import { applyAdHocGrounding } from "./ask-adhoc-grounding.js";
-import { resolveSessionVisionModel, runVisionCommandAction } from "./ask-vision-command.js";
+import {
+  resolveSessionVisionModelRoute,
+  resolveSessionVisionProvider,
+  runVisionCommandAction
+} from "./ask-vision-command.js";
 import { runGroundingVerdict } from "./ask-grounding-verdict.js";
 import { finalizeAndRenderAsk } from "./ask-finalize.js";
 import { computeRuleAdmission } from "./ask-behavioural-rules.js";
@@ -292,7 +296,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // Vision surface may run a dedicated model (MUSE_VISION_MODEL, else the
       // measured local vision default when the chat model IS the local default).
       // Fail-soft to `model` when the optional vision model isn't pulled.
-      const visionModel = await resolveSessionVisionModel(model, process.env as MuseEnvironment);
+      const visionRoute = await resolveSessionVisionModelRoute(model, process.env as MuseEnvironment);
+      const visionModel = visionRoute.model;
+      if (visionRoute.fallbackReason === "local-only-cloud-egress-blocked") {
+        io.stderr(`(vision: local-only blocked the cloud auxiliary model; using ${visionModel})\n`);
+      }
       if (visionModel !== model) {
         io.stderr(`(vision: ${visionModel})\n`);
       }
@@ -300,11 +308,22 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // notes) and emit structured output / a draft action, so they short-circuit
       // the normal recall+grounding flow. Both require --image.
       if (options.extract || options.toCalendar || options.auto) {
+        const visionProvider = resolveSessionVisionProvider(
+          model,
+          visionModel,
+          assembly.modelProvider,
+          process.env as MuseEnvironment
+        );
+        if (!visionProvider) {
+          io.stderr(`muse ask: vision provider unavailable for ${visionModel}; no auxiliary model call was made.\n`);
+          process.exitCode = 1;
+          return;
+        }
         await runVisionCommandAction({
           imageAttachments,
           io,
           model: visionModel,
-          modelProvider: assembly.modelProvider,
+          modelProvider: visionProvider,
           options,
           userKey
         });
