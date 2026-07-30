@@ -4,7 +4,9 @@
 # 1. Serialize same-repository pushes across worktrees.
 # 2. Classify the union of paths in all pushed refs, fail-closed on any
 #    malformed/unknown Git state, and run only relevant deterministic gates.
-# 3. Run the path-scoped live grounding battery only by explicit opt-in.
+# 3. Resolve every documentation reference when markdown changed (pure node, so it also
+#    covers docs-only pushes, which skip the pnpm-backed gates).
+# 4. Run the path-scoped live grounding battery only by explicit opt-in.
 #
 # Environment:
 #   MUSE_RUN_PREPUSH_GROUNDING=1  opt into the live-LLM grounding battery
@@ -160,6 +162,7 @@ is_lintable_path() {
 needs_deterministic="$scope_fallback"
 needs_web="$scope_fallback"
 needs_full_lint="$scope_fallback"
+needs_doc_links="$scope_fallback"
 lint_files=()
 lint_file_count=0
 for ((index = 0; index < changed_file_count; index += 1)); do
@@ -175,6 +178,9 @@ for ((index = 0; index < changed_file_count; index += 1)); do
     is_web_impact_path "$file" && needs_web=1
     is_full_lint_impact_path "$file" && needs_full_lint=1
   fi
+  case "$file" in
+    *.md|.claude/rules/*|docs/*) needs_doc_links=1 ;;
+  esac
   if [ -f "$file" ] && is_lintable_path "$file"; then
     lint_files[$lint_file_count]="$file"
     lint_file_count=$((lint_file_count + 1))
@@ -193,6 +199,24 @@ resolve_pnpm() {
   done
   command -v pnpm >/dev/null 2>&1
 }
+
+if [ "$needs_doc_links" -eq 1 ] && [ ! -f scripts/check-doc-links.mjs ]; then
+  # An older checkout predates the checker. Say so rather than blocking every
+  # markdown push in a tree that has no gate to run.
+  echo "pre-push: reference gate skipped (scripts/check-doc-links.mjs not in this tree)" >&2
+elif [ "$needs_doc_links" -eq 1 ]; then
+  if ! command -v node >/dev/null 2>&1; then
+    echo "pre-push: BLOCKED — node not found; the documentation reference gate is required for this push" >&2
+    exit 1
+  fi
+  echo "pre-push: reference gate — node scripts/check-doc-links.mjs" >&2
+  if ! node scripts/check-doc-links.mjs >&2; then
+    echo "pre-push: BLOCKED — a documentation reference does not resolve" >&2
+    exit 1
+  fi
+else
+  echo "pre-push: reference gate skipped (no markdown changed)" >&2
+fi
 
 if [ "$needs_deterministic" -eq 0 ]; then
   echo "pre-push: deterministic gates skipped (docs/assets-only push)" >&2

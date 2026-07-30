@@ -72,7 +72,7 @@ Hooks live in `scripts/githooks/` (checked in) instead of the unversioned
 **shared across every worktree of the repo** — setting it from any worktree
 affects all of them.
 
-`pre-push` runs four stages in order:
+`pre-push` runs five stages in order:
 
 1. **Push-window lock** (`scripts/githooks/lib/pushlock.sh`) — serializes the
    whole hook run (and the `git push` right after it) across same-machine
@@ -93,7 +93,16 @@ affects all of them.
    lint config/dependency or fallback scope runs the full lint. A required
    gate whose environment cannot resolve `pnpm` is blocked. If a newly added
    dependency is missing locally, run `pnpm install --frozen-lockfile`.
-4. **Explicit live grounding tripwire** — grounding is not part of the
+4. **Fail-CLOSED documentation reference gate** — any pushed `.md` (or anything
+   under `docs/` or `.claude/rules/`) runs `node scripts/check-doc-links.mjs`,
+   which resolves every relative link, every `#fragment` against the target's
+   real headings, and every frontmatter `related:` entry across all markdown.
+   It is pure node, so it also covers a docs-only push, which skips stage 3
+   entirely — that gap is how a docs refactor once shipped broken links. Code
+   spans and fenced blocks are stripped first: `` `![](exfil)` `` in an
+   injection-test note is not a link. A tree that predates the checker reports
+   a visible skip instead of blocking.
+5. **Explicit live grounding tripwire** — grounding is not part of the
    default local push latency. Set `MUSE_RUN_PREPUSH_GROUNDING=1` to run
    `pnpm -s precheck:grounding` when the pushed paths affect grounding. It
    remains fail-open when pnpm/Ollama cannot be reached.

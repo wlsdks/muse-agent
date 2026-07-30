@@ -78,6 +78,16 @@ function calls(logFile) {
   return value ? value.split("\n") : [];
 }
 
+
+function installDocLinkChecker(repoDir) {
+  const src = path.join(here, "check-doc-links.mjs");
+  const dest = path.join(repoDir, "scripts", "check-doc-links.mjs");
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(src, dest);
+  execFileSync("git", ["add", "--", "scripts/check-doc-links.mjs"], { cwd: repoDir });
+  execFileSync("git", ["commit", "--quiet", "-m", "checker"], { cwd: repoDir });
+}
+
 test("missing pnpm blocks an unscoped/full deterministic gate", () => {
   const repoDir = makeTempRepo();
   const result = runHook(repoDir, { pathDirs: [realGitDir, "/usr/bin", "/bin"] });
@@ -487,4 +497,62 @@ test("MUSE_SKIP_PREPUSH_ALL skips every stage", () => {
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(calls(logFile), []);
   assert.match(result.stderr, /ALL stages skipped/u);
+});
+
+test("a markdown push runs the reference gate and passes when every link resolves", () => {
+  const repoDir = makeTempRepo();
+  const remoteSha = writeAndCommit(repoDir, "README.md", "base\n", "base");
+  installDocLinkChecker(repoDir);
+  const logFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "muse-prepush-log-")), "calls.txt");
+  const localSha = writeAndCommit(repoDir, "docs/notes.md", "see [readme](../README.md)\n", "docs");
+  const result = runHook(repoDir, {
+    pathDirs: [makePnpmShim(logFile), realGitDir, path.dirname(process.execPath), "/usr/bin", "/bin"],
+    input: refUpdateStdin(localSha, remoteSha)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /reference gate — node scripts\/check-doc-links\.mjs/u);
+  assert.match(result.stderr, /every reference resolves/u);
+});
+
+test("a markdown push is BLOCKED when a documentation reference does not resolve", () => {
+  const repoDir = makeTempRepo();
+  const remoteSha = writeAndCommit(repoDir, "README.md", "base\n", "base");
+  installDocLinkChecker(repoDir);
+  const localSha = writeAndCommit(repoDir, "docs/notes.md", "see [gone](./does-not-exist.md)\n", "docs");
+  const result = runHook(repoDir, {
+    pathDirs: [realGitDir, path.dirname(process.execPath), "/usr/bin", "/bin"],
+    input: refUpdateStdin(localSha, remoteSha)
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /a documentation reference does not resolve/u);
+});
+
+test("a code-only push skips the reference gate", () => {
+  const repoDir = makeTempRepo();
+  const remoteSha = writeAndCommit(repoDir, "README.md", "base\n", "base");
+  installDocLinkChecker(repoDir);
+  const logFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "muse-prepush-log-")), "calls.txt");
+  const localSha = writeAndCommit(repoDir, "packages/x/src/a.ts", "export const a = 1;\n", "code");
+  const result = runHook(repoDir, {
+    pathDirs: [makePnpmShim(logFile), realGitDir, path.dirname(process.execPath), "/usr/bin", "/bin"],
+    input: refUpdateStdin(localSha, remoteSha)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /reference gate skipped \(no markdown changed\)/u);
+});
+
+test("a markdown push in a tree without the checker says so instead of blocking", () => {
+  const repoDir = makeTempRepo();
+  const remoteSha = writeAndCommit(repoDir, "README.md", "base\n", "base");
+  const localSha = writeAndCommit(repoDir, "docs/notes.md", "docs only\n", "docs");
+  const result = runHook(repoDir, {
+    pathDirs: [realGitDir, path.dirname(process.execPath), "/usr/bin", "/bin"],
+    input: refUpdateStdin(localSha, remoteSha)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stderr, /reference gate skipped \(scripts\/check-doc-links\.mjs not in this tree\)/u);
 });
