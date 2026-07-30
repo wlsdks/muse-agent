@@ -4,7 +4,7 @@ audience: [product, engineering, agents]
 purpose: Run the signature Muse experience and Attunement Graph as a separate long-lived program
 status: active
 updated: 2026-07-30
-related: [../../docs/strategy/attunement.md, ../../docs/design/attunement-graph.md, ../../docs/design/agent-native-graph-core.md, attunement-implementation-plan.md]
+related: [../../docs/strategy/attunement.md, ../../docs/design/attunement/attunement-graph.md, ../../docs/design/attunement/agent-native-graph-core.md, attunement-implementation-plan.md]
 ---
 
 # Attunement wow + graph roadmap
@@ -249,7 +249,7 @@ Shadow ledger or durable database:
   results receive one bounded `exact-compared-evidence-unavailable` Capsule result.
 
 The full decision and dissent are in
-[Muse Agent-Native Graph Core](../../docs/design/agent-native-graph-core.md). Those earlier
+[Muse Agent-Native Graph Core](../../docs/design/attunement/agent-native-graph-core.md). Those earlier
 fail-closed findings produced AWG-045a/045b and the now verified
 AWG-050a1/050a2a/050a2b1/050a2b2/050a2c seams rather than being bypassed. The Provider
 capture and head-revalidation are trusted host seams, while the graph compiler remains
@@ -855,7 +855,7 @@ Before selecting algorithms or storage:
 7. adapt mechanisms, not proprietary code or vendor claims.
 
 Current starting references and limitations are recorded in
-[the graph design](../../docs/design/attunement-graph.md). Research is refreshed at storage
+[the graph design](../../docs/design/attunement/attunement-graph.md). Research is refreshed at storage
 selection and qualification gates because projects, APIs, and benchmark results drift.
 
 ## Continuous integration with `main`

@@ -1,6 +1,6 @@
 import { errorMessage } from "@muse/shared";
 /**
- * Proactive surfacing daemon (Phase A per docs/design/proactive-surfacing.md).
+ * Proactive surfacing daemon (Phase A per docs/design/proactive/proactive-surfacing.md).
  * Sibling of reminder-tick.ts — same setInterval-on-the-API-server
  * pattern, calendar-imminence-driven signal source.
  *
@@ -33,7 +33,7 @@ export interface ProactiveTickOptions {
    * Personal-tasks store file (`~/.muse/tasks.json` by default).
    * When set, open tasks with imminent dueAt fire alongside
    * calendar imminent events. Phase B of
-   * docs/design/proactive-surfacing.md.
+   * docs/design/proactive/proactive-surfacing.md.
    */
   readonly tasksFile?: string;
   /**

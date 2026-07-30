@@ -32,7 +32,7 @@ export interface PersistedTask {
   readonly notes?: string;
   readonly tags?: readonly string[];
   /**
-   * Phase C of docs/design/proactive-surfacing.md. When `false`,
+   * Phase C of docs/design/proactive/proactive-surfacing.md. When `false`,
    * the proactive-tick skips this task even though it has an
    * imminent `dueAt`. Default behaviour (undefined or `true`):
    * fire when due-soon.

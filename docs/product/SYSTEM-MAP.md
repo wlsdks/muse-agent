@@ -8,7 +8,7 @@ status_legend:
   "⚙️": needs external integration or configuration
   "⚠️": known gap (not yet trustworthy)
 updated: 2026-07-30
-related: [../strategy/attunement.md, ../design/attunement.md, FEATURES.md, ../README.md, ../feature-catalog/INDEX.md, ../strategy/differentiation.md]
+related: [../strategy/attunement.md, ../design/attunement/README.md, FEATURES.md, ../README.md, ../feature-catalog/INDEX.md, ../strategy/differentiation.md]
 ---
 
 # Muse at a glance (system map)
@@ -46,7 +46,7 @@ paused, inspected and forgotten. Personal Continuity Slice A hands back the life
 user picked together with the exact local task/note through `muse continue`, and an explicit outcome
 changes only what the next pack shows. Interpreting Observe O1 collection as rhythm or friction,
 using it for pack delivery, automatic linking, and timing improvements are all still **roadmap**
-([product direction](../strategy/attunement.md) · [technical design](../design/attunement.md)).
+([product direction](../strategy/attunement.md) · [technical design](../design/attunement/README.md)).
 
 The signature roadmap experience is **Shadow Muse → Continuity Capsule → Policy Card**: Muse first
 learns in silence, then restores the state the user meant to continue along with what changed since,
@@ -54,7 +54,7 @@ then shows the next collaboration rule with its evidence, scope and rollback. Th
 Attunement Graph (MAG)** behind it is not a heavy server duplicating existing stores; it is an
 agent-native personal context compiler that links time, relationships and provenance as a
 regenerable projection and builds only the small Working Graph each turn needs
-([graph design](../design/attunement-graph.md) ·
+([graph design](../design/attunement/attunement-graph.md) ·
 [separate execution roadmap](../../internal/goals/attunement-wow-graph-roadmap.md)).
 
 ## The big picture — what layers Muse is made of

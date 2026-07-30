@@ -1,7 +1,7 @@
 /**
  * Pure data layer for self-followup promises (`~/.muse/followups.json`).
  *
- * Step 2 of `docs/design/agent-self-followup.md`. The detector
+ * Step 2 of `docs/design/proactive/agent-self-followup.md`. The detector
  * (step 1, `extractFollowupPromises` in @muse/agent-core) returns
  * typed promises from an assistant turn; this module persists
  * them so the firing daemon (step 4) can wake them at

@@ -3,7 +3,7 @@ title: Muse glossary
 audience: [AI agents, developers, product]
 purpose: One definition per Muse-specific term, so a new agent understands without grepping
 updated: 2026-07-30
-related: [../strategy/attunement.md, ../design/attunement-graph.md, SYSTEM-MAP.md, ../trust/grounding-gate.md, ../feature-catalog/INDEX.md]
+related: [../strategy/attunement.md, ../design/attunement/attunement-graph.md, SYSTEM-MAP.md, ../trust/grounding-gate.md, ../feature-catalog/INDEX.md]
 ---
 
 # Muse glossary

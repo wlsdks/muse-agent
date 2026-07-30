@@ -1,5 +1,5 @@
 /**
- * `muse work` — docs/design/muse-work.md. A Work is a reference-only BINDING
+ * `muse work` — docs/design/attunement/muse-work.md. A Work is a reference-only BINDING
  * (one-line goal + the flows/board-tasks/thread that belong to it + an
  * outcome history) — it never executes anything itself. Mirrors `muse tasks`'
  * API-first / `--local` fallback convention so this works with or without

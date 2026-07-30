@@ -1,6 +1,6 @@
 /**
  * Pattern-detection cooldown sidecar — step 4 of
- * `docs/design/pattern-detection.md`. Mirrors the
+ * `docs/design/proactive/pattern-detection.md`. Mirrors the
  * proactive-fired pattern but keys off the detector's stable
  * `patternId` (the sha256-12 prefix from
  * `detectTimeOfDayPatterns` / `detectWeeklyTaskPatterns`).

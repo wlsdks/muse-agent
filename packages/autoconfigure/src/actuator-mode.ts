@@ -17,7 +17,7 @@
  *
  * This module resolves the SETTING only. It does not decide any individual
  * call — that is the approval gate's job, and `auto` never means "send
- * anything to anyone" (see docs/design/actuator-modes.md).
+ * anything to anyone" (see docs/design/platform/actuator-modes.md).
  */
 
 import { randomBytes } from "node:crypto";

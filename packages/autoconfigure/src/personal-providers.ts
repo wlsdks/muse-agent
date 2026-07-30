@@ -341,7 +341,7 @@ export function ensureNotesDir(notesDir: string): void {
  * the persisted credential file (`~/.muse/messaging.json` or
  * `MUSE_MESSAGING_CREDENTIALS_FILE`). Env wins when both are
  * present; absence is silent. Phase 1 surface is outbound-only —
- * see `docs/design/messaging.md`.
+ * see `docs/design/channels/messaging.md`.
  *
  * Recognised inputs:
  *   - MUSE_TELEGRAM_BOT_TOKEN          (env) or providers.telegram.token   (file)

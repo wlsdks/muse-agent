@@ -29,7 +29,7 @@ export interface SchedulerRouteOptions {
   ) => boolean;
   readonly scheduler?: SchedulerRouteScheduler;
   /**
-   * The Work store's file path (docs/design/muse-work.md). When set, a job
+   * The Work store's file path (docs/design/attunement/muse-work.md). When set, a job
    * delete triggers the lifecycle-audit prune (`syncWorksOnFlowDelete`) so no
    * Work is left pointing at a flow that no longer exists — the
    * calendar↔reminder lesson: linking two stores means every lifecycle op on

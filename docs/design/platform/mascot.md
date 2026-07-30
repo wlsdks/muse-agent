@@ -52,7 +52,7 @@ promise the moon, it promises to hand you the one thing it's sure about.
 
 ## Behaviour catalogue — and what each means to you
 
-Every pose is a `FrameName` in [`packages/mascot/src/pixel-data.ts`](../../packages/mascot/src/pixel-data.ts).
+Every pose is a `FrameName` in [`packages/mascot/src/pixel-data.ts`](../../../packages/mascot/src/pixel-data.ts).
 Grouped by what the user should read from it:
 
 ### Resting — "I'm here, nothing to report"
@@ -132,10 +132,10 @@ Consumers, all fed from that single source:
 
 | Surface | How it renders | Entry point |
 | --- | --- | --- |
-| **CLI** banner / `muse logo` | ANSI half-blocks (`toAnsi`) | [`apps/cli/src/muse-mascot.ts`](../../apps/cli/src/muse-mascot.ts) |
-| **README** hero | animated SVG (`toSvg`, CSS keyframes) | [`docs/assets/mascot.svg`](../assets/mascot.svg) (generated) |
+| **CLI** banner / `muse logo` | ANSI half-blocks (`toAnsi`) | [`apps/cli/src/muse-mascot.ts`](../../../apps/cli/src/muse-mascot.ts) |
+| **README** hero | animated SVG (`toSvg`, CSS keyframes) | [`docs/assets/mascot.svg`](../../assets/mascot.svg) (generated) |
 | **Web** DeskPet | live pixel render | `apps/web/src/components/pixel-bird.ts` |
-| **macOS app** icon + companion + Settings/Onboarding header | rasterised PNG / `.icns` | [`apps/desktop/scripts/gen-app-icon.mjs`](../../apps/desktop/scripts/gen-app-icon.mjs) |
+| **macOS app** icon + companion + Settings/Onboarding header | rasterised PNG / `.icns` | [`apps/desktop/scripts/gen-app-icon.mjs`](../../../apps/desktop/scripts/gen-app-icon.mjs) |
 
 **The drift guard.** `apps/web` is deliberately outside the TypeScript
 project-reference graph (a Vite island with no `@muse/*` deps), so it keeps a

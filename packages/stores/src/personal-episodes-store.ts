@@ -1,7 +1,7 @@
 /**
  * Pure data layer for episodic memory (`~/.muse/episodes.json`).
  *
- * Step 1 of `docs/design/episodic-memory.md`. The end-of-session
+ * Step 1 of `docs/design/memory/episodic-memory.md`. The end-of-session
  * hook (later step) reads `last-chat.jsonl` from the most recent
  * `[SESSION_BOUNDARY]` sentinel to EOF, calls a summariser, and
  * persists the result here. The persona builder (later step) reads

@@ -1,7 +1,7 @@
 import { errorMessage } from "@muse/shared";
 /**
  * Self-followup firing daemon — step 4 of
- * `docs/design/agent-self-followup.md` wired into apps/api as a
+ * `docs/design/proactive/agent-self-followup.md` wired into apps/api as a
  * `setInterval` rider, mirroring `reminder-tick.ts` /
  * `proactive-tick.ts`.
  *

@@ -1,7 +1,7 @@
 import { errorMessage } from "@muse/shared";
 /**
  * Pattern-detection firing daemon — step 4 wiring of
- * `docs/design/pattern-detection.md`. setInterval rider on the
+ * `docs/design/proactive/pattern-detection.md`. setInterval rider on the
  * API server's lifecycle, mirroring `followup-tick.ts` /
  * `proactive-tick.ts`.
  *

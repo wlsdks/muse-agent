@@ -344,7 +344,7 @@ export interface SessionBoundary {
 /**
  * Append a `[SESSION_BOUNDARY]` marker to the active conversation. Called
  * once per REPL boot, before any seed read. Step 2 of
- * docs/design/episodic-memory.md — the later end-of-session summariser hook
+ * docs/design/memory/episodic-memory.md — the later end-of-session summariser hook
  * scans from the most recent boundary to the end.
  *
  * The turn uses role: "system" so `readLastChatHistory`'s user|assistant

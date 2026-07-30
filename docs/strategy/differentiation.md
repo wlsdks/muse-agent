@@ -11,7 +11,7 @@
 > Policy improves how Muse collaborates with this person. The proposed Attunement Graph
 > Engine connects time, relationship, provenance, policy, and authority as a lightweight
 > personal context compiler. See [the product contract](attunement.md),
-> [graph design](../design/attunement-graph.md), and
+> [graph design](../design/attunement/attunement-graph.md), and
 > [separate execution roadmap](../../internal/goals/attunement-wow-graph-roadmap.md).
 >
 > The L1–L7 entries below are a historical, evidence-oriented trust ledger. They remain

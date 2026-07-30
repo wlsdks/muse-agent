@@ -1,6 +1,6 @@
 /**
  * Live (duplex) voice provider abstraction — Voice Phase F.3 of
- * `docs/design/voice-mode.md`.
+ * `docs/design/channels/voice-mode.md`.
  *
  * Gemini Live and OpenAI Realtime both stream audio + text over a
  * single websocket: the client pushes audio frames as the user

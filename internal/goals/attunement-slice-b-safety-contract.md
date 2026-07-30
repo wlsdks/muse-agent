@@ -18,7 +18,7 @@ related: [attunement-implementation-plan.md, ../../docs/strategy/attunement.md]
 > policy dependency exists in that slice. The Focus Hold and outbound gates
 > below remain mandatory for any later stage that consumes O1 evidence or
 > surfaces help; they no longer prohibit the isolated, owner-controlled O1
-> ledger described in [`../design/observe-o1.md`](../../docs/design/observe-o1.md).
+> ledger described in [`../design/observe-o1.md`](../../docs/design/attunement/observe-o1.md).
 
 The superseded combined Slice B would not add an Observe collector, OS
 integration, or proactive Continuity Pack delivery independently. Any future

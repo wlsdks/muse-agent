@@ -1,6 +1,6 @@
 /**
  * Wake-word detector abstraction (Voice Phase F.1 of
- * `docs/design/voice-mode.md`). Provider-neutral so a future ONNX
+ * `docs/design/channels/voice-mode.md`). Provider-neutral so a future ONNX
  * adapter (openWakeWord / Porcupine) slots in without changing the
  * `muse listen --wake` loop.
  *

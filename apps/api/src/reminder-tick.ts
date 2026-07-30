@@ -1,6 +1,6 @@
 import { errorMessage } from "@muse/shared";
 /**
- * Reminder firing daemon (Phase B per docs/design/reminder-firing.md)
+ * Reminder firing daemon (Phase B per docs/design/proactive/reminder-firing.md)
  * implemented as a plain `setInterval` riding the API server's
  * lifecycle. Sidesteps `DynamicScheduler` to keep the boot path
  * narrow — the scheduler manages user-defined cron jobs; this

@@ -52,7 +52,7 @@ export {
  *     forward (default 10 min) and reset status to pending.
  *   - `muse.reminders.fire` (write) — flip status pending → fired
  *     after the LLM has delivered the message itself (Phase A of
- *     `docs/design/reminder-firing.md`).
+ *     `docs/design/proactive/reminder-firing.md`).
  *   - `muse.reminders.clear` (write) — drop a reminder by id.
  *
  * Active firing through messaging is a follow-up iter — this server

@@ -4,7 +4,7 @@ audience: [engineering, product, security, agents]
 purpose: Define the modular graph engine that powers Muse's signature Attunement experience
 status: partial-implementation
 updated: 2026-07-30
-related: [../strategy/attunement.md, attunement.md, agent-native-graph-core.md, ../../internal/goals/attunement-wow-graph-roadmap.md]
+related: [../../strategy/attunement.md, README.md, agent-native-graph-core.md, ../../../internal/goals/attunement-wow-graph-roadmap.md]
 ---
 
 # Muse Attunement Graph (MAG)
@@ -32,7 +32,7 @@ monorepo until its clean-room build, packed-artifact, conformance, export/rebuil
 dependency-isolation gates pass. Muse is the first consumer, not a dependency that may
 leak into MAG Engine semantics. The accepted Module topology and repository extraction
 strategy are in
-[ADR 0001](../architecture/adr/0001-mag-product-module-boundary.md).
+[ADR 0001](../../architecture/adr/0001-mag-product-module-boundary.md).
 
 Markdown is MAG's planned portable document interchange/export format. Obsidian is a
 planned first-class local vault Adapter over Markdown, frontmatter, wiki links, and stable
@@ -82,7 +82,7 @@ completeness/abstention, and local export/rebuild/physical-forget behavior. Unti
 contract is implemented and independently qualified, it is a design advantage under
 construction rather than a competitor-superiority claim.
 The broader primary-source comparison is in the
-[MAG open-source competitive landscape](../strategy/mag-competitive-landscape-2026-07-30.md).
+[MAG open-source competitive landscape](../../strategy/mag-competitive-landscape-2026-07-30.md).
 
 The decision-level semantic, snapshot, operator, journal, local-storage, recovery, and
 staged-delivery blueprint is maintained separately in
@@ -95,7 +95,7 @@ database SDK into the architecture.
 **Built, not yet product-integrated:** AWG-010 provides the storage-neutral assertion
 contract, strict temporal/provenance/epistemic invariants, bounded traversal, in-memory
 reference adapter, reusable backend conformance suite, and token-budgeted Activation
-Subgraph compiler in [`packages/attunement-graph`](../../packages/attunement-graph/).
+Subgraph compiler in [`packages/attunement-graph`](../../../packages/attunement-graph).
 AWG-020 adds a pure, lazy per-thread projection of validated Continuity state: artifact
 links, delivery evidence, explicit outcomes, policy versions/revisions, and factual
 interaction evidence become content-addressed assertions with scope-safe deltas. The
@@ -532,7 +532,7 @@ existing authoritative Muse stores
 
 The AWG-070a3a0 portable-format foundation is `verified-current`. The Engine
 exposes its exact stored-projection normalizer only as a package-private Module seam, and
-[`PORTABLE-FORMAT.md`](../../packages/attunement-graph/PORTABLE-FORMAT.md) fixes `.magx`
+[`PORTABLE-FORMAT.md`](../../../packages/attunement-graph/PORTABLE-FORMAT.md) fixes `.magx`
 v1 as an implementation-pending normative contract. No codec, export/rebuild,
 filesystem/SQLite staging, Worker/admin runtime, or public `./admin` API ships in this
 slice. A fresh independent evaluator passed the exact validator, public-surface, and
@@ -592,7 +592,7 @@ rebuild, or physical forget may move to a Rust Node-API/WASM kernel only after
 workload-specific measurement includes boundary/serialization overhead and proves a
 material end-to-end gain. The accepted performance ladder, corpus matrix, and initial
 targets live in
-[ADR 0002](../architecture/adr/0002-mag-language-runtime-boundary.md).
+[ADR 0002](../../architecture/adr/0002-mag-language-runtime-boundary.md).
 
 The flagship Muse experience must remain complete with Muse's own local default graph
 Module. Neo4j, Graphiti, a hosted graph service, or any other external Graph DB may later

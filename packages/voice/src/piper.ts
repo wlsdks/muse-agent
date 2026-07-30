@@ -72,7 +72,7 @@ const DEFAULT_PIPER_TIMEOUT_MS = 120_000;
  * Local Piper TTS adapter. Spawns `piper -m voice.onnx -f out.wav`,
  * pipes the text in on stdin, reads the resulting WAV.
  *
- * Phase F.3 of `docs/design/voice-mode.md`. Mirrors
+ * Phase F.3 of `docs/design/channels/voice-mode.md`. Mirrors
  * `OpenAITtsProvider` so the registry can swap between cloud and
  * local TTS without touching the agent or HTTP surfaces. Gemini Live
  * (duplex stream) is a separate provider tracked in the same phase

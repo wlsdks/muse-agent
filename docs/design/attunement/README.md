@@ -4,7 +4,7 @@ audience: [engineering, product, security, agents]
 purpose: Define the closed loop, privacy boundary, and implementation seams for Attunement
 status: partial-implementation
 updated: 2026-07-29
-related: [../strategy/attunement.md, attunement-graph.md, ../../internal/goals/attunement-implementation-plan.md, ../../internal/goals/attunement-wow-graph-roadmap.md, ../trust/privacy-and-data.md]
+related: [../../strategy/attunement.md, attunement-graph.md, ../../../internal/goals/attunement-implementation-plan.md, ../../../internal/goals/attunement-wow-graph-roadmap.md, ../../trust/privacy-and-data.md]
 ---
 
 # Attunement architecture and data contract
@@ -328,4 +328,4 @@ arbitrary desktop control is part of the first loop.
 Trace each observation decision, feature version, candidate evidence, intervention policy,
 outcome, adaptation, and deletion cascade. Product metrics must be derivable without storing
 raw content. The implementation gates are defined in the
-[implementation plan](../../internal/goals/attunement-implementation-plan.md).
+[implementation plan](../../../internal/goals/attunement-implementation-plan.md).

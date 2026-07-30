@@ -4,7 +4,7 @@
  * `muse approvals approve` both work, but nothing handed the tools to a model,
  * so no draft was ever staged and the worklist was always empty.
  *
- * Step 2 of docs/design/actuator-modes.md. The gate is `ask` for BOTH risk
+ * Step 2 of docs/design/platform/actuator-modes.md. The gate is `ask` for BOTH risk
  * classes here — `auto` resolves to the same confirm until step 4 splits
  * recoverable actions out. So `auto` is currently no more permissive than
  * `ask`, which is the safe direction for a mode whose behaviour has not

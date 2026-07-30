@@ -13,7 +13,7 @@ import { requireAuthenticated } from "./server-helpers.js";
 
 /**
  * `/api/voice/*` routes — Phase D of the voice-mode rollout (see
- * `docs/design/voice-mode.md`).
+ * `docs/design/channels/voice-mode.md`).
  *
  * Three endpoints:
  *   - `GET  /api/voice/providers` — describe the configured STT and

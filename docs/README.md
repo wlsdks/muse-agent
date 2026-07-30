@@ -3,7 +3,7 @@ title: Muse documentation guide (index)
 audience: [planners, developers, AI agents]
 purpose: Single entry point to the Muse documentation set — which document holds what
 updated: 2026-07-30
-related: [strategy/attunement.md, design/attunement-graph.md, ../internal/goals/attunement-wow-graph-roadmap.md, product/SYSTEM-MAP.md, product/FEATURES.md]
+related: [strategy/attunement.md, design/attunement/attunement-graph.md, ../internal/goals/attunement-wow-graph-roadmap.md, product/SYSTEM-MAP.md, product/FEATURES.md]
 ---
 
 # Muse documentation guide
@@ -25,7 +25,7 @@ Every document lives in exactly one topic folder, and the folder name says which
 | [`trust/`](trust/) | Why you can believe the output — [grounding-gate](trust/grounding-gate.md), [privacy-and-data](trust/privacy-and-data.md) |
 | [`setup/`](setup/) | Getting it running — [local LLM](setup/setup-local-llm.md), [env inventory](setup/ENV.md), [remote access](setup/remote-access.md) |
 | [`architecture/`](architecture/README.md) | How it is built, and the decisions behind it — plus [`adr/`](architecture/adr/) |
-| [`design/`](design/) | Per-feature design rationale: why a shipped thing is shaped that way |
+| [`design/`](design/) | Per-feature design rationale, grouped `attunement/` · `memory/` · `proactive/` · `channels/` · `platform/` |
 | [`strategy/`](strategy/) | Product direction and positioning |
 | [`development/`](development/) | How we verify and release |
 | [`evaluations/`](evaluations/) · [`benchmarks/`](benchmarks/) · [`feature-catalog/`](feature-catalog/) | Dated evidence, kept as records rather than rewritten |
@@ -45,15 +45,15 @@ from docs alone**:
 5. [`product/SYSTEM-MAP.md`](product/SYSTEM-MAP.md) — the feature structure on one page
 6. [`trust/grounding-gate.md`](trust/grounding-gate.md) — the trust floor (grounding gate) as one flow
 7. [`product/FEATURES.md`](product/FEATURES.md) → [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md) — feature detail + exhaustive verification evidence
-8. Then go deeper: [`design/attunement.md`](design/attunement.md) · [`design/attunement-graph.md`](design/attunement-graph.md) · [`goals/attunement-implementation-plan.md`](../internal/goals/attunement-implementation-plan.md) · [`goals/attunement-wow-graph-roadmap.md`](../internal/goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
+8. Then go deeper: [`design/attunement/README.md`](design/attunement/README.md) · [`design/attunement-graph.md`](design/attunement/attunement-graph.md) · [`goals/attunement-implementation-plan.md`](../internal/goals/attunement-implementation-plan.md) · [`goals/attunement-wow-graph-roadmap.md`](../internal/goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
 
 ## To understand the product
 
 | Document | What | For whom |
 |---|---|---|
 | **[strategy/attunement.md](strategy/attunement.md)** | Muse's wedge, user moments, current/experimental/roadmap boundary | Product, design, and dev alike |
-| **[design/attunement.md](design/attunement.md)** | The privacy and closed-loop technical contract of the implemented Slice A and the follow-on Observe | Dev, security, AI agents |
-| **[design/attunement-graph.md](design/attunement-graph.md)** | Module contract and research basis of the agent-native time/provenance graph and personal context compiler | Product, dev, security |
+| **[design/attunement/README.md](design/attunement/README.md)** | The privacy and closed-loop technical contract of the implemented Slice A and the follow-on Observe | Dev, security, AI agents |
+| **[design/attunement-graph.md](design/attunement/attunement-graph.md)** | Module contract and research basis of the agent-native time/provenance graph and personal context compiler | Product, dev, security |
 | **[goals/attunement-implementation-plan.md](../internal/goals/attunement-implementation-plan.md)** | Dependency-ordered vertical slices, gates, kill criterion | Execution and evaluation owners |
 | **[goals/attunement-wow-graph-roadmap.md](../internal/goals/attunement-wow-graph-roadmap.md)** | The separate long-horizon execution order for Shadow Muse, Capsule, Policy Card, Graph Engine | Execution and evaluation owners |
 | **[SYSTEM-MAP.md](product/SYSTEM-MAP.md)** | Structural map of Muse's features at a glance (words only, for quick orientation) | Planners and devs / first-time readers |
@@ -72,16 +72,19 @@ from docs alone**:
 
 ## Deeper — design notes
 
-The [`design/`](design/) folder holds design notes for individual features, one file per topic. Most
-are **the design rationale for features already shipped** (why it was built that way);
-[background-review-engine](design/background-review-engine.md) is the one design currently in
-progress. For a feature's "what," see the product docs above; for the "why," look here:
+[`design/`](design/) holds the rationale for individual features — mostly *why a shipped thing is
+shaped the way it is*. It is grouped the same way the runtime is, so a design note sits next to the
+others it interacts with:
 
-- Attunement: [architecture and data contract](design/attunement.md), [graph engine](design/attunement-graph.md), [implementation slices](../internal/goals/attunement-implementation-plan.md), [wow + graph roadmap](../internal/goals/attunement-wow-graph-roadmap.md), [continuity-timing-loop](design/continuity-timing-loop.md), [muse-work](design/muse-work.md)
-- Memory and perception: [episodic-memory](design/episodic-memory.md), [proactive-surfacing](design/proactive-surfacing.md), [pattern-detection](design/pattern-detection.md), [context-engineering-roadmap](design/context-engineering-roadmap.md), [resumable-notes-indexing](design/resumable-notes-indexing.md)
-- Proactivity and follow-up: [agent-self-followup](design/agent-self-followup.md), [reminder-firing](design/reminder-firing.md), [background-review-engine](design/background-review-engine.md), [progressive-autonomy-p0](design/progressive-autonomy-p0.md)
-- Channels and voice: [messaging](design/messaging.md), [line-webhook](design/line-webhook.md), [voice-mode](design/voice-mode.md), [phase-d-chat-stream-routing](design/phase-d-chat-stream-routing.md)
-- Action and platform: [actuator-modes](design/actuator-modes.md), [macos-control](design/macos-control.md), [a2a-swarm](design/a2a-swarm.md), [mascot](design/mascot.md)
+| Folder | Notes |
+|---|---|
+| [`design/attunement/`](design/attunement/README.md) | The architecture and data contract, the [graph engine](design/attunement/attunement-graph.md) and its [core](design/attunement/agent-native-graph-core.md), [continuity-timing-loop](design/attunement/continuity-timing-loop.md), [observe-o1](design/attunement/observe-o1.md), [muse-work](design/attunement/muse-work.md) |
+| [`design/memory/`](design/memory/) | [episodic-memory](design/memory/episodic-memory.md), [context-engineering-roadmap](design/memory/context-engineering-roadmap.md), [resumable-notes-indexing](design/memory/resumable-notes-indexing.md), [background-review-engine](design/memory/background-review-engine.md) — the one design still in progress |
+| [`design/proactive/`](design/proactive/) | [proactive-surfacing](design/proactive/proactive-surfacing.md), [pattern-detection](design/proactive/pattern-detection.md), [reminder-firing](design/proactive/reminder-firing.md), [agent-self-followup](design/proactive/agent-self-followup.md), [progressive-autonomy-p0](design/proactive/progressive-autonomy-p0.md) |
+| [`design/channels/`](design/channels/) | [messaging](design/channels/messaging.md), [line-webhook](design/channels/line-webhook.md), [voice-mode](design/channels/voice-mode.md), [phase-d-chat-stream-routing](design/channels/phase-d-chat-stream-routing.md), [a2a-swarm](design/channels/a2a-swarm.md) |
+| [`design/platform/`](design/platform/) | [actuator-modes](design/platform/actuator-modes.md), [macos-control](design/platform/macos-control.md), [mascot](design/platform/mascot.md) |
+
+For a feature's "what", see the product docs above; for the "why", look here.
 
 ## Agent harness (operating structure)
 

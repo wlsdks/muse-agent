@@ -24,7 +24,7 @@ evidence.
 - **`@muse/attunement-graph` is a lightweight agent-native temporal/provenance graph** and personal
   context compiler — not a generic graph-DB claim. Existing personal stores remain authoritative;
   the graph is a rebuildable projection. Contract:
-  [`docs/design/attunement-graph.md`](docs/design/attunement-graph.md). Program:
+  [`docs/design/attunement-graph.md`](docs/design/attunement/attunement-graph.md). Program:
   [`internal/goals/attunement-wow-graph-roadmap.md`](internal/goals/attunement-wow-graph-roadmap.md).
 
 Runtime invariants, always:

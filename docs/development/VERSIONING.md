@@ -115,7 +115,7 @@ auto-release-per-commit would produce dozens of meaningless tags a day. A
 release is a deliberate snapshot of a *known-good* commit.
 
 1. **Pick a known-good commit** — one where fresh-clone `install → build →
-   test` and a live local round-trip pass (see [`README`](../README.md#build-and-verify)).
+   test` and a live local round-trip pass (see [`README`](../../README.md#build-and-verify)).
 2. **Bump `version`** in the root `package.json` to the new number. (Workspace
    `packages/*` stay `private` + `0.0.0`; they are not published to npm, so the
    root version is the single source of truth for the release.)

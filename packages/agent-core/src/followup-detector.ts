@@ -4,7 +4,7 @@
  * When the model writes "I'll check tomorrow morning" or "let me
  * remind you in 30 minutes", the proactive flow today is text-only:
  * the assistant says it, the user reads it, nothing gets queued.
- * `docs/design/agent-self-followup.md` describes a multi-iter
+ * `docs/design/proactive/agent-self-followup.md` describes a multi-iter
  * extension that closes the loop — this module lands step 1, the
  * pure detector that scans an assistant turn for explicit
  * time-bound promises.

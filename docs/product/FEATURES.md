@@ -7,7 +7,7 @@ status_legend:
   "⚙️": needs external integration/setup
   "⚠️": known gap (not yet trustworthy enough)
 updated: 2026-07-13
-related: [../strategy/attunement.md, ../design/attunement.md, SYSTEM-MAP.md, ../README.md, ../feature-catalog/INDEX.md, ../strategy/differentiation.md]
+related: [../strategy/attunement.md, ../design/attunement/README.md, SYSTEM-MAP.md, ../README.md, ../feature-catalog/INDEX.md, ../strategy/differentiation.md]
 ---
 
 # Muse feature definitions (for planners)
@@ -561,7 +561,7 @@ thread, not a hidden global preference.
 
 The key sentence: **Muse doesn't remember apps; it remembers the state I meant to continue.**
 The detailed product contract and module design follow [Attunement](../strategy/attunement.md),
-[Attunement Graph](../design/attunement-graph.md), and the
+[Attunement Graph](../design/attunement/attunement-graph.md), and the
 [separate execution roadmap](../../internal/goals/attunement-wow-graph-roadmap.md). These items are not shipped
 features yet.
 
@@ -571,7 +571,7 @@ that improve timing after this flow's value is confirmed.
 
 Today's memory, pattern, proactivity, browser, and trace are the substrate of this loop, not the
 whole loop. The concrete privacy contract and per-stage gates/kill criteria follow the
-[Attunement design](../design/attunement.md) and the
+[Attunement design](../design/attunement/README.md) and the
 [implementation plan](../../internal/goals/attunement-implementation-plan.md).
 
 ### The foundation already in place

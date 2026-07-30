@@ -1,6 +1,6 @@
 import { errorMessage } from "@muse/shared";
 /**
- * Telegram polling daemon (Phase 2.a.3 + 2.a.4 per docs/design/messaging.md).
+ * Telegram polling daemon (Phase 2.a.3 + 2.a.4 per docs/design/channels/messaging.md).
  *
  * Calls `provider.pollUpdates()` and appends each returned
  * `InboundMessage` to a JSON inbox file via

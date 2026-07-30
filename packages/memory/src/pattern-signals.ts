@@ -1,5 +1,5 @@
 /**
- * Step 1 of `docs/design/pattern-detection.md` — gather the raw
+ * Step 1 of `docs/design/proactive/pattern-detection.md` — gather the raw
  * signals the per-category detectors operate on. Pure data layer:
  * one shot reads three on-disk surfaces and returns a single
  * `PatternSignals` envelope.

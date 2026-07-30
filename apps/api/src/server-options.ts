@@ -57,7 +57,7 @@ export interface ServerOptions {
    * When absent, run linking/resolution fails closed without consulting cwd.
    */
   readonly continuityWorkspaceDir?: string;
-  /** `muse work` reference-only store (docs/design/muse-work.md). */
+  /** `muse work` reference-only store (docs/design/attunement/muse-work.md). */
   readonly worksFile?: string;
   readonly logger?: boolean;
   readonly cors?: CorsOptions;

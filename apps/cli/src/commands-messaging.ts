@@ -8,7 +8,7 @@
  * through `buildMessagingRegistry(process.env)` directly. Phase 1
  * is send-only across Telegram / Discord / Slack / LINE; Phase 2
  * (inbound polling / Socket Mode / webhook) is tracked in
- * `docs/design/messaging.md`.
+ * `docs/design/channels/messaging.md`.
  */
 
 import { confirm, isCancel } from "@clack/prompts";

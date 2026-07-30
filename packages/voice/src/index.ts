@@ -1,7 +1,7 @@
 /**
  * Muse Voice — provider-neutral speech I/O.
  *
- * Phase B of the voice-mode rollout (see `docs/design/voice-mode.md`).
+ * Phase B of the voice-mode rollout (see `docs/design/channels/voice-mode.md`).
  * Ships the abstractions plus OpenAI Whisper / OpenAI TTS adapters as
  * the default cloud backends. Future iterations slot Whisper.cpp,
  * Piper, ElevenLabs, Apple Speech and Gemini Live in by implementing

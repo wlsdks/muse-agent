@@ -1,5 +1,5 @@
 /**
- * Step 4 of `docs/design/pattern-detection.md` — orchestrator that
+ * Step 4 of `docs/design/proactive/pattern-detection.md` — orchestrator that
  * stitches the two detectors together with a cooldown gate.
  *
  * Pure function. Caller resolves the fired-records sidecar from

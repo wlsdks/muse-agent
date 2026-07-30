@@ -733,7 +733,7 @@ export {
   resolvePetBindingCandidates
 } from "./memory-pet-binding-guard.js";
 
-// Pattern detection — `docs/design/pattern-detection.md` steps 1+2.
+// Pattern detection — `docs/design/proactive/pattern-detection.md` steps 1+2.
 // Signal aggregator + category-1 time-of-day-action detector. Later
 // steps add the weekly-task detector and the proactive integration.
 export {

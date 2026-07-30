@@ -1,5 +1,5 @@
 /**
- * Step 3 of `docs/design/episodic-memory.md` — the LLM-driven
+ * Step 3 of `docs/design/memory/episodic-memory.md` — the LLM-driven
  * session summariser.
  *
  * Two responsibilities, both pure-ish (no I/O):

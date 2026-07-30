@@ -124,7 +124,7 @@ loading unrelated personal context into the model.
 Canonical contracts:
 
 - [Attunement strategy](docs/strategy/attunement.md)
-- [Attunement Graph design](docs/design/attunement-graph.md)
-- [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md)
+- [Attunement Graph design](docs/design/attunement/attunement-graph.md)
+- [Agent-Native Graph Core blueprint](docs/design/attunement/agent-native-graph-core.md)
 - [MAG language and runtime boundary](docs/architecture/adr/0002-mag-language-runtime-boundary.md)
 - [Wow + graph roadmap](internal/goals/attunement-wow-graph-roadmap.md)

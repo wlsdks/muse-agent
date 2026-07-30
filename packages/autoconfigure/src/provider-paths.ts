@@ -116,7 +116,7 @@ export function resolveTasksFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_TASKS_FILE", "tasks.json");
 }
 
-/** `muse work` — the Work store (docs/design/muse-work.md): a named goal binding flows/board tasks/a continuity thread. */
+/** `muse work` — the Work store (docs/design/attunement/muse-work.md): a named goal binding flows/board tasks/a continuity thread. */
 export function resolveWorksFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_WORKS_FILE", "works.json");
 }

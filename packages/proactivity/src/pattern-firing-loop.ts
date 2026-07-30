@@ -1,6 +1,6 @@
 /**
  * Pattern-detection firing engine — step 4 wiring half of
- * `docs/design/pattern-detection.md`. The orchestrator from
+ * `docs/design/proactive/pattern-detection.md`. The orchestrator from
  * `@muse/memory`'s `selectFireablePatterns` already decides
  * *which* patterns should fire on a given tick; this engine
  * delivers them.

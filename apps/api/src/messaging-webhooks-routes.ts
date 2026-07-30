@@ -1,6 +1,6 @@
 /**
  * Messaging webhook receivers (Phase 2.b.2 of
- * `docs/design/line-webhook.md`). Currently houses the LINE handler;
+ * `docs/design/channels/line-webhook.md`). Currently houses the LINE handler;
  * Telegram / Discord / Slack push variants would land here too if we
  * ever want webhook-mode for them (Phase 2.a's REST `fetchInbound`
  * covers them well enough today).

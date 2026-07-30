@@ -2,7 +2,7 @@
 
 > **Attunement boundary (2026-07-13):** proactivity is a delivery substrate, not the
 > product wedge. Attunement adds evidence-linked timing, outcome learning, and the option
-> to stay quiet. See [Attunement architecture](attunement.md).
+> to stay quiet. See [Attunement architecture](../attunement/README.md).
 
 Status: **Phases A + B + C + D shipped**. Phase D (agent-initiated
 turn) lands an in-memory presence tracker rather than the full
@@ -76,7 +76,7 @@ is the user currently on?" signal that doesn't exist yet.
   `MUSE_PROACTIVE_DESTINATION` are set. Boot is fail-open; missing config = no
   daemon (same posture as the reminder tick). (The design's separate
   `MUSE_PROACTIVE_ENABLED` flag was not implemented — a configured destination
-  is the enable signal. See the generated [ENV inventory](../setup/ENV.md).)
+  is the enable signal. See the generated [ENV inventory](../../setup/ENV.md).)
 - Phase A scope is *calendar events only*. Tasks come in Phase B once
   the calendar version has been dogfooded.
 

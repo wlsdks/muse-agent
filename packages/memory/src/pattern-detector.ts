@@ -1,5 +1,5 @@
 /**
- * Step 2 of `docs/design/pattern-detection.md` — the
+ * Step 2 of `docs/design/proactive/pattern-detection.md` — the
  * time-of-day-action detector (category 1). Pure function over the
  * `PatternSignals` envelope produced by `aggregateActivitySignals`.
  *
@@ -234,7 +234,7 @@ function countObservedWeeks(noteEdits: readonly NoteMtimeSignal[]): number {
 }
 
 /**
- * Weekly-task detector (category 2 of `docs/design/pattern-detection.md`).
+ * Weekly-task detector (category 2 of `docs/design/proactive/pattern-detection.md`).
  * Same shape as the time-of-day detector but consumes
  * `signals.tasks` (createdAt timestamps + titles) instead of
  * `signals.noteEdits`.

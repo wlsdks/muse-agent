@@ -5,8 +5,8 @@
 - Decision owners: Muse architecture
 - Related:
   [MAG product Module boundary](0001-mag-product-module-boundary.md),
-  [Muse Attunement Graph](../../design/attunement-graph.md),
-  [Agent-Native Graph Core](../../design/agent-native-graph-core.md),
+  [Muse Attunement Graph](../../design/attunement/attunement-graph.md),
+  [Agent-Native Graph Core](../../design/attunement/agent-native-graph-core.md),
   [native-kernel decision ledger](../../benchmarks/mag-native-kernel-candidates.md)
 
 ## Context

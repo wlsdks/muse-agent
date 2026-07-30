@@ -1,5 +1,5 @@
 /**
- * `/api/works/*` — the "일" (Work) surface: docs/design/muse-work.md. A Work
+ * `/api/works/*` — the "일" (Work) surface: docs/design/attunement/muse-work.md. A Work
  * is a reference-only BINDING (goal + linked flows/board-tasks/thread +
  * outcome history) — it never executes anything, never sends anything, and
  * deleting one only severs its own references (the linked stores are never

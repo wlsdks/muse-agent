@@ -84,7 +84,7 @@ const DEFAULT_WHISPER_TIMEOUT_MS = 120_000;
  * -of out`, then reads `out.txt`. ~3-10 s first call (model load),
  * ~1-2 s subsequent.
  *
- * Phase F.2 of `docs/design/voice-mode.md`. Mirrors
+ * Phase F.2 of `docs/design/channels/voice-mode.md`. Mirrors
  * `OpenAIWhisperSttProvider` so the registry can swap between cloud
  * and local STT without touching the agent or HTTP surfaces.
  */

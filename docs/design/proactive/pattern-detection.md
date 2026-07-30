@@ -1,7 +1,7 @@
 # Pattern-driven goal detection
 
 > **Attunement boundary (2026-07-13):** this shipped detector is a substrate, not a
-> Personal Rhythm Model. See [Attunement architecture](attunement.md). It uses note/task
+> Personal Rhythm Model. See [Attunement architecture](../attunement/README.md). It uses note/task
 > timestamps and limited CLI activity; it does not observe desktop dwell or action sequences.
 
 Status: **all 4 steps shipped + CLI + MCP loopback.** Audit

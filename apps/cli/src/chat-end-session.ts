@@ -1,5 +1,5 @@
 /**
- * Step 3b of `docs/design/episodic-memory.md` — wire the pure
+ * Step 3b of `docs/design/memory/episodic-memory.md` — wire the pure
  * pieces from step 3a (extractor + summariser) into the REPL exit
  * lifecycle. On graceful shutdown the REPL calls
  * `captureEndOfSessionEpisode`, which:

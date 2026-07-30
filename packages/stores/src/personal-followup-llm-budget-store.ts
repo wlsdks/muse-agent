@@ -1,7 +1,7 @@
 /**
  * Per-day budget tracker for the followup LLM-fallback detector.
  *
- * Step 5 of `docs/design/agent-self-followup.md` adds an opt-in
+ * Step 5 of `docs/design/proactive/agent-self-followup.md` adds an opt-in
  * LLM call per assistant turn when `MUSE_FOLLOWUP_LLM_FALLBACK=true`.
  * Every call costs an extra model round-trip; without a cap, a
  * chatty session can quietly burn the user's daily quota.

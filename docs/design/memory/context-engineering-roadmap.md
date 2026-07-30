@@ -2,7 +2,7 @@
 
 > Context injection answers “what should the model see now?” Attunement separately learns
 > “should Muse intervene, in what form, and did it help?” See
-> [Attunement architecture](attunement.md).
+> [Attunement architecture](../attunement/README.md).
 
 Tracker for the 5-phase context-engineering surface that lifts Muse
 toward the JARVIS-style "the assistant already knows" feel. Each phase

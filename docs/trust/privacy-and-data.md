@@ -3,7 +3,7 @@ title: Where your data lives — privacy summary
 audience: [users, product, developers, AI agents]
 purpose: One place for "what is stored where, and what each privacy posture blocks"
 updated: 2026-07-30
-related: [../design/attunement.md, ../product/SYSTEM-MAP.md, ../product/FEATURES.md, ../strategy/differentiation.md, ../README.md]
+related: [../design/attunement/README.md, ../product/SYSTEM-MAP.md, ../product/FEATURES.md, ../strategy/differentiation.md, ../README.md]
 ---
 
 # Where your data lives (privacy summary)
@@ -100,7 +100,7 @@ The default storage target is minimal metadata such as app-session transitions a
 titles is forbidden in the default profile.** Browser history remains, as today, a separate
 explicitly opt-in source that is not combined with the O1 collector. Adding browser observation to
 Observe later must separately clear private-window exclusion and per-source controls. The detailed
-contract is in the [Attunement design](../design/attunement.md).
+contract is in the [Attunement design](../design/attunement/README.md).
 
 ## Privacy-graded routing — sending only personal-data-free turns to the cloud (opt-in, off by default)
 

@@ -33,7 +33,7 @@ import { isRecentProactiveActivity } from "./presence.js";
 const MAX_HISTORY_GAP_WARNING_LENGTH = 500;
 
 /**
- * Phase B firing engine — see `docs/design/reminder-firing.md`.
+ * Phase B firing engine — see `docs/design/proactive/reminder-firing.md`.
  *
  * Reads due reminders, fans out to the messaging registry, marks
  * each delivered one as fired, and persists the new state with one

@@ -203,11 +203,11 @@ graph engine · organic-use evidence.
 
 <br/>
 
-The [Muse Attunement Graph](docs/design/attunement-graph.md) is an agent-native temporal/provenance
+The [Muse Attunement Graph](docs/design/attunement/attunement-graph.md) is an agent-native temporal/provenance
 graph and personal context compiler — not a third-party graph DB. RAG can find *likely* context; MAG
 has to prove the exact thread, time, change, source and policy relation. It runs on an embedded
 SQLite store behind an isolated worker, with no external graph server required
-([blueprint](docs/design/agent-native-graph-core.md)).
+([blueprint](docs/design/attunement/agent-native-graph-core.md)).
 
 It is deliberately built as an independently extractable module — Muse is its first consumer and
 dogfood environment. The public interface, adapter boundaries and repository-split plan are fixed in
@@ -292,7 +292,7 @@ Sources: [grounding manifest](docs/benchmarks/readme-qualified-evidence-v1.json)
 | 📊 | **Promote evidence.** Tests, synthetic replays, diagnostics, agent trials and real outcomes stay separate ledgers. |
 
 Enforced as deterministic code, never as a prompt instruction:
-[outbound safety](.claude/rules/outbound-safety.md) · [Attunement design](docs/design/attunement.md).
+[outbound safety](.claude/rules/outbound-safety.md) · [Attunement design](docs/design/attunement/README.md).
 
 ---
 
@@ -344,8 +344,8 @@ are not proof of agent effect.
 | | |
 | --- | --- |
 | **Start here** | [System map](docs/product/SYSTEM-MAP.md) · [Local model setup](docs/setup/setup-local-llm.md) · [Environment variables](docs/setup/ENV.md) |
-| **The product** | [Attunement contract](docs/strategy/attunement.md) · [Architecture and gaps](docs/design/attunement.md) · [Implementation plan](internal/goals/attunement-implementation-plan.md) |
-| **The graph** | [Attunement Graph](docs/design/attunement-graph.md) · [Agent-native core blueprint](docs/design/agent-native-graph-core.md) · [Roadmap](internal/goals/attunement-wow-graph-roadmap.md) |
+| **The product** | [Attunement contract](docs/strategy/attunement.md) · [Architecture and gaps](docs/design/attunement/README.md) · [Implementation plan](internal/goals/attunement-implementation-plan.md) |
+| **The graph** | [Attunement Graph](docs/design/attunement/attunement-graph.md) · [Agent-native core blueprint](docs/design/attunement/agent-native-graph-core.md) · [Roadmap](internal/goals/attunement-wow-graph-roadmap.md) |
 | **Trust** | [Grounding gate](docs/trust/grounding-gate.md) · [Privacy and data](docs/trust/privacy-and-data.md) · [Evidence index](docs/benchmarks/EVIDENCE.md) · [Security](SECURITY.md) |
 | **Audits** | [Full feature audit](docs/feature-catalog/INDEX.md) — a dated 2026-06-14 snapshot, written in Korean · [Personal-agent qualification](docs/development/personal-agent-qualification.md) |
 

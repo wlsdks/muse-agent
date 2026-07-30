@@ -1,5 +1,5 @@
 /**
- * Pure data layer for "Work" (`~/.muse/works.json`) — docs/design/muse-work.md.
+ * Pure data layer for "Work" (`~/.muse/works.json`) — docs/design/attunement/muse-work.md.
  *
  * A Work is a BINDING, never a new runtime: a one-line goal plus the flows
  * (scheduler jobs), board tasks, and continuity thread that belong to it,
@@ -371,7 +371,7 @@ export interface AddWorkOutcomeInput {
 
 /**
  * Record an outcome (`used`/`adjusted`/`ignored`), the same vocabulary the
- * continuity-thread outcome uses (docs/design/muse-work.md) — "done" is
+ * continuity-thread outcome uses (docs/design/attunement/muse-work.md) — "done" is
  * judged from this history, never from a model's self-report.
  */
 export async function addWorkOutcome(

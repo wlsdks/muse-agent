@@ -1,7 +1,7 @@
 /**
  * Agent-initiated notice broker — in-process pub/sub primitive for
  * Phase D of the proactive surfacing design
- * (docs/design/phase-d-chat-stream-routing.md).
+ * (docs/design/channels/phase-d-chat-stream-routing.md).
  *
  * The proactive notice loop already synthesises a one-line response
  * via `modelProvider.generate()` when an imminent calendar/task fires

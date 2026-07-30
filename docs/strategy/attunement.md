@@ -4,7 +4,7 @@ audience: [product, design, engineering, agents]
 purpose: Define Muse's product wedge without claiming roadmap capabilities are shipped
 status: north-star
 updated: 2026-07-30
-related: [../design/attunement.md, ../design/attunement-graph.md, ../../internal/goals/attunement-implementation-plan.md, ../../internal/goals/attunement-wow-graph-roadmap.md, ../trust/privacy-and-data.md]
+related: [../design/attunement/README.md, ../design/attunement/attunement-graph.md, ../../internal/goals/attunement-implementation-plan.md, ../../internal/goals/attunement-wow-graph-roadmap.md, ../trust/privacy-and-data.md]
 ---
 
 # Muse Attunement
@@ -95,7 +95,7 @@ A procedural skill teaches an agent how to do a task better. An Attunement Polic
 Muse how to collaborate with this person better.
 
 These three product mechanisms remain target architecture rather than a shipped wow claim.
-Their underlying [Muse Attunement Graph (MAG)](../design/attunement-graph.md) has bounded
+Their underlying [Muse Attunement Graph (MAG)](../design/attunement/attunement-graph.md) has bounded
 library substrates, including the worker-isolated durable projection-journal foundation,
 but not yet the complete Source Adapter, Policy Card, maintenance, qualification, or
 product-composition program. Dependency-ordered work lives in the

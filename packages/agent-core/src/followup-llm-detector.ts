@@ -1,5 +1,5 @@
 /**
- * Step 5 of `docs/design/agent-self-followup.md` — opt-in LLM
+ * Step 5 of `docs/design/proactive/agent-self-followup.md` — opt-in LLM
  * fallback for the followup detector.
  *
  * The rule-based detector (`extractFollowupPromises`) catches

@@ -1,6 +1,6 @@
 import { errorMessage } from "@muse/shared";
 /**
- * `muse listen` — Voice Phase C from `docs/design/voice-mode.md`.
+ * `muse listen` — Voice Phase C from `docs/design/channels/voice-mode.md`.
  *
  * Push-to-talk voice loop:
  *   (1) verify `sox` is on PATH; exit 1 with install hint if not

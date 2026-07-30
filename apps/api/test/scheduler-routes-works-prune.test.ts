@@ -1,5 +1,5 @@
 /**
- * The lifecycle-audit hook (docs/design/muse-work.md, the calendar↔reminder
+ * The lifecycle-audit hook (docs/design/attunement/muse-work.md, the calendar↔reminder
  * lesson): deleting a scheduler job through `/api/scheduler/jobs/:jobId`
  * must prune that job's id out of every Work's `flowIds` — a Work must never
  * be left pointing at automation that no longer exists.

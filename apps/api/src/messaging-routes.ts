@@ -6,7 +6,7 @@
  *
  * Phase 1 is send-only across Telegram / Discord / Slack / LINE.
  * Phase 2 will add inbound (polling / Socket Mode / webhook) — see
- * `docs/design/messaging.md`.
+ * `docs/design/channels/messaging.md`.
  */
 
 import {

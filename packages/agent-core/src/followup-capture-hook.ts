@@ -1,5 +1,5 @@
 /**
- * Step 3 of `docs/design/agent-self-followup.md` — afterTurn hook
+ * Step 3 of `docs/design/proactive/agent-self-followup.md` — afterTurn hook
  * that scans the assistant response for time-bound promises and
  * persists them.
  *

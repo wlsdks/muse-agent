@@ -1,7 +1,7 @@
 /**
  * Persisted inbox for messaging providers that deliver via webhook.
  *
- * Phase 2.b.1 of `docs/design/line-webhook.md`. The webhook handler
+ * Phase 2.b.1 of `docs/design/channels/line-webhook.md`. The webhook handler
  * (next iter) appends each parsed `InboundMessage` here; the
  * provider's `fetchInbound` (iter after) reads back. The two
  * surfaces share the on-disk shape so a Line message round-trips

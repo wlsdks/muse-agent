@@ -1,6 +1,6 @@
 /**
  * Self-followup firing engine — step 4 of
- * `docs/design/agent-self-followup.md`.
+ * `docs/design/proactive/agent-self-followup.md`.
  *
  * Counterpart to `runDueReminders`: reads `~/.muse/followups.json`,
  * selects entries whose `status === "scheduled"` and

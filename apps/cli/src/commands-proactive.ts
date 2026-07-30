@@ -1,7 +1,7 @@
 import { errorMessage } from "@muse/shared";
 /**
  * `muse proactive` — operator tools for the proactive surfacing
- * daemon (see `docs/design/proactive-surfacing.md`).
+ * daemon (see `docs/design/proactive/proactive-surfacing.md`).
  *
  *   muse proactive test   — send a one-line test message to
  *                            MUSE_PROACTIVE_PROVIDER/DESTINATION so
