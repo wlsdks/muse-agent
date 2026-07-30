@@ -563,6 +563,84 @@ describe("qualification hold policy-write composition", () => {
   });
 });
 
+describe("POST /api/attunement/deliveries/:deliveryId/learning-preview", () => {
+  it("returns a governed preview without mutating the store and holds malformed input", async () => {
+    const app = server();
+    const opened = await app.inject({
+      method: "POST",
+      url: `/api/attunement/threads/${threadId}/continue`
+    });
+    const deliveryId = opened.json().delivery.id as string;
+    expect((await app.inject({
+      method: "POST",
+      payload: { outcome: "rejected" },
+      url: `/api/attunement/deliveries/${deliveryId}/outcome`
+    })).statusCode).toBe(200);
+    const before = await readFile(attunementFile);
+
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        expectedBenefit: "Interrupt less often.",
+        expiresAt: "2026-07-20T00:00:00.000Z",
+        experienceId: "experience-api-1",
+        proposedAt: "2026-07-17T00:01:00.000Z",
+        proposedBehavior: "Wait longer before offering this thread.",
+        proposedChange: {
+          adjustment: "increase-cooldown",
+          kind: "thread-timing"
+        },
+        scope: {
+          kind: "thread-timing",
+          threadId
+        }
+      },
+      url: `/api/attunement/deliveries/${deliveryId}/learning-preview`
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      boundary: {
+        activation: "none",
+        permission: "unchanged"
+      },
+      evidence: {
+        outcome: {
+          authority: "owner-explicit",
+          outcome: "rejected"
+        },
+        sourceRun: {
+          evidenceClass: "organic-production"
+        }
+      },
+      proposedChange: {
+        adjustment: "increase-cooldown",
+        kind: "thread-timing"
+      }
+    });
+    expect(await readFile(attunementFile)).toEqual(before);
+
+    const malformed = await app.inject({
+      method: "POST",
+      payload: {},
+      url: `/api/attunement/deliveries/${deliveryId}/learning-preview`
+    });
+    expect(malformed.statusCode).toBe(422);
+    expect(malformed.json()).toEqual({
+      reason: "invalid-proposal",
+      status: "held"
+    });
+    expect(await readFile(attunementFile)).toEqual(before);
+
+    expect((await app.inject({
+      method: "POST",
+      payload: {},
+      url: "/api/attunement/deliveries/missing/learning-preview"
+    })).statusCode).toBe(404);
+    await app.close();
+  });
+});
+
 describe("GET /api/attunement/review", () => {
   it("returns the shared oldest-pending exact review without mutating persisted state", async () => {
     const app = server();

@@ -45,6 +45,17 @@ export function proposeExperienceLearningFromDelivery(input: Readonly<{
   readonly delivery: ContinuityDelivery;
   readonly draft: ExperienceLearningProposalDraft;
 }>): ExperienceLearningProposalResult {
+  try {
+    return composeExperienceLearningProposal(input);
+  } catch {
+    return held("invalid-proposal");
+  }
+}
+
+function composeExperienceLearningProposal(input: Readonly<{
+  readonly delivery: ContinuityDelivery;
+  readonly draft: ExperienceLearningProposalDraft;
+}>): ExperienceLearningProposalResult {
   const source = projectExperienceLearningSource(input.delivery);
   if (source.status === "held") return held(source.reason);
   if (input.draft.scope.threadId !== input.delivery.threadId) {
