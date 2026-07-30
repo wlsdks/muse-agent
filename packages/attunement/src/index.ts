@@ -98,6 +98,21 @@ export type {
   ExperienceReplayCase,
   ExperienceReplayObservation
 } from "./experience-learning-replay.js";
+export {
+  EXPERIENCE_LEARNING_PROMOTION_MIN_CASES,
+  ExperienceLearningPromotionError,
+  promoteExperienceLearningCandidate,
+  rollbackExperienceLearningPromotion
+} from "./experience-learning-promotion.js";
+export type {
+  ExperienceLearningPolicyCompareAndSwap,
+  ExperienceLearningPolicyTransition,
+  ExperienceLearningPromotionApproval,
+  ExperienceLearningPromotionErrorCode,
+  ExperienceLearningPromotionInput,
+  ExperienceLearningPromotionReceipt,
+  ExperienceLearningRollbackReceipt
+} from "./experience-learning-promotion.js";
 export { ActiveAttunementPolicyWriteBlockedError } from "./active-policy-write-gate.js";
 export type { ActiveAttunementPolicyWriteGate } from "./active-policy-write-gate.js";
 export {
