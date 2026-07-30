@@ -86,11 +86,18 @@ monotonic request ID, discards untrusted Worker error text, pins the first termi
 and performs timer/listener cleanup before a non-authoritative termination attempt. Its
 qualification uses a fake transport and clock; it is not a real Worker or database reader.
 
+MAG v1 physical identity now has one package-private manifest and classifier shared by the
+serving SQLite path and a caller-owned snapshot inspector core. The inspector establishes
+and reads back connection-local read-only pragmas, admits bounded schema and foreign-key
+metadata, and returns only detached Admin summary, exact-head, or integrity results. It
+does not open a path, acquire a live snapshot, construct a Worker, close the caller's
+connection, or expose projection bodies.
+
 These surfaces remain validated-but-unpublished infrastructure. They do not ship a public
-decoder, serving or separate Admin Worker command, destination generation activation, or
-public `./admin` API. Unknown close outcomes and unexpected artifacts remain toxic; native
-directory-FD/`openat` same-UID race closure, non-POSIX profiles, crash-residue discovery,
-and production-scale proof remain unverified.
+decoder, separate Admin Worker command, offline snapshot acquisition, destination generation
+activation, or public `./admin` API. Unknown close outcomes and unexpected artifacts remain
+toxic; native directory-FD/`openat` same-UID race closure, non-POSIX profiles,
+crash-residue discovery, and production-scale proof remain unverified.
 
 Still roadmap:
 

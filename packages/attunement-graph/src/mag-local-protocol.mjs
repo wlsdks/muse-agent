@@ -1,10 +1,11 @@
 import { Buffer } from "node:buffer";
 import { types as nodeTypes } from "node:util";
 import { parseProjection } from "./mag-local-projection.mjs";
+import { MAG_PHYSICAL_SCHEMA_V1 } from "./mag-physical-schema-v1.mjs";
 export const PROTOCOL_VERSION = 1;
 export const MAX_ENVELOPE_BYTES = 2_097_152;
-export const APPLICATION_ID = 0x4d414731;
-export const USER_VERSION = 1;
+export const APPLICATION_ID = MAG_PHYSICAL_SCHEMA_V1.applicationId;
+export const USER_VERSION = MAG_PHYSICAL_SCHEMA_V1.userVersion;
 /** @typedef {"CORRUPT_STORE" | "FUTURE_STORE_STATE" | "STORE_FAILURE" | "UNSUPPORTED_STORE_PROFILE"} SerializedErrorCode */
 /** @typedef {"initialize" | "read" | "compareAndSwap" | "holdWriteLockForTesting" | "inspectForTesting" | "mutateForTesting" | "close"} WorkerRequestType */
 /** @typedef {"future-user-version" | "wrong-application-id" | "malformed-projection-json" | "missing-journal-row" | "partial-bootstrap" | "oversized-projection-json" | "mismatched-head" | "quick-check-corruption"} TestMutation */

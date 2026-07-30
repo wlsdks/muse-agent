@@ -14,6 +14,10 @@ import {
   parseSnapshot,
   plainRecord
 } from "./mag-local-protocol.mjs";
+import {
+  MAG_PHYSICAL_SCHEMA_V1,
+  classifyMagPhysicalSchemaV1
+} from "./mag-physical-schema-v1.mjs";
 import { parseProjection } from "./mag-local-projection.mjs";
 import {
   assertNodeProfile,
@@ -22,33 +26,12 @@ import {
   validateDatabasePath
 } from "./mag-local-profile.mjs";
 
-const MAX_PROJECTION_BYTES = 1_048_576;
+const MAX_PROJECTION_BYTES = MAG_PHYSICAL_SCHEMA_V1.maxProjectionBytes;
 const MAX_TEXT = 512;
+const MAX_SCHEMA_SQL_BYTES = 4_096;
 const BUSY_TIMEOUT_MS = 1_000;
 const SQLITE_CORRUPT = 11;
 const SQLITE_NOTADB = 26;
-const CREATE_JOURNAL = `CREATE TABLE mag_projection_journal (
-  source_id TEXT NOT NULL,
-  thread_id TEXT NOT NULL,
-  generation INTEGER NOT NULL CHECK (generation >= 1),
-  commit_id TEXT NOT NULL,
-  projection_json TEXT NOT NULL CHECK (length(projection_json) BETWEEN 1 AND ${MAX_PROJECTION_BYTES}),
-  projection_fingerprint TEXT NOT NULL,
-  PRIMARY KEY (source_id, thread_id, generation, commit_id)
-) STRICT, WITHOUT ROWID`;
-const CREATE_GENERATION_INDEX = `CREATE UNIQUE INDEX mag_projection_journal_generation
-ON mag_projection_journal (source_id, thread_id, generation)`;
-const CREATE_HEAD = `CREATE TABLE mag_projection_head (
-  source_id TEXT NOT NULL,
-  thread_id TEXT NOT NULL,
-  generation INTEGER NOT NULL CHECK (generation >= 1),
-  commit_id TEXT NOT NULL,
-  PRIMARY KEY (source_id, thread_id),
-  FOREIGN KEY (source_id, thread_id, generation, commit_id)
-    REFERENCES mag_projection_journal (source_id, thread_id, generation, commit_id)
-    ON UPDATE RESTRICT ON DELETE RESTRICT
-) STRICT, WITHOUT ROWID`;
-
 /** @type {import("node:sqlite").DatabaseSync} */
 let database;
 /** @type {ReturnType<typeof prepareStatements>} */
@@ -154,7 +137,7 @@ function sqlRow(value, label, allowed, code = "STORE_FAILURE") {
 
 /** @param {unknown} value @param {string} label @param {readonly string[]} allowed @param {import("./mag-local-protocol.mjs").SerializedErrorCode} [code] */
 function sqlRows(value, label, allowed, code = "STORE_FAILURE") {
-  if (!Array.isArray(value) || nodeTypes.isProxy(value)) {
+  if (nodeTypes.isProxy(value) || !Array.isArray(value)) {
     fail(code, `${label} must be a row array`);
   }
   const descriptors = Object.getOwnPropertyDescriptors(value);
@@ -214,55 +197,74 @@ function pragmaInteger(name) {
   return safeInteger(value, `PRAGMA ${name}`, 0n);
 }
 
-/** @param {unknown} value */
-function normalizedSchemaSql(value) {
-  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+/** @param {unknown} value @param {number} maximum */
+function physicalText(value, maximum) {
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || Buffer.byteLength(value, "utf8") > maximum
+  ) {
+    fail("CORRUPT_STORE", "local MAG physical metadata is invalid");
+  }
+  return value;
 }
 
-function assertExactSchema() {
+/** @param {number} applicationId @param {number} userVersion */
+function assertExactSchema(applicationId, userVersion) {
   const objects = sqlRows(allSql(database.prepare(
     "SELECT type, name, tbl_name AS tableName, sql FROM sqlite_schema "
-      + "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+      + "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name LIMIT 4"
   )), "schema object rows", ["type", "name", "tableName", "sql"], "CORRUPT_STORE");
-  const expected = new Map([
-    ["index:mag_projection_journal_generation", normalizedSchemaSql(CREATE_GENERATION_INDEX)],
-    ["table:mag_projection_head", normalizedSchemaSql(CREATE_HEAD)],
-    ["table:mag_projection_journal", normalizedSchemaSql(CREATE_JOURNAL)]
-  ]);
-  if (objects.length !== expected.size) {
+  if (objects.length === 4) {
     fail("CORRUPT_STORE", "local MAG schema has unexpected or missing objects");
   }
-  for (const object of objects) {
-    const key = `${object.type}:${object.name}`;
-    if (
-      typeof object.type !== "string"
-      || typeof object.name !== "string"
-      || typeof object.tableName !== "string"
-      || normalizedSchemaSql(object.sql) !== expected.get(key)
-    ) {
-      fail("CORRUPT_STORE", "local MAG schema does not match physical profile v1");
-    }
-  }
+  const admittedObjects = Object.freeze(objects.map((object) => Object.freeze({
+    type: physicalText(object.type, MAX_TEXT),
+    name: physicalText(object.name, MAX_TEXT),
+    tableName: physicalText(object.tableName, MAX_TEXT),
+    normalizedSql: physicalText(object.sql, MAX_SCHEMA_SQL_BYTES)
+      .replace(/\s+/g, " ")
+      .trim()
+  })));
   const foreignKeys = sqlRows(
-    allSql(database.prepare("PRAGMA foreign_key_list(mag_projection_head)")),
+    allSql(database.prepare(`
+      SELECT id, seq, "table" AS "table", "from" AS "from", "to" AS "to",
+             on_update AS onUpdate, on_delete AS onDelete, match
+      FROM pragma_foreign_key_list('mag_projection_head')
+      ORDER BY id, seq
+      LIMIT 5
+    `)),
     "head foreign key rows",
-    ["id", "seq", "table", "from", "to", "on_update", "on_delete", "match"],
+    ["id", "seq", "table", "from", "to", "onUpdate", "onDelete", "match"],
     "CORRUPT_STORE"
   );
-  if (
-    foreignKeys.length !== 4
-    || foreignKeys.some((row) =>
-      row.table !== "mag_projection_journal"
-      || row.on_update !== "RESTRICT"
-      || row.on_delete !== "RESTRICT"
-      || row.match !== "NONE"
-    )
-  ) {
-    fail("CORRUPT_STORE", "local MAG head foreign key is invalid");
+  if (foreignKeys.length === 5) fail("CORRUPT_STORE", "local MAG head foreign key is invalid");
+  const admittedForeignKeys = Object.freeze(foreignKeys.map((row) => Object.freeze({
+    id: safeInteger(row.id, "head foreign key id", 0n),
+    seq: safeInteger(row.seq, "head foreign key sequence", 0n),
+    table: physicalText(row.table, MAX_TEXT),
+    from: physicalText(row.from, MAX_TEXT),
+    to: physicalText(row.to, MAX_TEXT),
+    onUpdate: physicalText(row.onUpdate, MAX_TEXT),
+    onDelete: physicalText(row.onDelete, MAX_TEXT),
+    match: physicalText(row.match, MAX_TEXT)
+  })));
+  const classification = classifyMagPhysicalSchemaV1(Object.freeze({
+    applicationId,
+    userVersion,
+    objects: admittedObjects,
+    headForeignKey: admittedForeignKeys
+  }));
+  if (classification.kind === "future") {
+    fail("FUTURE_STORE_STATE", "local MAG store has a future physical schema");
+  }
+  if (classification.kind !== "match") {
+    fail("CORRUPT_STORE", "local MAG schema does not match physical profile v1");
   }
 }
 
-function assertDatabaseIntegrity() {
+/** @param {{ readonly applicationId: number, readonly userVersion: number }} physicalIdentity */
+function assertDatabaseIntegrity(physicalIdentity) {
   const quick = sqlRow(
     getSql(database.prepare("PRAGMA quick_check")),
     "quick-check row",
@@ -272,7 +274,7 @@ function assertDatabaseIntegrity() {
   if (quick.quick_check !== "ok") {
     fail("CORRUPT_STORE", "SQLite quick_check did not pass");
   }
-  assertExactSchema();
+  assertExactSchema(physicalIdentity.applicationId, physicalIdentity.userVersion);
   const orphan = sqlRow(getSql(database.prepare(`
     SELECT COUNT(*) AS count
     FROM mag_projection_head AS h
@@ -296,18 +298,15 @@ function initializeSchema(wasEmpty) {
     "SELECT COUNT(*) AS count FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'"
   )), "schema count row", ["count"], "CORRUPT_STORE");
   const objectCount = safeInteger(objects.count, "schema object count", 0n);
-  if (userVersion > USER_VERSION) {
-    fail("FUTURE_STORE_STATE", "local MAG store has a future physical schema");
-  }
   if (userVersion === 0) {
     if (!wasEmpty || applicationId !== 0 || objectCount !== 0) {
       fail("CORRUPT_STORE", "local MAG store has a nonempty or partial bootstrap state");
     }
     execSql("BEGIN IMMEDIATE", "schema transaction");
     try {
-      execSql(CREATE_JOURNAL, "journal schema creation");
-      execSql(CREATE_GENERATION_INDEX, "journal index creation");
-      execSql(CREATE_HEAD, "head schema creation");
+      execSql(MAG_PHYSICAL_SCHEMA_V1.createJournal, "journal schema creation");
+      execSql(MAG_PHYSICAL_SCHEMA_V1.createGenerationIndex, "journal index creation");
+      execSql(MAG_PHYSICAL_SCHEMA_V1.createHead, "head schema creation");
       execSql(`PRAGMA application_id = ${APPLICATION_ID}`);
       execSql(`PRAGMA user_version = ${USER_VERSION}`);
       execSql("COMMIT", "schema commit");
@@ -319,9 +318,21 @@ function initializeSchema(wasEmpty) {
       }
       throw cause;
     }
-  } else if (userVersion !== USER_VERSION || applicationId !== APPLICATION_ID) {
+    return Object.freeze({
+      applicationId: MAG_PHYSICAL_SCHEMA_V1.applicationId,
+      userVersion: MAG_PHYSICAL_SCHEMA_V1.userVersion
+    });
+  }
+  if (userVersion > USER_VERSION) {
+    fail("FUTURE_STORE_STATE", "local MAG store has a future physical schema");
+  }
+  if (
+    applicationId !== MAG_PHYSICAL_SCHEMA_V1.applicationId
+    || userVersion !== MAG_PHYSICAL_SCHEMA_V1.userVersion
+  ) {
     fail("CORRUPT_STORE", "local MAG store has a foreign physical identity");
   }
+  return Object.freeze({ applicationId, userVersion });
 }
 
 function prepareStatements() {
@@ -445,7 +456,7 @@ async function initialize(payload) {
     execSql("PRAGMA foreign_keys = ON");
     execSql("PRAGMA trusted_schema = OFF");
     execSql("PRAGMA synchronous = FULL");
-    initializeSchema(pathProfile.wasEmpty);
+    const physicalIdentity = initializeSchema(pathProfile.wasEmpty);
     const journalMode = sqlRow(
       getSql(database.prepare("PRAGMA journal_mode = WAL")),
       "journal mode row",
@@ -463,7 +474,7 @@ async function initialize(payload) {
     ) {
       fail("UNSUPPORTED_STORE_PROFILE", "SQLite safety pragmas could not be established");
     }
-    assertDatabaseIntegrity();
+    assertDatabaseIntegrity(physicalIdentity);
     statements = prepareStatements();
     initialized = true;
     return {

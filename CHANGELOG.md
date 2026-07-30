@@ -8,6 +8,17 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a4e2a package-private MAG v1
+  physical-schema manifest, classifier, and caller-owned read-only snapshot inspector
+  core. Serving and Admin inspection now share exact DDL, identity, object, and
+  foreign-key truth; bounded schema/FK sentinels reject excess metadata before
+  unbounded materialization. The inspector establishes connection-local read-only
+  pragmas and returns only detached summary, exact-head, or integrity results through
+  the existing Admin result schemas. Fresh evaluation found and repaired one serving
+  error-precedence regression for a combined future-version and wrong-application-ID
+  store. The accepted slice has no path acquisition, live-store access, Worker,
+  snapshot cleanup, public export, CLI/API/UI, or production-scale claim.
+
 - Added the independently verified AWG-070a3a1a4e1 package-private Admin protocol
   and parent fail-stop spine. A descriptor-safe JSON helper admits at most
   65,536 serialized UTF-8 bytes without widening the closed production schemas;
