@@ -87,6 +87,21 @@ export {
   type TriggerAdmissionJournalState
 } from "./trigger-admission-journal.js";
 export {
+  TRIGGER_WORK_STATE_SCHEMA_VERSION,
+  cancelTriggerWork,
+  claimTriggerWork,
+  parseTriggerWorkState,
+  resumeTriggerWork,
+  serializeTriggerWorkState,
+  settleTriggerWork,
+  type CancelTriggerWorkInput,
+  type ClaimTriggerWorkInput,
+  type ResumeTriggerWorkInput,
+  type SettleTriggerWorkInput,
+  type TriggerWorkState,
+  type TriggerWorkStatus
+} from "./trigger-work-state.js";
+export {
   runCommandWithTimeout,
   type RunCommandOptions,
   type RunCommandResult
