@@ -12,7 +12,7 @@ const SECTION_FIELDS = ["headings", "id"];
 const METRIC_SECTION_FIELDS = ["chartFile", "evidenceLink", "headings", "id", "requiredTokens"];
 const EVIDENCE_FIELDS = ["evidenceIndexPath", "expectedCharts", "forbiddenReadmeCharts", "publicationManifestPath", "requiredReadmeStatuses"];
 const EXPECTED_CHART_FIELDS = ["file", "status"];
-const EXPECTED_LOCALES = ["en", "ja", "ko", "zh-CN"];
+const EXPECTED_LOCALES = ["en"];
 
 function exactKeys(value, expected, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);

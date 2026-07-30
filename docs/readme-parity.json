@@ -5,109 +5,31 @@
       "id": "en",
       "file": "README.md",
       "title": "Muse",
-      "languageSwitch": [
-        "README.ko.md",
-        "README.ja.md",
-        "README.zh-CN.md"
-      ],
+      "languageSwitch": [],
       "forbiddenPatterns": [
         "see the English README instead"
       ],
       "boundaryTokens": [
-        "Controlled synthetic integrity is not personal learning.",
-        "Controlled evidence is not organic effectiveness.",
+        "Controlled synthetic integrity is not personal learning",
+        "controlled evidence is not organic",
         "1,111,000 records are not 1,111,000 agent runs."
-      ]
-    },
-    {
-      "id": "ko",
-      "file": "README.ko.md",
-      "title": "Muse",
-      "languageSwitch": [
-        "README.md",
-        "README.ja.md",
-        "README.zh-CN.md"
-      ],
-      "forbiddenPatterns": [
-        "영문 README를 대신 참고"
-      ],
-      "boundaryTokens": [
-        "통제 합성 무결성은 개인 학습이 아닙니다.",
-        "통제 근거는 실제 사용 효과가 아닙니다.",
-        "1,111,000개 레코드는 1,111,000번의 에이전트 실행이 아닙니다."
-      ]
-    },
-    {
-      "id": "ja",
-      "file": "README.ja.md",
-      "title": "Muse",
-      "languageSwitch": [
-        "README.md",
-        "README.ko.md",
-        "README.zh-CN.md"
-      ],
-      "forbiddenPatterns": [
-        "英語版を参照してください",
-        "英語版を正とします"
-      ],
-      "boundaryTokens": [
-        "管理下の合成完全性は個人学習ではありません。",
-        "管理下の証拠は organic effectiveness ではありません。",
-        "1,111,000 レコードは 1,111,000 回のエージェント実行ではありません。"
-      ]
-    },
-    {
-      "id": "zh-CN",
-      "file": "README.zh-CN.md",
-      "title": "Muse",
-      "languageSwitch": [
-        "README.md",
-        "README.ko.md",
-        "README.ja.md"
-      ],
-      "forbiddenPatterns": [
-        "请参阅英文版",
-        "以英文版为准"
-      ],
-      "boundaryTokens": [
-        "受控合成完整性不代表个人学习。",
-        "受控证据不代表真实使用效果。",
-        "1,111,000 条记录不等于 1,111,000 次智能体运行。"
       ]
     }
   ],
   "sections": [
     {
-      "id": "numbers",
+      "id": "install",
       "headings": {
         "en": [
-          "Muse in numbers"
-        ],
-        "ko": [
-          "숫자로 보는 Muse"
-        ],
-        "ja": [
-          "数字で見る Muse"
-        ],
-        "zh-CN": [
-          "用数字看 Muse"
+          "Install"
         ]
       }
     },
     {
-      "id": "install",
+      "id": "continuity",
       "headings": {
         "en": [
-          "Install and quick start"
-        ],
-        "ko": [
-          "설치와 빠른 시작"
-        ],
-        "ja": [
-          "インストールとクイックスタート"
-        ],
-        "zh-CN": [
-          "安装与快速开始"
+          "Continuity — the one thing Muse is for"
         ]
       }
     },
@@ -115,16 +37,31 @@
       "id": "capabilities",
       "headings": {
         "en": [
-          "Core capabilities"
-        ],
-        "ko": [
-          "핵심 기능"
-        ],
-        "ja": [
-          "主な機能"
-        ],
-        "zh-CN": [
-          "核心能力"
+          "Everyday commands"
+        ]
+      }
+    },
+    {
+      "id": "grounding",
+      "headings": {
+        "en": [
+          "How Muse answers"
+        ]
+      }
+    },
+    {
+      "id": "status",
+      "headings": {
+        "en": [
+          "Status — what's real today"
+        ]
+      }
+    },
+    {
+      "id": "numbers",
+      "headings": {
+        "en": [
+          "Evidence and numbers"
         ]
       }
     },
@@ -132,33 +69,15 @@
       "id": "boundaries",
       "headings": {
         "en": [
-          "What Muse will not do (boundaries)"
-        ],
-        "ko": [
-          "Muse가 하지 않는 일"
-        ],
-        "ja": [
-          "Muse がしないこと（境界）"
-        ],
-        "zh-CN": [
-          "Muse 不会做什么（边界）"
+          "What Muse will never do"
         ]
       }
     },
     {
-      "id": "providers",
+      "id": "architecture",
       "headings": {
         "en": [
-          "Providers and local path"
-        ],
-        "ko": [
-          "모델 제공자와 로컬 사용"
-        ],
-        "ja": [
-          "プロバイダーとローカル実行"
-        ],
-        "zh-CN": [
-          "模型提供方与本地运行"
+          "Architecture"
         ]
       }
     },
@@ -166,16 +85,7 @@
       "id": "verification",
       "headings": {
         "en": [
-          "Verification"
-        ],
-        "ko": [
-          "검증"
-        ],
-        "ja": [
-          "検証"
-        ],
-        "zh-CN": [
-          "验证"
+          "Build and verify"
         ]
       }
     },
@@ -184,32 +94,6 @@
       "headings": {
         "en": [
           "Documentation"
-        ],
-        "ko": [
-          "문서"
-        ],
-        "ja": [
-          "ドキュメント"
-        ],
-        "zh-CN": [
-          "文档"
-        ]
-      }
-    },
-    {
-      "id": "community",
-      "headings": {
-        "en": [
-          "Community and support"
-        ],
-        "ko": [
-          "커뮤니티와 지원"
-        ],
-        "ja": [
-          "コミュニティとサポート"
-        ],
-        "zh-CN": [
-          "社区与支持"
         ]
       }
     },
@@ -218,32 +102,6 @@
       "headings": {
         "en": [
           "Contributing"
-        ],
-        "ko": [
-          "기여하기"
-        ],
-        "ja": [
-          "コントリビューション"
-        ],
-        "zh-CN": [
-          "参与贡献"
-        ]
-      }
-    },
-    {
-      "id": "license",
-      "headings": {
-        "en": [
-          "License"
-        ],
-        "ko": [
-          "라이선스"
-        ],
-        "ja": [
-          "ライセンス"
-        ],
-        "zh-CN": [
-          "许可证"
         ]
       }
     }
@@ -253,17 +111,8 @@
       "id": "qualified-grounding",
       "headings": {
         "en": [
-          "Qualified grounding"
-        ],
-        "ko": [
-          "자격이 확인된 grounding"
-        ],
-      "ja": [
-        "根拠づけ（grounding）の限定結果"
-      ],
-      "zh-CN": [
-        "通过受控检查的 grounding 结果"
-      ]
+          "Grounding"
+        ]
       },
       "requiredTokens": [
         "+0.94",
@@ -282,16 +131,7 @@
       "id": "controlled-scale",
       "headings": {
         "en": [
-          "Controlled synthetic integrity at scale"
-        ],
-        "ko": [
-          "통제 합성 데이터 규모 무결성"
-        ],
-        "ja": [
-          "管理下の合成データ規模と完全性"
-        ],
-        "zh-CN": [
-          "受控合成数据的规模完整性"
+          "Synthetic integrity at scale"
         ]
       },
       "requiredTokens": [
@@ -305,7 +145,7 @@
         "0 / 0 / 0",
         "byte-stable"
       ],
-      "evidenceLink": "docs/benchmarks/readme-qualified-evidence-v1.json",
+      "evidenceLink": "docs/benchmarks/eval-datasets-scale-v1.json",
       "chartFile": "readme-controlled-scale-v1.svg"
     }
   ],
@@ -318,9 +158,8 @@
     "muse thread link",
     "muse continue",
     "muse thread outcome",
-    "muse chat --local --user me",
-    "muse status --user me",
-    "muse proactive watch --user me --interval 60",
+    "muse chat",
+    "muse proactive watch",
     "muse setup local",
     "pnpm typecheck:fast",
     "pnpm test:changed",

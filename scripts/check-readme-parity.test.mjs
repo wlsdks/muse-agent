@@ -13,17 +13,17 @@ test("README parity recognizes Markdown and HTML h1 titles", () => {
   assert.deepEqual(documentTitles("# Muse\n\n<h1 align=\"center\">Muse 日本語</h1>"), ["Muse", "Muse 日本語"]);
 });
 
-test("repository README parity manifest passes for all four locales", async () => {
+test("repository README parity manifest passes for the canonical English README", async () => {
   const result = await validateReadmeParity({
     manifestPath: join(repoRoot, "docs/readme-parity.json"),
     root: repoRoot,
   });
 
   assert.equal(result.status, "PASS");
-  assert.deepEqual(result.locales.map(({ locale }) => locale).sort(), ["en", "ja", "ko", "zh-CN"]);
+  assert.deepEqual(result.locales.map(({ locale }) => locale), ["en"]);
 });
 
-test("README parity manifest closes the two-chart set and localized evidence boundaries", async () => {
+test("README parity manifest closes the two-chart set and the evidence boundaries", async () => {
   const manifest = JSON.parse(await readFile(join(repoRoot, "docs/readme-parity.json"), "utf8"));
   validateManifestShape(manifest);
   assert.deepEqual(manifest.evidence.expectedCharts, [

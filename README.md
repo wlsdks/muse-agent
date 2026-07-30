@@ -1,286 +1,422 @@
-<p align="center">
-  <img src="docs/assets/mascot.svg" alt="Muse — the bluebird mascot" width="120" />
-</p>
+<div align="center">
 
-<p align="center"><i>Meet Muse — a personal AI project built to understand the life you are already living.</i></p>
+<img src="docs/assets/mascot.svg" alt="Muse" width="112" />
 
-<h1 align="center">Muse</h1>
+# Muse
 
-<p align="center">
-  <b>A personal AI that learns how you live and work—and gets better at knowing when and how to help.</b><br/>
-  <i>Provider-neutral, deployment-flexible, and honest about what is not built yet.</i>
-</p>
+### An AI that stays with you between conversations.
 
-<p align="center">
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg" /></a>
-  <a href="package.json"><img alt="Node ≥ 22.12" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-43853d.svg" /></a>
-  <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/built%20with-TypeScript-3178c6.svg" /></a>
-  <a href="#providers-and-deployment-modes"><img alt="Provider-neutral" src="https://img.shields.io/badge/architecture-provider--neutral-6f42c1.svg" /></a>
-  <a href="https://ollama.com"><img alt="Runs on Ollama" src="https://img.shields.io/badge/runs%20on-Ollama-000000.svg" /></a>
-  &nbsp;·&nbsp; <b>English</b>
-  &nbsp;·&nbsp; <a href="README.ko.md">한국어</a>
-  &nbsp;·&nbsp; <a href="README.ja.md">日本語</a>
-  &nbsp;·&nbsp; <a href="README.zh-CN.md">简体中文</a>
-</p>
+<p>Muse holds the threads you didn't finish, answers from your own notes with receipts you can open,<br/>
+and asks before it does anything on your behalf. You choose the model and where it runs.</p>
 
-Muse is a continuing personal agent for one person's life and work, not only a work assistant. Its north star is **Attunement**: learning when help fits, when quiet is better, and whether the last suggestion actually helped.
+<p><a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-22c55e.svg" /></a> <a href="package.json"><img alt="Node ≥ 22.12" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-43853d.svg" /></a> <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178c6.svg" /></a> <a href="#architecture"><img alt="Provider-neutral" src="https://img.shields.io/badge/architecture-provider--neutral-6f42c1.svg" /></a> <a href="https://ollama.com"><img alt="Runs on Ollama" src="https://img.shields.io/badge/runs%20on-Ollama-000000.svg" /></a></p>
 
-The destination is consented, user-controlled 24-hour continuity: approved activity sources feed
-Muse's own agent-native temporal/provenance graph, with pause, retention, export, and
-forget controls. Storage and processing location remain explicit deployment choices.
-RAG can find likely context; MAG must prove the exact thread, time, change, source,
-and policy relation without requiring a particular hosted or local Graph DB.
+</div>
 
-The first proof point is **Personal Continuity**. You choose a life or work thread and link its exact local tasks and notes; Muse can then help you resume it without reconstructing everything. Automatic thread detection, observation, and timing remain roadmap work.
-
-> **What works today:** personal memory, grounded recall, local personal stores, guarded tools and browser actions, traces, checkpoints, and the first explicit Personal Continuity path. See the [product contract](docs/strategy/attunement.md) and [implementation plan](docs/goals/attunement-implementation-plan.md).
-
-## The Muse moment we are building
-
-You stopped while comparing three places to stay. Since then, the flight changed, one
-cancellation deadline moved close, and an 18-minute gap opened in your day. Muse prepares
-only the changes, explains why now, cites every source, shows exactly how far an action
-would go, and asks whether to hold one option.
-
-If you answer “this evening instead,” Muse proposes a visible rule scoped to that trip—not
-a hidden global preference. That experience has three parts:
-
-- **Shadow Muse** learns when to help or stay quiet before it interrupts.
-- **Continuity Capsule** restores the stopping point, changes, evidence, next step,
-  prepared work, and expected time.
-- **Policy Card** shows what Muse proposes to learn about collaborating with you, with
-  evidence and trial/edit/reject/rollback controls.
-
-> **Muse does not remember apps; it remembers the state you intended to continue.**
-
-The full signature experience remains a roadmap, not a shipped claim. Its first
-library-level substrates now live in the partially implemented, lightweight
-[Muse Attunement Graph (MAG)](docs/design/attunement-graph.md): an agent-native
-temporal/provenance graph and personal context compiler, not merely a third-party graph DB.
-Its intended advantage is a small set of bounded, verified personal-temporal operators:
-the model asks what changed, what evidence supports a policy, or what forgetting would
-invalidate; Muse computes the exact path, completeness, and authority boundary in code.
-The [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md) defines the
-architecture: scope-safe snapshots, proof-closed Working Graphs, typed completeness, an
-immutable logical journal, and the selected embedded SQLite **MAG Store** with no external
-Graph DB requirement. Its bounded worker-isolated projection-journal foundation is now
-implemented behind `@muse/attunement-graph/local`; portable export/rebuild, backup,
-physical forget, full benchmarks, and Muse default composition remain roadmap work.
-MAG keeps its storage contract Adapter-based;
-PostgreSQL may be optional, while Redis/MySQL/property-graph servers are not required or
-planned as default storage.
-MAG is deliberately being built as an independently extractable product Module. Muse is
-its first consumer and dogfood environment; the current private workspace package is not
-yet a standalone release. Its closed public Interface, Source/Store Adapter boundaries,
-clean-room package gate, and history-preserving repository split are fixed in
-[ADR 0001](docs/adr/0001-mag-product-module-boundary.md). MAG remains TypeScript-first;
-SQLite runs behind an isolated worker, and only benchmark-proven hot kernels may
-move to Rust behind the same conformance contract, as fixed in
-[ADR 0002](docs/adr/0002-mag-language-runtime-boundary.md).
-The package now exposes the first independently verified neutral lifecycle:
-`openMag({ scope, store }) → project(canonical-projection@1) →
-execute(working-graph@1) → close()`. Its in-memory Store is an explicit semantic oracle,
-not durable storage; SQLite, Source Adapters, clean-room packaging, and the standalone
-release remain roadmap work, and AWG-065 overall remains `partial`.
-The first `changesSince`-style operator is shipped as an I/O-free library contract. A
-separate process-local runtime now also applies the verified MAG path to explicit
-`muse.continuity.pack.preview` calls: the first qualifying call seeds one exact per-thread
-baseline and later calls return a bounded semantic `resume` comparison while keeping Pack
-open/delivery separate. A caller may also explicitly request the verified English/Korean
-Continuity Capsule render-data presentation on that same preview; copied or unrelated
-Pack/result pairs fail closed to a bounded unavailable response. This is an API/tool
-presentation, not a Capsule UI, automatic timing, durable graph, or action authority.
-Muse can now also seal one exact caller-declared projected observation as a bounded,
-content-addressed **Observation Receipt** without copying its personal source text. This
-preserves the previous observation's recorded next step; it does not prove the user's exact
-stopping point.
-The same library subpath can purely capture one caller-supplied raw Continuity snapshot
-through the shared projector and return that receipt without source I/O or persistence.
-The existing state-to-state query now delegates to one reusable internal prepared-observation
-comparison core. The observation subpath can also verify that receipt, derive its exact
-boundary, project one caller-supplied current snapshot, and return the same explained-change
-result as the raw state-to-state query.
-That receipt remains caller-declared integrity evidence—not proof of an external
-observation, automatic stop-point detection, or persistence. The runtime uses verified
-Source/Graph pairs without exposing their raw receipts in the ordinary Pack Preview
-response.
-Muse now also has a bounded trusted-host Provider that reads one configured local
-Attunement file and mints a process-local, content-addressed snapshot capture. Its
-serializable receipt proves integrity only; exact Provider provenance belongs to the
-in-process capture, freshness remains `unassessed`, and missing data never becomes an
-absence claim. This closes the first real-source boundary for the Agent Graph without
-making the graph read files or depend on an external Graph DB.
-The private Agent Graph seam can now verify that exact process-local mint before reading
-state, independently recompute its bytes and digest, project it into a verified Continuity
-Observation Receipt, and compile receipt-bound graph evidence with truthful Provider
-snapshot provenance. It never fabricates a graph commit or generation: a single read is
-explicitly `unassessed`, which forces downstream settlement to abstain while still
-preserving exact evidence links and bounded nomination accounting. This is process-local
-engine substrate. The later bounded-head path, rather than this single-read seam, now feeds
-the explicit Pack Preview runtime; neither path is a durable graph, continuous/current
-freshness proof, action authority, or automatic user-visible behavior.
-Muse now also has an independently verified, Provider-owned **bounded head
-revalidation** seam. The same configured Provider instance captures the subject and then
-its head under an explicit span bound; only exact endpoint equality can become
-`fresh-at-assessment` Graph evidence. Per-Provider process ownership, two-phase
-mint-before-hidden-state verification, five scope guards, and a closed binding-receipt
-parser prevent cross-owner, cross-scope, forged-authority, and forged-seed reuse. This is
-still private process-local substrate: it does not prove uninterrupted or current
-freshness, add persistence, or ship the Capsule/Shadow/Policy experience.
-The thread-rooted compiler retains its complete bounded pre-settlement witness pool behind
-the exact in-process compilation object. The verified resume compiler and runtime now
-consume that pool under a fixed six-axis budget, verify an exact previous boundary plus
-current Source/Graph pair, and expose only frozen semantic facts. Runtime baselines are
-per-instance, process-local, limited to 16 threads, and guarded by bounded concurrency,
-capture span, timeout, generation, and monotonic-observation checks. This is real
-MAG-backed Pack Preview dogfooding. An optional explicit request now turns only the exact
-compared result into a verified bilingual Capsule presentation with source-drawer receipt
-IDs and caller-declared prepared work. It is not persistence, an exact observed stopping
-point, automatic surfacing, organic usefulness evidence, or the Capsule product UI.
-See the separate [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).
-
-<p align="center"><img src="docs/images/web-home.png" alt="Muse console home — model chip, integrations, and what Muse has learned" width="860" /></p>
+<p align="center"><img src="docs/images/web-home.png" alt="The Muse console" width="840" /></p>
 
 ---
 
-## 📊 Muse in numbers
+<table>
+<tr>
+<td width="33%" valign="top">
 
-The README publishes two qualified controlled results. Failed, unchanged, and diagnostic evidence remains visible in the [evidence index](docs/benchmarks/EVIDENCE.md), not promoted into charts here.
+**🧵 It keeps the thread**
 
-### Qualified grounding
+Not a chat that forgets. You name what you're in the middle of; Muse hands it back later with
+what changed.
 
-**Example:** for the same fictional appointment question, grounding should cite the linked note instead of answering from an unsupported assumption. Two independent controlled checks measured faithfulness: self-authored cases were **16/17 ON vs 0/17 OFF** (**+0.94**), and squad cases were **5/8 ON vs 0/8 OFF** (**+0.63**). False-refusal cost was unchanged in both checks: **0/12 vs 0/12** and **0/8 vs 0/8**, each **+0.00**. The checks have different denominators and are not an aggregate.
+</td>
+<td width="33%" valign="top">
 
-![Two independent qualified grounding checks with raw faithfulness counts and false-refusal cost](docs/benchmarks/readme-qualified-grounding-v1.svg)
+**🧾 It shows its work**
 
-Source: [closed README evidence manifest](docs/benchmarks/readme-qualified-evidence-v1.json) · [full evidence index](docs/benchmarks/EVIDENCE.md)
+Answers are built from your own notes, each with a receipt you can open. Weak evidence gets an
+honest *"I'm not sure."*
 
-### Controlled synthetic integrity at scale
+</td>
+<td width="33%" valign="top">
 
-**Example:** fictional correction records test whether a current appointment can remain distinguishable from an older time without touching personal data. Four independent corpora—**1K / 10K / 100K / 1M**—produced a full-corpus total of **1,111,000/1,111,000** generated, serialized, and parsed + schema-validated records. A separate stratified runtime sample passed **768/768** named public Muse seams across **96** cells, with **0 / 0 / 0** LLM, tool, and network calls; owner state remained **byte-stable**.
+**🔐 You decide where it runs**
 
-![Full-corpus controlled synthetic integrity totals separated from the 768-case runtime sample](docs/benchmarks/readme-controlled-scale-v1.svg)
+Plain files in `~/.muse/`, no cloud account required. `MUSE_LOCAL_ONLY=true` turns cloud egress
+into a hard error.
 
-Source: [canonical scale JSON](docs/benchmarks/eval-datasets-scale-v1.json) · [closed README evidence manifest](docs/benchmarks/readme-qualified-evidence-v1.json) · [full evidence index](docs/benchmarks/EVIDENCE.md)
+</td>
+</tr>
+</table>
 
-Boundaries: the agent aggregate is **10/11 FAILED**; organic effectiveness is **NOT_PROVEN**; recall correction remains **UNQUALIFIED**. Controlled synthetic integrity is not personal learning. Controlled evidence is not organic effectiveness. **1,111,000 records are not 1,111,000 agent runs.**
+### Contents
+
+| | |
+| --- | --- |
+| **Get going** | [Install](#install) · [Run fully offline](#run-fully-offline) · [Everyday commands](#everyday-commands) |
+| **The idea** | [Continuity, the one thing Muse is for](#continuity--the-one-thing-muse-is-for) · [How Muse answers](#how-muse-answers) · [Where this is going](#where-this-is-going) |
+| **The truth** | [Status: what's real today](#status--whats-real-today) · [Evidence and numbers](#evidence-and-numbers) · [What Muse will never do](#what-muse-will-never-do) |
+| **The code** | [Architecture](#architecture) · [Repository layout](#repository-layout) · [Build and verify](#build-and-verify) · [Documentation](#documentation) |
 
 ---
 
-## ⚡ Install and quick start
+## Install
+
+### Requirements
+
+| | |
+| --- | --- |
+| **Node.js** | ≥ 22.12 (24 LTS recommended) |
+| **pnpm** | 10 (`corepack enable`) |
+| **A model** | [Ollama](https://ollama.com) on your machine, or any provider API key |
+| **OS** | macOS, Linux, Windows (CLI, API, recall, Ollama, opt-in PowerShell actuators) |
+
+### Install from source
 
 ```bash
-# Requirements: Git + Node.js >= 22.12 (24 LTS recommended) + pnpm 10
 git clone https://github.com/wlsdks/muse-agent.git
-cd muse-agent
-corepack enable
-pnpm install:muse
+cd muse-agent && corepack enable
+pnpm install:muse     # frozen install → build → link the `muse` CLI → verify
 muse onboard
 ```
 
-The supported source install uses a clean `main`, performs a frozen dependency install, builds the workspace, links the CLI, and verifies it. Preview with `pnpm install:muse -- --dry-run`, update with `muse update`, or run the narrated local demo with `pnpm demo`.
+`pnpm install:muse` requires a clean `main`. Preview it with `pnpm install:muse -- --dry-run`,
+update later with `muse update`, or watch the narrated tour with `pnpm demo`.
 
-Start an explicit continuity thread:
+### Local or cloud — your choice
 
-```bash
-muse thread start "Plan a birthday" --kind life
-muse thread link <thread-id> note birthday.md --role context
-muse thread link <thread-id> task <task-id> --role next-step
-muse continue <thread-id>
-muse thread outcome <delivery-id> used
-```
-
-Other useful local flows:
+Any provider works. If you want no API key and no egress at all, point Muse at a model on your own
+machine:
 
 ```bash
-muse chat --local --user me
-muse status --user me
-muse proactive watch --user me --interval 60
-```
-
-`muse ask` returns grounded answers with cited, openable receipts:
-
-<p align="center"><img src="docs/images/cli-ask.png" alt="muse ask — grounded, cited answer with an openable receipt" width="860" /></p>
-
----
-
-## 🔧 Core capabilities
-
-- **Provider-neutral reasoning:** one `ModelProvider` boundary for OpenAI, Anthropic, Gemini, OpenRouter, Ollama, LM Studio, and OpenAI-compatible endpoints.
-- **Personal continuity and memory:** explicit life/work threads, exact local source links, outcomes, facts, preferences, vetoes, and goals.
-- **Grounded recall:** ranked local notes retrieval, confidence gating, freshness handling, citations, and no confident answer on weak evidence.
-- **Personal tools:** local notes, tasks, reminders, contacts, and five calendar backends behind provider-neutral interfaces.
-- **Guarded action:** fail-close guards, fail-open hooks, explicit approvals, untrusted tool-output handling, bounded loops, timeouts, and traces.
-- **One runtime:** CLI, API/web chat, messaging, scheduled jobs, and delegated workers share the same composition root.
-- **MCP both ways:** built-in local `muse.*` tools plus `muse mcp serve` for read-only grounded recall, search, and user-model access from other agents.
-- **Deployment-flexible privacy:** file-backed personal stores work without a cloud account, local and cloud model providers share one adapter boundary, and strict `MUSE_LOCAL_ONLY=true` remains an opt-in fail-close mode.
-
-## What Muse will not do (boundaries)
-
-- **No money movement.** Muse does not connect to financial accounts, initiate payments, or move money.
-- **No autonomous third-party sends.** Email, chat, forms, and bookings are draft-first; you confirm exact content and recipient before anything leaves.
-- **No hidden continuity guessing.** Current continuity threads and source links are user-authored. Automatic detection is later, opt-in work.
-- **Single user, single environment.** Muse is not a multi-tenant workspace and has no shared-account or RBAC model.
-- **No evidence promotion.** Software tests, synthetic replays, component diagnostics, agent trials, and organic outcomes stay separate.
-
-See [outbound safety](.claude/rules/outbound-safety.md) and the [Attunement design](docs/design/attunement.md) for the enforced boundary.
-
----
-
-## 🧩 Providers and deployment modes
-
-Select a provider with `MUSE_MODEL=<provider>/<model>` and its normal API-key environment variable. `MUSE_MODEL_PROVIDER_ID`, `MUSE_MODEL_API_KEY`, and `MUSE_MODEL_BASE_URL` provide explicit overrides. Cloud providers are incompatible with `MUSE_LOCAL_ONLY=true`.
-
-Local-only is a supported privacy posture, not Muse's product identity. A free, offline path with Ollama:
-
-```bash
-brew install ollama
-ollama serve &
+brew install ollama && ollama serve &
 ollama pull gemma4:12b
 muse setup local
 ```
 
-Personal data stays file-backed by default: notes in `~/.muse/notes/`, tasks in `~/.muse/tasks.json`, reminders in `~/.muse/reminders.json`, and memory in `~/.muse/user-memory.json`. Run `muse setup calendar` for Local, Local-ICS, Google, CalDAV, or macOS Calendar. Windows supports the CLI, API, recall, Ollama, and opt-in PowerShell actuators; macOS-only mirrors disable automatically.
+Local-only is a supported posture, not Muse's identity. Turn it on explicitly with
+`MUSE_LOCAL_ONLY=true` and every cloud provider becomes a hard error instead of a silent fallback —
+including voice, so microphone audio can never reach a cloud API by accident.
 
-See [local model setup](docs/setup-local-llm.md) for model tiers, licenses, latency, and troubleshooting.
+---
 
-## ✅ Verification
+## Continuity — the one thing Muse is for
 
-Use the narrow gate while editing and the full gate before merge:
+Most assistants start from zero every time. Muse is built around the opposite: you tell it which
+thread matters, and it gives that thread back to you later — where you stopped, what changed since,
+the next step, and every source it used.
+
+### 1. Start a thread and link what belongs to it
 
 ```bash
-pnpm typecheck:fast
-pnpm test:changed
-pnpm check
-pnpm smoke:broad
-pnpm smoke:live
+muse thread start "Plan a birthday" --kind life
+muse thread link <thread-id> note birthday.md --role context
+muse thread link <thread-id> task <task-id>   --role next-step
 ```
 
-`smoke:live` deliberately uses local Ollama and skips when it is unreachable. The longer `pnpm eval:agent` suite is nightly/manual. The latest recorded live aggregate is **10 passed, 1 failed, 0 unverified**, so it remains **FAILED**. Run `pnpm qualify:personal-agent` for a read-only, fail-closed check of current capability, resident runtime, and delivery safety. Software test counts are not agent-effect proof.
+### 2. Get it back when you return
 
-## 📖 Documentation
+```bash
+muse continue <thread-id>
+```
 
-- [Attunement product contract](docs/strategy/attunement.md)
-- [Attunement architecture and current gaps](docs/design/attunement.md)
-- [Muse Attunement Graph (MAG)](docs/design/attunement-graph.md)
-- [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md)
-- [Attunement implementation plan](docs/goals/attunement-implementation-plan.md)
-- [Attunement wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)
-- [Personal-agent qualification](docs/development/personal-agent-qualification.md)
-- [System map](docs/SYSTEM-MAP.md)
-- [Verified feature catalog](docs/feature-catalog/INDEX.md)
-- [Evidence index](docs/benchmarks/EVIDENCE.md)
-- [Security posture](SECURITY.md)
-- [한국어 README](README.ko.md) · [日本語 README](README.ja.md) · [简体中文 README](README.zh-CN.md)
+You get a **pack**: the stopping point, the changes since, a proposed next step, and the receipts
+behind each claim. Nothing is guessed — the pack is built only from sources you linked.
 
-## 💬 Community and support
+### 3. Tell it whether that helped
 
-Use [GitHub Issues](https://github.com/wlsdks/Muse/issues) for questions, bugs, and feature ideas. Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.
+```bash
+muse thread outcome <delivery-id> used     # or: adjusted, ignored, rejected
+```
+
+This is the loop that makes the next pack better. Outcomes are recorded, not inferred.
+
+> **Muse doesn't remember apps. It remembers the state you meant to continue.**
+
+---
+
+## Everyday commands
+
+| Command | What you get |
+| --- | --- |
+| `muse ask "when is the dentist?"` | An answer built from your own notes, each one cited and openable — and an honest *"I'm not sure"* when the evidence is weak. |
+| `muse chat` | A conversation that carries over from the last one instead of starting from zero. |
+| `muse today` · `muse digest` | Your day, and one evening summary instead of a stream of pings. |
+| `muse remember` · `muse recall` · `muse forget` | Facts, preferences, goals and vetoes you can read, correct, and delete. |
+| `muse notes` · `muse tasks` · `muse remind` · `muse calendar` | Plain files you own, with five calendar backends behind one interface. |
+| `muse proactive watch` | Muse speaks first — inside a hard interruption budget, never as an autonomous send. |
+| `muse mcp serve` | Other agents get read-only access to your grounded recall over MCP. |
+| `muse doctor` | One-shot diagnosis and repair of a broken local setup. |
+
+<p align="center"><img src="docs/images/cli-ask.png" alt="muse ask with an openable receipt, and muse today" width="880" /></p>
+
+---
+
+## How Muse answers
+
+A personal assistant that invents a detail about your own life is worse than useless. So on the
+grounded paths, retrieval is not a suggestion to the model — it is a gate in front of it.
+
+| Step | What the code does |
+| --- | --- |
+| **Retrieve** | Ranks your local notes and memory for the question, across languages (a Korean question can reach an English note). |
+| **Weigh** | Weak matches are lowered rather than promoted. Stale sources are marked, not silently trusted. |
+| **Answer** | The reply must cite the sources it used. Citations that don't resolve are dropped from the answer. |
+| **Abstain** | Below the confidence gate, Muse says it isn't sure instead of producing a confident guess. |
+| **Correct** | You can contradict it. The correction is stored and decays the belief it replaced. |
+
+**The honest limit:** this covers the supported grounded paths. Fast uncited chat is a documented
+gap, not a solved problem — see [the grounding gate](docs/grounding-gate.md).
+
+---
+
+## Where this is going
+
+> You stopped while comparing three places to stay. Since then the flight moved, one cancellation
+> deadline came close, and an 18-minute gap opened in your day. Muse prepares only the changes,
+> says why now, cites every source, shows exactly how far an action would go — and asks whether to
+> hold one option. If you answer *"this evening instead"*, that becomes a visible rule for this
+> trip, not a hidden global preference.
+
+Three pieces have to work for that moment to exist:
+
+| | Piece | What it decides |
+| --- | --- | --- |
+| 🌘 | **Shadow Muse** | When to speak and when to stay quiet — learned before it ever interrupts. |
+| 💊 | **Continuity Capsule** | The restored stopping point: changes, evidence, next step, expected time. |
+| 🪪 | **Policy Card** | What Muse proposes to learn about working with you — with trial, edit, reject, rollback. |
+
+None of the three is finished. The next section says exactly how far each one got.
+
+---
+
+## Status — what's real today
+
+### Working
+
+| Area | Notes |
+| --- | --- |
+| Memory, grounded recall with citations, local personal stores | Encryption at rest for memory, episodes and the action log |
+| Guarded tools and browser actions, traces, checkpoints | Fail-close guards, bounded loops, timeouts |
+| Explicit continuity threads | `start → link → muse continue → outcome`, end to end |
+| One runtime across CLI, web/API, messaging, scheduled jobs | Same guards, same approvals, same traces |
+
+### Partly built
+
+| Area | Where it actually stands |
+| --- | --- |
+| Attunement Graph engine | Exact projection, *"what changed since I stopped"*, content-addressed observation receipts, resume compiler and a durable projection journal — all verified, all still process-local substrate |
+| Continuity Capsule | Render data returned from an explicit API call. No product UI, no automatic timing |
+| Shadow Muse | The ledger records the decision. It does not surface anything on its own yet |
+
+### Roadmap
+
+Policy Card · automatic thread detection · a durable current-world graph · standalone release of the
+graph engine · organic-use evidence.
+
+<details>
+<summary><b>The fine print on the graph engine (MAG)</b></summary>
+
+<br/>
+
+The [Muse Attunement Graph](docs/design/attunement-graph.md) is an agent-native temporal/provenance
+graph and personal context compiler — not a third-party graph DB. RAG can find *likely* context; MAG
+has to prove the exact thread, time, change, source and policy relation. It runs on an embedded
+SQLite store behind an isolated worker, with no external graph server required
+([blueprint](docs/design/agent-native-graph-core.md)).
+
+It is deliberately built as an independently extractable module — Muse is its first consumer and
+dogfood environment. The public interface, adapter boundaries and repository-split plan are fixed in
+[ADR 0001](docs/adr/0001-mag-product-module-boundary.md); TypeScript-first with Rust only for
+benchmark-proven hot kernels in [ADR 0002](docs/adr/0002-mag-language-runtime-boundary.md).
+
+What is verified today, and what those words do **not** mean:
+
+- The neutral lifecycle `openMag({ scope, store }) → project → execute → close`, plus a durable
+  projection journal and typed worker boundary. Portable export/rebuild, backup, physical forget and
+  the 10K/100K/1M benchmarks are still pending.
+- Observation receipts are *caller-declared* integrity evidence. They prove bytes and boundaries —
+  not that Muse observed you, and not your exact stopping point.
+- Freshness is honest by construction: only exact endpoint equality under a bounded head
+  revalidation becomes `fresh-at-assessment`. A single read stays `unassessed` and forces downstream
+  abstention rather than a guess.
+- Resume baselines are per-process, capped at 16 threads, and not persisted. None of this is action
+  authority, automatic behaviour, or evidence that it is useful in real life.
+
+Sequenced in the [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).
+
+</details>
+
+---
+
+## Evidence and numbers
+
+Two qualified controlled results, and nothing promoted past its evidence. Failed, unchanged and
+diagnostic runs stay visible in the [evidence index](docs/benchmarks/EVIDENCE.md) instead of being
+quietly dropped.
+
+### Grounding
+
+For the same fictional appointment question, grounding should cite the linked note instead of
+answering from an assumption. Two independent controlled checks measured faithfulness:
+
+| Check | Faithfulness (gate ON vs OFF) | Delta | False-refusal cost |
+| --- | --- | --- | --- |
+| Self-authored corpus | **16/17** vs **0/17** | **+0.94** | 0/12 vs 0/12 (**+0.00**) |
+| SQuAD-2.0 slice | **5/8** vs **0/8** | **+0.63** | 0/8 vs 0/8 (**+0.00**) |
+
+Different denominators; deliberately not aggregated into one headline number.
+
+![Two independent qualified grounding checks with raw faithfulness counts and false-refusal cost](docs/benchmarks/readme-qualified-grounding-v1.svg)
+
+Source: [closed README evidence manifest](docs/benchmarks/readme-qualified-evidence-v1.json)
+
+### Synthetic integrity at scale
+
+Four corpora — **1K / 10K / 100K / 1M** — produced **1,111,000/1,111,000** records generated,
+serialized, parsed and schema-validated. A separate stratified runtime sample passed **768/768**
+public Muse seams across **96** cells with **0 / 0 / 0** LLM, tool and network calls; owner state
+stayed byte-stable.
+
+![Full-corpus controlled synthetic integrity totals separated from the 768-case runtime sample](docs/benchmarks/readme-controlled-scale-v1.svg)
+
+Source: [canonical scale JSON](docs/benchmarks/eval-datasets-scale-v1.json)
+
+### What these numbers do not mean
+
+- The agent aggregate is **10/11 FAILED**. Organic effectiveness is **NOT_PROVEN**. Recall
+  correction remains **UNQUALIFIED**.
+- Controlled synthetic integrity is not personal learning, and controlled evidence is not organic
+  effectiveness.
+- **1,111,000 records are not 1,111,000 agent runs.**
+
+Sources: [grounding manifest](docs/benchmarks/readme-qualified-evidence-v1.json) ·
+[scale JSON](docs/benchmarks/eval-datasets-scale-v1.json) ·
+[evidence index](docs/benchmarks/EVIDENCE.md).
+
+---
+
+## What Muse will never do
+
+| | Boundary |
+| --- | --- |
+| 🚫 | **Move money.** No bank or brokerage connections, no payments, no transfers. Permanently out of scope. |
+| ✋ | **Send to a third party on its own.** Email, chat, forms and bookings are draft-first: you confirm the exact content and recipient, or nothing leaves. |
+| 🧵 | **Guess your threads.** Continuity threads and their source links are yours to author. Automatic detection is later, opt-in work. |
+| 👤 | **Pretend to be a workspace.** Single user, single environment — no multi-tenancy, no RBAC. |
+| 📊 | **Promote evidence.** Tests, synthetic replays, diagnostics, agent trials and real outcomes stay separate ledgers. |
+
+Enforced as deterministic code, never as a prompt instruction:
+[outbound safety](.claude/rules/outbound-safety.md) · [Attunement design](docs/design/attunement.md).
+
+---
+
+## Architecture
+
+### Any model, one boundary
+
+`agent-core` never talks to a vendor SDK. Everything goes through one `ModelProvider` interface, so
+swapping models does not touch agent logic.
+
+```ts
+interface ModelProvider {
+  id: string;
+  listModels(): Promise<ModelInfo[]>;
+  generate(request: ModelRequest): Promise<ModelResponse>;
+  stream(request: ModelRequest): AsyncIterable<ModelEvent>;
+}
+```
+
+Adapters ship for OpenAI, Anthropic, Gemini, OpenRouter, Ollama, LM Studio and any
+OpenAI-compatible endpoint. Select one with `MUSE_MODEL=<provider>/<model>` plus its usual API-key
+variable; override explicitly with `MUSE_MODEL_PROVIDER_ID`, `MUSE_MODEL_API_KEY` and
+`MUSE_MODEL_BASE_URL`. Missing capabilities degrade explicitly — no native tool calling falls back
+to a strictly parsed text protocol, no structured output falls back to a parser plus validator.
+
+No vendor owns the runtime, and no vendor is required by it. Storage and processing placement are
+explicit deployment choices, not the product's identity.
+
+### Where your data lives
+
+| What | Where |
+| --- | --- |
+| Notes | `~/.muse/notes/` |
+| Tasks | `~/.muse/tasks.json` |
+| Reminders | `~/.muse/reminders.json` |
+| Memory | `~/.muse/user-memory.json` |
+| Config | `~/.config/muse/config.json` |
+| Run state | `.muse/runs/*.jsonl` |
+
+Plain files. Memory, episodes and the action log are encrypted at rest; credentials live in the OS
+keychain or an encrypted auth store, never in plain text.
+
+### One runtime, every surface
+
+CLI, web/API chat, messaging channels, scheduled jobs and delegated workers all share the same
+composition root — the same guards, approvals and traces. Risky local execution goes through the
+Rust `runner` as a child process. Tool output is treated as untrusted input, and every tool loop has
+an explicit step limit and timeout.
+
+### MCP in both directions
+
+Muse consumes external MCP servers behind an allowlist, and `muse mcp serve` exposes read-only
+grounded recall, search and user-model access to other agents.
+
+---
+
+## Repository layout
+
+| Path | What lives there |
+| --- | --- |
+| `packages/agent-core` | The model-agnostic runtime: loops, guards, approvals, traces |
+| `packages/model` | Provider adapters — the only place a vendor SDK is allowed |
+| `packages/attunement`, `packages/attunement-graph` | Continuity threads and the MAG graph engine |
+| `packages/recall`, `packages/memory`, `packages/stores` | Grounded recall, personal memory, file-backed stores |
+| `packages/tools`, `packages/browser`, `packages/mcp` | Tool surface, browser control, MCP both ways |
+| `apps/cli`, `apps/api`, `apps/web`, `apps/desktop` | The four surfaces, all on one runtime |
+| `crates/runner` | Sandboxed local execution |
+| `harness/` | The vendor-neutral agent operating harness used to build Muse |
+
+39 workspace packages in total; [the system map](docs/SYSTEM-MAP.md) is the guided tour.
+
+---
+
+## Build and verify
+
+```bash
+pnpm typecheck:fast   # while editing
+pnpm test:changed     # only the tests related to your change
+pnpm check            # full build + test, before merge
+pnpm lint             # 0 errors required
+```
+
+Agent-level gates, which a type checker cannot replace:
+
+```bash
+pnpm smoke:broad      # HTTP sweep against the diagnostic provider, no API key
+pnpm smoke:live       # real round-trip against local Ollama
+pnpm eval:tools       # does the local model pick the right tool in one shot?
+pnpm eval:agent       # judge meta-eval, must-refuse battery, plan quality
+```
+
+`smoke:live` deliberately uses local Ollama and skips when it is unreachable — a skip is not a pass.
+The latest recorded `eval:agent` aggregate is **10 passed, 1 failed, 0 unverified**, so it stands as
+**FAILED**. `pnpm qualify:personal-agent` is a read-only, fail-closed check of current capability,
+resident runtime and delivery safety. Test counts are not proof of agent effect.
+
+---
+
+## Documentation
+
+| | |
+| --- | --- |
+| **Start here** | [System map](docs/SYSTEM-MAP.md) · [Verified feature catalog](docs/feature-catalog/INDEX.md) · [Local model setup](docs/setup-local-llm.md) · [Environment variables](docs/ENV.md) |
+| **The product** | [Attunement contract](docs/strategy/attunement.md) · [Architecture and gaps](docs/design/attunement.md) · [Implementation plan](docs/goals/attunement-implementation-plan.md) |
+| **The graph** | [Attunement Graph](docs/design/attunement-graph.md) · [Agent-native core blueprint](docs/design/agent-native-graph-core.md) · [Roadmap](docs/goals/attunement-wow-graph-roadmap.md) |
+| **Trust** | [Grounding gate](docs/grounding-gate.md) · [Privacy and data](docs/privacy-and-data.md) · [Evidence index](docs/benchmarks/EVIDENCE.md) · [Security](SECURITY.md) |
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md), [CLAUDE.md](CLAUDE.md), and the [domain rules](.claude/rules/) before changing the repository. Use Conventional Commits and write commits and PR descriptions in English.
+Questions, bugs and ideas go to [GitHub Issues](https://github.com/wlsdks/muse-agent/issues);
+vulnerabilities go through [SECURITY.md](SECURITY.md), not a public issue. Before changing the
+repository, read [CONTRIBUTING.md](CONTRIBUTING.md), [CLAUDE.md](CLAUDE.md) and the
+[domain rules](.claude/rules/). Conventional Commits, English commit messages.
 
-## License
-
-[MIT](LICENSE). The runtime, adapters, and tooling are open source; contributions are accepted under the same terms.
+[MIT](LICENSE) — runtime, adapters and tooling.
