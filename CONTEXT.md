@@ -48,6 +48,20 @@ documents rather than here.
   through an unversioned new rule.
 - The **Evidence Graph** holds rebuildable provenance and temporal assertions. The
   **Working Graph** is an expiring, token-budgeted decision slice.
+- **Muse Attunement Graph (MAG)** is the canonical name for the whole agent-native graph
+  architecture. **MAG Engine** is the semantics/operators/compiler; **MAG Store** is the
+  future built-in durable journal and index layer whose selected default is capability-gated
+  `node:sqlite`. PostgreSQL is optional; Redis/MySQL/external Graph DBs are not required.
+  A receipt is evidence projected into MAG, not a database.
+- MAG is an independently extractable product Module developed inside Muse until its
+  clean-room package gate passes. Muse applications depend on the MAG public Interface;
+  the Engine never depends on Muse API/web/CLI/scheduler/autoconfigure/model/UI packages.
+  Planned Markdown, Obsidian, and Notion integrations are Source Adapters, not Store
+  Implementations; their MAG-specific contracts are not shipped. See
+  [ADR 0001](docs/adr/0001-mag-product-module-boundary.md).
+- The long-term Observe target is a consented local 24-hour event stream over approved
+  sources. It feeds Muse-owned append-oriented Graph storage with pause, retention, export,
+  rebuild, and physical-forget controls; it is not indiscriminate screen capture.
 - A **Graph Scope** is an explicit `(sourceId, threadId)` membership boundary. A shared
   artifact never authorizes traversal from one scope into another. A **Graph Snapshot**
   binds one generation and commit so an operator cannot mix projection heads, assertions,

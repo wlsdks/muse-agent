@@ -18,9 +18,25 @@ Those programs harden the general agent substrate. This one builds Muse's signat
 The two workstreams are inseparable:
 
 - **Experience:** Shadow Muse → Continuity Capsule → Policy Card.
-- **Engine:** a modular, agent-native Graph DB/Engine optimized for compact context,
+- **Engine:** **Muse Attunement Graph (MAG)**, a modular agent-native graph architecture
+  optimized for compact context,
   temporal/provenance reasoning, abstention, policy, and action authority—not generic query
   breadth—and able to connect those relations without copying existing stores.
+
+The long-term capture north star is a consented, local, 24-hour personal event stream:
+Muse observes approved work/life transitions continuously, projects them into its own
+append-oriented MAG Evidence Graph, and can pause, forget, export, and rebuild that graph
+without an external Graph DB. This means continuous coverage of approved sources—not
+indiscriminate screen/content surveillance. RAG may nominate semantically relevant items;
+the Graph owns exact thread, identity, time, change, provenance, return, and policy
+relations.
+
+MAG is built as an independently extractable product Module inside Muse. A second Git
+repository is intentionally deferred until clean-room package, dependency-isolation,
+conformance, packed-artifact, export/rebuild, and license/documentation gates pass. Focused
+MAG and Muse-integration commits preserve history for that later split without imposing
+dual-repository version churn during rapid development. The accepted boundary is
+[ADR 0001](../adr/0001-mag-product-module-boundary.md).
 
 ## Program boundary
 
@@ -64,15 +80,44 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
 | **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3d3b` independently verified; explicit Pack Preview now dogfoods process-local `resumeContext`, while durable/current-world semantics remain pending) |
-| **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | pending |
+| **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | partial (`AWG-050b1` binds fresh timing-policy snapshots to exact process-local Source/Graph comparison evidence; return/card/durability pending) |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
-| **AWG-070** | Storage bake-off | Prove the Muse-owned local default first; compare PostgreSQL and at most one embedded candidate only as optional Adapters on correctness, cost, recovery, portability, and maintenance | pending |
+| **AWG-065** | Neutral MAG product boundary | Closed `Mag*` Interface, forbidden-import gate, and Muse Attunement bridge remove private store types from the standalone Engine without copying validation | pending |
+| **AWG-070** | SQLite MAG Store v1 | Implement the selected `node:sqlite` default behind the MAG Store contract with version-gated physical profile, journal replay, indexes, restart/crash/corruption tests, and portable export; PostgreSQL remains optional | pending |
 | **AWG-080** | Durable local graph adapter | Selected adapter passes conformance, export/rebuild, corruption, migration, forget, and crash-recovery gates | pending |
+| **AWG-085** | Standalone MAG qualification | Clean-room build/test, forbidden-import audit, packed install, non-Muse example, license/security/contribution docs, and history-preserving repository split rehearsal pass without workspace dependencies | pending |
 | **AWG-090** | Dogfood qualification | Controlled scenarios plus repeated organic use; reconstruction-cost and policy-correction evidence remain separately reported | pending |
 
 Raw numbering does not activate work. Before each BUILD slice, inspect current source and
 classify it as `missing`, `partial`, `built-unverified`, `verified-current`, `monitoring`,
 `blocked`, `deferred`, `rejected`, or `superseded`. Implement only the missing delta.
+
+Engineering completeness and evidence maturity are reported separately. AWG-090 organic
+dogfood does not block building the product path to engineering-complete status; it does
+block claims that Muse has proved usefulness, saved reconstruction time, or learned better
+timing in real life.
+
+## Current 050b activation
+
+- **Core100-075 is `verified-current`:** the existing timing store already persists
+  deterministic `silent | digest | offer` candidates, bounded reasons, category-only
+  evidence IDs, a decision-matched counterfactual, consent lifecycle, and zero delivery.
+- **Legacy-115 activation is `superseded`:** Core100-075 owns the reducer/no-send contract.
+  Its previously missing decision-time policy provenance is now covered for fresh
+  candidates by `AWG-050b1`; legacy rule-v1/v2 candidates remain readable but cannot be
+  MAG-bound retroactively.
+- **AWG-050b1 is `verified-current`:** a fresh independent completion gate passed after
+  the full Attunement suite (334/334), full MAG suite (313/313), changed-scope tests,
+  builds, typechecks, focused lint, export-boundary probe, and hostile identity/dependency
+  probes. Fresh
+  rule-v3 timing candidates retain the exact bounded policy snapshot, and a dedicated
+  `shadow-decision-receipt` subpath can bind that projection only to the original compared
+  runtime result that owns its Pack and four Source/Graph receipts. The receipt is bounded,
+  content-addressed, and dependency-verified only with the exact originating
+  coordinator/result/Pack/timing and Source/Graph bundle; a naked serialized receipt fails
+  closed. It grants no delivery, feedback, policy, or action authority. This is a library
+  foundation, not automatic Shadow timing, portable restart verification, return evidence,
+  a user-facing card, or durable MAG storage.
 
 ## Current 050a3 activation
 
@@ -130,7 +175,7 @@ Shadow ledger or durable database:
   capture
   before state access, recomputes its bytes/digest, binds its exact scope into the existing
   graph projection and Observation Receipt, and feeds only that verified result to
-  receipt-bound Agent Graph evidence. The shared grammar represents Provider provenance
+  receipt-bound MAG evidence. The shared grammar represents Provider provenance
   without inventing a graph commit or generation; `unassessed` freshness forces
   settlement abstention. Focused, package, workspace, verifier, and independent completion
   gates pass.
@@ -187,9 +232,9 @@ scope-derived seed verification before passing. AWG-050b now owns the actual Sha
 
 ## Completed slices: AWG-050a3d3a/b and AWG-040d
 
-- **Product meaning:** call this capability **Graph-backed explicit resume preview**. The
+- **Product meaning:** call this capability **MAG-backed explicit resume preview**. The
   first qualifying Preview seeds one exact process-local baseline; later calls return
-  bounded change and supporting facts from the verified Agent Graph path.
+  bounded change and supporting facts from the verified MAG path.
 - **Runtime bounds:** one assembly-local coordinator retains at most 16 baselines, admits
   four concurrent captures globally, rejects same-scope overlap, caps head revalidation at
   `1,000 ms`, and times out at `5,000 ms` without allowing a late cache write.
@@ -265,7 +310,7 @@ scope-derived seed verification before passing. AWG-050b now owns the actual Sha
 
 ## Completed slice: AWG-050a3b
 
-- **Product meaning:** call this capability **provider-bound Agent Graph evidence**. Muse
+- **Product meaning:** call this capability **provider-bound MAG evidence**. Muse
   can bind one exact configured-local process mint through a verified Continuity
   Observation into its own bounded graph-evidence path without an external graph database.
 - **Classification at activation:** `missing` — Provider capture and receipt-bound Graph
@@ -338,7 +383,7 @@ scope-derived seed verification before passing. AWG-050b now owns the actual Sha
 
 ## Completed slice: AWG-050a2c
 
-- **Product meaning:** call this capability **receipt-bound Agent Graph evidence
+- **Product meaning:** call this capability **receipt-bound MAG evidence
   compilation**. It is the first complete private execution path from an exact Continuity
   receipt through Muse's own temporal graph, one bounded Activation traversal, graph-owned
   explanation paths, and budget settlement.

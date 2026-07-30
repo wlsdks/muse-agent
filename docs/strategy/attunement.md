@@ -22,6 +22,12 @@ Muse spans one person's daily life and work. In plain language, Attunement means
 how to fit help into one person's life**. It is not another word for memory, personality,
 productivity tracking, or sending more notifications.
 
+The target operating mode is a consented, local, 24-hour personal continuity recorder over
+approved sources. Muse should continuously retain the event and relationship structure
+needed to resume life and work, while pause, source scope, retention, export, and physical
+forget remain visible owner controls. It does not mean recording every screen byte or
+shipping personal activity to an external Graph DB.
+
 ## The user need
 
 People do not mainly want an agent that knows more facts about them. They want to carry less
@@ -89,7 +95,7 @@ A procedural skill teaches an agent how to do a task better. An Attunement Polic
 Muse how to collaborate with this person better.
 
 These three mechanisms and the underlying
-[Attunement Graph Engine](../design/attunement-graph.md) are target architecture, not a
+[Muse Attunement Graph (MAG)](../design/attunement-graph.md) are target architecture, not a
 shipped claim. Their dependency-ordered work lives in the
 [wow + graph roadmap](../goals/attunement-wow-graph-roadmap.md).
 
@@ -142,7 +148,7 @@ improve its timing; they are not prerequisites for testing whether the pack is u
 |---|---|
 | **Available now** | Provider-neutral runtime; local personal stores; user memory; grounded recall; guarded browser control; traces/checkpoints; Personal Continuity Slice A; and Observe O1: explicit consent for one exact thread, category/time/duration-only local sessions, inspect/pause/resume/forget, and one fenced app-only collector. O1 performs no hypothesis, policy, delivery, model call, send, or action. Packs remain user-invoked with four explicit outcomes and a narrow display-policy update. Explicit Pack Preview now also dogfoods a bounded process-local Attunement Graph baseline, returns semantic resume comparison facts, and can explicitly produce a verified English/Korean Capsule render-data presentation without opening or delivering the Pack. |
 | **Experimental substrates** | Pattern suggestions, proactive surfacing, background review, and self-followup. They contribute signals or delivery paths, but are not an Attunement loop. |
-| **Roadmap** | Shadow Muse, automatic stop capture and the full Continuity Capsule product/UI, Policy Card, durable Attunement Graph storage, more Continuity source adapters, Observe hypothesis/correction controls, Personal Rhythm Model, Friction Discovery, usefulness qualification, and timing-aware help. The current process-local Graph-backed Preview and explicit Capsule render data are neither durable memory nor proactive timing. Exact browsing context and O1 category collection do not themselves ship proactive timing. |
+| **Roadmap** | Shadow Muse, automatic stop capture and the full Continuity Capsule product/UI, Policy Card, durable MAG storage, more Continuity source adapters, Observe hypothesis/correction controls, Personal Rhythm Model, Friction Discovery, usefulness qualification, and timing-aware help. The current process-local MAG-backed Preview and explicit Capsule render data are neither durable memory nor proactive timing. Exact browsing context and O1 category collection do not themselves ship proactive timing. |
 
 ## What Continuity, Muse Work, and Observe mean
 

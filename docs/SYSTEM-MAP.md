@@ -41,9 +41,9 @@ delivery에 사용하는 단계, 자동 연결, 타이밍 개선은 아직 **roa
 
 대표 roadmap 경험은 **Shadow Muse → Continuity Capsule → Policy Card**다. Muse가 먼저
 침묵 속에서 배우고, 사용자가 이어가려던 상태와 그 뒤의 변경점을 복원하며, 다음 협업 규칙을
-근거·범위·되돌리기와 함께 보여준다. 이를 위한 proposed `Attunement Graph Engine`은 기존 store를
-복제하는 무거운 서버가 아니라, 시간·관계·출처를 재생성 가능한 projection으로 연결하고 매 turn에
-필요한 작은 Activation Subgraph만 만드는 personal context compiler다
+근거·범위·되돌리기와 함께 보여준다. 이를 위한 proposed **Muse Attunement Graph (MAG)**는 기존
+store를 복제하는 무거운 서버가 아니라, 시간·관계·출처를 재생성 가능한 projection으로 연결하고
+매 turn에 필요한 작은 Working Graph만 만드는 agent-native personal context compiler다
 ([그래프 설계](design/attunement-graph.md) · [별도 실행 로드맵](goals/attunement-wow-graph-roadmap.md)).
 
 ## 큰 그림 — Muse는 어떤 층으로 이루어져 있나

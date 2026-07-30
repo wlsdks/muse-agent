@@ -63,6 +63,11 @@ cacheable shard 계약으로 대체한다. CLI permission 구현을 반복하지
 증거로 `verified-current` 또는 `superseded` 처리하고 같은 영역의 실제 missing delta를 다시
 계획한다.
 
+2026-07-30 reconciliation: Core100-075는 현재 timing store와 API no-send 경로로
+`verified-current`다. legacy-115는 별도 reducer activation으로는 `superseded`이며, fresh
+결정의 decision-time policy snapshot과 exact Source/Graph binding만 AWG-050b1의 distinct
+delta로 분리했다. rule-v1/v2 기록은 계속 읽지만 Graph provenance로 승격하지 않는다.
+
 ## 20분 실행 계약
 
 각 번호는 outcome이나 epic이 아니라 **한 번의 실제 activation으로 끝낼 수 있는 작업 단위**다.

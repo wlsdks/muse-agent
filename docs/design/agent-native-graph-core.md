@@ -1,5 +1,5 @@
 ---
-title: Muse Agent-Native Graph Core — semantic engine and local storage blueprint
+title: Muse Attunement Graph (MAG) Core — semantic engine and local storage blueprint
 audience: [engineering, product, security, agents]
 purpose: Fix the core architecture and staged delivery plan for Muse's built-in graph engine
 status: decision-proposal
@@ -7,7 +7,7 @@ updated: 2026-07-29
 related: [attunement-graph.md, ../goals/attunement-wow-graph-roadmap.md, ../../CONTEXT.md]
 ---
 
-# Muse Agent-Native Graph Core
+# Muse Attunement Graph (MAG) Core
 
 > **Decision:** Muse owns the graph semantics, temporal/provenance model, operator
 > algebra, completeness rules, portable journal, and local lifecycle. A small embedded
@@ -15,9 +15,13 @@ related: [attunement-graph.md, ../goals/attunement-wow-graph-roadmap.md, ../../C
 > graph product, public API, or a requirement for the flagship experience.
 
 This is the implementation blueprint beneath
-[Attunement Graph Engine](attunement-graph.md). It synthesizes independent Sol-class
+[Muse Attunement Graph (MAG)](attunement-graph.md). It synthesizes independent Sol-class
 architecture reviews, direct source inspection, and current primary-source research. It
 does not claim the durable engine is implemented.
+
+Canonical naming: **Muse Attunement Graph (MAG)** is the whole product architecture,
+**MAG Engine** is its semantics/operators/compiler, and **MAG Store** is the future durable
+embedded journal/index layer.
 
 The target is not a smaller Neo4j. It is a graph engine optimized for an AI agent that must
 assemble a small truthful context, reason over change, show its evidence, know when its
@@ -51,7 +55,8 @@ alone.
 | Activation Subgraph v1 | `partial` | It is bounded, but not yet scope-safe or proof-closed enough for flagship decisions. |
 | Continuity projection/change/observation/Capsule Modules | `verified-current` at their documented pure boundaries | Reuse them as the first operator workload; do not reimplement them in a database layer. |
 | Logical append journal and immutable lifecycle | `partial` | Current live insertion order is not a durable append-only history; later retraction needs separate events. |
-| Shadow Muse, Policy Card, runtime composition | `missing` | They remain the next product-shaped workloads. |
+| Shadow Muse decision provenance | `partial` | Existing no-send timing decisions now have a fresh-policy snapshot and an exact process-local Source/Graph receipt binding; return/card/durability remain. |
+| Policy Card and user-facing runtime composition | `missing` | They remain the next product-shaped workloads. |
 | Durable local engine, recovery, migration, physical forget | `missing` | Do not select or build storage before the v2 semantic contract. |
 
 Two current contracts need explicit correction:
@@ -281,14 +286,15 @@ different bytes is a collision and fails closed.
 
 ## Lightweight local storage
 
-### Recommended default candidate
+### Selected default
 
-Use a Muse-owned schema over capability-gated `node:sqlite` as the first durable candidate.
+Use a Muse-owned schema over capability-gated `node:sqlite` as the default MAG Store.
 SQLite supplies crash consistency, atomic transactions, compact indexes, and a single-file
 local deployment. It does not define graph semantics, expose SQL publicly, or become a
 required external Graph DB.
 
-This is a candidate decision, not implementation authorization:
+The architecture selection is final; production implementation and migration remain
+unshipped roadmap work:
 
 - Muse currently supports Node `>=22.12`; Node 22.12 requires
   `--experimental-sqlite`, while Node 22.13 unflags the module. AWG-070 must decide whether
@@ -300,6 +306,8 @@ This is a candidate decision, not implementation authorization:
 - Start with one writer. Reader concurrency, checkpoints, durability pragmas, file
   permissions, and shutdown behavior are explicit conformance inputs.
 - Extension loading remains disabled.
+- Startup executes `SELECT sqlite_version()` and enables WAL only for an accepted fixed
+  version/profile. The current development runtime, Node 24.16.0, reports SQLite 3.53.0.
 
 Do not build a custom physical WAL. Muse owns the logical journal; SQLite or another proven
 embedded substrate owns fsync, locking, and crash recovery.
@@ -469,26 +477,27 @@ It would make Muse responsible for WAL recovery, fsync semantics, file locking, 
 read snapshots, compaction, migration, and cross-platform failure modes before those
 provide user-visible Attunement value.
 
-### Embedded property graph
-
-Keep one candidate for AWG-070. It wins only if measured product operators justify its
-binary size, query/runtime breadth, binding lifecycle, and maintenance coupling. Cypher
-support alone has no value to Muse.
-
 ### PostgreSQL
 
 It can remain an optional conformance Adapter for installations already using it. It cannot
 be required for the local flagship path.
 
+### Redis and MySQL
+
+Neither is a MAG Store target. Redis may be an optional disposable cache/queue, but its
+daemon and independent persistence lifecycle add no value to the single-user local source
+of truth; RedisGraph is also documented as deprecated. MySQL can represent the schema but
+adds a server and maintenance surface without improving MAG's bounded operators. A future
+Adapter requires a demonstrated deployment need, not generic database freedom.
+
 ### Raw JSON or NDJSON
 
 Use it as a canonical portable export, not as transactional serving storage.
 
-### Unresolved decisions
+### Remaining implementation decisions
 
 - Node 22.12 compatibility strategy for an unflagged SQLite path;
 - exact durability/checkpoint policy after crash and power-loss tests;
-- whether LadybugDB remains healthy enough at AWG-070 to merit the one comparison slot;
 - source-receipt vault retention and encryption policy;
 - measured cache sizes and eviction rhythm from real dogfood;
 - whether any operator benefits enough from lexical/vector seed nomination to pay its cost.
@@ -638,15 +647,18 @@ Do not build the database first.
    and leaves open/delivery isolated. A strict optional request can present the verified
    bilingual Capsule render-data contract only when the exact result also owns its Pack and
    Capsule receipt evidence; this is not automatic delivery or a product UI.
-4. **AWG-050b — Shadow decision receipt:** `silent | digest | offer`, bounded reason and
-   counterfactual, later return timing; no sending, action, or chain-of-thought storage.
+4. **AWG-050b — Shadow decision receipt:** `AWG-050b1` now preserves the bounded policy
+   snapshot for fresh `silent | digest | offer` decisions and binds it to the exact
+   process-local Source/Graph comparison result without sending or acting. Explicit return
+   evidence, the Shadow-to-Return card, and durability remain.
 5. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
    reject, rollback, and no hidden promotion.
-6. **AWG-070a — backend v2 conformance:** snapshot identity, projection compare-and-swap,
+6. **AWG-070a — SQLite MAG Store conformance:** snapshot identity, projection compare-and-swap,
    restart, crash, corruption, future version, lifecycle, physical-forget fixtures, and
    byte-identical operator results.
-7. **AWG-070b — storage bake-off:** prototype the capability-gated SQLite candidate and at
-   most one embedded property graph against the oracle and flat baseline.
+7. **AWG-070b — SQLite physical profile:** schema/indexes, single-writer transactions,
+   capability/version gate, WAL/checkpoint policy, owner-only files, backup, and portable
+   journal export.
 8. **AWG-080 — durable engine:** recovery/export/rebuild, generation migration/compaction,
    authorized physical forget, then local runtime composition.
 9. **AWG-090 — qualification:** controlled scenarios followed by repeated local dogfood;

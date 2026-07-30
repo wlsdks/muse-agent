@@ -8,6 +8,30 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Defined **Muse Attunement Graph (MAG)** as an independently extractable product Module.
+  Muse remains its first consumer and dogfood environment while one monorepo owns rapid
+  development. ADR 0001 fixes the future standalone repository boundary, a closed
+  `open → project → execute → close` product Interface, hidden SQLite MAG Store,
+  in-memory oracle, Source/Store Adapter separation, clean-room packed-artifact gate, and
+  history-preserving split strategy. The package is still private and not independently
+  publishable today.
+
+- Added the bounded **MAG Shadow decision receipt** foundation. Fresh timing
+  decisions retain a rule-v3 decision-time policy snapshot while legacy rule-v1/v2 files
+  remain readable and ineligible for retrospective MAG binding. A dedicated package
+  subpath binds `silent | digest | offer`, reason, counterfactual, consent, and at most two
+  category-only observation IDs/digest only to the original process-local compared result
+  that owns its Pack and four Source/Graph receipts. Copies, proxies, mismatched scope/time,
+  unsupported timing evidence, and unavailable results abstain; the private binder is not
+  exported. Receipts are bounded and content-addressed, but verified capture requires the
+  exact originating coordinator/result/Pack/timing and Source/Graph dependency bundle; a
+  naked serialized receipt fails closed. They grant no delivery, feedback, policy, or
+  action authority. This is not automatic timing, a portable restart verifier, a return
+  signal, a Shadow-to-Return card, durability, or real-life usefulness evidence.
+  An independent completion gate passed the full Attunement suite (334/334), full MAG
+  suite (313/313), changed-scope tests, package/root typechecks, both builds, focused
+  lint, the public/private export probe, and adversarial provenance/dependency probes.
+
 - Added an independently verified, bounded **Continuity resume runtime** and connected it
   only to the existing read-only `muse.continuity.pack.preview` path. One runtime assembly
   now keeps at most 16 exact per-thread process-local baselines, admits at most four

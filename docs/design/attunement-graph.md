@@ -1,5 +1,5 @@
 ---
-title: Attunement Graph Engine — agent-native temporal provenance graph
+title: Muse Attunement Graph (MAG) — agent-native temporal provenance graph
 audience: [engineering, product, security, agents]
 purpose: Define the modular graph engine that powers Muse's signature Attunement experience
 status: partial-implementation
@@ -7,7 +7,12 @@ updated: 2026-07-30
 related: [../strategy/attunement.md, attunement.md, agent-native-graph-core.md, ../goals/attunement-wow-graph-roadmap.md]
 ---
 
-# Attunement Graph Engine
+# Muse Attunement Graph (MAG)
+
+**Muse Attunement Graph (MAG)** is the canonical product and architecture name.
+**MAG Engine** means the complete semantic/query/compiler layer; **MAG Store** means its
+future built-in durable journal and indexes. A **receipt** is a verified immutable evidence
+input projected into MAG—it is not another database.
 
 > **Product thesis:** Muse should not merely use a graph database. Muse should own an
 > agent-native graph that can explain how one person's intent, unfinished work, changing
@@ -22,6 +27,23 @@ generic knowledge graph product and it is not a new source of truth for tasks, n
 calendar, memory, or Attunement receipts. Those stores remain authoritative. The graph is
 a rebuildable, append-oriented projection that makes relationships and changes queryable.
 
+MAG is also a future standalone open-source product. It is developed inside the Muse
+monorepo until its clean-room build, packed-artifact, conformance, export/rebuild, and
+dependency-isolation gates pass. Muse is the first consumer, not a dependency that may
+leak into MAG Engine semantics. The accepted Module topology and repository extraction
+strategy are in
+[ADR 0001](../adr/0001-mag-product-module-boundary.md).
+
+Markdown is MAG's planned portable document interchange/export format. Obsidian is a
+planned first-class local vault Adapter over Markdown, frontmatter, wiki links, and stable
+file/block refs. Notion is a planned opt-in sync Adapter that preserves
+workspace/page/block/database IDs as source refs. Muse already has local Markdown notes
+and generic Notion provider substrates, but the MAG-specific round-trip/source Adapter
+contracts are not shipped yet.
+RAG may nominate semantically related items; MAG verifies their exact thread, time,
+relationship, provenance, and policy scope. Document bodies remain authoritative in their
+source rather than becoming a lossy graph-owned copy.
+
 The engine exists to power three product experiences:
 
 1. **Shadow Muse** can record why it would speak or stay quiet, and compare that decision
@@ -35,6 +57,32 @@ The engine exists to power three product experiences:
 
 The full experience and this engine are roadmap work. Existing graph-like data is a
 substrate, not proof that the engine or experience has shipped.
+
+## Competitive boundary, not a graph checkbox
+
+As of 2026-07-30, MAG must not be positioned as “the only agent with SQLite, Markdown,
+RAG, or a graph-shaped UI.”
+
+- OpenClaw documents a strong built-in per-agent SQLite memory index with FTS5/BM25,
+  embeddings, hybrid ranking, provenance metadata, optional `sqlite-vec`, WAL maintenance,
+  and Markdown indexing. Its memory files remain the durable human-readable source.
+  ([built-in memory](https://github.com/openclaw/openclaw/blob/main/docs/concepts/memory-builtin.md),
+  [memory overview](https://github.com/openclaw/openclaw/blob/main/docs/concepts/memory.md))
+- Hermes described flat `MEMORY.md`/`USER.md` and SQLite FTS5 session search when its typed
+  graph-memory proposal was opened, but its later release notes also advertise `/journey`
+  and a desktop “memory graph” timeline. The visible graph must therefore not be dismissed
+  as nonexistent, nor assumed to prove a graph database or MAG-equivalent semantic engine.
+  ([structured-memory proposal](https://github.com/NousResearch/hermes-agent/issues/346),
+  [release notes](https://github.com/NousResearch/hermes-agent/releases))
+
+MAG's defensible difference is the documented contract it owns end to end: immutable
+temporal/provenance/policy evidence, exact scope and snapshot semantics, return and
+counterfactual operators, proof-closed token-bounded Working Graphs, typed
+completeness/abstention, and local export/rebuild/physical-forget behavior. Until that
+contract is implemented and independently qualified, it is a design advantage under
+construction rather than a competitor-superiority claim.
+The broader primary-source comparison is in the
+[MAG open-source competitive landscape](../strategy/mag-competitive-landscape-2026-07-30.md).
 
 The decision-level semantic, snapshot, operator, journal, local-storage, recovery, and
 staged-delivery blueprint is maintained separately in
@@ -147,11 +195,18 @@ independent observation. It adds no automatic delivery, UI, persistence, source/
 policy mutation, or action authority. AWG-040b/c do not implement core-roadmap onboarding
 103 or session-handoff 211.
 
-The Graph-backed resume path now has one narrow application/runtime composition point in
+The MAG-backed resume path now has one narrow application/runtime composition point in
 the existing read-only Pack Preview, including an explicit verified Capsule render-data
 option. It still has no durable adapter, LLM extraction, automatic Shadow delivery,
 Capsule product UI, Policy Card UI, or action authority. The complete three-part signature
 experience therefore remains a roadmap claim.
+
+Fresh Shadow timing decisions now retain their exact bounded policy snapshot, and a
+dedicated Graph receipt can bind one such decision only to the original process-local
+compared result that owns its Pack plus four Source/Graph receipts. Copies, legacy timing
+candidates, mismatched scopes, and Graph observations later than the decision abstain.
+This proves decision-time provenance only; it is not automatic timing, a return event,
+feedback, a Policy Card, persistence, or a usefulness result.
 
 ## Why a graph, and where it must beat flat or vector memory
 
@@ -484,42 +539,35 @@ existing authoritative Muse stores
 - background scheduling;
 - a specific graph database SDK in its public domain API.
 
-### Ports
+### Target public Interface
 
-The public architecture should converge on small interfaces:
+The standalone public architecture should converge on one small `Mag*` Interface. This is
+a target contract, not the current package export map:
 
 ```ts
-interface AttunementGraphProjector {
-  project(batch: readonly SourceEnvelope[]): Promise<ProjectionReceipt>;
-  rebuild(scope: GraphScope): Promise<RebuildReceipt>;
-}
-
-interface AttunementGraphQuery {
-  changesSince(threadId: string, instant: string): Promise<ExplainedChangeSet>;
-  resumptionContext(threadId: string, now: string): Promise<ExplainedSubgraph>;
-  policyEvidence(scope: PolicyScope): Promise<ExplainedPolicyEvidence>;
-  decisionCounterfactual(decisionId: string): Promise<ExplainedCounterfactual>;
-}
-
-interface AttunementGraphStore {
-  append(assertions: readonly GraphAssertion[]): Promise<AppendReceipt>;
-  traverse(query: GraphQueryPlan): Promise<GraphResult>;
-  forget(scope: ForgetScope): Promise<ForgetReceipt>;
-  verify(): Promise<GraphVerification>;
+interface Mag extends AsyncDisposable {
+  project(command: MagProjectionCommand): Promise<MagProjectionReceipt>;
+  execute(command: MagExecuteCommand): Promise<MagOperatorResult>;
+  close(): Promise<void>;
 }
 ```
 
-The graph module consumes explicit source envelopes. It must not import every personal
-store and create a second composition root.
+The selected local composition is opened through `openMag`/`openLocalMag`; exact versioned
+operators cover `changes-since`, `resume-context`, `decision-counterfactual`,
+`policy-evidence`, and `forget-impact`. Expert Source and Store Adapter Interfaces stay in
+separate subpaths. Raw assertion mutation, SQL/Cypher, and arbitrary traversal plans do not
+become product Interfaces.
+
+MAG consumes explicit verified source observations. It must not import every personal store
+and create a second composition root. Current `AttunementGraph*` and Activation Subgraph v1
+exports remain compatibility vocabulary until the migration in ADR 0001 is complete.
 
 ## Storage strategy
 
-No production database is selected in this document.
-
-The current architecture recommendation is a Muse-owned semantic engine over a
-capability-gated embedded transactional substrate, with `node:sqlite` as the first durable
-candidate. That recommendation and its Node/SQLite version gates are not implementation or
-selection evidence; see [the core blueprint](agent-native-graph-core.md).
+**SQLite via capability-gated `node:sqlite` is the selected default MAG Store.** The
+selection fixes the architecture, not the shipped-status claim: durable schema, migration,
+recovery, and runtime composition remain roadmap work. MAG owns the logical journal and
+domain operators; SQLite owns local transactions, indexes, locking, and crash recovery.
 
 The flagship Muse experience must remain complete with Muse's own local default graph
 Module. Neo4j, Graphiti, a hosted graph service, or any other external Graph DB may later
@@ -529,20 +577,15 @@ installing or operating one. If an external backend improves a proven workload, 
 still preserve identical domain/query contracts and a clean fallback to Muse-owned local
 storage.
 
-1. Build an in-memory reference engine and backend conformance suite first.
-2. Run the same dogfood corpus against a minimal append-only local implementation,
-   PostgreSQL, and at most one embedded property-graph candidate.
-3. Adopt an embedded engine only if it wins on the product queries, install size,
-   startup/rebuild time, memory, crash recovery, migration, Node 22/24 and macOS/Windows
-   support, maintenance health, and license.
-4. Keep a portable assertion export so an abandoned backend can be replaced.
-
-LadybugDB is the current property-graph bake-off candidate because it is serverless, exposes
-a Node package, and supports full-text/vector search plus ACID/WAL. A bounded SQLite adapter
-is the lighter non-property-graph comparator because Muse already targets Node versions with
-`node:sqlite`. Neither is selected. Ladybug's young-fork risk and SQLite's WAL version
-requirements mean Muse must be able to delete either adapter without changing domain or
-query contracts.
+1. Keep the in-memory reference engine as the semantic oracle and conformance fixture.
+2. Implement the SQLite MAG Store behind the same domain interface with one writer,
+   explicit transactions, version-gated WAL/checkpoints, and owner-only files.
+3. Keep PostgreSQL as the first optional conformance Adapter for installations already
+   using it; it is never required for the local flagship path.
+4. Keep Redis out of authoritative storage (optional disposable cache/queue only) and do
+   not implement MySQL or a property-graph backend without a demonstrated deployment need.
+5. Preserve a canonical Markdown/NDJSON assertion and journal export so the physical
+   backend can be rebuilt or replaced.
 
 ### Lightweight reference profile
 

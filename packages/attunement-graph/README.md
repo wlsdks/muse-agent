@@ -1,6 +1,28 @@
 # `@muse/attunement-graph`
 
-Storage-neutral reference kernel for Muse's Attunement Graph Engine.
+Storage-neutral reference kernel for **Muse Attunement Graph (MAG)**, Muse's
+agent-native temporal/provenance graph architecture.
+
+MAG is being developed as an independently extractable product Module inside the Muse
+monorepo. Muse is its first consumer and dogfood environment. It is not independently
+publishable today: the package is still private, its durable SQLite MAG Store and
+clean-room package gate are roadmap work, and part of the current semantic contract still
+depends on `@muse/attunement`. The accepted package, Adapter, and future repository boundary
+is recorded in
+[`ADR 0001`](../../docs/adr/0001-mag-product-module-boundary.md).
+The measured blockers and qualification sequence are recorded in the
+[2026-07-30 standalone readiness audit](../../docs/evaluations/mag-standalone-readiness-2026-07-30.md).
+
+Canonical terms:
+
+- **MAG** is the whole architecture and future standalone product.
+- **MAG Engine** owns graph meaning, verified projection, versioned operators, proof
+  closure, and Working Graph compilation.
+- **MAG Store** owns durable journal, snapshots, indexes, recovery, export, and rebuild.
+- An immutable **receipt** is evidence projected into MAG; it is not the graph database.
+- Markdown, Obsidian, and Notion are planned Source Adapters, not current MAG package
+  exports. SQLite is the selected but unshipped local Store Implementation; PostgreSQL is
+  an optional future Adapter.
 
 This package currently owns closed graph semantics, assertion validation, bounded traversal,
 an in-memory conformance adapter, the Activation Subgraph compiler, and a pure per-thread
@@ -25,6 +47,15 @@ and presents the existing bilingual Capsule contract only for the exact compared
 that owns both its Pack and receipt evidence. Policy evidence, forget impact, and bounded decision
 counterfactuals remain roadmap work. They must follow the same content-addressed source
 path plus completeness-or-abstention contract, not arbitrary model-generated graph queries.
+
+The dedicated `shadow-decision-receipt` subpath now binds a fresh timing decision and its
+decision-time policy snapshot to that same exact compared-result identity. It serializes
+only bounded IDs, status, category-observation digest, and no-authority claims; the private
+WeakMap binder is not package-exported. Verified capture requires the exact originating
+coordinator, compared result, Pack, timing projection, and Source/Graph dependencies; a
+naked serialized receipt fails closed. This is process-local decision provenance, not a
+portable restart verifier, delivery path, return signal, policy learner, user-facing card,
+or durable ledger.
 
 It does **not** own authoritative personal data, durable persistence, LLM extraction,
 runtime scheduling, policy promotion, approval, or action execution. Factual task

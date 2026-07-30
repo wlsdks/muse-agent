@@ -2,11 +2,18 @@ import {
   createLocalAttunementSnapshotProviderForTesting
 } from "../../attunement/src/local-attunement-snapshot-provider.js";
 import {
+  readTimingState,
   fingerprintContinuityTaskState,
+  projectMagShadowTimingDecision,
   type ArtifactReference,
   type ContinuityPack,
-  type ContinuityPolicy
+  type ContinuityPolicy,
+  type MagShadowTimingCandidate,
+  type TimingObservation
 } from "@muse/attunement";
+import { unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   captureScopedContinuitySourceObservation
 } from "@muse/attunement/continuity-source-observations";
@@ -28,6 +35,11 @@ import {
 import {
   compileHeadRevalidatedProviderBoundGraphEvidence
 } from "./provider-head-revalidated-graph-evidence.js";
+import {
+  captureMagShadowDecisionReceipt,
+  serializeMagShadowDecisionReceipt,
+  verifyMagShadowDecisionReceipt
+} from "./shadow-decision-receipt.js";
 
 vi.mock("@muse/attunement/continuity-snapshots", async () =>
   import("../../attunement/src/continuity-snapshots.js")
@@ -47,6 +59,40 @@ const UPDATED_POLICY: ContinuityPolicy = Object.freeze({
   suppression: "none",
   version: 0
 });
+let timingFixtureSequence = 0;
+
+async function timingProjection(
+  candidate: MagShadowTimingCandidate,
+  observations: readonly TimingObservation[] = [],
+  consentVersion = 2
+) {
+  const file = join(
+    tmpdir(),
+    `muse-mag-shadow-decision-${process.pid}-${timingFixtureSequence++}.json`
+  );
+  const state = {
+    candidates: [candidate],
+    feedback: [],
+    observations,
+    schemaVersion: 2,
+    sessions: [{
+      consentVersion,
+      createdAt: candidate.createdAt,
+      id: candidate.sessionId,
+      policy: candidate.policySnapshot,
+      status: "active",
+      threadId: candidate.threadId,
+      updatedAt: candidate.createdAt
+    }]
+  };
+  await writeFile(file, JSON.stringify(state), "utf8");
+  try {
+    const persisted = await readTimingState(file);
+    return projectMagShadowTimingDecision(persisted, candidate.id);
+  } finally {
+    await unlink(file);
+  }
+}
 
 function reference(threadId: string): ArtifactReference {
   return Object.freeze({
@@ -284,6 +330,17 @@ afterEach(() => {
 });
 
 describe("continuity resume runtime coordinator", () => {
+  it("exports only the public shadow-decision receipt contract", async () => {
+    const receipt = await import("@muse/attunement-graph/shadow-decision-receipt");
+    expect(Object.keys(receipt).sort()).toEqual([
+      "captureMagShadowDecisionReceipt",
+      "serializeMagShadowDecisionReceipt",
+      "verifyMagShadowDecisionReceipt"
+    ]);
+    const privateSubpath = "@muse/attunement-graph/shadow-decision-receipt-internal";
+    await expect(import(privateSubpath)).rejects.toThrow(/not exported/u);
+  });
+
   it("binds out-of-order exact Packs by identity without freezing resolver objects", async () => {
     const threadIds = ["thread_adapter_a", "thread_adapter_b"] as const;
     const artifacts = new Map(threadIds.map((threadId) => [
@@ -463,7 +520,8 @@ describe("continuity resume runtime coordinator", () => {
     at += 60_000;
     const compared = await coordinator.preview(scope);
     expect(compared).toMatchObject({ status: "partial" });
-    expect(getContinuityResumeRuntimePack(compared)).toBeDefined();
+    const exactPack = getContinuityResumeRuntimePack(compared);
+    if (exactPack === undefined) throw new Error("exact runtime Pack required");
     expect(validateContinuityResumeRuntimeCapsuleRequest(request)).toBeDefined();
     const capsule = presentContinuityResumeRuntimeCapsule(compared, request);
     expect(capsule).toMatchObject({
@@ -476,6 +534,184 @@ describe("continuity resume runtime coordinator", () => {
       sourceDrawer: { preparedAt: new Date(at).toISOString() }
     });
     expect(Object.isFrozen(capsule)).toBe(true);
+
+    for (const [decision, action, reason] of [
+      ["silent", "stay-silent", "no-observation"],
+      ["digest", "queue-digest", "offer-cooldown-active"],
+      ["offer", "present-offer", "stable-focus-category-boundary"]
+    ] as const) {
+      const candidate: MagShadowTimingCandidate = {
+        counterfactual: { action, evaluatedAt: new Date(at).toISOString() },
+        createdAt: new Date(at).toISOString(),
+        decision,
+        evidenceObservationIds: [],
+        id: `candidate_${decision}`,
+        policySnapshot: {
+          offerCooldownMs: 90 * 60_000,
+          stableFocusMs: 25 * 60_000,
+          version: 1
+        },
+        reason,
+        ruleVersion: 3,
+        sessionId: "timing_capsule",
+        threadId
+      };
+      const projection = await timingProjection(candidate);
+      if (projection === undefined) throw new Error("v3 timing projection required");
+      const capture = captureMagShadowDecisionReceipt(
+        coordinator,
+        compared,
+        exactPack,
+        projection
+      );
+      if (capture.status === "abstained") throw new Error(capture.reason);
+      expect(capture.receipt).toMatchObject({
+        candidate: { decision, id: `candidate_${decision}` },
+        authority: {
+          actionGranted: false,
+          capsuleReadiness: "unassessed",
+          delivery: "not-performed",
+          feedback: "not-inferred"
+        },
+        evidenceObservationIds: [],
+        receiptVersion: "muse.mag-shadow-decision-receipt.v1",
+        scope: { sourceId: SOURCE_ID, threadId }
+      });
+      expect(capture.receipt.receiptId).toMatch(
+        /^muse\.mag-shadow-decision:[a-f0-9]{64}$/u
+      );
+      expect(verifyMagShadowDecisionReceipt(capture.receipt)).toBeUndefined();
+      expect(verifyMagShadowDecisionReceipt(
+        capture.receipt,
+        capture.dependencies
+      )).toEqual(capture.receipt);
+      const otherCoordinator = createContinuityResumeRuntimeCoordinator({
+        captureCurrent: async () => runtimeCaptures[0]!
+      });
+      expect(captureMagShadowDecisionReceipt(
+        otherCoordinator,
+        compared,
+        exactPack,
+        projection
+      )).toEqual({ reason: "coordinator-mismatch", status: "abstained" });
+      expect(captureMagShadowDecisionReceipt(
+        coordinator,
+        compared,
+        structuredClone(exactPack),
+        projection
+      )).toEqual({ reason: "pack-mismatch", status: "abstained" });
+      const fabricatedGraphReceipt = structuredClone(
+        capture.dependencies.currentGraphObservationReceipt
+      ) as { receiptId: string };
+      fabricatedGraphReceipt.receiptId =
+        "muse-continuity-observation:v1:sha256:0000000000000000000000000000000000000000000000000000000000000000";
+      expect(verifyMagShadowDecisionReceipt(capture.receipt, {
+        ...capture.dependencies,
+        currentGraphObservationReceipt:
+          fabricatedGraphReceipt as unknown as typeof capture.dependencies.currentGraphObservationReceipt
+      })).toBeUndefined();
+      expect(serializeMagShadowDecisionReceipt(capture.receipt).length).toBeGreaterThan(0);
+      const tampered = structuredClone(capture.receipt) as {
+        candidate: { reason: string };
+      };
+      tampered.candidate.reason = "tampered";
+      expect(verifyMagShadowDecisionReceipt(tampered, capture.dependencies)).toBeUndefined();
+      const extraField = structuredClone(capture.receipt) as {
+        unexpected?: true;
+      };
+      extraField.unexpected = true;
+      expect(verifyMagShadowDecisionReceipt(extraField, capture.dependencies)).toBeUndefined();
+      const authorityTamper = structuredClone(capture.receipt) as {
+        authority: { actionGranted: boolean };
+      };
+      authorityTamper.authority.actionGranted = true;
+      expect(verifyMagShadowDecisionReceipt(authorityTamper, capture.dependencies)).toBeUndefined();
+      const decisionTamper = structuredClone(capture.receipt) as {
+        candidate: { decision: string };
+      };
+      decisionTamper.candidate.decision = "invalid";
+      expect(verifyMagShadowDecisionReceipt(decisionTamper, capture.dependencies)).toBeUndefined();
+    }
+    expect(captureMagShadowDecisionReceipt(coordinator, seeded, exactPack, {})).toMatchObject({
+      status: "abstained"
+    });
+    const twoObservationCandidate: MagShadowTimingCandidate = {
+      counterfactual: { action: "present-offer", evaluatedAt: new Date(at).toISOString() },
+      createdAt: new Date(at).toISOString(),
+      decision: "offer",
+      evidenceObservationIds: ["observation_before", "observation_after"],
+      id: "candidate_two_observations",
+      policySnapshot: { offerCooldownMs: 90 * 60_000, stableFocusMs: 25 * 60_000, version: 1 },
+      reason: "stable-focus-category-boundary",
+      ruleVersion: 3,
+      sessionId: "timing_capsule",
+      threadId
+    };
+    const twoObservations: readonly TimingObservation[] = [
+      {
+        appCategory: "writing",
+        durationMs: 25 * 60_000,
+        endedAt: new Date(at - 30_000).toISOString(),
+        id: "observation_before",
+        sessionId: "timing_capsule",
+        startedAt: new Date(at - 25 * 60_000 - 30_000).toISOString(),
+        threadId
+      },
+      {
+        appCategory: "research",
+        durationMs: 25 * 60_000,
+        endedAt: new Date(at).toISOString(),
+        id: "observation_after",
+        sessionId: "timing_capsule",
+        startedAt: new Date(at - 25 * 60_000).toISOString(),
+        threadId
+      }
+    ];
+    const twoObservationProjection = await timingProjection(
+      twoObservationCandidate,
+      twoObservations
+    );
+    if (twoObservationProjection === undefined) throw new Error("two observations must project");
+    expect(captureMagShadowDecisionReceipt(
+      coordinator,
+      compared,
+      exactPack,
+      twoObservationProjection
+    )).toMatchObject({
+      receipt: { evidenceObservationIds: ["observation_before", "observation_after"] },
+      status: "captured"
+    });
+    const earlierProjection = await timingProjection({
+      ...twoObservationCandidate,
+      counterfactual: { action: "present-offer", evaluatedAt: new Date(at - 1).toISOString() },
+      createdAt: new Date(at - 1).toISOString(),
+      evidenceObservationIds: []
+    });
+    if (earlierProjection === undefined) throw new Error("earlier candidate must project");
+    expect(captureMagShadowDecisionReceipt(
+      coordinator,
+      compared,
+      exactPack,
+      earlierProjection
+    )).toEqual({
+      reason: "graph-observed-after-decision",
+      status: "abstained"
+    });
+    const otherThreadProjection = await timingProjection({
+      ...twoObservationCandidate,
+      evidenceObservationIds: [],
+      threadId: "thread_other"
+    });
+    if (otherThreadProjection === undefined) throw new Error("other thread candidate must project");
+    expect(captureMagShadowDecisionReceipt(
+      coordinator,
+      compared,
+      exactPack,
+      otherThreadProjection
+    )).toEqual({
+      reason: "evidence-mismatch",
+      status: "abstained"
+    });
     expect(presentContinuityResumeRuntimeCapsule({ ...compared }, request)).toBeUndefined();
     expect(presentContinuityResumeRuntimeCapsule(structuredClone(compared), request)).toBeUndefined();
     expect(presentContinuityResumeRuntimeCapsule({ result: compared }, request)).toBeUndefined();
@@ -497,6 +733,27 @@ describe("continuity resume runtime coordinator", () => {
     });
     expect(presentContinuityResumeRuntimeCapsule(wrapped, request)).toBeUndefined();
     expect(traps).toEqual({ get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 });
+
+    const receiptTraps = { get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 };
+    const receiptProxy = new Proxy(compared, {
+      get() {
+        receiptTraps.get += 1;
+        throw new Error("receipt capture must not inspect wrapped results");
+      },
+      getOwnPropertyDescriptor() {
+        receiptTraps.getOwnPropertyDescriptor += 1;
+        throw new Error("receipt capture must not inspect descriptors");
+      },
+      ownKeys() {
+        receiptTraps.ownKeys += 1;
+        throw new Error("receipt capture must not inspect keys");
+      }
+    });
+    expect(captureMagShadowDecisionReceipt(coordinator, receiptProxy, exactPack, {})).toEqual({
+      reason: "not-exact-compared-result",
+      status: "abstained"
+    });
+    expect(receiptTraps).toEqual({ get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 });
   });
 
   it("returns bounded semantic change context without raw evidence", async () => {

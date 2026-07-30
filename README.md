@@ -25,6 +25,11 @@
 
 Muse is a continuing personal agent for one person's life and work, not only a work assistant. Its north star is **Attunement**: learning when help fits, when quiet is better, and whether the last suggestion actually helped.
 
+The destination is consented, local 24-hour continuity: approved activity sources feed
+Muse's own agent-native temporal/provenance graph, with pause, retention, export, and
+forget controls. RAG can find likely context; MAG must prove the exact thread,
+time, change, source, and policy relation without requiring an external Graph DB.
+
 The first proof point is **Personal Continuity**. You choose a life or work thread and link its exact local tasks and notes; Muse can then help you resume it without reconstructing everything. Automatic thread detection, observation, and timing remain roadmap work.
 
 > **What works today:** personal memory, grounded recall, local personal stores, guarded tools and browser actions, traces, checkpoints, and the first explicit Personal Continuity path. See the [product contract](docs/strategy/attunement.md) and [implementation plan](docs/goals/attunement-implementation-plan.md).
@@ -49,17 +54,24 @@ a hidden global preference. That experience has three parts:
 
 The full signature experience remains a roadmap, not a shipped claim. Its first
 library-level substrates now live in the partially implemented, lightweight
-[Attunement Graph Engine](docs/design/attunement-graph.md): an agent-native
+[Muse Attunement Graph (MAG)](docs/design/attunement-graph.md): an agent-native
 temporal/provenance graph and personal context compiler, not merely a third-party graph DB.
 Its intended advantage is a small set of bounded, verified personal-temporal operators:
 the model asks what changed, what evidence supports a policy, or what forgetting would
 invalidate; Muse computes the exact path, completeness, and authority boundary in code.
 The [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md) defines the
 proposed next architecture: scope-safe snapshots, proof-closed Working Graphs, typed
-completeness, an immutable logical journal, and a lightweight local storage Adapter with no
-external Graph DB requirement.
+completeness, an immutable logical journal, and the selected embedded SQLite **MAG Store**
+with no external Graph DB requirement. MAG keeps its storage contract Adapter-based;
+PostgreSQL may be optional, while Redis/MySQL/property-graph servers are not required or
+planned as default storage.
+MAG is deliberately being built as an independently extractable product Module. Muse is
+its first consumer and dogfood environment; the current private workspace package is not
+yet a standalone release. Its closed public Interface, Source/Store Adapter boundaries,
+clean-room package gate, and history-preserving repository split are fixed in
+[ADR 0001](docs/adr/0001-mag-product-module-boundary.md).
 The first `changesSince`-style operator is shipped as an I/O-free library contract. A
-separate process-local runtime now also applies the verified Graph path to explicit
+separate process-local runtime now also applies the verified MAG path to explicit
 `muse.continuity.pack.preview` calls: the first qualifying call seeds one exact per-thread
 baseline and later calls return a bounded semantic `resume` comparison while keeping Pack
 open/delivery separate. A caller may also explicitly request the verified English/Korean
@@ -109,7 +121,7 @@ consume that pool under a fixed six-axis budget, verify an exact previous bounda
 current Source/Graph pair, and expose only frozen semantic facts. Runtime baselines are
 per-instance, process-local, limited to 16 threads, and guarded by bounded concurrency,
 capture span, timeout, generation, and monotonic-observation checks. This is real
-Graph-backed Pack Preview dogfooding. An optional explicit request now turns only the exact
+MAG-backed Pack Preview dogfooding. An optional explicit request now turns only the exact
 compared result into a verified bilingual Capsule presentation with source-drawer receipt
 IDs and caller-declared prepared work. It is not persistence, an exact observed stopping
 point, automatic surfacing, organic usefulness evidence, or the Capsule product UI.
@@ -238,7 +250,7 @@ pnpm smoke:live
 
 - [Attunement product contract](docs/strategy/attunement.md)
 - [Attunement architecture and current gaps](docs/design/attunement.md)
-- [Attunement Graph Engine](docs/design/attunement-graph.md)
+- [Muse Attunement Graph (MAG)](docs/design/attunement-graph.md)
 - [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md)
 - [Attunement implementation plan](docs/goals/attunement-implementation-plan.md)
 - [Attunement wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)

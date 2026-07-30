@@ -10,10 +10,12 @@ import {
   evaluateTimingSession,
   forgetTimingSession,
   pauseTimingSession,
+  projectMagShadowTimingDecision,
   readTimingState,
   recordTimingFeedback as recordTimingFeedbackImpl,
   recordTimingObservation,
-  startTimingSession
+  startTimingSession,
+  verifyMagShadowTimingProjection
 } from "./timing-store.js";
 
 const recordTimingFeedback = (
@@ -79,7 +81,7 @@ describe("thread-scoped continuity timing store", () => {
       },
       decision: "offer",
       reason: "stable-focus-category-boundary",
-      ruleVersion: 2
+      ruleVersion: 3
     });
 
     await recordTimingFeedback(file, first.id, "ignored", options);
@@ -97,7 +99,7 @@ describe("thread-scoped continuity timing store", () => {
       },
       decision: "digest",
       reason: "offer-cooldown-active",
-      ruleVersion: 2
+      ruleVersion: 3
     });
   });
 
@@ -116,8 +118,13 @@ describe("thread-scoped continuity timing store", () => {
       decision: "silent",
       evidenceObservationIds: [],
       id: "candidate_id-2",
+      policySnapshot: {
+        offerCooldownMs: 90 * 60_000,
+        stableFocusMs: 25 * 60_000,
+        version: 0
+      },
       reason: "no-observation",
-      ruleVersion: 2,
+      ruleVersion: 3,
       sessionId: "timing_id-1",
       threadId: "thread_work"
     });
@@ -128,6 +135,62 @@ describe("thread-scoped continuity timing store", () => {
       "schemaVersion",
       "sessions"
     ]);
+  });
+
+  it("projects only the exact v3 candidate, ordered category receipts, and consent version", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(file, { consentVersion: 2, threadId: "thread_work" }, knownThread, options);
+    await recordTimingObservation(file, session.id, {
+      appCategory: "writing",
+      durationMs: 25 * 60_000,
+      endedAt: "2026-07-15T08:30:00.000Z",
+      startedAt: "2026-07-15T08:05:00.000Z"
+    }, options);
+    await recordTimingObservation(file, session.id, {
+      appCategory: "research",
+      durationMs: 25 * 60_000,
+      endedAt: "2026-07-15T09:00:00.000Z",
+      startedAt: "2026-07-15T08:35:00.000Z"
+    }, options);
+    const candidate = await evaluateTimingSession(file, session.id, options);
+    if (candidate.ruleVersion !== 3) throw new Error("fresh timing candidate must be v3");
+    const timing = await readTimingState(file);
+    const observations = timing.observations.filter((entry) => entry.sessionId === session.id);
+    const projection = projectMagShadowTimingDecision(timing, candidate.id);
+    expect(projection).toMatchObject({
+      candidate: {
+        evidenceObservationIds: observations.map((entry) => entry.id),
+        policySnapshot: session.policy,
+        ruleVersion: 3
+      },
+      observations: observations.map((entry) => ({ id: entry.id })),
+      sessionConsentVersion: 2
+    });
+    expect(Object.isFrozen(projection?.candidate.policySnapshot)).toBe(true);
+    expect(verifyMagShadowTimingProjection(projection)).toBe(projection);
+    expect(projectMagShadowTimingDecision(structuredClone(timing), candidate.id)).toBeUndefined();
+    expect(verifyMagShadowTimingProjection(structuredClone(projection))).toBeUndefined();
+    const restarted = await readTimingState(file);
+    const restartedProjection = projectMagShadowTimingDecision(restarted, candidate.id);
+    expect(restartedProjection).toBeDefined();
+    expect(verifyMagShadowTimingProjection(restartedProjection)).toBe(restartedProjection);
+    const traps = { get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 };
+    const proxy = new Proxy(timing, {
+      get() {
+        traps.get += 1;
+        throw new Error("projection must not inspect a cloned timing state");
+      },
+      getOwnPropertyDescriptor() {
+        traps.getOwnPropertyDescriptor += 1;
+        throw new Error("projection must not inspect descriptors");
+      },
+      ownKeys() {
+        traps.ownKeys += 1;
+        throw new Error("projection must not inspect keys");
+      }
+    });
+    expect(projectMagShadowTimingDecision(proxy, candidate.id)).toBeUndefined();
+    expect(traps).toEqual({ get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 });
   });
 
   it("turns rejected timing feedback into a bounded rollback proposal without policy mutation", async () => {
@@ -249,6 +312,44 @@ describe("thread-scoped continuity timing store", () => {
 
     expect(await readTimingState(file)).toEqual({ ...legacy, schemaVersion: 2 });
     expect(await readFile(file, "utf8")).toBe(raw);
+  });
+
+  it("reads legacy rule-v2 candidates byte-for-byte and keeps them MAG-ineligible", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(
+      file,
+      { consentVersion: 1, threadId: "thread_work" },
+      knownThread,
+      options
+    );
+    const state = await readTimingState(file);
+    const legacyV2 = {
+      ...state,
+      candidates: [{
+        counterfactual: {
+          action: "stay-silent",
+          evaluatedAt: "2026-07-15T09:00:00.000Z"
+        },
+        createdAt: "2026-07-15T09:00:00.000Z",
+        decision: "silent",
+        evidenceObservationIds: [],
+        id: "candidate_legacy_v2",
+        reason: "no-observation",
+        ruleVersion: 2,
+        sessionId: session.id,
+        threadId: session.threadId
+      }],
+      schemaVersion: 2
+    };
+    const raw = `${JSON.stringify(legacyV2, null, 2)}\n`;
+    await writeFile(file, raw);
+
+    const persisted = await readTimingState(file);
+    expect(persisted).toEqual(legacyV2);
+    expect(await readFile(file, "utf8")).toBe(raw);
+    expect(
+      projectMagShadowTimingDecision(persisted, "candidate_legacy_v2")
+    ).toBeUndefined();
   });
 
   it("migrates a schema-v1 rejected receipt to an explicit legacy marker", async () => {
