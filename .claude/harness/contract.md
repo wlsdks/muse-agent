@@ -1,25 +1,22 @@
 ---
 title: Agent Harness — Operating Contract
-audience: [AI agents, developers, planners]
-purpose: The entrypoint that makes any agent that reads it work "the harness way" — roles, handoff, gates, and verification enforced in one page
-format: AGENTS.md (vendor-neutral, readable by any agent/tool)
+audience: [AI agents]
+purpose: The entrypoint that makes any agent that reads it work "the harness way" — roles, handoff, gates, and verification in one page
 updated: 2026-07-30
+related: [roles.md, handoff.md, dev-loop.md]
 ---
 
 # Agent Harness — Operating Contract
 
 > **This file is the entrypoint.** If you (an agent) have read this file, work by the contract below
-> from now on. This one page is what makes any agent work the same way, and the documents in this
-> folder resolve the details. **This folder IS the harness — copy it into any project and that
-> project's agents operate this way.**
+> from now on. This one page is what makes any agent work the same way; the four sibling documents
+> resolve the details. It is vendor-neutral — nothing here depends on a specific model or tool, so
+> Claude Code, Codex, and any other agent read the same contract.
 >
-> **The harness is the execution infrastructure (control plane) around the agent — it *executes*,
-> not just instructs.** It runs the loop (plan → execute → verify), enforces gates at runtime,
-> executes tools, and leaves traces (2026 consensus: Claude Code's five layers · OpenAI Harness
-> Engineering · control-plane essays). **What the harness is NOT:** ① the model itself, and ② the
-> **domain/app work** the agent produces (e.g. a backoff function) — that is workload passing
-> through the harness. The gate/loop code in `runner/` is harness proper; the functions produced
-> inside it are workload.
+> **The harness is the control plane around the agent.** It runs the loop (plan → execute → verify),
+> holds gates at each boundary, and leaves a record. **What the harness is NOT:** ① the model
+> itself, and ② the **domain work** the agent produces (e.g. a backoff function) — that is workload
+> passing through the harness.
 
 ## 0. The one-line principle
 
@@ -40,27 +37,26 @@ request ─▶ [RISK]
 The FULL tier requires only two roles: the **worker** and the **independent evaluator** (§2).
 PLAN and LEARN are not separate agents but **inline fields** — write WHAT+WHY+acceptance criteria
 in the header before delegating, and write learnings/write-back in the commit body after completion
-([muse-dev-patterns §8](../.claude/skills/muse-dev-patterns/SKILL.md)). The **full ceremony** —
-a separate planner pass plus heavy multi-stage handoff — is **reserved for L-size or
-security-grade slices** (§2).
+([muse-dev-patterns §8](../skills/muse-dev-patterns/SKILL.md)). The **full ceremony** — a separate
+planner pass plus heavy multi-stage handoff — is **reserved for L-size or security-grade slices**
+(§2).
 
-- A FULL-tier task **starts by opening one handoff form** ([handoff-template](core/handoff-template.md)).
-  FAST S/M fills only the §1.6 compact card and skips the separate file and context reset. When
-  delegating a FULL-tier task, **always pass the form file's path along with it**.
+- A FULL-tier task **starts by opening one handoff form** ([handoff](handoff.md)). FAST S/M fills
+  only the §1.6 compact card and skips the separate file and context reset. When delegating a
+  FULL-tier task, **always pass the form file's path along with it**.
 - Each FULL stage fills only its own section, and the next stage receives **only that form** as
   input (context reset).
 - Every arrow between stages passes through a **gate** before the next stage begins (§3).
 
 ## 1.5 Choose the orchestration mode first
 
-For any non-trivial task, pick a **mode** before starting (situation table and evidence:
-[claude-code-integration §8](reference/claude-code-integration.md)):
+For any non-trivial task, pick a **mode** before starting:
 
 - **Just work** — trivial, single-step, strictly sequential, same-file edits, routine.
 - **Subagents** (`.claude/agents/harness-*`) — noise isolation, "do and report" repetition.
 - **Agent team** — workers that collaborate, challenge each other, and exchange results in parallel.
-- **Workflow** (Dynamic Workflows) — deterministic, repetitive, large-scale multi-step work
-  (codebase sweeps, mass migrations).
+- **Workflow** — deterministic, repetitive, large-scale multi-step work (codebase sweeps, mass
+  migrations).
 
 The default is a **single session**. Go multi only when the work decomposes into independent
 threads (multi-agent costs 4–15× tokens). **Whatever the mode, the role, gate, handoff, and
@@ -96,18 +92,19 @@ session/conversation with zero build-conversation history; a "second look" insid
 does not qualify. If even that is impossible, a self-graded PASS is void — record "unseparated
 self-evaluation" in the evaluation section and request human review.
 
-| Role | Mandatory? | Job | Prompt |
-|---|---|---|---|
-| Worker (builder) | **Mandatory** | Receives WHAT+WHY+acceptance criteria and produces the artifact | [role-prompts](core/role-prompts.md) |
-| Independent evaluator | **Mandatory in FULL** | Independent verdict (PASS/FAIL + evidence) from a **different instance** | 〃 |
-| Planner | Inline field | Writes WHAT+WHY+acceptance criteria in the header before delegation (not a separate pass) | 〃 |
-| Curator/learner | Inline field | Writes learnings/write-back in the commit body after completion (§muse-dev-patterns §8) | 〃 |
-| Orchestrator | Optional (L-size) | Owns context and plan, delegates to multiple workers, synthesizes | 〃 |
-| Reviewer | Optional (security-grade) | Full-context risk review before merge | 〃 |
+| Role | Mandatory? | Job |
+|---|---|---|
+| Worker (builder) | **Mandatory** | Receives WHAT+WHY+acceptance criteria and produces the artifact |
+| Independent evaluator | **Mandatory in FULL** | Independent verdict (PASS/FAIL + evidence) from a **different instance** |
+| Planner | Inline field | Writes WHAT+WHY+acceptance criteria in the header before delegation (not a separate pass) |
+| Curator/learner | Inline field | Writes learnings/write-back in the commit body after completion |
+| Orchestrator | Optional (L-size) | Owns context and plan, delegates to multiple workers, synthesizes |
+| Reviewer | Optional (security-grade) | Full-context risk review before merge |
 
-The full ceremony (separate planner pass + heavy multi-stage handoff) is **reserved for L-size or
-security-grade slices**. Details: [team-roles](core/team-roles.md). Onboarding checklist for a new
-agent: [team-roles §7](core/team-roles.md).
+The per-role prompts live in `.claude/agents/harness-*.md` — a subagent loads its own; do not
+paste a second copy anywhere. The full ceremony (separate planner pass + heavy multi-stage handoff)
+is **reserved for L-size or security-grade slices**. Details and the onboarding checklist for a new
+agent: [roles](roles.md).
 
 ## 3. Gates (fail-closed — this is the core safety mechanism)
 
@@ -122,27 +119,27 @@ agent: [team-roles §7](core/team-roles.md).
   outbound is **auto-forbidden, draft-first, human-confirmed**; finance/payments are permanently
   refused. The only exception: a normal Git push under a standing authorization the project owner
   has recorded in versioned host rules — with destination, verification, and failure limits
-  narrowed — counts as pre-approved within that scope. → [permission-matrix](core/permission-matrix.md).
+  narrowed — counts as pre-approved within that scope.
+  → [outbound-safety](../rules/safety/outbound-safety.md) · [commits](../rules/engineering/commits.md).
 - **Blocked-first** — when uncertain or ambiguous, do not pass; stop and escalate to a human.
 
-Gate definitions and pass conditions: [verification-and-guardrails](core/verification-and-guardrails.md).
+How each gate is proven, and how the judge itself is calibrated:
+[agent-testing](../rules/verification/agent-testing.md).
 
 ## 3.5 Distinguish the two layers — advisory vs enforced
 
-The harness operates in two layers (2026 consensus: the Claude Code gate ladder "instructions are
-advisory, hooks are guarantees" · Thoughtworks "Guides & Sensors"):
+The harness operates in two layers:
 
-- **Advisory layer (Guides)** — this folder's md contracts, role prompts, handoff form. Steering
-  input the model *chooses to follow*. **For interactive sessions (the usual case where Claude
-  Code/Codex reads this file), this layer alone makes the harness complete.**
-- **Enforced layer (Sensors/Gates)** — hooks, lint, tests, the [runner/](runner/) gates.
-  Deterministic code the model cannot talk its way around. When the same rule is violated
-  repeatedly (in practice **3–4 times** — Cherny: automate it as lint/hooks at that point),
-  **promote** it from advisory to this layer.
+- **Advisory layer (Guides)** — this contract, the role prompts, the handoff form. Steering input
+  the model *chooses to follow*. For an interactive session — the usual case, where Claude Code or
+  Codex reads this file — this layer alone makes the harness complete.
+- **Enforced layer (Sensors/Gates)** — the versioned pre-push hook, lint, typecheck, and the test
+  and eval suites. Deterministic code the model cannot talk its way around. When the same rule is
+  violated repeatedly (in practice **3–4 times**), **promote** it from advisory to this layer by
+  writing a gate that fails closed, and lock it with a test that reddens when the code breaks.
 
-**The runner is not a prerequisite of the harness.** The runner is *required* in exactly three
-places: ① headless automation (`claude -p` cycles — where instructions enforce nothing) ② proving
-by test that a gate really fails closed ③ porting to another agent CLI.
+The enforced layer is what survives a headless run, where an instruction enforces nothing. Any
+autonomous loop therefore has to land on a real gate, never on a promise in prose.
 
 ## 3.6 When the evaluator is mandatory — risk tiering
 
@@ -170,8 +167,8 @@ declared in the header.
 BUILD↔EVAL has its own iteration/time/cost caps, separate from PLAN. The evaluator returns
 **blockers bundled — everything reasonably discoverable in one pass**. If a later pass raises a
 new blocker, record why it could not have been found earlier (did a prior fix open a new path; did
-required evidence appear late). Concrete accounting fields:
-[handoff-template](core/handoff-template.md); termination judgment: [loop-budget](reference/loop-budget.md).
+required evidence appear late). Concrete accounting fields: [handoff](handoff.md); termination judgment for an
+unattended loop: [loop-engineering](../skills/loop-creator/references/loop-engineering.md) §1.5.
 
 The volume of evaluation data is separate from evidence quality. More synthetic
 families/profiles/journeys/turns or controlled replay never becomes organic user evidence or an
@@ -182,40 +179,42 @@ feedback/outcome/policy promotion.
 
 ## 4. Foundations (progressive disclosure)
 
-Every task reads only this entrypoint plus the surface documents it selected. The references below
-are read additionally only when the task actually touches that risk/feature. `golden-set`,
-`pass^k`, the runner spec, and the full architecture/observability documents are for
-harness/runtime/eval slices and phase gates — not prerequisite reading for ordinary FAST S/M.
+Every task reads only this entrypoint plus the surface documents it selected. Read further only
+when the task actually touches that risk or feature.
 
-- **Loop caps** — hard caps on iterations, time, and budget. The BUILD↔EVAL default is **2 retry
-  passes** (`maxRetries = 2` in `runner/orchestrator.mjs`), overridable within the active budget.
-  → [loop-budget](reference/loop-budget.md).
-- **Memory** — store only durable facts long-term, drop one-offs, hold weak inferences. → [memory-layers](reference/memory-layers.md).
-- **Compaction** — reduce pre-emptively and periodically before the limit, but **preserve decisions and sources**. → [context-compaction](reference/context-compaction.md).
-- **Tools, skills, MCP** — names/schemas selectable in one shot; allowlists and isolation. → [tool-design](reference/tool-design.md) · [skills-and-mcp](reference/skills-and-mcp.md).
-- **Observability & recovery** — correlation-ID traces end to end, checkpoint resume. → [failure-modes-and-observability](reference/failure-modes-and-observability.md) · [debugging-and-dx](reference/debugging-and-dx.md).
+- **Loop caps** — declare hard caps on iterations, time, and cost; any one reached ends the
+  run and records which. The BUILD↔EVAL default is **2 retry passes** — a contract default, not a
+  value read from code, so a loop that needs it enforced writes its own cap and a test for it. An
+  unattended loop fire may declare up to 3 and must record which it used
+  (→ [loop-engineering](../skills/loop-creator/references/loop-engineering.md) §1.5).
+- **Tools, skills, MCP** — names/schemas selectable in one shot; allowlists and isolation.
+  → [tool-calling](../rules/safety/tool-calling.md) ·
+  [skills-and-mcp](../skills/loop-creator/references/skills-and-mcp.md).
+- **Verification technique** — which gate proves what, and how the agent itself is evaluated.
+  → [testing](../rules/verification/testing.md) · [agent-testing](../rules/verification/agent-testing.md).
 - **Ratchet & pruning** — every rule line comes from one observed failure (failure → one advisory
-  line → promoted to hook/code when repeated), and components that no longer carry load as models
-  improve get deleted. → [architecture §5](reference/architecture.md).
+  line → promoted to a gate when it repeats), and a rule that no longer carries load as models
+  improve gets **deleted**, not archived. A contract that only grows stops being read.
 
 ## 5. Verification (does it really work — unverified means not done)
 
 - **"Done" for an individual task is judged by the §3 completion gate** (FULL: independent PASS;
   FAST S/M: `thin-review`; both actually execute the named verification method).
-  The golden set and pass^k below verify the *harness itself* — they are not required per task.
-- Grade a representative task bundle ([golden-set](reference/golden-set.md)) on outcome+path, and
-  run the same task repeatedly for **pass^k** (passes every time) to confirm tolerance to
-  non-determinism. (In a minimal install without reference/, keep the essence: grade the
-  *outcomes* of a few representative tasks drawn from real use, and treat safety-critical checks
-  as all-pass over repeats.)
-- The harness's own acceptance contract is [harness-acceptance](reference/harness-acceptance.md).
-  The runner contract that enforces gates as code is [runner-spec](reference/runner-spec.md).
+- Grade the **outcome** — the resulting state and final answer — not the exact path the agent took.
+  Pin a step order only where a step genuinely depends on a prior one.
+- For a grounding- or safety-critical case, reliability is **pass^k**: run the same case k times
+  and require **all k** to pass. "Succeeded at least once" (`pass@k`) is not reliability.
+- A gate that skips is not a gate that passed. Record the skip as unverified and fix the
+  environment; that repair is itself the work.
+
+Which command proves what: [testing](../rules/verification/testing.md). How to evaluate the agent
+rather than the code: [agent-testing](../rules/verification/agent-testing.md).
 
 ## 6. Adapting to this project
 
-How the abstract roles connect to a real project runtime lives in one adapter document — example:
-[muse-mapping](host/muse-mapping.md). **When installing in a new project, clone that file and
-rewrite it as your project's mapping.** (Installation: [INSTALL](INSTALL.md).)
+The day-to-day loop this contract drives — how a slice is chosen, built, and verified in this
+repository — is [dev-loop](dev-loop.md). Project-wide invariants that outrank anything here live in
+[CLAUDE.md](../../CLAUDE.md) and [`.claude/rules/`](../rules/).
 
 ## 7. Model-specific calibration (the ONLY model-named section — everything else is vendor-neutral)
 
@@ -229,11 +228,10 @@ GPT-5.6 family guidance); re-audit it on every model upgrade (§4 ratchet & prun
   output" now make output *worse*: they compound into over-verification that burns tokens for no
   quality gain — Anthropic explicitly names "legacy harness scaffolding that adds separate
   verification steps" as the failure. **This does NOT touch two other things this harness runs
-  on:** ① deterministic gates (tests, lint, typecheck, runner gates, pass^k) are programs, not
-  model self-checks — keep them all; ② the **independent evaluator** (§3.6) is a *different*
-  instance with a fresh context judging a finished build against acceptance criteria — that is not
-  self-verification, and its recorded catches (4/4 silent-failure classes) justify its cost at the
-  §3.6 risk tiers.
+  on:** ① deterministic gates (tests, lint, typecheck, pass^k) are programs, not model self-checks
+  — keep them all; ② the **independent evaluator** (§3.6) is a *different* instance with a fresh
+  context judging a finished build against acceptance criteria — that is not self-verification, and
+  its recorded catches (4/4 silent-failure classes) justify its cost at the §3.6 risk tiers.
 - **Delegation posture differs per model — state which applies.**
   - *Claude Opus 5*: delegates readily and must be **capped** — delegate only large, genuinely
     independent, parallelizable tracks; never work finishable in a handful of tool calls; never a
@@ -250,13 +248,16 @@ GPT-5.6 family guidance); re-audit it on every model upgrade (§4 ratchet & prun
   Fable 5 — high for everyday work, xhigh for the hardest. GPT-5.6 — Luna for low-risk repeatable
   transformation, Terra for everyday implementation, Sol for complex refactors, architecture,
   security, and release decisions (this is the `Sol/high`/`Sol/xhigh` gate-strength shorthand in
-  [team-roles §1.5](core/team-roles.md)).
-- **Instruction budget.** Frontier models reliably follow ~150–200 discrete instructions, and the
-  host system prompt already consumes ~50. Past that, models ignore instructions wholesale rather
-  than filtering — keep this entrypoint short and rely on §4 progressive disclosure.
+  [roles §1.5](roles.md)).
+- **Rules in a document are followed unreliably — a gate is not.** On HANDBOOK.md, a benchmark
+  built precisely for "the rules live somewhere other than the request", the best frontier
+  configuration scores **36.2% strict pass@1** (Claude Fable 5) and most score **under 25%**
+  ([arXiv 2607.25398](https://arxiv.org/abs/2607.25398)). So adding a line to this contract buys
+  far less compliance than it appears to. Prefer deleting a rule, or promoting it to a gate that
+  fails closed, over writing a longer contract.
 
 ---
 
 > Summary: **if you read this, follow it.** Classify risk first → FAST via compact card and
 > `thin-review`, FULL via roles, form, and independent evaluation → actually verify the relevant
-> gate. The links above resolve the details; [INSTALL](INSTALL.md) resolves installation.
+> gate. The links above resolve the details.

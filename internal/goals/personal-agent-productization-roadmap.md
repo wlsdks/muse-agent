@@ -296,7 +296,7 @@ docs/evidence-only low-risk work, a separate `Terra / medium|high` evaluator is 
 
 A new agent does not change the order below.
 
-1. Read `AGENTS.md`, `harness/AGENTS.md`, and this document's operating rules, authoritative order, and model policy.
+1. Read `AGENTS.md`, `.claude/harness/contract.md`, and this document's operating rules, authoritative order, and model policy.
 2. Check the current HEAD, dirty worktree, and the HEAD/time/input provenance of the current gate artifacts.
 3. If there is no fresh, completed G0 activation artifact, start from Stage 0's 001–012 with `Sol / high`.
 4. If G0 is fresh, pick exactly one dependency-ready first slice from the current stage's Global P0 ready queue.

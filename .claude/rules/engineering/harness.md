@@ -1,64 +1,35 @@
 # Agent operating harness
 
-This repo ships a **portable, vendor-neutral agent harness** in the
-top-level [`harness/`](../../../harness/) folder. It is the operating system
-for multi-step agent work: roles, handoff, fail-closed gates, and
-verification. For any non-trivial, multi-step task, operate under it.
+The operating contract for multi-step agent work — roles, handoff, fail-closed
+gates, verification — is [`.claude/harness/contract.md`](../../harness/contract.md).
+**Read it before any non-trivial, multi-step task and follow it.** Muse's own
+slice-selection loop is [`dev-loop.md`](../../harness/dev-loop.md).
 
-## When to use
+Skip it for a one-line answer or a trivial single edit; it is overhead there.
 
-- Multi-step build/fix/research where plan → build → judge separation
-  matters, or where a wrong autonomous action would be costly.
-- NOT for a one-line answer or a trivial single edit — the harness is
-  overhead there; just answer.
+This file stays deliberately short because it is loaded into every session. It
+carries only the two things an agent must know *before* it decides whether to
+open the contract at all.
 
-## The contract (entrypoint: `harness/AGENTS.md`)
+## 1. Maker ≠ judge is never waived
 
-Read [`../../../harness/AGENTS.md`](../../../harness/AGENTS.md) first, then follow it:
+The evaluator is a **different instance** from the worker. A self-graded PASS is
+void; if separation is genuinely impossible, record `unseparated
+self-evaluation` and ask for human review — never PASS.
 
-1. **Two mandatory roles: worker (build) → independent evaluator
-   (PASS/FAIL)**. Planner/curator are inline fields the worker or
-   orchestrator fills (WHAT+WHY+acceptance-criteria up front in the
-   handoff header; learnings/write-back in the commit body per
-   `muse-dev-patterns` §8) — not separate passes, except for L-size or
-   security-critical slices (`harness/core/team-roles.md` §1). **Maker ≠
-   judge** always: the evaluator is a different instance from the worker.
-2. **Hand off via one artifact** — the
-   [`handoff-template`](../../../harness/core/handoff-template.md) (5 fields:
-   header, acceptance criteria, verification method, worker notes,
-   evaluator verdict); each role fills only its section, the next role
-   reads only that (context reset).
-3. **Pass the gates (fail-closed)** — plan gate (no empty/contradictory
-   criteria → no BUILD), completion gate (no evaluator PASS → not done),
-   permission gate (outbound = draft-first + human confirm; banking =
-   refused). Uncertain ⇒ stop, don't pass. See
-   [`verification-and-guardrails`](../../../harness/core/verification-and-guardrails.md)
-   and [`permission-matrix`](../../../harness/core/permission-matrix.md).
-4. **Respect the foundations** — loop budget caps (2 retry passes by default), memory
-   write rules, compaction that preserves decisions+sources.
-5. **Verify or it didn't happen** — golden-set + pass^k
-   ([`harness-acceptance`](../../../harness/reference/harness-acceptance.md)).
+## 2. When an independent evaluator is MANDATORY
 
-### Evaluator risk-tiering (when the independent evaluator is MANDATORY)
+Unconditionally required when the diff touches any of: user-visible
+strings/i18n, an on-disk/persisted format (stores, checkpoints, credentials),
+an advertised flag/CLI/API/UI contract, a security/permission/outbound path,
+process/scheduler/concurrency, harness gates, release, or anything
+irreversible.
 
-A separate-context independent evaluator is **mandatory** when the diff
-touches any of: user-visible strings/i18n, an on-disk/persisted format
-(stores, checkpoints, credentials), an advertised flag/contract/API
-behavior, a security/permission/outbound path, or anything irreversible.
-For internal refactors/type-plumbing/pure-test changes, a lighter tier is
-enough: the builder runs an explicit adversarial self-check ("find an
-input where this is wrong") + the orchestrator skims the diff. Record
-which tier was used in the commit body — this is not optional ceremony.
-Evidence: in one session, 4/4 real evaluator catches were **silent-failure
-classes** (data corruption, a dead locale string, a lying flag, a timing
-bug) — exactly the class a green test suite does not surface.
+Otherwise — internal refactors, type plumbing, pure test changes — a thinner
+tier is enough: the builder runs an explicit adversarial self-check ("find an
+input where this is wrong") and the controller skims the diff. **Record which
+tier was used in the commit body.**
 
-## Project mapping
-
-How the abstract roles map to Muse's real runtime lives in
-[`../../../harness/host/muse-mapping.md`](../../../harness/host/muse-mapping.md). When reusing
-the harness in another project, that mapping file is the one thing you
-rewrite; the rest of `harness/` is copied as-is
-([`../../../harness/INSTALL.md`](../../../harness/INSTALL.md)).
-
-This rule is a pointer; `harness/AGENTS.md` is the authority.
+Evidence for the cost: in one session all 4 real evaluator catches were
+**silent-failure classes** (data corruption, a dead locale string, a lying flag,
+a timing bug) — exactly what a green test suite does not surface.

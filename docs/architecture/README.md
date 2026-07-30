@@ -71,7 +71,6 @@ grounded recall, search and user-model access to other agents.
 | `packages/tools`, `packages/browser`, `packages/mcp` | Tool surface, browser control, MCP both ways |
 | `apps/cli`, `apps/api`, `apps/web`, `apps/desktop` | The four surfaces, all on one runtime |
 | `crates/runner` | Sandboxed local execution |
-| `harness/` | The vendor-neutral agent operating harness used to build Muse |
 
 39 workspace packages in total; [the system map](../product/SYSTEM-MAP.md) is the guided tour.
 

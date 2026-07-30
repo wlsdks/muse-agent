@@ -11,7 +11,7 @@ related:
   - ../../docs/strategy/attunement.md
   - ../../docs/development/personal-agent-qualification.md
   - ../../docs/development/ai-agent-testing-strategy.md
-  - ../../harness/AGENTS.md
+  - ../../.claude/harness/contract.md
 ---
 
 # Muse personal-agent Core 100 roadmap

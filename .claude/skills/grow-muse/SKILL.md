@@ -64,12 +64,12 @@ not a stub.
    the commit body.
 
 4. **DESIGN GATE (M+ scope)** — acceptance criteria + seam sketch first
-   (`harness/core/handoff-template.md`), then an independent adversarial
+   (`.claude/harness/handoff.md`), then an independent adversarial
    design review (wrong-layer? trust-floor violation? one-shot
    tool-calling feasible? simpler alternative?). Small slices skip the
    reviewer, never the written criteria.
 
-5. **BUILD + VERIFY** — per `harness/host/dev-loop.md` §3. A new tool
+5. **BUILD + VERIFY** — per `.claude/harness/dev-loop.md` §3. A new tool
    ships with the `tool-calling.md` checklist + an `eval:tools` case
    STABLE k=3. **Live-path proof is mandatory** — a handler the model
    never selects, or a flow never driven end-to-end, is not delivered

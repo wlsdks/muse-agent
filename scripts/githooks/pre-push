@@ -140,7 +140,7 @@ is_web_impact_path() {
 
 is_known_deterministic_path() {
   case "$1" in
-    apps/*|packages/*|crates/*|scripts/*|harness/*|.github/workflows/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|tsconfig.json|tsconfig.base.json|vitest.shared.ts|eslint.config.*) return 0 ;;
+    apps/*|packages/*|crates/*|scripts/*|.github/workflows/*|package.json|pnpm-lock.yaml|pnpm-workspace.yaml|tsconfig.json|tsconfig.base.json|vitest.shared.ts|eslint.config.*) return 0 ;;
     *) return 1 ;;
   esac
 }

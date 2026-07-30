@@ -74,7 +74,8 @@ north-star gap → parity). One slice end-to-end; "nothing to do" is forbidden.
   make OpenAI / Anthropic / Vercel-AI-SDK / LangGraph the runtime owner.
 - Guards are fail-close. Hooks are fail-open. Security is deterministic code, never prompt text.
 - Tool output is untrusted; tool loops have explicit limits and timeouts.
-- Risky local execution flows through `crates/runner`; every surface shares one `agent-core` runtime.
+- Risky local execution flows through `crates/runner` — one audited allowlist exception,
+  `muse.skills.run`; every surface shares one `agent-core` runtime.
 - Outbound to a third party (send, submit, book, post) is fail-close and draft-first per
   [`.claude/rules/safety/outbound-safety.md`](.claude/rules/safety/outbound-safety.md) — never an autonomous send. Banking /
   brokerage access and money movement are permanently out of scope.

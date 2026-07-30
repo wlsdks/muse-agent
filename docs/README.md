@@ -54,7 +54,7 @@ as soon as you can answer the question you came for.
 6. [`product/SYSTEM-MAP.md`](product/SYSTEM-MAP.md) — the feature structure on one page
 7. [`trust/grounding-gate.md`](trust/grounding-gate.md) — the trust floor (grounding gate) as one flow
 8. [`product/FEATURES.md`](product/FEATURES.md) — per-feature detail, and [`benchmarks/EVIDENCE.md`](benchmarks/EVIDENCE.md) for what is actually proven
-9. Then go deeper: [`design/attunement/README.md`](design/attunement/README.md) · [`design/attunement/attunement-graph.md`](design/attunement/attunement-graph.md) · [`../internal/goals/attunement-implementation-plan.md`](../internal/goals/attunement-implementation-plan.md) · [`../internal/goals/attunement-wow-graph-roadmap.md`](../internal/goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
+9. Then go deeper: [`design/attunement/README.md`](design/attunement/README.md) · [`design/attunement/attunement-graph.md`](design/attunement/attunement-graph.md) · [`../internal/goals/attunement-implementation-plan.md`](../internal/goals/attunement-implementation-plan.md) · [`../internal/goals/attunement-wow-graph-roadmap.md`](../internal/goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../.claude/harness/contract.md`](../.claude/harness/contract.md)
 
 ## To understand the product
 
@@ -96,11 +96,11 @@ For a feature's "what", see the product docs above; for the "why", look here.
 
 ## Agent harness (operating structure)
 
-[`../harness/`](../harness/README.md) — the team composition, roles, and handoff definitions that
-let any AI agent collaborate the same way (based on multi-agent patterns verified 2026-05). **For
-the current setup at a glance → [diagram & self-assessment (architecture)](../harness/reference/architecture.md)**
-(one-page diagram + 12-cell self-assessment + doc map). Role definitions:
-[team-roles](../harness/core/team-roles.md).
+[`../.claude/harness/contract.md`](../.claude/harness/contract.md) — the operating contract every
+agent follows: risk tiering, the two mandatory roles, the fail-closed gates, and how a slice is
+verified. Role definitions and the maker/evaluator write boundaries:
+[`roles.md`](../.claude/harness/roles.md). Muse's own day-to-day loop:
+[`dev-loop.md`](../.claude/harness/dev-loop.md).
 
 ## Autonomous expansion loops (operations)
 

@@ -39,6 +39,10 @@ backlog — don't let it grow unchecked.
 - `no-prototype-builtins` — direct `obj.hasOwnProperty(...)` breaks
   on null-prototype objects; `Object.hasOwn(obj, ...)` is the
   modern fix.
+- `no-restricted-imports` — bans `@muse/attunement/host` outside the
+  audited production composition roots. The host seam is the only way
+  to mint `organic` evidence authority, so an unaudited import would
+  let controlled-replay data pass as real usage.
 
 ## Off (but reconsider before tightening)
 

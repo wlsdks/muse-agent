@@ -8,12 +8,11 @@ updated: 2026-06-08
 
 # Development Loop
 
-> **HOST-SPECIFIC** — this file is the host's (Muse's) development loop and references paths
-> outside the harness (`internal/goals/backlog.md`, `.claude/rules/*`, etc.). When taking the harness
-> to a new project, do not use it as-is — **rewrite it as your project's loop**
-> ([INSTALL §1](../INSTALL.md)).
+> **HOST-SPECIFIC** — this is Muse's own development loop, and it names real paths in this
+> repository (`internal/goals/backlog.md`, `.claude/rules/*`). Everything else under
+> `.claude/harness/` is vendor- and project-neutral; this file is not.
 
-> **This file is the contract for "what to build and how".** Where [`../AGENTS.md`](../AGENTS.md) is
+> **This file is the contract for "what to build and how".** Where [`contract.md`](contract.md) is
 > *roles, handoff, gates* (how one slice is executed), this file is *how that slice is chosen,
 > verified, and its learning accumulated*. The two skills `.claude/skills/improve-muse` (HARDEN)
 > and `grow-muse` (GROW) each run stages 0–7 end-to-end (pick → BUILD → VERIFY → COMMIT+PUSH) —
@@ -116,7 +115,7 @@ sourcing ladder and permission boundaries.
    reservoir (D/T/N/C scored). Gap-finding and the capability-parity reservoir belong to
    grow-muse. **Never ask the human "what should I build" — probes and data pick.**
 3. **PLAN** — WHAT+WHY+the gate to strengthen, as a one-line contract in
-   [`../core/handoff-template.md`](../core/handoff-template.md). If trivial (a typo, one line), skip and
+   [`handoff.md`](handoff.md). If trivial (a typo, one line), skip and
    short-circuit to 5 (skill self-gate).
 4. **BUILD** — one vertical slice, minimal scope, deterministic code (not prompts). Own the
    prompt/schema/control flow; strengthen one gate or add one verb_noun tool. No new framework

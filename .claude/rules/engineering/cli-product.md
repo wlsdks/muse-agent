@@ -20,7 +20,11 @@ contracts, same approval gates.
 
 - **Local**: execute `packages/agent-core` in the CLI process.
 - **Remote**: connect to the API server over SSE.
-- Risky local execution always goes through `crates/runner` as a child process.
+- Risky local execution goes through `crates/runner` as a child process. **One
+  audited exception:** `muse.skills.run` (`packages/tools/src/muse-tools-skills.ts`)
+  spawns declared binaries with `node:child_process.spawn` directly, gated by an
+  allowlist instead of the Rust sandbox. Do not add a second exception — route new
+  execution through the runner.
 
 ## What not to do
 

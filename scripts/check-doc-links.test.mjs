@@ -75,3 +75,46 @@ test("the block sequence ends at the next key rather than swallowing it", () => 
   const dir = repoWith({ "a.md": "---\nrelated:\n  - real.md\nupdated: nope.md\n---\n", "real.md": "hi\n" });
   assert.equal(run(dir).status, 0, run(dir).stdout);
 });
+
+// The false NEGATIVE this suite gained after the block-sequence one: code spans are
+// stripped so `![](exfil)` is not treated as a link, which also made every backticked
+// path citation invisible. Eleven citations of a deleted `harness/AGENTS.md` survived
+// a folder move that way — the checker reported clean while the paths were dead.
+test("a slashed .md path cited inside a code span is checked", () => {
+  const result = run(repoWith({ ".claude/a.md": "see `gone/nope.md` for detail\n" }));
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /missing cited path `gone\/nope\.md`/u);
+});
+
+test("a cited path resolves either repo-root-relative or dir-relative", () => {
+  const dir = repoWith({ ".claude/sub/a.md": "root `top/real.md`, dir `sub/real.md`\n", "top/real.md": "hi\n", ".claude/sub/sub/real.md": "hi\n" });
+  assert.equal(run(dir).status, 0, run(dir).stdout);
+});
+
+test("a bare filename with no slash is not treated as a path claim", () => {
+  const dir = repoWith({ ".claude/a.md": "write it in `CHANGELOG.md` when done\n" });
+  assert.equal(run(dir).status, 0, run(dir).stdout);
+});
+
+test("a placeholder path in a code span is not flagged", () => {
+  const dir = repoWith({ ".claude/a.md": "put it in `docs/design/<feature>.md`\n" });
+  assert.equal(run(dir).status, 0, run(dir).stdout);
+});
+
+test("a cited path inside a fenced block is not flagged", () => {
+  const dir = repoWith({ ".claude/a.md": "```\ncat gone/nope.md\n```\n" });
+  assert.equal(run(dir).status, 0, run(dir).stdout);
+});
+
+// Locks the SCOPE, not just the detection. Widening the cited-path check past the
+// agent-instruction files re-introduces a false-positive class: a CHANGELOG entry
+// names a file as it stood at the time, and a corpus fixture names files that exist
+// only inside the fixture. Both are correct; flagging them teaches agents to ignore
+// this gate's output.
+test("a dead cited path outside the agent-instruction files is not flagged", () => {
+  const dir = repoWith({
+    "CHANGELOG.md": "moved out of `docs/design/old-home.md` in this release\n",
+    "apps/cli/sample-corpus/EXPECTED.md": "the corpus contains `notes/finances.md`\n",
+  });
+  assert.equal(run(dir).status, 0, run(dir).stdout);
+});

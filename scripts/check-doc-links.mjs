@@ -16,6 +16,12 @@ const files = execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "
 
 const stripCode = (text) => text.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "");
 
+// The operating instructions an agent loads to decide what to do. A dead path here
+// sends the next agent at a file that isn't there; elsewhere a dead path is usually a
+// faithful historical record.
+const isAgentInstruction = (file) =>
+  file.startsWith(".claude/") || file === "CLAUDE.md" || file === "AGENTS.md";
+
 const slug = (heading) =>
   heading.trim().replace(/`/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").toLowerCase()
     .replace(/[^\p{L}\p{N}\s_-]/gu, "").replace(/ /g, "-");
@@ -46,6 +52,24 @@ for (const file of files) {
   }
   for (const m of body.matchAll(/\]\(#([^)\s]+)\)/gu)) {
     if (!anchors.get(normalize(file))?.has(m[1])) problems.push(`${file}: missing own anchor #${m[1]}`);
+  }
+  // A cited path inside a code span is not a LINK, but it is still a claim about the
+  // repo — and stripping code spans made the checker blind to it. Eleven citations of
+  // a deleted `harness/AGENTS.md` survived a folder move because they wore backticks.
+  // Only a span that is ENTIRELY a slashed .md path counts; prose and `<placeholder>`
+  // paths are excluded by the charset, and either root- or dir-relative resolution passes.
+  //
+  // Scoped to the operating instructions an agent actually loads. Outside that scope a
+  // dead path is often CORRECT: a CHANGELOG names a file as it was at the time, and a
+  // corpus fixture names files that only exist inside the fixture.
+  if (isAgentInstruction(file)) {
+    for (const m of raw.replace(/```[\s\S]*?```/g, "").matchAll(/`([\w./-]+\.md)`/gu)) {
+      const cited = m[1];
+      if (!cited.includes("/")) continue;
+      if (existsSync(join(ROOT, normalize(cited)))) continue;
+      if (existsSync(join(ROOT, normalize(join(dir, cited))))) continue;
+      problems.push(`${file}: missing cited path \`${cited}\``);
+    }
   }
   // frontmatter `related:` comes in two YAML shapes and BOTH must be checked:
   //   related: [a.md, b.md]        inline flow sequence

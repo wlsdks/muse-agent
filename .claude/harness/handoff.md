@@ -4,14 +4,14 @@ audience: [developers, AI agents]
 purpose: The single form through which, on the FULL tier, worker → independent evaluator exchange a "defined state" across the context reset
 status: draft
 updated: 2026-07-30
-related: [team-roles.md, role-prompts.md, ../README.md]
+related: [contract.md, roles.md]
 ---
 
 # Handoff Artifact
 
 ## FAST S/M compact card
 
-A task that satisfies **all** conditions of [`../AGENTS.md` §1.6](../AGENTS.md) creates no separate
+A task that satisfies **all** conditions of [`contract.md` §1.6](contract.md) creates no separate
 handoff file; record only the 7 items below in chat/scratch. This path has no independent
 evaluator, so the result is `review-tier: thin-review`, not `PASS`. If any condition is broken,
 escalate to the FULL form below.
@@ -26,15 +26,15 @@ escalate to the FULL form below.
 
 > **Why is this the skeleton?** The harness runs the same way "whichever agent comes in" because
 > **context is cut, not merged, and the next role picks up from a defined state via a structured
-> artifact** ([team-roles §3](team-roles.md)). This file is the **single form** for FULL-tier
+> artifact** ([team-roles §3](roles.md)). This file is the **single form** for FULL-tier
 > artifacts — fill one copy per task and pass it on. Every handoff starts from reading this
 > document, not "the previous agent's head".
 >
 > **The default is only these 5 sections (below).** Since the mandatory roles shrank to worker +
-> independent evaluator ([team-roles §1](team-roles.md)), there is no separate planner pass and no
+> independent evaluator ([team-roles §1](roles.md)), there is no separate planner pass and no
 > review/learning section in the default form — PLAN goes in the "Header" section below, and LEARN
 > goes in the **commit body** after completion per
-> [muse-dev-patterns §8](../../.claude/skills/muse-dev-patterns/SKILL.md). **The full ceremony
+> [muse-dev-patterns §8](../skills/muse-dev-patterns/SKILL.md). **The full ceremony
 > (separate planner pass + the review and learning sections of a heavy multi-stage handoff) is for
 > L-size or security-grade slices only** — in that case append the "Appendix: full ceremony"
 > section at the end of this document.
@@ -44,7 +44,7 @@ escalate to the FULL form below.
 1. For each FULL-tier task (feature/bug/slice), copy this form into one file — **a working file,
    not a permanent record**: keep it in the slice's worktree (or scratchpad) and **do not commit
    it to the repo**. The permanent record is the commit body (acceptance criteria, verification
-   results, learnings — [muse-dev-patterns §8](../../.claude/skills/muse-dev-patterns/SKILL.md)).
+   results, learnings — [muse-dev-patterns §8](../skills/muse-dev-patterns/SKILL.md)).
    The 7 previously committed instances were deleted (2026-07-18 — never once referenced after
    merge, so the committing practice itself was stopped; git history preserves them). **When
    delegating, always pass this file's path along** — it is the only input the context-reset next
@@ -148,6 +148,6 @@ sections below. Not used on ordinary slices.
 
 ---
 
-> Rule: this form interlocks 1:1 with the roles and gates in [team-roles](team-roles.md). If the
+> Rule: this form interlocks 1:1 with the roles and gates in [team-roles](roles.md). If the
 > form changes, update there too. Per the compressed-return / external-file principle
-> ([team-roles §3](team-roles.md)), point to links instead of inlining anything large.
+> ([team-roles §3](roles.md)), point to links instead of inlining anything large.

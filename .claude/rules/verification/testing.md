@@ -62,16 +62,15 @@ binary LLM-judge — see [`agent-testing.md`](agent-testing.md) (the method).
    ```bash
    pnpm eval:agent
    ```
-   Runs `eval:tools` (tool selection + ArgumentCorrectness),
-   `eval:judge` (LLM-as-judge meta-eval), `eval:adversarial`
-   (must-refuse safety + over-refusal controls), `eval:shadow-trial`
-   (report-only promotion review), and `eval:plan-quality` (PlanQuality:
-   valid/complete/ordered/efficient multi-step plans) in one pass and
-   fails if ANY regresses — the agent-eval CI gate. All run on `scripts/eval-harness.mjs`
-   (runEvalSuite + scorers + llmJudge + runShadowTrial). **LOCAL OLLAMA
-   ONLY**; each battery skips (exit 0) when Ollama is unreachable. Run
-   after touching tool names/descriptions/schemas, the eval harness, or
-   any battery's cases.
+   Runs every battery in the `CAPABILITY_MATRIX` registry of
+   `scripts/eval-agent.mjs` in one pass and fails if ANY required one
+   regresses. **That registry is the authority — read it rather than a
+   copy here**, because a hand-maintained list drifts (it did: this gate
+   named `eval:judge` and `eval:shadow-trial`, which `eval-agent.mjs`
+   never calls, and omitted six batteries it does). **LOCAL OLLAMA ONLY**;
+   each battery skips (exit 0) when Ollama is unreachable. Run after
+   touching tool names/descriptions/schemas, the eval harness, or any
+   battery's cases.
 8. **Grounded-vision gate** (image → grounded extraction → routed action):
    ```bash
    pnpm eval:vision
@@ -87,8 +86,9 @@ binary LLM-judge — see [`agent-testing.md`](agent-testing.md) (the method).
    ```bash
    pnpm lint
    ```
-   ESLint flat config, all 11 rules at `error`. New violations
-   block exit-0.
+   ESLint flat config; every rule it sets is at `error`
+   ([code-style](../engineering/code-style.md) owns the rule list).
+   New violations block exit-0.
 
 ## Test placement
 
@@ -133,9 +133,10 @@ binary LLM-judge — see [`agent-testing.md`](agent-testing.md) (the method).
 ## Run only the narrowest test that proves THIS change (Jinan, 2026-06-22)
 
 Running hundreds/thousands of tests "to be safe" is noise — Muse has
-**~2,000 `*.test.ts(x)` files across `packages/` + `apps/`** (1,987 on 2026-07-30; more than
-the openclaw TS repo proportionally — the count is healthy, running ALL of
-it per edit is the waste). A full package suite per edit proves nothing
+**thousands of `*.test.ts(x)` files across `packages/` + `apps/`** (`pnpm self-eval`
+prints the live count; do not hand-copy a number here — three different
+counts of it have already disagreed). The count is healthy; running ALL of
+it per edit is the waste. A full package suite per edit proves nothing
 about the specific change and only saturates the machine. Run the tests
 **vitest decides are RELATED to the files you changed** and nothing more:
 

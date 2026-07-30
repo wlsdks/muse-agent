@@ -5,7 +5,7 @@ purpose: Define the team's roles, boundaries, and handoffs in one place, so any 
 status: draft
 updated: 2026-06-13
 sources_basis: [Anthropic building-effective-agents, Anthropic multi-agent research system, Anthropic 3-agent harness (InfoQ 2026-04), Addy Osmani — Code Agent Orchestra, Cognition multi-agents-working 2026-04 (clean-context reviewer)]
-related: [team-roles.md, ../README.md]
+related: [roles.md, ../README.md]
 ---
 
 # Agent Team Roles
@@ -25,7 +25,7 @@ related: [team-roles.md, ../README.md]
   **15× the tokens** of a single agent, so use them only where the work justifies the cost — when
   parallelization pays off heavily, the work does not fit one context, or many complex tools are
   involved. (How eagerly a given model delegates also differs — see the model-calibration section
-  in [AGENTS.md §7](../AGENTS.md) for the current per-model delegation posture.)
+  in [AGENTS.md §7](contract.md) for the current per-model delegation posture.)
 - **Verification is the bottleneck.** The choke point now is not "making it" but "confirming it is
   right". So the core of the team structure is **separating the maker role from the judging role**
   (agents always grade their own work generously).
@@ -66,10 +66,10 @@ between the two mandatory roles is held absolutely tight.
 
 - **Planner role → the header, before delegation.** No separate planner pass: the delegating side
   (orchestrator, or the worker itself) writes **WHAT + WHY + acceptance criteria** in the handoff
-  header before starting ([handoff-template](handoff-template.md)).
+  header before starting ([handoff-template](handoff.md)).
 - **Curator role → the commit body, after completion.** What worked, what was corrected, and what
   procedure is reusable go into the **commit-body write-back**, not a separate "learning" section
-  ([muse-dev-patterns §8](../../.claude/skills/muse-dev-patterns/SKILL.md)).
+  ([muse-dev-patterns §8](../skills/muse-dev-patterns/SKILL.md)).
 
 ### Optional (separate instances only for L-size · security-grade slices)
 
@@ -105,7 +105,7 @@ never use the same checkout/file at the same time.
 | Release / publication | The controller prepares the verified commit candidate and provenance. Beyond a normal push within standing authorization, tag/release/publication is a separate permission. | From a fresh checkout, reads and reproduces HEAD/time/input hashes, required checks, rollback artifacts, remote state. | Modifying source; tag/release/publish/push; changing credentials/protection; using a stale artifact as green; fixing a FAIL directly. | The final release gate is a fresh Sol/xhigh; even an evaluator PASS is not publication permission. |
 
 (`Sol/high` / `Sol/xhigh` are gate-strength shorthand — the strongest review model tier at
-high/xhigh effort. Current mapping: [AGENTS.md §7](../AGENTS.md).)
+high/xhigh effort. Current mapping: [AGENTS.md §7](contract.md).)
 
 Restrict the inputs handed to the evaluator to this allowlist:
 
@@ -195,10 +195,9 @@ to one; combine.
 
 ---
 
-> The pieces once planned are now filled: role prompts are [role-prompts](role-prompts.md), the
-> handoff format is [handoff-template](handoff-template.md), and the executable form of the
-> verification gates is [../runner/](../runner/). This document is the agreed baseline for "who
-> does what", updated as the harness concretizes.
+> This document is the baseline for **who does what**. The per-role prompts a subagent actually
+> loads are `.claude/agents/harness-*.md`; the exchange format is [handoff](handoff.md); the gates
+> that decide PASS are [contract](contract.md) §3.
 
 ## Sources (verified basis)
 

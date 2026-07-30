@@ -15,7 +15,7 @@ updated: 2026-06-20
 # Loop Engineering
 
 > **This file is the contract for "how to design an autonomous loop."**
-> Where [`../../../../harness/host/dev-loop.md`](../../../../harness/host/dev-loop.md) covers *how to pick and execute one slice*,
+> Where [`../../../harness/dev-loop.md`](../../../harness/dev-loop.md) covers *how to pick and execute one slice*,
 > this file covers *how to construct the loop that iterates those slices*.
 > `.claude/skills/loop-creator` reads this contract and *generates* well-formed
 > loops — so nobody hand-writes an ad-hoc prompt each time.
@@ -44,15 +44,20 @@ point.
 |---|---|---|
 | **Automation** | Runs on a schedule, finds and triages work into an inbox — no human watching | `/loop` cron (CronCreate) / ScheduleWakeup |
 | **Worktree** | Isolated git checkouts so parallel agents don't collide on file writes | /tmp worktree (**outside the repo tree** — [[project_worktree_instability]]). **Concurrent-loop hygiene is enforced by §4.5-11** (the #1 failure source when N loops share main on one box). |
-| **Skill** | Reuse project knowledge (`SKILL.md`) — avoids re-deriving context every cycle | `.claude/skills/` (improve-muse), [`../../../../harness/host/dev-loop.md`](../../../../harness/host/dev-loop.md) |
-| **Connector** | *Actually act* on external tools (issue tracker · DB · Slack) via MCP | MCP (codegraph etc.), [`../../../../harness/reference/skills-and-mcp.md`](../../../../harness/reference/skills-and-mcp.md) |
-| **Sub-agent** | Agents with different instructions/models **separate ideation from verification** | harness planner→worker→evaluator ([`../../../../harness/core/team-roles.md`](../../../../harness/core/team-roles.md)), the Agent tool. **Fan out only for *context isolation / contamination avoidance*, never for raw parallelism**: at equal budget a single agent ≥ multi-agent (2604.02460); hand-off **topology strongly affects constraint survival** (linear chain > converging DAG — minority-source constraints get lost in synthesis — 2605.08647). Keep maker≠judge separation, but mindless fan-out is token waste. |
-| **State/Memory** | "The model forgets everything between runs — memory lives on **disk**, not in context" | [`../../../../internal/goals/backlog.md`](../../../../internal/goals/backlog.md), `MEMORY.md`, self-eval-scoreboard, per-loop journals, [`../../../../harness/reference/session-persistence.md`](../../../../harness/reference/session-persistence.md). **Learn from failures too (§4.5-13)**: a rolled-back / no-ship fire distils a *reusable lesson* into backlog/MEMORY — don't just accumulate fire logs (ReasoningBank). |
+| **Skill** | Reuse project knowledge (`SKILL.md`) — avoids re-deriving context every cycle | `.claude/skills/` (improve-muse), [`../../../harness/dev-loop.md`](../../../harness/dev-loop.md) |
+| **Connector** | *Actually act* on external tools (issue tracker · DB · Slack) via MCP | MCP (codegraph etc.), [`skills-and-mcp.md`](skills-and-mcp.md) |
+| **Sub-agent** | Agents with different instructions/models **separate ideation from verification** | harness planner→worker→evaluator ([`../../../harness/roles.md`](../../../harness/roles.md)), the Agent tool. **Fan out only for *context isolation / contamination avoidance*, never for raw parallelism**: at equal budget a single agent ≥ multi-agent (2604.02460); hand-off **topology strongly affects constraint survival** (linear chain > converging DAG — minority-source constraints get lost in synthesis — 2605.08647). Keep maker≠judge separation, but mindless fan-out is token waste. |
+| **State/Memory** | "The model forgets everything between runs — memory lives on **disk**, not in context" | [`../../../../internal/goals/backlog.md`](../../../../internal/goals/backlog.md), `MEMORY.md`, self-eval-scoreboard, per-loop journals. **Learn from failures too (§4.5-13)**: a rolled-back / no-ship fire distils a *reusable lesson* into backlog/MEMORY — don't just accumulate fire logs (ReasoningBank). |
 
 > Token budget is the seventh axis — an unattended loop's cost swings hard with
-> how "token rich/poor" you are. The caps are owned by
-> [`../../../../harness/reference/loop-budget.md`](../../../../harness/reference/loop-budget.md). Every loop prompt states 1 slice per
-> fire + a retry cap of 2–3. **The advertised window (1M) ≠ the effective
+> how "token rich/poor" you are. **Three hard caps, all three declared, any one
+> reached ends the fire and records which**: iterations/turns, wall-clock (whole
+> fire AND single call), and tokens/cost. A warning is a notification; only an
+> enforced limit stops a loop. Two retry caps exist and must not be confused —
+> the harness BUILD↔EVAL default is 2
+> ([`contract.md`](../../../harness/contract.md) §4), an unattended fire may
+> declare up to 3. Every loop prompt states 1 slice per fire + which retry cap
+> it used. **The advertised window (1M) ≠ the effective
 > window**: context rots from ~300–400K tokens and "no model is safe above
 > 500K" (Chroma context-rot) — so the cap is a *rot trigger*, not just a cost
 > control. Long fires must externalize to **disk state (per-loop journal ·
@@ -90,7 +95,7 @@ Rules (Muse; cost down, quality held):
    held up not by "a different model" but by **context independence +
    adversarial framing + the judge-failure drill (§4.5, enforced by a ≤10-fire
    hard counter)**. The drill is the *only* evidence the judge hasn't gone
-   soft; skip it and maker≠judge collapses ([`../../../../harness/core/team-roles.md`](../../../../harness/core/team-roles.md)).
+   soft; skip it and maker≠judge collapses ([`../../../harness/roles.md`](../../../harness/roles.md)).
    **Why the drill is mandatory, not optional (2026 measurements):** a judge
    rates its own family generously — self-preference marks a *failing* rubric
    as satisfied up to *50%* more often and skews scores by ~10 points
@@ -137,8 +142,8 @@ not a *goal*. A well-formed loop has both:
   battery pass^k".
 
 The stop condition must be **deterministic or judge-backed** — "feels done" is
-not a stop condition. The gates in
-[`../../../../harness/core/verification-and-guardrails.md`](../../../../harness/core/verification-and-guardrails.md) are the raw
+not a stop condition. The gate list in
+[`../../../harness/contract.md`](../../../harness/contract.md) §3 is the raw
 material. If you cannot write the condition, the loop is not ready to launch.
 
 ## 3. Guards for the three failure modes (they get *sharper* as the loop improves)
@@ -149,7 +154,7 @@ sharper." Every loop design must carry an **explicit guard** for each.
 1. **Unattended verification failure** — *"a loop that runs unattended is a
    loop that makes mistakes unattended."* A verifier subagent is a *check*, not
    a *proof*. **maker ≠ judge** is non-negotiable
-   ([`../../../../harness/core/team-roles.md`](../../../../harness/core/team-roles.md), agent-testing.md): the instance that
+   ([`../../../harness/roles.md`](../../../harness/roles.md), agent-testing.md): the instance that
    wrote the code does not grade its own homework.
    **Guard (the gating verifier) — operationalizing "hands off only with a
    verifier you trust":** a **separate, stronger-tier (Opus) evaluator**
@@ -294,8 +299,9 @@ the hook/secret/connector surface?"
 - [ ] **Unattended-loop security** — untrusted text isolated as data ·
       install/build hooks sandboxed · auto-pulled skill/config hidden-Unicode
       scan. §3.6.
-- [ ] **Token/step caps** — 1 slice per fire, retry cap 2–3, budget caps.
-      [`../../../../harness/reference/loop-budget.md`](../../../../harness/reference/loop-budget.md).
+- [ ] **Token/step caps** — 1 slice per fire; iteration, wall-clock and
+      token/cost caps all declared; retry cap stated (≤3 for an unattended
+      fire). §1.5.
 - [ ] **Model tiering** — routine work Sonnet; **scout/plan/design/judge =
       Opus 4.8 (`claude-opus-4-8[1m]`)** (Fable-5 unused); the judge is an
       independent subagent separate from the builder + the drill is the
@@ -479,9 +485,9 @@ Verification · security · memory primaries (arXiv/incidents, sharpening
 - **Multi-agent** — single ≥ multi at equal budget [arXiv 2604.02460](https://arxiv.org/abs/2604.02460) · topology constraint-loss (linear > converging DAG) [2605.08647](https://arxiv.org/abs/2605.08647) · MAST failure taxonomy [2503.13657](https://arxiv.org/abs/2503.13657)
 - **Learning from failure / skill co-evolution** — ReasoningBank [arXiv 2509.25140](https://arxiv.org/abs/2509.25140) (+34.2%/−16%) · SkillSmith [2606.01314](https://arxiv.org/abs/2606.01314) (atomic skill+tool co-evolution) · context-rot (Chroma, ~300K effective window)
 
-Adjacent contracts in this harness: [`../../../../harness/host/dev-loop.md`](../../../../harness/host/dev-loop.md) (slice selection/execution),
-[`../../../../harness/core/team-roles.md`](../../../../harness/core/team-roles.md) (maker≠judge), [`../../../../harness/core/verification-and-guardrails.md`](../../../../harness/core/verification-and-guardrails.md) (gates),
-[`../../../../harness/reference/loop-budget.md`](../../../../harness/reference/loop-budget.md) (budget), [`../../../../harness/reference/session-persistence.md`](../../../../harness/reference/session-persistence.md) (state).
+Adjacent contracts in this harness: [`../../../harness/dev-loop.md`](../../../harness/dev-loop.md) (slice selection/execution),
+[`../../../harness/roles.md`](../../../harness/roles.md) (maker≠judge),
+[`../../../harness/contract.md`](../../../harness/contract.md) (gates),
 
 ## 6. The meta-loop of this contract itself — how it evolves
 

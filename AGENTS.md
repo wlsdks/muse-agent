@@ -73,8 +73,7 @@ Five apps, 39 workspace packages, one Rust crate. The packages worth knowing by 
 apps/     api (Fastify) · cli (commander + Ink) · web (React + Vite) · desktop (macOS) · mac-helper
 crates/   runner — Rust sandbox for shell/process/file execution
 docs/     product · trust · setup · architecture · design · strategy · development · evaluations · benchmarks
-harness/  the portable agent operating harness
-.claude/  rules (auto-loaded with CLAUDE.md) · agents · skills
+.claude/  rules (auto-loaded with CLAUDE.md) · harness (operating contract) · agents · skills
 ```
 
 `ls packages` is the authoritative list; this table is a map, not an inventory.
