@@ -341,6 +341,8 @@ export interface ToolApprovalGateInput {
   readonly risk: ToolRiskLevel;
   readonly userId?: string;
   readonly runId: string;
+  /** Cancel pending owner/surface approval when the run itself is cancelled. */
+  readonly signal?: AbortSignal;
   /**
    * Set by the injection-provenance gate when this outbound-send call's sink
    * args derive from UNTRUSTED tool output rather than the user's own message.

@@ -239,14 +239,15 @@ export async function executeToolCall(
   if (approvalGate) {
     let decision: ToolApprovalGateDecision;
     try {
-      decision = await approvalGate({
+      decision = await awaitApprovalDecision(approvalGate, {
         risk,
         runId: context.runId,
+        ...(context.input.signal ? { signal: context.input.signal } : {}),
         toolCall,
         userId: egressUserId,
         ...(provenanceWarning ? { provenanceWarning } : {}),
         ...(egressDecision && egressDecision.decision !== "allow" ? { egressWarning: egressDecision.reason, egressBlocked } : {})
-      });
+      }, context.input.signal);
     } catch (error) {
       // Fail-close: a throwing gate (e.g. a corrupt
       // ~/.muse/trust.json, the gate's data source) must BLOCK
@@ -338,6 +339,7 @@ export async function executeToolCall(
     context: {
       runId: context.runId,
       userId: metadataString(context.input.metadata, "userId"),
+      ...(context.input.signal ? { signal: context.input.signal } : {}),
       ...(context.input.toolExposureAuthority !== undefined
         ? { toolExposureAuthority: context.input.toolExposureAuthority }
         : {})
@@ -349,4 +351,35 @@ export async function executeToolCall(
 
   await deps.afterTool(context, { result, toolCall });
   return { result, toolCall };
+}
+
+async function awaitApprovalDecision(
+  gate: ToolApprovalGate,
+  input: Parameters<ToolApprovalGate>[0],
+  signal: AbortSignal | undefined
+): Promise<ToolApprovalGateDecision> {
+  signal?.throwIfAborted();
+  const pending = Promise.resolve(gate(input));
+  if (!signal) {
+    return pending;
+  }
+  if (signal.aborted) {
+    throw signal.reason ?? new DOMException("approval cancelled", "AbortError");
+  }
+  return new Promise<ToolApprovalGateDecision>((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(signal.reason ?? new DOMException("approval cancelled", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    pending.then(
+      (decision) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(decision);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      }
+    );
+  });
 }

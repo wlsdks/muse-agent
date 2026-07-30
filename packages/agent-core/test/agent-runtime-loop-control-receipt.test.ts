@@ -1,5 +1,6 @@
 import { InMemoryResponseCache } from "@muse/cache";
 import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
+import { createToolExposureAuthority } from "@muse/policy";
 import { InMemoryAgentRunHistoryStore, InMemoryCheckpointStore } from "@muse/runtime-state";
 import { ToolRegistry } from "@muse/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -315,6 +316,147 @@ describe("AgentRuntime loop control receipt wiring", () => {
     expect(calls).toBe(0);
     expect(receipt.loopKind).toBe("plan-execute");
     expect(receipt.terminal).toEqual({ reason: "caller-cancelled", status: "cancelled" });
+  });
+
+  it("settles an in-flight tool cancellation and forwards the exact signal to child work", async () => {
+    const controller = new AbortController();
+    let childActive = false;
+    let providerCalls = 0;
+    let seenSignal: AbortSignal | undefined;
+    let notifyStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      notifyStarted = resolve;
+    });
+    const toolRegistry = new ToolRegistry([{
+      definition: {
+        description: "Run abortable child work",
+        inputSchema: { type: "object" },
+        name: "abortable_child",
+        risk: "read"
+      },
+      execute: async (_args, context) => {
+        seenSignal = context.signal;
+        childActive = true;
+        notifyStarted?.();
+        await new Promise<never>((_resolve, reject) => {
+          const abort = (): void => {
+            childActive = false;
+            reject(context.signal?.reason ?? new DOMException("aborted", "AbortError"));
+          };
+          if (context.signal?.aborted) {
+            abort();
+            return;
+          }
+          context.signal?.addEventListener("abort", abort, { once: true });
+        });
+      }
+    }]);
+    const provider: ModelProvider = {
+      id: "cancel-tool-provider",
+      async generate() {
+        providerCalls += 1;
+        return providerCalls === 1
+          ? {
+              id: "tool",
+              model: "test/model",
+              output: "",
+              toolCalls: [{ arguments: {}, id: "child-1", name: "abortable_child" }]
+            }
+          : { id: "unexpected", model: "test/model", output: "must not continue" };
+      },
+      async listModels() {
+        return [];
+      },
+      async *stream() {}
+    };
+    const runtime = createAgentRuntime({
+      maxToolCalls: 2,
+      modelProvider: provider,
+      toolRegistry
+    });
+
+    const pending = runtime.run({
+      ...input,
+      runId: "run-inflight-tool-cancel",
+      signal: controller.signal
+    });
+    await started;
+    controller.abort(new Error("owner cancelled"));
+    const result = await pending;
+    const receipt = parseLoopControlReceipt(result.loopControlReceipt);
+
+    expect(seenSignal).toBe(controller.signal);
+    expect(childActive).toBe(false);
+    expect(providerCalls).toBe(1);
+    expect(result.response.output).toBe("(run interrupted)");
+    expect(receipt.terminal).toEqual({ reason: "caller-cancelled", status: "cancelled" });
+    expect(receipt.budget.tools).toEqual({ exhausted: false, limit: 2, used: 1 });
+    expect(receipt.budget.wallclock).toMatchObject({ exhausted: false, limitMs: 300_000 });
+  });
+
+  it("cancels a pending approval without executing the tool or leaving approval work active", async () => {
+    const controller = new AbortController();
+    let pendingApprovals = 0;
+    let seenGateSignal: AbortSignal | undefined;
+    let notifyApprovalStarted: (() => void) | undefined;
+    const approvalStarted = new Promise<void>((resolve) => {
+      notifyApprovalStarted = resolve;
+    });
+    const execute = vi.fn(() => "must not execute");
+    const toolRegistry = new ToolRegistry([{
+      definition: {
+        description: "Execute only after approval",
+        inputSchema: { type: "object" },
+        name: "approval_child",
+        risk: "execute"
+      },
+      execute
+    }]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 2,
+      modelProvider: sequenceProvider([{
+        id: "approval-tool",
+        model: "test/model",
+        output: "",
+        toolCalls: [{ arguments: {}, id: "approval-1", name: "approval_child" }]
+      }]),
+      toolApprovalGate: (gateInput) => new Promise((_resolve, reject) => {
+        seenGateSignal = gateInput.signal;
+        if (!gateInput.signal) {
+          reject(new Error("approval gate did not receive the run signal"));
+          return;
+        }
+        pendingApprovals += 1;
+        notifyApprovalStarted?.();
+        const abort = (): void => {
+          pendingApprovals -= 1;
+          reject(gateInput.signal?.reason ?? new DOMException("approval cancelled", "AbortError"));
+        };
+        gateInput.signal?.addEventListener("abort", abort, { once: true });
+      }),
+      toolRegistry
+    });
+
+    const pending = runtime.run({
+      ...input,
+      runId: "run-pending-approval-cancel",
+      signal: controller.signal,
+      toolExposureAuthority: createToolExposureAuthority({
+        allowedToolNames: ["approval_child"],
+        localMode: true
+      })
+    });
+    await approvalStarted;
+    controller.abort(new Error("owner cancelled approval"));
+    const result = await pending;
+    const receipt = parseLoopControlReceipt(result.loopControlReceipt);
+
+    expect(seenGateSignal).toBe(controller.signal);
+    expect(pendingApprovals).toBe(0);
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.response.output).toBe("(run interrupted)");
+    expect(receipt.terminal).toEqual({ reason: "caller-cancelled", status: "cancelled" });
+    expect(receipt.budget.tools).toEqual({ exhausted: false, limit: 2, used: 1 });
   });
 
   it("fails Plan-Execute at the exact wallclock boundary instead of synthesizing", async () => {
