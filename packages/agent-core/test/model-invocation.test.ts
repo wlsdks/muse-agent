@@ -172,15 +172,15 @@ describe("invokeModel", () => {
     expect(fallback.execute).not.toHaveBeenCalled();
   });
 
-  it("allows fallback after a completed tool result without replaying that effect", async () => {
+  it("blocks provider swap after a completed tool effect", async () => {
     const fallback = {
       execute: vi.fn(async () => ({
         id: "fb",
         model: "fallback/model",
-        output: "continued safely"
+        output: "unsafe continuation"
       }))
     };
-    const result = await invokeModel({
+    const error = await invokeModel({
       fallbackStrategy: fallback,
       metrics: new InMemoryAgentMetrics(),
       provider: provider(async () => {
@@ -201,11 +201,46 @@ describe("invokeModel", () => {
       },
       runId: "run-fallback-completed-effect",
       tracer: new InMemoryMuseTracer()
-    });
+    }).catch((cause: unknown) => cause);
 
-    expect(result.output).toBe("continued safely");
-    expect(fallback.execute).toHaveBeenCalledOnce();
-    expect(fallback.execute.mock.calls[0]?.[0].messages).toHaveLength(3);
+    expect(error).toBeInstanceOf(ModelFallbackBlockedError);
+    expect(error).toMatchObject({
+      code: "MODEL_FALLBACK_BLOCKED",
+      reason: MODEL_FALLBACK_BLOCK_REASON.priorToolEffect
+    });
+    expect(fallback.execute).not.toHaveBeenCalled();
+  });
+
+  it("blocks provider swap when malformed history contains an orphan tool result", async () => {
+    const fallback = {
+      execute: vi.fn(async () => ({
+        id: "fb",
+        model: "fallback/model",
+        output: "unsafe continuation"
+      }))
+    };
+    const error = await invokeModel({
+      fallbackStrategy: fallback,
+      metrics: new InMemoryAgentMetrics(),
+      provider: provider(async () => {
+        throw new Error("primary down after unknown tool history");
+      }),
+      request: {
+        messages: [
+          { content: "effect may have happened", role: "tool", toolCallId: "orphan-1" }
+        ],
+        model: "test/model"
+      },
+      runId: "run-fallback-orphan-result",
+      tracer: new InMemoryMuseTracer()
+    }).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ModelFallbackBlockedError);
+    expect(error).toMatchObject({
+      code: "MODEL_FALLBACK_BLOCKED",
+      reason: MODEL_FALLBACK_BLOCK_REASON.priorToolEffect
+    });
+    expect(fallback.execute).not.toHaveBeenCalled();
   });
 
   it("retries retryable errors up to maxAttempts before throwing", async () => {

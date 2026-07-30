@@ -83,16 +83,18 @@ export interface InvokeModelArgs {
 }
 
 export const MODEL_FALLBACK_BLOCK_REASON = {
-  pendingOrUncertainToolEffect: "pending-or-uncertain-tool-effect"
+  pendingOrUncertainToolEffect: "pending-or-uncertain-tool-effect",
+  priorToolEffect: "prior-tool-effect"
 } as const;
 
 export type ModelFallbackBlockReason =
   typeof MODEL_FALLBACK_BLOCK_REASON[keyof typeof MODEL_FALLBACK_BLOCK_REASON];
 
 /**
- * A provider swap was refused because the request history cannot prove every
- * prior tool/effect reached a terminal result. The primary error remains the
- * cause; callers get a stable reason without losing the original failure.
+ * A provider swap was refused because a tool/effect has started, or because
+ * the request history cannot prove it reached a terminal result. Fallback is
+ * admitted only before effects. The primary error remains the cause; callers
+ * get a stable reason without losing the original failure.
  */
 export class ModelFallbackBlockedError extends Error {
   readonly code = "MODEL_FALLBACK_BLOCKED";
@@ -100,7 +102,7 @@ export class ModelFallbackBlockedError extends Error {
 
   constructor(reason: ModelFallbackBlockReason, cause: unknown) {
     super(
-      `Model fallback blocked: ${reason}; reconcile the pending tool/effect before provider swap`,
+      `Model fallback blocked: ${reason}; provider swap is allowed only before tool/effect execution`,
       { cause }
     );
     this.name = "ModelFallbackBlockedError";
@@ -159,13 +161,21 @@ async function invokeWithFallback(args: InvokeModelArgs): Promise<ModelResponse>
     if (!args.fallbackStrategy) {
       throw error;
     }
-    const unresolved = classifyHistoricalToolCalls(
+    const historicalToolCalls = classifyHistoricalToolCalls(
       args.request.messages,
       args.request.tools
-    ).some((occurrence) => occurrence.output === undefined);
+    );
+    const hasHistoricalToolResult = args.request.messages.some((message) => message.role === "tool");
+    const unresolved = historicalToolCalls.some((occurrence) => occurrence.output === undefined);
     if (unresolved) {
       throw new ModelFallbackBlockedError(
         MODEL_FALLBACK_BLOCK_REASON.pendingOrUncertainToolEffect,
+        error
+      );
+    }
+    if (historicalToolCalls.length > 0 || hasHistoricalToolResult) {
+      throw new ModelFallbackBlockedError(
+        MODEL_FALLBACK_BLOCK_REASON.priorToolEffect,
         error
       );
     }
