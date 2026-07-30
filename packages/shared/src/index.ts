@@ -102,6 +102,18 @@ export {
   type TriggerWorkStatus
 } from "./trigger-work-state.js";
 export {
+  LOOP_SUPERVISOR_HEALTH_SCHEMA_VERSION,
+  createLoopSupervisorHealthSnapshot,
+  type AdaptationLoopHealthInput,
+  type AgentLoopHealthInput,
+  type CreateLoopSupervisorHealthInput,
+  type EventLoopComponentHealth,
+  type EventLoopHealthInput,
+  type LoopComponentHealth,
+  type LoopHealthLevel,
+  type LoopSupervisorHealthSnapshot
+} from "./loop-supervisor-health.js";
+export {
   runCommandWithTimeout,
   type RunCommandOptions,
   type RunCommandResult
