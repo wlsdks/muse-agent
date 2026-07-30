@@ -10,11 +10,16 @@ related: [strategy/attunement.md, design/attunement-graph.md, goals/attunement-w
 
 Muse 문서는 "필요한 것만, 짧게, 잘 분리해서" 유지합니다. 처음이라면 **[SYSTEM-MAP](SYSTEM-MAP.md)** 한 장만 봐도 전체 윤곽이 잡힙니다.
 
+> **언어 규칙:** 루트 `README.md`가 링크하는 공개 진입 문서(SYSTEM-MAP · grounding-gate ·
+> privacy-and-data · setup-local-llm · ENV · strategy/design/goals)는 **영어**로 씁니다. 그 외
+> 내부 운영 문서(이 인덱스 · FEATURES · glossary · goals 저널 · feature-catalog 감사 기록)는
+> 한국어를 유지합니다.
+
 ## AI 에이전트(Claude Code · Codex)라면 — 이 순서로
 
 레포를 처음 여는 에이전트가 **docs만 읽고 Muse를 이해**하도록 한 권장 읽기 순서:
 
-1. [`../README.md`](../README.md) — Muse가 무엇인가 (Attunement·5원칙·정체성)
+1. [`../README.md`](../README.md) — Muse가 무엇인가 (정체성·Continuity·현재 상태 경계)
 2. [`../CLAUDE.md`](../CLAUDE.md) — 모든 에이전트가 먼저 읽는 계약 (비협상 규칙)
 3. [`strategy/attunement.md`](strategy/attunement.md) — 제품 약속과 current/roadmap 경계
 4. [`glossary.md`](glossary.md) — Muse 전용 용어 (Attunement·Observe·grounding floor… grep 없이)

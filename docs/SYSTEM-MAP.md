@@ -1,207 +1,384 @@
 ---
-title: Muse 기능 구조 지도 (System Map)
-audience: [기획자, 개발자, AI 에이전트]
-purpose: Muse의 모든 기능을 한 장으로 빠르게 파악하는 단일 진입 지도
+title: Muse system map
+audience: [product, developers, AI agents]
+purpose: One page that gives the whole shape of what Muse can do
 status_legend:
-  "✅": 코드베이스로 검증 완료
-  "⬜": 윤곽만 작성, 코드 검증 예정
-  "⚙️": 외부 연동/설정이 필요한 기능
-  "⚠️": 알려진 갭(아직 신뢰도 부족)
+  "✅": verified against the codebase
+  "⬜": outline only, code verification pending
+  "⚙️": needs external integration or configuration
+  "⚠️": known gap (not yet trustworthy)
 updated: 2026-07-13
 related: [strategy/attunement.md, design/attunement.md, FEATURES.md, README.md, feature-catalog/INDEX.md, strategy/differentiation.md]
 ---
 
-# Muse 기능 구조 한눈에 (System Map)
+# Muse at a glance (system map)
 
-> **이 문서는?** Muse가 가진 **모든 기능을 빠르게 파악**하기 위한 구조 지도입니다.
-> 코드나 파일 이야기는 하지 않고, **무슨 기능이 있고 그게 어떻게 동작하는지 말로만** 설명합니다.
-> 기획자도, 개발자도, AI 에이전트도 이 한 장으로 "Muse가 뭘 할 수 있는지"의 전체 윤곽을 잡는 것이 목표입니다.
+> **What is this?** A structural map for taking in **everything Muse can do**, quickly.
+> It does not talk about code or files — it describes **what the capabilities are and how they
+> behave**, in words. Product people, developers and AI agents should all be able to get the whole
+> outline of "what Muse can do" from this one page.
 >
-> - 더 자세한 기능별 설명: [`FEATURES.md`](FEATURES.md) · **검증된 전체 기능 인벤토리(증거 포함, 2026-06-14 전수 검증): [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md)** · 제품 정체성/전략: [`strategy/differentiation.md`](strategy/differentiation.md) · 문서 안내: [`README.md`](README.md)
+> - Deeper per-feature descriptions: [`FEATURES.md`](FEATURES.md) · **the verified full inventory
+>   with evidence (audited 2026-06-14): [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md)** ·
+>   product identity and strategy: [`strategy/differentiation.md`](strategy/differentiation.md) ·
+>   documentation index: [`README.md`](README.md)
 >
-> **읽기 규약(사람·AI 공통):** 각 영역은 `## 번호. 이름` 제목으로 시작하고, 그 안의 기능은 모두
-> `- **기능 이름** — 무엇을 하나(어떻게/언제)` 한 줄 형식으로 적습니다. 아래 커버리지 표가
-> 전체 영역의 색인이자 진행 지표입니다. 이 지도는 실제 코드베이스를 확인해 작성하며, 기능이 바뀌면 갱신됩니다.
+> **Reading convention (for humans and agents alike):** each area starts with a `## number. name`
+> heading, and every capability inside it is one line of the form
+> `- **capability** — what it does (how/when)`. The coverage table below is both the index of areas
+> and the progress indicator. This map is written against the actual codebase and updated when
+> behaviour changes.
 
-## 한 줄 정체성
+## The one-line identity
 
-**Muse는 한 사람의 삶과 일을 계속 이해하고 돕는 개인 AI agent입니다.** 일정·메모·관계·환경·업무
-맥락을 이어서 필요할 때 돕는 지속적인 동반자를 목표로 합니다. 기술적으로는 특정 모델 회사에
-묶이지 않고 여러 모델·개인 데이터·도구를 한 실행 흐름에서 다루는 conductor입니다.
+**Muse is a personal AI agent that keeps understanding, and helping with, one person's life and
+work.** The goal is a continuing companion that carries schedule, notes, relationships, environment
+and work context forward and helps when help fits. Technically it is a conductor that handles many
+models, personal data and tools in one execution flow, without being tied to a single model vendor.
 
-첫 개발 흐름은 **사용자가 이어갈 삶의 주제 선택 → 필요한 맥락 준비 → 사용 여부 기록 → 다음 도움
-개선**입니다. 주제는 업무뿐 아니라 일정·관계·건강·여행·취미일 수 있습니다. 이후 사용자가
-허용하면 활동 전환을 관찰해 도움의 타이밍과 반복되는 불편까지
-배웁니다. 현재 memory·pattern·proactivity·browser·trace는 토대다. Observe O1은 사용자가 고른 정확한
-thread에 앱 카테고리 전환만 로컬 수집하고 pause/inspect/forget할 수 있다. Personal Continuity Slice A는
-사용자가 고른 life/work thread와 정확한 local task/note를 `muse continue`로 다시 이어 주고,
-명시적 outcome으로 다음 pack의 표시만 바꾼다. Observe O1 수집을 rhythm/friction으로 해석하거나 pack
-delivery에 사용하는 단계, 자동 연결, 타이밍 개선은 아직 **roadmap**입니다
-([제품 방향](strategy/attunement.md) · [기술 설계](design/attunement.md)).
+The first development flow is **the user picks a life thread to continue → the needed context is
+prepared → whether it was used is recorded → the next help improves**. A thread can be work, but
+equally a schedule, a relationship, health, travel or a hobby. Later, with the user's permission,
+Muse observes activity transitions and learns the timing of help and the friction that keeps
+recurring. Memory, pattern, proactivity, browser and trace are the substrate today. Observe O1
+collects only app-category transitions, locally, for one exact thread the user picked, and can be
+paused, inspected and forgotten. Personal Continuity Slice A hands back the life/work thread the
+user picked together with the exact local task/note through `muse continue`, and an explicit outcome
+changes only what the next pack shows. Interpreting Observe O1 collection as rhythm or friction,
+using it for pack delivery, automatic linking, and timing improvements are all still **roadmap**
+([product direction](strategy/attunement.md) · [technical design](design/attunement.md)).
 
-대표 roadmap 경험은 **Shadow Muse → Continuity Capsule → Policy Card**다. Muse가 먼저
-침묵 속에서 배우고, 사용자가 이어가려던 상태와 그 뒤의 변경점을 복원하며, 다음 협업 규칙을
-근거·범위·되돌리기와 함께 보여준다. 이를 위한 proposed **Muse Attunement Graph (MAG)**는 기존
-store를 복제하는 무거운 서버가 아니라, 시간·관계·출처를 재생성 가능한 projection으로 연결하고
-매 turn에 필요한 작은 Working Graph만 만드는 agent-native personal context compiler다
-([그래프 설계](design/attunement-graph.md) · [별도 실행 로드맵](goals/attunement-wow-graph-roadmap.md)).
+The signature roadmap experience is **Shadow Muse → Continuity Capsule → Policy Card**: Muse first
+learns in silence, then restores the state the user meant to continue along with what changed since,
+then shows the next collaboration rule with its evidence, scope and rollback. The proposed **Muse
+Attunement Graph (MAG)** behind it is not a heavy server duplicating existing stores; it is an
+agent-native personal context compiler that links time, relationships and provenance as a
+regenerable projection and builds only the small Working Graph each turn needs
+([graph design](design/attunement-graph.md) ·
+[separate execution roadmap](goals/attunement-wow-graph-roadmap.md)).
 
-## 큰 그림 — Muse는 어떤 층으로 이루어져 있나
+## The big picture — what layers Muse is made of
 
-아래 12개 영역이 Muse의 전체 기능 구조입니다. 위쪽은 "어떻게 생각하고 말하나(엔진)", 가운데는 "무엇을 알고 기억하나(나의 데이터·지식)", 아래쪽은 "어떻게 세상과 닿나(행동·표면)", 그리고 이 모두를 가로지르는 "안전·신뢰"입니다.
+The twelve areas below are Muse's whole capability structure. The top is "how it thinks and speaks"
+(the engine), the middle is "what it knows and remembers" (your data and knowledge), the bottom is
+"how it touches the world" (action and surfaces), and cutting across all of them is safety and
+trust.
 
-| # | 영역 | 한 줄 설명 | 검증 상태 |
+| # | Area | One line | Verified |
 |---|---|---|---|
-| 1 | **대화 & 에이전트 실행** | 부르면 그 자리에서 끝까지 처리하는 중심 엔진 | ✅ |
-| 2 | **모델 & 배포 선택** | 로컬·클라우드 모델을 고르고, 필요하면 기기 안으로 강제 | ✅ |
-| 3 | **도구 시스템** | 필요한 도구를 스스로 골라 쓰는 능력 | ✅ |
-| 4 | **개인 비서 데이터** | 일정·할일·알림·연락처·메모 관리 | ✅ |
-| 5 | **기억 (장·단기)** | 나를 기억하고, 과거 대화를 회상 | ✅ |
-| 6 | **지식 & 검색 (RAG)** | 흩어진 내 모든 것을 한데 모아 출처와 함께 답함 | ✅ |
-| 7 | **인지 (Perception)** | 화면·문서·웹·집 상태를 스스로 봄 | ✅ |
-| 8 | **능동성 (Proactive)** | 묻기 전에 먼저 말 거는 자비스다움 | ✅ |
-| 9 | **자기개선** | 교정에서 배워 스스로 더 나아짐 | ✅ |
-| 10 | **밖으로 행동 + 안전** | 남에게 보내는 행동은 항상 사람이 확인 후에만 | ✅ |
-| 11 | **음성 & 멀티에이전트** | 말로 대화, 여러 에이전트 협업 | ✅ |
-| 12 | **신뢰·관측·표면** | 안전장치, 운영 관측, 쓰는 곳(CLI·웹·API) | ✅ |
+| 1 | **Conversation & agent execution** | The central engine that takes a request through to the end | ✅ |
+| 2 | **Model & deployment choice** | Pick local or cloud models, and force on-device when needed | ✅ |
+| 3 | **Tool system** | The ability to choose and use the right tool itself | ✅ |
+| 4 | **Personal assistant data** | Calendar, tasks, reminders, contacts, notes | ✅ |
+| 5 | **Memory (long and short term)** | Remembers you, recalls past conversations | ✅ |
+| 6 | **Knowledge & retrieval (RAG)** | Gathers everything of yours and answers with sources | ✅ |
+| 7 | **Perception** | Sees your screen, documents, the web, your home state | ✅ |
+| 8 | **Proactivity** | Speaking first, before you ask | ✅ |
+| 9 | **Self-improvement** | Learns from corrections and gets better on its own | ✅ |
+| 10 | **Outbound action + safety** | Anything sent to another person waits for your confirmation | ✅ |
+| 11 | **Voice & multi-agent** | Talking out loud, several agents collaborating | ✅ |
+| 12 | **Trust, observability, surfaces** | Guards, operational observability, where you use it | ✅ |
 
-> ✅ = 코드 확인 완료 후 정리됨 · ⬜ = 윤곽은 아래에 적었고, 이후 코드 검증으로 정밀화 예정.
-> 이 표가 "모든 기능" 커버리지의 진행 지표입니다.
-
----
-
-## 1. 대화 & 에이전트 실행 — 중심 엔진
-
-모든 기능이 모여드는 통로입니다. 서버·CLI·웹앱 어디서 부르든 **같은 엔진**이 돕습니다.
-
-- **자연어 대화** — 질문하면 답하고, 필요하면 스스로 도구를 골라 써서(시간 조회·메모 검색·일정 추가 등) 결과를 종합합니다.
-- **실시간 스트리밍** — 답이 한 글자씩 흘러나오고, 도구를 쓰는 순간 "지금 ○○ 사용 중"이 표시됩니다.
-- **도구 사용 루프** — 한 번의 대화 안에서 도구를 연달아 쓸 수 있되, **횟수 상한과 시간 제한**이 걸려 무한 반복하지 않습니다.
-- **계획-실행 모드** — 복잡한 요청은 단계별 계획을 세우고 → 실행하고 → 합쳐 답합니다. 잘 안 풀리면 그냥 직접 답하는 식으로 안전하게 빠집니다.
-- **연속 대화·맥락 유지** — 이전 맥락을 이어가며, 과거 세션 요약과 나에 대한 정보를 자동으로 끌어와 답에 반영합니다.
-- **되묻기(Clarify)** — "그거 해줘"처럼 대상이 모호하면 추측해 실행하지 않고 **무엇을 말하는지 되묻습니다.**
-
-## 2. 모델 & 배포 선택 — 갈아끼울 수 있는 두뇌, 강한 로컬 경계는 명시적으로
-
-- **벤더 중립** — OpenAI·Anthropic·Google·OpenRouter·Ollama·LM Studio 등 어떤 모델이든 연결해 쓰는 "지휘자" 구조입니다. 특정 회사 AI에 묶이지 않습니다.
-- **능력 기반 라우팅** — 각 모델이 "스트리밍 되나, 도구 호출 되나, 비전 되나, 문맥은 얼마나 크나"를 선언하고, 그에 맞춰 안전하게 작업을 배분합니다.
-- **폴백 정책** — 도구 호출이 안 되는 모델이면 텍스트 규약으로 대체, 문맥이 작으면 더 줄여서 넣기 등 **정해진 규칙대로** 대응합니다. 숨은 재시도 마법은 없습니다.
-- **로컬-온리 모드(명시적 opt-in)** — `MUSE_LOCAL_ONLY=true`에서는 **어떤 것도 클라우드 AI·음성 서비스로 나가지 못합니다.** 클라우드 모델이 선택되면 조용히 끄는 게 아니라 **시끄럽게 거부**하고, 음성도 로컬 엔진만 등록됩니다. 원격 호스트도 외부로 간주합니다.
-- **로컬 경로 우선 지원** — Ollama를 포함한 로컬 모델로 API key 없이 시작할 수 있고, provider-neutral adapter를 통해 cloud model도 선택할 수 있습니다. 개인 file-backed store는 기본적으로 로컬입니다.
-
-## 3. 도구 시스템 — 스스로 도구를 고르는 능력
-
-Muse는 답만 내놓는 게 아니라, 필요할 때 **도구를 직접 골라 써서** 일을 끝냅니다. 도구는 두 종류 — Muse가 가진 내장 도구와, 외부에서 연결해 오는 도구(MCP)입니다.
-
-- **내장 계산 도구** — 외부 연결 없이 즉시 도는 순수 도구들: 시간 계산(현재·차이·더하기·다음 요일), 텍스트 통계, 수식 계산, JSON 값 꺼내기, URL 분석, 정규식 추출, CSV·표 변환, 해시·base64, 단위·진법·에폭 변환, 음력·한국식 나이/숫자 변환 등. 답을 만들다 필요한 잔손질을 외부 의존 없이 처리합니다.
-- **내장 연동 도구** — 내 데이터·세상과 닿는 도구들: 날씨, 빈 시간 찾기, 할일 관리, 메모·지식 검색, 연락처, 집 상태, 웹 행동 등.
-- **도구마다 정해진 설명서** — 각 도구는 이름·하는 일 설명·입력 형식·위험 등급(읽기/쓰기/실행)·관련 키워드·도메인(메시징/일정/할일/메모/시스템 등)을 갖추고 있어, 모델이 무엇을 언제 쓸지 헷갈리지 않게 합니다.
-- **질문에 맞는 도구만 골라 보여주기** — 매 질문마다 키워드·도메인이 맞는 도구만 추려 노출하고, 한 번에 보여주는 도구 수에 상한을 둡니다(로컬 소형 모델이 헤매지 않도록). 위험이 낮은 읽기 도구를 먼저, 관련성 높은 순으로 정렬하며, 어디서나 필요한 핵심 도구는 항상 노출합니다. 서로 의존하는 도구는 실행 순서를 맞춰 줍니다.
-- **첫 시도에 맞히기** — 위 설계의 목표는 단 하나, 로컬 모델이 **한 번에 올바른 도구를 고르고 인자를 채우는 것**입니다(추론 라운드를 늘리지 않음).
-- **위험 등급 + 신뢰 게이트** — 모든 도구는 읽기/쓰기/실행으로 분류됩니다. 도구를 부르기 직전 신뢰 게이트가 검사해: 읽기는 통과, **실행 도구는 신뢰 목록에 있어야** 하고, 차단 목록의 도구는 항상 거부됩니다. 거부되면 그 사실이 실행 기록에 남습니다(상태를 바꾸는 외부 행동은 추가로 10번 안전장치를 거침).
-- **도구 사용 한도** — 한 번의 대화에서 도구 호출 횟수·전체 소요 시간·도구 출력 길이에 상한이 걸려 무한 반복하지 않습니다.
-- **외부 도구 연결(MCP)** — 외부 도구 서버를 등록해 기능을 확장하되 **허용 목록**으로 어떤 서버를 쓸지 통제합니다. 등록 시점과 연결 시점 모두에서 허용 여부를 다시 확인합니다. 예: 내가 로그인해 둔 **진짜 크롬**을 직접 모는 도구(기본은 꺼짐 — 실제 브라우저를 다루므로 명시적으로 켜야 함).
-
-## 4. 개인 비서 데이터 — 일정·할일·알림·연락처·메모
-
-내 개인 생활 데이터를 직접 관리합니다. 모든 데이터는 **내 기기/계정**에 저장됩니다.
-
-- **일정** — 여러 캘린더(구글·CalDAV·맥 기본·로컬 파일)를 함께 연동, 자연어로 조회·추가·수정·삭제, 빈 시간 찾기, 표준 파일(.ics)로 내보내기.
-- **할일** — 자연어 마감일 이해, 열림/완료 상태, 긴급 표시, 마감 임박 조회, 태그로 걸러보기, 메모 첨부.
-- **알림** — 지정 시각 알림, 반복 알림, 스누즈. 아침 브리핑에도 함께 뜸.
-- **연락처** — 이름·이메일·핸들·전화(입력한 그대로 보존)·별칭·생일 관리. 주소록 파일(vCard) 일괄 가져오기·내보내기, 다가오는 생일 미리 알림, **수신자가 모호하면 추측 않고 후보를 보여주며 되묻기.**
-- **메모** — 파일 기반 개인 메모를 저장·검색(뜻이 비슷하면 찾아줌)하고, 로컬 파일이나 공개 웹페이지를 들여와 검색 가능한 노트로 편입(웹은 안전 필터를 거침).
-- **후속 약속** — 대화 중 "나중에 ○○ 해드릴게요" 같은 약속을 스스로 기억해 두었다가 때가 되면 챙기고, 내가 흘린 "이거 해야 하는데" 같은 미결 일감도 추려 보여줍니다.
-
-## 5. 기억 (장·단기) — 나를 기억한다
-
-- **자동 사실 학습** — 대화에서 드러난 내 사실·선호·금기·목표를 **자동으로 추출해 저장**하고 이후 답에 반영합니다(기본 켜짐). 직접 "기억해둬"로 넣거나 잘못된 걸 지울 수도 있습니다.
-- **나에 대한 구조화 모델** — 흩어진 사실과 별개로, 선호·일정·하지 말 것·목표를 **신뢰도와 갱신 시각이 붙은 항목**으로 쌓아 "진안은 이런 사람"으로 답에 싣습니다. 대화 중 교정에서 안정적인 선호를 스스로 추론해 채우기도 합니다.
-- **신뢰도 감쇠 & 재확인** — 추론한 선호는 시간이 지나면 신뢰도가 **반감기로 바래** 점점 빠지고(내가 직접 단언한 것·금기는 안 바램), 바랜 것은 모아 보여줘 다시 확정하거나 버리게 합니다 — 옛 추측을 영영 우기지 않습니다.
-- **과거 세션 회상** — 지난 대화를 요약해 두고, 비슷한 주제가 나오면 **표현이 달라도** 관련 기억을 찾아옵니다. (찾을 게 없거나 엔진이 꺼져 있으면 단어 겹침 기준으로라도 동작해 끊기지 않음.)
-- **반복 테마 회고** — 여러 세션에 걸쳐 반복 등장한 주제를 모아 "요즘 계속 나오는 게 뭔지" 보여줍니다.
-- **근거 있는 교차세션 통찰(회고)** — 여러 세션을 가로질러 "요즘 이런 흐름이네" 같은 통찰을 합성하되, **근거가 된 과거 세션을 함께 인용**합니다. 근거가 약하면 단정 대신 "잘 모르겠다"로 내려가고, 없는 출처를 지어내면 코드가 그 통찰을 버립니다(위 "작업을 보여준다" 게이트가 회고에도 적용). 사용자 명령으로 직접 볼 수 있고, 데몬이 한가할 때 스스로 이 회고를 돌리기도 합니다. 각 통찰 아래에는 **따라가 볼 수 있는 출처**(어느 노트·어느 과거 세션)를 함께 보여줘 한눈에 검증됩니다. 이렇게 쌓인 통찰은 이후 일반 질문 답변에도 맥락으로 실려, 회고가 "나를 더 잘 아는 답"으로 돌아옵니다.
-- **중복 기억 정리** — 거의 똑같은 과거 요약을 찾아 풍부한 쪽만 남기고 정리해, 기억창고가 비슷한 내용으로 붐벼 회상이 흐려지는 걸 막습니다.
-- **자주 떠올린 기억 승격(드리밍)** — 자주, 그리고 최근에 떠올린 기억일수록 점수가 높게 매겨져, 그중 가장 쓸모 있는 것을 **늘 곁에 두는 정보**로 올립니다. 오래 안 떠올린 것은 자연히 밀려납니다.
-
-## 6. 지식 & 검색 (RAG) — 흩어진 내 모든 것을 한데 모아, 출처와 함께
-
-Muse의 승부처입니다. **내가 한 번이라도 Muse에 흘려보낸 모든 것**을 대상으로 답합니다.
-
-- **통합 지식 검색** — 메모·할일·일정·연락처·이메일·알림·후속약속·뉴스피드·목표·과거 세션·기억된 사실을 **하나의 지식창고로 묶어** 의미 기반으로 검색합니다.
-- **출처 인용** — 답에는 "이건 어디서 나온 내용"이라는 **출처 표시**가 붙어, 지어낸 게 아니라 내 데이터에 근거한 답임을 알 수 있습니다. 답 끝에는 **따라가 열어볼 수 있는 출처 목록**이 붙어, 영수증처럼 그 자리에서 확인합니다.
-- **확신 없으면 인용 안 함** — 관련성이 기준에 못 미치면 억지로 출처를 만들지 않고, "잘 모르겠다"로 빠집니다 — 환각 방지.
-- **긴 문서도 통째로** — 긴 노트나 들여온 문서는 적당한 조각으로 나눠, 뒤쪽 내용도 검색·인용되게 합니다. 똑같은 내용이 중복되면 한 번만 보여줍니다.
-- **정확한 단어도, 비슷한 뜻도** — 의미가 비슷한 것뿐 아니라 이름·오류코드·번호처럼 **정확히 일치해야 찾히는 단어**도 함께 잡도록 두 가지 검색을 합칩니다. 비슷한 조각이 자리를 다 차지하지 않게 다양하게 골라 보여줍니다.
-- **빠른 찾기** — "어디서 언급했더라?"를 즉시 — 할일·알림·연락처·일정을 가로질러 단어로 찾아 묶어 보여줍니다(의미검색이 아닌, 즉시·정확한 로컬 조회).
-- **웹 검색·뉴스 피드** — 외부 검색엔진으로 웹을 찾아 답하고, 관심 RSS 피드의 최신 글을 가져와 브리핑·검색·지식창고에 포함합니다.
-- **대량 인입(ingest)** — 다른 곳에 쌓인 큰 뭉치(내보낸 ChatGPT·Claude 대화 기록, 메일 상자 등)를 통째로 들여와 검색 가능한 지식으로 편입합니다 — "예전에 다른 AI와 나눈 얘기"나 메일까지 내 지식창고에서 출처와 함께 꺼내 쓸 수 있게.
-- **결정론적 데이터 분석 (모델 없이, 지어낼 수 없음)** — 표(CSV) 집계, 추세 판정(상승/하강, Mann-Kendall), 다양성 지수(Shannon·Simpson), Benford 이상탐지, 핵심어 추출(RAKE), 문서 추출요약(Luhn), 그리고 "오늘 같은 날 과거 메모"·"유독 특이했던 날" 찾기. 모두 모델을 거치지 않아 정확·재현 가능하며 환각이 구조적으로 불가능합니다.
-
-## 7. 인지 (Perception) — 세상을 "보는" 능력
-
-묻지 않아도 주변 상태를 감지합니다(대부분 사생활 보호를 위해 명시적으로 켜야 함).
-
-- **화면/주변 맥락** — 지금 보는 앱·창 제목·선택한 텍스트·클립보드를 맥락으로 씁니다.
-- **이미지 이해** — 이미지를 보고 설명합니다(로컬 비전).
-- **문서 읽기** — PDF·텍스트·마크다운·로그·CSV를 읽고 근거로 답하거나 메모로 저장합니다.
-- **감시(웹·집·파일)** — 특정 웹페이지/스마트홈 기기/로컬 파일을 지켜보다 "○○ 글자가 나타나면/사라지면/임의로 바뀌면/숫자가 기준 아래로 떨어지면(또는 위로 오르면)" 같은 **조건이 충족될 때만** 알려줍니다. 잡음 많은 페이지는 정규식으로 **관심 영역만 좁혀** 보고, 숫자 임계값은 기준을 **넘는 순간 한 번만** 알립니다(계속 울리지 않음).
-- **날씨** — 현재 날씨와 곧 올 비를 알려줍니다(별도 키 불필요).
-- **실제 브라우저 보기** — 내가 로그인해 둔 진짜 크롬 화면을 직접 보고 근거로 답합니다(읽기 기본, 클릭·입력 등 변경은 승인 필요).
-
-## 8. 능동성 (Proactive) — 먼저 말 거는 자비스
-
-지시 없이 스스로 움직이는, 가장 자비스다운 영역입니다.
-
-- **능동 알림** — 임박한 할일·일정·알림을 지정한 메신저로 **먼저** 보냅니다(같은 내용 중복 발송 안 함).
-- **조용한 시간(방해금지)** — 정한 시간대(예: 밤)에는 능동 알림을 참아 깨우지 않습니다. 단, 내가 직접 잡아둔 알림은 그대로 발사됩니다.
-- **백그라운드로 스스로 돎** — 일정 간격으로 깨어나 "지금 할 일이 있나" 점검하는 데몬이 위 알림을 굴립니다. 한 번에 처리하는 양에 상한을 두고, 실패한 건 정해진 횟수만큼 재시도하며, 안 되면 단계적으로 알립니다.
-- **패턴 감지 → 선제 제안** — 반복되는 사용 패턴(요일·시간대)을 찾아 "월요일마다 보고서 만드시던데, 초안 잡아둘까요?"처럼 **먼저 제안**합니다. 없는 패턴을 지어내지 않고, 별로인 제안은 한 번 끄면 다시 안 합니다(학습된 회피).
-- **미결 약속 체크인** — 내가 하기로 한 일을 다음 날 "요전에 '…' 하신다고 했는데 어떻게 됐어요?"라고 먼저 물어봅니다.
-- **상시 목표** — "○○ 조건이 되면 △△ 해줘" 같은 지속 목표를 등록하면 조건 충족 시 자동 행동합니다 — 단, 밖으로 나가는 행동은 **사전에 기록된 범위 동의**가 있어야만 하며, 없으면 막힙니다.
-- **채팅 내 먼저 말 걸기** — 대화창이 한가할 때 임박 항목·끝난 백그라운드 작업·발화 가능한 제안을 Muse가 먼저 띄웁니다.
-- **행동 기록 & 되돌리기** — Muse가 스스로 한(또는 거부한) 모든 행동을 이유와 함께 기록하고, 되돌릴 수 있으며, 되돌리면 "다음엔 이러지 마"로 학습합니다. 기록은 **해시 체인**으로 묶여 조용한 삭제·재정렬·수정을 탐지합니다(tamper-evident, `muse actions --verify`).
-- **외부 신호 입구** — 자격증명 없는 진입점으로 능동 알림을 깨웁니다: 폴더 감시(새 파일이 생기면 알림), 웹훅(외부 HTTP 트리거), 활동 루틴 집계.
-- **검증된 만큼만 먼저 나선다(earned proactivity)** — 먼저 거는 제안·회상은 신뢰 점수와 **확신 기준**을 통과할 때만 띄웁니다. 어설픈 추측으로 끼어들지 않고, 확신이 설 때만 먼저 말합니다 — 능동성은 쌓아 올린 신뢰만큼만 허용됩니다.
-
-## 9. 자기개선 — 교정에서 배워 스스로 나아짐
-
-- **스킬 자작** — 대화 중 받은 절차형 교정에서 "스킬"을 세션 끝에 스스로 써두고, 다음에 비슷한 요청에 활용합니다. 자동 작성 스킬은 실행 권한이 없고(사람이 승격해야 실행 가능), 본문이 위험 패턴 검사를 거쳐 걸리면 격리되어 — 오염된 교정이 굳는 걸 막습니다.
-- **스킬 정돈(큐레이트·통합)** — 오래 안 쓴 스킬은 삭제가 아니라 보관함으로 옮기고, 비슷한 스킬이 쌓이면 유사한 것끼리 묶어 하나의 "우산 스킬"로 합칩니다(안 묶이면 그대로 둠). 적용 전 미리보기할 수 있고, 한가할 때 백그라운드로도 정돈합니다. 보관된 것은 다시 복원할 수 있습니다.
-- **학습 전략 정돈** — 교정에서 배운 작업 전략(플레이북)이 비슷하게 쌓이면 중복을 하나의 일반 전략으로 합칩니다. 서로 다른 전략은 합치지 않습니다.
-- **잘 먹힌 전략·스킬은 강화, 틀린 건 옅게(강화학습 풍)** — 실제로 통한(승인된) 전략엔 보상을 줘 더 자주 쓰이게 하고, 교정당한 전략은 점수를 낮춰 점점 물러나게 합니다. 그래서 답을 도울 때 **점수 높은 것부터** 끌어와 쓰고, 보상은 한도 안에서 쌓입니다 — 이 보상 가중은 학습 전략(플레이북)뿐 아니라 **자작 스킬에도 똑같이** 적용돼, 시간이 지날수록 나에게 통하는 것만 남습니다.
-- **선호 자동 추론** — 세션이 끝날 때 그 세션의 교정에서 안정적인 선호를 스스로 추론해 나에 대한 모델에 반영합니다(없는 선호를 지어내지 않음).
-
-## 10. 밖으로 행동 (Reach) + 안전장치 — 잘못 나간 메시지는 못 되돌린다
-
-남(제3자)에게 보내거나 외부 시스템 상태를 바꾸는 기능입니다. **모두 "초안 먼저 → 사람 확인 → 실행"** 구조이며, 확인이 실패/거부/시간초과되면 **실행되지 않습니다.**
-
-- **할 수 있는 것** — 이메일 보내기, 메신저(텔레그램·Slack·Discord·LINE 등) 보내기, 폼 제출·예약·신청 같은 웹 행동, 스마트홈 기기 제어.
-- **초안 먼저, 자동 전송 절대 금지** — Muse가 정확한 내용을 만들고, 사람이 **그 내용 그대로** 확인해야 나갑니다. 채팅 중 위험한 행동을 시도하면 "이걸 하려 했는데 실행 안 했다, 승인이 필요하다"는 알림을 보내고 멈춥니다.
-- **승인 게이트는 막힘 우선(fail-closed)** — 거부·시간초과·승인 전달 실패·게이트 자체 오류 그 어떤 경우에도 **전송되지 않습니다.** 확인 단계가 실패했다고 발송이 진행되는 일은 없습니다.
-- **수신자는 확정만, 추측 금지** — 대상이 모호하면 후보를 보여주고 되묻습니다.
-- **모든 행동 기록 + 되돌리기** — 보냈든 거부했든 모든 외부 행동이 "무엇을·왜·결과"와 함께 기록되고, 되돌릴 수 있으며, 되돌리면 같은 행동을 다시 안 하도록 학습합니다.
-- **결제 동사 제외** — 웹 행동에서도 구매·주문·결제(buy/order/checkout)는 의도적으로 빠져 있습니다.
-- **은행·결제·송금은 영구히 기능 범위 밖** — 계좌를 연결하지도, 돈을 옮기지도 않습니다(되돌릴 수 없는 위험이라 제품의 영구 경계).
-
-## 11. 음성 & 멀티에이전트
-
-- **음성 대화** — 눌러서 말하면 음성을 글로 바꿔 전달하고 답을 음성으로 읽어줍니다. 음성 인식(STT)·합성(TTS)은 로컬 엔진 또는 클라우드 중 선택하며, 로컬-온리에선 **로컬 엔진만 등록**됩니다(마이크 소리가 외부로 새지 않음). 호출어로 깨우는 모드도 있습니다.
-- **여러 에이전트 협업** — 전문 에이전트들을 **순차·병렬**로 돌리고, 각 협업의 방식·소요시간·성공/실패 수를 이력으로 남깁니다. (경쟁(race) 모드는 현재 의도적으로 보류되어 sequential로 폴백 — 자세한 동작은 [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md).)
-- **모델 티어링** — 한 작업 안에서 간단한 조회는 빠른 모델에, 깊은 추론은 강한 모델에 자동 배분합니다.
-- **에이전트 명세** — 역할·도구·지시문을 가진 에이전트를 등록하고, 요청에 맞는 것을 골라 씁니다.
-- **Muse끼리 노하우 나눔(스웜)** — 여러 Muse 인스턴스가 또래로 연결돼 **배운 노하우(예: 스킬)만** 주고받습니다. 전송은 허용된 또래에게만·서명되고·시크릿이 가려진 채로 오가고, **받은 노하우는 사람이 승격하기 전까지 비활성으로 격리**됩니다(받자마자 작동하지 않음). 노트·기억·연락처 같은 개인 데이터는 오가지 않습니다 — "노하우는 나누되 데이터는 안 나눈다". 기본은 꺼져 있고(명시적으로 켜야 함), 노하우를 **보내는 것도 초안을 먼저 확인한 뒤에만** 나가며, 또래의 노하우를 받는 수신 창구를 띄우고 받은 것을 검토·승격하는 사용자 명령들이 있습니다.
-- **여러 Muse 합의 추론(council)** — 한 질문을 또래 Muse들에게 던져 각자 **근거를 대며 추론**하게 하고, 그 답들을 내 쪽에서 하나로 모읍니다. 여러 라운드로 **서로의 추론을 본 뒤 자기 견해를 다듬는 토론**도 거칠 수 있습니다. 합칠 때도 **또래가 실제로 답한 내용만 인용**하고 근거 없는 건 버립니다(위 "작업을 보여준다" 게이트가 합의에도 적용). 오가는 건 추론 발언일 뿐 개인 데이터가 아니며(스웜과 같은 안전 규칙), 사용자 명령으로 쓸 수 있습니다.
-
-## 12. 신뢰·관측·사용 표면
-
-- **입력/출력 방어** — 숨은 명령 주입(프롬프트 인젝션)·개인정보 패턴을 모델에 닿기 전에 막고, 시스템 프롬프트 유출·개인정보 노출·근거 없는 출처 위조 등을 답에서 걸러냅니다.
-- **결정론적 안전** — 권한·예산·중단 조건은 "모델 판단"이 아니라 **고정된 규칙 코드**로 동작합니다(가드는 막힘 우선, 훅은 열림 우선).
-- **신뢰 보정** — 사용자별로 특정 도구를 허용/차단하는 신뢰 목록을 둡니다.
-- **관측·운영** — 토큰 비용을 모델·프로바이더·세션별로, 그리고 일별로 추정 비용(USD)까지 집계하고 예산 초과를 경고합니다. 응답 지연·품질(SLO) 감시, 실행 단계별 기록(트레이스), 도구 성공률, 실패 재현, 구성 건강검진(doctor), 백업/복원, 상태 대시보드·아침 브리핑.
-- **사용 표면** — 터미널(CLI, 100개 이상 명령), 웹앱(채팅·할일·알림·캘린더·메모·기억·메시징·도구·활동·자율·오늘·대시보드·설정 등 13개 패널 — 음성은 CLI 전용), API 서버(HTTP·실시간 스트림, 다른 에이전트와 연동되는 표준 카드 제공). 위험할 수 있는 로컬 명령은 별도의 격리 샌드박스(시간·출력 제한)에서만 실행합니다. 네이티브 macOS 데스크톱 동반자(플로팅)도 있습니다.
-- **안내형 첫 실행(onboard)** — 처음 쓰는 사람을 한 단계씩(노트 폴더 가리키기 → 대량 인입 → 첫 질문) 이끌어, 설치 직후부터 **비공개·출처 인용 첫 답변**까지 데려다줍니다.
+> ✅ = written up after checking the code · ⬜ = outlined below, to be sharpened by code
+> verification. This table is the coverage indicator for "all capabilities".
 
 ---
 
-*이 지도는 Muse가 가진 기능의 전체 윤곽이며, 제품이 진화하면 계속 갱신됩니다. 더 깊은 기능별 설명은 [`FEATURES.md`](FEATURES.md)를 보세요.*
+## 1. Conversation & agent execution — the central engine
+
+The channel every capability flows into. Whether you call it from the server, the CLI or the web
+app, **the same engine** does the work.
+
+- **Natural-language conversation** — answers questions and, when needed, chooses tools itself
+  (checking the time, searching notes, adding a calendar entry) and synthesises the result.
+- **Live streaming** — the answer arrives character by character, and the moment a tool runs you see
+  "now using X".
+- **Tool-use loop** — tools can run one after another within a single turn, but under **a call
+  ceiling and a time limit**, so it cannot loop forever.
+- **Plan-and-execute mode** — a complex request gets a step-by-step plan → execution → a combined
+  answer. If that goes badly it falls back safely to answering directly.
+- **Continuous conversation and context** — carries the previous context forward and automatically
+  pulls in past-session summaries and what it knows about you.
+- **Clarify** — when the target is ambiguous ("do that thing"), it does **not** guess and execute;
+  it asks what you mean.
+
+## 2. Model & deployment choice — a swappable brain, with an explicit hard local boundary
+
+- **Vendor-neutral** — a conductor structure that connects to any model: OpenAI, Anthropic, Google,
+  OpenRouter, Ollama, LM Studio and more. You are not tied to one company's AI.
+- **Capability-based routing** — each model declares "can it stream, can it call tools, can it see
+  images, how large is its context", and work is distributed safely to match.
+- **Fallback policy** — a model without tool calling gets the text protocol instead; a small context
+  gets stronger trimming. **Fixed rules, no hidden retry magic.**
+- **Local-only mode (explicit opt-in)** — under `MUSE_LOCAL_ONLY=true`, **nothing can reach a cloud
+  AI or voice service.** Selecting a cloud model is **refused loudly** rather than silently
+  disabled, and only local voice engines are registered. A remote host counts as external.
+- **First-class local path** — you can start with a local model including Ollama and no API key, and
+  a cloud model is selectable through the provider-neutral adapter. Personal file-backed stores are
+  local by default.
+
+## 3. Tool system — choosing its own tools
+
+Muse does not just produce answers; when needed it **picks a tool itself** and finishes the job.
+Tools come in two kinds — Muse's built-ins, and tools connected from outside (MCP).
+
+- **Built-in computation tools** — pure tools that run instantly with no external connection: time
+  arithmetic (now, difference, addition, next weekday), text statistics, expression evaluation, JSON
+  value extraction, URL analysis, regex extraction, CSV/table conversion, hashing and base64, unit,
+  radix and epoch conversion, lunar-calendar and Korean age/number conversion, and more. The small
+  adjustments an answer needs get handled without external dependencies.
+- **Built-in integration tools** — the ones that touch your data and the world: weather, finding
+  free time, task management, note and knowledge search, contacts, home state, web actions.
+- **A specification per tool** — every tool carries a name, a description of what it does, an input
+  schema, a risk class (read/write/execute), related keywords and a domain (messaging, calendar,
+  tasks, notes, system …), so the model is not confused about what to use when.
+- **Only the tools that fit the question** — each question exposes only the tools whose keywords and
+  domain match, with a ceiling on how many are shown at once (so a small local model does not get
+  lost). Low-risk read tools come first, ordered by relevance, and core tools needed everywhere are
+  always exposed. Interdependent tools get their execution order arranged.
+- **Getting it right on the first try** — the single goal of the design above is that the local
+  model **picks the right tool and fills its arguments in one shot** (rather than adding reasoning
+  rounds).
+- **Risk class + trust gate** — every tool is classified read/write/execute. Immediately before a
+  call the trust gate checks: reads pass, **execute tools must be on the trust list**, and blocked
+  tools are always refused. A refusal is recorded in the action log. (State-changing external
+  actions additionally pass through the safeguards in section 10.)
+- **Tool-use limits** — a single turn has ceilings on tool-call count, total elapsed time and tool
+  output length, so it cannot loop forever.
+- **External tools (MCP)** — external tool servers extend the capability set, controlled by an
+  **allowlist** of which servers may be used. Eligibility is re-checked both at registration and at
+  connection time. Example: a tool that drives **the real Chrome you are logged into** (off by
+  default — it drives an actual browser, so it must be turned on explicitly).
+
+## 4. Personal assistant data — calendar, tasks, reminders, contacts, notes
+
+Muse manages your personal life data directly. All of it is stored **on your machine, under your
+account**.
+
+- **Calendar** — several calendars at once (Google, CalDAV, macOS, local file), natural-language
+  query, add, edit and delete, finding free time, export to the standard `.ics` format.
+- **Tasks** — natural-language due dates, open/done state, urgency marks, due-soon queries, tag
+  filters, attached notes.
+- **Reminders** — reminders at a set time, recurring reminders, snooze. They also appear in the
+  morning brief.
+- **Contacts** — names, emails, handles, phone numbers (preserved exactly as entered), aliases and
+  birthdays. Bulk vCard import and export, upcoming-birthday warnings, and **when the recipient is
+  ambiguous it shows the candidates and asks rather than guessing.**
+- **Notes** — file-backed personal notes, saved and searched (by meaning, not just exact words), and
+  local files or public web pages can be imported into searchable notes (the web goes through a
+  safety filter).
+- **Follow-ups** — promises made mid-conversation ("I'll do X for you later") are remembered and
+  picked up when the time comes, and half-stated intentions ("I should really do this") are
+  collected and surfaced.
+
+## 5. Memory (long and short term) — it remembers you
+
+- **Automatic fact learning** — facts, preferences, vetoes and goals that surface in conversation
+  are **extracted and stored automatically** and reflected in later answers (on by default). You can
+  also add one directly with "remember this", or delete a wrong one.
+- **A structured model of you** — separately from scattered facts, preferences, schedules, things
+  not to do and goals accumulate as **entries with a confidence and an update time**, so answers
+  carry "this is the kind of person Jinan is". It also infers stable preferences from mid-conversation
+  corrections.
+- **Confidence decay and reconfirmation** — an inferred preference **fades on a half-life** and drops
+  out over time (things you asserted yourself, and vetoes, do not fade); faded ones are collected and
+  shown so you can reconfirm or discard them — old guesses are never insisted on forever.
+- **Past-session recall** — past conversations are summarised, and when a similar topic comes up the
+  related memory is found **even when the wording differs**. (If there is nothing to find, or the
+  engine is off, it still works on word overlap so the thread does not break.)
+- **Recurring-theme review** — topics that recur across sessions are collected to show "what keeps
+  coming up lately".
+- **Grounded cross-session insight (reflection)** — insights like "this is the pattern lately" are
+  synthesised across sessions, **with the past sessions they rest on cited**. Weak evidence degrades
+  the claim into "I'm not sure", and if a source is invented the code discards that insight (the
+  same "show your work" gate applies to reflection). You can view them on demand, and the daemon
+  runs the reflection itself when idle. Each insight comes with **followable sources** (which note,
+  which past session) so it can be checked at a glance. The accumulated insights then ride along as
+  context in ordinary answers, so reflection comes back as "an answer that knows you better".
+- **Duplicate-memory cleanup** — near-identical past summaries are found and only the richer one is
+  kept, so the memory store does not crowd with near-copies and blur recall.
+- **Promoting often-recalled memory (dreaming)** — memories recalled often and recently score higher,
+  and the most useful of them are promoted to **information kept always at hand**. What has not been
+  recalled in a long time naturally falls back.
+
+## 6. Knowledge & retrieval (RAG) — everything of yours, in one place, with sources
+
+Muse's decisive area. It answers over **everything you have ever put into Muse**.
+
+- **Unified knowledge search** — notes, tasks, calendar, contacts, email, reminders, follow-ups,
+  news feeds, goals, past sessions and remembered facts are **bound into one knowledge store** and
+  searched by meaning.
+- **Source citation** — answers carry **a source marker** saying where the content came from, so you
+  can tell it was grounded in your data rather than invented. At the end of an answer there is **a
+  followable, openable source list** — a receipt you can check on the spot.
+- **No citation without confidence** — when relevance falls below the bar it does not manufacture a
+  source; it degrades to "I'm not sure". This is the hallucination guard.
+- **Long documents in full** — long notes and imported documents are split into reasonable chunks so
+  later content is searchable and citable too. Identical content is shown once.
+- **Exact words as well as similar meaning** — two searches are combined so that names, error codes
+  and numbers that require **an exact match** are caught alongside semantic matches. Similar chunks
+  are diversified so they do not take every slot.
+- **Quick find** — "where did I mention that?" answered instantly, searching across tasks,
+  reminders, contacts and calendar by word and grouping the hits (an immediate exact local lookup,
+  not semantic search).
+- **Web search and news feeds** — searches the web through an external engine, and pulls the latest
+  posts from RSS feeds you follow into briefs, search and the knowledge store.
+- **Bulk ingest** — large piles accumulated elsewhere (exported ChatGPT or Claude conversations, a
+  mailbox) can be imported wholesale into searchable knowledge — so "what I discussed with another
+  AI a while back", or an email, can be pulled from your own knowledge store with a source.
+- **Deterministic data analysis (no model, cannot be invented)** — CSV aggregation, trend detection
+  (rising/falling, Mann-Kendall), diversity indices (Shannon, Simpson), Benford anomaly detection,
+  keyword extraction (RAKE), extractive summarisation (Luhn), plus "notes from this day in past
+  years" and "unusually distinctive days". None of it passes through a model, so it is exact,
+  reproducible, and structurally incapable of hallucination.
+
+## 7. Perception — the ability to "see" the world
+
+Muse senses surrounding state without being asked (most of it must be turned on explicitly, for
+privacy).
+
+- **Screen and ambient context** — the app you are in, the window title, selected text and the
+  clipboard are used as context.
+- **Image understanding** — looks at an image and describes it (local vision).
+- **Document reading** — reads PDF, text, Markdown, logs and CSV, and answers from them or saves
+  them as notes.
+- **Watching (web, home, files)** — watches a web page, a smart-home device or a local file and
+  notifies you **only when a condition is met**: "when the text X appears / disappears / changes at
+  all / when a number drops below (or rises above) a threshold". Noisy pages can be narrowed **to a
+  region of interest** with a regex, and numeric thresholds fire **once on crossing** rather than
+  repeatedly.
+- **Weather** — current weather and imminent rain (no separate key needed).
+- **Looking at the real browser** — looks directly at the real Chrome you are logged into and
+  answers from it (read by default; clicks, typing and other changes need approval).
+
+## 8. Proactivity — speaking first
+
+The area that moves without instruction.
+
+- **Proactive notifications** — imminent tasks, calendar entries and reminders are sent to your
+  chosen messenger **first** (the same content is never sent twice).
+- **Quiet hours** — during the hours you set (at night, say) proactive notifications are held back
+  so you are not woken. Reminders you set yourself still fire.
+- **Running itself in the background** — a daemon wakes at an interval and checks "is there anything
+  to do now", driving the notifications above. There is a ceiling on how much is handled per pass,
+  failures retry a fixed number of times, and persistent failures escalate.
+- **Pattern detection → proactive suggestion** — recurring usage patterns (weekday, time of day) are
+  found and turned into a suggestion: "you build that report every Monday — shall I draft it?" It
+  does not invent patterns that are not there, and a suggestion you dismiss once is not repeated
+  (learned avoidance).
+- **Open-commitment check-ins** — something you said you would do gets a follow-up the next day:
+  "you mentioned you'd do X — how did that go?"
+- **Standing objectives** — register a persistent objective ("when X happens, do Y") and it acts
+  when the condition is met — except that anything going outward requires **recorded, scoped consent
+  in advance**, and is blocked without it.
+- **Speaking first inside chat** — when the chat window is idle, Muse surfaces imminent items,
+  finished background work and speakable suggestions on its own.
+- **Action log and undo** — every action Muse took (or refused) is recorded with its reason, can be
+  undone, and undoing teaches it "don't do that next time". The log is bound in a **hash chain** so
+  silent deletion, reordering or modification is detectable (tamper-evident,
+  `muse actions --verify`).
+- **Entry points for external signals** — credential-free entry points wake proactive notifications:
+  folder watching (notify when a new file appears), webhooks (external HTTP triggers), activity
+  routine aggregation.
+- **Earned proactivity** — proactive suggestions and recollections surface only when they pass a
+  trust score and **a confidence bar**. Muse does not interject on a half-formed guess; it speaks
+  first only when it is sure — proactivity is allowed only in proportion to accumulated trust.
+
+## 9. Self-improvement — learning from corrections
+
+- **Skill authoring** — from procedural corrections received mid-conversation, Muse writes a "skill"
+  for itself at the end of the session and uses it on similar requests later. Auto-written skills
+  have no execution authority (a human must promote them), and their body passes a dangerous-pattern
+  check that quarantines anything that trips it — so a poisoned correction cannot harden into
+  behaviour.
+- **Skill curation and consolidation** — long-unused skills are archived rather than deleted, and
+  when similar skills accumulate the similar ones are merged into a single "umbrella skill" (and
+  left alone when they do not merge). You can preview before applying, and curation also runs in the
+  background when idle. Archived skills can be restored.
+- **Learned-strategy curation** — when work strategies (playbooks) learned from corrections
+  accumulate similarly, duplicates are merged into one general strategy. Genuinely different
+  strategies are not merged.
+- **Reinforce what worked, fade what was wrong (RL-flavoured)** — strategies that actually worked
+  (were approved) are rewarded so they get used more, while corrected strategies are scored down and
+  recede. So when helping with an answer, **the highest-scoring ones are pulled first**, and rewards
+  accumulate within a cap — and this reward weighting applies **to authored skills as well** as to
+  learned strategies, so over time only what works for you survives.
+- **Automatic preference inference** — at the end of a session, stable preferences are inferred from
+  that session's corrections and folded into the model of you (without inventing preferences that
+  were not there).
+
+## 10. Outbound action (reach) + safety — a wrongly sent message cannot be recalled
+
+Capabilities that send something to a third party or change external system state. **All of them are
+"draft first → human confirms → execute"**, and if confirmation fails, is denied or times out,
+**nothing runs.**
+
+- **What it can do** — send email, send messages (Telegram, Slack, Discord, LINE …), web actions
+  such as form submission, booking and applications, and smart-home device control.
+- **Draft first, never an automatic send** — Muse produces the exact content, and it leaves only
+  after a human confirms **that exact content**. If a risky action is attempted mid-chat, it sends a
+  notice saying "I was about to do this, I did not run it, approval is needed" and stops.
+- **The approval gate is fail-closed** — denial, timeout, a failure to deliver the approval request,
+  or an error in the gate itself all mean **nothing is sent**. A send never proceeds because the
+  confirmation step failed.
+- **Recipients are resolved, never guessed** — when the target is ambiguous it shows candidates and
+  asks.
+- **Every action logged and reversible** — sent or refused, every external action is recorded with
+  "what, why, and the outcome", can be undone, and undoing teaches it not to repeat that action.
+- **Payment verbs excluded** — buy, order and checkout are deliberately absent from web actions.
+- **Banking, payments and transfers are permanently out of scope** — Muse does not connect accounts
+  and does not move money (an irreversible risk, so a permanent product boundary).
+
+## 11. Voice & multi-agent
+
+- **Voice conversation** — push to talk, and speech is transcribed and the answer read back.
+  Speech-to-text and text-to-speech can be local or cloud, and under local-only **only local engines
+  are registered** (so mic audio cannot leak). There is also a wake-word mode.
+- **Multi-agent collaboration** — specialist agents run **sequentially or in parallel**, and each
+  collaboration's mode, duration and success/failure counts are kept in a history. (Race mode is
+  currently parked deliberately and falls back to sequential — details in
+  [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md).)
+- **Model tiering** — within one task, simple lookups go to a fast model and deep reasoning to a
+  strong one, automatically.
+- **Agent specs** — agents with a role, tools and instructions can be registered, and the right one
+  selected per request.
+- **Know-how sharing between Muse instances (swarm)** — several Muse instances peer with each other
+  and exchange **only learned know-how such as skills**. Transfers go only to allowed peers, are
+  signed, and leave with secrets redacted, and **received know-how is quarantined inactive until a
+  human promotes it** (it does not start working on arrival). Personal data such as notes, memory
+  and contacts is never exchanged — "share the know-how, not the data". It is off by default (must
+  be turned on explicitly), sending know-how also **leaves only after the draft is confirmed**, and
+  there are commands to open the intake for peer know-how and to review and promote what arrives.
+- **Multi-Muse consensus reasoning (council)** — one question is put to peer Muse instances, each
+  **reasons with evidence**, and the answers are merged on your side. It can run several rounds of
+  **debate where each refines its view after seeing the others' reasoning**. When merging, **only
+  what peers actually answered is cited** and unsupported material is dropped (the same "show your
+  work" gate applies to consensus). What moves between peers is reasoning, not personal data (the
+  same safety rules as swarm), and it is available as a user command.
+
+## 12. Trust, observability and surfaces
+
+- **Input/output defence** — hidden instruction injection (prompt injection) and PII patterns are
+  blocked before reaching the model, and system-prompt leakage, personal-data exposure and
+  unsupported forged sources are filtered out of answers.
+- **Deterministic safety** — permissions, budgets and stop conditions run as **fixed rule code**,
+  not model judgement (guards fail closed, hooks fail open).
+- **Trust calibration** — a per-user trust list allows or blocks specific tools.
+- **Observability and operations** — token cost is aggregated by model, provider and session, and
+  daily with an estimated USD cost, with budget-overrun warnings. Plus latency and quality (SLO)
+  monitoring, per-step execution records (traces), tool success rates, failure reproduction,
+  configuration health checks (doctor), backup and restore, a status dashboard and the morning
+  brief.
+- **Surfaces** — the terminal (CLI, 100+ commands), the web app (13 panels: chat, tasks, reminders,
+  calendar, notes, memory, messaging, tools, activity, autonomy, today, dashboard, settings — voice
+  is CLI-only), and the API server (HTTP and live streams, with the standard cards other agents
+  integrate against). Potentially dangerous local commands run only in a separate isolated sandbox
+  (with time and output limits). There is also a native macOS desktop companion (floating).
+- **Guided first run (onboard)** — walks a first-time user through it step by step (point at a notes
+  folder → bulk ingest → first question), getting them from installation to **a private, cited first
+  answer**.
+
+---
+
+*This map is the whole outline of what Muse can do, and it keeps being updated as the product
+evolves. For deeper per-feature descriptions see [`FEATURES.md`](FEATURES.md).*

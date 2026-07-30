@@ -407,10 +407,11 @@ resident runtime and delivery safety. Test counts are not proof of agent effect.
 
 | | |
 | --- | --- |
-| **Start here** | [System map](docs/SYSTEM-MAP.md) · [Verified feature catalog](docs/feature-catalog/INDEX.md) · [Local model setup](docs/setup-local-llm.md) · [Environment variables](docs/ENV.md) |
+| **Start here** | [System map](docs/SYSTEM-MAP.md) · [Local model setup](docs/setup-local-llm.md) · [Environment variables](docs/ENV.md) |
 | **The product** | [Attunement contract](docs/strategy/attunement.md) · [Architecture and gaps](docs/design/attunement.md) · [Implementation plan](docs/goals/attunement-implementation-plan.md) |
 | **The graph** | [Attunement Graph](docs/design/attunement-graph.md) · [Agent-native core blueprint](docs/design/agent-native-graph-core.md) · [Roadmap](docs/goals/attunement-wow-graph-roadmap.md) |
 | **Trust** | [Grounding gate](docs/grounding-gate.md) · [Privacy and data](docs/privacy-and-data.md) · [Evidence index](docs/benchmarks/EVIDENCE.md) · [Security](SECURITY.md) |
+| **Audits** | [Full feature audit](docs/feature-catalog/INDEX.md) — a dated 2026-06-14 snapshot, written in Korean · [Personal-agent qualification](docs/development/personal-agent-qualification.md) |
 
 ## Contributing
 
