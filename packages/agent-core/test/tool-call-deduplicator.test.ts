@@ -87,6 +87,46 @@ describe("ToolCallDeduplicator", () => {
     expect(d.check(c)).toMatchObject({ duplicate: true });
   });
 
+  it("blocks replay of a mutating effect that executed but could not be verified", () => {
+    const d = new ToolCallDeduplicator();
+    const c = call({ arguments: { title: "new task" }, name: "tasks_add" });
+    d.record(c, {
+      effectVerification: { reason: "read-back unavailable", status: "unverified" },
+      error: "TOOL_EFFECT_UNVERIFIED",
+      id: "t-1",
+      name: "tasks_add",
+      output: "Error: tool effect unverified",
+      status: "failed"
+    }, true);
+
+    expect(d.check(c)).toMatchObject({
+      duplicate: true,
+      result: {
+        status: "blocked"
+      }
+    });
+    const decision = d.check(c);
+    if (decision.duplicate) {
+      expect(decision.result.output).toContain("\"effectStatus\":\"unknown\"");
+      expect(decision.result.output).toContain("read-back unavailable");
+    }
+  });
+
+  it("allows a read with an unverified post-condition to retry", () => {
+    const d = new ToolCallDeduplicator();
+    const c = call({ arguments: { q: "fresh" }, name: "search" });
+    d.record(c, {
+      effectVerification: { reason: "source changed during read", status: "unverified" },
+      error: "TOOL_EFFECT_UNVERIFIED",
+      id: "t-1",
+      name: "search",
+      output: "Error: tool effect unverified",
+      status: "failed"
+    }, false);
+
+    expect(d.check(c)).toMatchObject({ duplicate: false });
+  });
+
   it("evicts the oldest entry once it exceeds maxEntries (oldest-first, FIFO)", () => {
     const d = new ToolCallDeduplicator(2);
     const a = call({ arguments: { n: 1 }, id: "a" });

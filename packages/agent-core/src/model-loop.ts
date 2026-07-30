@@ -28,7 +28,7 @@ import type {
 
 import { maskStaleToolObservations, type ContextReferenceStore } from "@muse/memory";
 import { unwrapToolData } from "@muse/policy";
-import { collectUrlsFromValue } from "@muse/tools";
+import { collectUrlsFromValue, type ToolExecutionResult } from "@muse/tools";
 import type { AgentMetrics, MuseTracer, TokenUsageSink } from "@muse/observability";
 import { renderToolResults } from "@muse/prompts";
 import type { CheckpointStore } from "@muse/runtime-state";
@@ -159,7 +159,13 @@ export interface ModelLoopRunner {
 export type ModelLoopStreamEvent =
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "text-delta" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call" }>)
-  | { readonly runId: string; readonly toolCall: ModelToolCall; readonly type: "tool-result"; readonly grounding?: { readonly source: string; readonly text: string } }
+  | {
+      readonly runId: string;
+      readonly toolCall: ModelToolCall;
+      readonly type: "tool-result";
+      readonly grounding?: { readonly source: string; readonly text: string };
+      readonly effectVerification?: ToolExecutionResult["effectVerification"];
+    }
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call-started" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call-finished" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "citations" }>)
@@ -520,7 +526,13 @@ async function* runToolBatch(
       const isDuplicate = plan.memoResult !== undefined || plan.intraSegmentDuplicate;
 
       const grounding = groundingSourceFromExecuted(executed);
-      yield { runId: context.runId, toolCall, type: "tool-result", ...(grounding ? { grounding } : {}) };
+      yield {
+        runId: context.runId,
+        toolCall,
+        type: "tool-result",
+        ...(grounding ? { grounding } : {}),
+        ...(executed.result.effectVerification ? { effectVerification: executed.result.effectVerification } : {})
+      };
       const mutating = plan.toolRisk === "write" || plan.toolRisk === "execute";
       deduplicator.record(toolCall, executed.result, mutating);
       // Feed only GENUINE executions (not blocked / exact-dups) to the stall

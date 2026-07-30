@@ -174,6 +174,38 @@ describe("executeStreamingModelLoop", () => {
     expect((toolResult as { grounding?: unknown }).grounding).toBeUndefined();
   });
 
+  it("exposes an unverified post-condition receipt without treating it as grounding", async () => {
+    const run = {
+      maxToolCalls: 5,
+      tracer: { startSpan: () => noopSpan },
+      metrics: { recordTokenUsage() {} },
+      executeToolCall: async (_ctx: AgentRunContext, toolCall: ModelToolCall): Promise<ExecutedToolResult> => ({
+        result: {
+          effectVerification: { reason: "read-back timed out", status: "unverified" },
+          error: "TOOL_EFFECT_UNVERIFIED",
+          id: toolCall.id,
+          name: toolCall.name,
+          output: "Error: tool effect unverified",
+          status: "failed"
+        },
+        toolCall
+      })
+    } as unknown as ModelLoopRunner;
+    const prov = provider([
+      [done("calling", [{ id: "t1", name: "task_create", arguments: {} }])],
+      [{ type: "text-delta", text: "final" }, done("")]
+    ]);
+
+    const { events } = await drive(prov, run, context(), true);
+    const toolResult = events.find((event) => event.type === "tool-result");
+
+    expect(toolResult).toMatchObject({
+      effectVerification: { reason: "read-back timed out", status: "unverified" },
+      type: "tool-result"
+    });
+    expect((toolResult as { grounding?: unknown }).grounding).toBeUndefined();
+  });
+
   it("cuts the REST of a batch with the wall-clock reason when the deadline crosses MID-batch (injected clock)", async () => {
     // The streaming loop has the same mid-batch wall-clock guard as the
     // non-streaming one but no deadline test at all. Inject a clock: two calls in

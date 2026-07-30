@@ -65,9 +65,24 @@ export interface MuseToolContext {
 
 export type ToolExecutionValue = string | JsonValue;
 
+export interface ToolEffectVerification {
+  readonly status: "verified" | "unverified";
+  readonly reason?: string;
+}
+
 export interface MuseTool {
   readonly definition: MuseToolDefinition;
   execute(args: JsonObject, context: MuseToolContext): Promise<ToolExecutionValue> | ToolExecutionValue;
+  /**
+   * Optional provider-neutral post-condition check. Tools that declare one
+   * must verify the effect after execution before the result can be treated as
+   * completed. Tools without one retain the legacy execution contract.
+   */
+  verifyEffect?(
+    args: JsonObject,
+    result: ToolExecutionValue,
+    context: MuseToolContext
+  ): Promise<ToolEffectVerification> | ToolEffectVerification;
 }
 
 
@@ -87,6 +102,7 @@ export interface ToolExecutionResult {
   readonly output: string;
   readonly sanitized?: SanitizedToolOutput;
   readonly error?: string;
+  readonly effectVerification?: ToolEffectVerification;
 }
 
 export interface ToolIdempotencyStore {

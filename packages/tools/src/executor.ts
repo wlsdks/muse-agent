@@ -84,9 +84,58 @@ export class ToolExecutor {
   ): Promise<ToolExecutionResult> {
     try {
       const raw = await runWithRetryBudget(request.retryBudget, () => tool.execute(request.arguments, request.context));
+      let effectVerification: ToolExecutionResult["effectVerification"];
+      if (tool.verifyEffect) {
+        try {
+          effectVerification = await tool.verifyEffect(request.arguments, raw, request.context);
+        } catch (error) {
+          if (isCancellationLikeError(error)) {
+            // Execution already returned, so the effect may have landed even
+            // though its read-back was cancelled. Keep cancellation terminal,
+            // but bind an unknown-effect receipt to the idempotency key before
+            // rethrowing so a resumed caller cannot execute it twice.
+            if (idempotencyKey) {
+              this.idempotencyStore?.set(idempotencyKey, {
+                effectVerification: {
+                  reason: "post-condition verification cancelled after tool execution; reconcile the exact effect before retry",
+                  status: "unverified"
+                },
+                error: "TOOL_EFFECT_UNVERIFIED: post-condition verification cancelled after tool execution",
+                id: request.id,
+                name: request.name,
+                output: "Error: tool effect unverified — verification cancelled after execution",
+                status: "failed"
+              });
+            }
+            throw error;
+          }
+          effectVerification = {
+            reason: errorMessage(error, "post-condition verifier failed"),
+            status: "unverified"
+          };
+        }
+        if (effectVerification.status !== "verified") {
+          const reason = effectVerification.reason ?? "tool post-condition could not be verified";
+          const result = {
+            effectVerification,
+            error: `TOOL_EFFECT_UNVERIFIED: ${reason}`,
+            id: request.id,
+            name: request.name,
+            output: `Error: tool effect unverified — ${reason}`,
+            status: "failed"
+          } satisfies ToolExecutionResult;
+          // An idempotent effect may already have happened. Preserve the
+          // unverified receipt so the same key cannot execute it twice.
+          if (idempotencyKey) {
+            this.idempotencyStore?.set(idempotencyKey, result);
+          }
+          return result;
+        }
+      }
       const output = stringifyToolOutput(raw);
       const sanitized = this.sanitizer.sanitize(request.name, output);
       const result = {
+        ...(effectVerification ? { effectVerification } : {}),
         id: request.id,
         name: request.name,
         output: sanitized.content,

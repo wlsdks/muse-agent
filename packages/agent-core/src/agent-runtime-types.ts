@@ -38,6 +38,7 @@ import type { GuardBlockRateMonitor } from "@muse/policy";
 import type {
   EgressDecisionKind,
   ToolExecutor,
+  ToolExecutionResult,
   ToolExposurePolicy,
   ToolRegistry
 } from "@muse/tools";
@@ -373,7 +374,13 @@ export type EgressAdvisorySink = (advisory: EgressAdvisory) => void | Promise<vo
 export type AgentRuntimeStreamEvent =
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "text-delta" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call" }>)
-  | { readonly runId: string; readonly toolCall: ModelToolCall; readonly type: "tool-result"; readonly grounding?: { readonly source: string; readonly text: string } }
+  | {
+      readonly runId: string;
+      readonly toolCall: ModelToolCall;
+      readonly type: "tool-result";
+      readonly grounding?: { readonly source: string; readonly text: string };
+      readonly effectVerification?: ToolExecutionResult["effectVerification"];
+    }
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call-started" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call-finished" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "citations" }>)

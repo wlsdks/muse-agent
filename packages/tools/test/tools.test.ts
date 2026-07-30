@@ -173,6 +173,103 @@ describe("ToolExecutor", () => {
     expect(result.sanitized?.findings.some((finding) => finding.name === "role_override")).toBe(true);
   });
 
+  it("runs an opted-in post-condition verifier after execution and exposes its receipt", async () => {
+    const observations: unknown[] = [];
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record and verify it.",
+        inputSchema: { type: "object" },
+        name: "verified_create",
+        risk: "write"
+      },
+      execute: () => ({ createdId: "record-1" }),
+      verifyEffect: (args, result, context) => {
+        observations.push({ args, context, result });
+        return { reason: "record-1 observed", status: "verified" };
+      }
+    };
+    const executor = new ToolExecutor({ registry: new ToolRegistry([tool]) });
+
+    const result = await executor.execute({
+      arguments: { title: "hello" },
+      context: { runId: "run-verify" },
+      id: "call-verify",
+      name: "verified_create"
+    });
+
+    expect(result).toMatchObject({
+      effectVerification: { reason: "record-1 observed", status: "verified" },
+      status: "completed"
+    });
+    expect(observations).toEqual([{
+      args: { title: "hello" },
+      context: { runId: "run-verify" },
+      result: { createdId: "record-1" }
+    }]);
+  });
+
+  it("fails closed when an opted-in post-condition is unverified", async () => {
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record whose state cannot be observed.",
+        inputSchema: { type: "object" },
+        name: "unverified_create",
+        risk: "write"
+      },
+      execute: () => "claimed success",
+      verifyEffect: () => ({ reason: "record absent from follow-up read", status: "unverified" })
+    };
+    const executor = new ToolExecutor({ registry: new ToolRegistry([tool]) });
+
+    const result = await executor.execute({
+      arguments: {},
+      context: { runId: "run-unverified" },
+      id: "call-unverified",
+      name: "unverified_create"
+    });
+
+    expect(result).toMatchObject({
+      effectVerification: { reason: "record absent from follow-up read", status: "unverified" },
+      error: expect.stringContaining("TOOL_EFFECT_UNVERIFIED"),
+      status: "failed"
+    });
+    expect(result.output).not.toContain("claimed success");
+  });
+
+  it("fails closed when a verifier throws, while legacy tools remain unchanged", async () => {
+    const throwing: MuseTool = {
+      definition: {
+        description: "Create a record.",
+        inputSchema: { type: "object" },
+        name: "throwing_verify",
+        risk: "write"
+      },
+      execute: () => "created",
+      verifyEffect: () => { throw new Error("observer offline"); }
+    };
+    const executor = new ToolExecutor({ registry: new ToolRegistry([throwing, readTool]) });
+
+    const unverified = await executor.execute({
+      arguments: {},
+      context: { runId: "run-throwing" },
+      id: "call-throwing",
+      name: "throwing_verify"
+    });
+    const legacy = await executor.execute({
+      arguments: {},
+      context: { runId: "run-legacy" },
+      id: "call-legacy",
+      name: "read_note"
+    });
+
+    expect(unverified).toMatchObject({
+      effectVerification: { reason: "observer offline", status: "unverified" },
+      status: "failed"
+    });
+    expect(legacy).toMatchObject({ output: expect.stringContaining("Safe note"), status: "completed" });
+    expect(legacy.effectVerification).toBeUndefined();
+  });
+
   it("a not-found tool name suggests the nearest REGISTERED tool so a hallucinated name self-corrects", async () => {
     // The local 12B reaches for an intuitive name like `node_run` instead of the
     // registered `run_command`; a bare "tool not found" leaves it stuck. The
@@ -247,6 +344,75 @@ describe("ToolExecutor", () => {
     expect(first.output).toContain("created:1");
     expect(second.output).toBe(first.output);
     expect(second.status).toBe("completed");
+    expect(executions).toBe(1);
+  });
+
+  it("does not re-execute an idempotent effect whose post-condition is unverified", async () => {
+    let executions = 0;
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record.",
+        inputSchema: { type: "object" },
+        name: "create_unverified_record",
+        risk: "write"
+      },
+      execute: () => `created:${++executions}`,
+      verifyEffect: () => ({ reason: "read-back timed out", status: "unverified" })
+    };
+    const executor = new ToolExecutor({
+      idempotencyStore: new Map(),
+      registry: new ToolRegistry([tool])
+    });
+
+    const first = await executor.execute({
+      arguments: { idempotencyKey: "unverified-key" },
+      context: { runId: "run-1" },
+      id: "call-1",
+      name: "create_unverified_record"
+    });
+    const second = await executor.execute({
+      arguments: { idempotencyKey: "unverified-key" },
+      context: { runId: "run-1" },
+      id: "call-2",
+      name: "create_unverified_record"
+    });
+
+    expect(first.status).toBe("failed");
+    expect(second).toMatchObject({ id: "call-2", status: "failed" });
+    expect(executions).toBe(1);
+  });
+
+  it("preserves cancellation after execution while preventing an idempotent effect replay", async () => {
+    let executions = 0;
+    const tool: MuseTool = {
+      definition: {
+        description: "Create a record.",
+        inputSchema: { type: "object" },
+        name: "cancelled_verify_create",
+        risk: "write"
+      },
+      execute: () => `created:${++executions}`,
+      verifyEffect: () => { throw new DOMException("verification aborted", "AbortError"); }
+    };
+    const executor = new ToolExecutor({
+      idempotencyStore: new Map(),
+      registry: new ToolRegistry([tool])
+    });
+    const request = {
+      arguments: { idempotencyKey: "cancelled-key" },
+      context: { runId: "run-cancelled" },
+      id: "call-1",
+      name: "cancelled_verify_create"
+    } as const;
+
+    await expect(executor.execute(request)).rejects.toMatchObject({ name: "AbortError" });
+    const replay = await executor.execute({ ...request, id: "call-2" });
+
+    expect(replay).toMatchObject({
+      effectVerification: { status: "unverified" },
+      id: "call-2",
+      status: "failed"
+    });
     expect(executions).toBe(1);
   });
 

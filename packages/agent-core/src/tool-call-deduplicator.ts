@@ -79,6 +79,18 @@ export class ToolCallDeduplicator {
 
   record(toolCall: ModelToolCall, result: ToolExecutionResult, mutating = false): void {
     if (result.status !== "completed") {
+      if (mutating && result.effectVerification?.status === "unverified") {
+        this.#store(toolCall, {
+          ...result,
+          output: JSON.stringify({
+            effectSignature: this.buildSignature(toolCall),
+            effectStatus: "unknown",
+            reason: result.effectVerification.reason
+              ?? "mutating tool completed but its exact effect could not be verified; reconcile before retry"
+          }),
+          status: "blocked"
+        }, true);
+      }
       return;
     }
     this.#store(toolCall, result, mutating);
