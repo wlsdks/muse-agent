@@ -24,7 +24,7 @@ function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): 
     && ownKeys.every((key) => typeof key === "string" && keys.includes(key));
 }
 
-function parseInput(args: JsonObject): Readonly<{
+export function parseLearningPreviewInput(args: JsonObject): Readonly<{
   readonly draft: ExperienceLearningProposalDraft;
   readonly opportunityId: string;
 }> {
@@ -66,7 +66,7 @@ function hasExactLearningChange(value: Record<string, unknown>): boolean {
     && hasExactKeys(value, ["adjustment", "kind"]);
 }
 
-function projectPreview(value: ExperienceLearningProposalPreview): JsonObject {
+export function projectLearningPreview(value: ExperienceLearningProposalPreview): JsonObject {
   return {
     activeBehaviorDigestAfter: value.activeBehaviorDigestAfter,
     activeBehaviorDigestBefore: value.activeBehaviorDigestBefore,
@@ -151,12 +151,12 @@ export function createContinuityLearningPreviewTool(
       risk: "read"
     },
     execute: async (args): Promise<JsonObject> => {
-      const input = parseInput(args);
+      const input = parseLearningPreviewInput(args);
       const preview = await deps.preview(input);
       if (!preview) {
         throw new Error("continuity learning preview held: stale opportunity or invalid draft");
       }
-      return projectPreview(preview);
+      return projectLearningPreview(preview);
     }
   };
 }

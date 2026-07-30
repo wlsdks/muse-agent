@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import {
   createLocalArtifactValidator,
+  createExperienceReplayEvidenceReceipt,
   createPersonalThread,
   linkArtifact,
   readAttunementState
@@ -13,6 +14,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createContinuityLearningPreviewTool
 } from "../src/continuity-learning-preview-tool.js";
+import {
+  createContinuityLearningReplayPreviewTool
+} from "../src/continuity-learning-replay-preview-tool.js";
 import { createMuseRuntimeAssembly } from "../src/index.js";
 
 let directory: string | undefined;
@@ -85,24 +89,25 @@ describe("continuity learning preview tool", () => {
     const proposedAt = new Date(Date.parse(recordedAt) + 1_000).toISOString();
     const expiresAt = new Date(Date.parse(proposedAt) + 24 * 60 * 60_000).toISOString();
     const before = await readFile(attunementFile);
+    const draft = {
+      expectedBenefit: "Restore context with less reading.",
+      expiresAt,
+      experienceId: "agent-learning-preview-1",
+      proposedAt,
+      proposedBehavior: "Use a compact Pack while preserving the exact next step.",
+      proposedChange: {
+        detail: "compact",
+        kind: "thread-display",
+        nextStep: "contextual"
+      },
+      scope: {
+        kind: "thread-display",
+        threadId: thread.id
+      }
+    };
 
     const result = await tool("muse.continuity.learning.preview").execute({
-      draft: {
-        expectedBenefit: "Restore context with less reading.",
-        expiresAt,
-        experienceId: "agent-learning-preview-1",
-        proposedAt,
-        proposedBehavior: "Use a compact Pack while preserving the exact next step.",
-        proposedChange: {
-          detail: "compact",
-          kind: "thread-display",
-          nextStep: "contextual"
-        },
-        scope: {
-          kind: "thread-display",
-          threadId: thread.id
-        }
-      },
+      draft,
       opportunityId
     }, { runId: "preview-learning" });
 
@@ -122,6 +127,55 @@ describe("continuity learning preview tool", () => {
         detail: "compact",
         kind: "thread-display",
         nextStep: "contextual"
+      }
+    });
+    expect(await readFile(attunementFile)).toEqual(before);
+
+    const evidenceObservedAt = new Date(Date.parse(proposedAt) + 1_000).toISOString();
+    const evidenceCases = Array.from({ length: 10 }, (_, index) => {
+      const caseId = `agent-replay-${index.toString()}`;
+      const common = {
+        caseId,
+        evaluator: { id: "continuity-terminal-grader", version: "1.0.0" },
+        inputHash: "f".repeat(64),
+        observedAt: evidenceObservedAt
+      };
+      return {
+        baseline: createExperienceReplayEvidenceReceipt({
+          ...common,
+          passed: index !== 0,
+          variant: "baseline"
+        }),
+        caseId,
+        challenger: createExperienceReplayEvidenceReceipt({
+          ...common,
+          passed: true,
+          variant: "challenger"
+        })
+      };
+    });
+    const replay = await tool("muse.continuity.learning.replay-preview").execute({
+      draft,
+      evidenceCases,
+      opportunityId
+    }, { runId: "preview-replay" });
+    expect(replay).toMatchObject({
+      preview: {
+        boundary: { activation: "none" },
+        previewId: (result as { readonly previewId: string }).previewId
+      },
+      replayBundle: {
+        replay: {
+          aggregate: {
+            improvements: 1,
+            regressions: 0,
+            total: 10
+          },
+          promotionApplied: false,
+          recommendation: "eligible-for-review",
+          replayStatus: "frozen"
+        },
+        status: "frozen"
       }
     });
     expect(await readFile(attunementFile)).toEqual(before);
@@ -184,5 +238,46 @@ describe("continuity learning preview tool", () => {
     const proxy = new Proxy({ draft: validDraft, opportunityId }, {});
     await expect(tool.execute(proxy, { runId: "proxy" })).rejects.toThrow();
     expect(preview).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds malformed, extra, proxy, and insufficient replay input without creating evidence", async () => {
+    const previewReplay = vi.fn(async () => undefined);
+    const tool = createContinuityLearningReplayPreviewTool({ previewReplay });
+    const draft = {
+      expectedBenefit: "Less interruption.",
+      expiresAt: "2026-07-31T12:00:00.000Z",
+      experienceId: "preview-replay-1",
+      proposedAt: "2026-07-30T12:00:00.000Z",
+      proposedBehavior: "Wait longer.",
+      proposedChange: {
+        adjustment: "increase-cooldown",
+        kind: "thread-timing"
+      },
+      scope: {
+        kind: "thread-timing",
+        threadId: "thread-1"
+      }
+    };
+    const opportunityId = `learning_opportunity_${"a".repeat(64)}`;
+
+    await expect(tool.execute({
+      draft,
+      evidenceCases: [],
+      opportunityId
+    }, { runId: "insufficient" })).rejects.toThrow(/held/u);
+    expect(previewReplay).toHaveBeenCalledTimes(1);
+
+    for (const input of [
+      { draft, evidenceCases: {}, opportunityId },
+      { draft, evidenceCases: [], extra: true, opportunityId },
+      { draft: { ...draft, extra: true }, evidenceCases: [], opportunityId }
+    ]) {
+      await expect(tool.execute(input as never, { runId: "invalid" })).rejects.toThrow();
+    }
+    await expect(tool.execute(
+      new Proxy({ draft, evidenceCases: [], opportunityId }, {}),
+      { runId: "proxy" }
+    )).rejects.toThrow();
+    expect(previewReplay).toHaveBeenCalledTimes(1);
   });
 });
