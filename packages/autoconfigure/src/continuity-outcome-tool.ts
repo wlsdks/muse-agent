@@ -37,7 +37,7 @@ interface ContinuityOutcomeInput {
   readonly ownerNote?: string;
 }
 
-function projectLearningOpportunity(
+export function projectLearningOpportunity(
   value: ExperienceLearningReviewOpportunity
 ): JsonObject {
   return {

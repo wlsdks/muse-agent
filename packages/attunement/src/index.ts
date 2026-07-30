@@ -120,10 +120,15 @@ export type {
   ExperienceLearningSourceHeldReason,
   ExperienceLearningSourceProjection
 } from "./experience-learning-source.js";
-export { buildExperienceLearningReviewOpportunity } from "./experience-learning-opportunity.js";
+export {
+  EXPERIENCE_LEARNING_REVIEW_QUEUE_LIMIT,
+  buildExperienceLearningReviewOpportunity,
+  buildExperienceLearningReviewQueue
+} from "./experience-learning-opportunity.js";
 export type {
   ExperienceLearningReviewOpportunity,
-  ExperienceLearningReviewOpportunityResult
+  ExperienceLearningReviewOpportunityResult,
+  ExperienceLearningReviewQueue
 } from "./experience-learning-opportunity.js";
 export { proposeExperienceLearningFromDelivery } from "./experience-learning-composer.js";
 export type {

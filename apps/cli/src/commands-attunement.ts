@@ -14,6 +14,7 @@ import {
   buildContinuityInteractionReport,
   buildExperienceLearningProposalPreview,
   buildExperienceLearningReplayBundle,
+  buildExperienceLearningReviewQueue,
   calendarProviderId,
   computeContinuityEvaluation,
   createCalendarArtifactValidator,
@@ -744,6 +745,27 @@ Examples:
         for (const item of report.interactions) {
           io.stdout(`${item.deliveryId}  interaction=${item.interaction.state}  outcome=${item.explicitOutcome ?? "unscored"}\n`);
         }
+      });
+    });
+
+  thread
+    .command("learning-opportunities")
+    .description("List read-only governed learning opportunities from explicit Continuity outcomes")
+    .option("--json", "Print the canonical bounded queue")
+    .action(async (options: { readonly json?: boolean }, command: Command) => {
+      await commandAction(command, io, "thread learning-opportunities", async () => {
+        const queue = buildExperienceLearningReviewQueue(
+          await readAttunementState(attunementFile())
+        );
+        if (options.json) {
+          io.stdout(`${JSON.stringify(queue, null, 2)}\n`);
+          return;
+        }
+        io.stdout(`Learning opportunities: ${queue.total.toString()}${queue.truncated ? ` (showing ${queue.limit.toString()})` : ""}\n`);
+        for (const item of queue.items) {
+          io.stdout(`${item.opportunityId}  ${item.outcome.outcome}  delivery=${item.deliveryId}  thread=${item.scope.threadId}\n`);
+        }
+        io.stdout("No policy change has occurred; each item still requires a bounded draft, frozen replay evidence, and explicit approval.\n");
       });
     });
 

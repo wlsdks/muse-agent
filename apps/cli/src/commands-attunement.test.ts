@@ -226,6 +226,14 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(outcome.stdout).toMatch(
       /Learning review required: learning_opportunity_[a-f0-9]{64} \(no policy change;/u
     );
+    const queueBytes = readFileSync(f.attunementFile);
+    const learningQueue = JSON.parse(
+      (await run(f, ["thread", "learning-opportunities", "--json"])).stdout
+    ) as { readonly items: readonly { readonly opportunityId: string }[]; readonly total: number };
+    expect(learningQueue.total).toBe(1);
+    expect(learningQueue.items[0]?.opportunityId)
+      .toMatch(/^learning_opportunity_[a-f0-9]{64}$/u);
+    expect(readFileSync(f.attunementFile)).toEqual(queueBytes);
     const next = await run(f, ["thread", "continue", id]);
     expect(next.stdout).toContain("Previous pack: ignored");
   });

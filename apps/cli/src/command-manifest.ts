@@ -1094,6 +1094,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "delete",
       "inspect",
       "interactions",
+      "learning-opportunities",
       "learning-review",
       "link",
       "list",

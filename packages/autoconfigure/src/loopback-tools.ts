@@ -14,7 +14,9 @@
  */
 
 import {
+  buildExperienceLearningReviewQueue,
   createLocalExactArtifactResolver,
+  readAttunementState,
   readPreparedContinuityPack,
   retryContinuityTaskCompletionInteractions
 } from "@muse/attunement";
@@ -47,6 +49,7 @@ import {
   type ContinuityPackPreviewToolDeps
 } from "./continuity-pack-tools.js";
 import { createContinuityOutcomeTool } from "./continuity-outcome-tool.js";
+import { createContinuityLearningOpportunityTool } from "./continuity-learning-opportunity-tool.js";
 import { createQualificationLearningWriteGate } from "./qualification-learning-active-skill-write-gate.js";
 import { resolveWeaknessesFile } from "./provider-paths.js";
 import type { MuseEnvironment } from "./index.js";
@@ -189,6 +192,11 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
         return [
           createContinuityPackPreviewTool(previewPackDeps),
           createContinuityPackOpenTool(openPackDeps),
+          createContinuityLearningOpportunityTool({
+            readQueue: async () => buildExperienceLearningReviewQueue(
+              await readAttunementState(deps.attunementFile!)
+            )
+          }),
           createContinuityOutcomeTool({
             recordOutcome: (deliveryId, outcome, ownerNote) =>
               recordProductionAuthorizedContinuityOutcome(

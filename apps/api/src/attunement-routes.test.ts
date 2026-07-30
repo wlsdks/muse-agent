@@ -604,6 +604,21 @@ describe("POST /api/attunement/deliveries/:deliveryId/learning-preview", () => {
     expect(replayedOutcome.json().learningOpportunity.opportunityId)
       .toBe(outcomeResponse.json().learningOpportunity.opportunityId);
     expect(await readFile(attunementFile)).toEqual(afterFirstOutcome);
+    const queueResponse = await app.inject({
+      method: "GET",
+      url: "/api/attunement/learning-opportunities"
+    });
+    expect(queueResponse.statusCode).toBe(200);
+    expect(queueResponse.json()).toMatchObject({
+      items: [{
+        opportunityId: outcomeResponse.json().learningOpportunity.opportunityId,
+        status: "review-required"
+      }],
+      status: "review-required",
+      total: 1,
+      truncated: false
+    });
+    expect(await readFile(attunementFile)).toEqual(afterFirstOutcome);
     const before = await readFile(attunementFile);
 
     const response = await app.inject({

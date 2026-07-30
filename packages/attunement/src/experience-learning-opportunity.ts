@@ -4,7 +4,9 @@ import {
   projectExperienceLearningSource,
   type ExperienceLearningSourceHeldReason
 } from "./experience-learning-source.js";
-import type { ContinuityDelivery } from "./types.js";
+import type { AttunementState, ContinuityDelivery } from "./types.js";
+
+export const EXPERIENCE_LEARNING_REVIEW_QUEUE_LIMIT = 20;
 
 export interface ExperienceLearningReviewOpportunity {
   readonly activation: "none";
@@ -50,6 +52,14 @@ export type ExperienceLearningReviewOpportunityResult =
       status: "held";
     }>;
 
+export interface ExperienceLearningReviewQueue {
+  readonly items: readonly ExperienceLearningReviewOpportunity[];
+  readonly limit: typeof EXPERIENCE_LEARNING_REVIEW_QUEUE_LIMIT;
+  readonly status: "empty" | "review-required";
+  readonly total: number;
+  readonly truncated: boolean;
+}
+
 /**
  * Turns one exact eligible outcome into a content-bound review handoff. This
  * deliberately does not infer a change, create replay evidence, write state,
@@ -92,4 +102,44 @@ export function buildExperienceLearningReviewOpportunity(
     opportunityId: `learning_opportunity_${sha256Hex(JSON.stringify(core))}`
   });
   return Object.freeze({ opportunity, status: "review-required" as const });
+}
+
+/**
+ * Rebuilds the owner review queue from existing durable facts. A policy audit
+ * is a conservative per-thread review boundary because the legacy audit shape
+ * does not retain the source outcome id. This may under-report an older signal,
+ * but it cannot requeue an outcome already covered by later governed work.
+ */
+export function buildExperienceLearningReviewQueue(
+  state: AttunementState
+): ExperienceLearningReviewQueue {
+  const reviewedThrough = new Map<string, string>();
+  for (const audit of state.experienceLearningPolicyAudits ?? []) {
+    const current = reviewedThrough.get(audit.threadId);
+    if (!current || audit.occurredAt > current) {
+      reviewedThrough.set(audit.threadId, audit.occurredAt);
+    }
+  }
+  const eligible = state.deliveries.flatMap((delivery) => {
+    const result = buildExperienceLearningReviewOpportunity(delivery);
+    if (result.status !== "review-required"
+      || result.opportunity.sourceRun.evidenceClass !== "organic-production") {
+      return [];
+    }
+    const boundary = reviewedThrough.get(delivery.threadId);
+    return boundary && result.opportunity.outcome.recordedAt <= boundary
+      ? []
+      : [result.opportunity];
+  }).sort((left, right) =>
+    left.outcome.recordedAt.localeCompare(right.outcome.recordedAt)
+      || left.opportunityId.localeCompare(right.opportunityId)
+  );
+  const items = Object.freeze(eligible.slice(0, EXPERIENCE_LEARNING_REVIEW_QUEUE_LIMIT));
+  return Object.freeze({
+    items,
+    limit: EXPERIENCE_LEARNING_REVIEW_QUEUE_LIMIT,
+    status: eligible.length === 0 ? "empty" as const : "review-required" as const,
+    total: eligible.length,
+    truncated: eligible.length > EXPERIENCE_LEARNING_REVIEW_QUEUE_LIMIT
+  });
 }
