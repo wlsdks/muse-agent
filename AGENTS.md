@@ -5,9 +5,27 @@ workspace**. One coherent reasoning loop across local, self-hosted, and cloud de
 provider-specific code stays at the edges. Local-only is an explicit fail-close privacy posture,
 not the product identity.
 
-This file is the cross-agent product brief (the open `AGENTS.md` standard). It does not duplicate
-the Claude-specific contract in [`CLAUDE.md`](CLAUDE.md) or the domain rules in
-[`.claude/rules/`](.claude/rules/) — read those alongside it.
+This file is the cross-agent product brief (the open `AGENTS.md` standard). It deliberately does
+not restate the Claude-specific contract in [`CLAUDE.md`](CLAUDE.md) or the domain rules in
+[`.claude/rules/`](.claude/rules/) — those are auto-loaded for Claude Code and must be read
+explicitly by any agent that is not.
+
+## The floor — restated here on purpose
+
+Everything else in this repository is a pointer. These are not, because they are the boundaries
+whose breach cannot be undone by a revert, and a boundary must never depend on a link being
+followed:
+
+- **Nothing reaches a third party without the owner confirming the exact content.** Sending,
+  replying, submitting, booking, posting: the agent drafts, the owner confirms, and the approval
+  gate is fail-closed — a denied or undeliverable confirmation means the action does not happen.
+  There is no autonomous send. → [`outbound-safety`](.claude/rules/safety/outbound-safety.md).
+- **Banking, brokerage, payments and money movement are permanently out of scope.** Not deferred.
+- **Never force-push, `--no-verify`, delete a remote ref, cut a tag or release, or push to an
+  alternate remote.** A verified normal push to `origin` is pre-authorized; nothing else is.
+- **`MUSE_LOCAL_ONLY=true` is enforced in code, not in a prompt.** Under it, a cloud provider
+  throws rather than silently degrading.
+- **Never commit live credentials.**
 
 ## Mission and roadmap honesty
 
