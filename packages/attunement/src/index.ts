@@ -92,6 +92,12 @@ export type {
   ExplicitExperienceOutcome,
   ProposeExperienceLearningCandidateInput
 } from "./experience-learning-candidate.js";
+export { compareExperienceLearningReplay } from "./experience-learning-replay.js";
+export type {
+  ExperienceLearningReplay,
+  ExperienceReplayCase,
+  ExperienceReplayObservation
+} from "./experience-learning-replay.js";
 export { ActiveAttunementPolicyWriteBlockedError } from "./active-policy-write-gate.js";
 export type { ActiveAttunementPolicyWriteGate } from "./active-policy-write-gate.js";
 export {
