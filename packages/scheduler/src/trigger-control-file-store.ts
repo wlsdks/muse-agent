@@ -6,6 +6,8 @@ import {
   cancelTriggerControlWork,
   claimTriggerControlWork,
   createTriggerControlState,
+  createTriggerControlStateFromJournal,
+  parseTriggerAdmissionJournal,
   parseTriggerControlState,
   resumeTriggerControlWork,
   serializeTriggerControlState,
@@ -26,6 +28,7 @@ import {
 } from "@muse/stores/atomic-file-store";
 
 const MAX_TRIGGER_CONTROL_FILE_BYTES = 4 * 1024 * 1024;
+const MAX_LEGACY_TRIGGER_JOURNAL_FILE_BYTES = 5 * 1024 * 1024;
 const TRIGGER_CONTROL_LOCK_GIVE_UP_MS = 12_000;
 
 export type TriggerControlFileStoreErrorCode =
@@ -47,6 +50,10 @@ type StateTransition<Result> = Readonly<{
 
 class ConcurrentTriggerControlReplace extends Error {}
 
+export interface TriggerControlFileStoreOptions {
+  readonly legacyJournalFile?: string;
+}
+
 /**
  * Durable host boundary for trigger admission and work settlement.
  *
@@ -57,20 +64,32 @@ class ConcurrentTriggerControlReplace extends Error {}
 export class TriggerControlFileStore {
   readonly file: string;
   private readonly initialState: TriggerControlState;
+  private readonly legacyJournalFile?: string;
 
   constructor(
     file: string,
-    initial: CreateTriggerAdmissionJournalInput
+    initial: CreateTriggerAdmissionJournalInput,
+    options: TriggerControlFileStoreOptions = {}
   ) {
     if (file.trim().length === 0) {
       throw new TypeError("trigger control file must be non-empty");
     }
     this.file = resolve(file);
+    if (options.legacyJournalFile !== undefined
+      && options.legacyJournalFile.trim().length === 0) {
+      throw new TypeError("legacy trigger journal file must be non-empty");
+    }
+    this.legacyJournalFile = options.legacyJournalFile === undefined
+      ? undefined
+      : resolve(options.legacyJournalFile);
+    if (this.legacyJournalFile === this.file) {
+      throw new TypeError("legacy trigger journal file must differ from control file");
+    }
     this.initialState = createTriggerControlState(initial);
   }
 
   async snapshot(): Promise<TriggerControlState> {
-    await this.assertPrivateParent();
+    await this.assertPrivateParent(this.file);
     return this.readState();
   }
 
@@ -113,7 +132,7 @@ export class TriggerControlFileStore {
     apply: (state: TriggerControlState) => StateTransition<Result>
   ): Promise<Result> {
     return withFileMutationQueue(this.file, async () => {
-      await this.assertPrivateParent();
+      await this.assertPrivateParent(this.file);
       return withPrivateFileLock(`${this.file}.lock`, async () => {
         const current = await this.readState();
         const transition = apply(current);
@@ -132,8 +151,8 @@ export class TriggerControlFileStore {
     });
   }
 
-  private async assertPrivateParent(): Promise<void> {
-    const parent = dirname(this.file);
+  private async assertPrivateParent(file: string): Promise<void> {
+    const parent = dirname(file);
     let pathStat: Awaited<ReturnType<typeof fs.lstat>>;
     let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
     try {
@@ -185,7 +204,7 @@ export class TriggerControlFileStore {
       pathStat = await fs.lstat(this.file);
     } catch (cause) {
       if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
-        return this.initialState;
+        return this.readLegacyState();
       }
       throw new TriggerControlFileStoreError("unsafe-file");
     }
@@ -234,6 +253,77 @@ export class TriggerControlFileStore {
     let state: TriggerControlState;
     try {
       state = parseTriggerControlState(raw);
+    } catch {
+      throw new TriggerControlFileStoreError("corrupt-state");
+    }
+    if (
+      state.journal.maxEntries !== this.initialState.journal.maxEntries
+      || state.journal.maxPending !== this.initialState.journal.maxPending
+    ) {
+      throw new TriggerControlFileStoreError("configuration-mismatch");
+    }
+    return state;
+  }
+
+  private async readLegacyState(): Promise<TriggerControlState> {
+    if (this.legacyJournalFile === undefined) return this.initialState;
+    await this.assertPrivateParent(this.legacyJournalFile);
+
+    let pathStat: Awaited<ReturnType<typeof fs.lstat>>;
+    try {
+      pathStat = await fs.lstat(this.legacyJournalFile);
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return this.initialState;
+      throw new TriggerControlFileStoreError("unsafe-file");
+    }
+    if (
+      pathStat.isSymbolicLink()
+      || !pathStat.isFile()
+      || pathStat.nlink !== 1
+      || Number(pathStat.size) > MAX_LEGACY_TRIGGER_JOURNAL_FILE_BYTES
+      || !isOwnerPrivate(pathStat)
+    ) {
+      throw new TriggerControlFileStoreError("unsafe-file");
+    }
+
+    let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+    let raw: string;
+    try {
+      handle = await fs.open(
+        this.legacyJournalFile,
+        fsConstants.O_RDONLY | (process.platform === "win32" ? 0 : fsConstants.O_NOFOLLOW)
+      );
+      const opened = await handle.stat();
+      if (
+        !opened.isFile()
+        || opened.nlink !== 1
+        || Number(opened.size) > MAX_LEGACY_TRIGGER_JOURNAL_FILE_BYTES
+        || !isOwnerPrivate(opened)
+      ) {
+        throw new TriggerControlFileStoreError("unsafe-file");
+      }
+      if (opened.dev !== pathStat.dev || opened.ino !== pathStat.ino) {
+        throw new ConcurrentTriggerControlReplace();
+      }
+      raw = await handle.readFile("utf8");
+      if (Buffer.byteLength(raw, "utf8") > MAX_LEGACY_TRIGGER_JOURNAL_FILE_BYTES) {
+        throw new TriggerControlFileStoreError("unsafe-file");
+      }
+    } catch (cause) {
+      if (
+        cause instanceof TriggerControlFileStoreError
+        || cause instanceof ConcurrentTriggerControlReplace
+      ) {
+        throw cause;
+      }
+      throw new TriggerControlFileStoreError("unsafe-file");
+    } finally {
+      await handle?.close().catch(() => undefined);
+    }
+
+    let state: TriggerControlState;
+    try {
+      state = createTriggerControlStateFromJournal(parseTriggerAdmissionJournal(raw));
     } catch {
       throw new TriggerControlFileStoreError("corrupt-state");
     }

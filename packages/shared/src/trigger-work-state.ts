@@ -59,6 +59,13 @@ export interface CancelTriggerWorkInput {
   readonly reason: string;
 }
 
+export interface ImportTerminalTriggerWorkStateInput {
+  readonly dedupKey: string;
+  readonly status: "cancelled" | "completed" | "dead-lettered";
+  readonly terminalReason?: string;
+  readonly updatedAt: string;
+}
+
 const STATE_ID_PREFIX = "trigger-work:";
 const trustedWorkStates = new WeakSet<object>();
 
@@ -222,6 +229,42 @@ export function cancelTriggerWork(
     status: "cancelled",
     terminalReason: nonEmpty(input.reason, "reason"),
     updatedAt: at
+  });
+}
+
+/**
+ * Reconstructs the minimal terminal work record required when upgrading a
+ * settled admission journal into the composite control-state schema.
+ *
+ * Imported journal history has no attempt metadata, so the migration records
+ * one historical attempt without inventing a lease or retry history.
+ */
+export function importTerminalTriggerWorkState(
+  input: ImportTerminalTriggerWorkStateInput
+): TriggerWorkState {
+  const dedupKey = nonEmpty(input.dedupKey, "dedupKey");
+  if (input.status !== "cancelled"
+    && input.status !== "completed"
+    && input.status !== "dead-lettered") {
+    throw new TypeError("imported trigger work must be terminal");
+  }
+  if (!isCanonicalTimestamp(input.updatedAt)) {
+    throw new TypeError("updatedAt must be a canonical timestamp");
+  }
+  const terminalReason = input.status === "completed"
+    ? undefined
+    : nonEmpty(input.terminalReason ?? "", "terminalReason");
+  if (input.status === "completed" && input.terminalReason !== undefined) {
+    throw new TypeError("completed trigger work cannot include a terminal reason");
+  }
+  return stateFromBody({
+    attempt: 1,
+    dedupKey,
+    maxAttempts: 1,
+    schemaVersion: TRIGGER_WORK_STATE_SCHEMA_VERSION,
+    status: input.status,
+    ...(terminalReason !== undefined ? { terminalReason } : {}),
+    updatedAt: input.updatedAt
   });
 }
 

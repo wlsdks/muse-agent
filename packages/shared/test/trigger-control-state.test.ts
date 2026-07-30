@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  admitTriggerToJournal,
   admitTriggerControl,
   cancelTriggerControlWork,
   claimTriggerControlWork,
+  createTriggerAdmissionJournal,
   createTriggerControlState,
+  createTriggerControlStateFromJournal,
   createTriggerEnvelope,
   parseTriggerControlState,
   resumeTriggerControlWork,
   serializeTriggerControlState,
+  settleTriggerAdmission,
   settleTriggerControlWork
 } from "../src/index.js";
 
@@ -46,6 +50,75 @@ function claimed(generation = "g1", maxAttempts = 2) {
 }
 
 describe("trigger control state", () => {
+  it("imports legacy journal history without inventing active work", () => {
+    const queuedEnvelope = envelope("legacy-queued");
+    const completedEnvelope = envelope("legacy-completed");
+    const cancelledEnvelope = envelope("legacy-cancelled");
+    const deadLetteredEnvelope = envelope("legacy-dead-lettered");
+    const rejectedEnvelope = envelope("legacy-rejected");
+    let journal = createTriggerAdmissionJournal({ maxEntries: 8, maxPending: 4 });
+    for (const occurrence of [
+      queuedEnvelope,
+      completedEnvelope,
+      cancelledEnvelope,
+      deadLetteredEnvelope
+    ]) {
+      journal = admitTriggerToJournal(journal, {
+        envelope: occurrence,
+        now: T0
+      }).journal;
+    }
+    journal = settleTriggerAdmission(journal, {
+      at: T500,
+      dedupKey: completedEnvelope.dedupKey,
+      outcome: "completed"
+    });
+    journal = settleTriggerAdmission(journal, {
+      at: T500,
+      dedupKey: cancelledEnvelope.dedupKey,
+      outcome: "cancelled",
+      reason: "owner-stop"
+    });
+    journal = settleTriggerAdmission(journal, {
+      at: T500,
+      dedupKey: deadLetteredEnvelope.dedupKey,
+      outcome: "dead-lettered",
+      reason: "retry-budget-exhausted"
+    });
+    journal = admitTriggerToJournal(journal, {
+      envelope: rejectedEnvelope,
+      now: T1000,
+      permission: "denied"
+    }).journal;
+
+    const imported = createTriggerControlStateFromJournal(journal);
+    expect(imported.journal).toBe(journal);
+    expect(imported.revision).toBe(0);
+    expect(imported.workStates).toHaveLength(3);
+    expect(imported.workStates.find((work) =>
+      work.dedupKey === completedEnvelope.dedupKey)).toMatchObject({
+      attempt: 1,
+      maxAttempts: 1,
+      status: "completed",
+      updatedAt: T500.toISOString()
+    });
+    expect(imported.workStates.find((work) =>
+      work.dedupKey === cancelledEnvelope.dedupKey)).toMatchObject({
+      status: "cancelled",
+      terminalReason: "owner-stop"
+    });
+    expect(imported.workStates.find((work) =>
+      work.dedupKey === deadLetteredEnvelope.dedupKey)).toMatchObject({
+      status: "dead-lettered",
+      terminalReason: "retry-budget-exhausted"
+    });
+    expect(imported.workStates.some((work) =>
+      work.dedupKey === queuedEnvelope.dedupKey)).toBe(false);
+    expect(imported.workStates.some((work) =>
+      work.dedupKey === rejectedEnvelope.dedupKey)).toBe(false);
+    expect(parseTriggerControlState(serializeTriggerControlState(imported))).toEqual(imported);
+  });
+
   it("advances one revision across admit and claim", () => {
     const initial = createTriggerControlState({ maxPending: 1 });
     const afterAdmission = admitTriggerControl(initial, {

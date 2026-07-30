@@ -335,7 +335,8 @@ export { ActiveRunTracker, type DrainOutcome } from "./active-run-tracker.js";
 export {
   TriggerControlFileStore,
   TriggerControlFileStoreError,
-  type TriggerControlFileStoreErrorCode
+  type TriggerControlFileStoreErrorCode,
+  type TriggerControlFileStoreOptions
 } from "./trigger-control-file-store.js";
 
 export {

@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createTriggerEnvelope } from "@muse/shared";
+import { FileTriggerAdmissionJournalStore } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -38,6 +39,106 @@ async function tempStore(maxPending = 2) {
 }
 
 describe("TriggerControlFileStore", () => {
+  it("imports a legacy journal read-only and writes only the new file on first mutation", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-trigger-control-migration-"));
+    const legacyFile = join(root, "trigger-admission-journal.json");
+    const controlFile = join(root, "trigger-control.json");
+    const legacy = new FileTriggerAdmissionJournalStore({
+      file: legacyFile,
+      maxEntries: 8,
+      maxPending: 2
+    });
+    const completed = envelope("legacy-completed");
+    const queued = envelope("legacy-queued");
+    await legacy.admit({ envelope: completed, now: at });
+    await legacy.settle({
+      at: new Date("2026-07-30T08:00:30.000Z"),
+      dedupKey: completed.dedupKey,
+      outcome: "completed"
+    });
+    await legacy.admit({ envelope: queued, now: at });
+    await legacy.admit({
+      envelope: envelope("legacy-shadowed"),
+      now: at,
+      shadowOnly: true
+    });
+    const legacyJournal = await legacy.read();
+    const legacyBytes = await readFile(legacyFile);
+    const store = new TriggerControlFileStore(
+      controlFile,
+      { maxEntries: 8, maxPending: 2 },
+      { legacyJournalFile: legacyFile }
+    );
+
+    const imported = await store.snapshot();
+    expect(imported.journal).toEqual(legacyJournal);
+    expect(imported.workStates).toEqual([
+      expect.objectContaining({
+        dedupKey: completed.dedupKey,
+        status: "completed"
+      })
+    ]);
+    await expect(lstat(controlFile)).rejects.toMatchObject({ code: "ENOENT" });
+
+    await store.admit({ envelope: envelope("new-occurrence"), now: at });
+    if (process.platform !== "win32") {
+      expect((await stat(controlFile)).mode & 0o777).toBe(0o600);
+    }
+    expect(await readFile(legacyFile)).toEqual(legacyBytes);
+    const restarted = new TriggerControlFileStore(
+      controlFile,
+      { maxEntries: 8, maxPending: 2 },
+      { legacyJournalFile: legacyFile }
+    );
+    expect((await restarted.snapshot()).journal.entries).toHaveLength(4);
+    await writeFile(legacyFile, "{", { mode: 0o600 });
+    expect((await restarted.snapshot()).journal.entries).toHaveLength(4);
+  });
+
+  it("fails closed on corrupt, unsafe, or mismatched legacy state without creating control state", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-trigger-control-legacy-failure-"));
+    const controlFile = join(root, "trigger-control.json");
+    const legacyFile = join(root, "legacy.json");
+    await writeFile(legacyFile, "{", { mode: 0o600 });
+    const corrupt = new TriggerControlFileStore(
+      controlFile,
+      { maxPending: 2 },
+      { legacyJournalFile: legacyFile }
+    );
+    await expect(corrupt.snapshot()).rejects.toMatchObject({ code: "corrupt-state" });
+    await expect(lstat(controlFile)).rejects.toMatchObject({ code: "ENOENT" });
+
+    if (process.platform !== "win32") {
+      const target = join(root, "legacy-target.json");
+      const link = join(root, "legacy-link.json");
+      await writeFile(target, "{}", { mode: 0o600 });
+      await symlink(target, link);
+      const unsafe = new TriggerControlFileStore(
+        controlFile,
+        { maxPending: 2 },
+        { legacyJournalFile: link }
+      );
+      await expect(unsafe.snapshot()).rejects.toMatchObject({ code: "unsafe-file" });
+      await expect(lstat(controlFile)).rejects.toMatchObject({ code: "ENOENT" });
+    }
+
+    const mismatchedFile = join(root, "legacy-mismatched.json");
+    const mismatchedJournal = new FileTriggerAdmissionJournalStore({
+      file: mismatchedFile,
+      maxPending: 1
+    });
+    await mismatchedJournal.admit({ envelope: envelope("mismatch"), now: at });
+    const mismatched = new TriggerControlFileStore(
+      controlFile,
+      { maxPending: 2 },
+      { legacyJournalFile: mismatchedFile }
+    );
+    await expect(mismatched.snapshot()).rejects.toMatchObject({
+      code: "configuration-mismatch"
+    });
+    await expect(lstat(controlFile)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("persists an admitted trigger as owner-only state and reloads it after restart", async () => {
     const { file, store } = await tempStore();
     expect((await store.snapshot()).revision).toBe(0);

@@ -16,6 +16,7 @@ import { parseStrictJson } from "./strict-json.js";
 import {
   cancelTriggerWork,
   claimTriggerWork,
+  importTerminalTriggerWorkState,
   normalizeTriggerWorkState,
   parseTriggerWorkState,
   resumeTriggerWork,
@@ -54,6 +55,28 @@ export function createTriggerControlState(
   input: CreateTriggerAdmissionJournalInput
 ): TriggerControlState {
   return stateFromParts(createTriggerAdmissionJournal(input), [], 0);
+}
+
+export function createTriggerControlStateFromJournal(
+  journalValue: TriggerAdmissionJournal
+): TriggerControlState {
+  const journal = normalizeTriggerAdmissionJournal(journalValue);
+  const workStates = journal.entries.flatMap((entry) => {
+    if (entry.state !== "cancelled"
+      && entry.state !== "completed"
+      && entry.state !== "dead-lettered") {
+      return [];
+    }
+    return [importTerminalTriggerWorkState({
+      dedupKey: entry.envelope.dedupKey,
+      status: entry.state,
+      ...(entry.terminalReason !== undefined
+        ? { terminalReason: entry.terminalReason }
+        : {}),
+      updatedAt: entry.settledAt!
+    })];
+  });
+  return stateFromParts(journal, workStates, 0);
 }
 
 export function admitTriggerControl(
