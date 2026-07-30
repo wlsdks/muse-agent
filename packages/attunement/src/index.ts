@@ -113,6 +113,10 @@ export type {
   ExperienceLearningProposalDraft,
   ExperienceLearningProposalResult
 } from "./experience-learning-composer.js";
+export { buildExperienceLearningProposalPreview } from "./experience-learning-preview.js";
+export type {
+  ExperienceLearningProposalPreview
+} from "./experience-learning-preview.js";
 export {
   EXPERIENCE_LEARNING_PROMOTION_MIN_CASES,
   ExperienceLearningPromotionError,
