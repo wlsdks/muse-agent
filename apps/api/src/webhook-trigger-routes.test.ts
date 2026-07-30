@@ -3,7 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import { mintWebhookTriggerToken, registerWebhookTriggerRoutes, WEBHOOK_FIRE_COOLDOWN_MS, WEBHOOK_PAYLOAD_BODY_LIMIT, WEBHOOK_PAYLOAD_PREVIEW_MAX, webhookTokensEqual } from "./webhook-trigger-routes.js";
 
-import type { ScheduledJob, TriggerInvocation } from "@muse/scheduler";
+import {
+  DynamicScheduler,
+  InMemoryScheduledJobExecutionStore,
+  InMemoryScheduledJobStore,
+  ScheduledJobDispatcher,
+  SchedulerMessaging,
+  type ScheduledJob,
+  type TriggerInvocation
+} from "@muse/scheduler";
+import { admitTrigger } from "@muse/shared";
 
 function job(overrides: Partial<ScheduledJob> = {}): ScheduledJob {
   return {
@@ -57,8 +66,9 @@ describe("mintWebhookTriggerToken / webhookTokensEqual", () => {
 
   it("token equality is exact", () => {
     const token = mintWebhookTriggerToken();
+    const replacement = token.endsWith("x") ? "y" : "x";
     expect(webhookTokensEqual(token, token)).toBe(true);
-    expect(webhookTokensEqual(token, `${token.slice(0, -1)}x`)).toBe(false);
+    expect(webhookTokensEqual(token, `${token.slice(0, -1)}${replacement}`)).toBe(false);
     expect(webhookTokensEqual(token, "wht_short")).toBe(false);
   });
 });
@@ -113,6 +123,77 @@ describe("POST /api/hooks/flows/:token — the inbound trigger", () => {
     expect([404, 414]).toContain(huge.statusCode);
     expect(service.list).not.toHaveBeenCalled();
     expect(service.trigger).not.toHaveBeenCalled();
+    await server.close();
+  });
+});
+
+describe("webhook → scheduler shadow assembly", () => {
+  it("acks the public trigger but records shadow with zero agent, lock, or notification effect", async () => {
+    const now = new Date("2026-07-30T12:00:00.000Z");
+    const token = "wht_shadow_00000000000000000000";
+    const store = new InMemoryScheduledJobStore({
+      idFactory: () => "job-shadow-e2e",
+      now: () => now
+    });
+    const executions = new InMemoryScheduledJobExecutionStore({
+      idFactory: () => "exec-shadow-e2e",
+      now: () => now
+    });
+    const execute = vi.fn(async () => "must not run");
+    const tryAcquire = vi.fn(async () => true);
+    const sendMessage = vi.fn(async () => undefined);
+    const service = new DynamicScheduler({
+      dispatcher: new ScheduledJobDispatcher({
+        agentExecutor: { execute },
+        mcpInvoker: { invoke: async () => "must not run" } as never
+      }),
+      distributedLock: {
+        release: async () => undefined,
+        tryAcquire
+      },
+      executionStore: executions,
+      messagingService: new SchedulerMessaging({ sendMessage }),
+      now: () => now,
+      store,
+      triggerAdmission: async (trigger) => admitTrigger({
+        deliveryBrakeEngaged: true,
+        envelope: trigger,
+        now
+      })
+    });
+    await service.create({
+      agentPrompt: "Draft a private summary.",
+      cronExpression: "0 9 * * *",
+      jobType: "agent",
+      name: "Shadowed webhook",
+      notificationChannelId: "owner",
+      webhookTriggerToken: token
+    });
+    const server = Fastify();
+    registerWebhookTriggerRoutes(server, {
+      nowMs: () => now.getTime(),
+      requireAuthenticated: () => true,
+      scheduler: { service, store }
+    });
+
+    const response = await server.inject({
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      payload: { private: "never echo this" },
+      url: `/api/hooks/flows/${token}`
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(JSON.parse(response.body)).toEqual({ fired: true, jobId: "job-shadow-e2e" });
+    expect(response.body).not.toContain("never echo this");
+    expect(execute).not.toHaveBeenCalled();
+    expect(tryAcquire).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(executions.findByJobId("job-shadow-e2e")[0]).toMatchObject({
+      result: "shadow: delivery-brake",
+      status: "skipped",
+      triggeredBy: "webhook"
+    });
     await server.close();
   });
 });
