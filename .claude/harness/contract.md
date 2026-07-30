@@ -64,13 +64,22 @@ verification contract below applies unchanged.**
 
 ## 1.6 FAST S/M — the default fast path for safe internal work
 
-A task is FAST S/M only when **all** of the following hold:
+**Risk decides the tier, not size.** A task is FAST S/M when both hold:
 
-- Active work fits in 20 minutes and touches at most 3 directly-owned files in one package.
-- It is a deterministic local contract, and reverting that diff alone recovers from failure.
+- Reverting that one diff recovers from failure — nothing it does is irreversible or already
+  outward-facing.
 - It touches none of: user-visible strings/i18n, public API/CLI/UI contracts, persisted
   formats/migrations/credentials, security/permission/guard, external effects,
-  browser/computer/audio, process/scheduler/concurrency, harness gates, release.
+  browser/computer/audio, process/scheduler/concurrency, harness gates, release. That list is
+  mechanized in `MANDATORY_EVALUATOR_PATTERNS` (`scripts/guard-review-tier.mjs`), so the contract
+  and the gate judge the same thing rather than two different things.
+
+Size is a smell, not a rule. This section used to require ≤20 minutes and ≤3 files in one
+package, which pushed **34 of the last 40 commits** into FULL — a median commit here is 7 files,
+so the "default fast path" applied to 15% of the work. By risk instead, 27 of those 40 qualify and
+the 13 that do not are exactly the ones touching a dangerous surface. A seven-file rename is safer
+than a one-file change to an approval gate; count risk, not files. A slice that has grown large
+enough that you cannot hold it is still a reason to split it — just not a reason for ceremony.
 
 FAST S/M creates no separate handoff file, no planner, no fresh evaluator context. Before working,
 fill the compact card below; the worker runs the named tests plus the affected typecheck/lint and
@@ -127,7 +136,14 @@ where the obvious move is wrong: [roles](roles.md).
   has recorded in versioned host rules — with destination, verification, and failure limits
   narrowed — counts as pre-approved within that scope.
   → [outbound-safety](../rules/safety/outbound-safety.md) · [commits](../rules/engineering/commits.md).
-- **Blocked-first** — when uncertain or ambiguous, do not pass; stop and escalate to a human.
+- **Blocked-first, scoped to what cannot be undone.** Stop and escalate when the uncertainty is
+  about something **irreversible or outward-facing** — an external effect, a credential, a
+  persisted format, a release, or a decision that is the owner's to make. Everything else is
+  recoverable in a commit, so decide it, **state the assumption**, and keep going. This rule used
+  to say "when uncertain or ambiguous, do not pass" without qualification; that was written for a
+  weaker model and it now contradicts how the current ones are asked to work — make routine
+  judgment calls yourself, and check in only when different readings lead to materially different
+  work. An agent that stops on recoverable ambiguity is not being safe, it is being expensive.
 
 How each gate is proven, and how the judge itself is calibrated:
 [agent-testing](../rules/verification/agent-testing.md).
