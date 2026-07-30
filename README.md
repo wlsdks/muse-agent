@@ -50,7 +50,7 @@ into a hard error.
 
 | | |
 | --- | --- |
-| **Get going** | [Install](#install) · [Run fully offline](#run-fully-offline) · [Everyday commands](#everyday-commands) |
+| **Get going** | [Install](#install) · [Local or cloud](#local-or-cloud--your-choice) · [Everyday commands](#everyday-commands) |
 | **The idea** | [Continuity, the one thing Muse is for](#continuity--the-one-thing-muse-is-for) · [How Muse answers](#how-muse-answers) · [Where this is going](#where-this-is-going) |
 | **The truth** | [Status: what's real today](#status--whats-real-today) · [Evidence and numbers](#evidence-and-numbers) · [What Muse will never do](#what-muse-will-never-do) |
 | **The code** | [Architecture](#architecture) · [Repository layout](#repository-layout) · [Build and verify](#build-and-verify) · [Documentation](#documentation) |
