@@ -8,6 +8,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a0 portable-format foundation. The exact
+  stored-projection normalizer used by `openMag` is now a package-private seam with
+  direct corruption tests, and `packages/attunement-graph/PORTABLE-FORMAT.md` fixes the
+  normative `.magx` v1 byte, schema, identity, limit, streaming-sink, and future
+  admin-contract semantics. This does not ship a codec, export/rebuild, filesystem or
+  SQLite staging, Worker/admin runtime, or public `./admin`. A fresh evaluator passed
+  after the normative projection order was fixed to UTF-8 scope bytes then generation.
+
 - Hardened the AWG-070a1 local MAG Store with AWG-070a2 typed runtime boundaries.
   The former 976-line blanket-untyped Worker is now a thin dispatch over a closed
   checked-JSDoc protocol, reviewed filesystem/runtime profile, and one Worker-only SQLite

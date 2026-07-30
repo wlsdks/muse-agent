@@ -202,7 +202,7 @@ function storeEnvelope(value: unknown): Readonly<Record<string, unknown>> {
   }
 }
 
-function normalizeStoredProjection(value: unknown, expectedScope: MagScope): MagStoredProjection {
+export function normalizeStoredProjection(value: unknown, expectedScope: MagScope): MagStoredProjection {
   const input = record(storeEnvelope(value), "stored projection", ["schemaVersion", "storeEnvelopeId", "snapshot", "observationId", "canonicalProjection", "projectionFingerprint", "observedAt", "sourceFreshness", "assertions"], ["schemaVersion", "storeEnvelopeId", "snapshot", "observationId", "canonicalProjection", "projectionFingerprint", "observedAt", "sourceFreshness", "assertions"], "CORRUPT_STORE");
   if (input.schemaVersion !== 1) {
     if (typeof input.schemaVersion === "number" && input.schemaVersion > 1) magError("FUTURE_STORE_STATE", "Store projection schema is newer than this engine");

@@ -39,6 +39,9 @@ The current implementation includes:
 - an AWG-070a2 checked-JSDoc runtime boundary that separates the closed protocol,
   filesystem/runtime profile, single SQLite execution Implementation, and thin Worker
   dispatch while preserving the AWG-070a1 physical profile;
+- an independently verified AWG-070a3a0 foundation: the Engine's exact stored-projection
+  normalizer is available through a package-private seam, and
+  [`PORTABLE-FORMAT.md`](PORTABLE-FORMAT.md) fixes the normative `.magx` v1 contract;
 - exact Continuity observation, change, Capsule-presentation, resume-runtime, and Shadow
   decision-receipt compatibility Modules used by Muse.
 
@@ -46,6 +49,10 @@ This is the **durable projection-journal foundation**, not completion of the SQL
 program. AWG-070a remains `partial` until physical-forget fixtures and the complete
 byte-identical conformance corpus pass. AWG-070b remains `partial` until backup, portable
 export, and the complete physical-profile program pass.
+
+The AWG-070a3a0 foundation is `verified-current`, but does not implement a codec,
+export/rebuild, filesystem or SQLite staging, Worker/admin runtime, or a public
+`./admin` subpath.
 
 Still required before a standalone release:
 
