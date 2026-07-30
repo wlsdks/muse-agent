@@ -46,6 +46,9 @@ export interface CreateTriggerAdmissionJournalInput {
 export interface JournalTriggerAdmissionInput
   extends Omit<TriggerAdmissionInput, "budgetAvailable" | "seenDedupKeys"> {
   readonly budgetAvailable?: boolean;
+  /** Suppress a new generation from the same source until this interval has
+   * elapsed since its latest journaled execute admission. */
+  readonly cooldownMs?: number;
 }
 
 export interface JournalTriggerAdmissionResult {
@@ -118,11 +121,18 @@ export function admitTriggerToJournal(
       recorded: false
     });
   }
+  const normalizedCooldownMs = normalizeCooldownMs(input.cooldownMs);
   const seenDedupKeys = new Set(currentJournal.entries.map((entry) => entry.envelope.dedupKey));
   const pending = currentJournal.entries.filter((entry) => entry.state === "queued").length;
+  const { cooldownMs: _cooldownMs, ...admissionInput } = input;
+  const journalCooldownUntil = seenDedupKeys.has(input.envelope.dedupKey)
+    ? undefined
+    : deriveJournalCooldownUntil(currentJournal, input.envelope, normalizedCooldownMs);
+  const cooldownUntil = latestTimestamp(input.cooldownUntil, journalCooldownUntil);
   const decision = freezeDecision(admitTrigger({
-    ...input,
+    ...admissionInput,
     budgetAvailable: input.budgetAvailable !== false && pending < currentJournal.maxPending,
+    ...(cooldownUntil ? { cooldownUntil } : {}),
     seenDedupKeys
   }));
 
@@ -455,6 +465,49 @@ function hasRequiredKeys(value: Record<string, unknown>, keys: readonly string[]
 function canonicalTimestamp(value: Date, field: string): string {
   if (Number.isNaN(value.getTime())) throw new TypeError(`${field} must be a valid timestamp`);
   return value.toISOString();
+}
+
+function deriveJournalCooldownUntil(
+  journal: TriggerAdmissionJournal,
+  envelope: TriggerEnvelope,
+  cooldownMs: number | undefined
+): Date | undefined {
+  if (cooldownMs === undefined || cooldownMs === 0) return undefined;
+  let latestAdmissionMs: number | undefined;
+  for (const entry of journal.entries) {
+    if (entry.decision.action !== "execute"
+      || entry.envelope.source !== envelope.source
+      || entry.envelope.sourceId !== envelope.sourceId) {
+      continue;
+    }
+    const admittedAtMs = Date.parse(entry.admittedAt);
+    if (latestAdmissionMs === undefined || admittedAtMs > latestAdmissionMs) {
+      latestAdmissionMs = admittedAtMs;
+    }
+  }
+  if (latestAdmissionMs === undefined) return undefined;
+  const cooldownUntil = new Date(latestAdmissionMs + cooldownMs);
+  if (Number.isNaN(cooldownUntil.getTime())) {
+    throw new TypeError("cooldownMs exceeds the timestamp range");
+  }
+  return cooldownUntil;
+}
+
+function normalizeCooldownMs(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new TypeError("cooldownMs must be a non-negative safe integer");
+  }
+  return value;
+}
+
+function latestTimestamp(
+  first: Date | undefined,
+  second: Date | undefined
+): Date | undefined {
+  if (!first) return second;
+  if (!second) return first;
+  return first.getTime() >= second.getTime() ? first : second;
 }
 
 function isCanonicalTimestamp(value: unknown): value is string {

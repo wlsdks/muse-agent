@@ -116,6 +116,49 @@ describe("trigger control state", () => {
     })).toThrow(/only queued/u);
   });
 
+  it("refuses burst claims after restart and clock regression until cooldown expires", () => {
+    const first = admitTriggerControl(
+      createTriggerControlState({ maxEntries: 4, maxPending: 2 }),
+      {
+        cooldownMs: 1_000,
+        envelope: envelope("g1"),
+        now: T1000
+      }
+    );
+    let state = parseTriggerControlState(serializeTriggerControlState(first.state));
+    let rejected = 0;
+    for (const [generation, at] of [
+      ["g2", T500],
+      ["g3", new Date("2026-07-30T12:00:01.250Z")],
+      ["g4", new Date("2026-07-30T12:00:01.750Z")]
+    ] as const) {
+      const suppressed = admitTriggerControl(state, {
+        cooldownMs: 1_000,
+        envelope: envelope(generation),
+        now: at
+      });
+      expect(suppressed).toMatchObject({
+        decision: { action: "reject", reasons: ["cooldown-active"] },
+        recorded: true
+      });
+      expect(() => claimTriggerControlWork(suppressed.state, {
+        at,
+        dedupKey: envelope(generation).dedupKey,
+        leaseDurationMs: 1_000,
+        leaseToken: `worker-a:${generation}`,
+        maxAttempts: 2
+      })).toThrow(/only queued/u);
+      rejected += 1;
+      state = suppressed.state;
+    }
+    expect(rejected).toBe(3);
+    expect(admitTriggerControl(state, {
+      cooldownMs: 1_000,
+      envelope: envelope("g5"),
+      now: new Date("2026-07-30T12:00:02.000Z")
+    }).decision.action).toBe("execute");
+  });
+
   it("atomically settles success in work and journal", () => {
     const completed = settleTriggerControlWork(claimed(), {
       at: T500,

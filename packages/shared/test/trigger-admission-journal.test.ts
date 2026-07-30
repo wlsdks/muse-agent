@@ -40,6 +40,163 @@ describe("trigger admission journal", () => {
     expect(replay.journal).toEqual(restored);
   });
 
+  it("derives source cooldown from the restored journal across clock regression", () => {
+    const firstAt = new Date("2026-07-30T12:00:01.000Z");
+    const first = admitTriggerToJournal(createTriggerAdmissionJournal({ maxPending: 4 }), {
+      cooldownMs: 1_000,
+      envelope: envelope("g1"),
+      now: firstAt
+    });
+    const restored = parseTriggerAdmissionJournal(
+      serializeTriggerAdmissionJournal(first.journal)
+    );
+
+    const regressed = admitTriggerToJournal(restored, {
+      cooldownMs: 1_000,
+      envelope: envelope("g2"),
+      now: new Date("2026-07-30T12:00:00.500Z")
+    });
+    expect(regressed).toMatchObject({
+      decision: { action: "reject", reasons: ["cooldown-active"] },
+      recorded: true
+    });
+    expect(regressed.journal.entries.at(-1)).toMatchObject({ state: "rejected" });
+
+    const expired = admitTriggerToJournal(regressed.journal, {
+      cooldownMs: 1_000,
+      envelope: envelope("g3"),
+      now: new Date("2026-07-30T12:00:02.000Z")
+    });
+    expect(expired).toMatchObject({
+      decision: { action: "execute", reasons: [] },
+      recorded: true
+    });
+  });
+
+  it("keeps exact replay dedupe distinct from derived source cooldown", () => {
+    const first = admitTriggerToJournal(createTriggerAdmissionJournal({ maxPending: 2 }), {
+      cooldownMs: 60_000,
+      envelope: envelope("g1"),
+      now: NOW
+    });
+    expect(admitTriggerToJournal(first.journal, {
+      cooldownMs: 60_000,
+      envelope: envelope("g1"),
+      now: NOW
+    })).toMatchObject({
+      decision: { action: "reject", reasons: ["duplicate"] },
+      recorded: false
+    });
+  });
+
+  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY, 1.5])(
+    "fails closed on invalid cooldown %s even for exact replay",
+    (cooldownMs) => {
+      const first = admitTriggerToJournal(createTriggerAdmissionJournal({ maxPending: 2 }), {
+        cooldownMs: 1_000,
+        envelope: envelope("g1"),
+        now: NOW
+      });
+      expect(() => admitTriggerToJournal(first.journal, {
+        cooldownMs,
+        envelope: envelope("g1"),
+        now: NOW
+      })).toThrow(/non-negative safe integer/u);
+    }
+  );
+
+  it("does not let rejected or shadowed events start or extend cooldown", () => {
+    const rejected = admitTriggerToJournal(createTriggerAdmissionJournal({ maxPending: 4 }), {
+      cooldownMs: 1_000,
+      envelope: envelope("rejected"),
+      now: NOW,
+      permission: "denied"
+    });
+    expect(admitTriggerToJournal(rejected.journal, {
+      cooldownMs: 1_000,
+      envelope: envelope("after-rejected"),
+      now: new Date("2026-07-30T12:00:00.250Z")
+    }).decision.action).toBe("execute");
+
+    const shadowed = admitTriggerToJournal(createTriggerAdmissionJournal({ maxPending: 4 }), {
+      cooldownMs: 1_000,
+      envelope: envelope("shadowed"),
+      now: NOW,
+      quietHoursActive: true
+    });
+    expect(admitTriggerToJournal(shadowed.journal, {
+      cooldownMs: 1_000,
+      envelope: envelope("after-shadowed"),
+      now: new Date("2026-07-30T12:00:00.250Z")
+    }).decision.action).toBe("execute");
+
+    const first = admitTriggerToJournal(createTriggerAdmissionJournal({ maxPending: 4 }), {
+      cooldownMs: 1_000,
+      envelope: envelope("execute"),
+      now: NOW
+    });
+    const suppressed = admitTriggerToJournal(first.journal, {
+      cooldownMs: 1_000,
+      envelope: envelope("suppressed"),
+      now: new Date("2026-07-30T12:00:00.750Z")
+    });
+    expect(admitTriggerToJournal(suppressed.journal, {
+      cooldownMs: 1_000,
+      envelope: envelope("at-original-boundary"),
+      now: new Date("2026-07-30T12:00:01.000Z")
+    }).decision.action).toBe("execute");
+  });
+
+  it("isolates cooldown by source identity and preserves the later caller deadline", () => {
+    const first = admitTriggerToJournal(createTriggerAdmissionJournal({ maxPending: 4 }), {
+      cooldownMs: 1_000,
+      envelope: envelope("g1"),
+      now: NOW
+    });
+    const distinctId = createTriggerEnvelope({
+      generation: "g2",
+      occurredAt: NOW,
+      receivedAt: NOW,
+      source: "cron",
+      sourceId: "another-job"
+    });
+    expect(admitTriggerToJournal(first.journal, {
+      cooldownMs: 1_000,
+      envelope: distinctId,
+      now: new Date("2026-07-30T12:00:00.250Z")
+    }).decision.action).toBe("execute");
+
+    const distinctSource = createTriggerEnvelope({
+      generation: "g3",
+      occurredAt: NOW,
+      receivedAt: NOW,
+      source: "manual",
+      sourceId: "daily-brief"
+    });
+    expect(admitTriggerToJournal(first.journal, {
+      cooldownMs: 1_000,
+      envelope: distinctSource,
+      now: new Date("2026-07-30T12:00:00.250Z")
+    }).decision.action).toBe("execute");
+
+    expect(admitTriggerToJournal(first.journal, {
+      cooldownMs: 250,
+      cooldownUntil: new Date("2026-07-30T12:00:02.000Z"),
+      envelope: envelope("g4"),
+      now: new Date("2026-07-30T12:00:01.500Z")
+    })).toMatchObject({
+      decision: { action: "reject", reasons: ["cooldown-active"] }
+    });
+    expect(admitTriggerToJournal(first.journal, {
+      cooldownMs: 2_000,
+      cooldownUntil: new Date("2026-07-30T12:00:00.500Z"),
+      envelope: envelope("g5"),
+      now: new Date("2026-07-30T12:00:01.500Z")
+    })).toMatchObject({
+      decision: { action: "reject", reasons: ["cooldown-active"] }
+    });
+  });
+
   it("turns pending-capacity pressure into a recorded no-effect shadow", () => {
     const first = admitTriggerToJournal(createTriggerAdmissionJournal({ maxPending: 1 }), {
       envelope: envelope("g1"),
