@@ -152,6 +152,7 @@ function isDelivery(
     || !value.evidenceRefs.every((reference) => isReference(reference, schemaVersion))
     || !isNonEmptyString(value.id)
     || !isNonEmptyString(value.openedAt)
+    || (value.policyDigest !== undefined && !isFingerprint(value.policyDigest))
     || !isSafeVersion(value.policyVersion)
     || !isNonEmptyString(value.threadId)
     || (value.runId !== undefined && !isNonEmptyString(value.runId))

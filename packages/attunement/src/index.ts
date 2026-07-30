@@ -78,6 +78,7 @@ export {
   type ContinuityTechnicalEvidenceSlice
 } from "./evaluation.js";
 export { BASELINE_POLICY, baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
+export { fingerprintContinuityPolicy } from "./policy-digest.js";
 export {
   EXPERIENCE_LEARNING_MAX_TTL_MS,
   EXPERIENCE_LEARNING_SCOPES,

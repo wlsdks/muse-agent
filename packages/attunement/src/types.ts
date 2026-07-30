@@ -155,6 +155,8 @@ export interface ContinuityDelivery {
   readonly interactionAnchor?: ContinuityInteractionAnchor;
   readonly openedAt: string;
   readonly outcome?: ContinuityOutcomeRecord;
+  /** Exact policy snapshot identity for new deliveries; absent only on legacy records. */
+  readonly policyDigest?: string;
   readonly policyVersion: number;
   /** Stable correlation id for this delivery's local Continuity audit trail. */
   readonly runId?: string;

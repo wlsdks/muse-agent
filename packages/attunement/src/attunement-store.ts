@@ -5,6 +5,7 @@ import { atomicWriteFile, isCanonicalContactId, isCanonicalConversationId, isCan
 import { decodeLocalCheckpointReference, decodeLocalRunReference, parseJson } from "@muse/shared";
 
 import { baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
+import { fingerprintContinuityPolicy } from "./policy-digest.js";
 import {
   runActiveAttunementPolicyMutation,
   type ActiveAttunementPolicyWriteGate
@@ -450,6 +451,7 @@ export async function openContinuityDelivery(
       id: newId("delivery", options),
       ...(interactionAnchor ? { interactionAnchor } : {}),
       openedAt,
+      policyDigest: fingerprintContinuityPolicy(thread.policy),
       policyVersion: thread.policy.version,
       runId: newId("continuity_run", options),
       threadId: thread.id

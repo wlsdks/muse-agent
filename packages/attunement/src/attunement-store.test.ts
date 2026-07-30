@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   AttunementStoreError,
   createPersonalThread,
+  fingerprintContinuityPolicy,
   linkArtifact,
   openContinuityDelivery,
   readAttunementState,
@@ -237,6 +238,12 @@ describe("Personal Continuity store", () => {
       expectedPolicyVersion: 0,
       threadId: thread.id
     }, options);
+    expect(delivery.policyDigest).toBe(fingerprintContinuityPolicy({
+      detail: "standard",
+      nextStep: "direct",
+      suppression: "none",
+      version: 0
+    }));
 
     const applied = await recordContinuityOutcome(file, delivery.id, "ignored", options);
     const replay = await recordContinuityOutcome(file, delivery.id, "ignored", options);
@@ -244,6 +251,34 @@ describe("Personal Continuity store", () => {
     expect(applied.policy).toMatchObject({ detail: "compact", nextStep: "direct", suppression: "acknowledge-previous", version: 1 });
     expect(replay).toEqual({ applied: false, delivery: applied.delivery, policy: applied.policy });
     await expect(recordContinuityOutcome(file, delivery.id, "used", options)).rejects.toThrow("cannot be overwritten");
+  });
+
+  it("loads legacy deliveries without inventing a policy digest and rejects malformed new provenance", async () => {
+    const file = stateFile();
+    const options = deterministicOptions();
+    const thread = await createPersonalThread(file, { kind: "work", title: "Preserve policy provenance" }, options);
+    const delivery = await openContinuityDelivery(file, {
+      evidenceRefs: [],
+      expectedPolicyVersion: 0,
+      threadId: thread.id
+    }, options);
+    const current = JSON.parse(readFileSync(file, "utf8")) as Mutable<AttunementState>;
+    delete current.deliveries[0]!.policyDigest;
+    const legacy = `${JSON.stringify(current, null, 2)}\n`;
+    writeFileSync(file, legacy, "utf8");
+
+    expect((await readAttunementState(file)).deliveries[0]).toMatchObject({
+      id: delivery.id,
+      policyVersion: 0
+    });
+    expect((await readAttunementState(file)).deliveries[0]!.policyDigest).toBeUndefined();
+    expect(readFileSync(file, "utf8")).toBe(legacy);
+
+    current.deliveries[0]!.policyDigest = "not-a-digest";
+    const malformed = `${JSON.stringify(current, null, 2)}\n`;
+    writeFileSync(file, malformed, "utf8");
+    await expect(readAttunementState(file)).rejects.toThrow("attunement store is invalid");
+    expect(readFileSync(file, "utf8")).toBe(malformed);
   });
 
   it("uses immutable reset/undo receipts, monotonically versions an undo, and rejects stale undo", async () => {
