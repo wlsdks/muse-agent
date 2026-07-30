@@ -80,6 +80,11 @@ export interface AgentRuntimeOptions {
   readonly loopOutcomeVerifier?: LoopOutcomeVerifier;
   /** Hard timeout for one outcome-verifier call. Default 5_000 ms. */
   readonly loopOutcomeVerifierTimeoutMs?: number;
+  /**
+   * Fail-open, synchronous observation of a finalized non-cache loop receipt.
+   * Exceptions are ignored and cannot change the run result or grant authority.
+   */
+  readonly loopControlReceiptObserver?: (receipt: LoopControlReceipt) => void;
   readonly agentSpecResolver?: AgentSpecResolver;
   readonly historyStore?: AgentRunHistoryStore;
   readonly checkpointStore?: CheckpointStore;

@@ -135,6 +135,27 @@ describe("AgentRuntime loop control receipt wiring", () => {
     expect(second.loopControlReceipt).toBeUndefined();
   });
 
+  it("observes each finalized non-cache receipt once and ignores observer failures", async () => {
+    const observed: unknown[] = [];
+    const responseCache = new InMemoryResponseCache();
+    const runtime = createAgentRuntime({
+      loopControlReceiptObserver: (receipt) => {
+        observed.push(receipt);
+        expect(Object.isFrozen(receipt)).toBe(true);
+        throw new Error("observer unavailable");
+      },
+      modelProvider: sequenceProvider([{ id: "answer", model: "test/model", output: "cached answer" }]),
+      responseCache
+    });
+
+    const first = await runtime.run({ ...input, runId: "observer-source-run" });
+    const second = await runtime.run({ ...input, runId: "observer-cache-hit-run" });
+
+    expect(first.loopControlReceipt).toEqual(observed[0]);
+    expect(second.fromCache).toBe(true);
+    expect(observed).toHaveLength(1);
+  });
+
   it("distinguishes plan-execute and never promotes its raw answer to completed", async () => {
     const runtime = createAgentRuntime({
       modelProvider: sequenceProvider([
@@ -155,7 +176,9 @@ describe("AgentRuntime loop control receipt wiring", () => {
   });
 
   it("emits the same terminal receipt contract on a streamed plan-execute run", async () => {
+    const observed: unknown[] = [];
     const runtime = createAgentRuntime({
+      loopControlReceiptObserver: (receipt) => observed.push(receipt),
       modelProvider: sequenceProvider([
         { id: "plan", model: "test/model", output: "[]" },
         { id: "answer", model: "test/model", output: "direct answer" }
@@ -175,6 +198,7 @@ describe("AgentRuntime loop control receipt wiring", () => {
 
     expect(receipt.loopKind).toBe("plan-execute");
     expect(receipt.terminal).toEqual({ reason: "verification-pending", status: "held" });
+    expect(observed).toEqual([receipt]);
   });
 
   it("settles the streamed receipt through the same explicit verifier", async () => {

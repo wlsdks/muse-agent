@@ -250,6 +250,7 @@ export class AgentRuntime {
   private readonly modelRegistry?: ModelProviderRegistry;
   private readonly loopOutcomeVerifier?: LoopOutcomeVerifier;
   private readonly loopOutcomeVerifierTimeoutMs: number;
+  private readonly loopControlReceiptObserver?: AgentRuntimeOptions["loopControlReceiptObserver"];
   private readonly agentSpecResolver?: AgentSpecResolver;
   private readonly historyStore?: AgentRunHistoryStore;
   private readonly checkpointStore?: CheckpointStore;
@@ -316,6 +317,7 @@ export class AgentRuntime {
     this.modelRegistry = options.modelRegistry;
     this.loopOutcomeVerifier = options.loopOutcomeVerifier;
     this.loopOutcomeVerifierTimeoutMs = clampRunLimit(options.loopOutcomeVerifierTimeoutMs, 5_000);
+    this.loopControlReceiptObserver = options.loopControlReceiptObserver;
     this.agentSpecResolver = options.agentSpecResolver;
     this.historyStore = options.historyStore;
     this.checkpointStore = options.checkpointStore;
@@ -822,6 +824,7 @@ export class AgentRuntime {
       await this.recordCheckpoint(context, 100, "cancelled", context.input.messages, guarded.output);
       this.recordAgentRun(context, guarded.model, "cancelled", startedAtMs);
       runSpan.setAttribute("run.latency_ms", Date.now() - startedAtMs);
+      this.observeLoopControlReceipt(loopControlReceipt);
       return { loopControlReceipt, response: guarded };
     }
 
@@ -850,7 +853,16 @@ export class AgentRuntime {
     // span attrs without going through a separate query.
     runSpan.setAttribute("run.latency_ms", Date.now() - startedAtMs);
     this.recordTelemetry(context, selected.provider.id, selected.model, guarded, promptBudget, startedAtMs);
+    this.observeLoopControlReceipt(loopControlReceipt);
     return { loopControlReceipt, response: guarded };
+  }
+
+  private observeLoopControlReceipt(receipt: LoopControlReceipt): void {
+    try {
+      this.loopControlReceiptObserver?.(receipt);
+    } catch {
+      // Observability is fail-open and must never change terminal execution.
+    }
   }
 
   private async handleRunError(
