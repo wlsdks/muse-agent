@@ -47,7 +47,20 @@ import { createLoopbackMcpMuseTools, type LoopbackMcpServer, type McpManager, ty
 import { randomUUID } from "node:crypto";
 
 import { resolveLearningPauseFile } from "./provider-paths.js";
-import { appendActionLog, defaultSchedulerPauseFile, enqueueLearnEvent, isLearningPaused, isSchedulerPaused, resolveLearnQueueFile, upsertFollowup, type PersistedFollowup } from "@muse/stores";
+import { createScheduledTriggerAdmissionLifecycle } from "./scheduler-trigger-admission.js";
+import {
+  appendActionLog,
+  DEFAULT_TRIGGER_ADMISSION_MAX_PENDING,
+  defaultSchedulerPauseFile,
+  defaultTriggerAdmissionJournalFile,
+  enqueueLearnEvent,
+  FileTriggerAdmissionJournalStore,
+  isLearningPaused,
+  isSchedulerPaused,
+  resolveLearnQueueFile,
+  upsertFollowup,
+  type PersistedFollowup
+} from "@muse/stores";
 import { createContextReferenceMcpServer, createDefaultLoopbackMcpServers, createFetchMcpServer, createFilesystemMcpServer, type MessageApprovalGate, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
 import {
   createUserMemoryAutoExtractHook,
@@ -579,6 +592,10 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const schedulerExecutionStore = createSchedulerExecutionStore(db, env);
   const schedulerLock = createSchedulerLock(db, env);
   const schedulerCronEnabled = parseBoolean(env.MUSE_SCHEDULER_CRON_ENABLED, true);
+  const triggerAdmissionJournalStore = new FileTriggerAdmissionJournalStore({
+    file: defaultTriggerAdmissionJournalFile(env),
+    maxPending: DEFAULT_TRIGGER_ADMISSION_MAX_PENDING
+  });
   const schedulerService = new DynamicScheduler({
     dispatcher: new ScheduledJobDispatcher({
       agentExecutor: createScheduledAgentExecutor(() => agentRuntime, defaultModel),
@@ -600,7 +617,10 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     // job.notificationChannelId — without this the default no-op
     // SchedulerMessaging silently discards every job's output.
     messagingService: new SchedulerMessaging(createSchedulerMessagingSender(messagingRegistry)),
-    store: schedulerStore
+    store: schedulerStore,
+    triggerAdmissionLifecycle: createScheduledTriggerAdmissionLifecycle({
+      store: triggerAdmissionJournalStore
+    })
   });
   schedulerHandle.current = schedulerService;
   if (schedulerCronEnabled) {

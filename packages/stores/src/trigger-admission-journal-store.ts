@@ -1,4 +1,6 @@
 import { promises as fs } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 import {
   admitTriggerToJournal,
@@ -16,6 +18,14 @@ import {
 import { atomicWriteFile, withFileLock, withFileMutationQueue } from "./atomic-file-store.js";
 
 const DEFAULT_MAX_FILE_BYTES = 5 * 1024 * 1024;
+export const DEFAULT_TRIGGER_ADMISSION_MAX_PENDING = 256;
+
+export function defaultTriggerAdmissionJournalFile(
+  env: Readonly<Record<string, string | undefined>> = process.env
+): string {
+  return env.MUSE_TRIGGER_ADMISSION_JOURNAL_FILE
+    ?? join(homedir(), ".muse", "trigger-admission-journal.json");
+}
 
 export interface FileTriggerAdmissionJournalStoreOptions
   extends CreateTriggerAdmissionJournalInput {
