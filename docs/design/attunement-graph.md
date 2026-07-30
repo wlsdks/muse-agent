@@ -539,24 +539,25 @@ existing authoritative Muse stores
 - background scheduling;
 - a specific graph database SDK in its public domain API.
 
-### Target public Interface
+### Public Interface
 
-The standalone public architecture should converge on one small `Mag*` Interface. This is
-a target contract, not the current package export map:
+The package now ships the first neutral, closed `Mag*` lifecycle:
 
 ```ts
-interface Mag extends AsyncDisposable {
-  project(command: MagProjectionCommand): Promise<MagProjectionReceipt>;
+interface Mag {
+  project(command: MagProjectCommand): Promise<MagSnapshot>;
   execute(command: MagExecuteCommand): Promise<MagOperatorResult>;
   close(): Promise<void>;
 }
 ```
 
-The selected local composition is opened through `openMag`/`openLocalMag`; exact versioned
-operators cover `changes-since`, `resume-context`, `decision-counterfactual`,
-`policy-evidence`, and `forget-impact`. Expert Source and Store Adapter Interfaces stay in
-separate subpaths. Raw assertion mutation, SQL/Cypher, and arbitrary traversal plans do not
-become product Interfaces.
+`openMag` currently requires one explicit Store capability, binds the instance to one
+scope, accepts `canonical-projection@1`, and executes `working-graph@1`. The explicit
+in-memory Store is a semantic oracle, never a durability fallback. `openLocalMag` and exact
+operators for `changes-since`, `resume-context`, `decision-counterfactual`,
+`policy-evidence`, and `forget-impact` remain roadmap work. Expert Source and Store Adapter
+Interfaces stay in separate subpaths. Raw assertion mutation, SQL/Cypher, and arbitrary
+traversal plans do not become product Interfaces.
 
 MAG consumes explicit verified source observations. It must not import every personal store
 and create a second composition root. Current `AttunementGraph*` and Activation Subgraph v1
@@ -568,6 +569,15 @@ exports remain compatibility vocabulary until the migration in ADR 0001 is compl
 selection fixes the architecture, not the shipped-status claim: durable schema, migration,
 recovery, and runtime composition remain roadmap work. MAG owns the logical journal and
 domain operators; SQLite owns local transactions, indexes, locking, and crash recovery.
+
+MAG remains TypeScript-first: the public Interface, graph semantics, validation, and
+conformance oracle stay in TypeScript. The synchronous SQLite Implementation must be
+isolated from the application event loop. Proof closure, canonical hashing, compression,
+rebuild, or physical forget may move to a Rust Node-API/WASM kernel only after
+workload-specific measurement includes boundary/serialization overhead and proves a
+material end-to-end gain. The accepted performance ladder, corpus matrix, and initial
+targets live in
+[ADR 0002](../adr/0002-mag-language-runtime-boundary.md).
 
 The flagship Muse experience must remain complete with Muse's own local default graph
 Module. Neo4j, Graphiti, a hosted graph service, or any other external Graph DB may later

@@ -14,6 +14,10 @@
       "types": "./dist/testing.d.ts",
       "import": "./dist/testing.js"
     },
+    "./backend": {
+      "types": "./dist/mag-backend.d.ts",
+      "import": "./dist/mag-backend.js"
+    },
     "./continuity": {
       "types": "./dist/continuity-projection.d.ts",
       "import": "./dist/continuity-projection.js"

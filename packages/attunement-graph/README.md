@@ -1,107 +1,277 @@
-# `@muse/attunement-graph`
+# Muse Attunement Graph
 
-Storage-neutral reference kernel for **Muse Attunement Graph (MAG)**, Muse's
-agent-native temporal/provenance graph architecture.
+**Muse Attunement Graph (MAG)** is a local-first, agent-native temporal and provenance
+graph. It compiles a small, verified **Working Graph** for one agent decision instead of
+making a model search an unbounded personal knowledge graph.
 
-MAG is being developed as an independently extractable product Module inside the Muse
-monorepo. Muse is its first consumer and dogfood environment. It is not independently
-publishable today: the package is still private, its durable SQLite MAG Store and
-clean-room package gate are roadmap work, and part of the current semantic contract still
-depends on `@muse/attunement`. The accepted package, Adapter, and future repository boundary
-is recorded in
-[`ADR 0001`](../../docs/adr/0001-mag-product-module-boundary.md).
-The measured blockers and qualification sequence are recorded in the
-[2026-07-30 standalone readiness audit](../../docs/evaluations/mag-standalone-readiness-2026-07-30.md).
+MAG is designed for the questions a continuing personal agent must answer safely:
 
-Canonical terms:
+- What changed since this person stopped?
+- Which exact observations support this conclusion?
+- Is this context complete, partial, stale, or unavailable?
+- Which policy applied when a suggestion was made?
+- What would become invalid if the user corrected or forgot a source?
+- Does the available evidence support context only, or does it also carry action authority?
 
-- **MAG** is the whole architecture and future standalone product.
-- **MAG Engine** owns graph meaning, verified projection, versioned operators, proof
-  closure, and Working Graph compilation.
-- **MAG Store** owns durable journal, snapshots, indexes, recovery, export, and rebuild.
-- An immutable **receipt** is evidence projected into MAG; it is not the graph database.
-- Markdown, Obsidian, and Notion are planned Source Adapters, not current MAG package
-  exports. SQLite is the selected but unshipped local Store Implementation; PostgreSQL is
-  an optional future Adapter.
+MAG is not a generic Graph DB, a vector-memory replacement, or an LLM-generated ontology.
+Authoritative notes, tasks, calendars, and external services remain authoritative. MAG
+stores rebuildable relations and immutable source references; graph proximity never
+creates truth, feedback, policy, permission, or authority.
 
-This package currently owns closed graph semantics, assertion validation, bounded traversal,
-an in-memory conformance adapter, the Activation Subgraph compiler, and a pure per-thread
-Continuity projection, and the first verified personal-temporal operator. The projection
-accepts unknown state through the same I/O-free
-parser used by the authoritative Attunement store, emits content-addressed assertions with
-exact versioned provenance, and computes scope-safe snapshot deltas. It never reads the
-store. Traversal has independent hard caps for result assertions, considered adjacency
-assertions, visited references, and depth; truncation is explicit.
+> RAG can nominate likely context. MAG proves the exact scope, time, change, provenance,
+> completeness, and authority boundary.
 
-`@muse/attunement-graph/continuity-changes` now compares two exact observations inside a
-caller-declared, version-bound interval. It normalizes no-op re-observation, distinguishes
-world-valid changes from facts learned later, pairs only unambiguous revisions, builds one
-bounded deterministic thread path, and returns typed abstentions instead of inventing
-removal time or incomplete explanations. Unknown-input parsing, projection, diff,
-traversal, output, model calls, and embedding calls are all explicitly bounded/accounted.
+## Project status
 
-The verified resumption-context operator and its bounded process-local coordinator are now
-implemented behind the dedicated `continuity-resume-runtime` subpath and dogfooded by
-explicit Pack Preview. The same subpath validates an optional strict preparation request
-and presents the existing bilingual Capsule contract only for the exact compared result
-that owns both its Pack and receipt evidence. Policy evidence, forget impact, and bounded decision
-counterfactuals remain roadmap work. They must follow the same content-addressed source
-path plus completeness-or-abstention contract, not arbitrary model-generated graph queries.
+MAG is currently developed as the private `@muse/attunement-graph` workspace package
+inside Muse. Muse is its first consumer and dogfood environment. The package is **not
+published or standalone-qualified yet**.
 
-The dedicated `shadow-decision-receipt` subpath now binds a fresh timing decision and its
-decision-time policy snapshot to that same exact compared-result identity. It serializes
-only bounded IDs, status, category-observation digest, and no-authority claims; the private
-WeakMap binder is not package-exported. Verified capture requires the exact originating
-coordinator, compared result, Pack, timing projection, and Source/Graph dependencies; a
-naked serialized receipt fails closed. This is process-local decision provenance, not a
-portable restart verifier, delivery path, return signal, policy learner, user-facing card,
-or durable ledger.
+The current implementation includes:
 
-It does **not** own authoritative personal data, durable persistence, LLM extraction,
-runtime scheduling, policy promotion, approval, or action execution. Factual task
-interaction receipts are projected only as evidence/correlation, never as user outcomes.
-The configured-local snapshot Provider therefore lives behind
-`@muse/attunement/host`, while its I/O-free receipt and process-local mint verifiers live
-behind `@muse/attunement/continuity-snapshots`. A package-private composition seam now
-accepts only that exact verified mint, independently rechecks the normalized-state
-bytes/digest, creates and verifies a Continuity Observation Receipt, and feeds truthful
-Provider provenance plus `unassessed` freshness into receipt-bound graph evidence.
-Unassessed freshness forces abstention; the seam preserves exact receipt links and bounded
-nomination overflow accounting without inventing a graph commit, generation, durable
-authority, or absence proof. It has no root export and the graph still never reads the
-Attunement file itself.
-An independently verified sibling seam accepts only a process-minted, Provider-owned
-two-endpoint head revalidation. Equal complete normalized endpoints within the declared
-capture span may settle as `fresh-at-assessment` and `partial`; changed, over-span, or
-unavailable endpoints never enter Graph compilation. The verifier closes Provider
-ownership, scope, endpoint timing, coverage vocabulary, and the exact scope-derived thread
-seed. It proves neither continuous stability nor freshness after assessment and remains
-absent from the package root, runtime, and persistence surfaces.
-The thread-rooted compiler also keeps a bounded retained-witness inventory in a
-module-private exact-identity `WeakMap`. Individual core/optional entries and a compact
-manifest preserve the complete pre-settlement pool, fair/lane-undetermined partition, and
-body-bound focus digests while reusing the existing frozen document/assertion instances.
-The inventory is available only to the exact in-process compilation object; cloning,
-spreading, JSON serialization, and proxies do not carry it, and existing receipt IDs,
-enumerable fields, JSON, settlement behavior, and package exports are unchanged. The
-caller-budgeted resumption compiler now settles this inventory, while the coordinator keeps
-only exact previous boundaries plus Source/Graph receipts in a 16-entry process-local LRU
-and returns semantic-only partial or unavailable results. This is not a persistence layer,
-automatic timing system, Capsule product UI, or action path.
-The adapter is exposed from `@muse/attunement-graph/continuity`, so importing the kernel
-root does not eagerly load Attunement validation or personal-store dependencies.
+- validated temporal/provenance assertions and an immutable logical journal;
+- bounded graph traversal and Activation Subgraph compilation;
+- a neutral `open → project → execute → close` lifecycle;
+- an explicit in-memory semantic oracle and backend conformance harness;
+- exact Continuity observation, change, Capsule-presentation, resume-runtime, and Shadow
+  decision-receipt compatibility Modules used by Muse.
 
-The in-memory adapter is the executable specification for future storage adapters. Every
-adapter must pass `runAttunementGraphStoreConformance` from
-`@muse/attunement-graph/testing` before product benchmarks or dogfood can select it.
+Still required before a standalone release:
+
+- a worker-isolated durable SQLite Store;
+- export/rebuild, migrations, corruption recovery, and physical forget;
+- Markdown, Obsidian, and Notion Source Adapters;
+- a clean-room build and packed-install gate with no Muse workspace dependency;
+- a minimal non-Muse example agent and complete public release metadata.
+
+Passing library tests proves deterministic software contracts. It does not prove that MAG
+has learned a person, improved timing, or saved reconstruction time in real use.
+
+## Why an agent-native graph?
+
+A conventional graph API optimizes arbitrary query breadth. MAG optimizes **bounded agent
+decisions**:
+
+1. A Source Adapter emits a bounded, exact source observation.
+2. A versioned projector commits it to one explicit `(sourceId, threadId)` scope.
+3. A versioned operator reads one immutable snapshot.
+4. The Engine settles a proof-closed, token-budgeted Working Graph.
+5. The result reports `complete`, `partial`, or `abstained` separately from source
+   freshness.
+6. The model receives only the decision slice and its evidence boundary.
+
+The public Interface intentionally does not expose SQL, Cypher, arbitrary predicates,
+storage traversal plans, model prompts, or raw database handles.
+
+## Quick start
+
+The following example uses the process-local in-memory oracle. It is for tests and
+experiments, not durable user data.
+
+```ts
+import {
+  openMag,
+  type GraphAssertion,
+  type MagScope
+} from "@muse/attunement-graph";
+import { createInMemoryMagStore } from "@muse/attunement-graph/testing";
+
+const scope: MagScope = {
+  sourceId: "notes",
+  threadId: "trip-planning"
+};
+
+const assertion: GraphAssertion = {
+  schemaVersion: 1,
+  id: "trip-linked-to-hotel-comparison",
+  subject: { kind: "artifact", id: "hotel-comparison" },
+  predicate: "LINKED_TO",
+  object: { kind: "thread", id: "trip-planning" },
+  epistemicClass: "source-observed",
+  sourceRefs: [{
+    namespace: "example.notes",
+    id: "travel.md#hotel-comparison"
+  }],
+  recordedAt: "2026-07-30T09:00:00.000Z",
+  derivation: { kind: "projection", version: "example@1" }
+};
+
+const mag = await openMag({
+  scope,
+  store: createInMemoryMagStore()
+});
+
+const snapshot = await mag.project({
+  operator: "canonical-projection@1",
+  observation: {
+    schemaVersion: 1,
+    observationKey: "notes-sync-42",
+    scope,
+    observedAt: "2026-07-30T09:00:00.000Z",
+    sourceFreshness: {
+      state: "fresh",
+      observedAt: "2026-07-30T09:00:00.000Z"
+    },
+    assertions: [assertion]
+  }
+});
+
+const result = await mag.execute({
+  operator: "working-graph@1",
+  seed: { kind: "thread", id: "trip-planning" },
+  now: "2026-07-30T09:00:00.000Z",
+  maxEstimatedTokens: 2_000
+});
+
+console.log(snapshot.commitId, result.status, result.workingGraph);
+await mag.close();
+```
+
+Commands and operators use immutable versioned identifiers. A persisted value never
+contains a moving `latest` alias.
+
+## Target architecture
+
+The neutral Engine and in-memory oracle shown below exist. SQLite and the three Source
+Adapters are selected or planned components, not current package Implementations.
+
+```text
+Agent or Muse product
+  → MAG Interface
+    → MAG Engine
+      → MagStore capability
+        → SQLite Store [planned]
+        → in-memory semantic oracle
+
+Markdown / Obsidian / Notion [planned]
+  → Source Adapter
+    → verified bounded observation
+      → versioned projector
+```
+
+### MAG Engine
+
+The Engine owns graph meaning:
+
+- exact scope and immutable snapshot semantics;
+- epistemic classes, temporal validity, and provenance;
+- versioned projectors and operators;
+- proof closure, completeness, and typed abstention;
+- deterministic IDs and portable conformance fixtures.
+
+### MAG Store
+
+The current Store seam owns atomic compare-and-swap and detached snapshot reads. A future
+durable Store Implementation will own:
+
+- the durable journal and snapshot indexes;
+- crash recovery, migrations, export/rebuild, and physical forget;
+- writer serialization, WAL/checkpoint policy, and shutdown.
+
+SQLite is the selected local default. PostgreSQL may become an optional deployment
+Adapter. Redis may be used only as a disposable cache or queue. MySQL and external
+property-graph services are not required for the flagship local experience.
+
+### Planned Source Adapters
+
+The planned Source Adapters will preserve exact source identity without turning MAG into a
+second document database:
+
+- Markdown: file identity, frontmatter, headings, and portable links;
+- Obsidian: vault-relative paths, wiki-links, embeds, headings, and stable block refs;
+- Notion: workspace, database, page, block, and sync-cursor identity.
+
+Source text will remain in the source system. An Adapter must define drift, deletion,
+round-trip, and rebuild behavior explicitly.
+
+## Runtime and language strategy
+
+MAG is **TypeScript-first**. TypeScript owns the public Interface, semantics, validation,
+operators, and cross-implementation conformance corpus. The planned SQLite Store will
+perform durable query and transaction work in its native engine.
+
+The production SQLite Adapter will isolate synchronous database work in a worker so MAG
+does not stall an agent host's application event loop.
+
+Rust is an optional, benchmark-gated acceleration layer—not a second MAG implementation
+and not a required dependency. Candidate kernels are:
+
+- proof-closure and large bounded traversals;
+- canonical hashing;
+- compression;
+- export/rebuild;
+- physical forget and compaction.
+
+A kernel moves to Rust only after the TypeScript/SQLite implementation has been measured,
+query shape and allocation have been optimized, and the Rust path shows a material
+end-to-end improvement **including boundary and serialization overhead**. Node hosts use
+Node-API; portable hosts may use WebAssembly when justified. Every native kernel must
+produce byte-stable results against the TypeScript semantic oracle.
+
+The durable performance matrix covers 10K, 100K, and 1M assertions; single and batched
+projection; warm/cold Working Graph execution; replay, rebuild, export, and forget;
+resident memory; database/WAL size; and application-thread event-loop delay on Apple
+Silicon and Linux x86-64.
+
+## Core invariants
+
+- One ordinary operation belongs to exactly one `(sourceId, threadId)`.
+- One operator reads one immutable generation and commit.
+- Evidence is rebuildable and never outranks its authoritative source.
+- A model hypothesis cannot silently become a source-observed fact.
+- Factual interaction is not feedback, usefulness, causality, policy, or permission.
+- A validated policy audit may establish when the current policy generation occurred;
+  its audit ID, candidate, behavior digests, and authority do not become graph evidence.
+- Lexical/vector retrieval may nominate candidates only.
+- Mandatory proof, source, freshness, scope, policy, or authority branches are never
+  silently truncated.
+- Current-world absence requires both complete projection coverage and fresh source
+  coverage; otherwise MAG abstains.
+- Corrupt or future-version durable state becomes unavailable, never an empty graph.
+- No Source or Store Adapter may expand action authority.
+
+## Conformance
+
+Every Store Implementation must pass the same backend-neutral corpus before it is used for
+benchmarks or product dogfood.
 
 ```bash
 pnpm --filter @muse/attunement-graph typecheck
 pnpm --filter @muse/attunement-graph test
+pnpm --filter @muse/attunement-graph build
+```
+
+The conformance contract covers atomic compare-and-swap, replay, collision/corruption,
+scope isolation, immutable snapshots, detached reads, bounded execution, failure
+atomicity, and lifecycle races. Durable Implementations additionally require restart,
+crash, migration, export/rebuild, and physical-forget qualification.
+
+The existing Continuity comparison benchmark is a deterministic capability baseline, not
+a cross-language throughput result:
+
+```bash
 pnpm --filter @muse/attunement-graph benchmark:continuity-changes
 ```
 
-Architecture and roadmap:
+## Extraction and release boundary
 
-- [`docs/design/attunement-graph.md`](../../docs/design/attunement-graph.md)
-- [`docs/goals/attunement-wow-graph-roadmap.md`](../../docs/goals/attunement-wow-graph-roadmap.md)
+MAG stays in the Muse monorepo until all of these are true:
+
+1. it builds and tests in a generated clean-room workspace;
+2. public API scans find no Muse application, UI, scheduler, model, or private-path import;
+3. in-memory and SQLite Stores pass the same byte-stable conformance corpus;
+4. portable export/rebuild, corruption/future-version handling, migration, and physical
+   forget pass;
+5. the packed artifact installs in a fresh project without workspace dependencies;
+6. one minimal non-Muse agent uses only public package Interfaces;
+7. README, changelog, security policy, contribution guide, license, and third-party notices
+   are release-ready.
+
+At that point the verified package, tests, examples, and MAG-owned documentation can be
+extracted with history into a dedicated repository. Until then, the Muse monorepo remains
+the single authoritative history.
+
+## License
+
+The intended standalone project follows Muse's MIT license. Public release still requires
+a final third-party notice and package-name/scope ownership review.

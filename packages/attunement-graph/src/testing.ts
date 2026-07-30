@@ -5,6 +5,14 @@ import type {
   GraphEvidenceRef,
   GraphRef
 } from "./types.js";
+export { createInMemoryMagStore, InMemoryMagStoreBackend } from "./mag-in-memory-store.js";
+export type { MagStoreBackend, MagStoredProjection } from "./mag-backend.js";
+export {
+  runMagStoreConformance,
+  type MagStoreBackendFactory,
+  type MagStoreConformanceCase,
+  type MagStoreConformanceReport
+} from "./mag-testing.js";
 
 const THREAD: GraphRef = { id: "conformance_thread", kind: "thread" };
 const SOURCE: GraphEvidenceRef = {

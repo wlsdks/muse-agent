@@ -47,10 +47,11 @@ function state(
 ): AttunementState {
   return {
     deliveries: [],
+    experienceLearningPolicyAudits: [],
     interactionReceipts: [],
     nextPolicyVersion: 1,
     resetReceipts: [],
-    schemaVersion: 11,
+    schemaVersion: 12,
     threads: [{
       createdAt: "2026-07-29T00:00:00.000Z",
       id: SCOPE.threadId,

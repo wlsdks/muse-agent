@@ -25,10 +25,11 @@ const noteLink: ArtifactLink = {
 function state(policy = baselinePolicy()): AttunementState {
   return {
     deliveries: [],
+    experienceLearningPolicyAudits: [],
     interactionReceipts: [],
     nextPolicyVersion: 1,
     resetReceipts: [],
-    schemaVersion: 11,
+    schemaVersion: 12,
     threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_life", kind: "life", links: [noteLink, taskLink], policy, title: "Plan a birthday" }],
     undoResetReceipts: []
   };
@@ -279,10 +280,11 @@ describe("buildContinuityPack", () => {
     };
     const withResource: AttunementState = {
       deliveries: [],
+      experienceLearningPolicyAudits: [],
       interactionReceipts: [],
       nextPolicyVersion: 1,
       resetReceipts: [],
-      schemaVersion: 11,
+      schemaVersion: 12,
       threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_work", kind: "work", links: [resourceLink, taskLink], policy: baselinePolicy(), title: "Ship the adapter" }],
       undoResetReceipts: []
     };
@@ -314,10 +316,11 @@ describe("buildContinuityPack", () => {
     };
     const withResource: AttunementState = {
       deliveries: [],
+      experienceLearningPolicyAudits: [],
       interactionReceipts: [],
       nextPolicyVersion: 1,
       resetReceipts: [],
-      schemaVersion: 11,
+      schemaVersion: 12,
       threads: [{ createdAt: "2026-07-14T00:00:00.000Z", id: "thread_work", kind: "work", links: [resourceLink], policy: baselinePolicy(), title: "Ship the adapter" }],
       undoResetReceipts: []
     };

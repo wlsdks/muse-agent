@@ -69,7 +69,15 @@ MAG is deliberately being built as an independently extractable product Module. 
 its first consumer and dogfood environment; the current private workspace package is not
 yet a standalone release. Its closed public Interface, Source/Store Adapter boundaries,
 clean-room package gate, and history-preserving repository split are fixed in
-[ADR 0001](docs/adr/0001-mag-product-module-boundary.md).
+[ADR 0001](docs/adr/0001-mag-product-module-boundary.md). MAG remains TypeScript-first;
+SQLite work will run behind an isolated worker, and only benchmark-proven hot kernels may
+move to Rust behind the same conformance contract, as fixed in
+[ADR 0002](docs/adr/0002-mag-language-runtime-boundary.md).
+The package now exposes the first independently verified neutral lifecycle:
+`openMag({ scope, store }) → project(canonical-projection@1) →
+execute(working-graph@1) → close()`. Its in-memory Store is an explicit semantic oracle,
+not durable storage; SQLite, Source Adapters, clean-room packaging, and the standalone
+release remain roadmap work, and AWG-065 overall remains `partial`.
 The first `changesSince`-style operator is shipped as an I/O-free library contract. A
 separate process-local runtime now also applies the verified MAG path to explicit
 `muse.continuity.pack.preview` calls: the first qualifying call seeds one exact per-thread

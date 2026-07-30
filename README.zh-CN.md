@@ -43,6 +43,16 @@ Muse 不只是办公助手，而是面向一个人的生活与工作的持续型
 [Muse Attunement Graph (MAG)](docs/design/attunement-graph.md)。
 [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md)
 定义 scope-safe snapshot、proof-closed Working Graph、完整性与本地存储边界。
+MAG 按未来可直接拆分为独立仓库的产品 Module 开发。Engine 与公开 Interface
+保持 TypeScript，SQLite 在 worker 中隔离；只有在真实测量证明大规模遍历、哈希、
+rebuild 或 forget 成为瓶颈时，才会在同一 conformance 合同后选择性使用 Rust
+加速。详细决策见
+[语言与运行时 ADR](docs/adr/0002-mag-language-runtime-boundary.md)。
+当前 package 已实现并独立验证首个中立 lifecycle：
+`openMag({ scope, store }) → project(canonical-projection@1) →
+execute(working-graph@1) → close()`。随附的内存 Store 只是语义验证 oracle，
+并非持久化存储。SQLite、clean-room 打包、Source Adapter 和独立发布仍在路线图中，
+AWG-065 整体状态仍为 `partial`。
 目前，显式 `muse.continuity.pack.preview` 已开始实际 dogfood 经过验证的
 process-local Graph 基线：首次调用建立基线，后续调用返回受限的语义 resume
 比较。在同一个 Preview 中显式请求时，只有精确绑定的 Pack/Graph 结果才会返回

@@ -53,6 +53,16 @@ context compiler인 [Muse Attunement Graph (MAG)](docs/design/attunement-graph.m
 scope-safe snapshot, proof-closed Working Graph, 명시적 완전성, 내장형 로컬 저장
 경계는 [Agent-Native Graph Core 청사진](docs/design/agent-native-graph-core.md)에
 기록되어 있습니다.
+MAG는 나중에 별도 저장소로 추출할 수 있는 독립 제품 Module로 개발합니다. Engine과
+공개 Interface는 TypeScript를 유지하고, SQLite는 worker로 격리하며, 실제 측정에서
+병목이 증명된 대규모 순회·해싱·rebuild·forget 연산만 동일 conformance 뒤에서
+선택적으로 Rust로 가속합니다. 세부 결정은
+[언어·런타임 ADR](docs/adr/0002-mag-language-runtime-boundary.md)에 있습니다.
+현재 패키지에는 독립 검증된 첫 중립 lifecycle
+`openMag({ scope, store }) → project(canonical-projection@1) →
+execute(working-graph@1) → close()`가 구현되어 있습니다. 함께 제공되는 인메모리
+Store는 의미론 검증용 oracle일 뿐 영속 저장소가 아닙니다. SQLite, clean-room 패키징,
+Source Adapter, 독립 출시는 아직 로드맵이며 AWG-065 전체 상태도 `partial`입니다.
 현재는 명시적인 `muse.continuity.pack.preview`가 이 그래프의 검증된
 process-local 기준선을 실제로 dogfood합니다. 첫 호출은 기준선을 만들고 이후 호출은
 제한된 의미적 resume 비교를 돌려줍니다. 같은 Preview에서 명시적으로 요청하면

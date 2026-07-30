@@ -11,6 +11,22 @@ export {
   MAX_GRAPH_QUERY_VISITED_REFS
 } from "./constants.js";
 export { AttunementGraphError, type AttunementGraphErrorCode } from "./error.js";
+export { MagError, type MagErrorCode } from "./mag-error.js";
+export { createMagEngine, openMag } from "./mag-engine.js";
+export type {
+  Mag,
+  MagExecuteCommand,
+  MagOperatorResult,
+  MagProjectCommand,
+  MagScope,
+  MagSnapshot,
+  MagSourceAdapter,
+  MagSourceFreshness,
+  MagSourceObservation,
+  MagStore,
+  MagWorkingGraph,
+  OpenMagOptions
+} from "./mag-contracts.js";
 export { compileActivationSubgraph } from "./activation-subgraph.js";
 export { InMemoryAttunementGraphStore } from "./in-memory-store.js";
 export {
