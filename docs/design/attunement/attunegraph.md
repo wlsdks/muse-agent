@@ -56,8 +56,9 @@ The engine exists to power three product experiences:
 3. **Policy Card** can show what Muse proposes to learn about collaborating with this person,
    the evidence behind it, its scope, and how to try, edit, reject, or roll it back.
 
-The full experience and this engine are roadmap work. Existing graph-like data is a
-substrate, not proof that the engine or experience has shipped.
+The complete automatic experience is roadmap work. The engine and several bounded
+sub-surfaces now ship in the monorepo; that is not proof that the full experience or its
+real-life usefulness has shipped.
 
 ## Competitive boundary, not a graph checkbox
 
@@ -204,6 +205,20 @@ baseline itself remains process-local, and the path still has no continuous/curr
 ingestion, LLM extraction, automatic Shadow delivery, Capsule product UI, Policy Card UI,
 or action authority. The complete three-part signature experience therefore remains a
 roadmap claim.
+
+An explicit second composition point now exposes the read-only
+`muse.continuity.learning.policy-card.preview` tool over
+`@muse/attunegraph/policy-card`. It captures one fresh provider head, derives the thread
+scope only from that receipt, and compiles an English or Korean inert card for one exact
+current learning opportunity. The card separates authoritative Attunement experience,
+structurally validated caller-supplied replay claims whose execution provenance is not
+verified, and an exact AttuneGraph explanation locally derived from the assessed
+snapshot. One receipt must prove exactly one `DELIVERED_FOR`, `GOVERNED_BY`,
+`PRODUCED_OUTCOME`, and `SCOPED_TO` relation with canonical time boundaries. Missing,
+ambiguous, stale, cross-scope, invalid, or over-budget evidence holds the card instead of
+guessing. This preview writes nothing, approves nothing, and exposes no action payload.
+Automatic surfacing, product UI, trusted trial execution, edit/reject persistence, apply,
+and rollback remain separate roadmap work.
 
 Fresh Shadow timing decisions now retain their exact bounded policy snapshot, and a
 dedicated Graph receipt can bind one such decision only to the original process-local
@@ -538,6 +553,7 @@ existing authoritative Muse stores
 
 - Personal Continuity projections and change explanations;
 - Continuity Capsule and resume-runtime composition;
+- claim-safe, read-only Policy Card compilation;
 - Shadow decision, provider, and receipt-bound evidence;
 - Muse scheduler/control lineage;
 - no storage engine, backend implementation, or compatibility alias.

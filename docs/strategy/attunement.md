@@ -94,11 +94,12 @@ This is built from three product mechanisms:
 A procedural skill teaches an agent how to do a task better. An Attunement Policy teaches
 Muse how to collaborate with this person better.
 
-These three product mechanisms remain target architecture rather than a shipped wow claim.
-Their underlying [AttuneGraph](../design/attunement/attunegraph.md) has bounded
-library substrates, including the worker-isolated durable projection-journal foundation,
-but not yet the complete Source Adapter, Policy Card, maintenance, qualification, or
-product-composition program. Dependency-ordered work lives in the
+The complete three-part experience remains target architecture rather than a shipped wow claim.
+Its underlying [AttuneGraph](../design/attunement/attunegraph.md) now has bounded
+library/runtime substrates, including the worker-isolated durable projection journal, an explicit
+opt-in Continuity projection writer, and a claim-safe read-only Policy Card compiler/tool. It does
+not yet have the complete Source Adapter, automatic Policy Card surface and controls, maintenance,
+qualification, or product-composition program. Dependency-ordered work lives in the
 [wow + graph roadmap](../../internal/goals/attunegraph-roadmap.md).
 
 ## The compounding loop
@@ -164,9 +165,9 @@ execution location. Provider-specific behavior stays behind adapters.
 
 | Status | What it means in Muse today |
 |---|---|
-| **Available now** | Provider-neutral runtime; local personal stores; user memory; grounded recall; guarded browser control; traces/checkpoints; Personal Continuity Slice A; and Observe O1: explicit consent for one exact thread, category/time/duration-only local sessions, inspect/pause/resume/forget, and one fenced app-only collector. O1 performs no hypothesis, policy, delivery, model call, send, or action. Packs remain user-invoked with four explicit outcomes and a narrow display-policy update. Explicit Pack Preview now also dogfoods a bounded process-local AttuneGraph baseline, returns semantic resume comparison facts, and can explicitly produce a verified English/Korean Capsule render-data presentation without opening or delivering the Pack. |
+| **Available now** | Provider-neutral runtime; local personal stores; user memory; grounded recall; guarded browser control; traces/checkpoints; Personal Continuity Slice A; and Observe O1: explicit consent for one exact thread, category/time/duration-only local sessions, inspect/pause/resume/forget, and one fenced app-only collector. O1 performs no hypothesis, policy, delivery, model call, send, or action. Packs remain user-invoked with four explicit outcomes and a narrow display-policy update. Explicit Pack Preview now also dogfoods a bounded process-local AttuneGraph baseline, returns semantic resume comparison facts, and can explicitly produce a verified English/Korean Capsule render-data presentation without opening or delivering the Pack. An explicit read-only Policy Card preview can compile one current learning opportunity from one fresh local snapshot while separating authoritative experience, caller-supplied replay claims, and locally derived graph explanation; it performs no mutation or action. |
 | **Experimental substrates** | Pattern suggestions, proactive surfacing, background review, and self-followup. They contribute signals or delivery paths, but are not an Attunement loop. |
-| **Roadmap** | Shadow Muse, automatic stop capture and the full Continuity Capsule product/UI, Policy Card, durable AttuneGraph storage, more Continuity source adapters, Observe hypothesis/correction controls, Personal Rhythm Model, Friction Discovery, usefulness qualification, and timing-aware help. The current process-local AttuneGraph-backed Preview and explicit Capsule render data are neither durable memory nor proactive timing. Exact browsing context and O1 category collection do not themselves ship proactive timing. |
+| **Roadmap** | Shadow Muse, automatic stop capture and the full Continuity Capsule product/UI, automatic Policy Card surfacing plus trusted trial/edit/reject/apply/rollback controls, default/continuous AttuneGraph ingestion and current-world storage, more Continuity source adapters, Observe hypothesis/correction controls, Personal Rhythm Model, Friction Discovery, usefulness qualification, and timing-aware help. The current process-local resume baseline, explicit durable projection writer, Capsule render data, and inert Policy Card preview do not themselves provide proactive timing or current-world truth. Exact browsing context and O1 category collection do not themselves ship proactive timing. |
 
 ## What Continuity, Muse Work, and Observe mean
 

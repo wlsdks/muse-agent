@@ -42,6 +42,9 @@ import {
 import type {
   ContinuityObservationReceipt
 } from "@muse/attunegraph/continuity-observations";
+import {
+  compileAttuneGraphPolicyCard
+} from "@muse/attunegraph/policy-card";
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { createCalendarMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createHistoryMcpServer, createMathMcpServer, createMessagingMcpServer, createNotesMcpServer, createNotesRegistryMcpServer, createPatternsMcpServer, createProactiveMcpServer, createRemindersMcpServer, createStatusMcpServer, createTasksMcpServer, createTasksRegistryMcpServer, createSearchMcpServer, createWebReadMcpServer, type MessageApprovalGate } from "@muse/domain-tools";
 import { mirrorNoteToApple, mirrorReminderToApple } from "@muse/macos";
@@ -63,6 +66,7 @@ import { createContinuityOutcomeTool } from "./continuity-outcome-tool.js";
 import { createContinuityLearningOpportunityTool } from "./continuity-learning-opportunity-tool.js";
 import { createContinuityLearningPreviewTool } from "./continuity-learning-preview-tool.js";
 import { createContinuityLearningReplayPreviewTool } from "./continuity-learning-replay-preview-tool.js";
+import { createContinuityLearningPolicyCardTool } from "./continuity-learning-policy-card-tool.js";
 import { createContinuityLearningApplyTool } from "./continuity-learning-apply-tool.js";
 import { createContinuityLearningRollbackTool } from "./continuity-learning-rollback-tool.js";
 import { createQualificationLearningWriteGate } from "./qualification-learning-active-skill-write-gate.js";
@@ -286,6 +290,43 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
               return resolved
                 ? { preview: resolved.preview, replayBundle: resolved.replayBundle }
                 : undefined;
+            }
+          }),
+          createContinuityLearningPolicyCardTool({
+            previewPolicyCard: async ({
+              draft,
+              evidenceCases,
+              locale,
+              opportunityId
+            }) => {
+              const queue = buildExperienceLearningReviewQueue(
+                await readAttunementState(deps.attunementFile!)
+              );
+              const matches = queue.items.filter((item) =>
+                item.opportunityId === opportunityId
+              );
+              if (matches.length !== 1) {
+                return Object.freeze({
+                  reason: "opportunity-not-found" as const,
+                  status: "held" as const
+                });
+              }
+              const headRevalidation =
+                await snapshotProvider.captureHeadRevalidation(
+                  {
+                    sourceId: CONTINUITY_RUNTIME_SOURCE_ID,
+                    threadId: matches[0]!.scope.threadId
+                  },
+                  { maxCaptureSpanMs: 1_000 }
+                );
+              return compileAttuneGraphPolicyCard({
+                schemaVersion: 1,
+                draft,
+                evidenceCases,
+                headRevalidation,
+                locale,
+                opportunityId
+              });
             }
           }),
           createContinuityLearningApplyTool({

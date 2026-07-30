@@ -1534,6 +1534,172 @@ async function buildPtcScenario() {
   }
 }
 
+async function buildAttuneGraphPolicyCardScenario() {
+  try {
+    const [
+      opportunity,
+      preview,
+      replay,
+      policyCard,
+      apply,
+      rollback,
+      pack
+    ] = await Promise.all([
+      import("../packages/autoconfigure/dist/continuity-learning-opportunity-tool.js"),
+      import("../packages/autoconfigure/dist/continuity-learning-preview-tool.js"),
+      import("../packages/autoconfigure/dist/continuity-learning-replay-preview-tool.js"),
+      import("../packages/autoconfigure/dist/continuity-learning-policy-card-tool.js"),
+      import("../packages/autoconfigure/dist/continuity-learning-apply-tool.js"),
+      import("../packages/autoconfigure/dist/continuity-learning-rollback-tool.js"),
+      import("../packages/autoconfigure/dist/continuity-pack-tools.js")
+    ]);
+    const noop = async () => undefined;
+    const instances = [
+      opportunity.createContinuityLearningOpportunityTool({
+        readQueue: noop
+      }),
+      preview.createContinuityLearningPreviewTool({ preview: noop }),
+      replay.createContinuityLearningReplayPreviewTool({
+        previewReplay: noop
+      }),
+      policyCard.createContinuityLearningPolicyCardTool({
+        previewPolicyCard: noop
+      }),
+      apply.createContinuityLearningApplyTool({ apply: noop }),
+      rollback.createContinuityLearningRollbackTool({ rollback: noop }),
+      pack.createContinuityPackPreviewTool({
+        previewPack: noop,
+        previewResume: noop
+      })
+    ];
+    const tools = instances.map((tool) => ({
+      description: tool.definition.description,
+      inputSchema: tool.definition.inputSchema,
+      name: tool.definition.name
+    }));
+    const opportunityId =
+      `learning_opportunity_${"a".repeat(64)}`;
+    const draft = JSON.stringify({
+      expectedBenefit: "Reduce interruption recovery.",
+      expiresAt: "2026-08-01T00:00:00.000Z",
+      experienceId: "eval-policy-card",
+      proposedAt: "2026-07-31T00:00:00.000Z",
+      proposedBehavior: "Wait for the review window.",
+      proposedChange: {
+        adjustment: "increase-cooldown",
+        kind: "thread-timing"
+      },
+      scope: {
+        kind: "thread-timing",
+        threadId: "thread_work"
+      }
+    });
+    const oneReplayCase = JSON.stringify([{}]);
+    const cases = [
+      {
+        id: "policy-card-en",
+        prompt:
+          `Invoke muse.continuity.learning.policy-card.preview exactly once now. opportunityId=${opportunityId}; locale=en; draft=${draft}; evidenceCases=${oneReplayCase}. Do not apply it.`,
+        expectTool: "muse.continuity.learning.policy-card.preview",
+        requireArgs: ["opportunityId", "draft", "evidenceCases", "locale"],
+        note: "EN explicit AttuneGraph Policy Card preview"
+      },
+      {
+        id: "policy-card-ko",
+        prompt:
+          `muse.continuity.learning.policy-card.preview 도구를 지금 정확히 한 번 호출해줘. opportunityId=${opportunityId}; locale=ko; draft=${draft}; evidenceCases=${oneReplayCase}. 적용하지 마.`,
+        expectTool: "muse.continuity.learning.policy-card.preview",
+        requireArgs: ["opportunityId", "draft", "evidenceCases", "locale"],
+        note: "KO explicit AttuneGraph Policy Card preview"
+      },
+      {
+        id: "policy-card-replay",
+        prompt:
+          `Invoke muse.continuity.learning.replay-preview exactly once. opportunityId=${opportunityId}; draft=${draft}; evidenceCases=${oneReplayCase}. Do not render a Policy Card or apply anything.`,
+        expectTool: "muse.continuity.learning.replay-preview",
+        requireArgs: ["opportunityId", "draft", "evidenceCases"],
+        note: "replay comparison stays on replay preview"
+      },
+      {
+        id: "policy-card-apply",
+        prompt:
+          "Invoke muse.continuity.learning.apply exactly once for this owner-approved preview. Use the already-resolved values opportunityId=opportunity-current; previewId=preview-current; replayInputHash=replay-current; draft={}; evidenceCases=[{}].",
+        expectTool: "muse.continuity.learning.apply",
+        requireArgs: [
+          "opportunityId",
+          "draft",
+          "evidenceCases",
+          "previewId",
+          "replayInputHash"
+        ],
+        note: "apply stays on stale-safe write tool"
+      },
+      {
+        id: "policy-card-rollback",
+        prompt:
+          "Rollback the already applied Continuity learning promotion using its exact promotion receipt.",
+        expectTool: "muse.continuity.learning.rollback",
+        note: "rollback stays on rollback tool"
+      },
+      {
+        id: "policy-card-pack",
+        prompt:
+          "Preview my current Continuity Pack for thread_work. I am not reviewing a learning policy.",
+        expectTool: "muse.continuity.pack.preview",
+        requireArgs: ["threadId"],
+        note: "generic Pack preview stays on Pack tool"
+      },
+      {
+        id: "policy-card-advice",
+        prompt:
+          "Should I always wait until evening before reviewing personal plans?",
+        expectNoTool: true,
+        note: "ordinary policy advice invokes no tool"
+      }
+    ];
+    const exemplarBank = [
+      {
+        prompt:
+          "Show the graph-grounded collaboration Policy Card, but do not activate it.",
+        tool: "muse.continuity.learning.policy-card.preview"
+      },
+      {
+        prompt:
+          "관계 근거가 보이는 정책 카드만 한국어로 미리 보여줘. 적용은 하지 마.",
+        tool: "muse.continuity.learning.policy-card.preview"
+      },
+      {
+        prompt: "Only compare the replay evidence for this proposal.",
+        tool: "muse.continuity.learning.replay-preview"
+      },
+      {
+        prompt: "Apply the exact approved preview now.",
+        tool: "muse.continuity.learning.apply"
+      },
+      {
+        prompt: "Preview the ordinary Continuity Pack for this thread.",
+        tool: "muse.continuity.pack.preview"
+      }
+    ];
+    return {
+      id: "attunegraph-policy-card",
+      label: "attunegraph-policy-card",
+      tools,
+      exemplarBank,
+      cases,
+      maxOutputTokens: 600
+    };
+  } catch (error) {
+    return {
+      id: "attunegraph-policy-card",
+      label: "attunegraph-policy-card",
+      skip: `not built (${error instanceof Error ? error.message : String(error)})`,
+      tools: [],
+      cases: []
+    };
+  }
+}
+
 async function main() {
   if (!(await ollamaReachable())) {
     console.log(`eval:tools skipped — Ollama (${OLLAMA_BASE}) or model ${MODEL} unreachable. Start \`ollama serve\` with ${MODEL}.`);
@@ -1546,6 +1712,7 @@ async function main() {
     { label: "synthetic", tools: SYNTHETIC_TOOLS, cases: SYNTHETIC_CASES },
     await buildRealScenario(),
     await buildPtcScenario(),
+    await buildAttuneGraphPolicyCardScenario(),
     await buildBackgroundScenario(),
     await buildUnitConvertScenario(),
     await buildLunarScenario(),
@@ -1616,13 +1783,22 @@ async function main() {
     const messages = buildToolSelectionMessages({ briefCot: BRIEF_COT, exemplarSection, prompt: testCase.prompt });
     // The brief-reasoning arm spends some of its budget on the ~20-word tool
     // justification before the call itself, so it gets a little extra headroom.
-    const maxOutputTokens = BRIEF_COT ? 220 : 160;
+    const maxOutputTokens = scenario.maxOutputTokens
+      ?? (BRIEF_COT ? 220 : 160);
     return (await provider.generate({ model: MODEL, messages, tools: scenario.tools, temperature: 0, maxOutputTokens })).toolCalls ?? [];
   };
   // Scorer: deterministic per-case (selection + args), via the shared harness.
   const score = (toolCalls, testCase) => caseScorer(testCase)(toolCalls);
 
-  const { gate } = await runEvalSuite({ name: "eval:tools", repeat: REPEAT, scenarios, score, solve, threshold: THRESHOLD });
+  const { gate } = await runEvalSuite({
+    artifactMetadata: { model: MODEL, provider: "ollama" },
+    name: "eval:tools",
+    repeat: REPEAT,
+    scenarios,
+    score,
+    solve,
+    threshold: THRESHOLD
+  });
   if (!gate) {
     console.log(completionLine({ status: "failed", requested: REPEAT, executed: REPEAT, reason: "threshold-not-met" }));
     process.exit(1);

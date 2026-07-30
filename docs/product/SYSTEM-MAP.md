@@ -48,9 +48,11 @@ changes only what the next pack shows. Interpreting Observe O1 collection as rhy
 using it for pack delivery, automatic linking, and timing improvements are all still **roadmap**
 ([product direction](../strategy/attunement.md) · [technical design](../design/attunement/README.md)).
 
-The signature roadmap experience is **Shadow Muse → Continuity Capsule → Policy Card**: Muse first
+The signature experience path is **Shadow Muse → Continuity Capsule → Policy Card**: Muse first
 learns in silence, then restores the state the user meant to continue along with what changed since,
-then shows the next collaboration rule with its evidence, scope and rollback. **AttuneGraph**
+then shows the next collaboration rule with its evidence, scope and rollback. The complete
+automatic path remains roadmap; an explicit inert Policy Card render-data preview is available
+without policy mutation or action. **AttuneGraph**
 behind it is not a heavy server duplicating existing stores; it is an
 agent-native personal context compiler that links time, relationships and provenance as a
 regenerable projection and builds only the small Working Graph each turn needs

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,6 +11,12 @@ import {
   readAttunementState,
   type ExperienceLearningPromotionReceipt
 } from "@muse/attunement";
+import {
+  createContinuityAttuneGraphProjector
+} from "@muse/attunegraph/continuity-durable-projection";
+import {
+  captureContinuityObservation
+} from "@muse/attunegraph/continuity-observations";
 import { sha256Hex } from "@muse/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -37,8 +43,11 @@ afterEach(async () => {
 
 describe("continuity learning preview tool", () => {
   it("revalidates a current queue opportunity and returns an activation-none preview without writes", async () => {
-    directory = await mkdtemp(join(tmpdir(), "muse-learning-preview-"));
+    directory = await realpath(
+      await mkdtemp(join(tmpdir(), "muse-learning-preview-"))
+    );
     const attunementFile = join(directory, "attunement.json");
+    const attuneGraphFile = join(directory, "attunegraph.sqlite");
     const notesDir = join(directory, "notes");
     const tasksFile = join(directory, "tasks.json");
     const task = {
@@ -63,6 +72,7 @@ describe("continuity learning preview tool", () => {
     const assembly = createMuseRuntimeAssembly({
       env: {
         HOME: directory,
+        MUSE_ATTUNEGRAPH_DATABASE: attuneGraphFile,
         MUSE_ATTUNEMENT_FILE: attunementFile,
         MUSE_NOTES_DIR: notesDir,
         MUSE_TASKS_FILE: tasksFile
@@ -194,6 +204,79 @@ describe("continuity learning preview tool", () => {
       }
     });
     expect(await readFile(attunementFile)).toEqual(before);
+
+    const graphReceipt = captureContinuityObservation({
+      scope: {
+        sourceId: "muse.local-attunement",
+        threadId: thread.id
+      },
+      sourceObservedAt: new Date(
+        Date.parse(recordedAt) + 1_000
+      ).toISOString(),
+      state: await readAttunementState(attunementFile)
+    });
+    const graphProjector = createContinuityAttuneGraphProjector({
+      databasePath: attuneGraphFile
+    });
+    const graphSeed = await graphProjector.project(graphReceipt);
+    const attunementBeforePolicyCard = await readFile(attunementFile);
+    const graphBeforePolicyCard = await readFile(attuneGraphFile);
+    const policyCard = await tool(
+      "muse.continuity.learning.policy-card.preview"
+    ).execute({
+      draft,
+      evidenceCases,
+      locale: "ko",
+      opportunityId
+    }, { runId: "preview-policy-card" });
+    expect(policyCard).toMatchObject({
+      card: {
+        assessedSnapshot: {
+          currentWorldFreshness: false,
+          providerAttestedDerivedGraph: false
+        },
+        boundary: {
+          activation: "none",
+          approval: "none",
+          effect: "none"
+        },
+        evidence: {
+          authoritativeExperience: {
+            evidenceClass: "organic-production"
+          },
+          callerSuppliedReplayClaims: {
+            executionProvenanceVerified: false
+          },
+          graphExplanation: {
+            providerAttested: false
+          }
+        },
+        locale: "ko"
+      },
+      status: "rendered"
+    });
+    expect(await readFile(attunementFile)).toEqual(attunementBeforePolicyCard);
+    expect(await readFile(attuneGraphFile)).toEqual(graphBeforePolicyCard);
+
+    const heldPolicyCard = await tool(
+      "muse.continuity.learning.policy-card.preview"
+    ).execute({
+      draft,
+      evidenceCases: [],
+      locale: "ko",
+      opportunityId
+    }, { runId: "preview-held-policy-card" });
+    expect(heldPolicyCard).toEqual({
+      reason: "replay-invalid",
+      status: "held"
+    });
+    expect(await readFile(attunementFile)).toEqual(attunementBeforePolicyCard);
+    expect(await readFile(attuneGraphFile)).toEqual(graphBeforePolicyCard);
+    const graphReplay = await graphProjector.project(graphReceipt);
+    expect(graphReplay).toMatchObject({
+      snapshot: graphSeed.snapshot,
+      status: "replayed"
+    });
 
     const applyTool = tool("muse.continuity.learning.apply");
     expect(applyTool.definition.risk).toBe("write");

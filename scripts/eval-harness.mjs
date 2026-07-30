@@ -69,6 +69,8 @@
  *   Opt-in JSONL evidence. `MUSE_EVAL_RESULTS_DIR` is the equivalent local-only
  *   environment opt-in. Raw prompts, outputs, scorer details and fixtures are
  *   never copied into the allowlisted schema.
+ * @param {{provider:string,model:string}} [opts.artifactMetadata] bounded
+ *   non-secret runtime identity copied into artifact records.
  * @param {number} [opts.repeat=1]
  * @param {number} [opts.threshold=0.85]
  * @param {number} [opts.infraRetries=1]     retries for an infra-classified outcome (thrown transport error, or `null` on an opted-in scenario) — a semantic failure never gets this
@@ -195,9 +197,21 @@ export const SAFETY_CRITICAL_MIN_REPEAT = 3;
 
 const SAFE_ARTIFACT_ID_RE = /^[a-z0-9][a-z0-9._-]{0,127}$/iu;
 const SAFE_TRACE_REF_RE = /^[a-z0-9][a-z0-9._/-]{0,255}$/iu;
+const SAFE_ARTIFACT_METADATA_RE = /^[^\u0000-\u001f\u007f]{1,128}$/u;
 
 function artifactId(value, fallback) {
   return typeof value === "string" && SAFE_ARTIFACT_ID_RE.test(value) ? value : fallback;
+}
+
+function boundedArtifactMetadata(value, field) {
+  if (
+    typeof value !== "string"
+    || value !== value.trim()
+    || !SAFE_ARTIFACT_METADATA_RE.test(value)
+  ) {
+    throw new Error(`invalid eval artifact ${field}`);
+  }
+  return value;
 }
 
 function validateTraceRefs(refs) {
@@ -262,6 +276,18 @@ export async function runEvalSuite(opts) {
   const artifact = opts.artifact ?? (envResultsDir ? { resultsDir: envResultsDir } : undefined);
   const artifactRequested = artifact !== undefined;
   const suiteId = artifactId(opts.suiteId, "suite-1");
+  const artifactMetadata = opts.artifactMetadata === undefined
+    ? undefined
+    : {
+        model: boundedArtifactMetadata(
+          opts.artifactMetadata.model,
+          "model"
+        ),
+        provider: boundedArtifactMetadata(
+          opts.artifactMetadata.provider,
+          "provider"
+        )
+      };
 
   const artifactErrors = [];
   let artifactPath;
@@ -430,6 +456,7 @@ export async function runEvalSuite(opts) {
               threshold,
             },
             repeatIndex: run,
+            ...(artifactMetadata ? { runtime: artifactMetadata } : {}),
             result: {
               cleanupFailure,
               contaminationMarker: attemptContamination?.marker,
@@ -507,6 +534,7 @@ export async function runEvalSuite(opts) {
         safetyFloorViolations: artifactSafetyFloorViolations,
         total,
       },
+      ...(artifactMetadata ? { runtime: artifactMetadata } : {}),
       schema: "muse.eval.summary/v1",
       suiteId,
     });

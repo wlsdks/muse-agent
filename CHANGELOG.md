@@ -8,6 +8,19 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-060d claim-safe AttuneGraph Policy Card preview.
+  The public `@muse/attunegraph/policy-card` compiler and read-only
+  `muse.continuity.learning.policy-card.preview` tool render one inert English/Korean card
+  only from one fresh, process-minted provider head. Cards keep authoritative owner
+  experience, structurally validated caller-supplied replay claims, and locally derived
+  AttuneGraph explanation in separate ledgers; replay execution provenance is explicitly
+  unverified. Exact four-relation proof, canonical time, scope, identity, and byte budgets
+  fail closed. The tool performs no write, approval, policy mutation, or action, and all
+  controls are inert. The focused local-model selection battery passed 21/21 attempts across
+  seven selection and no-selection cases. Automatic surfacing, UI/Admin presentation,
+  trusted replay/trial, edit/reject persistence, apply/rollback cards, and organic usefulness
+  remain roadmap.
+
 - Added the AWG-080a explicit durable Muse composition. The public
   `@muse/attunegraph/continuity-durable-projection` Module verifies current
   Continuity Graph Observation Receipts, preserves exact scope/assertions/time,
@@ -336,7 +349,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   recover the inventory, and the existing compilation keys, JSON, receipt/frontier IDs,
   settlement result, package exports, authority, runtime, and persistence remain
   unchanged. Controlled boundary coverage retains all 255 optionals with long multibyte
-  IDs. Focused tests `15/15`, all Agent Graph tests `264/264`, changed tests `75/75`,
+  IDs. Focused tests `15/15`, all AttuneGraph tests `264/264`, changed tests `75/75`,
   package build/typecheck, TS7 fast typecheck, built-dist verification, full workspace
   check, diff checks, and a fresh Sol completion gate pass. This is not yet a previous
   stopping boundary, caller-budgeted `resumeContext`, Capsule delivery, Shadow Muse, or a
@@ -376,7 +389,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   diff checks, and the fresh Sol completion gate pass. No root/runtime/API/UI/persistence
   or external Graph DB surface was added.
 
-- Added independently verified, package-private **provider-bound Agent Graph evidence**.
+- Added independently verified, package-private **provider-bound AttuneGraph evidence**.
   Muse now accepts only an
   exact process-minted configured-local Attunement capture, verifies the mint before state
   access, independently recomputes normalized bytes and digest, creates and verifies one
@@ -389,7 +402,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   receipt links Provider, observation, graph evidence, scope, budget, and nomination
   accounting without serializing personal state or claiming current-world absence,
   durable authority, permission, or action safety. Ten focused Provider-bound tests, all
-  243 Agent Graph tests, all 323 Attunement tests, both package typechecks/builds,
+  243 AttuneGraph tests, all 323 Attunement tests, both package typechecks/builds,
   repository TS7 fast typecheck, changed tests, full workspace check, six standalone
   verifiers, changed-file lint, diff checks, and a fresh Sol/high completion gate pass. No
   public export, persistence, runtime/API/UI path, Capsule `resumeContext`, Shadow
@@ -406,15 +419,15 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   availability never becomes an absence claim. Personal state is independently capped,
   non-enumerable, immutable, and absent from capture/receipt serialization and stable
   errors. Twenty-six focused adversarial tests, all 323 Attunement tests, all 228 existing
-  Agent Graph tests, package/root TS7 typechecks, build, changed tests, standalone
+  AttuneGraph tests, package/root TS7 typechecks, build, changed tests, standalone
   public-subpath verification, lint, diff check, and a fresh independent completion gate
   passed. This does not yet bind the capture into graph evidence or ship Capsule,
   `resumeContext`, Shadow, persistence, durable authority, external graph databases,
   runtime/UI behavior, or user-visible wow.
 
-- Added independently verified, package-private **receipt-bound Agent Graph evidence
+- Added independently verified, package-private **receipt-bound AttuneGraph evidence
   compilation**. One verified Continuity Observation Receipt now rebuilds a fresh private
-  Muse graph, derives its opaque thread seed, performs exactly one bounded Activation
+  Muse AttuneGraph projection, derives its opaque thread seed, performs exactly one bounded Activation
   traversal, and binds the captured plan and result to graph-owned witness paths plus the
   existing settlement receipts. Duplicate logical nominations remain visible while
   deterministic `core > change > support` representatives prevent duplicate budget spend;

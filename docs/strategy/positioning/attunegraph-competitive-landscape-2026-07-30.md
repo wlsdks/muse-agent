@@ -13,7 +13,7 @@ related:
 
 ## Conclusion
 
-AttuneGraph cannot credibly claim uniqueness from “an agent graph,” local SQLite, bi-temporal
+AttuneGraph cannot credibly claim uniqueness merely from “a graph for agents,” local SQLite, bi-temporal
 facts, provenance, Markdown, Obsidian support, causal links, or a memory graph UI. Current
 open-source products already cover each of those ingredients.
 

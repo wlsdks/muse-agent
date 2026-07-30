@@ -57,7 +57,7 @@ alone.
 | Continuity projection/change/observation/Capsule Modules | `verified-current` at their documented pure boundaries | Reuse them as the first operator workload; do not reimplement them in a database layer. |
 | Durable projection journal and exact scoped head | `verified-current` for AWG-070a1 | The Worker-backed SQLite Adapter persists projection commits and exact heads; full assertion lifecycle, portable export, and physical forget remain outside this slice. |
 | Shadow Muse decision provenance | `partial` | Existing no-send timing decisions now have a fresh-policy snapshot and an exact process-local Source/Graph receipt binding; return/card/durability remain. |
-| Policy Card and user-facing runtime composition | `missing` | They remain the next product-shaped workloads. |
+| Policy Card and user-facing runtime composition | `partial` | An explicit claim-safe read-only compiler and assembled tool preview now ship; automatic surfacing, UI, trusted replay execution, mutation controls, and the complete three-part composition remain. |
 | Durable local engine program | `partial` | AWG-070a1 ships the projection-journal foundation; backup, portable export/rebuild, destructive migration, physical forget/compaction, complete profile qualification, and performance matrices remain. |
 
 Two current contracts need explicit correction:

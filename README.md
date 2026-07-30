@@ -168,9 +168,10 @@ Three pieces have to work for that moment to exist:
 | --- | --- | --- |
 | 🌘 | **Shadow Muse** | When to speak and when to stay quiet — learned before it ever interrupts. |
 | 💊 | **Continuity Capsule** | The restored stopping point: changes, evidence, next step, expected time. |
-| 🪪 | **Policy Card** | What Muse proposes to learn about working with you — with trial, edit, reject, rollback. |
+| 🪪 | **Policy Card** | What Muse proposes to learn about working with you — first as an inert, evidence-separated preview; later with trial, edit, reject, and rollback. |
 
-None of the three is finished. The next section says exactly how far each one got.
+The complete three-part experience is not finished. The next section says exactly how far each
+piece got.
 
 ---
 
@@ -192,11 +193,12 @@ None of the three is finished. The next section says exactly how far each one go
 | AttuneGraph engine | Exact projection, *"what changed since I stopped"*, content-addressed receipts, bounded resume compilation, canonical `.atgx`, a worker-isolated SQLite journal, an explicit opt-in Continuity Preview writer, and the offline read-only `muse attunegraph inspect` Lens — verified engine substrate; write/repair/live-web Admin and default automatic ingestion/delivery remain roadmap |
 | Continuity Capsule | Render data returned from an explicit API call. No product UI, no automatic timing |
 | Shadow Muse | The ledger records the decision. It does not surface anything on its own yet |
+| Policy Card | An explicit read-only compiler and `muse.continuity.learning.policy-card.preview` tool return English/Korean render data from one fresh local snapshot. No automatic surfacing, UI, edit/reject/trial write, policy mutation, or action |
 
 ### Roadmap
 
-Policy Card · automatic thread detection · a durable current-world graph · standalone release of the
-graph engine · organic-use evidence.
+Automatic Policy Card surfacing and interactive controls · automatic thread detection · a durable
+current-world graph · standalone release of the graph engine · organic-use evidence.
 
 <details>
 <summary><b>The fine print on the graph engine (AttuneGraph)</b></summary>
@@ -239,6 +241,13 @@ What is verified today, and what those words do **not** mean:
   AttuneGraph projection is durable but remains a rebuildable graph projection, not a durable
   current-world or timing claim. None of this is action authority, automatic behaviour, or evidence
   that it is useful in real life.
+- `@muse/attunegraph/policy-card` and
+  `muse.continuity.learning.policy-card.preview` compile one inert Policy Card only after a
+  process-minted provider head revalidation is still fresh. The card keeps authoritative owner
+  experience, structurally validated caller-supplied replay claims, and the locally derived
+  AttuneGraph explanation in three visibly separate ledgers. It performs no write or approval;
+  replay execution provenance is explicitly unverified, and apply remains a separate stale-safe
+  approval flow.
 
 Sequenced in the [wow + graph roadmap](internal/goals/attunegraph-roadmap.md).
 

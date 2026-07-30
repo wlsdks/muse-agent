@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type {
   ArtifactLink,
   ArtifactReference,
+  ContinuityOutcomeRecord,
   ContinuityPolicy,
   ExperienceLearningPolicyAudit,
   ExperienceLearningPromotionHandle
@@ -141,6 +142,26 @@ export function deriveContinuityThreadGraphRef(
   threadId: string
 ): GraphRef {
   return graphRef("thread", { sourceId, threadId });
+}
+
+export function deriveContinuityDeliveryGraphRef(
+  sourceId: string,
+  deliveryId: string
+): GraphRef {
+  return graphRef("delivery", { deliveryId, sourceId });
+}
+
+export function deriveContinuityOutcomeGraphRef(
+  sourceId: string,
+  deliveryId: string,
+  outcome: ContinuityOutcomeRecord
+): GraphRef {
+  return graphRef("outcome", {
+    deliveryId,
+    outcome: outcome.outcome,
+    policyVersion: outcome.policyVersion,
+    sourceId
+  });
 }
 
 export function deriveContinuityArtifactGraphRef(

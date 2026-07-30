@@ -322,7 +322,7 @@ function projectionWithModelHypothesis(): ContinuityGraphProjection {
   };
 }
 
-describe("receipt-bound Agent Graph evidence compiler", () => {
+describe("receipt-bound AttuneGraph evidence compiler", () => {
   it("rejects cross-scope provider-head replay at direct entry", async () => {
     const input = request();
     const pair = headRevalidatedPair();

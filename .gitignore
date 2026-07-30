@@ -58,6 +58,7 @@ temp/
 playwright-report/
 test-results/
 .vitest-attachments/
+/reports/evals/
 
 # OS and editor
 .DS_Store

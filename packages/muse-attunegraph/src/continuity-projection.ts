@@ -34,6 +34,8 @@ import {
   CONTINUITY_SOURCE_NAMESPACES,
   deriveContinuityArtifactGraphRef,
   deriveContinuityArtifactLinkSourceRef,
+  deriveContinuityDeliveryGraphRef,
+  deriveContinuityOutcomeGraphRef,
   deriveContinuityPolicyGraphRef,
   deriveContinuityPolicySourceRef,
   deriveContinuityThreadGraphRef
@@ -245,7 +247,7 @@ function artifactReferenceView(reference: ArtifactReference): object {
 }
 
 function deliveryGraphRef(sourceId: string, deliveryId: string): GraphRef {
-  return graphRef("delivery", { deliveryId, sourceId });
+  return deriveContinuityDeliveryGraphRef(sourceId, deliveryId);
 }
 
 function deliveryEvidenceGraphRef(
@@ -265,12 +267,7 @@ function outcomeGraphRef(
   deliveryId: string,
   outcome: ContinuityOutcomeRecord
 ): GraphRef {
-  return graphRef("outcome", {
-    deliveryId,
-    outcome: outcome.outcome,
-    policyVersion: outcome.policyVersion,
-    sourceId
-  });
+  return deriveContinuityOutcomeGraphRef(sourceId, deliveryId, outcome);
 }
 
 function interactionGraphRef(

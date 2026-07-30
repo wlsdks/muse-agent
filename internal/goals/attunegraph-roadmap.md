@@ -83,7 +83,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
 | **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3d3b` independently verified; explicit Pack Preview now dogfoods process-local `resumeContext`, while durable/current-world semantics remain pending) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | partial (`AWG-050b1` binds fresh timing-policy snapshots to exact process-local Source/Graph comparison evidence; return/card/durability pending) |
-| **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
+| **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | partial (`AWG-060d` claim-safe read-only compiler/tool independently verified; automatic surfacing, trusted trial/edit/reject writes, apply/rollback controls, and UI pending) |
 | **AWG-065** | Neutral AttuneGraph product boundary | Closed `AttuneGraph*` interface, forbidden-import gate, and Muse integration package keep private Continuity types outside the standalone Engine without copying validation | completed (dependency-free `@attunegraph/core` plus explicit `@muse/attunegraph` integration; no compatibility alias) |
 | **AWG-070** | SQLite AttuneGraph Store v1 | Implement the selected worker-isolated `node:sqlite` default behind the AttuneGraph Store contract with version-gated physical profile, journal replay, indexes, restart/crash/corruption tests, portable export, and 10K/100K/1M operator benchmarks; record measured TS/SQLite optimization and activate a Rust kernel only when end-to-end evidence justifies it | partial (`AWG-070a1` durable projection journal, `AWG-070a2` typed Worker boundary, the `.atgx` encoder/decoder/order/budget/non-retention chain through `AWG-070a3a1a4b`, indexed validation `a4c`, POSIX staging lifecycle `a4d`, Admin protocol/fail-stop spine `a4e1`, shared physical-schema/read-only inspector core `a4e2a`, parent-owned closed-store offline snapshot lease `a4e2b1`, dedicated read-only Admin Worker/application `a4e2b2`, and public offline `./admin` plus Muse Lens CLI `a4e2b3` independently verified; export/rebuild/activation, write/repair/live-web Admin, backup, physical forget, complete profile/corpus, and 10K/100K/1M benchmarks pending) |
 | **AWG-080** | Durable local graph adapter | Selected adapter passes conformance, export/rebuild, corruption, migration, forget, and crash-recovery gates | partial (`AWG-080a` explicit restart-safe Continuity Preview writer implemented; export/rebuild activation, migration, physical forget, backup/recovery, default ingestion, and remaining qualification pending) |
@@ -98,6 +98,33 @@ Engineering completeness and evidence maturity are reported separately. AWG-090 
 dogfood does not block building the product path to engineering-complete status; it does
 block claims that Muse has proved usefulness, saved reconstruction time, or learned better
 timing in real life.
+
+## Completed sub-slice: AWG-060d
+
+- **Classification:** `verified-current` for one explicitly invoked, read-only Policy Card
+  preview. Earlier AWG-060a/b planning drafts failed independent contract gates and made no
+  product commit; AWG-060c established the narrower claim-safe contract, and AWG-060d closed
+  its final replay-arithmetic and held-precedence blockers.
+- **Shipped delta:** `@muse/attunegraph/policy-card` compiles one inert English/Korean card
+  from one process-minted provider-head-matched Attunement snapshot. The assembled
+  `muse.continuity.learning.policy-card.preview` tool captures that head with a bounded
+  provider read and never writes state.
+- **Evidence boundary:** the card presents authoritative owner experience, caller-supplied
+  replay claims, and locally derived AttuneGraph explanation as separate ledgers. Replay
+  receipt structure and self-consistency are checked, but execution provenance is explicitly
+  not verified. AttuneGraph must prove exactly one delivery/thread, delivery/policy,
+  delivery/outcome, and policy/thread relation with canonical time boundaries.
+- **Control boundary:** all displayed controls are inert. Apply points to a separate
+  stale-safe approval flow; trial/edit/reject/rollback are unavailable here. The preview has
+  no callback, action arguments, approval material, persistence, or mutation authority.
+- **Evidence:** deterministic compiler/tool/runtime tests, built-output verification, the
+  full workspace gate, and a fresh independent Sol/high completion evaluation pass;
+  the local-model live tool-selection battery selected the correct tool or no tool in all
+  21/21 attempts across seven English/Korean, replay, apply, rollback, Capsule, and ordinary
+  chat cases. This proves the bounded selection battery, not real-life usefulness.
+- **Still pending:** automatic surfacing, product UI/Admin presentation, independently
+  attested replay execution, edit/reject persistence, trusted trial, application/rollback
+  cards, durable policy history, and organic-use qualification.
 
 ## Current 065 activation
 
@@ -246,7 +273,7 @@ Shadow ledger or durable database:
   bundles, and preserves the existing v1 ledger. This verifies local witness structure and
   selection—not source truth, causality, authoritative freshness, or runtime behavior.
 - **AWG-050a2c (completed private integration):** one verified caller-declared Continuity
-  Observation Receipt now rebuilds a fresh private Muse graph, derives its opaque thread
+  Observation Receipt now rebuilds a fresh private Muse AttuneGraph projection, derives its opaque thread
   seed, performs exactly one bounded Activation traversal, and binds that captured plan and
   result to graph-owned witness paths and the existing settlement receipts. Duplicate
   logical nominations are conserved behind deterministic `core > change > support`
@@ -425,7 +452,7 @@ scope-derived seed verification before passing. AWG-050b now owns the actual Sha
   inspected the complete tracked and untracked diff and issued `COMPLETION PASS` with no
   blockers.
 - **Acceptance evidence:** 10 focused Provider-bound tests, 86 tests across the seven
-  changed Graph contracts, all 243 Agent Graph tests, and all 323 Attunement tests pass.
+  changed Graph contracts, all 243 AttuneGraph tests, and all 323 Attunement tests pass.
   Both packages typecheck/build; repository TS7 fast typecheck, changed tests, full
   workspace check, changed-file lint, six standalone verifiers, diff checks, fresh
   CodeGraph, and the independent completion gate pass. The overflow fixture proves exact
@@ -439,7 +466,7 @@ scope-derived seed verification before passing. AWG-050b now owns the actual Sha
 
 - **Product meaning:** call this capability **provider-observed configured-local
   Attunement snapshot**. Muse can now take one bounded, coherent local source read and
-  hand the future Agent Graph an immutable whole-state snapshot without making the graph
+  hand AttuneGraph an immutable whole-state snapshot without making the graph
   package read files or depend on an external graph database.
 - **Classification at activation:** `missing` — graph projection and receipt integrity
   existed, but no trusted host capability could attest that input came from one configured
@@ -463,7 +490,7 @@ scope-derived seed verification before passing. AWG-050b now owns the actual Sha
   boundary verifier. Fresh independent completion evaluation is recorded in the landing
   commit.
 - **Acceptance evidence:** 26 focused adversarial tests, all 323 Attunement tests, and all
-  228 existing Agent Graph tests passed. Attunement/Graph typechecks, Attunement build,
+  228 existing AttuneGraph tests passed. Attunement/Graph typechecks, Attunement build,
   repository TS7 fast typecheck, changed tests, standalone public-subpath verification,
   changed-file lint, diff check, and fresh CodeGraph passed.
 - **Rollback:** delete the Provider source/test/verifier, remove the trusted-host export,

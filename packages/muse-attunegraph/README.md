@@ -12,11 +12,46 @@ It deliberately has no root export. Consumers import one explicit surface:
 - `@muse/attunegraph/continuity-capsules`
 - `@muse/attunegraph/continuity-resume-runtime`
 - `@muse/attunegraph/continuity-durable-projection`
+- `@muse/attunegraph/policy-card`
 - `@muse/attunegraph/shadow-decision-receipt`
 - `@muse/attunegraph/loop-lineage`
 
 The integration accesses engine capabilities exclusively through the public
 `@attunegraph/core` and `@attunegraph/core/extension-kit` entrypoints.
+
+## Claim-safe Policy Card preview
+
+```ts
+import {
+  compileAttuneGraphPolicyCard
+} from "@muse/attunegraph/policy-card";
+
+const result = compileAttuneGraphPolicyCard({
+  schemaVersion: 1,
+  headRevalidation,
+  opportunityId,
+  draft,
+  evidenceCases,
+  locale: "ko"
+});
+```
+
+The compiler accepts only one process-minted, provider-head-matched local
+Attunement snapshot and derives scope from that provider receipt. A rendered
+card keeps three evidence classes visibly separate:
+
+1. the authoritative owner experience already recorded by Attunement;
+2. structurally self-consistent caller-supplied replay claims whose execution
+   provenance is explicitly unverified;
+3. an exact four-relation AttuneGraph explanation locally derived from the
+   assessed snapshot.
+
+It returns only `{ status: "rendered", card }` or a bounded
+`{ status: "held", reason }`. `cardId` is locale-neutral and `renderId` is
+locale-specific. Every control is inert: this surface performs no trial, edit,
+rejection, approval, policy write, rollback, action, or persistence. Apply is a
+separate stale-safe approval flow. Muse exposes the compiler through the
+read-only `muse.continuity.learning.policy-card.preview` tool.
 
 ## Durable Continuity projection
 

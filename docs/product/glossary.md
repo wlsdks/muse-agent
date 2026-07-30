@@ -28,8 +28,10 @@ Muse*. Each entry is one definition plus where it lives. Exact verification evid
 - **Continuity Capsule** — the target product form of today's Continuity Pack: the stopping point,
   what changed since, the exact evidence, the next step, prepared work and expected time, in one
   view (**roadmap**).
-- **Policy Card** — the **roadmap** surface that shows how Muse proposes to change the way it works
-  with this person, with evidence and scope, offering trial, edit, reject and rollback.
+- **Policy Card** — the surface that shows how Muse proposes to change the way it works with this
+  person, with evidence and scope. A read-only, explicitly invoked AttuneGraph-backed render-data
+  preview is available now; automatic surfacing, product UI, and trusted trial, edit, reject,
+  apply, and rollback controls remain **roadmap**.
 - **AttuneGraph** — the official name for the agent-native graph architecture Muse
   consumes and dogfoods, and its future standalone open-source product. It does not replace existing personal stores; it
   links time, relationships, provenance, change, return and policy, and compiles only the relations

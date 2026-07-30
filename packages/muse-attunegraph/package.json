@@ -28,6 +28,10 @@
       "types": "./dist/continuity-durable-projection.d.ts",
       "import": "./dist/continuity-durable-projection.js"
     },
+    "./policy-card": {
+      "types": "./dist/policy-card.d.ts",
+      "import": "./dist/policy-card.js"
+    },
     "./shadow-decision-receipt": {
       "types": "./dist/shadow-decision-receipt.d.ts",
       "import": "./dist/shadow-decision-receipt.js"
@@ -44,7 +48,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify:continuity-capsules": "pnpm build && node scripts/verify-continuity-capsules.mjs",
     "verify:continuity-resume-runtime": "pnpm build && node scripts/verify-continuity-resume-runtime.mjs",
-    "verify:continuity-durable-projection": "pnpm build && node scripts/verify-continuity-durable-projection.mjs"
+    "verify:continuity-durable-projection": "pnpm build && node scripts/verify-continuity-durable-projection.mjs",
+    "verify:policy-card": "pnpm build && node scripts/verify-policy-card.mjs"
   },
   "dependencies": {
     "@attunegraph/core": "workspace:*",

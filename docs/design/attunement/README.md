@@ -46,8 +46,10 @@ The roadmap experience has three consumers of the existing Attunement loop:
   delivery or action.
 - **Continuity Capsule** turns exact linked state plus verified changes into a richer,
   user-invoked resumption surface.
-- **Policy Card** proposes a scoped, reversible policy delta; it never hides learning in a
-  prompt or silently widens observation or authority.
+- **Policy Card** proposes a scoped, reversible policy delta; its current explicit preview is
+  inert and keeps authority, caller replay claims, and graph explanation separate. It never hides
+  learning in a prompt or silently widens observation or authority. Trusted interactive controls
+  remain roadmap.
 
 Their shared relationship/time/provenance layer is
 [`@attunegraph/core`](attunegraph.md), with Muse-specific composition in

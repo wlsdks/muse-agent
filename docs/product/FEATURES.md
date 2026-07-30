@@ -553,8 +553,10 @@ thread, not a hidden global preference.
   returns.
 - **Continuity Capsule** — restores the stopping point, changes, grounds, next steps, prepared
   work, and estimated time.
-- **Policy Card** — shows the grounds and scope of a learned collaboration rule, with
-  try/edit/reject/undo.
+- **Policy Card** — today, an explicit read-only preview shows the grounds and thread scope of a
+  proposed collaboration rule while separating authoritative experience, caller-supplied replay
+  claims, and AttuneGraph explanation. Automatic surfacing and trusted try/edit/reject/undo
+  controls remain roadmap.
 - **AttuneGraph** — an agent-native module that links time, relations,
   provenance, and policy on top of existing stores, building only the small Working Graph a turn
   needs. The Engine, SQLite journal, offline Lens, and explicit opt-in Continuity Preview writer
@@ -564,8 +566,9 @@ thread, not a hidden global preference.
 The key sentence: **Muse doesn't remember apps; it remembers the state I meant to continue.**
 The detailed product contract and module design follow [Attunement](../strategy/attunement.md),
 [AttuneGraph](../design/attunement/attunegraph.md), and the
-[separate execution roadmap](../../internal/goals/attunegraph-roadmap.md). These items are not shipped
-features yet.
+[separate execution roadmap](../../internal/goals/attunegraph-roadmap.md). The complete automatic
+three-part experience is not shipped; its current engine, Capsule render-data, Shadow receipt, and
+inert Policy Card preview substrates are individually bounded and documented.
 
 The first flow: **user picks a life thread → context pack prepared → usage recorded → next pack
 improved.** Observation, rhythm analysis, and recurring-friction discovery are follow-on slices

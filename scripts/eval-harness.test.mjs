@@ -736,6 +736,10 @@ test("runEvalSuite artifact — emits allowlisted private JSONL with stable coun
         getTraceRefs: () => ["trace/run-1"],
         resultsDir: root,
       },
+      artifactMetadata: {
+        model: "gemma4:12b",
+        provider: "ollama",
+      },
       name: "privacy-suite",
       scenarios,
       secretConfig: secret,
@@ -752,12 +756,17 @@ test("runEvalSuite artifact — emits allowlisted private JSONL with stable coun
     const lines = bytes.trim().split("\n").map((line) => JSON.parse(line));
     assert.equal(lines.length, 2, "one executed attempt plus one suite summary");
     assert.deepEqual(Object.keys(lines[0]).sort(), [
-      "attemptIndex", "caseId", "config", "repeatIndex", "result", "scenarioId", "schema", "suiteId", "traceRefs",
+      "attemptIndex", "caseId", "config", "repeatIndex", "result", "runtime", "scenarioId", "schema", "suiteId", "traceRefs",
     ]);
     assert.equal(lines[0].schema, "muse.eval.trial/v1");
     assert.equal(lines[0].caseId, "private-case");
     assert.deepEqual(lines[0].traceRefs, ["trace/run-1"]);
+    assert.deepEqual(lines[0].runtime, {
+      model: "gemma4:12b",
+      provider: "ollama",
+    });
     assert.equal(lines[1].schema, "muse.eval.summary/v1");
+    assert.deepEqual(lines[1].runtime, lines[0].runtime);
     assert.equal(lines[1].counts.executedAttempts, 1);
     assert.equal(lines[1].counts.trialRecords, 1);
     if (process.platform !== "win32") {
