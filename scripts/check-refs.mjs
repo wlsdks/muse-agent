@@ -10,7 +10,9 @@
 // pass to trace back. `architecture.md` states the both-places rule; nothing enforced it.
 //
 // `apps/web` is intentionally outside the reference graph, so the gate keys on
-// `composite: true` rather than on a name allowlist.
+// `composite: true` rather than on a name allowlist. Probing confirmed that setting
+// `composite: false` exits the gate — accepted, because doing so also removes the project
+// from the `tsc -b` graph entirely, so the evasion costs more than the check it avoids.
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, normalize, relative } from "node:path";
 import { execFileSync } from "node:child_process";

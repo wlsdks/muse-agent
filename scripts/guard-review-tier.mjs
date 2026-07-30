@@ -39,9 +39,17 @@ export const MANDATORY_EVALUATOR_PATTERNS = [
   /(^|\/)packages\/(policy|secrets|quarantine-eval)\//u,
 ];
 
+/**
+ * The declared tier, or null when absent, or the string "conflict" when the body declares
+ * more than one distinct tier. Order used to decide the verdict — strong-then-weak passed,
+ * weak-then-strong blocked — so a reader scanning from the bottom saw a different claim than
+ * the gate acted on.
+ */
 export function parseReviewTier(message) {
-  const match = /^\s*review-tier:\s*([a-z-]+(?:\/[a-z]+)?)\s*$/mu.exec(message);
-  return match ? match[1] : null;
+  const found = [...String(message ?? "").matchAll(/^\s*review-tier:\s*([a-z-]+(?:\/[a-z]+)?)\s*$/gmu)]
+    .map((m) => m[1]);
+  if (found.length === 0) return null;
+  return new Set(found).size > 1 ? "conflict" : found[0];
 }
 
 export function needsMandatoryEvaluator(stagedFiles) {
@@ -62,6 +70,9 @@ export function checkReviewTier(message, stagedFiles) {
   if (!tier) {
     return "no `review-tier:` line. contract.md §3.6 requires the tier to be recorded in the commit body.\n"
       + `  Add one of: ${TIERS.map((t) => `review-tier: ${t}`).join(" | ")}`;
+  }
+  if (tier === "conflict") {
+    return "the body declares more than one distinct `review-tier:`. State exactly one.";
   }
   if (!TIERS.includes(tier)) {
     return `unknown review tier \`${tier}\`. Use one of: ${TIERS.join(", ")}`;

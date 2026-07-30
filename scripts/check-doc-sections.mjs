@@ -6,9 +6,15 @@
 // "Anti-patterns" — the link still resolved, the target file still existed, and
 // check-doc-links reported clean, because only the MEANING moved.
 //
-// Deliberately narrow: this checks the mechanical half of "the link resolves but the
-// promised content is gone". A prose promise ("see X for the onboarding checklist") is
-// semantic and stays a review concern.
+// Deliberately narrow, and these bounds are measured, not assumed:
+//  - CROSS-FILE only. A self-reference ("see §4" inside the same document) is not checked,
+//    because a bare §N routinely refers to a document named on an earlier line — probing
+//    found handoff.md's "§1.6" means contract.md's, so a naive self-check false-positives
+//    on a legitimate and common pattern.
+//  - The mark must sit next to its target, so a link and a §N split across two lines is
+//    missed. Nobody gains by splitting a line, so this is coverage, not a bypass.
+//  - A prose promise ("see X for the onboarding checklist") is semantic and stays a
+//    review concern.
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join, normalize } from "node:path";
 import { execFileSync } from "node:child_process";

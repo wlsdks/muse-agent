@@ -95,3 +95,20 @@ test("every mandatory pattern matches at least one file that exists in this repo
     assert.ok(tracked.some((file) => pattern.test(file)), `pattern matches no tracked file: ${pattern.source}`);
   }
 });
+
+// Order used to decide the verdict: strong-then-weak passed, weak-then-strong blocked. A
+// reader scanning the body from the bottom saw a different claim than the gate acted on.
+test("two different tiers in one body is a conflict, whichever order", () => {
+  const S = ["packages/messaging/src/channel-approval-gate.ts"];
+  for (const body of [
+    "feat: x\n\nreview-tier: independent-evaluator\nreview-tier: thin-review\n",
+    "feat: x\n\nreview-tier: thin-review\nreview-tier: independent-evaluator\n",
+  ]) {
+    assert.equal(parseReviewTier(body), "conflict");
+    assert.match(checkReviewTier(body, S), /more than one distinct `review-tier:`/u);
+  }
+});
+
+test("the same tier repeated is not a conflict", () => {
+  assert.equal(parseReviewTier("feat: x\n\nreview-tier: thin-review\nreview-tier: thin-review\n"), "thin-review");
+});
