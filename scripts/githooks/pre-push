@@ -179,7 +179,9 @@ for ((index = 0; index < changed_file_count; index += 1)); do
     is_full_lint_impact_path "$file" && needs_full_lint=1
   fi
   case "$file" in
-    *.md|.claude/rules/*|docs/*) needs_doc_links=1 ;;
+    # build-agents-md.mjs renders AGENTS.md, so a change to it can stale the projection
+    # without touching a single .md file.
+    *.md|.claude/rules/*|docs/*|scripts/build-agents-md.mjs) needs_doc_links=1 ;;
   esac
   if [ -f "$file" ] && is_lintable_path "$file"; then
     lint_files[$lint_file_count]="$file"
@@ -235,6 +237,15 @@ elif [ "$needs_doc_links" -eq 1 ]; then
     echo "pre-push: reference gate — node scripts/check-agent-registry.mjs" >&2
     if ! node scripts/check-agent-registry.mjs >&2; then
       echo "pre-push: BLOCKED — the agent registry does not resolve" >&2
+      exit 1
+    fi
+  fi
+  # Claude Code is auto-given CLAUDE.md + .claude/rules/; every other agent gets only
+  # AGENTS.md. A stale projection means the two work from different instructions.
+  if [ -f scripts/build-agents-md.mjs ]; then
+    echo "pre-push: reference gate — node scripts/build-agents-md.mjs --check" >&2
+    if ! node scripts/build-agents-md.mjs --check >&2; then
+      echo "pre-push: BLOCKED — AGENTS.md no longer matches the rules Claude Code is given" >&2
       exit 1
     fi
   fi
