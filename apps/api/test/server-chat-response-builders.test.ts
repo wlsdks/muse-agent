@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { toAdminRunSummary, toCompatChatResponse, toExtendedChatResponse } from "../src/server-chat-response-builders.js";
-import type { AgentRunResult } from "@muse/agent-core";
+import { createLoopControlReceipt, type AgentRunResult } from "@muse/agent-core";
 import type { AgentRunRecord } from "@muse/runtime-state";
 
 const result = (over: Record<string, unknown> = {}, responseOver: Record<string, unknown> = {}): AgentRunResult =>
@@ -88,6 +88,32 @@ describe("toCompatChatResponse", () => {
         fromCache: true,
         runId: "r1"
       });
+    });
+
+    it("surfaces health only from a verified loop control receipt", () => {
+      const loopControlReceipt = createLoopControlReceipt({
+        budget: { retries: null, steps: null, tools: null, wallclockLimitMs: 10_000 },
+        endedAt: "2026-07-30T00:00:03.000Z",
+        loopKind: "react",
+        runId: "r1",
+        startedAt: "2026-07-30T00:00:00.000Z",
+        terminal: { reason: "goal-verified", status: "completed" },
+        verification: { evidenceId: "eval:chat-1", status: "passed" }
+      });
+
+      expect(toCompatChatResponse(result({ fromCache: false, loopControlReceipt })).metadata.loopHealth).toEqual({
+        endedAt: "2026-07-30T00:00:03.000Z",
+        terminalReason: "goal-verified",
+        terminalStatus: "completed",
+        verificationEvidenceId: "eval:chat-1",
+        verificationStatus: "passed"
+      });
+      expect(toCompatChatResponse(result()).metadata).not.toHaveProperty("loopHealth");
+      expect(toCompatChatResponse(result({ loopControlReceipt })).metadata).not.toHaveProperty("loopHealth");
+      expect(toCompatChatResponse(result({
+        fromCache: false,
+        loopControlReceipt: { ...loopControlReceipt, runId: "tampered" }
+      })).metadata).not.toHaveProperty("loopHealth");
     });
   });
 });

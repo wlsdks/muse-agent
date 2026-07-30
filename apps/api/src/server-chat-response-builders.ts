@@ -1,4 +1,7 @@
-import type { AgentRunResult } from "@muse/agent-core";
+import {
+  projectLoopControlReceiptHealth,
+  type AgentRunResult
+} from "@muse/agent-core";
 import type { GatedChatAnswer } from "@muse/recall";
 import type { AgentRunRecord } from "@muse/runtime-state";
 import type { JsonObject } from "@muse/shared";
@@ -103,6 +106,9 @@ function compatTokenUsage(usage: AgentRunResult["response"]["usage"]) {
 }
 
 function compatResponseMetadata(result: AgentRunResult): JsonObject {
+  const loopHealth = !result.fromCache && result.loopControlReceipt
+    ? projectLoopControlReceiptHealth(result.loopControlReceipt)
+    : undefined;
   return {
     ...(result.agentSpec
       ? {
@@ -121,6 +127,19 @@ function compatResponseMetadata(result: AgentRunResult): JsonObject {
           estimatedTokens: result.contextWindow.estimatedTokens,
           removedCount: result.contextWindow.removedCount,
           summaryInserted: result.contextWindow.summaryInserted
+        }
+      }
+      : {}),
+    ...(loopHealth
+      ? {
+        loopHealth: {
+          endedAt: loopHealth.endedAt,
+          terminalReason: loopHealth.terminalReason,
+          terminalStatus: loopHealth.terminalStatus,
+          ...(loopHealth.verificationEvidenceId
+            ? { verificationEvidenceId: loopHealth.verificationEvidenceId }
+            : {}),
+          verificationStatus: loopHealth.verificationStatus
         }
       }
       : {}),
