@@ -219,6 +219,7 @@ import {
   resolveLocalModelContextAdmissionOptions,
   type LocalModelContextAdmissionSnapshot
 } from "./local-model-context-admission.js";
+import { createLatestAdaptationLoopHealthObserver } from "./adaptation-loop-health-observer.js";
 import { createLatestAgentLoopHealthObserver } from "./agent-loop-health-observer.js";
 import { mintProgressiveAutonomyOrganicAuthority } from "./progressive-autonomy-organic-authority.js";
 import { createTrustedProgressiveAutonomyToolOpportunityObserver } from "./progressive-autonomy-runtime-observer.js";
@@ -263,7 +264,9 @@ export interface MuseRuntimeAssembly {
   readonly taskMemoryStore: TaskMemoryStore & TaskMemoryMaintenance;
   readonly userMemoryStore: UserMemoryStore;
   readonly observability: {
+    readonly adaptationLoopHealthSnapshot: () => import("@muse/shared").AdaptationLoopHealthInput | undefined;
     readonly agentLoopHealthSnapshot: () => import("@muse/shared").AgentLoopHealthInput | undefined;
+    readonly experienceLearningPromotionObserver: (receipt: unknown) => void;
     readonly budgetTracker: MonthlyBudgetTracker;
     readonly driftDetector: PromptDriftDetector;
     readonly followupSuggestionStore: InMemoryFollowupSuggestionStore;
@@ -538,6 +541,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   } = hooksAndProviders;
   contextReferenceLoopbackTools = hooksAndProviders.contextReferenceLoopbackTools;
 
+  const adaptationLoopHealthObserver = createLatestAdaptationLoopHealthObserver();
   const agentLoopHealthObserver = createLatestAgentLoopHealthObserver();
   const agentRuntime = buildAgentRuntime({
     activeContextProvider,
@@ -635,7 +639,9 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     taskMemoryStore,
     userMemoryStore,
     observability: {
+      adaptationLoopHealthSnapshot: adaptationLoopHealthObserver.snapshot,
       agentLoopHealthSnapshot: agentLoopHealthObserver.snapshot,
+      experienceLearningPromotionObserver: adaptationLoopHealthObserver.observe,
       budgetTracker,
       driftDetector,
       followupSuggestionStore,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createApiServerOptions } from "../src/api-server-options.js";
+import { experienceLearningPromotionReceipt } from "./helpers/experience-learning-promotion-receipt.js";
 
 describe("API server loop health options", () => {
   it("passes the production assembly observer snapshot to the API surface", async () => {
@@ -12,7 +13,13 @@ describe("API server loop health options", () => {
       }
     });
 
+    expect(options.adaptationLoopHealthSnapshot()).toBeUndefined();
     expect(options.agentLoopHealthSnapshot()).toBeUndefined();
+    const promotion = experienceLearningPromotionReceipt(
+      "2026-07-30T00:02:00.000Z",
+      "api-options"
+    );
+    options.experienceLearningPromotionObserver(promotion);
     const result = await options.agentRuntime!.run({
       messages: [{ content: "wire loop health", role: "user" }],
       model: "diagnostic/smoke"
@@ -22,6 +29,11 @@ describe("API server loop health options", () => {
       endedAt: result.loopControlReceipt?.endedAt,
       terminalStatus: result.loopControlReceipt?.terminal.status,
       verificationStatus: result.loopControlReceipt?.verification.status
+    });
+    expect(options.adaptationLoopHealthSnapshot()).toEqual({
+      evidenceId: promotion.promotionId,
+      evidenceVerified: true,
+      status: "promoted"
     });
   });
 });

@@ -62,7 +62,9 @@ export function createApiServerOptions(options: CreateApiServerOptionsOptions = 
   });
 
   return {
+    adaptationLoopHealthSnapshot: assembly.observability.adaptationLoopHealthSnapshot,
     agentLoopHealthSnapshot: assembly.observability.agentLoopHealthSnapshot,
+    experienceLearningPromotionObserver: assembly.observability.experienceLearningPromotionObserver,
     admin: {
       cache: {
         metrics: assembly.cache.metrics,

@@ -19,9 +19,14 @@ describe("GET /api/loop-health", () => {
     await server.close();
   });
 
-  it("uses current validated agent evidence but stays degraded under partial observability", async () => {
+  it("combines validated agent and adaptation evidence but stays degraded without event evidence", async () => {
     const endedAt = new Date(Date.now() - 1_000).toISOString();
     const server = buildServer({
+      adaptationLoopHealthSnapshot: () => Object.freeze({
+        evidenceId: "learning_promotion_route",
+        evidenceVerified: true,
+        status: "promoted"
+      }),
       agentLoopHealthSnapshot: () => Object.freeze({
         endedAt,
         terminalReason: "goal-verified",
@@ -36,6 +41,7 @@ describe("GET /api/loop-health", () => {
     const body = response.json();
 
     expect(response.statusCode).toBe(200);
+    expect(body.adaptation).toEqual({ level: "healthy", reasons: [] });
     expect(body.agent).toEqual({ level: "healthy", reasons: [] });
     expect(body.level).toBe("degraded");
     expect(body.reasons).toContain("partial-observability");

@@ -7,6 +7,7 @@
 
 import type { ActiveContextProvider, AgentInitiatedNoticeBroker, AgentRuntime } from "@muse/agent-core";
 import type { AgentSpecRegistry } from "@muse/agent-specs";
+import type { ExperienceLearningPromotionReceipt } from "@muse/attunement";
 import type { MuseAuth } from "@muse/auth";
 import type { CalendarCredentialStore, CalendarProviderRegistry } from "@muse/calendar";
 import type { NotesProviderRegistry, TasksProviderRegistry } from "@muse/domain-tools";
@@ -31,7 +32,7 @@ import type { McpRouteMcp } from "./mcp-routes.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
 import type { DeliverySafetySupplier } from "./delivery-safety-resolver.js";
 import type { ApiDependencyReadinessSnapshot } from "./api-readiness.js";
-import type { AgentLoopHealthInput } from "@muse/shared";
+import type { AdaptationLoopHealthInput, AgentLoopHealthInput } from "@muse/shared";
 
 export interface ServerOptions {
   /**
@@ -39,8 +40,12 @@ export interface ServerOptions {
    * construction. Health requests never invoke a callback or provider egress.
    */
   readonly dependencyReadiness?: ApiDependencyReadinessSnapshot;
+  /** Latest validated in-process adaptation evidence; read-only and owner scoped. */
+  readonly adaptationLoopHealthSnapshot?: () => AdaptationLoopHealthInput | undefined;
   /** Latest validated in-process agent loop evidence; read-only and owner scoped. */
   readonly agentLoopHealthSnapshot?: () => AgentLoopHealthInput | undefined;
+  /** Fail-open observation only after an approved learning promotion commits. */
+  readonly experienceLearningPromotionObserver?: (receipt: ExperienceLearningPromotionReceipt) => void;
   /** Lazy canonical projection shared by authenticated delivery-safety surfaces. */
   readonly deliverySafety?: DeliverySafetySupplier;
   /** Owner-only Personal Continuity ledger used by the read-only evaluation route. */

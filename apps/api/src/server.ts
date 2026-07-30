@@ -269,6 +269,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   }
 
   registerCoreRoutes(server, apiRouteMethods, {
+    adaptationLoopHealthSnapshot: options.adaptationLoopHealthSnapshot,
     agentLoopHealthSnapshot: options.agentLoopHealthSnapshot,
     dependencyReadiness: options.dependencyReadiness,
     localOnly: integrationEnv.localOnly,
@@ -377,6 +378,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     conversationsFile: options.conversationsFile ?? defaultConversationsFile(env),
     checkpointsDir: resolveCheckpointsDir(env),
     env,
+    experienceLearningPromotionObserver: options.experienceLearningPromotionObserver,
     notesDir: options.notesDir ?? resolveNotesDir(env),
     remindersFile: options.remindersFile ?? resolveRemindersFile(env),
     tasksFile: options.tasksFile ?? resolveTasksFile(env),
