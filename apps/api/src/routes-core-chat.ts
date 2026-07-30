@@ -1,6 +1,7 @@
 // Health/spec/openapi + chat (incl. rate-limit) registrars — split out of server-routes.ts (domain cohesion).
 
 import { parseBoolean, resolveActionLogFile, resolvePendingApprovalsFile } from "@muse/autoconfigure";
+import { createLoopSupervisorHealthSnapshot, type AgentLoopHealthInput } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 
 import { serverBuildId, serverStartedAtIso } from "./build-info.js";
@@ -20,6 +21,7 @@ import type { ServerOptions } from "./server.js";
 import { projectApiHealth } from "./api-readiness.js";
 
 export interface CoreRouteHealthOptions {
+  readonly agentLoopHealthSnapshot?: () => AgentLoopHealthInput | undefined;
   readonly dependencyReadiness?: ServerOptions["dependencyReadiness"];
   readonly localOnly: boolean;
   readonly modelConfigured: boolean;
@@ -50,6 +52,18 @@ export function registerCoreRoutes(
     return reply
       .status(healthPayload.readiness.status === "ready" ? 200 : 503)
       .send(healthPayload);
+  });
+  server.get("/api/loop-health", async () => {
+    let agent: AgentLoopHealthInput | undefined;
+    try {
+      agent = healthOptions.agentLoopHealthSnapshot?.();
+    } catch {
+      agent = undefined;
+    }
+    return createLoopSupervisorHealthSnapshot({
+      ...(agent ? { agent } : {}),
+      generatedAt: new Date()
+    });
   });
 
   server.get("/spec", async () => ({

@@ -62,6 +62,7 @@ export function createApiServerOptions(options: CreateApiServerOptionsOptions = 
   });
 
   return {
+    agentLoopHealthSnapshot: assembly.observability.agentLoopHealthSnapshot,
     admin: {
       cache: {
         metrics: assembly.cache.metrics,

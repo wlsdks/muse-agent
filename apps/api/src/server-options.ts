@@ -31,6 +31,7 @@ import type { McpRouteMcp } from "./mcp-routes.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
 import type { DeliverySafetySupplier } from "./delivery-safety-resolver.js";
 import type { ApiDependencyReadinessSnapshot } from "./api-readiness.js";
+import type { AgentLoopHealthInput } from "@muse/shared";
 
 export interface ServerOptions {
   /**
@@ -38,6 +39,8 @@ export interface ServerOptions {
    * construction. Health requests never invoke a callback or provider egress.
    */
   readonly dependencyReadiness?: ApiDependencyReadinessSnapshot;
+  /** Latest validated in-process agent loop evidence; read-only and owner scoped. */
+  readonly agentLoopHealthSnapshot?: () => AgentLoopHealthInput | undefined;
   /** Lazy canonical projection shared by authenticated delivery-safety surfaces. */
   readonly deliverySafety?: DeliverySafetySupplier;
   /** Owner-only Personal Continuity ledger used by the read-only evaluation route. */
