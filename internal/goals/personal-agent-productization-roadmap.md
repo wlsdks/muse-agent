@@ -18,2457 +18,2500 @@ related:
 
 # Muse personal-agent productization roadmap
 
-> **2026-07-28 owner-directed replan:** 새 작업 activation과 다음 작업 선택은
-> [`personal-agent-core-100-roadmap.md`](personal-agent-core-100-roadmap.md)가 권위 문서다.
-> 이 300-task 문서는 완료된 source를 재구현하지 않기 위한 legacy 요구사항과 ID 이력으로만
-> 유지한다. 특히 990분 worst-case의 Task 059–060은 실행하지 않고 Core100의 bounded
-> qualification shard 004–010으로 대체한다.
+> **2026-07-28 owner-directed replan:** For new task activation and next-task selection,
+> [`personal-agent-core-100-roadmap.md`](personal-agent-core-100-roadmap.md) is the authoritative document.
+> This 300-task document is retained only as legacy requirements and ID history, so that already
+> completed source is not reimplemented. In particular, the 990-minute worst-case Task 059–060 is
+> not executed; it is replaced by Core100's bounded qualification shards 004–010.
 
-## 목적
+## Purpose
 
-이 문서는 Muse의 강한 기술 기반을 실제로 매일 신뢰할 수 있는 개인 에이전트로 전환하기 위한
-의존성 순서형 프로그램 지도다. 현재 구현되어 있는 기능을 다시 만드는 목록이 아니다. 이미 존재하는
-기능도 현재 환경에서 증거가 stale하거나 fail-closed gate가 닫혀 있으면, 해당 계약을 다시 증명하는
-작업으로 포함한다.
+This document is a dependency-ordered program map for turning Muse's strong technical foundation
+into a personal agent that can genuinely be trusted every day. It is not a list for rebuilding
+functionality that is already implemented. Functionality that does exist is still included as
+work that re-proves its contract whenever the evidence is stale in the current environment or a
+fail-closed gate is shut.
 
-최종적으로 증명하려는 것은 다음 한 문장이다.
+What this ultimately sets out to prove is one sentence.
 
-> Muse는 한 사용자의 삶과 일을 정확한 출처로 이어주고, 도움이 되었는지를 명시적으로 배우며,
-> 권한을 몰래 확대하지 않은 채 안정적으로 매일 실행된다.
+> Muse connects one user's life and work through exact sources, explicitly learns whether it
+> helped, and runs reliably every day without silently expanding its permissions.
 
-## 현재 출발점 — 2026-07-25 일회성 스냅샷
+## Current starting point — 2026-07-25 one-time snapshot
 
-이 수치는 roadmap의 영구 진실이 아니다. Task 001이 새 실행마다 현재 증거로 교체한다.
+These numbers are not the roadmap's permanent truth. Task 001 replaces them with current evidence
+on every new run.
 
-- CodeGraph 강제 전체 재인덱싱 완료: 3,673 files, 43,015 nodes, 118,449 edges.
-- TS7 typecheck 통과.
-- `@muse/agent-core` 3,370 tests, `@muse/attunement` 191 tests 통과.
-- Web unit 670 tests와 real Chromium 128 tests 통과.
-- API boot 통과.
-- `pnpm qualify:personal-agent`는 `not-qualified`: 2 failed, 1 unverified.
-- resident background runtime은 stale/crash-looping으로 판정됐고 heartbeat와 live identity가 검증되지 않았다.
-- delivery-safety는 local-only, self-learning hold, provider lock 증거가 닫히지 않았으며 overdue
-  follow-up 26개와 reminder 5개가 보고됐다.
-- CLI smoke의 10개 기능 항목은 통과했지만 프로세스가 스스로 종료되지 않았다.
-- Browser smoke는 JavaScript confirm 수락 후 제목 전환 계약에서 실패했다.
-- 최신 기록 capability aggregate는 10/11이며 corrected-fact freshness가 실패 축이다.
-- organic personal effectiveness는 명시적으로 `NOT_PROVEN`이다.
+- Forced full CodeGraph reindex complete: 3,673 files, 43,015 nodes, 118,449 edges.
+- TS7 typecheck passed.
+- `@muse/agent-core` 3,370 tests and `@muse/attunement` 191 tests passed.
+- Web unit 670 tests and real Chromium 128 tests passed.
+- API boot passed.
+- `pnpm qualify:personal-agent` reports `not-qualified`: 2 failed, 1 unverified.
+- The resident background runtime was judged stale/crash-looping, and its heartbeat and live identity were not verified.
+- For delivery-safety, the local-only, self-learning hold, and provider lock evidence is not
+  closed, and 26 overdue follow-ups plus 5 reminders were reported.
+- The 10 functional items in the CLI smoke passed, but the process did not exit on its own.
+- The browser smoke failed on the title-transition contract after accepting a JavaScript confirm.
+- The most recently recorded capability aggregate is 10/11, with corrected-fact freshness as the failing axis.
+- Organic personal effectiveness is explicitly `NOT_PROVEN`.
 
-상충하는 과거 스냅샷보다 현재의 read-only qualification 결과가 우선한다. 예를 들어
-`daily-use-hardening-plan.md`의 2026-07-22 resident 상태가 green이어도, 2026-07-25 qualification이
-red라면 프로그램은 red에서 시작한다.
+The current read-only qualification result takes precedence over any conflicting past snapshot.
+For example, even if the 2026-07-22 resident status in `daily-use-hardening-plan.md` is green, the
+program starts from red when the 2026-07-25 qualification is red.
 
-## 운영 규칙
+## Operating rules
 
-### 우선순위
+### Priorities
 
-- **P0:** 다음 단계 진입을 막는 안전·정확성·운영 blocker.
-- **P1:** 매일 쓸 수 있는 가치와 복구 가능성을 만드는 필수 기능.
-- **P2:** 차별화와 제한된 자율성을 검증하는 기능.
-- **P3:** 생태계, 확장, 공개 배포 최적화.
+- **P0:** Safety, correctness, and operational blockers that prevent entry into the next stage.
+- **P1:** Essential functionality that creates day-to-day usable value and recoverability.
+- **P2:** Functionality that proves differentiation and bounded autonomy.
+- **P3:** Ecosystem, expansion, and public-distribution optimization.
 
-이 priority는 기본적으로 **phase-local**이다. 뒤 phase의 P0가 현재 ready queue의 P1보다 먼저 실행된다는
-뜻이 아니다. Task 001–012가 current evidence로 최대 다섯 개의 `Global P0` ready queue를 만들며,
-현재 피해·release blocker·dependency-ready 순으로 소비한다.
+This priority is **phase-local** by default. It does not mean a later phase's P0 runs before a P1
+already in the current ready queue. Tasks 001–012 build a `Global P0` ready queue of at most five
+items from current evidence, consumed in order of present harm, release blocker, and
+dependency-readiness.
 
-### 진행 규칙
+### Progression rules
 
-1. 작업 번호는 장기 참조를 위한 stable ID다. 숫자 순서대로 무조건 실행하지 않고 아래
-   authoritative execution order와 현재 gate 상태로 다음 작업을 선택한다.
-2. 한 번에 한 개의 좁은 slice만 BUILD 상태로 둔다. 시간이 필요한 organic collection, soak,
-   cohort는 별도 EVIDENCE/MONITOR lane 하나에서 병행할 수 있으며 source를 동시에 수정하지 않는다.
-3. 각 작업은 명시된 산출물과 검증 증거가 모두 있어야 닫힌다.
-4. maker와 evaluator를 별도 agent context와 역할로 분리한다. 모델 이름만 바꾸거나 같은 context에서
-   두 역할을 이어서 수행한 것은 독립 평가가 아니다. 별도 evaluator가 없으면 완료가 아니라
-   `미분리 자기평가`다.
-5. deterministic, controlled-live, organic-production evidence를 서로 승격하지 않는다.
-6. factual interaction receipt는 feedback, permission, policy promotion이 아니다.
-7. 외부 전송, 데이터 삭제, 권한 확대, 자동화 활성화는 owner preview와 별도 permission gate 뒤에만 둔다.
-8. 각 phase exit gate는 표에 적힌 특정 promotion/behavior만 막는다. red인 organic·optional gate가
-   무관한 security, reliability, repair 작업까지 막는 전역 waterfall로 사용되어서는 안 된다.
-9. source/behavior를 바꾼 slice는 영향 범위 테스트, `pnpm test:changed`, 독립 평가를 통과한 뒤
-   task 단위로 commit하고 정상 upstream에 push한다.
-10. docs/evidence/ledger/status만 바뀐 기록 작업은 task마다 commit/push하지 않는다. 아래 batching
-    규칙에 따라 자연스러운 checkpoint에서 묶는다.
-11. 이 문서는 프로그램 지도다. 세부 실행 기록은 커밋 본문과 기존 active ledger에 남기고 이 문서를
-    세션 로그처럼 무한히 늘리지 않는다.
+1. Task numbers are stable IDs for long-term reference. Do not run them unconditionally in numeric
+   order; select the next task using the authoritative execution order below and the current gate state.
+2. Keep exactly one narrow slice in BUILD state at a time. Organic collection, soak runs, and
+   cohorts that need elapsed time may run in parallel in one separate EVIDENCE/MONITOR lane, and
+   must not modify source at the same time.
+3. Each task closes only when both its stated deliverable and its verification evidence exist.
+4. Separate maker and evaluator into distinct agent contexts and roles. Merely changing the model
+   name, or performing both roles back-to-back in the same context, is not independent evaluation.
+   Without a separate evaluator, the result is not completion but
+   `unseparated self-evaluation`.
+5. Never promote deterministic, controlled-live, and organic-production evidence into one another.
+6. A factual interaction receipt is not feedback, permission, or policy promotion.
+7. Keep external sends, data deletion, permission expansion, and automation activation behind an
+   owner preview and a separate permission gate.
+8. Each phase exit gate blocks only the specific promotions/behaviors listed in its table. A red
+   organic or optional gate must not be used as a global waterfall that also blocks unrelated
+   security, reliability, and repair work.
+9. A slice that changed source/behavior is committed per task and pushed to the normal upstream
+   only after affected-scope tests, `pnpm test:changed`, and independent evaluation pass.
+10. Record-keeping work that changed only docs/evidence/ledger/status does not commit/push per
+    task. Batch it at a natural checkpoint per the batching rules below.
+11. This document is a program map. Keep detailed execution records in commit bodies and the
+    existing active ledgers; do not grow this document indefinitely like a session log.
 
-### 커밋·푸시 규칙
+### Commit and push rules
 
-이 장기 목표는 300개 task를 실행하더라도 기록만 늘리는 작은 commit을 매번 만들지 않는다.
-commit 경계는 task 번호가 아니라 **제품 동작이 바뀌었는가**로 결정한다.
+Even while executing 300 tasks, this long-term goal does not produce a small commit every time
+that only grows the record. The commit boundary is decided by **whether product behavior changed**,
+not by task number.
 
-- **task 완료 직후 commit+push:** runtime/source code, test, executable script, build/package 설정,
-  dependency, schema/migration, user-visible UI/문구, security policy/hook처럼 제품 동작·검증 계약을
-  바꾼 경우. 관련 문서와 evidence summary는 같은 commit에 포함할 수 있다.
-- **나중에 batch commit:** roadmap 체크, dated status, read-only 측정 결과, evidence narrative,
-  ledger 기록, 설명 보정처럼 제품 동작을 바꾸지 않는 기록-only 변경. task마다 push하지 않는다.
-- **mixed change:** source/behavior 변경과 기록 변경이 한 slice에 함께 있으면 source 변경으로 간주한다.
-  해당 구현을 설명하는 기록만 같은 commit에 넣고, 무관한 누적 기록은 섞지 않는다.
-- **기록 batch checkpoint:** phase exit, 다음 source-code commit, branch/worktree 전환 전, rebase/merge 전,
-  장기 세션 handoff 전, release-readiness 실행 전 중 가장 먼저 오는 시점에 관련 기록을 하나로 정리한다.
-- **검증:** source commit은 required test와 evaluator PASS 뒤에만 만든다. docs-only batch는 link,
-  ledger format, whitespace, claim freshness를 검사한다.
-- **push:** 현재 task branch 또는 검증된 local `main`의 configured `origin` upstream으로 정상 push한다.
-  `--no-verify`, force/force-with-lease, alternate remote/refspec, tag/release는 이 규칙이 허용하지 않는다.
-- **실패:** hook, auth, protection, unresolved divergence가 발생하면 저장소 standing authorization의
-  한도 안에서 안전한 fetch/rebase를 최대 한 번 재시도하고, 해결되지 않으면 push를 멈추고 보고한다.
-- **사용자 변경 보호:** 다른 작업의 dirty change를 임의로 commit, discard, rewrite하지 않는다.
+- **Commit+push immediately after task completion:** when product behavior or a verification
+  contract changed — runtime/source code, tests, executable scripts, build/package configuration,
+  dependencies, schema/migration, user-visible UI/wording, security policy/hooks. Related
+  documentation and evidence summaries may be included in the same commit.
+- **Batch commit later:** record-only changes that do not change product behavior, such as roadmap
+  checkmarks, dated status, read-only measurement results, evidence narrative, ledger records, and
+  wording corrections. Do not push per task.
+- **Mixed change:** if a source/behavior change and a record change sit in the same slice, treat it
+  as a source change. Put only the records that describe that implementation in the same commit;
+  do not mix in unrelated accumulated records.
+- **Record batch checkpoint:** consolidate the related records at whichever comes first — phase
+  exit, the next source-code commit, before a branch/worktree switch, before a rebase/merge, before
+  a long-session handoff, or before a release-readiness run.
+- **Verification:** create a source commit only after the required tests and evaluator PASS. A
+  docs-only batch is checked for links, ledger format, whitespace, and claim freshness.
+- **Push:** perform a normal push to the configured `origin` upstream of the current task branch or
+  of a verified local `main`. These rules do not permit `--no-verify`, force/force-with-lease,
+  an alternate remote/refspec, or tags/releases.
+- **Failure:** on hook, auth, protection, or unresolved divergence, retry a safe fetch/rebase at
+  most once within the limits of the repository's standing authorization; if it is not resolved,
+  stop the push and report.
+- **Protecting the user's changes:** never arbitrarily commit, discard, or rewrite dirty changes
+  belonging to other work.
 
-### 작업 활성화와 중복 방지 규칙
+### Task activation and duplication-prevention rules
 
-300개 checkbox는 “300개 기능이 모두 없다”는 뜻이 아니다. task를 BUILD로 열기 전에 현재 HEAD의
-CodeGraph, tests, qualification artifact, 기존 문서를 확인하고 다음 상태 중 하나를 기록한다.
+300 checkboxes do not mean "all 300 capabilities are absent." Before opening a task as BUILD,
+check the CodeGraph, tests, qualification artifacts, and existing documents at the current HEAD,
+and record one of the following statuses.
 
-| 상태 | 의미 | 실행 |
+| Status | Meaning | Action |
 | --- | --- | --- |
-| `missing` | acceptance를 담당하는 구현이 없음 | 필요한 최소 slice만 설계·구현 |
-| `partial` | 계약 일부만 구현됐거나 현재 blocker가 있음 | 존재하는 구현을 보존하고 missing delta만 수정 |
-| `built-unverified` | 구현은 있으나 fresh evidence가 없음 | 재구현 금지; 검증·운영 복구만 수행 |
-| `verified-current` | 현재 HEAD/artifact에서 acceptance 충족 | 코드 변경 없이 기록-only 완료 처리 |
-| `monitoring` | organic collection, soak, cohort처럼 시간이 필요 | EVIDENCE/MONITOR lane에서 관찰; BUILD lane을 막지 않음 |
-| `blocked` | owner decision, credential, hardware, elapsed time이 필요 | blocker와 재개 조건을 기록하고 다른 ready work 선택 |
-| `deferred` | 가치가 있으나 현재 promotion 범위 밖 | 구현하지 않음 |
-| `rejected` | mission, safety, evidence상 하지 않기로 결정 | 재유도 금지; 새 evidence가 있을 때만 재검토 |
-| `superseded` | 앞선 task가 acceptance를 완전히 충족 | 중복 구현 금지; 대체 task와 current proof를 연결 |
+| `missing` | No implementation owns the acceptance | Design and implement only the minimum slice required |
+| `partial` | Only part of the contract is implemented, or a current blocker exists | Preserve the existing implementation and fix only the missing delta |
+| `built-unverified` | The implementation exists but there is no fresh evidence | No reimplementation; perform verification and operational recovery only |
+| `verified-current` | Acceptance is met at the current HEAD/artifact | Close as a record-only completion with no code change |
+| `monitoring` | Needs elapsed time, as with organic collection, soak, or cohort | Observe in the EVIDENCE/MONITOR lane; does not block the BUILD lane |
+| `blocked` | Needs an owner decision, credential, hardware, or elapsed time | Record the blocker and its resume condition, and pick other ready work |
+| `deferred` | Valuable but outside the current promotion scope | Do not implement |
+| `rejected` | Decided against on mission, safety, or evidence grounds | Do not re-litigate; revisit only with new evidence |
+| `superseded` | An earlier task fully satisfies the acceptance | No duplicate implementation; link the replacing task and its current proof |
 
-활성화 header에는 최소한 `Task ID`, `상태`, `lane`, `유형(FIX|BUILD|TEST|OPS|EVAL|DOC)`,
-`크기(S|M|L)`, `현재 구현 symbol/file`, `missing delta`, `검증`, `commit 경계`, `maker
-model/effort`, `선택 사유`, `evaluator model/effort`, `escalation trigger`를 적는다.
+The activation header records at minimum `Task ID`, `Status`, `lane`, `Type (FIX|BUILD|TEST|OPS|EVAL|DOC)`,
+`Size (S|M|L)`, `Current implementation symbol/file`, `missing delta`, `Verification`, `Commit boundary`, `maker
+model/effort`, `Selection rationale`, `evaluator model/effort`, and `escalation trigger`.
 
-- 현재 source가 acceptance를 이미 만족하면 checkbox를 이유로 새 abstraction이나 두 번째 store를 만들지 않는다.
-- 뒤 task가 앞 task와 같은 acceptance를 반복하면 고유한 domain/recurrence delta를 한 문장으로
-  증명해야 한다. 새 delta가 없으면 뒤 task를 `superseded`로 닫는다.
-- 한 task가 L-size이면 번호를 늘리지 않고 내부 commit-sized slice로 쪼갠다. 각 slice는 독립
-  acceptance와 evaluator를 가지며 최종 task gate에서 합친다.
-- 코드에 없는 문제를 추측해 구현하지 않는다. `built-unverified`와 `partial` 판정은 current source와
-  failing evidence를 함께 가리켜야 한다.
+- If the current source already satisfies the acceptance, do not create a new abstraction or a second store just because a checkbox exists.
+- If a later task repeats the same acceptance as an earlier one, it must prove its unique
+  domain/recurrence delta in one sentence. Without a new delta, close the later task as `superseded`.
+- If a task is L-size, split it into internal commit-sized slices rather than adding numbers. Each
+  slice has independent acceptance and an evaluator, and they combine at the final task gate.
+- Do not guess at a problem that is not in the code and implement it. A `built-unverified` or
+  `partial` judgement must point at both the current source and the failing evidence.
 
-### 공통 Definition of Done
+### Common Definition of Done
 
-모든 작업은 별도 설명이 없더라도 다음 조건을 만족해야 한다.
+Every task must satisfy the following conditions even when not stated separately.
 
-- acceptance criteria가 구현 전에 적혀 있다.
-- 정상, 실패, 취소, 재시도, 오래된 상태 중 영향받는 경계를 검증한다.
-- 영속 포맷을 건드리면 호환성, 손상 입력, 백업·복구를 검증한다.
-- UI를 건드리면 필요한 journey를 실제 Chromium에서 검증한다.
-- 외부 효과를 건드리면 draft-first, idempotency, dedupe, explicit authority를 검증한다.
-- 문서와 사용자 노출 계약이 실제 동작과 일치한다.
-- evaluator가 acceptance criteria별로 `PASS | FAIL`과 재현 근거를 남긴다.
+- Acceptance criteria are written down before implementation.
+- The affected boundaries among normal, failure, cancellation, retry, and stale states are verified.
+- If a persistent format is touched, compatibility, corrupt input, and backup/restore are verified.
+- If the UI is touched, the required journey is verified in real Chromium.
+- If external effects are touched, draft-first, idempotency, dedupe, and explicit authority are verified.
+- Documentation and user-facing contracts match actual behavior.
+- The evaluator leaves a `PASS | FAIL` per acceptance criterion together with reproduction evidence.
 
-## 실행 파동
+## Execution waves
 
-| Wave | 작업 | 목표 | 다음 단계 진입 조건 |
+| Wave | Tasks | Goal | Entry condition for the next stage |
 | --- | ---: | --- | --- |
-| A — Truthful core | 001–060 | 현재 런타임·전송·표면·기억을 정직하게 qualification | runtime, delivery, surface, recall gate 모두 green |
-| B — Trusted daily loop | 061–096 | Continuity, 보안, 자원 경계를 매일 사용 가능한 수준으로 닫기 | organic audit 전제와 24h 운영 soak 통과 |
-| C — Attuned experience | 097–120 | onboarding과 Observe/timing을 수동·shadow부터 검증 | owner-reviewed controlled cohort 통과 |
-| D — Competitive product | 121–144 | 선택적 경쟁력 확장, 배포 정리, 출시 판정 | release readiness 독립 PASS |
-| E — Durable personal OS | 145–216 | 출시 운영, 장기 memory, 생활 도메인, computer control, communication, planning | 실제 개인 workflow의 multi-date audit |
-| F — Governed adaptation | 217–252 | skill learning, multi-agent, model routing을 통제된 품질 향상으로 연결 | baseline 대비 held-out improvement |
-| G — Ubiquitous and compounding | 253–300 | device 확장, 상시 평가, ecosystem, 반복 가치 운영 | G0–G24 fresh review와 다음 cycle 승인 |
+| A — Truthful core | 001–060 | Honestly qualify the current runtime, delivery, surfaces, and memory | runtime, delivery, surface, and recall gates all green |
+| B — Trusted daily loop | 061–096 | Close Continuity, security, and resource boundaries to a daily-usable level | organic audit preconditions and the 24h operational soak pass |
+| C — Attuned experience | 097–120 | Verify onboarding and Observe/timing starting from manual and shadow modes | owner-reviewed controlled cohort passes |
+| D — Competitive product | 121–144 | Selective competitive expansion, distribution cleanup, release judgement | independent release-readiness PASS |
+| E — Durable personal OS | 145–216 | Release operations, long-term memory, life domains, computer control, communication, planning | multi-date audit of real personal workflows |
+| F — Governed adaptation | 217–252 | Connect skill learning, multi-agent, and model routing to controlled quality gains | held-out improvement over baseline |
+| G — Ubiquitous and compounding | 253–300 | Device expansion, continuous evaluation, ecosystem, recurring value operations | fresh G0–G24 review and approval of the next cycle |
 
 ## Authoritative execution order
 
-아래 순서가 task 번호보다 우선한다. task ID는 재번호화하지 않는 참조이고, 활성화 시 current status와
-missing delta로 실제 작업량을 결정한다.
+The order below takes precedence over task numbers. Task IDs are references that are never
+renumbered; at activation, current status and missing delta determine the actual amount of work.
 
-### 실행 lane
+### Execution lanes
 
-| Lane | WIP | 용도 | 선택 규칙 |
+| Lane | WIP | Purpose | Selection rule |
 | --- | ---: | --- | --- |
-| INCIDENT | 필요 시 1 | 데이터 손상, unapproved effect, resident 폭주처럼 현재 피해를 막는 작업 | 다른 lane을 중단하고 exact containment부터 |
-| BUILD | 1 | source/behavior를 바꾸는 ready slice | current Global P0, dependency-ready, measurable acceptance 순 |
-| EVIDENCE/MONITOR | 1 | organic collection, 24h soak, 30일 dogfood, controlled cohort | source를 수정하지 않고 BUILD와 병행 |
-| MAINTENANCE | 예약 1 | weekly/monthly/quarterly review, dependency/security upkeep | BUILD를 방해하지 않는 owner cadence에 실행 |
-| HORIZON | 0 | optional channel, voice, multi-agent, plugin expansion | promotion gate와 owner need가 생길 때만 다른 lane으로 승격 |
+| INCIDENT | 1 when needed | Work that stops present harm, such as data corruption, an unapproved effect, or a runaway resident | Suspend other lanes and start from exact containment |
+| BUILD | 1 | A ready slice that changes source/behavior | In order of current Global P0, dependency-ready, measurable acceptance |
+| EVIDENCE/MONITOR | 1 | Organic collection, 24h soak, 30-day dogfood, controlled cohort | Runs beside BUILD without modifying source |
+| MAINTENANCE | 1 reserved | Weekly/monthly/quarterly review, dependency/security upkeep | Run on an owner cadence that does not disturb BUILD |
+| HORIZON | 0 | Optional channels, voice, multi-agent, plugin expansion | Promote to another lane only when a promotion gate and an owner need appear |
 
-### 실제 권장 순서
+### Actual recommended order
 
-| Stage | BUILD lane | 병행 EVIDENCE/MONITOR | Exit/다음 선택 |
+| Stage | BUILD lane | Parallel EVIDENCE/MONITOR | Exit / next selection |
 | --- | --- | --- | --- |
-| 0. Reconcile | 001–012를 실행해 각 task를 상태 분류 | 없음 | current Global P0와 ready queue 5개 확정 |
-| 1. Truthful core | 013–060 중 `missing|partial` delta만 수정 | 024·048·060 pass^k evidence | G1–G4 fresh green |
-| 2. Safety/resource | 073–096을 실행; G5를 기다리지 않음 | 084 review, 096 24h soak | G6–G7 green |
-| 3. Daily product | 061–067, 097–108, positioning 121 | 068–072 organic collection | G8 green; G5는 독립 promotion gate |
-| 4. Release minimum | 133–140과 current release blockers | 141–143 dogfood/readiness | G5가 red면 engineering alpha만, green이면 144 personal-agent release |
-| 5. Controlled proactivity | 109–120 중 owner-approved shadow/cohort | timing labels와 negative outcomes | G9가 허용한 범위만 promotion |
-| 6. Selective competition | 122–132 중 owner need와 baseline 이득이 있는 것만 | competitor delta review | G10은 release를 막지 않는 optional gate |
-| 7. Durable personal OS | 145–216을 incident·organic need 순으로 선택 | G12–G17 audits | 해당 domain promotion만 허용 |
-| 8. Governed adaptation | 217–252; learning→multi-agent→provider 순 | held-out paired evidence | G18–G20 scope별 green |
-| 9. Device/eval/ecosystem | 253–288 중 accepted platform/plugin scope만 | journey/quarterly qualification | G21–G23 scope별 green |
-| 10. Recurring cycle | failure evidence에서 289–300 실행 | monthly/quarterly monitoring | G24에서 successor 또는 종료 결정 |
+| 0. Reconcile | Run 001–012 and classify the status of each task | None | Fix the current Global P0 and a 5-item ready queue |
+| 1. Truthful core | Fix only the `missing|partial` deltas among 013–060 | 024, 048, 060 pass^k evidence | G1–G4 fresh green |
+| 2. Safety/resource | Run 073–096; do not wait for G5 | 084 review, 096 24h soak | G6–G7 green |
+| 3. Daily product | 061–067, 097–108, positioning 121 | 068–072 organic collection | G8 green; G5 is an independent promotion gate |
+| 4. Release minimum | 133–140 and current release blockers | 141–143 dogfood/readiness | Engineering alpha only if G5 is red; 144 personal-agent release if green |
+| 5. Controlled proactivity | Owner-approved shadow/cohort work among 109–120 | Timing labels and negative outcomes | Promote only within the scope G9 allowed |
+| 6. Selective competition | Only items among 122–132 with an owner need and a baseline gain | Competitor delta review | G10 is an optional gate that does not block release |
+| 7. Durable personal OS | Select from 145–216 in order of incident and organic need | G12–G17 audits | Allow only that domain's promotion |
+| 8. Governed adaptation | 217–252; in order learning→multi-agent→provider | Held-out paired evidence | G18–G20 green per scope |
+| 9. Device/eval/ecosystem | Only accepted platform/plugin scope among 253–288 | Journey/quarterly qualification | G21–G23 green per scope |
+| 10. Recurring cycle | Run 289–300 from failure evidence | Monthly/quarterly monitoring | Decide successor or termination at G24 |
 
-### 이 로드맵을 실행하는 Codex 모델 정책
+### Codex model policy for executing this roadmap
 
-이 절은 **Muse 제품 안에서 사용자의 작업을 어느 provider/model로 보낼지** 정하는 Task 242가 아니다.
-이 300-task 개발 프로그램을 수행하는 Codex agent의 모델과 reasoning effort를 정한다. 기준은
-2026-07-25의 공식 [Codex Models](https://learn.chatgpt.com/docs/models) 지침이다. 공식 역할은
-Sol=복잡하고 개방적인 고가치 작업, Terra=일상적인 범용 작업, Luna=정답 형태가 명확한 반복
-작업이다. effort는 필요한 결과를 내는 가장 낮은 수준에서 시작하되, Muse의 source 변경은 일반적인
-채팅보다 실패 비용이 크므로 아래 기본값을 따른다. 이 절의 짧은 이름은 각각
-`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` exact model ID를 뜻한다.
+This section is not Task 242, which decides **which provider/model a user's work is sent to inside
+the Muse product**. It sets the model and reasoning effort of the Codex agent that carries out this
+300-task development program. The basis is the official
+[Codex Models](https://learn.chatgpt.com/docs/models) guidance as of 2026-07-25. The official roles
+are Sol = complex, open-ended, high-value work; Terra = everyday general-purpose work; Luna =
+repetitive work whose correct-answer shape is clear. Start effort at the lowest level that produces
+the needed result, but because a Muse source change has a higher failure cost than ordinary chat,
+follow the defaults below. The short names in this section mean the exact model IDs
+`gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` respectively.
 
-#### 한 줄 결론
+#### One-line conclusion
 
-- **300-task 목표 전체를 한 세션에 맡길 controller라면 `gpt-5.6-sol / high`를 사용한다.**
-- **이미 활성화된 안전한 S/M-size 구현 slice의 worker라면 `gpt-5.6-terra / high`로 충분하다.**
-- **Luna는 필수 경로가 아니다.** 명확하고 반복 가능한 read-only/record 작업에만 사용하며, 사용할 수
-  없으면 `gpt-5.6-terra / medium`으로 대체한다.
-- 모델을 고르지 못하겠거나 표의 조건이 충돌하면 더 강한 쪽인 `Sol / high`를 선택한다.
+- **For a controller entrusted with the whole 300-task goal in one session, use `gpt-5.6-sol / high`.**
+- **For a worker on an already-activated, safe S/M-size implementation slice, `gpt-5.6-terra / high` is enough.**
+- **Luna is not on the required path.** Use it only for clear, repeatable read-only/record work; if
+  it is unavailable, substitute `gpt-5.6-terra / medium`.
+- If you cannot pick a model, or the table's conditions conflict, choose the stronger option, `Sol / high`.
 
-따라서 “Terra high에게 이 문서 전체를 주고 계속 돌린다”는 운영은 권장하지 않는다. Terra high는
-작업자가 될 수 있지만, 다음 task 선택·범위 절단·고위험 판단·gate 평가는 Sol high controller가
-맡아야 한다. 비용을 줄이고 싶으면 Sol은 매 task의 모든 코딩을 하지 않고 activation과 독립
-evaluation에만 쓰고, 조건을 통과한 BUILD slice를 Terra high에 넘긴다.
+Therefore, "hand this entire document to Terra high and keep it running" is not a recommended
+operating mode. Terra high can be the worker, but next-task selection, scope cutting, high-risk
+judgement, and gate evaluation must be owned by a Sol high controller. To reduce cost, have Sol do
+not all the coding of every task but only activation and independent evaluation, and hand the BUILD
+slices that passed the conditions to Terra high.
 
-#### 모델·effort 판정표
+#### Model and effort decision table
 
-| 모델·effort | 사용 조건 | 대표 작업 | 금지·승급 조건 |
+| Model / effort | Conditions for use | Representative work | Prohibitions / escalation conditions |
 | --- | --- | --- | --- |
-| `Luna / low` 또는 `Luna / medium` | 입력·출력 schema와 정답 판정이 고정된 low-risk 반복 작업 | status 표 변환, ledger 형식 검사, 정해진 필드 추출, 링크 목록 정리 | source/behavior 변경, task 선택, 원인 추론, acceptance 작성, gate 판정에는 사용하지 않는다. 조금이라도 판단이 필요하면 Terra로 승급 |
-| `Terra / medium` | read-heavy이고 결론 형식이 정해진 current-state 수집 | CodeGraph/file inventory, test log 분류, evidence normalization, 이미 정한 검증 명령 실행 | 새 설계나 blocker 우선순위 판단이 생기면 Terra high 또는 Sol high로 승급 |
-| `Terra / high` | activation header가 완성된 S-size 또는 M-size 구현이고 missing delta·acceptance·검증 명령이 명확하며 아래 high-risk boundary가 없음 | 좁은 FIX/BUILD/TEST, 기존 module 보강, deterministic regression test, bounded UI journey 수정 | L-size, 계약 모호성, cross-package policy/effect 변경, 예기치 않은 두 번째 subsystem 실패, 1회 `no-progress`가 생기면 Sol high로 승급 |
-| `Sol / high` | 프로그램 제어, open-ended planning, L-size 분해, architecture, high-risk source, 독립 평가, release 판단 | Task 001–012, Global P0 선택, security/permission/effect 설계, migration, concurrency, root-cause, gate evaluator | hardest security/release proof 또는 Sol high에서도 1회 `no-progress`이면 Sol xhigh 검토 |
-| `Sol / xhigh` | 실패 비용이 매우 크고 여러 경계를 동시에 증명해야 하는 제한된 평가 | deep security review, credential/exfiltration threat scan, release provenance·rollback 최종 gate, 반복되는 cross-system corruption | 일상 worker 기본값으로 사용하지 않는다. 범위와 종료 조건 없이 Max/Ultra로 올리지 않는다 |
+| `Luna / low` or `Luna / medium` | Low-risk repetitive work with fixed input/output schema and fixed correctness judgement | Status table conversion, ledger format checks, extracting predetermined fields, tidying link lists | Do not use for source/behavior changes, task selection, cause inference, writing acceptance, or gate judgement. Escalate to Terra if even slight judgement is needed |
+| `Terra / medium` | Read-heavy current-state collection with a predetermined conclusion format | CodeGraph/file inventory, test log classification, evidence normalization, running already-decided verification commands | Escalate to Terra high or Sol high once new design or blocker prioritization judgement arises |
+| `Terra / high` | An S-size or M-size implementation with a completed activation header, clear missing delta / acceptance / verification commands, and none of the high-risk boundaries below | Narrow FIX/BUILD/TEST, reinforcing an existing module, deterministic regression tests, bounded UI journey fixes | Escalate to Sol high on L-size, contract ambiguity, cross-package policy/effect change, an unexpected second subsystem failure, or one `no-progress` |
+| `Sol / high` | Program control, open-ended planning, L-size decomposition, architecture, high-risk source, independent evaluation, release judgement | Tasks 001–012, Global P0 selection, security/permission/effect design, migration, concurrency, root-cause, gate evaluator | Consider Sol xhigh for the hardest security/release proof, or after one `no-progress` even at Sol high |
+| `Sol / xhigh` | Bounded evaluations where the failure cost is very high and several boundaries must be proven at once | Deep security review, credential/exfiltration threat scan, final release provenance/rollback gate, recurring cross-system corruption | Do not use as the everyday worker default. Do not raise to Max/Ultra without a scope and a termination condition |
 
-앱의 **Light / Medium / High / Extra High** 표시는 CLI의 `low / medium / high / xhigh`에 대응해서
-읽는다. `max`는 한 agent가 풀기 어려운 최상 난도 문제에만 owner가 명시적으로 선택한다. `ultra`는
-subagent 실행을 포함할 수 있으므로 이 로드맵의 자동 기본값이 아니며, owner가 병렬 agent 작업을
-명시적으로 요청하고 쓰기 충돌 없는 독립 단위가 있을 때만 사용한다.
+Read the app's **Light / Medium / High / Extra High** labels as corresponding to the CLI's
+`low / medium / high / xhigh`. `max` is chosen explicitly by the owner only for top-difficulty
+problems that are hard for a single agent to solve. `ultra` may include subagent execution, so it is
+not an automatic default in this roadmap; use it only when the owner explicitly requests parallel
+agent work and there are independent units with no write conflicts.
 
 #### high-risk boundary
 
-다음 중 하나라도 건드리면 크기가 S여도 Terra에서 시작하지 않고 `Sol / high`로 시작한다.
+If any one of the following is touched, start at `Sol / high` rather than Terra, even at size S.
 
-- 외부 전송, 삭제, 금전·구매, 계정 변경, 사용자 대신 약속하는 효과
+- External sends, deletion, money/purchases, account changes, effects that commit on the user's behalf
 - approval, permission, guard, hook, policy, credential, secret, provider egress
-- PostgreSQL/file 영속 schema, migration, backup/restore, 암호화, data retention
+- PostgreSQL/file persistent schema, migration, backup/restore, encryption, data retention
 - Rust runner, sandbox, process ownership, daemon lifecycle, scheduler lock, concurrency/idempotency
 - browser upload/download, computer control, clipboard/screen/audio capture
-- self-learning activation, skill/plugin 설치, prompt/policy의 자기 변경
+- self-learning activation, skill/plugin installation, self-modification of prompt/policy
 - multi-agent authority, handoff, shared state, provider/model fallback
 - release qualification, artifact provenance, signing, tag, rollback, publication
 
-high-risk task의 구현자가 Sol이었다는 사실만으로 평가는 독립적이지 않다. 동일 모델을 써도 **새 agent
-context**가 handoff와 current diff만 읽고 검증해야 한다. source/behavior·phase gate·release 작업의
-기본 evaluator는 `Sol / high`, 보안·release 최종 gate는 `Sol / xhigh`다. docs/evidence-only
-low-risk 작업은 별도 `Terra / medium|high` evaluator로 충분하다.
+The mere fact that the implementer of a high-risk task was Sol does not make the evaluation
+independent. Even with the same model, a **new agent context** must read only the handoff and the
+current diff and verify from there. The default evaluator for source/behavior, phase gate, and
+release work is `Sol / high`; for security and final release gates it is `Sol / xhigh`. For
+docs/evidence-only low-risk work, a separate `Terra / medium|high` evaluator is enough.
 
-#### stage별 기본 route
+#### Default route per stage
 
-| Stage | controller/plan | 기본 worker | 독립 evaluator |
+| Stage | controller/plan | Default worker | Independent evaluator |
 | --- | --- | --- | --- |
-| 0. Reconcile, 001–012 | `Sol / high` | read-only 수집만 `Terra / medium` | Task 012는 새 context의 `Sol / high` |
-| 1. Truthful core, 013–060 | `Sol / high`가 ready slice 확정 | 안전한 S/M은 `Terra / high`; lifecycle·root-cause는 `Sol / high` | task는 `Sol / high`; G1–G4도 `Sol / high` |
-| 2. Safety/resource, 073–096 | `Sol / high` | deterministic probe/test는 `Terra / high`; policy·runner·concurrency는 `Sol / high` | 보안 G6은 `Sol / xhigh`, 자원 G7은 `Sol / high` |
-| 3. Daily product, 061–072·097–108·121 | `Sol / high`가 G5와 BUILD를 분리 | bounded adapter/UI는 `Terra / high`; organic record는 `Luna / medium` 또는 `Terra / medium` | G5·G8은 `Sol / high` |
-| 4. Release minimum, 133–144 | `Sol / high` | packaging/test fix는 `Terra / high`, provenance·rollback은 `Sol / high` | Task 143–144는 새 context의 `Sol / xhigh` |
-| 5. Controlled proactivity, 109–120 | `Sol / high` | 승인된 bounded shadow 구현만 `Terra / high` | G9는 `Sol / high` |
-| 6. Selective competition, 122–132 | `Sol / high`가 채택 기준 고정 | bounded experiment는 `Terra / high`, 자료 정규화는 `Luna / medium` | G10 채택 판단은 `Sol / high` |
-| 7. Durable personal OS, 145–216 | `Sol / high`가 domain별 slice 절단 | 일반 S/M은 `Terra / high`; high-risk boundary는 `Sol / high` | G11–G17은 `Sol / high`, security 포함 시 `xhigh` |
-| 8. Governed adaptation, 217–252 | `Sol / high` | 고정된 adapter/test는 `Terra / high`; learning·authority·fallback은 `Sol / high` | G18–G20은 `Sol / high`, activation/security는 `xhigh` |
-| 9. Device/eval/ecosystem, 253–288 | `Sol / high` | bounded platform adapter는 `Terra / high`; permission/plugin은 `Sol / high` | G21–G23은 `Sol / high`, plugin security는 `xhigh` |
-| 10. Recurring cycle, 289–300 | `Sol / high`가 failure evidence로 다음 cycle 결정 | 정형 report는 `Luna / medium` 또는 `Terra / medium`; repair는 위험도 표 적용 | Task 299–300은 새 context의 `Sol / high` |
+| 0. Reconcile, 001–012 | `Sol / high` | `Terra / medium` for read-only collection only | Task 012 is `Sol / high` in a new context |
+| 1. Truthful core, 013–060 | `Sol / high` fixes the ready slice | `Terra / high` for safe S/M; `Sol / high` for lifecycle and root-cause | Tasks are `Sol / high`; G1–G4 are also `Sol / high` |
+| 2. Safety/resource, 073–096 | `Sol / high` | `Terra / high` for deterministic probes/tests; `Sol / high` for policy, runner, concurrency | Security G6 is `Sol / xhigh`, resource G7 is `Sol / high` |
+| 3. Daily product, 061–072·097–108·121 | `Sol / high` separates G5 from BUILD | `Terra / high` for bounded adapter/UI; `Luna / medium` or `Terra / medium` for organic records | G5 and G8 are `Sol / high` |
+| 4. Release minimum, 133–144 | `Sol / high` | `Terra / high` for packaging/test fixes, `Sol / high` for provenance and rollback | Tasks 143–144 are `Sol / xhigh` in a new context |
+| 5. Controlled proactivity, 109–120 | `Sol / high` | `Terra / high` only for approved bounded shadow implementation | G9 is `Sol / high` |
+| 6. Selective competition, 122–132 | `Sol / high` fixes the adoption criteria | `Terra / high` for bounded experiments, `Luna / medium` for material normalization | The G10 adoption judgement is `Sol / high` |
+| 7. Durable personal OS, 145–216 | `Sol / high` cuts slices per domain | `Terra / high` for ordinary S/M; `Sol / high` for high-risk boundaries | G11–G17 are `Sol / high`, `xhigh` when security is involved |
+| 8. Governed adaptation, 217–252 | `Sol / high` | `Terra / high` for fixed adapters/tests; `Sol / high` for learning, authority, fallback | G18–G20 are `Sol / high`, activation/security is `xhigh` |
+| 9. Device/eval/ecosystem, 253–288 | `Sol / high` | `Terra / high` for bounded platform adapters; `Sol / high` for permission/plugin | G21–G23 are `Sol / high`, plugin security is `xhigh` |
+| 10. Recurring cycle, 289–300 | `Sol / high` decides the next cycle from failure evidence | `Luna / medium` or `Terra / medium` for formulaic reports; apply the risk table for repairs | Tasks 299–300 are `Sol / high` in a new context |
 
-#### 새 세션의 기계적 실행 순서
+#### Mechanical execution order for a new session
 
-새 agent는 아래 순서를 바꾸지 않는다.
+A new agent does not change the order below.
 
-1. `AGENTS.md`, `harness/AGENTS.md`, 이 문서의 운영 규칙·authoritative order·모델 정책을 읽는다.
-2. current HEAD, dirty worktree, 현재 gate artifact의 HEAD/time/input provenance를 확인한다.
-3. fresh하고 완료된 G0 activation artifact가 없으면 `Sol / high`로 Stage 0의 001–012부터 실행한다.
-4. G0가 fresh하면 current stage의 Global P0 ready queue에서 dependency-ready 첫 slice 하나만 고른다.
-5. CodeGraph와 failing/fresh evidence로 상태와 missing delta를 판정한다. `verified-current`나
-   `superseded`면 BUILD를 열지 않는다.
-6. activation header의 모든 필드를 채운 뒤 위 판정표로 maker와 evaluator를 정한다. 조건 충돌 또는
-   모르는 위험은 `Sol / high`로 판정한다.
-7. maker는 한 BUILD slice만 수행하고 required checks와 handoff를 남긴다. EVIDENCE/MONITOR는 source를
-   수정하지 않는다.
-8. 별도 context의 evaluator가 acceptance별 `PASS | FAIL`을 재현한다. 같은 context의 자기검사는
-   `미분리 자기평가`이고 gate를 열지 못한다.
-9. `FAIL`이면 blocker를 한 묶음으로 반환한다. 1회 `no-progress` 또는 high-risk 발견 시 위 규칙대로
-   승급하고, 반복 budget을 넘기면 `blocked`와 재개 조건을 기록한다.
-10. `PASS`이면 source/behavior 변경만 task 단위 commit+push한다. 기록-only 변경은 batch checkpoint로
-    넘기고 WIP를 0으로 만든 다음 authoritative order에서 다음 slice를 고른다.
+1. Read `AGENTS.md`, `harness/AGENTS.md`, and this document's operating rules, authoritative order, and model policy.
+2. Check the current HEAD, dirty worktree, and the HEAD/time/input provenance of the current gate artifacts.
+3. If there is no fresh, completed G0 activation artifact, start from Stage 0's 001–012 with `Sol / high`.
+4. If G0 is fresh, pick exactly one dependency-ready first slice from the current stage's Global P0 ready queue.
+5. Judge status and missing delta from the CodeGraph and failing/fresh evidence. Do not open BUILD
+   for `verified-current` or `superseded`.
+6. Fill in every field of the activation header, then set maker and evaluator using the decision
+   table above. Judge condition conflicts or unknown risk as `Sol / high`.
+7. The maker performs exactly one BUILD slice and leaves the required checks and a handoff.
+   EVIDENCE/MONITOR does not modify source.
+8. An evaluator in a separate context reproduces the `PASS | FAIL` per acceptance criterion.
+   A self-check in the same context is `unseparated self-evaluation` and cannot open a gate.
+9. On `FAIL`, return the blockers as one bundle. On one `no-progress` or a high-risk discovery,
+   escalate per the rules above; if the retry budget is exceeded, record `blocked` and the resume condition.
+10. On `PASS`, commit+push only source/behavior changes per task. Defer record-only changes to a
+    batch checkpoint, bring WIP back to 0, and then pick the next slice from the authoritative order.
 
-활성화 기록은 다음 형태를 사용한다.
+Activation records use the following form.
 
 ```md
 Task ID:
-상태:
-lane / 유형 / 크기:
-현재 구현 symbol/file:
+Status:
+lane / type / size:
+Current implementation symbol/file:
 missing delta:
-acceptance / 검증:
-commit 경계:
+acceptance / verification:
+Commit boundary:
 maker model / effort:
-선택 사유:
+Selection rationale:
 evaluator model / effort:
 escalation trigger:
 ```
 
-#### availability와 fallback
+#### availability and fallback
 
-- 현재 Codex surface에서 정확한 모델이나 effort가 보이지 않으면 조용히 다른 모델을 사용하지 말고
-  activation header에 `unavailable`과 대체 이유를 기록한다.
-- Luna 미노출은 blocker가 아니다. `Luna / low|medium` 작업은 `Terra / medium`으로 대체한다.
-- Terra 미노출이면 일반 작업도 `Sol / medium|high`로 대체한다.
-- Sol이 미노출이면 Terra high로 low-risk S/M 구현은 계속할 수 있지만, 프로그램 재계획, high-risk
-  boundary, phase/release gate는 `blocked: Sol-class independent review unavailable`로 둔다.
-- model availability와 공식 권장은 바뀔 수 있으므로 Task 001의 environment snapshot에서 exact
-  model ID와 effort 옵션을 다시 기록한다. 문서의 역할 계약을 조용히 약화해서는 안 된다.
+- If the exact model or effort is not visible on the current Codex surface, do not silently use a
+  different model; record `unavailable` and the substitution reason in the activation header.
+- Luna not being exposed is not a blocker. Substitute `Terra / medium` for `Luna / low|medium` work.
+- If Terra is not exposed, substitute `Sol / medium|high` even for ordinary work.
+- If Sol is not exposed, low-risk S/M implementation can continue with Terra high, but program
+  replanning, high-risk boundaries, and phase/release gates are left as
+  `blocked: Sol-class independent review unavailable`.
+- Model availability and official recommendations may change, so re-record the exact model IDs and
+  effort options in Task 001's environment snapshot. The document's role contract must not be
+  silently weakened.
 
-### Release label 경계
+### Release label boundary
 
-- **Engineering alpha:** G0–G4와 G6–G8이 green이고 organic effectiveness는 `NOT_PROVEN`으로 명시한다.
-- **Evidence-backed personal-agent release:** 위 조건에 G5 organic audit와 121 positioning contract,
-  133–143 release evidence가 추가로 green이어야 Task 144를 실행한다.
-- G9 proactive timing, G10 competitor expansion, voice/mobile, multi-agent, plugin은 첫 personal-agent
-  release의 필수 선행조건이 아니다.
+- **Engineering alpha:** G0–G4 and G6–G8 are green and organic effectiveness is explicitly stated as `NOT_PROVEN`.
+- **Evidence-backed personal-agent release:** on top of the above conditions, the G5 organic audit,
+  the 121 positioning contract, and the 133–143 release evidence must additionally be green before
+  Task 144 is executed.
+- G9 proactive timing, G10 competitor expansion, voice/mobile, multi-agent, and plugins are not
+  required prerequisites for the first personal-agent release.
 
 ### 2026-07-25 current-source activation hints
 
-이 표는 current source를 재구현하지 않기 위한 dated hint다. 영구 status가 아니며 Task 001이 current
-HEAD와 fresh runtime evidence로 다시 판정한다.
+This table is a dated hint for not reimplementing the current source. It is not a permanent status;
+Task 001 re-judges it against the current HEAD and fresh runtime evidence.
 
-| Task | 현재 보이는 구현 | 시작 상태 힌트 | 실제로 해야 할 일 |
+| Task | Implementation currently visible | Starting status hint | What actually needs doing |
 | --- | --- | --- | --- |
-| 003 | [`personal-agent-qualification.ts`](../../apps/cli/src/personal-agent-qualification.ts)에 source/artifact/runtime/delivery schema와 fail-closed aggregate가 존재 | `built-unverified` | 새 report system을 만들지 말고 missing provenance delta만 확인 |
-| 013–017 | [`resident-daemon-status.ts`](../../packages/runtime-state/src/resident-daemon-status.ts)에 stable command, PID/heartbeat/orphan state가 존재 | `built-unverified|partial` | live crash-loop 원인과 current mismatch를 좁혀 기존 module을 보강 |
-| 025–035 | [`personal-agent-qualification-probes.ts`](../../apps/cli/src/personal-agent-qualification-probes.ts)에 local-only, lock, brake, hold, backlog observation이 존재 | `built-unverified|partial` | 두 번째 safety layer를 만들지 말고 persisted/live red state를 복구 |
-| 037–048 | Browser confirm 실패와 CLI post-PASS hang이 current smoke에서 재현됨 | `partial` | 최소 failing path와 owned-process cleanup만 수정 |
-| 049–060 | [`episodic-recall.ts`](../../packages/agent-core/src/episodic-recall.ts) 등 recall substrate가 있으나 corrected-fact axis가 red | `partial` | candidate retention/freshness missing delta만 수정 |
-| 061–066 | [`continuity-preparation.ts`](../../packages/attunement/src/continuity-preparation.ts) 등 Pack/store/reducer substrate가 존재 | `built-unverified|partial` | normal-chat seam과 store parity를 먼저 확인하고 없는 adapter만 구현 |
-| 073–084 | [`policy`](../../packages/policy), [`secrets`](../../packages/secrets), [`runner`](../../crates/runner) 기반이 존재 | `built-unverified|partial` | current threat case별 enforced gap만 구현 |
+| 003 | [`personal-agent-qualification.ts`](../../apps/cli/src/personal-agent-qualification.ts) has the source/artifact/runtime/delivery schema and a fail-closed aggregate | `built-unverified` | Do not build a new report system; only check the missing provenance delta |
+| 013–017 | [`resident-daemon-status.ts`](../../packages/runtime-state/src/resident-daemon-status.ts) has the stable command and PID/heartbeat/orphan state | `built-unverified|partial` | Narrow down the live crash-loop cause and the current mismatch, and reinforce the existing module |
+| 025–035 | [`personal-agent-qualification-probes.ts`](../../apps/cli/src/personal-agent-qualification-probes.ts) has local-only, lock, brake, hold, and backlog observation | `built-unverified|partial` | Do not build a second safety layer; recover the persisted/live red state |
+| 037–048 | The browser confirm failure and the CLI post-PASS hang reproduce in the current smoke | `partial` | Fix only the minimal failing path and owned-process cleanup |
+| 049–060 | The recall substrate exists, e.g. [`episodic-recall.ts`](../../packages/agent-core/src/episodic-recall.ts), but the corrected-fact axis is red | `partial` | Fix only the candidate retention/freshness missing delta |
+| 061–066 | The Pack/store/reducer substrate exists, e.g. [`continuity-preparation.ts`](../../packages/attunement/src/continuity-preparation.ts) | `built-unverified|partial` | Check the normal-chat seam and store parity first, and implement only the adapter that is absent |
+| 073–084 | The [`policy`](../../packages/policy), [`secrets`](../../packages/secrets), and [`runner`](../../crates/runner) foundations exist | `built-unverified|partial` | Implement only the enforced gap per current threat case |
 
-### 반복처럼 보이는 task의 고유 delta
+### Unique delta of tasks that look repetitive
 
-아래 later task는 earlier task를 다시 구현하지 않는다. later-only delta가 current source에 이미 있으면
-later task를 `superseded`로 닫는다.
+The later tasks below do not reimplement the earlier tasks. If the later-only delta already exists
+in the current source, close the later task as `superseded`.
 
 | IDs | earlier contract | later-only delta |
 | --- | --- | --- |
-| 033 → 200 | 모든 outbound의 generic draft/approval primitive | communication payload·recipient·account를 묶은 one-shot final confirmation |
-| 034 → 202 | effect ID 기반 generic retry/dedupe | channel provider의 accepted/delivered/unknown receipt reconciliation |
-| 128 → 221 | 첫 skill candidate의 held-out activation gate | 여러 skill/version이 공유하는 immutable regression registry와 baseline comparison |
-| 131 → 229 → 240 | multi-agent를 열지 결정하는 사전 go/no-go | accepted family의 baseline artifact → 최종 paired benchmark/adopt decision |
-| 132 → 292 | 첫 competitor baseline과 fit lens | 이후 분기별 delta-only 재평가; baseline teardown 반복 금지 |
-| 142 → 289 | 첫 30일 personal-value release 판정 | release 이후 recurring north-star trend와 prune/experiment decision |
-| 143 → 299 | 첫 HEAD-bound release-readiness | 다음 cycle마다 current G0–G23 freshness를 다시 묶는 recurring gate |
-| 211 → 232 | 사용자 project를 다음 session으로 넘기는 Continuity handoff | supervisor→subagent 사이의 typed, least-authority handoff |
+| 033 → 200 | A generic draft/approval primitive for all outbound | A one-shot final confirmation that bundles the communication payload, recipient, and account |
+| 034 → 202 | Generic retry/dedupe based on effect ID | Reconciliation of the channel provider's accepted/delivered/unknown receipts |
+| 128 → 221 | The held-out activation gate of the first skill candidate | An immutable regression registry shared by multiple skills/versions plus baseline comparison |
+| 131 → 229 → 240 | The prior go/no-go on whether to open multi-agent at all | Baseline artifact of the accepted family → final paired benchmark/adopt decision |
+| 132 → 292 | The first competitor baseline and fit lens | Subsequent quarterly delta-only reassessment; no repeated baseline teardown |
+| 142 → 289 | The first 30-day personal-value release judgement | Post-release recurring north-star trend and prune/experiment decisions |
+| 143 → 299 | The first HEAD-bound release-readiness | A recurring gate that rebundles current G0–G23 freshness each following cycle |
+| 211 → 232 | The Continuity handoff that carries a user project into the next session | A typed, least-authority handoff between supervisor and subagent |
 
 ---
 
-## Phase 0 — 프로그램 기준선과 증거 계약
+## Phase 0 — Program baseline and evidence contract
 
-**진입 조건:** 없음.
+**Entry condition:** None.
 
-**Exit gate G0:** 현재 상태, 증거 클래스, 작업 소유권, 검증 명령과 WIP 규칙이 한 번의 read-only
-preflight로 재현된다.
+**Exit gate G0:** The current status, evidence classes, task ownership, verification commands, and
+WIP rules are reproducible in a single read-only preflight.
 
-- [ ] **001. 현재 qualification 기준선을 새로 고정한다.** — `P0`
-  - **이유:** 문서의 과거 green 스냅샷과 현재 red 실행을 섞으면 잘못된 작업 순서가 나온다.
-  - **산출물:** 현재 HEAD, artifact digest, 실행 시각, 환경, 세 축의 qualification 결과를 가진 fresh report.
-  - **검증:** `pnpm qualify:personal-agent`를 read-only로 실행하고 source/artifact provenance를 확인한다.
-  - **선행:** 없음.
+- [ ] **001. Re-fix the current qualification baseline.** — `P0`
+  - **Why:** Mixing the document's past green snapshots with the current red run produces the wrong task order.
+  - **Deliverable:** A fresh report carrying the current HEAD, artifact digest, run time, environment, and the qualification results on all three axes.
+  - **Verification:** Run `pnpm qualify:personal-agent` read-only and confirm source/artifact provenance.
+  - **Prerequisites:** None.
 
-- [ ] **002. 상충하는 상태 문서의 우선순위를 명문화한다.** — `P0`
-  - **이유:** 2026-07-22 resident green과 2026-07-25 crash-looping 같은 모순을 사람이 해석하지 않게 해야 한다.
-  - **산출물:** “현재 명령 결과 > provenance-valid report > dated narrative” 우선순위와 stale 표시 규칙.
-  - **검증:** 서로 다른 날짜의 두 fixture에서 최신이지만 provenance-invalid인 보고서가 선택되지 않는지 확인한다.
-  - **선행:** 001.
+- [ ] **002. Codify the precedence of conflicting status documents.** — `P0`
+  - **Why:** Contradictions such as 2026-07-22 resident green versus 2026-07-25 crash-looping must not be left for a human to interpret.
+  - **Deliverable:** The precedence "current command result > provenance-valid report > dated narrative" and the stale-marking rules.
+  - **Verification:** With two fixtures from different dates, confirm that the newer but provenance-invalid report is not selected.
+  - **Prerequisites:** 001.
 
-- [ ] **003. qualification report의 provenance 계약을 강화한다.** — `P0`
-  - **이유:** 다른 checkout, 오래된 build, 이전 daemon의 증거가 현재 합격으로 재사용되면 안 된다.
-  - **산출물:** HEAD, dirty state, input hash, build digest, runtime identity, generated-at/expiry 필드.
-  - **검증:** HEAD·artifact·시간·runtime identity 중 하나만 바꾼 네 사례가 모두 stale/unverified로 닫힌다.
-  - **선행:** 001–002.
+- [ ] **003. Strengthen the provenance contract of the qualification report.** — `P0`
+  - **Why:** Evidence from a different checkout, an old build, or a previous daemon must not be reused as a current pass.
+  - **Deliverable:** HEAD, dirty state, input hash, build digest, runtime identity, and generated-at/expiry fields.
+  - **Verification:** Four cases that each change only one of HEAD, artifact, time, or runtime identity all close as stale/unverified.
+  - **Prerequisites:** 001–002.
 
-- [ ] **004. 프로그램 scorecard를 결과 중심으로 정의한다.** — `P0`
-  - **이유:** 테스트 수나 tool call 수가 개인적 유용성으로 오인되는 것을 막아야 한다.
-  - **산출물:** runtime, delivery safety, recall, Continuity, privacy, resource, onboarding, organic value의 gate 표.
-  - **검증:** synthetic-only fixture가 organic effectiveness나 autonomy promotion을 green으로 만들지 못한다.
-  - **선행:** 002–003.
+- [ ] **004. Define the program scorecard around outcomes.** — `P0`
+  - **Why:** Test counts and tool-call counts must not be mistaken for personal usefulness.
+  - **Deliverable:** A gate table for runtime, delivery safety, recall, Continuity, privacy, resource, onboarding, and organic value.
+  - **Verification:** A synthetic-only fixture cannot turn organic effectiveness or autonomy promotion green.
+  - **Prerequisites:** 002–003.
 
-- [ ] **005. evidence class와 promotion rule을 단일 타입으로 고정한다.** — `P0`
-  - **이유:** `deterministic`, `controlled-live`, `organic-production`을 문구만으로 구분하면 drift가 생긴다.
-  - **산출물:** immutable `dataOrigin`, independent `executionEvidence`, freshness, denominator 계약.
-  - **검증:** origin 또는 execution evidence가 없는 기록은 qualification 집계에서 제외된다.
-  - **선행:** 004.
+- [ ] **005. Fix evidence classes and promotion rules as a single type.** — `P0`
+  - **Why:** Distinguishing `deterministic`, `controlled-live`, and `organic-production` by wording alone produces drift.
+  - **Deliverable:** Immutable `dataOrigin`, independent `executionEvidence`, freshness, and denominator contracts.
+  - **Verification:** A record without origin or execution evidence is excluded from the qualification aggregate.
+  - **Prerequisites:** 004.
 
-- [ ] **006. receipt, outcome, permission, policy change를 별도 ledger로 재확인한다.** — `P0`
-  - **이유:** task 완료가 “Muse가 도움됨”이나 향후 자동화 동의로 승격되는 것이 가장 위험한 오류다.
-  - **산출물:** 네 상태의 명시적 연결 규칙과 금지된 자동 변환 표.
-  - **검증:** task completion만 있는 fixture가 feedback·permission·promotion을 하나도 생성하지 않는다.
-  - **선행:** 005.
+- [ ] **006. Re-confirm receipt, outcome, permission, and policy change as separate ledgers.** — `P0`
+  - **Why:** The most dangerous error is task completion being promoted into "Muse helped" or into consent for future automation.
+  - **Deliverable:** Explicit linking rules for the four states and a table of forbidden automatic conversions.
+  - **Verification:** A fixture that has only task completion generates no feedback, permission, or promotion at all.
+  - **Prerequisites:** 005.
 
-- [ ] **007. 각 phase용 acceptance slice 템플릿을 고정한다.** — `P0`
-  - **이유:** 144개 작업이 “구현했다”는 주장만 남기지 않게 해야 한다.
-  - **산출물:** WHAT, WHY, PASS 기준, 범위 밖, 검증 명령, evidence accounting, rollback 필드.
-  - **검증:** 필수 필드가 빈 handoff가 PLAN gate를 통과하지 못한다.
-  - **선행:** 004–006.
+- [ ] **007. Fix the acceptance slice template for each phase.** — `P0`
+  - **Why:** 144 tasks must not be left with nothing but the claim "it was implemented."
+  - **Deliverable:** WHAT, WHY, PASS criteria, out-of-scope, verification commands, evidence accounting, and rollback fields.
+  - **Verification:** A handoff with an empty required field does not pass the PLAN gate.
+  - **Prerequisites:** 004–006.
 
-- [ ] **008. maker/evaluator 역할과 권한을 phase별로 배정한다.** — `P0`
-  - **이유:** 동일 세션 자기평가는 조용한 데이터·권한 오류를 놓치기 쉽다.
-  - **산출물:** runtime, store, security, UI, release별 worker/evaluator와 read/write 권한표.
-  - **검증:** evaluator가 build 대화 없이 artifact와 acceptance criteria만으로 판정할 수 있다.
-  - **선행:** 007.
+- [ ] **008. Assign maker/evaluator roles and authority per phase.** — `P0`
+  - **Why:** Same-session self-evaluation easily misses silent data and permission errors.
+  - **Deliverable:** A table of worker/evaluator and read/write authority for runtime, store, security, UI, and release.
+  - **Verification:** The evaluator can judge from artifacts and acceptance criteria alone, without the build conversation.
+  - **Prerequisites:** 007.
 
-- [ ] **009. 위험 등급별 검증 깊이를 지정한다.** — `P0`
-  - **이유:** 모든 변경에 full suite를 돌리거나 고위험 변경을 unit test만으로 닫는 두 극단을 피해야 한다.
-  - **산출물:** pure code, UI, persistent store, permission/send, release의 test matrix.
-  - **검증:** 대표 변경 다섯 개를 입력하면 요구되는 deterministic/browser/corruption/live/evaluator gate가 결정된다.
-  - **선행:** 007–008.
+- [ ] **009. Specify verification depth by risk grade.** — `P0`
+  - **Why:** Both extremes must be avoided — running the full suite for every change, and closing a high-risk change with unit tests alone.
+  - **Deliverable:** A test matrix for pure code, UI, persistent store, permission/send, and release.
+  - **Verification:** Feeding in five representative changes determines the required deterministic/browser/corruption/live/evaluator gates.
+  - **Prerequisites:** 007–008.
 
-- [ ] **010. dependency graph와 BUILD/EVIDENCE lane WIP를 고정한다.** — `P0`
-  - **이유:** 눈에 띄는 확장이 blocker보다 먼저 진행되는 것과 장기 evidence 대기가 전체 개발을 멈추는 것을 함께 막아야 한다.
-  - **산출물:** G0–G24 scope별 DAG, BUILD WIP=1, EVIDENCE/MONITOR WIP=1, incident preemption.
-  - **검증:** runtime red에서 optional 확장은 선택되지 않고 organic monitoring 중에도 ready security fix는 실행 가능하다.
-  - **선행:** 004, 009.
+- [ ] **010. Fix the dependency graph and the BUILD/EVIDENCE lane WIP.** — `P0`
+  - **Why:** Both must be prevented: eye-catching expansion progressing ahead of a blocker, and a long evidence wait halting all development.
+  - **Deliverable:** A DAG per G0–G24 scope, BUILD WIP=1, EVIDENCE/MONITOR WIP=1, and incident preemption.
+  - **Verification:** Optional expansion is not selected while runtime is red, and a ready security fix remains executable even during organic monitoring.
+  - **Prerequisites:** 004, 009.
 
-- [ ] **011. canonical 검증 명령 카탈로그를 만든다.** — `P0`
-  - **이유:** 사람마다 다른 명령과 옵션을 사용하면 pass 결과를 비교할 수 없다.
-  - **산출물:** typecheck, affected tests, real-browser, smoke, qualification, pre-push의 명령·예산·side effect 표.
-  - **검증:** 각 명령의 timeout, 예상 artifact, skip 조건, 실패 보존 경로가 문서화된다.
-  - **선행:** 009–010.
+- [ ] **011. Build a canonical verification-command catalog.** — `P0`
+  - **Why:** If different people use different commands and options, pass results cannot be compared.
+  - **Deliverable:** A table of commands, budgets, and side effects for typecheck, affected tests, real-browser, smoke, qualification, and pre-push.
+  - **Verification:** Each command's timeout, expected artifacts, skip conditions, and failure-retention path are documented.
+  - **Prerequisites:** 009–010.
 
-- [ ] **012. G0 기준선 review를 독립적으로 통과시킨다.** — `P0`
-  - **이유:** 잘못된 기준선 위에서 실행하면 이후의 모든 green이 무효다.
-  - **산출물:** G0 `PASS | FAIL`, blocker 묶음, 상태·lane·유형·크기·missing delta가 있는 Global P0 ready queue 최대 다섯 개.
-  - **검증:** evaluator가 001–011을 새 checkout에서 재현하고 이미 구현된 acceptance가 BUILD queue에 중복 선택되지 않았는지 확인한다.
-  - **선행:** 001–011.
-
----
-
-## Phase 1 — resident runtime을 하나의 진실로 만들기
-
-**진입 조건:** G0 green.
-
-**Exit gate G1:** 실제 owner macOS profile의 안정된 entrypoint에서 정확히 한 resident writer가 실행되고,
-artifact·PID·heartbeat·process identity가 서로 다른 writer generation의 pass^3에서 일치한다.
-자연스러운 OS/session restart가 발생하면 같은 관찰을 운영 evidence로 추가하지만 강제 재부팅이나 별도
-macOS 사용자 계정은 G1 또는 owner-scoped personal-agent release의 선행조건이 아니다.
-
-- [ ] **013. macOS resident artifact와 모든 Muse process를 read-only inventory한다.** — `P0`
-  - **이유:** 오래된 checkout과 임시 test runner가 실제 daemon처럼 남아 있을 수 있다.
-  - **산출물:** plist, launchd registration, PID/PPID, cwd, executable realpath, start time, heartbeat의 bounded report.
-  - **검증:** artifact-only, process-only, duplicate, orphan, healthy 다섯 fixture를 구분한다.
-  - **선행:** 012.
-
-- [ ] **014. stable CLI entrypoint 판정을 fail-close로 고정한다.** — `P0`
-  - **이유:** tmp, test runner, 삭제된 worktree entrypoint에서 resident를 설치하면 다음 재시작에 깨진다.
-  - **산출물:** canonical realpath와 허용된 package/release origin 검사.
-  - **검증:** `/tmp`, test output, missing path, moved worktree가 설치 전 거부된다.
-  - **선행:** 013.
-
-- [ ] **015. stale·orphan·duplicate process 분류를 하나의 health module로 통합한다.** — `P0`
-  - **이유:** `daemon --status`, doctor, qualification이 서로 다른 진실을 말하면 복구가 위험하다.
-  - **산출물:** 공통 resident health result와 reason-code enum.
-  - **검증:** 세 표면이 같은 fixture에 byte-equivalent 상태와 reason을 반환한다.
-  - **선행:** 013–014.
-
-- [ ] **016. 동시에 두 resident writer가 활성화되지 못하게 한다.** — `P0`
-  - **이유:** task, reminder, outcome, delivery store에 split-brain 쓰기가 발생할 수 있다.
-  - **산출물:** process identity가 포함된 single-writer lease와 dead-owner fencing.
-  - **검증:** 동시 기동 두 개 중 하나만 writer가 되고 loser는 외부 효과 없이 종료된다.
-  - **선행:** 015.
-
-- [ ] **017. heartbeat freshness와 단조성 계약을 완성한다.** — `P0`
-  - **이유:** 살아 있는 PID만으로 event loop와 scheduled work의 생존을 증명할 수 없다.
-  - **산출물:** owner-only heartbeat receipt, generation, last-progress, expected cadence.
-  - **검증:** frozen clock, stale generation, PID reuse, partial write가 healthy로 판정되지 않는다.
-  - **선행:** 015–016.
-
-- [ ] **018. crash-loop 원인을 reason-coded terminal state로 남긴다.** — `P0`
-  - **이유:** 현재 qualification의 `crash-looping`만으로는 고칠 수 있는 원인이 부족하다.
-  - **산출물:** bounded recent failures, exit class, last stable point, redacted diagnostic link.
-  - **검증:** config, store corruption, provider auth, port collision, uncaught exception을 구분한다.
-  - **선행:** 017.
-
-- [ ] **019. resident restart에 bounded backoff와 circuit breaker를 적용한다.** — `P0`
-  - **이유:** 지속 실패가 CPU·로그·외부 효과 폭주로 번지는 것을 막아야 한다.
-  - **산출물:** restart budget, exponential backoff, open/half-open 상태, owner-visible reset.
-  - **검증:** 반복 실패가 한도 뒤 멈추고 성공 probe 뒤에만 half-open에서 복구된다.
-  - **선행:** 018.
-
-- [ ] **020. repair plan과 execution을 분리한다.** — `P0`
-  - **이유:** process 종료, plist 교체, 재등록은 정확한 owner preview 없이 실행하면 안 된다.
-  - **산출물:** read-only repair plan, exact targets, reversible steps, explicit apply command.
-  - **검증:** preview는 무변경이며 stale target이 apply 전에 바뀌면 전체 작업을 거부한다.
-  - **선행:** 013–019.
-
-- [ ] **021. resident install·upgrade를 idempotent하게 만든다.** — `P0`
-  - **이유:** 같은 버전 재설치나 upgrade 중단이 중복 plist와 process를 만들면 안 된다.
-  - **산출물:** versioned install receipt, atomic replace, previous artifact backup.
-  - **검증:** install 재실행, 중간 crash, downgrade 거부, rollback fixture가 모두 결정적으로 동작한다.
-  - **선행:** 014, 020.
-
-- [ ] **022. uninstall·disable의 데이터 보존 경계를 정의한다.** — `P0`
-  - **이유:** resident 제거와 개인 데이터 삭제는 전혀 다른 권한이어야 한다.
-  - **산출물:** service-only removal, preserve-data 기본값, 별도 destructive data command.
-  - **검증:** uninstall fixture에서 notes/tasks/memory/Attunement bytes가 바뀌지 않는다.
-  - **선행:** 020–021.
-
-- [ ] **023. 실제 owner macOS profile에서 contained activation을 수행한다.** — `P0`
-  - **이유:** fixture나 개발 foreground process에서만 성공하고 실제 owner LaunchAgent domain에서 실패하는
-    resident는 일상 runtime의 기준선이 아니다.
-  - **산출물:** 안정된 entrypoint, local-only, log provider, delivery brake, self-learning hold 상태의
-    설치·기동 evidence와 개인 store 보존 digest.
-  - **검증:** 현재 owner profile에서 install→start→heartbeat→status→stop→start를 실행하고 외부 전송 0,
-    정확히 한 writer, store bytes 불변을 확인한다. 별도 macOS 사용자/VM profile은 요구하지 않는다.
-  - **선행:** 013–022.
-
-- [ ] **024. resident health를 서로 다른 writer generation의 pass^3로 qualification한다.** — `P0`
-  - **이유:** 한 번의 green은 launchd timing과 PID 재사용 경계를 증명하지 못한다.
-  - **산출물:** 세 번의 독립 writer generation이 포함된 fresh G1 report.
-  - **검증:** 매 실행에서 artifact, PID, executable, generation, heartbeat, single writer가 모두 일치한다.
-    OS/session restart는 자연스럽게 발생할 때 추가 수집하는 non-blocking 운영 evidence다.
-  - **선행:** 023.
+- [ ] **012. Pass the G0 baseline review independently.** — `P0`
+  - **Why:** Executing on top of a wrong baseline invalidates every subsequent green.
+  - **Deliverable:** G0 `PASS | FAIL`, a blocker bundle, and a Global P0 ready queue of at most five items with status, lane, type, size, and missing delta.
+  - **Verification:** The evaluator reproduces 001–011 in a new checkout and confirms that already-implemented acceptance was not redundantly selected into the BUILD queue.
+  - **Prerequisites:** 001–011.
 
 ---
 
-## Phase 2 — delivery safety와 오래된 backlog를 닫기
+## Phase 1 — Make the resident runtime a single truth
 
-**진입 조건:** G1 green.
+**Entry condition:** G0 green.
 
-**Exit gate G2:** local-only·provider lock·delivery brake·self-learning hold가 persisted state와 live process에
-일치하고, 오래된 reminder/follow-up이 owner action 없이 전송·삭제·재예약되지 않는다.
+**Exit gate G1:** Exactly one resident writer runs from a stable entrypoint on the real owner macOS
+profile, and artifact, PID, heartbeat, and process identity agree across a pass^3 of different
+writer generations. When a natural OS/session restart occurs, the same observation is added as
+operational evidence, but a forced reboot or a separate macOS user account is not a prerequisite for
+G1 or for the owner-scoped personal-agent release.
 
-- [ ] **025. `local-only`를 resident 재시작 가능한 영속 정책으로 만든다.** — `P0`
-  - **이유:** shell 환경변수에만 있는 containment는 재부팅 뒤 사라질 수 있다.
-  - **산출물:** owner-only persisted setting, resolved live value, provenance.
-  - **검증:** restart 후에도 유지되고 invalid value는 network-open이 아니라 fail-close가 된다.
-  - **선행:** 024.
+- [ ] **013. Read-only inventory the macOS resident artifacts and every Muse process.** — `P0`
+  - **Why:** Old checkouts and temporary test runners can linger and look like the real daemon.
+  - **Deliverable:** A bounded report of plist, launchd registration, PID/PPID, cwd, executable realpath, start time, and heartbeat.
+  - **Verification:** It distinguishes the five fixtures artifact-only, process-only, duplicate, orphan, and healthy.
+  - **Prerequisites:** 012.
 
-- [ ] **026. delivery provider lock을 persisted configuration과 live adapter에 동시에 적용한다.** — `P0`
-  - **이유:** 설정은 `log`인데 runtime이 Telegram 같은 다른 provider를 잡는 drift를 막아야 한다.
-  - **산출물:** allowed provider set, resolved adapter identity, mismatch reason.
-  - **검증:** 다른 provider injection이 dispatch 전에 차단되고 qualification에 정확히 보고된다.
-  - **선행:** 025.
+- [ ] **014. Fix the stable CLI entrypoint judgement as fail-close.** — `P0`
+  - **Why:** Installing the resident from a tmp, test-runner, or deleted-worktree entrypoint breaks on the next restart.
+  - **Deliverable:** Canonical realpath plus a check of the allowed package/release origin.
+  - **Verification:** `/tmp`, test output, a missing path, and a moved worktree are rejected before installation.
+  - **Prerequisites:** 013.
 
-- [ ] **027. delivery brake를 모든 outbound 경로의 공통 fail-close gate로 만든다.** — `P0`
-  - **이유:** reminder, follow-up, proactive, channel-specific 경로 중 하나라도 우회하면 containment가 깨진다.
-  - **산출물:** 하나의 brake decision API와 channel-independent audit receipt.
-  - **검증:** 알려진 모든 outbound caller가 brake-on fixture에서 send 호출 0을 기록한다.
-  - **선행:** 026.
+- [ ] **015. Consolidate stale, orphan, and duplicate process classification into one health module.** — `P0`
+  - **Why:** Recovery is dangerous when `daemon --status`, doctor, and qualification each tell a different truth.
+  - **Deliverable:** A shared resident health result and a reason-code enum.
+  - **Verification:** The three surfaces return byte-equivalent status and reason for the same fixture.
+  - **Prerequisites:** 013–014.
 
-- [ ] **028. qualification 기간 동안 self-learning hold를 강제한다.** — `P0`
-  - **이유:** runtime 복구 중 skill/memory policy가 동시에 바뀌면 원인과 결과를 분리할 수 없다.
-  - **산출물:** persisted hold, status 표시, proposal 생성과 apply의 별도 제어.
-  - **검증:** hold 상태에서 active skill/policy write는 0이고 명시적 memory fact 경로만 기존 계약대로 동작한다.
-  - **선행:** 025–027.
+- [ ] **016. Prevent two resident writers from being active at the same time.** — `P0`
+  - **Why:** Split-brain writes can occur in the task, reminder, outcome, and delivery stores.
+  - **Deliverable:** A single-writer lease that includes process identity, plus dead-owner fencing.
+  - **Verification:** Of two simultaneous starts only one becomes the writer, and the loser exits with no external effect.
+  - **Prerequisites:** 015.
 
-- [ ] **029. overdue reminder backlog를 변경 없이 재집계한다.** — `P0`
-  - **이유:** 현재 보고된 5개가 실제 store와 일치하는지, 오래된 수치인지 확인해야 한다.
-  - **산출물:** exact ID, age band, state, source digest의 read-only inventory.
-  - **검증:** inventory 전후 reminder store bytes가 동일하다.
-  - **선행:** 027.
+- [ ] **017. Complete the heartbeat freshness and monotonicity contract.** — `P0`
+  - **Why:** A live PID alone cannot prove the event loop and scheduled work are alive.
+  - **Deliverable:** Owner-only heartbeat receipt, generation, last-progress, and expected cadence.
+  - **Verification:** A frozen clock, stale generation, PID reuse, and a partial write are not judged healthy.
+  - **Prerequisites:** 015–016.
 
-- [ ] **030. overdue follow-up backlog를 변경 없이 재집계한다.** — `P0`
-  - **이유:** 현재 보고된 26개가 자동 발송 후보가 되지 않도록 먼저 분류해야 한다.
-  - **산출물:** exact ID, intended effect, age, recipient presence, eligibility reason의 bounded inventory.
-  - **검증:** read path가 send, reschedule, dismiss, recipient resolution을 호출하지 않는다.
-  - **선행:** 027.
+- [ ] **018. Leave the crash-loop cause as a reason-coded terminal state.** — `P0`
+  - **Why:** The current qualification's `crash-looping` alone does not provide a fixable cause.
+  - **Deliverable:** Bounded recent failures, exit class, last stable point, and a redacted diagnostic link.
+  - **Verification:** It distinguishes config, store corruption, provider auth, port collision, and uncaught exception.
+  - **Prerequisites:** 017.
 
-- [ ] **031. backlog triage preview를 item 및 bounded batch 단위로 만든다.** — `P0`
-  - **이유:** owner가 무엇이 바뀌는지 모른 채 과거 항목을 일괄 처리하면 안 된다.
-  - **산출물:** retain, dismiss, explicit snooze, draft digest의 exact before/after preview.
-  - **검증:** invalid item 하나가 섞인 batch는 어떤 mutation도 만들지 않는다.
-  - **선행:** 029–030.
+- [ ] **019. Apply bounded backoff and a circuit breaker to resident restart.** — `P0`
+  - **Why:** A persistent failure must not escalate into runaway CPU, logs, and external effects.
+  - **Deliverable:** Restart budget, exponential backoff, open/half-open states, and an owner-visible reset.
+  - **Verification:** Repeated failures stop after the limit and recover from half-open only after a successful probe.
+  - **Prerequisites:** 018.
 
-- [ ] **032. triage mutation에 immutable receipt와 idempotency를 적용한다.** — `P0`
-  - **이유:** retry가 동일 reminder를 두 번 이동하거나 두 번 dismiss하면 안 된다.
-  - **산출물:** operation ID, source version, chosen action, result digest receipt.
-  - **검증:** 같은 operation replay가 byte-stable 결과와 동일 receipt를 반환한다.
-  - **선행:** 031.
+- [ ] **020. Separate the repair plan from its execution.** — `P0`
+  - **Why:** Killing a process, replacing a plist, and re-registering must not run without an exact owner preview.
+  - **Deliverable:** A read-only repair plan, exact targets, reversible steps, and an explicit apply command.
+  - **Verification:** The preview changes nothing, and if a stale target changes before apply the whole operation is rejected.
+  - **Prerequisites:** 013–019.
 
-- [ ] **033. 모든 third-party send를 draft-first로 표준화한다.** — `P0`
-  - **이유:** 기능별 approval 문구가 달라지면 자동 발송 우회가 생긴다.
-  - **산출물:** recipient, channel, payload hash, expiry가 있는 draft와 explicit approve step.
-  - **검증:** draft 생성만으로 provider send가 호출되지 않고 stale draft 승인이 거부된다.
-  - **선행:** 027, 032.
+- [ ] **021. Make resident install and upgrade idempotent.** — `P0`
+  - **Why:** Reinstalling the same version or interrupting an upgrade must not create duplicate plists and processes.
+  - **Deliverable:** A versioned install receipt, atomic replace, and backup of the previous artifact.
+  - **Verification:** Install rerun, mid-way crash, downgrade rejection, and rollback fixtures all behave deterministically.
+  - **Prerequisites:** 014, 020.
 
-- [ ] **034. outbound retry와 dedupe를 effect 기준으로 고정한다.** — `P0`
-  - **이유:** timeout 뒤 성공 여부를 모를 때 중복 메시지를 보낼 수 있다.
-  - **산출물:** effect ID, provider receipt, ambiguous terminal state, manual reconciliation path.
-  - **검증:** success-before-ack, timeout, provider duplicate, restart replay fixture에서 최대 한 효과만 생긴다.
-  - **선행:** 033.
+- [ ] **022. Define the data-preservation boundary of uninstall and disable.** — `P0`
+  - **Why:** Removing the resident and deleting personal data must be entirely different authorities.
+  - **Deliverable:** Service-only removal, preserve-data as the default, and a separate destructive data command.
+  - **Verification:** In the uninstall fixture the notes/tasks/memory/Attunement bytes do not change.
+  - **Prerequisites:** 020–021.
 
-- [ ] **035. doctor와 qualification이 동일한 delivery-safety result를 소비하게 한다.** — `P0`
-  - **이유:** UI는 safe인데 qualification은 unsafe인 상태 차이를 사람이 해석하게 두면 안 된다.
-  - **산출물:** local-only, lock, brake, hold, backlog, pending drafts의 공통 projection.
-  - **검증:** 동일 fixture에 CLI/API/status/qualification의 reason code가 일치한다.
-  - **선행:** 025–034.
+- [ ] **023. Perform a contained activation on the real owner macOS profile.** — `P0`
+  - **Why:** A resident that succeeds only in fixtures or a development foreground process and fails in
+    the real owner LaunchAgent domain is not the baseline for daily runtime.
+  - **Deliverable:** Install and startup evidence in a state with a stable entrypoint, local-only, log
+    provider, delivery brake, and self-learning hold, plus a preservation digest of the personal stores.
+  - **Verification:** Run install→start→heartbeat→status→stop→start on the current owner profile and
+    confirm zero external sends, exactly one writer, and unchanged store bytes. A separate macOS user or VM profile is not required.
+  - **Prerequisites:** 013–022.
 
-- [ ] **036. zero-unapproved-send fault campaign으로 G2를 닫는다.** — `P0`
-  - **이유:** 정상 경로 테스트만으로 외부 효과 안전성을 주장할 수 없다.
-  - **산출물:** restart, stale config, backlog, retry, partial receipt, provider failure를 포함한 fault report.
-  - **검증:** 모든 case에서 unapproved send 0, silent delete 0, silent reschedule 0이며 evaluator가 PASS한다.
-  - **선행:** 025–035.
-
----
-
-## Phase 3 — Browser, CLI, API, Web 표면의 terminal reliability
-
-**진입 조건:** G2 green.
-
-**Exit gate G3:** 현재 확인된 browser confirm 회귀와 CLI 종료 hang이 닫히고, 같은 개인 작업이
-CLI/API/Web에서 동일한 terminal state를 만들며 핵심 smoke가 pass^3로 종료된다.
-
-- [ ] **037. Browser JavaScript confirm 실패를 최소 재현한다.** — `P0`
-  - **이유:** 전체 smoke 실패를 바로 수정하면 dialog lifecycle과 test timing을 혼동할 수 있다.
-  - **산출물:** confirm을 열고 accept한 뒤 title 또는 DOM terminal state를 확인하는 최소 fixture.
-  - **검증:** 수정 전 동일 assertion이 결정적으로 red이고 실패 trace가 보존된다.
-  - **선행:** 036.
-
-- [ ] **038. dialog open→decision→page continuation lifecycle을 수정한다.** — `P0`
-  - **이유:** accept API 성공과 실제 page continuation은 별도 계약이다.
-  - **산출물:** pending dialog ownership, exact decision ack, post-dialog navigation/DOM settle 처리.
-  - **검증:** accept와 dismiss가 각기 기대한 page state를 만들고 이중 decision을 거부한다.
-  - **선행:** 037.
-
-- [ ] **039. dialog 경로에 adversarial browser test를 추가한다.** — `P0`
-  - **이유:** alert, confirm, prompt, nested frame, navigation 직전 dialog가 서로 다른 timing을 가진다.
-  - **산출물:** 네 dialog family와 disconnect/cancel/race cases.
-  - **검증:** 잘못된 dialog 종류·stale dialog ID·timeout은 성공으로 보고되지 않는다.
-  - **선행:** 038.
-
-- [ ] **040. browser smoke의 자원 정리와 timeout 계약을 고친다.** — `P0`
-  - **이유:** 실패 후 Chromium이나 server가 남으면 다음 검증이 오염된다.
-  - **산출물:** top-level `finally`, owned-child registry, bounded shutdown, artifact retention.
-  - **검증:** pass, assertion failure, Ctrl-C, timeout 네 경로 뒤 owned process와 temp profile이 남지 않는다.
-  - **선행:** 037–039.
-
-- [ ] **041. CLI smoke의 “10 PASS 후 미종료”를 최소 재현한다.** — `P0`
-  - **이유:** 기능 성공과 process lifecycle 성공을 분리해 원인을 찾아야 한다.
-  - **산출물:** active handles/requests와 child process ancestry를 출력하는 diagnostic fixture.
-  - **검증:** 테스트 항목 완료 후 남는 정확한 handle 또는 child가 식별된다.
-  - **선행:** 036.
-
-- [ ] **042. CLI child process ownership과 teardown을 수정한다.** — `P0`
-  - **이유:** stream, scheduler, MCP, API child 중 하나가 종료되지 않으면 자동화가 영원히 대기한다.
-  - **산출물:** 명시적 owner, abort propagation, graceful timeout, forced-owned-child fallback.
-  - **검증:** 정상·실패·signal 경로 모두 지정 시간 안에 exit하고 unrelated process는 건드리지 않는다.
-  - **선행:** 041.
-
-- [ ] **043. CLI terminal-state와 exit-code 계약을 명령군별로 통일한다.** — `P0`
-  - **이유:** 사람이 읽는 PASS 문구와 automation이 받는 exit code가 다르면 gate가 거짓말한다.
-  - **산출물:** success, user error, policy block, unverified, internal failure의 exit-code 표.
-  - **검증:** 대표 CLI 명령이 stdout/stderr/JSON mode와 일관된 code를 반환한다.
-  - **선행:** 042.
-
-- [ ] **044. API boot와 readiness를 분리한다.** — `P0`
-  - **이유:** port가 열렸다는 사실이 stores, provider, resident dependency가 준비됐다는 뜻은 아니다.
-  - **산출물:** liveness, readiness, degraded reason, no-model/no-network health projection.
-  - **검증:** dependency failure 중 liveness는 유지되고 readiness만 정확한 reason으로 red가 된다.
-  - **선행:** 043.
-
-- [ ] **045. Web real-browser test의 overlapping `act()` 경고를 제거한다.** — `P1`
-  - **이유:** exit 0이어도 비동기 경고는 실제 race와 flaky journey의 전조일 수 있다.
-  - **산출물:** user-event 기준 await 경계와 query invalidation settle 계약.
-  - **검증:** 128개 browser test가 console warning 0으로 반복 통과한다.
-  - **선행:** 044.
-
-- [ ] **046. 핵심 개인-agent journey를 real Chromium으로 묶는다.** — `P1`
-  - **이유:** component test만으로 setup→chat→source→Continuity→outcome 연결을 증명할 수 없다.
-  - **산출물:** local-only setup, grounded answer, Pack review, explicit outcome, held delivery journey.
-  - **검증:** 각 journey가 visible terminal state와 persisted effect를 함께 채점한다.
-  - **선행:** 039–045.
-
-- [ ] **047. 동일 작업의 CLI/API/Web parity contract를 만든다.** — `P1`
-  - **이유:** adapter별 독자 구현은 permission, error, store semantics drift를 만든다.
-  - **산출물:** 공통 operation matrix와 canonical digest/reason projection.
-  - **검증:** 같은 fixture에서 세 surface의 allowed effect와 store digest가 일치한다.
-  - **선행:** 043–046.
-
-- [ ] **048. surface smoke를 clean process에서 pass^3로 qualification한다.** — `P0`
-  - **이유:** 한 번의 green은 lifecycle race와 leaked child를 닫지 못한다.
-  - **산출물:** Browser, CLI, API, Web의 세 번 연속 독립 report.
-  - **검증:** 각 run이 timeout 없이 exit 0이며 owned process·port·temp profile 누수가 0이다.
-  - **선행:** 037–047.
+- [ ] **024. Qualify resident health with a pass^3 across different writer generations.** — `P0`
+  - **Why:** A single green does not prove the launchd timing and PID-reuse boundaries.
+  - **Deliverable:** A fresh G1 report containing three independent writer generations.
+  - **Verification:** On every run the artifact, PID, executable, generation, heartbeat, and single writer all agree.
+    An OS/session restart is non-blocking operational evidence collected additionally when it occurs naturally.
+  - **Prerequisites:** 023.
 
 ---
 
-## Phase 4 — corrected-fact recall과 memory observability
+## Phase 2 — Close delivery safety and the stale backlog
 
-**진입 조건:** G3 green.
+**Entry condition:** G1 green.
 
-**Exit gate G4:** 최신 교정 사실 2/2, 일반 positive와 absent-fact abstention이 모두 유지되고 전체
-11-axis capability battery가 fresh provenance로 pass^3를 달성한다.
+**Exit gate G2:** local-only, provider lock, delivery brake, and self-learning hold agree between
+persisted state and the live process, and stale reminders/follow-ups are not sent, deleted, or
+rescheduled without an owner action.
 
-- [ ] **049. corrected-fact 실패를 고정된 최소 corpus로 재현한다.** — `P0`
-  - **이유:** live battery 전체를 반복하면 후보 retention과 ranking 원인을 분리하기 어렵다.
-  - **산출물:** old fact, explicit correction, unrelated distractor, query가 있는 deterministic fixture.
-  - **검증:** 현재 실패가 candidate/rank/policy 중 어느 단계인지 trace로 식별된다.
-  - **선행:** 048.
+- [ ] **025. Make `local-only` a persisted policy that survives a resident restart.** — `P0`
+  - **Why:** Containment that lives only in a shell environment variable can disappear after a reboot.
+  - **Deliverable:** An owner-only persisted setting, the resolved live value, and provenance.
+  - **Verification:** It persists after restart, and an invalid value becomes fail-close rather than network-open.
+  - **Prerequisites:** 024.
 
-- [ ] **050. adaptive-k/MMR 전에 old·current correction pair를 보존한다.** — `P0`
-  - **이유:** 최신성과 모순 정책이 비교하기 전에 후보가 제거되면 교정을 선택할 수 없다.
-  - **산출물:** correction-aware candidate retention과 bounded expansion rule.
-  - **검증:** 2/2 correction case가 통과하고 ordinary top-1 ranking이 유지된다.
-  - **선행:** 049.
+- [ ] **026. Apply the delivery provider lock to the persisted configuration and the live adapter at once.** — `P0`
+  - **Why:** The drift where the setting is `log` but the runtime grabs a different provider such as Telegram must be prevented.
+  - **Deliverable:** The allowed provider set, resolved adapter identity, and mismatch reason.
+  - **Verification:** Injecting a different provider is blocked before dispatch and reported exactly in the qualification.
+  - **Prerequisites:** 025.
 
-- [ ] **051. freshness·supersession policy를 versioned deterministic reducer로 만든다.** — `P0`
-  - **이유:** 모델 prompt에만 “최신 것을 선호”를 맡기면 재현성과 undo가 없다.
-  - **산출물:** timestamp, explicit correction link, confidence, source authority의 우선순위.
-  - **검증:** clock tie, out-of-order import, duplicate correction, weak inference cases가 고정 결과를 낸다.
-  - **선행:** 050.
+- [ ] **027. Make the delivery brake the shared fail-close gate for every outbound path.** — `P0`
+  - **Why:** If even one of the reminder, follow-up, proactive, or channel-specific paths bypasses it, containment breaks.
+  - **Deliverable:** One brake decision API and a channel-independent audit receipt.
+  - **Verification:** Every known outbound caller records zero send calls in the brake-on fixture.
+  - **Prerequisites:** 026.
 
-- [ ] **052. contradiction과 tombstone을 검색 결과에서 명시적으로 처리한다.** — `P0`
-  - **이유:** 삭제·철회된 사실이 embedding 유사도만으로 다시 살아나면 안 된다.
-  - **산출물:** active, superseded, disputed, deleted 상태와 recall eligibility.
-  - **검증:** tombstoned fact가 answer evidence에 나오지 않고 disputed fact는 불확실성으로 표시된다.
-  - **선행:** 051.
+- [ ] **028. Enforce the self-learning hold for the duration of qualification.** — `P0`
+  - **Why:** If skill/memory policy changes at the same time as runtime recovery, cause and effect cannot be separated.
+  - **Deliverable:** A persisted hold, status display, and separate controls for proposal generation and apply.
+  - **Verification:** In the hold state active skill/policy writes are 0, and only the explicit memory-fact path behaves per its existing contract.
+  - **Prerequisites:** 025–027.
 
-- [ ] **053. absent-fact abstention floor를 강화한다.** — `P0`
-  - **이유:** correction recall을 높이면서 없는 사실을 지어내는 회귀가 생길 수 있다.
-  - **산출물:** minimum support, contradiction-aware abstention, source citation requirement.
-  - **검증:** 기존 absent 8/8과 새로운 near-match adversarial cases가 모두 abstain한다.
-  - **선행:** 050–052.
+- [ ] **029. Re-count the overdue reminder backlog without changing it.** — `P0`
+  - **Why:** It must be confirmed whether the 5 currently reported match the real store or are a stale figure.
+  - **Deliverable:** A read-only inventory of exact ID, age band, state, and source digest.
+  - **Verification:** The reminder store bytes are identical before and after the inventory.
+  - **Prerequisites:** 027.
 
-- [ ] **054. 자동 memory extraction에 reason-coded terminal outcomes를 추가한다.** — `P0`
-  - **이유:** fail-open extraction이 조용히 계속 실패하면 사용자는 Muse가 배우고 있다고 오해한다.
-  - **산출물:** `learned`, `nothing_new`, `policy_rejected`, `model_error`, `schema_error`, `store_error`, `timeout`.
-  - **검증:** 각 injected failure가 대화를 막지 않으면서 정확한 terminal reason을 기록한다.
-  - **선행:** 053.
+- [ ] **030. Re-count the overdue follow-up backlog without changing it.** — `P0`
+  - **Why:** The 26 currently reported must be classified first so that they do not become candidates for automatic sending.
+  - **Deliverable:** A bounded inventory of exact ID, intended effect, age, recipient presence, and eligibility reason.
+  - **Verification:** The read path does not invoke send, reschedule, dismiss, or recipient resolution.
+  - **Prerequisites:** 027.
 
-- [ ] **055. memory learning health를 doctor/status에 bounded projection한다.** — `P1`
-  - **이유:** raw trace를 열지 않고도 최근 성공과 연속 실패를 판단할 수 있어야 한다.
-  - **산출물:** last success, consecutive failure, fixed-size reason counts, freshness.
-  - **검증:** 오래된 성공이 현재 healthy로 보이지 않고 counter가 무한히 자라지 않는다.
-  - **선행:** 054.
+- [ ] **031. Build backlog triage preview per item and per bounded batch.** — `P0`
+  - **Why:** The owner must not bulk-process past items without knowing what changes.
+  - **Deliverable:** An exact before/after preview of retain, dismiss, explicit snooze, and draft digest.
+  - **Verification:** A batch containing a single invalid item produces no mutation at all.
+  - **Prerequisites:** 029–030.
 
-- [ ] **056. ephemeral·private·policy-rejected turn의 비저장을 재검증한다.** — `P0`
-  - **이유:** observability를 추가하면서 금지된 원문이 diagnostic store로 새어 나갈 수 있다.
-  - **산출물:** allowed metadata와 forbidden payload의 explicit schema.
-  - **검증:** private fixtures의 prompt, answer, secret marker가 memory와 diagnostic bytes 어디에도 없다.
-  - **선행:** 054–055.
+- [ ] **032. Apply immutable receipts and idempotency to triage mutations.** — `P0`
+  - **Why:** A retry must not move the same reminder twice or dismiss it twice.
+  - **Deliverable:** Operation ID, source version, chosen action, and a result-digest receipt.
+  - **Verification:** Replaying the same operation returns a byte-stable result and an identical receipt.
+  - **Prerequisites:** 031.
 
-- [ ] **057. owner가 memory를 inspect·correct·forget·undo할 수 있게 한다.** — `P1`
-  - **이유:** 잘못 배운 사실을 고칠 사용자 경로가 없으면 장기 개인화가 위험하다.
-  - **산출물:** exact memory ID 기반 preview와 versioned mutation receipt.
-  - **검증:** correction과 forget은 idempotent하고 undo 범위·expiry가 명확하며 fuzzy target을 거부한다.
-  - **선행:** 051–056.
+- [ ] **033. Standardize every third-party send as draft-first.** — `P0`
+  - **Why:** When approval wording differs per feature, bypasses for automatic sending appear.
+  - **Deliverable:** A draft carrying recipient, channel, payload hash, and expiry, plus an explicit approve step.
+  - **Verification:** Creating a draft alone does not call provider send, and approving a stale draft is rejected.
+  - **Prerequisites:** 027, 032.
 
-- [ ] **058. memory conflict를 사용자에게 actionable하게 보여준다.** — `P1`
-  - **이유:** “학습 점수”보다 어떤 두 사실이 충돌하며 무엇을 선택할지가 중요하다.
-  - **산출물:** exact sources, current policy choice, keep/correct/forget action이 있는 conflict view.
-  - **검증:** action 없는 vanity card가 없고 선택 전에는 active policy가 자동 변경되지 않는다.
-  - **선행:** 052, 057.
+- [ ] **034. Fix outbound retry and dedupe on an effect basis.** — `P0`
+  - **Why:** When success is unknown after a timeout, a duplicate message can be sent.
+  - **Deliverable:** Effect ID, provider receipt, ambiguous terminal state, and a manual reconciliation path.
+  - **Verification:** At most one effect occurs across the success-before-ack, timeout, provider duplicate, and restart replay fixtures.
+  - **Prerequisites:** 033.
 
-- [ ] **059. 11-axis capability report를 clean snapshot에서 재생성한다.** — `P0`
-  - **이유:** focused correction green만으로 전체 agent capability를 합격시킬 수 없다.
-  - **산출물:** exact source/artifact provenance를 가진 fresh 11/11 후보 report.
-  - **검증:** correction, ordinary positives, abstention, safety, browser, tool selection 등 모든 required axis가 실행된다.
-  - **선행:** 049–058.
+- [ ] **035. Make doctor and qualification consume the same delivery-safety result.** — `P0`
+  - **Why:** A state discrepancy where the UI says safe and qualification says unsafe must not be left for a human to interpret.
+  - **Deliverable:** A shared projection of local-only, lock, brake, hold, backlog, and pending drafts.
+  - **Verification:** For the same fixture, the reason codes from CLI/API/status/qualification agree.
+  - **Prerequisites:** 025–034.
 
-- [ ] **060. capability aggregate 11/11 strict pass^3로 G4를 닫는다.** — `P0`
-  - **이유:** 비결정적 모델·browser 경로는 한 번 통과로 충분하지 않다.
-  - **산출물:** 동일 계약의 독립 세 실행과 evaluator 판정.
-  - **검증:** 세 번 모두 11/11, skip 0, unverified 0, provenance match이며 quality floor가 낮아지지 않는다.
-  - **선행:** 059.
-
----
-
-## Phase 5 — normal chat에서 Personal Continuity를 닫고 organic evidence 수집하기
-
-**진입 조건:** G4 green.
-
-**Exit gate G5:** normal chat에서 exact-source Continuity loop가 명시적 사용자 권한으로 닫히고, life와
-work의 자연스러운 return moment가 여러 날짜에 걸쳐 독립 감사 가능한 수준으로 수집된다. 자동 timing은
-여전히 held 상태다.
-
-- [ ] **061. main chat에 최소한의 Continuity tool seam을 노출한다.** — `P1`
-  - **이유:** 현재 CLI/Web 전용 흐름은 개인 에이전트의 주된 대화 경험과 분리돼 있다.
-  - **산출물:** thread select/create, exact link, Pack preview/open, explicit outcome의 auditable tools.
-  - **검증:** tool schema만으로 허용된 effect와 금지된 auto-link/outcome을 구분할 수 있다.
-  - **선행:** 060.
-
-- [ ] **062. life/work thread 선택과 생성을 명시적 사용자 행위로 유지한다.** — `P1`
-  - **이유:** 대화 주제를 자동으로 인생 영역에 귀속하면 잘못된 개인 inference가 영속화된다.
-  - **산출물:** suggested draft와 explicit confirm이 분리된 thread binding.
-  - **검증:** 사용자의 선택 없이 thread, kind, link가 store에 생성되지 않는다.
-  - **선행:** 061.
-
-- [ ] **063. chat에서 exact local task와 note를 안전하게 연결한다.** — `P1`
-  - **이유:** fuzzy name search로 잘못된 개인 항목을 연결하면 Continuity의 근거 가치가 사라진다.
-  - **산출물:** canonical ID copy/select, bounded projection, link preview.
-  - **검증:** ambiguous prefix, renamed/deleted item, duplicate title은 mutation 전에 거부된다.
-  - **선행:** 061–062.
-
-- [ ] **064. Pack preview와 delivery open을 분리한다.** — `P1`
-  - **이유:** timing 평가나 화면 미리보기가 실제 delivery receipt로 기록되면 효과 데이터가 오염된다.
-  - **산출물:** mutation-free preview와 explicit open authority.
-  - **검증:** preview 반복은 store bytes를 바꾸지 않고 open만 단 하나의 delivery를 만든다.
-  - **선행:** 063.
-
-- [ ] **065. outcome은 네 개의 explicit 값만 chat에서 기록한다.** — `P1`
-  - **이유:** 침묵, task 완료, conversation sentiment를 hidden feedback으로 해석하면 안 된다.
-  - **산출물:** `used | adjusted | ignored | rejected` 선택과 optional owner note.
-  - **검증:** timeout·task receipt·assistant guess가 outcome을 생성하지 않는다.
-  - **선행:** 064.
-
-- [ ] **066. CLI/API/Web/Chat이 하나의 Attunement store와 reducer를 사용하게 한다.** — `P0`
-  - **이유:** chat용 두 번째 store가 생기면 evidence와 policy가 갈라진다.
-  - **산출물:** 공통 application service와 surface adapter parity.
-  - **검증:** 같은 exact operation sequence가 모든 surface에서 동일 digest와 projection을 만든다.
-  - **선행:** 061–065.
-
-- [ ] **067. 현재 organic outcome·interaction coverage를 read-only로 다시 계산한다.** — `P1`
-  - **이유:** 문서에 남은 0/10, 6/10 같은 날짜별 스냅샷을 실행 계획에 그대로 사용할 수 없다.
-  - **산출물:** life/work별 eligible outcome, exact receipt, distinct UTC/local dates, exclusion reasons.
-  - **검증:** report 생성 전후 Attunement와 task store bytes가 동일하다.
-  - **선행:** 066.
-
-- [ ] **068. 부족한 life return moment를 자연 사용으로 수집한다.** — `P1`
-  - **이유:** 같은 세션 grocery fixture는 넓은 일상 복귀 가치를 증명하지 못한다.
-  - **산출물:** 서로 다른 실제 주제와 날짜의 exact-linked Pack 및 explicit outcomes.
-  - **검증:** agent-operated, synthetic, controlled replay가 organic denominator에서 제외된다.
-  - **선행:** 067.
-
-- [ ] **069. life/work exact interaction receipt를 여러 날짜에 걸쳐 수집한다.** — `P1`
-  - **이유:** outcome만으로 실제 다음 단계가 진행됐는지 corroborate할 수 없다.
-  - **산출물:** 각 kind 최소 계약량과 날짜 coverage를 가진 strict exact receipt report.
-  - **검증:** receipt는 usefulness, feedback, consent, promotion으로 집계되지 않는다.
-  - **선행:** 067–068.
-
-- [ ] **070. negative outcome을 원인별로 독립 review한다.** — `P1`
-  - **이유:** ignored/rejected/adjusted가 없거나 무시되면 positive-only vanity metric이 된다.
-  - **산출물:** wrong source, too much detail, bad timing, weak next step, unwanted help의 taxonomy.
-  - **검증:** 각 분류가 exact delivery와 owner-authored outcome에 연결되고 모델 추측은 별도 표시된다.
-  - **선행:** 068–069.
-
-- [ ] **071. evidence가 지지하는 bounded display-policy change만 적용한다.** — `P1`
-  - **이유:** outcome을 근거로 source, permission, recipient, action scope까지 확대하면 안 된다.
-  - **산출물:** form, detail, suggestion threshold, suppression 중 하나만 바꾸는 versioned reducer change.
-  - **검증:** outcome N→allowed policy delta→Pack N+1 golden test와 reset/undo idempotency가 통과한다.
-  - **선행:** 070.
-
-- [ ] **072. organic Continuity evidence를 독립 감사하고 G5를 닫는다.** — `P1`
-  - **이유:** 숫자 threshold만 통과해도 natural timing과 domain diversity가 부족할 수 있다.
-  - **산출물:** eligibility, exactness, dates, diversity, negatives, receipt/outcome 분리를 검토한 audit.
-  - **검증:** evaluator가 raw records를 sample하고 `PASS | FAIL`; PASS여도 automatic delivery 권한은 생성하지 않는다.
-  - **선행:** 061–071.
+- [ ] **036. Close G2 with a zero-unapproved-send fault campaign.** — `P0`
+  - **Why:** External-effect safety cannot be claimed from happy-path tests alone.
+  - **Deliverable:** A fault report covering restart, stale config, backlog, retry, partial receipt, and provider failure.
+  - **Verification:** In every case unapproved sends are 0, silent deletes are 0, silent reschedules are 0, and the evaluator PASSes.
+  - **Prerequisites:** 025–035.
 
 ---
 
-## Phase 6 — privacy, permission, sandbox, untrusted-input 경계
+## Phase 3 — Terminal reliability of the Browser, CLI, API, and Web surfaces
 
-**진입 조건:** G4 green. G5 organic evidence는 EVIDENCE/MONITOR lane에서 병행할 수 있고, red 상태가
-이 phase의 security·privacy repair를 막지 않는다.
+**Entry condition:** G2 green.
 
-**Exit gate G6:** 개인 데이터 저장과 도구 실행의 owner boundary가 repair 가능하고, injection·SSRF·shell·
-store corruption fault에서 권한 확대나 민감정보 유출이 없다는 독립 security 판정을 받는다.
+**Exit gate G3:** The currently confirmed browser confirm regression and CLI exit hang are closed,
+the same personal task produces an identical terminal state on CLI/API/Web, and the core smoke
+terminates with pass^3.
 
-- [ ] **073. 모든 개인 데이터와 효과의 permission matrix를 최신화한다.** — `P0`
-  - **이유:** 기능이 늘면서 read, local write, process, network, external send 경계가 drift할 수 있다.
-  - **산출물:** notes, tasks, memory, calendar, contacts, browser, shell, channels, Attunement별 authority 표.
-  - **검증:** 각 public tool/command/API route가 정확히 하나의 permission class에 매핑된다.
-  - **선행:** 072.
+- [ ] **037. Minimally reproduce the browser JavaScript confirm failure.** — `P0`
+  - **Why:** Fixing the whole smoke failure straight away risks confusing dialog lifecycle with test timing.
+  - **Deliverable:** A minimal fixture that opens and accepts a confirm and then checks the title or DOM terminal state.
+  - **Verification:** Before the fix the same assertion is deterministically red and the failure trace is retained.
+  - **Prerequisites:** 036.
 
-- [ ] **074. 민감 store의 owner-only mode를 재귀적이지 않은 repair로 닫는다.** — `P0`
-  - **이유:** loose umask나 migration이 `~/.muse` 일부 파일을 다른 로컬 사용자에게 노출할 수 있다.
-  - **산출물:** exact-file inventory, dry-run chmod plan, atomic repair receipt.
-  - **검증:** loose-mode fixture만 0600/0700으로 좁아지고 symlink·scope 밖 파일은 거부된다.
-  - **선행:** 073.
+- [ ] **038. Fix the dialog open→decision→page continuation lifecycle.** — `P0`
+  - **Why:** Accept-API success and actual page continuation are separate contracts.
+  - **Deliverable:** Pending dialog ownership, exact decision ack, and post-dialog navigation/DOM settle handling.
+  - **Verification:** Accept and dismiss each produce the expected page state, and a double decision is rejected.
+  - **Prerequisites:** 037.
 
-- [ ] **075. 지원되는 sensitive store encryption repair를 idempotent하게 만든다.** — `P0`
-  - **이유:** 경고만 보여주고 안전하게 전환할 경로가 없으면 privacy gate를 닫을 수 없다.
-  - **산출물:** encrypted-at-rest 여부, key availability, preview, atomic migration, rollback.
-  - **검증:** plaintext→encrypted, already encrypted, wrong key, crash, retry case에서 데이터 손실이 없다.
-  - **선행:** 074.
+- [ ] **039. Add adversarial browser tests to the dialog path.** — `P0`
+  - **Why:** alert, confirm, prompt, nested frames, and a dialog just before navigation all have different timing.
+  - **Deliverable:** The four dialog families plus disconnect/cancel/race cases.
+  - **Verification:** A wrong dialog kind, a stale dialog ID, and a timeout are not reported as success.
+  - **Prerequisites:** 038.
 
-- [ ] **076. backup·restore가 encryption과 version을 보존하는지 증명한다.** — `P0`
-  - **이유:** 복구할 수 없는 암호화는 개인 에이전트의 장기 continuity에 맞지 않는다.
-  - **산출물:** versioned manifest, encrypted backup, verify-only, explicit restore preview.
-  - **검증:** 격리된 빈 restore target에서 canonical digests가 같고 newer/unknown version은 fail-close한다.
-  - **선행:** 075.
+- [ ] **040. Fix the resource cleanup and timeout contract of the browser smoke.** — `P0`
+  - **Why:** If Chromium or a server lingers after a failure, the next verification is polluted.
+  - **Deliverable:** A top-level `finally`, an owned-child registry, bounded shutdown, and artifact retention.
+  - **Verification:** After all four paths — pass, assertion failure, Ctrl-C, timeout — no owned process or temp profile remains.
+  - **Prerequisites:** 037–039.
 
-- [ ] **077. 현재 tree와 release artifact의 secret·personal-remnant scan을 자동화한다.** — `P0`
-  - **이유:** 개인용 agent 저장소에는 실제 주소, 연락처, token, local path가 섞이기 쉽다.
-  - **산출물:** allowlist가 좁은 secret scanner와 owner/company remnant rule.
-  - **검증:** synthetic secrets와 personal markers를 잡고 known safe fixture의 false positive가 review 가능하다.
-  - **선행:** 073.
+- [ ] **041. Minimally reproduce the CLI smoke's "no exit after 10 PASS".** — `P0`
+  - **Why:** Functional success and process-lifecycle success must be separated to find the cause.
+  - **Deliverable:** A diagnostic fixture that prints active handles/requests and child process ancestry.
+  - **Verification:** The exact handle or child that remains after the test items complete is identified.
+  - **Prerequisites:** 036.
 
-- [ ] **078. 모든 tool output을 untrusted envelope로 강제한다.** — `P0`
-  - **이유:** browser, MCP, shell 결과가 system instruction처럼 prompt에 합쳐지면 injection이 된다.
-  - **산출물:** provenance, size/type bounds, truncation, instruction-neutralization envelope.
-  - **검증:** tool output 속 “권한을 무시하라” 문자열이 policy와 tool availability를 바꾸지 못한다.
-  - **선행:** 073.
+- [ ] **042. Fix CLI child process ownership and teardown.** — `P0`
+  - **Why:** If any one of the stream, scheduler, MCP, or API child fails to exit, automation waits forever.
+  - **Deliverable:** An explicit owner, abort propagation, graceful timeout, and a forced-owned-child fallback.
+  - **Verification:** The normal, failure, and signal paths all exit within the specified time and do not touch unrelated processes.
+  - **Prerequisites:** 041.
 
-- [ ] **079. browser·HTTP·MCP의 SSRF와 local-network 정책을 통합한다.** — `P0`
-  - **이유:** URL redirect와 alternate notation이 loopback/metadata endpoint 차단을 우회할 수 있다.
-  - **산출물:** canonical resolve, redirect recheck, DNS rebinding policy, credential redaction.
-  - **검증:** IPv4/IPv6, decimal/octal, redirect, userinfo, DNS swap adversarial suite가 차단된다.
-  - **선행:** 078.
+- [ ] **043. Unify the CLI terminal-state and exit-code contract per command group.** — `P0`
+  - **Why:** When the human-readable PASS wording and the exit code automation receives differ, the gate lies.
+  - **Deliverable:** An exit-code table for success, user error, policy block, unverified, and internal failure.
+  - **Verification:** Representative CLI commands return codes consistent across stdout/stderr/JSON mode.
+  - **Prerequisites:** 042.
 
-- [ ] **080. Rust runner의 실제 격리 한계를 capability별로 문서화하고 검사한다.** — `P0`
-  - **이유:** sandbox라는 이름만으로 network, filesystem, process 권한을 과대평가하면 안 된다.
-  - **산출물:** platform별 enforced/advisory/unavailable capability report.
-  - **검증:** 각 claimed restriction을 실제 probe로 검증하고 미지원은 “safe”가 아니라 unavailable로 표시한다.
-  - **선행:** 073, 079.
+- [ ] **044. Separate API boot from readiness.** — `P0`
+  - **Why:** The port being open does not mean the stores, provider, and resident dependencies are ready.
+  - **Deliverable:** Liveness, readiness, degraded reason, and a no-model/no-network health projection.
+  - **Verification:** During a dependency failure liveness is retained and only readiness goes red with an exact reason.
+  - **Prerequisites:** 043.
 
-- [ ] **081. shell을 통한 file-policy 우회 경계를 닫거나 명시적으로 제한한다.** — `P0`
-  - **이유:** file tool만 보호하고 shell이 같은 경로를 쓸 수 있으면 가드가 거짓말한다.
-  - **산출물:** safe-root enforcement, command approval, container requirement 또는 explicit unsupported contract.
-  - **검증:** `>` redirection, heredoc, symlink, subprocess, script interpreter의 scope escape가 성공하지 않는다.
-  - **선행:** 080.
+- [ ] **045. Remove the overlapping `act()` warnings from the Web real-browser tests.** — `P1`
+  - **Why:** Even at exit 0, an async warning can be a precursor to a real race and a flaky journey.
+  - **Deliverable:** user-event-based await boundaries and a query-invalidation settle contract.
+  - **Verification:** The 128 browser tests pass repeatedly with 0 console warnings.
+  - **Prerequisites:** 044.
 
-- [ ] **082. cross-surface prompt-injection fault suite를 운영한다.** — `P0`
-  - **이유:** browser만 안전해도 note, calendar, MCP, email-like content가 우회 경로가 될 수 있다.
-  - **산출물:** source별 direct/indirect injection corpus와 expected terminal state.
-  - **검증:** 각 case에서 secret disclosure 0, permission expansion 0, unapproved tool effect 0을 기록한다.
-  - **선행:** 078–081.
+- [ ] **046. Bundle the core personal-agent journeys in real Chromium.** — `P1`
+  - **Why:** Component tests alone cannot prove the setup→chat→source→Continuity→outcome connection.
+  - **Deliverable:** The local-only setup, grounded answer, Pack review, explicit outcome, and held delivery journeys.
+  - **Verification:** Each journey is graded on both visible terminal state and persisted effect.
+  - **Prerequisites:** 039–045.
 
-- [ ] **083. security audit log의 tamper·size·privacy 경계를 검증한다.** — `P1`
-  - **이유:** 무한 raw log는 새 개인정보 저장소가 되고, 수정 가능한 log는 감사 증거가 아니다.
-  - **산출물:** bounded retention, integrity chain 또는 immutable receipt, redaction, export/forget policy.
-  - **검증:** truncation, partial write, clock rollback, log injection에서 손상이 감지되고 secret marker는 없다.
-  - **선행:** 074–082.
+- [ ] **047. Build a CLI/API/Web parity contract for the same task.** — `P1`
+  - **Why:** Independent per-adapter implementations create drift in permission, error, and store semantics.
+  - **Deliverable:** A shared operation matrix and a canonical digest/reason projection.
+  - **Verification:** For the same fixture, the allowed effects and store digests of the three surfaces agree.
+  - **Prerequisites:** 043–046.
 
-- [ ] **084. 독립 adversarial security review로 G6를 닫는다.** — `P0`
-  - **이유:** 보안 구현자가 자기 threat model만 평가하면 blind spot이 남는다.
-  - **산출물:** permission, privacy, injection, SSRF, runner, outbound의 bundled findings와 판정.
-  - **검증:** high/critical blocker 0, medium은 owner가 명시적으로 accept하거나 다음 P0로 남는다.
-  - **선행:** 073–083.
-
----
-
-## Phase 7 — resource governance, performance, provider neutrality
-
-**진입 조건:** G6 green.
-
-**Exit gate G7:** foreground chat이 우선권을 유지하고 background work는 CPU·memory·thermal·queue·retry
-budget 안에서 동작하며, 24시간 soak 동안 crash-loop, starvation, unbounded growth가 없다.
-
-- [ ] **085. hard admission state matrix를 완성한다.** — `P0`
-  - **이유:** active user, idle, low headroom, thermal pressure를 문장으로만 구분하면 workload마다 다르게 행동한다.
-  - **산출물:** state input, unavailable semantics, allowed light/heavy work, cancel/defer decision 표.
-  - **검증:** injected state별로 시작 가능한 workload가 정확히 고정된다.
-  - **선행:** 084.
-
-- [ ] **086. thermal·battery·memory pressure의 platform별 source를 검증한다.** — `P1`
-  - **이유:** macOS thermal만 있고 battery나 다른 platform이 inferred되면 잘못된 admission이 된다.
-  - **산출물:** macOS/Windows/Linux별 supported/unavailable probe와 timeout.
-  - **검증:** probe failure와 unknown future value가 permissive success로 바뀌지 않는다.
-  - **선행:** 085.
-
-- [ ] **087. foreground/background model concurrency budget을 전체 provider 경로에 적용한다.** — `P0`
-  - **이유:** 일부 auxiliary call이 coordinator를 우회하면 foreground latency와 local model 안정성이 깨진다.
-  - **산출물:** lease owner, priority queue, maximum waiter, timeout, cancellation reason.
-  - **검증:** foreground가 queued background보다 먼저 실행되고 bypass provider call이 탐지된다.
-  - **선행:** 085.
-
-- [ ] **088. 실제 KV-cache와 model resident memory를 측정한다.** — `P1`
-  - **이유:** token window만으로 로컬 모델의 실제 memory pressure를 알 수 없다.
-  - **산출물:** provider/model별 observed resident delta, unavailable 표시, safety margin.
-  - **검증:** measurement overhead가 bounded이고 추정값은 measured로 표시되지 않는다.
-  - **선행:** 086–087.
-
-- [ ] **089. embedding과 indexing에 batch·memory·resume budget을 추가한다.** — `P1`
-  - **이유:** 현재 open 상태인 embedding budget이 background responsiveness를 무너뜨릴 수 있다.
-  - **산출물:** bounded batch, checkpoint, immutable generation publish, explicit full-reindex override.
-  - **검증:** cancel/restart 후 중복 publish 없이 마지막 complete checkpoint에서 재개한다.
-  - **선행:** 085, 088.
-
-- [ ] **090. browser work에 page·action·wallclock·memory budget을 통합한다.** — `P1`
-  - **이유:** model loop budget과 별개인 browser session이 무한 페이지·popup·download로 확장될 수 있다.
-  - **산출물:** per-run browser budget과 terminal `budget_exhausted` state.
-  - **검증:** popup storm, redirect loop, huge page, stalled navigation이 명시적 한도에서 종료된다.
-  - **선행:** 040, 085.
-
-- [ ] **091. cancellation settlement를 uncooperative provider까지 추적한다.** — `P0`
-  - **이유:** 사용자가 취소해도 physical request가 계속 실행되며 lease를 풀면 실제 concurrency가 초과된다.
-  - **산출물:** logical cancel, physical settlement, retained lease, late-result discard 계약.
-  - **검증:** 취소 후 두 번째 request가 물리적으로 겹치지 않고 late result가 store에 반영되지 않는다.
-  - **선행:** 087.
-
-- [ ] **092. foreground starvation과 background starvation을 모두 측정한다.** — `P1`
-  - **이유:** foreground 우선만 강화하면 consolidation과 sync가 영원히 실행되지 않을 수 있다.
-  - **산출물:** bounded fairness cursor, maximum defer age, owner-visible held reason.
-  - **검증:** 지속 foreground fixture에서도 policy가 허용한 최소 background progress 또는 명시적 held 상태가 나온다.
-  - **선행:** 087, 091.
-
-- [ ] **093. provider-neutral usage·cost ledger를 정규화한다.** — `P1`
-  - **이유:** provider별 token과 cache semantics가 달라 비용 비교가 왜곡될 수 있다.
-  - **산출물:** input/output/cache/tool/estimated/unknown 필드와 pricing source freshness.
-  - **검증:** unknown price는 0원으로 집계되지 않고 local provider는 비용·자원 지표를 구분한다.
-  - **선행:** 087.
-
-- [ ] **094. local-model cold/warm 성능을 반복 측정한다.** — `P1`
-  - **이유:** 한 번의 warm run으로 prompt cache와 daily responsiveness를 주장할 수 없다.
-  - **산출물:** multiple-attempt median/p95, time-to-first-token, total latency, cache hit evidence.
-  - **검증:** cold/warm 분류가 실제 cache state에 묶이고 quality·grounding gate가 동일하다.
-  - **선행:** 088, 093.
-
-- [ ] **095. constrained-resource recovery fault campaign을 실행한다.** — `P0`
-  - **이유:** low memory·thermal 상태에서 defer한 뒤 recovery가 영원히 멈추거나 한꺼번에 폭주할 수 있다.
-  - **산출물:** pressure→defer→recover→re-admit trace와 queue bounds.
-  - **검증:** 압박 중 heavy start 0, foreground responsive, 복구 후 cadence 안에 bounded progress가 일어난다.
-  - **선행:** 085–094.
-
-- [ ] **096. resident 24시간 soak와 resource G7을 닫는다.** — `P0`
-  - **이유:** queue leak, heartbeat drift, memory growth, retry storm은 짧은 test에서 잘 보이지 않는다.
-  - **산출물:** 24h CPU/RSS/queue/heartbeat/workload summary와 exact failures.
-  - **검증:** crash-loop 0, unbounded growth 0, budget breach 0, foreground SLO 유지, evaluator PASS.
-  - **선행:** 085–095.
+- [ ] **048. Qualify the surface smoke with pass^3 from clean processes.** — `P0`
+  - **Why:** A single green does not close lifecycle races and leaked children.
+  - **Deliverable:** Three consecutive independent reports for Browser, CLI, API, and Web.
+  - **Verification:** Each run exits 0 without timeout, and owned-process, port, and temp-profile leakage is 0.
+  - **Prerequisites:** 037–047.
 
 ---
 
-## Phase 8 — 설치 후 10분 안에 첫 가치에 도달하는 UX
+## Phase 4 — Corrected-fact recall and memory observability
 
-**진입 조건:** G7 green.
+**Entry condition:** G3 green.
 
-**Exit gate G8:** 실제 owner가 격리된 빈 Muse state에서 provider와 local/cloud 경계를 이해하고, 10분
-안에 첫 source-backed answer와 첫 user-invoked Continuity Pack을 완료하며 실패 시 스스로 repair할 수 있다.
+**Exit gate G4:** Latest corrected facts 2/2, ordinary positives, and absent-fact abstention are all
+retained, and the full 11-axis capability battery achieves pass^3 with fresh provenance.
 
-- [ ] **097. Muse의 golden owner journey와 성공 시간을 정의한다.** — `P1`
-  - **이유:** 기능별 wizard를 연결해도 사용자가 어떤 가치를 언제 얻는지 모르면 onboarding이 끝나지 않는다.
-  - **산출물:** install→privacy choice→provider→local source→first answer→first Pack journey.
-  - **검증:** 각 단계의 terminal state, 최대 시간, 실패 복구, forbidden hidden action이 측정 가능하다.
-  - **선행:** 096.
+- [ ] **049. Reproduce the corrected-fact failure with a fixed minimal corpus.** — `P0`
+  - **Why:** Repeating the whole live battery makes it hard to separate candidate retention from ranking as the cause.
+  - **Deliverable:** A deterministic fixture with an old fact, an explicit correction, an unrelated distractor, and a query.
+  - **Verification:** The trace identifies whether the current failure is at the candidate, rank, or policy stage.
+  - **Prerequisites:** 048.
 
-- [ ] **098. owner-scoped macOS installer 경로를 하나로 통합한다.** — `P1`
-  - **이유:** source checkout과 여러 setup 명령은 개인용 제품의 진입 장벽이 높다.
-  - **산출물:** signed 또는 개발단계의 clearly labeled package, stable CLI/app path, version receipt.
-  - **검증:** 현재 owner의 격리된 빈 Muse state에서 Node/pnpm 지식 없이 설치가 끝나고 임시 checkout
-    경로가 남지 않는다.
-  - **선행:** 021–024, 097.
+- [ ] **050. Preserve the old/current correction pair before adaptive-k/MMR.** — `P0`
+  - **Why:** If a candidate is removed before the freshness and contradiction policy can compare, the correction cannot be selected.
+  - **Deliverable:** Correction-aware candidate retention and a bounded expansion rule.
+  - **Verification:** The 2/2 correction case passes and ordinary top-1 ranking is retained.
+  - **Prerequisites:** 049.
 
-- [ ] **099. 첫 실행에서 local-only와 cloud egress를 명시적으로 선택하게 한다.** — `P0`
-  - **이유:** provider를 고르는 행위가 어떤 데이터가 기기를 떠나는지 자동으로 설명하지 않는다.
-  - **산출물:** data-flow preview, local-only 기본값, per-provider egress summary, change path.
-  - **검증:** 선택 전 cloud request 0이며 선택 결과가 persisted policy와 live runtime에 일치한다.
-  - **선행:** 025, 073, 098.
+- [ ] **051. Make the freshness/supersession policy a versioned deterministic reducer.** — `P0`
+  - **Why:** Leaving "prefer the newest" to the model prompt alone gives no reproducibility and no undo.
+  - **Deliverable:** A precedence over timestamp, explicit correction link, confidence, and source authority.
+  - **Verification:** Clock ties, out-of-order imports, duplicate corrections, and weak-inference cases produce fixed results.
+  - **Prerequisites:** 050.
 
-- [ ] **100. provider setup을 credential-safe diagnostic과 연결한다.** — `P1`
-  - **이유:** auth 실패를 일반 model error로 보여주면 사용자가 위험한 재설정을 반복한다.
-  - **산출물:** provider discovery, secret input, redacted verify, model capability summary.
-  - **검증:** logs/trace/UI에 credential marker가 없고 invalid auth가 actionable reason을 낸다.
-  - **선행:** 077, 093, 099.
+- [ ] **052. Handle contradictions and tombstones explicitly in search results.** — `P0`
+  - **Why:** A deleted or retracted fact must not come back to life on embedding similarity alone.
+  - **Deliverable:** The active, superseded, disputed, and deleted states plus recall eligibility.
+  - **Verification:** A tombstoned fact does not appear in answer evidence, and a disputed fact is marked as uncertain.
+  - **Prerequisites:** 051.
 
-- [ ] **101. first chat의 zero-data 상태를 유용하게 만든다.** — `P1`
-  - **이유:** 개인 데이터가 없는 첫 화면에서 빈 dashboard나 과도한 설정이 나오면 가치가 전달되지 않는다.
-  - **산출물:** local demo source 또는 사용자가 선택한 첫 note/task를 만드는 guided path.
-  - **검증:** fixture 데이터와 user data가 명확히 구분되고 demo가 memory/organic evidence로 집계되지 않는다.
-  - **선행:** 100.
+- [ ] **053. Strengthen the absent-fact abstention floor.** — `P0`
+  - **Why:** Raising correction recall can introduce a regression that invents facts that do not exist.
+  - **Deliverable:** Minimum support, contradiction-aware abstention, and a source-citation requirement.
+  - **Verification:** Both the existing absent 8/8 and new near-match adversarial cases all abstain.
+  - **Prerequisites:** 050–052.
 
-- [ ] **102. 첫 source-backed answer까지의 경로를 측정한다.** — `P1`
-  - **이유:** Muse의 핵심 차별화는 일반 chat이 아니라 exact personal grounding이다.
-  - **산출물:** source 선택, cited answer, source inspect, correction action.
-  - **검증:** 10분 budget 안에 완료되고 source가 없으면 unsupported claim을 생략한다.
-  - **선행:** 101.
+- [ ] **054. Add reason-coded terminal outcomes to automatic memory extraction.** — `P0`
+  - **Why:** If fail-open extraction keeps failing silently, the user mistakenly believes Muse is learning.
+  - **Deliverable:** `learned`, `nothing_new`, `policy_rejected`, `model_error`, `schema_error`, `store_error`, `timeout`.
+  - **Verification:** Each injected failure records the exact terminal reason without blocking the conversation.
+  - **Prerequisites:** 053.
 
-- [ ] **103. 첫 user-invoked Continuity Pack을 onboarding에 연결한다.** — `P1`
-  - **이유:** 사용자가 Attunement 가치를 별도 CLI 문서를 읽어야만 발견해서는 안 된다.
-  - **산출물:** life/work thread 선택, exact link, Pack open, outcome 설명의 thin journey.
-  - **검증:** 자동 thread/link/outcome은 0이고 preview와 delivery가 분리된다.
-  - **선행:** 061–066, 102.
+- [ ] **055. Give memory learning health a bounded projection in doctor/status.** — `P1`
+  - **Why:** Recent successes and consecutive failures must be judgeable without opening a raw trace.
+  - **Deliverable:** Last success, consecutive failure, fixed-size reason counts, and freshness.
+  - **Verification:** An old success does not appear as currently healthy and the counters do not grow without bound.
+  - **Prerequisites:** 054.
 
-- [ ] **104. 기본 status를 “다음 안전한 행동” 중심으로 정리한다.** — `P1`
-  - **이유:** token·turn·activity 수치는 개인적 가치가 아니라 diagnostics다.
-  - **산출물:** held actions, pending review, runtime health, evidence gap, exact repair action cards.
-  - **검증:** action 없는 card를 제거하고 0/unverified를 success처럼 표시하지 않는다.
-  - **선행:** 035, 055, 067, 103.
+- [ ] **056. Re-verify the non-persistence of ephemeral, private, and policy-rejected turns.** — `P0`
+  - **Why:** Adding observability can leak forbidden verbatim text into the diagnostic store.
+  - **Deliverable:** An explicit schema of allowed metadata and forbidden payload.
+  - **Verification:** The prompts, answers, and secret markers of the private fixtures appear nowhere in the memory or diagnostic bytes.
+  - **Prerequisites:** 054–055.
 
-- [ ] **105. 주요 red 상태에 preview-first repair wizard를 제공한다.** — `P1`
-  - **이유:** doctor가 문제만 설명하고 고칠 안전한 경로가 없으면 매일 사용할 수 없다.
-  - **산출물:** resident, permission mode, encryption, provider auth, held backlog별 exact plan.
-  - **검증:** preview는 무변경, stale target은 apply 거부, destructive step은 별도 확인을 요구한다.
-  - **선행:** 020, 031, 074–076, 100, 104.
+- [ ] **057. Let the owner inspect, correct, forget, and undo memory.** — `P1`
+  - **Why:** Without a user path for fixing a wrongly learned fact, long-term personalization is dangerous.
+  - **Deliverable:** An exact-memory-ID-based preview and a versioned mutation receipt.
+  - **Verification:** Correction and forget are idempotent, the undo scope and expiry are clear, and fuzzy targets are rejected.
+  - **Prerequisites:** 051–056.
 
-- [ ] **106. keyboard, screen-reader, contrast, reduced-motion 접근성을 검증한다.** — `P1`
-  - **이유:** 개인 도구는 반복 사용되므로 작은 접근성 결함이 누적 마찰이 된다.
-  - **산출물:** core journey의 semantic labels, focus order, status announcement, motion fallback.
-  - **검증:** automated a11y와 keyboard-only real-browser journey가 함께 통과한다.
-  - **선행:** 103–105.
+- [ ] **058. Show memory conflicts to the user in an actionable way.** — `P1`
+  - **Why:** Which two facts conflict and which one to choose matters more than a "learning score."
+  - **Deliverable:** A conflict view with exact sources, the current policy choice, and keep/correct/forget actions.
+  - **Verification:** There is no vanity card without an action, and the active policy is not changed automatically before a choice is made.
+  - **Prerequisites:** 052, 057.
 
-- [ ] **107. 한국어·영어 핵심 계약과 오류 표현을 정리한다.** — `P2`
-  - **이유:** permission, held, unverified, draft 같은 단어가 번역마다 다른 의미가 되면 안전성이 약해진다.
-  - **산출물:** canonical terms, locale fallback, no-dead-string check.
-  - **검증:** 두 locale에서 같은 action/permission semantics와 terminal state가 표시된다.
-  - **선행:** 104–106.
+- [ ] **059. Regenerate the 11-axis capability report from a clean snapshot.** — `P0`
+  - **Why:** A focused correction green alone cannot pass the whole agent capability.
+  - **Deliverable:** A fresh 11/11 candidate report with exact source/artifact provenance.
+  - **Verification:** Every required axis runs, including correction, ordinary positives, abstention, safety, browser, and tool selection.
+  - **Prerequisites:** 049–058.
 
-- [ ] **108. owner onboarding을 격리된 빈 state의 독립 pass^3로 검증해 G8을 닫는다.** — `P1`
-  - **이유:** 개발자 기억에 의존한 한 번의 성공은 설치 경험 증거가 아니다.
-  - **산출물:** 서로 격리된 owner-state 실행 세 개의 completion time, blockers, recovery actions, final state.
-  - **검증:** 세 번 모두 10분 내 first cited answer와 Pack, unapproved egress/send 0, evaluator PASS.
-  - **선행:** 097–107.
-
----
-
-## Phase 9 — Observe, rhythm, timing, adaptation을 shadow부터 열기
-
-**진입 조건:** G8 green이며 G5 organic audit도 계속 green.
-
-**Exit gate G9:** Observe는 명시적 consent·pause·forget 경계 안에서만 작동하고, timing은 shadow와
-owner-reviewed local/log-only cohort를 통과한다. 어떤 PASS도 지속 자율 권한을 자동 부여하지 않는다.
-
-- [ ] **109. Observe consent를 category와 duration별 explicit grant로 만든다.** — `P0`
-  - **이유:** “관찰 허용” 한 번으로 모든 앱·데이터·기간을 포괄하면 개인용 trust가 무너진다.
-  - **산출물:** category, source, retention, purpose, expiry가 있는 versioned grant.
-  - **검증:** grant가 없는 category event는 수집·영속되지 않고 scope 확대는 새 승인을 요구한다.
-  - **선행:** 108.
-
-- [ ] **110. Observe inspect·pause·resume·forget을 owner action으로 닫는다.** — `P0`
-  - **이유:** 사용자는 무엇이 기록되는지 보고 즉시 중단·삭제할 수 있어야 한다.
-  - **산출물:** live state, bounded ledger view, pause reason, exact forget preview와 receipt.
-  - **검증:** pause 후 새 event 0, forget은 target만 지우며 resume이 이전 scope를 넓히지 않는다.
-  - **선행:** 109.
-
-- [ ] **111. O1 category-only collector의 data minimization을 증명한다.** — `P0`
-  - **이유:** 초기 timing 연구에 window title, content, keystroke 원문은 필요하지 않다.
-  - **산출물:** allowed category/timestamp schema와 forbidden payload scanner.
-  - **검증:** synthetic secret/title/content marker가 raw store, trace, report에 남지 않는다.
-  - **선행:** 109–110.
-
-- [ ] **112. Observe export·retention·corruption recovery를 완성한다.** — `P1`
-  - **이유:** 장기 rhythm 데이터는 새로운 민감 store이므로 수명과 복구가 명확해야 한다.
-  - **산출물:** bounded retention, owner export, partial-write quarantine, version migration.
-  - **검증:** expired data는 정책대로 제거되고 corrupt record는 전체 ledger를 열지 못하게 하지 않는다.
-  - **선행:** 111.
-
-- [ ] **113. rhythm feature를 offline read-only 분석으로만 시작한다.** — `P2`
-  - **이유:** 충분한 데이터 전에 실시간 policy와 결합하면 false pattern이 행동으로 번진다.
-  - **산출물:** stable focus/category transitions, time windows, uncertainty가 있는 local analysis.
-  - **검증:** 분석 실행이 delivery, task, outcome, permission store를 바꾸지 않는다.
-  - **선행:** 112.
-
-- [ ] **114. friction hypothesis를 evidence와 반증 조건을 가진 proposal로 만든다.** — `P2`
-  - **이유:** 반복 전환을 곧바로 “사용자가 막혔다”고 해석하면 잘못된 심리 추론이 된다.
-  - **산출물:** observed facts, bounded hypothesis, alternative explanations, falsifier, no-action 기본값.
-  - **검증:** 동일 observation에 여러 설명이 가능하면 confident fact로 저장되지 않는다.
-  - **선행:** 113.
-
-- [ ] **115. timing reducer를 shadow-only로 replay한다.** — `P2`
-  - **이유:** 실제 알림 전에 언제 `silent | digest | offer`를 선택했을지 검토해야 한다.
-  - **산출물:** input snapshot, policy version, decision, cooldown reason의 mutation-free shadow ledger.
-  - **검증:** shadow 실행이 delivery open 또는 channel send를 하나도 만들지 않는다.
-  - **선행:** 113–114.
-
-- [ ] **116. timing false-positive와 false-negative를 owner review로 채점한다.** — `P2`
-  - **이유:** offer 수나 click 수만으로 적절한 타이밍을 평가할 수 없다.
-  - **산출물:** should-offer, should-stay-silent, too-early, too-late, wrong-thread review set.
-  - **검증:** owner label과 shadow decision이 exact timestamp/policy input에 연결된다.
-  - **선행:** 115.
-
-- [ ] **117. cooldown·suppression·focus-boundary policy를 보수적으로 조정한다.** — `P2`
-  - **이유:** 초기 proactivity에서는 도움 누락보다 반복 방해의 신뢰 비용이 더 크다.
-  - **산출물:** deterministic cooldown, rejection suppression, stable-focus minimum, daily cap.
-  - **검증:** repeated event storm과 rejected thread가 repeated offer를 만들지 않는다.
-  - **선행:** 116.
-
-- [ ] **118. 단일 low-risk local/log-only cohort의 exact preview를 만든다.** — `P2`
-  - **이유:** broad channel delivery 전에 payload, timing, target, brake를 owner가 한 번에 검토해야 한다.
-  - **산출물:** cohort membership, proposed Pack, schedule window, resource state, abort criteria.
-  - **검증:** preview 생성은 delivery 0이며 cohort 밖 항목이나 unavailable source가 포함되면 거부된다.
-  - **선행:** 117.
-
-- [ ] **119. owner-confirmed controlled timing cohort를 실행한다.** — `P2`
-  - **이유:** shadow 정확성과 실제 interruption 비용은 다르다.
-  - **산출물:** 각 proposal의 exact delivery, explicit outcome, timing review, resource/safety receipt.
-  - **검증:** unapproved send 0, budget breach 0, reminder quarantine 위반 0, 모든 proposal에 review state가 있다.
-  - **선행:** 118 및 owner의 cohort 승인.
-
-- [ ] **120. G9 promotion review에서 지속 자동화 권한을 별도로 판정한다.** — `P0`
-  - **이유:** 한 cohort PASS가 ongoing autonomy를 자동 생성해서는 안 된다.
-  - **산출물:** continue shadow, repeat cohort, narrow grant, reject 중 하나의 owner decision과 expiry.
-  - **검증:** decision이 없거나 evidence가 stale하면 runtime은 user-invoked/held 상태를 유지한다.
-  - **선행:** 109–119.
+- [ ] **060. Close G4 with a strict pass^3 of the 11/11 capability aggregate.** — `P0`
+  - **Why:** One pass is not enough for non-deterministic model and browser paths.
+  - **Deliverable:** Three independent runs of the same contract plus the evaluator's judgement.
+  - **Verification:** All three runs are 11/11 with 0 skips, 0 unverified, and matching provenance, and the quality floor is not lowered.
+  - **Prerequisites:** 059.
 
 ---
 
-## Phase 10 — OpenClaw·Hermes와 다른 방식으로 경쟁력 확장
+## Phase 5 — Close Personal Continuity in normal chat and collect organic evidence
 
-**진입 조건:** G9가 최소 shadow PASS이며 G1–G8이 계속 green.
+**Entry condition:** G4 green.
 
-**Exit gate G10:** “기능 수 따라잡기”가 아니라 exact personal grounding·accountable adaptation을 강화하는
-확장만 선택됐고, 추가 channel/skill/subagent가 기존 safety와 daily-value gate를 악화시키지 않는다.
+**Exit gate G5:** The exact-source Continuity loop closes in normal chat under explicit user
+authority, and natural return moments in life and work are collected across multiple dates to a level
+that can be independently audited. Automatic timing remains held.
 
-- [ ] **121. Muse의 positioning contract를 한 문장과 세 proof로 고정한다.** — `P1`
-  - **이유:** OpenClaw를 channel 수로, Hermes를 self-improvement 속도로 쫓으면 Muse의 강점이 흐려진다.
-  - **산출물:** exact-source continuity, explicit outcome learning, no-silent-permission-expansion의 product contract.
-  - **검증:** README, onboarding, status, release notes의 claims가 현재 증거보다 넓지 않다.
-  - **선행:** 120.
+- [ ] **061. Expose a minimal Continuity tool seam in main chat.** — `P1`
+  - **Why:** The current CLI/Web-only flow is separated from the personal agent's primary conversational experience.
+  - **Deliverable:** Auditable tools for thread select/create, exact link, Pack preview/open, and explicit outcome.
+  - **Verification:** The tool schema alone distinguishes the allowed effects from the forbidden auto-link/outcome.
+  - **Prerequisites:** 060.
 
-- [ ] **122. channel 확장 기준을 사용 빈도·효과·보안 비용으로 정의한다.** — `P2`
-  - **이유:** “20+ channels” parity는 단일 사용자 제품에 불필요한 유지보수와 공격면을 만든다.
-  - **산출물:** owner usage, notification fit, draft/approval support, maintenance cost scorecard.
-  - **검증:** 점수가 낮은 channel은 구현 backlog가 아니라 rejected/deferred decision으로 남는다.
-  - **선행:** 121.
+- [ ] **062. Keep life/work thread selection and creation an explicit user act.** — `P1`
+  - **Why:** Automatically attributing a conversation topic to a life area persists a wrong personal inference.
+  - **Deliverable:** Thread binding in which the suggested draft and the explicit confirm are separated.
+  - **Verification:** No thread, kind, or link is created in the store without a user choice.
+  - **Prerequisites:** 061.
 
-- [ ] **123. 가장 가치 높은 한 channel을 golden adapter로 완성한다.** — `P2`
-  - **이유:** 여러 얕은 adapter보다 한 개의 reliable inbound/outbound/dedupe/approval 경로가 중요하다.
-  - **산출물:** setup, health, inbound identity, draft, approve, delivery receipt, retry, revoke journey.
-  - **검증:** duplicate webhook, reconnect, token revoke, ambiguous send가 exact terminal state를 만든다.
-  - **선행:** 033–035, 122.
+- [ ] **063. Link exact local tasks and notes safely from chat.** — `P1`
+  - **Why:** Linking the wrong personal item via fuzzy name search destroys Continuity's grounding value.
+  - **Deliverable:** Canonical ID copy/select, bounded projection, and a link preview.
+  - **Verification:** An ambiguous prefix, a renamed/deleted item, and a duplicate title are rejected before mutation.
+  - **Prerequisites:** 061–062.
 
-- [ ] **124. 모든 channel에 공통 conformance suite를 적용한다.** — `P2`
-  - **이유:** adapter별로 recipient, thread, attachment, retry semantics가 drift할 수 있다.
-  - **산출물:** capability declaration과 required/unsupported behavior suite.
-  - **검증:** unsupported 기능은 silent fallback하지 않고, 모든 outbound는 공통 approval/dedupe gate를 지난다.
-  - **선행:** 123.
+- [ ] **064. Separate Pack preview from delivery open.** — `P1`
+  - **Why:** If a timing evaluation or an on-screen preview is recorded as a real delivery receipt, the effectiveness data is polluted.
+  - **Deliverable:** A mutation-free preview and an explicit open authority.
+  - **Verification:** Repeated previews do not change store bytes, and only open creates exactly one delivery.
+  - **Prerequisites:** 063.
 
-- [ ] **125. MCP discovery·install·permission UX를 제품 수준으로 만든다.** — `P2`
-  - **이유:** 강한 MCP 기반이 있어도 사용자가 trust와 capability를 이해하지 못하면 실사용 가치가 낮다.
-  - **산출물:** server identity, tool diff, requested permissions, local/remote transport, health/revoke view.
-  - **검증:** server/tool 변경은 재승인을 요구하고 untrusted metadata가 policy 설명을 바꾸지 못한다.
-  - **선행:** 073, 078, 121.
+- [ ] **065. Record outcomes in chat as only four explicit values.** — `P1`
+  - **Why:** Silence, task completion, and conversation sentiment must not be interpreted as hidden feedback.
+  - **Deliverable:** A `used | adjusted | ignored | rejected` selection plus an optional owner note.
+  - **Verification:** A timeout, a task receipt, and an assistant guess do not create an outcome.
+  - **Prerequisites:** 064.
 
-- [ ] **126. skill lifecycle을 proposal-first로 통일한다.** — `P2`
-  - **이유:** Hermes처럼 빠른 self-edit를 그대로 복제하면 Muse의 accountable adaptation 강점을 잃는다.
-  - **산출물:** observe→draft→test→review→activate→rollback 상태 머신.
-  - **검증:** self-learning hold와 review 전에는 active skill bytes가 바뀌지 않는다.
-  - **선행:** 028, 120, 125.
+- [ ] **066. Make CLI/API/Web/Chat use one Attunement store and reducer.** — `P0`
+  - **Why:** If a second store appears for chat, evidence and policy diverge.
+  - **Deliverable:** A shared application service and surface adapter parity.
+  - **Verification:** The same exact operation sequence produces an identical digest and projection on every surface.
+  - **Prerequisites:** 061–065.
 
-- [ ] **127. correction에서 skill/memory proposal을 생성하되 자동 적용하지 않는다.** — `P2`
-  - **이유:** 반복 교정을 학습하는 가치는 크지만 대화 한 번으로 durable behavior를 바꾸면 위험하다.
-  - **산출물:** exact source, proposed diff, expected benefit, risk, expiry가 있는 proposal.
-  - **검증:** sensitive/private turn은 proposal을 만들지 않고 duplicate correction은 dedupe된다.
-  - **선행:** 054–058, 126.
+- [ ] **067. Recompute the current organic outcome and interaction coverage read-only.** — `P1`
+  - **Why:** Dated snapshots left in the documents, such as 0/10 or 6/10, cannot be used as-is in an execution plan.
+  - **Deliverable:** Eligible outcomes per life/work, exact receipts, distinct UTC/local dates, and exclusion reasons.
+  - **Verification:** The Attunement and task store bytes are identical before and after report generation.
+  - **Prerequisites:** 066.
 
-- [ ] **128. held-out evaluation을 통과한 proposal만 owner에게 제시한다.** — `P2`
-  - **이유:** training example에 맞춘 skill이 일반 작업을 망가뜨릴 수 있다.
-  - **산출물:** train/held-out 분리, behavioral rubric, regression budget, rollback checkpoint.
-  - **검증:** held-out 실패가 activate action을 disabled하고 기존 active behavior를 유지한다.
-  - **선행:** 127.
+- [ ] **068. Collect the missing life return moments through natural use.** — `P1`
+  - **Why:** A same-session grocery fixture does not prove broad everyday return value.
+  - **Deliverable:** Exact-linked Packs and explicit outcomes across different real topics and dates.
+  - **Verification:** Agent-operated, synthetic, and controlled replay are excluded from the organic denominator.
+  - **Prerequisites:** 067.
 
-- [ ] **129. session crash recovery와 resume pending을 일상 journey로 검증한다.** — `P1`
-  - **이유:** OpenClaw·Hermes의 실용성은 긴 작업이 중단돼도 복귀하는 운영 경험에서 나온다.
-  - **산출물:** checkpoint identity, pending effect reconciliation, exact resume preview.
-  - **검증:** crash-before/after-effect, corrupt checkpoint, version mismatch에서 중복 효과 없이 복구 또는 거부한다.
-  - **선행:** 096, 121.
+- [ ] **069. Collect exact life/work interaction receipts across multiple dates.** — `P1`
+  - **Why:** Outcomes alone cannot corroborate that the real next step actually progressed.
+  - **Deliverable:** A strict exact-receipt report with the minimum contracted volume per kind and date coverage.
+  - **Verification:** Receipts are not aggregated into usefulness, feedback, consent, or promotion.
+  - **Prerequisites:** 067–068.
 
-- [ ] **130. voice·mobile companion은 evidence-based go/no-go로 결정한다.** — `P3`
-  - **이유:** 매력적인 표면이지만 현재 사용자의 return moment를 실제로 줄이지 않으면 큰 우회다.
-  - **산출물:** concrete owner journeys, latency/privacy constraints, existing surface로 해결 가능한지 비교.
-  - **검증:** 최소 두 개의 반복되는 organic need가 없으면 구현하지 않는 결정이 기록된다.
-  - **선행:** 072, 121.
+- [ ] **070. Independently review negative outcomes by cause.** — `P1`
+  - **Why:** If ignored/rejected/adjusted are absent or disregarded, it becomes a positive-only vanity metric.
+  - **Deliverable:** A taxonomy of wrong source, too much detail, bad timing, weak next step, and unwanted help.
+  - **Verification:** Each classification is linked to an exact delivery and an owner-authored outcome, and model guesses are marked separately.
+  - **Prerequisites:** 068–069.
 
-- [ ] **131. subagent 확장은 single-agent 대비 결과 이득을 먼저 증명한다.** — `P2`
-  - **이유:** multi-agent는 token, conflict, permission surface를 크게 늘린다.
-  - **산출물:** bounded task family, single-agent baseline, supervisor trial, cost/quality/failure comparison.
-  - **검증:** held-out 결과와 pass^k가 명확히 개선되지 않으면 기본 경로로 승격하지 않는다.
-  - **선행:** 060, 084, 096.
+- [ ] **071. Apply only the bounded display-policy changes the evidence supports.** — `P1`
+  - **Why:** Outcomes must not be used as grounds to expand source, permission, recipient, or action scope.
+  - **Deliverable:** A versioned reducer change that alters only one of form, detail, suggestion threshold, or suppression.
+  - **Verification:** The outcome N→allowed policy delta→Pack N+1 golden test and reset/undo idempotency pass.
+  - **Prerequisites:** 070.
 
-- [ ] **132. 분기별 competitor delta review로 G10을 유지한다.** — `P3`
-  - **이유:** 한 번의 teardown을 영구 현재 상태처럼 사용하면 잘못된 parity 작업이 생긴다.
-  - **산출물:** 공식 release/doc 기준 OpenClaw·Hermes delta, Muse fit, adopt/reject/defer decision.
-  - **검증:** 경쟁 기능마다 user problem, safety fit, evidence gate가 없으면 backlog에 넣지 않는다.
-  - **선행:** 121–131.
+- [ ] **072. Independently audit the organic Continuity evidence and close G5.** — `P1`
+  - **Why:** Even when the numeric thresholds pass, natural timing and domain diversity may be lacking.
+  - **Deliverable:** An audit reviewing eligibility, exactness, dates, diversity, negatives, and the receipt/outcome separation.
+  - **Verification:** The evaluator samples the raw records and returns `PASS | FAIL`; even a PASS creates no automatic-delivery authority.
+  - **Prerequisites:** 061–071.
 
 ---
 
-## Phase 11 — repository 신뢰, 배포, 30일 가치 검증, 출시
+## Phase 6 — Privacy, permission, sandbox, and untrusted-input boundaries
 
-**진입 조건:** release label에 따라 다르다. Engineering alpha는 G0–G4와 G6–G8이 green이어야 한다.
-Evidence-backed personal-agent release는 추가로 G5, Task 121, 133–143이 green이어야 한다.
-G9 proactive timing과 G10 competitor expansion은 이 phase의 필수 선행조건이 아니다.
+**Entry condition:** G4 green. G5 organic evidence may run in parallel in the EVIDENCE/MONITOR lane,
+and a red state there does not block this phase's security and privacy repair.
 
-**Exit gate G11:** 설치·저장소·release artifact가 하나의 신뢰 가능한 경로를 가리키고, 30일 daily-use
-evidence와 release-readiness가 독립 PASS를 받는다. 공개 배포는 현재 증거보다 넓은 claim을 하지 않는다.
+**Exit gate G6:** The owner boundary for personal-data storage and tool execution is repairable, and
+an independent security judgement confirms there is no permission expansion or sensitive-information
+leak under injection, SSRF, shell, and store-corruption faults.
 
-- [ ] **133. package metadata를 canonical `muse-agent` repository로 교정한다.** — `P1`
-  - **이유:** 현재 package metadata가 예전 `wlsdks/Muse`를 가리켜 discovery와 issue provenance가 갈라진다.
-  - **산출물:** repository, homepage, bugs, source install 링크의 단일 canonical target.
-  - **검증:** package tarball과 README의 모든 canonical link가 같은 현재 repository를 가리킨다.
-  - **선행:** 121.
+- [ ] **073. Bring the permission matrix for all personal data and effects up to date.** — `P0`
+  - **Why:** As features grow, the read, local write, process, network, and external send boundaries can drift.
+  - **Deliverable:** An authority table per notes, tasks, memory, calendar, contacts, browser, shell, channels, and Attunement.
+  - **Verification:** Each public tool/command/API route maps to exactly one permission class.
+  - **Prerequisites:** 072.
 
-- [ ] **134. 예전 repository의 archive·redirect·history 정책을 정한다.** — `P1`
-  - **이유:** 서로 다른 README와 과장 claim이 남으면 사용자와 검색엔진이 잘못된 제품을 본다.
-  - **산출물:** canonical notice, migration link, issue handling, private/public history safety 결정.
-  - **검증:** old entrypoint에서 current install과 current claims까지 한 번에 이동할 수 있다.
-  - **선행:** 133 및 owner의 repository-state 결정.
+- [ ] **074. Close owner-only mode for sensitive stores with a non-recursive repair.** — `P0`
+  - **Why:** A loose umask or a migration can expose some `~/.muse` files to other local users.
+  - **Deliverable:** An exact-file inventory, a dry-run chmod plan, and an atomic repair receipt.
+  - **Verification:** Only the loose-mode fixture is narrowed to 0600/0700, and symlinks and out-of-scope files are rejected.
+  - **Prerequisites:** 073.
 
-- [ ] **135. README claim을 shipped·experimental·roadmap·not-proven으로 분리한다.** — `P1`
-  - **이유:** 구현 존재와 개인적 효과 증명을 같은 표현으로 쓰면 신뢰를 잃는다.
-  - **산출물:** “works today”, boundaries, current qualification, Attunement status, comparison claim 표.
-  - **검증:** 각 강한 claim이 fresh report 또는 code contract에 연결되고 absolute safety claim이 없다.
-  - **선행:** 121, 133–134.
+- [ ] **075. Make the supported sensitive-store encryption repair idempotent.** — `P0`
+  - **Why:** If it only shows a warning with no safe transition path, the privacy gate cannot be closed.
+  - **Deliverable:** Encrypted-at-rest status, key availability, preview, atomic migration, and rollback.
+  - **Verification:** There is no data loss in the plaintext→encrypted, already encrypted, wrong key, crash, and retry cases.
+  - **Prerequisites:** 074.
 
-- [ ] **136. install·upgrade·repair·backup·uninstall 문서를 golden path로 통합한다.** — `P1`
-  - **이유:** 운영 경로가 여러 문서에 흩어지면 실제 장애에서 위험한 명령을 추측하게 된다.
-  - **산출물:** platform별 commands, expected state, rollback, preserve-data 경계.
-  - **검증:** fresh reader가 문서만으로 격리된 owner-state journey를 완료하고 destructive ambiguity가 없다.
-  - **선행:** 021–024, 075–076, 098, 133.
+- [ ] **076. Prove that backup and restore preserve encryption and version.** — `P0`
+  - **Why:** Encryption that cannot be recovered from does not fit a personal agent's long-term continuity.
+  - **Deliverable:** A versioned manifest, encrypted backup, verify-only mode, and an explicit restore preview.
+  - **Verification:** The canonical digests match in an isolated empty restore target, and a newer/unknown version fails close.
+  - **Prerequisites:** 075.
 
-- [ ] **137. version·CHANGELOG·migration contract를 release artifact에 묶는다.** — `P1`
-  - **이유:** HEAD와 최신 tag가 다를 때 어떤 store/runtime 계약이 설치되는지 명확해야 한다.
-  - **산출물:** semver decision, Keep-a-Changelog entry, migration compatibility, minimum runtime.
-  - **검증:** built binary/package의 version, tag candidate, changelog, migration version이 일치한다.
-  - **선행:** 136.
+- [ ] **077. Automate secret and personal-remnant scanning of the current tree and release artifacts.** — `P0`
+  - **Why:** A personal agent's repository easily accumulates real addresses, contacts, tokens, and local paths.
+  - **Deliverable:** A secret scanner with a narrow allowlist plus owner/company remnant rules.
+  - **Verification:** It catches synthetic secrets and personal markers, and false positives on known-safe fixtures are reviewable.
+  - **Prerequisites:** 073.
 
-- [ ] **138. macOS signed artifact와 Gatekeeper path를 검증한다.** — `P1`
-  - **이유:** source checkout이 아닌 일상 제품은 설치 출처와 변조 여부를 증명해야 한다.
-  - **산출물:** signed app/CLI/installer, entitlements inventory, notarization 또는 명시적 pre-release
-    boundary와 현재 owner의 installed-candidate lifecycle receipt.
-  - **검증:** 현재 owner profile에서 signature, quarantine, first launch가 유효하고 격리된 candidate
-    install→start→heartbeat→status→stop→start에서 single writer, artifact·PID·generation·heartbeat
-    일치와 외부 전송 0을 확인한다.
-  - **선행:** 098, 137.
+- [ ] **078. Enforce an untrusted envelope on all tool output.** — `P0`
+  - **Why:** When browser, MCP, and shell results are merged into the prompt like system instructions, it becomes injection.
+  - **Deliverable:** A provenance, size/type bounds, truncation, and instruction-neutralization envelope.
+  - **Verification:** An "ignore your permissions" string inside tool output cannot change policy or tool availability.
+  - **Prerequisites:** 073.
 
-- [ ] **139. release provenance, SBOM, secret scan, dependency audit를 생성한다.** — `P0`
-  - **이유:** 개인 데이터와 shell/browser 권한을 가진 agent는 공급망 출처가 특히 중요하다.
-  - **산출물:** source commit, reproducible build inputs, checksums, SBOM, vulnerability/secret reports.
-  - **검증:** artifact checksum이 provenance와 일치하고 high/critical finding은 release를 막는다.
-  - **선행:** 077, 084, 137–138.
+- [ ] **079. Unify the SSRF and local-network policy across browser, HTTP, and MCP.** — `P0`
+  - **Why:** URL redirects and alternate notations can bypass loopback/metadata endpoint blocking.
+  - **Deliverable:** Canonical resolution, redirect recheck, DNS rebinding policy, and credential redaction.
+  - **Verification:** The IPv4/IPv6, decimal/octal, redirect, userinfo, and DNS-swap adversarial suite is blocked.
+  - **Prerequisites:** 078.
 
-- [ ] **140. telemetry와 crash reporting을 privacy-first opt-in으로 정한다.** — `P1`
-  - **이유:** 제품 개선을 위해 personal prompts와 source contents를 자동 수집하면 Muse의 가치 제안과 충돌한다.
-  - **산출물:** default-off 또는 명시적 opt-in, allowed fields, local inspect/export/delete, retention.
-  - **검증:** opt-out fixture에서 network event 0이고 opt-in payload에 content/secret marker가 없다.
-  - **선행:** 073–084, 138.
+- [ ] **080. Document and check the Rust runner's actual isolation limits per capability.** — `P0`
+  - **Why:** The name "sandbox" alone must not lead to overestimating network, filesystem, and process restrictions.
+  - **Deliverable:** A per-platform enforced/advisory/unavailable capability report.
+  - **Verification:** Each claimed restriction is verified with a real probe, and unsupported ones are marked unavailable rather than "safe".
+  - **Prerequisites:** 073, 079.
 
-- [ ] **141. 30일 owner dogfood를 고정된 운영 규칙으로 수행한다.** — `P1`
-  - **이유:** 며칠의 집중 테스트는 일상 복귀, 장기 memory, daemon drift를 증명하지 못한다.
-  - **산출물:** daily health, real return moments, failures, repairs, held actions, explicit outcomes의 bounded journal.
-  - **검증:** synthetic/agent-operated 행은 별도 표시되고 missing days와 disabled periods도 denominator에 남는다.
-  - **선행:** 024, 036, 060, 072, 084, 096, 108, 120.
+- [ ] **081. Close, or explicitly limit, the file-policy bypass boundary through the shell.** — `P0`
+  - **Why:** If only the file tool is protected while the shell can write the same paths, the guard lies.
+  - **Deliverable:** Safe-root enforcement, command approval, a container requirement, or an explicit unsupported contract.
+  - **Verification:** Scope escape via `>` redirection, heredoc, symlink, subprocess, and script interpreter does not succeed.
+  - **Prerequisites:** 080.
 
-- [ ] **142. 30일 evidence로 personal-value scorecard와 kill criteria를 판정한다.** — `P1`
-  - **이유:** 기능이 많아도 resume time, correction cost, unwanted interruption이 개선되지 않으면 가치가 없다.
-  - **산출물:** time-to-resume, exact-source success, corrected-fact retention, used/adjusted/ignored/rejected,
-    unwanted-send/interruption, repair burden의 evidence-class-aware report.
-  - **검증:** denominator, dates, missingness, negatives가 명시되고 technical metrics가 usefulness로 승격되지 않는다.
-  - **선행:** 141.
+- [ ] **082. Operate a cross-surface prompt-injection fault suite.** — `P0`
+  - **Why:** Even if the browser alone is safe, notes, calendar, MCP, and email-like content can become bypass paths.
+  - **Deliverable:** A direct/indirect injection corpus per source plus the expected terminal state.
+  - **Verification:** Each case records 0 secret disclosures, 0 permission expansions, and 0 unapproved tool effects.
+  - **Prerequisites:** 078–081.
 
-- [ ] **143. immutable release-readiness gate를 독립 실행한다.** — `P0`
-  - **이유:** green local tests만으로 stale artifact나 organic blocker를 덮고 release하면 안 된다.
-  - **산출물:** HEAD/time/input-hash-bound runtime, delivery, recall, security, resource, onboarding, organic,
-    packaging report와 138의 owner-scoped installed-candidate lifecycle receipt.
-  - **검증:** required 축 하나라도 failed/unverified/stale이거나 138의 lifecycle receipt가 current
-    signed candidate와 일치하지 않으면 aggregate는 FAILED이며 tag/release를 막는다.
-  - **선행:** 133–142.
+- [ ] **083. Verify the tamper, size, and privacy boundaries of the security audit log.** — `P1`
+  - **Why:** An unbounded raw log becomes a new personal-data store, and a modifiable log is not audit evidence.
+  - **Deliverable:** Bounded retention, an integrity chain or immutable receipts, redaction, and an export/forget policy.
+  - **Verification:** Corruption is detected under truncation, partial write, clock rollback, and log injection, and there are no secret markers.
+  - **Prerequisites:** 074–082.
 
-- [ ] **144. 첫 evidence-backed personal-agent release와 회고를 완료한다.** — `P1`
-  - **이유:** release는 코드 업로드가 아니라 설치 가능한 artifact와 정직한 claim의 운영 사건이다.
-  - **산출물:** approved version, immutable tag, published artifact, install verification, rollback plan,
+- [ ] **084. Close G6 with an independent adversarial security review.** — `P0`
+  - **Why:** If the security implementer only evaluates their own threat model, blind spots remain.
+  - **Deliverable:** Bundled findings and a judgement across permission, privacy, injection, SSRF, runner, and outbound.
+  - **Verification:** 0 high/critical blockers; medium findings are either explicitly accepted by the owner or remain as the next P0.
+  - **Prerequisites:** 073–083.
+
+---
+
+## Phase 7 — Resource governance, performance, provider neutrality
+
+**Entry condition:** G6 green.
+
+**Exit gate G7:** Foreground chat retains priority, background work operates within CPU, memory,
+thermal, queue, and retry budgets, and there is no crash-loop, starvation, or unbounded growth over a
+24-hour soak.
+
+- [ ] **085. Complete the hard admission state matrix.** — `P0`
+  - **Why:** If active user, idle, low headroom, and thermal pressure are distinguished only in prose, behavior differs per workload.
+  - **Deliverable:** A table of state inputs, unavailable semantics, allowed light/heavy work, and cancel/defer decisions.
+  - **Verification:** The workloads that may start are exactly fixed per injected state.
+  - **Prerequisites:** 084.
+
+- [ ] **086. Verify the per-platform sources of thermal, battery, and memory pressure.** — `P1`
+  - **Why:** If only macOS thermal exists and battery or other platforms are inferred, admission decisions are wrong.
+  - **Deliverable:** Supported/unavailable probes and timeouts per macOS/Windows/Linux.
+  - **Verification:** A probe failure and an unknown future value do not turn into permissive success.
+  - **Prerequisites:** 085.
+
+- [ ] **087. Apply the foreground/background model concurrency budget across every provider path.** — `P0`
+  - **Why:** If some auxiliary calls bypass the coordinator, foreground latency and local model stability break.
+  - **Deliverable:** Lease owner, priority queue, maximum waiters, timeout, and cancellation reason.
+  - **Verification:** Foreground runs ahead of queued background work, and bypassing provider calls are detected.
+  - **Prerequisites:** 085.
+
+- [ ] **088. Measure the actual KV-cache and model resident memory.** — `P1`
+  - **Why:** The token window alone cannot tell the local model's real memory pressure.
+  - **Deliverable:** Observed resident delta per provider/model, unavailable markers, and a safety margin.
+  - **Verification:** The measurement overhead is bounded, and estimates are not labeled as measured.
+  - **Prerequisites:** 086–087.
+
+- [ ] **089. Add batch, memory, and resume budgets to embedding and indexing.** — `P1`
+  - **Why:** The currently open embedding budget can destroy background responsiveness.
+  - **Deliverable:** Bounded batches, checkpoints, immutable generation publish, and an explicit full-reindex override.
+  - **Verification:** After a cancel/restart it resumes from the last complete checkpoint with no duplicate publish.
+  - **Prerequisites:** 085, 088.
+
+- [ ] **090. Integrate page, action, wallclock, and memory budgets into browser work.** — `P1`
+  - **Why:** A browser session separate from the model loop budget can expand into unbounded pages, popups, and downloads.
+  - **Deliverable:** A per-run browser budget and a terminal `budget_exhausted` state.
+  - **Verification:** A popup storm, redirect loop, huge page, and stalled navigation terminate at an explicit limit.
+  - **Prerequisites:** 040, 085.
+
+- [ ] **091. Track cancellation settlement all the way to uncooperative providers.** — `P0`
+  - **Why:** If the physical request keeps running after the user cancels and the lease is released, actual concurrency is exceeded.
+  - **Deliverable:** Contracts for logical cancel, physical settlement, retained lease, and late-result discard.
+  - **Verification:** After a cancel, a second request does not physically overlap, and a late result is not reflected in the store.
+  - **Prerequisites:** 087.
+
+- [ ] **092. Measure both foreground starvation and background starvation.** — `P1`
+  - **Why:** Strengthening foreground priority alone can mean consolidation and sync never run.
+  - **Deliverable:** A bounded fairness cursor, maximum defer age, and an owner-visible held reason.
+  - **Verification:** Even under a sustained foreground fixture, either the minimum background progress the policy allows or an explicit held state appears.
+  - **Prerequisites:** 087, 091.
+
+- [ ] **093. Normalize a provider-neutral usage and cost ledger.** — `P1`
+  - **Why:** Token and cache semantics differ per provider, which can distort cost comparison.
+  - **Deliverable:** The input/output/cache/tool/estimated/unknown fields plus pricing-source freshness.
+  - **Verification:** An unknown price is not aggregated as zero, and local providers distinguish cost from resource metrics.
+  - **Prerequisites:** 087.
+
+- [ ] **094. Measure local-model cold/warm performance repeatedly.** — `P1`
+  - **Why:** A single warm run cannot support a claim about prompt cache and daily responsiveness.
+  - **Deliverable:** Multiple-attempt median/p95, time-to-first-token, total latency, and cache-hit evidence.
+  - **Verification:** The cold/warm classification is bound to the actual cache state and the quality/grounding gates are identical.
+  - **Prerequisites:** 088, 093.
+
+- [ ] **095. Run a constrained-resource recovery fault campaign.** — `P0`
+  - **Why:** After deferring under low memory or thermal pressure, recovery can stall forever or surge all at once.
+  - **Deliverable:** A pressure→defer→recover→re-admit trace and queue bounds.
+  - **Verification:** 0 heavy starts during pressure, foreground stays responsive, and bounded progress happens within cadence after recovery.
+  - **Prerequisites:** 085–094.
+
+- [ ] **096. Close the resident 24-hour soak and resource G7.** — `P0`
+  - **Why:** Queue leaks, heartbeat drift, memory growth, and retry storms are hard to see in short tests.
+  - **Deliverable:** A 24h CPU/RSS/queue/heartbeat/workload summary plus the exact failures.
+  - **Verification:** 0 crash-loops, 0 unbounded growth, 0 budget breaches, foreground SLO retained, evaluator PASS.
+  - **Prerequisites:** 085–095.
+
+---
+
+## Phase 8 — UX that reaches first value within 10 minutes of installation
+
+**Entry condition:** G7 green.
+
+**Exit gate G8:** From an isolated empty Muse state, the real owner understands the provider and the
+local/cloud boundary, completes the first source-backed answer and the first user-invoked Continuity
+Pack within 10 minutes, and can repair failures themselves.
+
+- [ ] **097. Define Muse's golden owner journey and its success time.** — `P1`
+  - **Why:** Even after chaining per-feature wizards, onboarding never ends if the user does not know which value arrives when.
+  - **Deliverable:** The install→privacy choice→provider→local source→first answer→first Pack journey.
+  - **Verification:** Each step's terminal state, maximum time, failure recovery, and forbidden hidden actions are measurable.
+  - **Prerequisites:** 096.
+
+- [ ] **098. Consolidate the owner-scoped macOS installer path into one.** — `P1`
+  - **Why:** A source checkout plus multiple setup commands is too high a barrier to entry for a personal product.
+  - **Deliverable:** A signed, or clearly labeled development-stage, package, a stable CLI/app path, and a version receipt.
+  - **Verification:** Installation completes from the current owner's isolated empty Muse state without Node/pnpm knowledge,
+    and no temporary checkout path remains.
+  - **Prerequisites:** 021–024, 097.
+
+- [ ] **099. Make local-only versus cloud egress an explicit choice on first run.** — `P0`
+  - **Why:** The act of choosing a provider does not automatically explain which data leaves the device.
+  - **Deliverable:** A data-flow preview, local-only as the default, a per-provider egress summary, and a change path.
+  - **Verification:** 0 cloud requests before the choice, and the chosen result agrees between the persisted policy and the live runtime.
+  - **Prerequisites:** 025, 073, 098.
+
+- [ ] **100. Connect provider setup to a credential-safe diagnostic.** — `P1`
+  - **Why:** Showing an auth failure as a generic model error makes the user repeat dangerous reconfiguration.
+  - **Deliverable:** Provider discovery, secret input, redacted verify, and a model capability summary.
+  - **Verification:** There are no credential markers in logs/trace/UI, and invalid auth yields an actionable reason.
+  - **Prerequisites:** 077, 093, 099.
+
+- [ ] **101. Make the first chat's zero-data state useful.** — `P1`
+  - **Why:** If the first screen with no personal data shows an empty dashboard or excessive settings, no value is conveyed.
+  - **Deliverable:** A guided path that creates a local demo source or the user's chosen first note/task.
+  - **Verification:** Fixture data and user data are clearly distinguished, and demo data is not aggregated as memory/organic evidence.
+  - **Prerequisites:** 100.
+
+- [ ] **102. Measure the path to the first source-backed answer.** — `P1`
+  - **Why:** Muse's core differentiation is exact personal grounding, not generic chat.
+  - **Deliverable:** Source selection, cited answer, source inspection, and a correction action.
+  - **Verification:** It completes within the 10-minute budget, and unsupported claims are omitted when there is no source.
+  - **Prerequisites:** 101.
+
+- [ ] **103. Connect the first user-invoked Continuity Pack to onboarding.** — `P1`
+  - **Why:** The user must not have to read a separate CLI document to discover Attunement's value.
+  - **Deliverable:** A thin journey of life/work thread selection, exact link, Pack open, and outcome explanation.
+  - **Verification:** Automatic threads/links/outcomes are 0, and preview and delivery are separated.
+  - **Prerequisites:** 061–066, 102.
+
+- [ ] **104. Reorganize the default status around "the next safe action".** — `P1`
+  - **Why:** Token, turn, and activity numbers are diagnostics, not personal value.
+  - **Deliverable:** Held actions, pending review, runtime health, evidence gap, and exact repair action cards.
+  - **Verification:** Cards without an action are removed, and 0/unverified is not displayed like success.
+  - **Prerequisites:** 035, 055, 067, 103.
+
+- [ ] **105. Provide a preview-first repair wizard for the main red states.** — `P1`
+  - **Why:** If doctor only describes the problem with no safe path to fix it, daily use is impossible.
+  - **Deliverable:** An exact plan per resident, permission mode, encryption, provider auth, and held backlog.
+  - **Verification:** The preview changes nothing, a stale target rejects apply, and a destructive step requires separate confirmation.
+  - **Prerequisites:** 020, 031, 074–076, 100, 104.
+
+- [ ] **106. Verify keyboard, screen-reader, contrast, and reduced-motion accessibility.** — `P1`
+  - **Why:** A personal tool is used repeatedly, so a small accessibility defect becomes cumulative friction.
+  - **Deliverable:** Semantic labels, focus order, status announcements, and motion fallback for the core journeys.
+  - **Verification:** Automated a11y and a keyboard-only real-browser journey pass together.
+  - **Prerequisites:** 103–105.
+
+- [ ] **107. Tidy the Korean and English core contracts and error wording.** — `P2`
+  - **Why:** If words like permission, held, unverified, and draft mean different things per translation, safety weakens.
+  - **Deliverable:** Canonical terms, locale fallback, and a no-dead-string check.
+  - **Verification:** Both locales display the same action/permission semantics and terminal states.
+  - **Prerequisites:** 104–106.
+
+- [ ] **108. Close G8 by verifying owner onboarding with an independent pass^3 from an isolated empty state.** — `P1`
+  - **Why:** A single success that relies on a developer's memory is not installation-experience evidence.
+  - **Deliverable:** Completion time, blockers, recovery actions, and final state from three mutually isolated owner-state runs.
+  - **Verification:** All three reach the first cited answer and a Pack within 10 minutes, with 0 unapproved egress/sends and evaluator PASS.
+  - **Prerequisites:** 097–107.
+
+---
+
+## Phase 9 — Open Observe, rhythm, timing, and adaptation starting from shadow
+
+**Entry condition:** G8 green and the G5 organic audit still green.
+
+**Exit gate G9:** Observe operates only within explicit consent, pause, and forget boundaries, and
+timing passes both shadow and an owner-reviewed local/log-only cohort. No PASS automatically grants
+ongoing autonomous authority.
+
+- [ ] **109. Make Observe consent an explicit grant per category and duration.** — `P0`
+  - **Why:** If one "allow observation" covers every app, data type, and period, personal trust collapses.
+  - **Deliverable:** A versioned grant carrying category, source, retention, purpose, and expiry.
+  - **Verification:** Category events without a grant are neither collected nor persisted, and scope expansion requires a new approval.
+  - **Prerequisites:** 108.
+
+- [ ] **110. Close Observe inspect, pause, resume, and forget as owner actions.** — `P0`
+  - **Why:** The user must be able to see what is being recorded and stop or delete it immediately.
+  - **Deliverable:** Live state, a bounded ledger view, pause reason, and an exact forget preview and receipt.
+  - **Verification:** 0 new events after pause, forget erases only the target, and resume does not widen the previous scope.
+  - **Prerequisites:** 109.
+
+- [ ] **111. Prove data minimization for the O1 category-only collector.** — `P0`
+  - **Why:** Early timing research does not need window titles, content, or verbatim keystrokes.
+  - **Deliverable:** An allowed category/timestamp schema and a forbidden-payload scanner.
+  - **Verification:** Synthetic secret/title/content markers do not remain in the raw store, trace, or report.
+  - **Prerequisites:** 109–110.
+
+- [ ] **112. Complete Observe export, retention, and corruption recovery.** — `P1`
+  - **Why:** Long-term rhythm data is a new sensitive store, so its lifetime and recovery must be clear.
+  - **Deliverable:** Bounded retention, owner export, partial-write quarantine, and version migration.
+  - **Verification:** Expired data is removed per policy, and a corrupt record does not make the whole ledger unopenable.
+  - **Prerequisites:** 111.
+
+- [ ] **113. Start rhythm features as offline read-only analysis only.** — `P2`
+  - **Why:** Coupling to live policy before there is enough data lets a false pattern spread into behavior.
+  - **Deliverable:** Local analysis with stable focus/category transitions, time windows, and uncertainty.
+  - **Verification:** Running the analysis does not change the delivery, task, outcome, or permission stores.
+  - **Prerequisites:** 112.
+
+- [ ] **114. Turn a friction hypothesis into a proposal with evidence and falsification conditions.** — `P2`
+  - **Why:** Reading repeated switching directly as "the user is stuck" is a wrong psychological inference.
+  - **Deliverable:** Observed facts, a bounded hypothesis, alternative explanations, a falsifier, and no-action as the default.
+  - **Verification:** When several explanations fit the same observation, it is not stored as a confident fact.
+  - **Prerequisites:** 113.
+
+- [ ] **115. Replay the timing reducer shadow-only.** — `P2`
+  - **Why:** Before any real notification, it must be reviewed when `silent | digest | offer` would have been chosen.
+  - **Deliverable:** A mutation-free shadow ledger of input snapshot, policy version, decision, and cooldown reason.
+  - **Verification:** A shadow run creates no delivery open and no channel send at all.
+  - **Prerequisites:** 113–114.
+
+- [ ] **116. Score timing false positives and false negatives via owner review.** — `P2`
+  - **Why:** Offer counts or click counts alone cannot evaluate whether the timing was appropriate.
+  - **Deliverable:** A should-offer, should-stay-silent, too-early, too-late, and wrong-thread review set.
+  - **Verification:** Owner labels and shadow decisions are linked to exact timestamps and policy inputs.
+  - **Prerequisites:** 115.
+
+- [ ] **117. Tune the cooldown, suppression, and focus-boundary policy conservatively.** — `P2`
+  - **Why:** In early proactivity, the trust cost of repeated interruption is higher than that of missed help.
+  - **Deliverable:** Deterministic cooldown, rejection suppression, a stable-focus minimum, and a daily cap.
+  - **Verification:** A repeated event storm and a rejected thread do not produce repeated offers.
+  - **Prerequisites:** 116.
+
+- [ ] **118. Build an exact preview for a single low-risk local/log-only cohort.** — `P2`
+  - **Why:** Before broad channel delivery, the owner must review payload, timing, target, and brake all at once.
+  - **Deliverable:** Cohort membership, the proposed Pack, the schedule window, resource state, and abort criteria.
+  - **Verification:** Generating the preview means 0 deliveries, and it is rejected if an out-of-cohort item or an unavailable source is included.
+  - **Prerequisites:** 117.
+
+- [ ] **119. Run an owner-confirmed controlled timing cohort.** — `P2`
+  - **Why:** Shadow accuracy and the real cost of interruption are different things.
+  - **Deliverable:** The exact delivery, explicit outcome, timing review, and resource/safety receipt for each proposal.
+  - **Verification:** 0 unapproved sends, 0 budget breaches, 0 reminder-quarantine violations, and every proposal has a review state.
+  - **Prerequisites:** 118 and the owner's cohort approval.
+
+- [ ] **120. Judge ongoing automation authority separately at the G9 promotion review.** — `P0`
+  - **Why:** One cohort PASS must not automatically create ongoing autonomy.
+  - **Deliverable:** An owner decision of continue shadow, repeat cohort, narrow grant, or reject, plus an expiry.
+  - **Verification:** Absent a decision or with stale evidence, the runtime stays in the user-invoked/held state.
+  - **Prerequisites:** 109–119.
+
+---
+
+## Phase 10 — Expand competitiveness in a different way from OpenClaw and Hermes
+
+**Entry condition:** G9 at least a shadow PASS, with G1–G8 still green.
+
+**Exit gate G10:** Only expansions that strengthen exact personal grounding and accountable
+adaptation are selected — not "catching up on feature count" — and additional
+channels/skills/subagents do not degrade the existing safety and daily-value gates.
+
+- [ ] **121. Fix Muse's positioning contract as one sentence and three proofs.** — `P1`
+  - **Why:** Chasing OpenClaw on channel count and Hermes on self-improvement speed blurs Muse's strengths.
+  - **Deliverable:** A product contract of exact-source continuity, explicit outcome learning, and no-silent-permission-expansion.
+  - **Verification:** The claims in the README, onboarding, status, and release notes are not broader than the current evidence.
+  - **Prerequisites:** 120.
+
+- [ ] **122. Define channel-expansion criteria by usage frequency, effectiveness, and security cost.** — `P2`
+  - **Why:** "20+ channels" parity creates unnecessary maintenance and attack surface for a single-user product.
+  - **Deliverable:** A scorecard of owner usage, notification fit, draft/approval support, and maintenance cost.
+  - **Verification:** A low-scoring channel remains a rejected/deferred decision rather than an implementation backlog item.
+  - **Prerequisites:** 121.
+
+- [ ] **123. Complete the single highest-value channel as a golden adapter.** — `P2`
+  - **Why:** One reliable inbound/outbound/dedupe/approval path matters more than several shallow adapters.
+  - **Deliverable:** The setup, health, inbound identity, draft, approve, delivery receipt, retry, and revoke journey.
+  - **Verification:** A duplicate webhook, reconnect, token revoke, and ambiguous send each produce an exact terminal state.
+  - **Prerequisites:** 033–035, 122.
+
+- [ ] **124. Apply a shared conformance suite to every channel.** — `P2`
+  - **Why:** Recipient, thread, attachment, and retry semantics can drift per adapter.
+  - **Deliverable:** A capability declaration plus a required/unsupported behavior suite.
+  - **Verification:** Unsupported features do not silently fall back, and every outbound passes the shared approval/dedupe gate.
+  - **Prerequisites:** 123.
+
+- [ ] **125. Bring MCP discovery, install, and permission UX to product level.** — `P2`
+  - **Why:** Even with a strong MCP foundation, real-use value is low if the user cannot understand trust and capability.
+  - **Deliverable:** Server identity, tool diff, requested permissions, local/remote transport, and a health/revoke view.
+  - **Verification:** A server/tool change requires re-approval, and untrusted metadata cannot change the policy description.
+  - **Prerequisites:** 073, 078, 121.
+
+- [ ] **126. Unify the skill lifecycle as proposal-first.** — `P2`
+  - **Why:** Copying Hermes-style rapid self-edit as-is loses Muse's accountable-adaptation strength.
+  - **Deliverable:** An observe→draft→test→review→activate→rollback state machine.
+  - **Verification:** Active skill bytes do not change before the self-learning hold and review.
+  - **Prerequisites:** 028, 120, 125.
+
+- [ ] **127. Generate skill/memory proposals from corrections but do not apply them automatically.** — `P2`
+  - **Why:** Learning from repeated corrections is highly valuable, but changing durable behavior from one conversation is dangerous.
+  - **Deliverable:** A proposal carrying exact source, proposed diff, expected benefit, risk, and expiry.
+  - **Verification:** Sensitive/private turns create no proposal, and duplicate corrections are deduped.
+  - **Prerequisites:** 054–058, 126.
+
+- [ ] **128. Present only proposals that passed held-out evaluation to the owner.** — `P2`
+  - **Why:** A skill fitted to the training examples can break ordinary tasks.
+  - **Deliverable:** A train/held-out split, a behavioral rubric, a regression budget, and a rollback checkpoint.
+  - **Verification:** A held-out failure disables the activate action and retains the existing active behavior.
+  - **Prerequisites:** 127.
+
+- [ ] **129. Verify session crash recovery and resume-pending as an everyday journey.** — `P1`
+  - **Why:** OpenClaw's and Hermes's practicality comes from the operational experience of returning after a long task is interrupted.
+  - **Deliverable:** Checkpoint identity, pending-effect reconciliation, and an exact resume preview.
+  - **Verification:** Crash-before/after-effect, a corrupt checkpoint, and a version mismatch each recover without duplicate effects, or are rejected.
+  - **Prerequisites:** 096, 121.
+
+- [ ] **130. Decide the voice and mobile companion by an evidence-based go/no-go.** — `P3`
+  - **Why:** They are attractive surfaces, but a large detour unless they actually reduce the current user's return moments.
+  - **Deliverable:** Concrete owner journeys, latency/privacy constraints, and a comparison of whether the existing surfaces can solve it.
+  - **Verification:** Absent at least two recurring organic needs, the decision not to implement is recorded.
+  - **Prerequisites:** 072, 121.
+
+- [ ] **131. Prove an outcome gain over single-agent before expanding subagents.** — `P2`
+  - **Why:** Multi-agent greatly increases token use, conflict, and permission surface.
+  - **Deliverable:** A bounded task family, a single-agent baseline, a supervisor trial, and a cost/quality/failure comparison.
+  - **Verification:** If the held-out results and pass^k do not clearly improve, it is not promoted to the default path.
+  - **Prerequisites:** 060, 084, 096.
+
+- [ ] **132. Maintain G10 with a quarterly competitor delta review.** — `P3`
+  - **Why:** Using a single teardown as if it were the permanent current state produces wrong parity work.
+  - **Deliverable:** The OpenClaw and Hermes delta based on official releases/docs, Muse fit, and an adopt/reject/defer decision.
+  - **Verification:** A competitor feature is not put on the backlog unless it has a user problem, safety fit, and an evidence gate.
+  - **Prerequisites:** 121–131.
+
+---
+
+## Phase 11 — Repository trust, distribution, 30-day value verification, release
+
+**Entry condition:** Depends on the release label. Engineering alpha requires G0–G4 and G6–G8 green.
+An evidence-backed personal-agent release additionally requires G5, Task 121, and 133–143 green.
+G9 proactive timing and G10 competitor expansion are not required prerequisites for this phase.
+
+**Exit gate G11:** Installation, the repository, and the release artifact all point at one trustworthy
+path, and the 30-day daily-use evidence and release-readiness receive an independent PASS. Public
+distribution makes no claim broader than the current evidence.
+
+- [ ] **133. Correct the package metadata to the canonical `muse-agent` repository.** — `P1`
+  - **Why:** The current package metadata points at the former `wlsdks/Muse`, so discovery and issue provenance diverge.
+  - **Deliverable:** A single canonical target for the repository, homepage, bugs, and source-install links.
+  - **Verification:** Every canonical link in the package tarball and the README points at the same current repository.
+  - **Prerequisites:** 121.
+
+- [ ] **134. Decide the archive, redirect, and history policy for the former repository.** — `P1`
+  - **Why:** If a divergent README and overstated claims remain, users and search engines see the wrong product.
+  - **Deliverable:** A canonical notice, migration link, issue handling, and a private/public history safety decision.
+  - **Verification:** From the old entrypoint one can reach the current install and current claims in one step.
+  - **Prerequisites:** 133 and the owner's repository-state decision.
+
+- [ ] **135. Split README claims into shipped, experimental, roadmap, and not-proven.** — `P1`
+  - **Why:** Using the same wording for "an implementation exists" and "personal effectiveness is proven" loses trust.
+  - **Deliverable:** A table of "works today", boundaries, current qualification, Attunement status, and comparison claims.
+  - **Verification:** Each strong claim is linked to a fresh report or a code contract, and there are no absolute safety claims.
+  - **Prerequisites:** 121, 133–134.
+
+- [ ] **136. Consolidate the install, upgrade, repair, backup, and uninstall documentation into a golden path.** — `P1`
+  - **Why:** If operational paths are scattered across several documents, dangerous commands get guessed during a real incident.
+  - **Deliverable:** Per-platform commands, expected state, rollback, and the preserve-data boundary.
+  - **Verification:** A fresh reader completes the isolated owner-state journey from the documentation alone, with no destructive ambiguity.
+  - **Prerequisites:** 021–024, 075–076, 098, 133.
+
+- [ ] **137. Bind the version, CHANGELOG, and migration contract to the release artifact.** — `P1`
+  - **Why:** When HEAD and the latest tag differ, which store/runtime contract gets installed must be clear.
+  - **Deliverable:** The semver decision, a Keep-a-Changelog entry, migration compatibility, and the minimum runtime.
+  - **Verification:** The built binary/package version, tag candidate, changelog, and migration version all agree.
+  - **Prerequisites:** 136.
+
+- [ ] **138. Verify the macOS signed artifact and the Gatekeeper path.** — `P1`
+  - **Why:** An everyday product that is not a source checkout must prove its install origin and whether it was tampered with.
+  - **Deliverable:** A signed app/CLI/installer, an entitlements inventory, notarization or an explicit pre-release
+    boundary, and the current owner's installed-candidate lifecycle receipt.
+  - **Verification:** On the current owner profile the signature, quarantine, and first launch are valid, and an isolated
+    candidate install→start→heartbeat→status→stop→start confirms a single writer, agreement of
+    artifact, PID, generation, and heartbeat, and 0 external sends.
+  - **Prerequisites:** 098, 137.
+
+- [ ] **139. Produce release provenance, SBOM, secret scan, and dependency audit.** — `P0`
+  - **Why:** For an agent holding personal data and shell/browser authority, supply-chain provenance matters especially.
+  - **Deliverable:** Source commit, reproducible build inputs, checksums, SBOM, and vulnerability/secret reports.
+  - **Verification:** The artifact checksum matches the provenance, and a high/critical finding blocks the release.
+  - **Prerequisites:** 077, 084, 137–138.
+
+- [ ] **140. Set telemetry and crash reporting as privacy-first opt-in.** — `P1`
+  - **Why:** Automatically collecting personal prompts and source contents for product improvement conflicts with Muse's value proposition.
+  - **Deliverable:** Default-off or explicit opt-in, allowed fields, local inspect/export/delete, and retention.
+  - **Verification:** 0 network events in the opt-out fixture, and no content/secret markers in the opt-in payload.
+  - **Prerequisites:** 073–084, 138.
+
+- [ ] **141. Carry out a 30-day owner dogfood under fixed operating rules.** — `P1`
+  - **Why:** A few days of focused testing cannot prove everyday return, long-term memory, and daemon drift.
+  - **Deliverable:** A bounded journal of daily health, real return moments, failures, repairs, held actions, and explicit outcomes.
+  - **Verification:** Synthetic/agent-operated rows are marked separately, and missing days and disabled periods remain in the denominator.
+  - **Prerequisites:** 024, 036, 060, 072, 084, 096, 108, 120.
+
+- [ ] **142. Judge the personal-value scorecard and kill criteria from the 30-day evidence.** — `P1`
+  - **Why:** However many features exist, there is no value if resume time, correction cost, and unwanted interruption do not improve.
+  - **Deliverable:** An evidence-class-aware report on time-to-resume, exact-source success, corrected-fact retention,
+    used/adjusted/ignored/rejected, unwanted-send/interruption, and repair burden.
+  - **Verification:** Denominator, dates, missingness, and negatives are stated, and technical metrics are not promoted into usefulness.
+  - **Prerequisites:** 141.
+
+- [ ] **143. Run the immutable release-readiness gate independently.** — `P0`
+  - **Why:** Green local tests alone must not paper over a stale artifact or an organic blocker and release anyway.
+  - **Deliverable:** HEAD/time/input-hash-bound runtime, delivery, recall, security, resource, onboarding, organic, and
+    packaging reports, plus the owner-scoped installed-candidate lifecycle receipt from 138.
+  - **Verification:** If even one required axis is failed/unverified/stale, or the 138 lifecycle receipt does not match the current
+    signed candidate, the aggregate is FAILED and blocks the tag/release.
+  - **Prerequisites:** 133–142.
+
+- [ ] **144. Complete the first evidence-backed personal-agent release and its retrospective.** — `P1`
+  - **Why:** A release is not a code upload; it is an operational event of an installable artifact and honest claims.
+  - **Deliverable:** The approved version, an immutable tag, the published artifact, install verification, a rollback plan, and a
     post-release incident/value review.
-  - **검증:** tag가 정확한 approved commit을 가리키고 격리된 owner-state install·upgrade·rollback이 통과하며,
-    organic value는 142가 증명한 범위로만 서술된다.
-  - **선행:** 143 PASS와 owner의 release 범위 결정.
+  - **Verification:** The tag points at the exact approved commit, an isolated owner-state install, upgrade, and rollback pass, and
+    organic value is described only within the scope 142 proved.
+  - **Prerequisites:** 143 PASS and the owner's release-scope decision.
 
 ---
 
-## Phase 12 — post-release reliability와 incident recovery
+## Phase 12 — Post-release reliability and incident recovery
 
-**진입 조건:** G11 green으로 첫 evidence-backed release가 설치 가능하다.
+**Entry condition:** G11 green, so the first evidence-backed release is installable.
 
-**Exit gate G12:** 실제 설치된 release의 health·update·rollback·incident path가 검증되고, 장애가
-개인 데이터 손상이나 중복 외부 효과로 확대되지 않는다.
+**Exit gate G12:** The health, update, rollback, and incident paths of the actually installed release
+are verified, and an incident does not escalate into personal-data corruption or duplicate external
+effects.
 
-- [ ] **145. 설치된 release의 runtime health receipt를 version에 묶는다.** — `P0`
-  - **이유:** source checkout green과 사용자가 실행하는 signed artifact의 상태는 다를 수 있다.
-  - **산출물:** installed version, artifact checksum, resident identity, config generation, heartbeat가 있는 receipt.
-  - **검증:** upgrade 전후 receipt가 정확히 바뀌고 다른 artifact의 health를 현재 release로 인정하지 않는다.
-  - **선행:** 144.
+- [ ] **145. Bind the installed release's runtime health receipt to its version.** — `P0`
+  - **Why:** A green source checkout and the state of the signed artifact the user runs can differ.
+  - **Deliverable:** A receipt carrying installed version, artifact checksum, resident identity, config generation, and heartbeat.
+  - **Verification:** The receipt changes exactly across an upgrade, and another artifact's health is not accepted as the current release's.
+  - **Prerequisites:** 144.
 
-- [ ] **146. crash-free session과 resident uptime을 privacy-safe하게 집계한다.** — `P1`
-  - **이유:** 개별 crash report만으로 일상 안정성이 개선되는지 판단하기 어렵다.
-  - **산출물:** local bounded counters, version window, denominator, opted-in export path.
-  - **검증:** prompt/source content 없이 crash-free rate와 unknown/missing interval을 구분한다.
-  - **선행:** 140, 145.
+- [ ] **146. Aggregate crash-free sessions and resident uptime privacy-safely.** — `P1`
+  - **Why:** Individual crash reports alone make it hard to judge whether everyday stability is improving.
+  - **Deliverable:** Local bounded counters, a version window, a denominator, and an opted-in export path.
+  - **Verification:** It distinguishes the crash-free rate from unknown/missing intervals without prompt/source content.
+  - **Prerequisites:** 140, 145.
 
-- [ ] **147. incident severity와 owner-facing response contract를 만든다.** — `P0`
-  - **이유:** daemon 중단과 데이터 손상·잘못된 전송을 같은 방식으로 처리하면 위험하다.
-  - **산출물:** SEV taxonomy, containment first action, evidence preservation, recovery owner, escalation threshold.
-  - **검증:** 대표 incident가 하나의 severity와 실행 가능한 runbook에 매핑된다.
-  - **선행:** 145–146.
+- [ ] **147. Build an incident severity and owner-facing response contract.** — `P0`
+  - **Why:** Handling a daemon outage the same way as data corruption or a wrong send is dangerous.
+  - **Deliverable:** A SEV taxonomy, containment first action, evidence preservation, recovery owner, and escalation threshold.
+  - **Verification:** Representative incidents map to one severity and an executable runbook.
+  - **Prerequisites:** 145–146.
 
-- [ ] **148. release rollback을 data-compatible하고 effect-safe하게 만든다.** — `P0`
-  - **이유:** binary만 되돌려도 새 schema나 pending delivery가 구버전과 충돌할 수 있다.
-  - **산출물:** compatibility preflight, pending-effect brake, previous artifact restore, post-rollback health check.
-  - **검증:** rollback 중 crash와 incompatible store fixture가 데이터 변경 전에 fail-close한다.
-  - **선행:** 137–139, 147.
+- [ ] **148. Make release rollback data-compatible and effect-safe.** — `P0`
+  - **Why:** Reverting only the binary can leave a new schema or a pending delivery in conflict with the old version.
+  - **Deliverable:** A compatibility preflight, pending-effect brake, previous-artifact restore, and a post-rollback health check.
+  - **Verification:** A crash during rollback and an incompatible-store fixture fail close before any data change.
+  - **Prerequisites:** 137–139, 147.
 
-- [ ] **149. migration 실패를 forward-fix 또는 restore로 결정하는 정책을 만든다.** — `P0`
-  - **이유:** 자동 재시도와 downgrade가 손상 범위를 키울 수 있다.
-  - **산출물:** migration journal, last-safe checkpoint, reversible/irreversible classification, owner preview.
-  - **검증:** partial migration, checksum mismatch, disk-full, old binary 실행이 결정적 terminal state를 만든다.
-  - **선행:** 076, 137, 148.
+- [ ] **149. Build a policy that decides between forward-fix and restore on migration failure.** — `P0`
+  - **Why:** Automatic retries and downgrades can widen the scope of corruption.
+  - **Deliverable:** A migration journal, last-safe checkpoint, reversible/irreversible classification, and an owner preview.
+  - **Verification:** A partial migration, checksum mismatch, disk-full, and running an old binary each produce a deterministic terminal state.
+  - **Prerequisites:** 076, 137, 148.
 
-- [ ] **150. privacy-safe support bundle을 생성한다.** — `P1`
-  - **이유:** 장애 분석을 위해 전체 `~/.muse`를 공유하게 만들면 안 된다.
-  - **산출물:** allowlisted diagnostics, redaction manifest, exact preview, local archive, expiry.
-  - **검증:** seeded secret·prompt·contact·calendar content가 bundle에 없고 누락 필드는 명시된다.
-  - **선행:** 077, 083, 147.
+- [ ] **150. Produce a privacy-safe support bundle.** — `P1`
+  - **Why:** Incident analysis must not require sharing the whole of `~/.muse`.
+  - **Deliverable:** Allowlisted diagnostics, a redaction manifest, an exact preview, a local archive, and an expiry.
+  - **Verification:** Seeded secret, prompt, contact, and calendar content is absent from the bundle, and omitted fields are stated.
+  - **Prerequisites:** 077, 083, 147.
 
-- [ ] **151. stable·candidate update channel과 downgrade 경계를 분리한다.** — `P1`
-  - **이유:** 실험 release가 일상 resident에 자동 설치되면 organic evidence와 데이터가 오염된다.
-  - **산출물:** explicit channel selection, signed manifest, minimum/maximum compatible store version.
-  - **검증:** candidate opt-in 없이 stable 사용자가 prerelease를 받지 않는다.
-  - **선행:** 137–149.
+- [ ] **151. Separate the stable and candidate update channels and the downgrade boundary.** — `P1`
+  - **Why:** If an experimental release auto-installs onto the everyday resident, organic evidence and data are polluted.
+  - **Deliverable:** Explicit channel selection, a signed manifest, and the minimum/maximum compatible store version.
+  - **Verification:** Without a candidate opt-in, a stable user does not receive a prerelease.
+  - **Prerequisites:** 137–149.
 
-- [ ] **152. release cohort와 rollout pause를 owner-controlled하게 만든다.** — `P1`
-  - **이유:** 단일 사용자라도 desktop, CLI, daemon artifact가 동시에 바뀌면 원인 분리가 어렵다.
-  - **산출물:** component rollout order, health checkpoint, pause/resume, rollback trigger.
-  - **검증:** 한 component 실패 시 나머지 rollout이 멈추고 mixed-version support 상태가 표시된다.
-  - **선행:** 145, 151.
+- [ ] **152. Make the release cohort and rollout pause owner-controlled.** — `P1`
+  - **Why:** Even for a single user, cause isolation is hard when the desktop, CLI, and daemon artifacts change at once.
+  - **Deliverable:** Component rollout order, health checkpoints, pause/resume, and a rollback trigger.
+  - **Verification:** When one component fails, the remaining rollout stops and the mixed-version support state is displayed.
+  - **Prerequisites:** 145, 151.
 
-- [ ] **153. resident canary를 외부 효과 없는 synthetic probe로 만든다.** — `P1`
-  - **이유:** 실제 reminder나 message로 daemon 생존을 시험하면 사용자에게 부작용이 생긴다.
-  - **산출물:** no-model/no-network/no-send canary와 expected trace.
-  - **검증:** canary는 heartbeat·scheduler·store read만 확인하고 personal outcome에 집계되지 않는다.
-  - **선행:** 145–152.
+- [ ] **153. Make the resident canary a synthetic probe with no external effects.** — `P1`
+  - **Why:** Testing daemon liveness with a real reminder or message creates side effects for the user.
+  - **Deliverable:** A no-model/no-network/no-send canary and its expected trace.
+  - **Verification:** The canary checks only heartbeat, scheduler, and store reads, and is not aggregated into personal outcomes.
+  - **Prerequisites:** 145–152.
 
-- [ ] **154. regression을 release→commit→artifact까지 자동 bisect 가능하게 만든다.** — `P2`
-  - **이유:** 빠른 개발에서 문제가 시작된 version을 수동 추측하면 복구가 늦어진다.
-  - **산출물:** versioned reports, artifact provenance query, deterministic reproducer entrypoint.
-  - **검증:** 알려진 injected regression의 최초 bad artifact를 오염 없는 fixture에서 찾는다.
-  - **선행:** 003, 139, 153.
+- [ ] **154. Make regressions automatically bisectable from release to commit to artifact.** — `P2`
+  - **Why:** In fast development, manually guessing the version where a problem started delays recovery.
+  - **Deliverable:** Versioned reports, an artifact provenance query, and a deterministic reproducer entrypoint.
+  - **Verification:** It finds the first bad artifact for a known injected regression in an uncontaminated fixture.
+  - **Prerequisites:** 003, 139, 153.
 
-- [ ] **155. reliability SLO와 error budget을 개인 사용 가치에 맞게 정의한다.** — `P1`
-  - **이유:** uptime만 높고 resume·send·memory가 실패하면 개인 에이전트는 유용하지 않다.
-  - **산출물:** resident freshness, successful safe resume, duplicate effect, recovery burden의 SLO.
-  - **검증:** denominator와 missing time이 명시되고 budget 초과가 feature rollout을 자동 hold한다.
-  - **선행:** 142, 146, 154.
+- [ ] **155. Define reliability SLOs and the error budget to match personal-use value.** — `P1`
+  - **Why:** A personal agent is not useful if uptime is high while resume, send, and memory fail.
+  - **Deliverable:** SLOs for resident freshness, successful safe resume, duplicate effects, and recovery burden.
+  - **Verification:** The denominator and missing time are stated, and exceeding the budget automatically holds feature rollout.
+  - **Prerequisites:** 142, 146, 154.
 
-- [ ] **156. post-release incident drill로 G12를 닫는다.** — `P0`
-  - **이유:** 문서화된 rollback과 support path가 실제 설치 환경에서 작동하는지 증명해야 한다.
-  - **산출물:** crash-loop, migration failure, bad update, ambiguous send의 drill report.
-  - **검증:** data loss 0, duplicate external effect 0, bounded recovery time, evaluator PASS.
-  - **선행:** 145–155.
-
----
-
-## Phase 13 — 장기 personal memory를 시간·모순·망각까지 다루기
-
-**진입 조건:** G12 green이고 G4 corrected recall이 계속 green이다.
-
-**Exit gate G13:** 사실·선호·episode·strategy가 출처와 시간 범위를 가진 채 저장·검색·교정·망각되고,
-장기 사용에서도 오래된 정보가 최신 진실을 덮지 않는다.
-
-- [ ] **157. personal memory source taxonomy를 canonical schema로 만든다.** — `P1`
-  - **이유:** user statement, inferred pattern, imported note, task receipt의 권위가 서로 다르다.
-  - **산출물:** source class, authority, consent, retention, allowed use 필드.
-  - **검증:** source가 없는 memory는 active recall과 policy learning에 들어가지 않는다.
-  - **선행:** 051–058, 156.
-
-- [ ] **158. 시간 범위를 가진 사실을 first-class로 지원한다.** — `P1`
-  - **이유:** 주소, 직장, 선호는 “항상 참”이 아니라 특정 기간에만 참일 수 있다.
-  - **산출물:** valid-from/to, recorded-at, observed-at, uncertainty semantics.
-  - **검증:** 과거 시점 질문과 현재 질문이 같은 사실 history에서 다른 정확한 답을 낸다.
-  - **선행:** 157.
-
-- [ ] **159. preference strength와 evolution을 explicit evidence로 모델링한다.** — `P1`
-  - **이유:** 한 번의 선택을 영구 선호로 저장하면 개인화가 오히려 불편해진다.
-  - **산출물:** stated/observed, strength, scope, repetition, contradiction, expiry가 있는 preference.
-  - **검증:** single weak observation은 durable strong preference로 승격되지 않는다.
-  - **선행:** 157–158.
-
-- [ ] **160. episodic·semantic·procedural memory 경계를 분리한다.** — `P1`
-  - **이유:** 한 사건, 지속 사실, 실행 전략은 검색과 망각 정책이 달라야 한다.
-  - **산출물:** store/interface separation과 cross-reference 규칙.
-  - **검증:** episode 삭제가 독립적으로 확인된 semantic fact나 approved skill을 자동 삭제하지 않는다.
-  - **선행:** 157–159.
-
-- [ ] **161. entity alias와 동일인 충돌을 owner-confirmed하게 해결한다.** — `P1`
-  - **이유:** 같은 이름의 사람·프로젝트를 자동 병합하면 개인 정보가 잘못 연결된다.
-  - **산출물:** exact entity IDs, candidate alias proposal, merge/split preview, undo receipt.
-  - **검증:** ambiguous name은 자동 merge되지 않고 split 후 이전 links가 정확히 복구된다.
-  - **선행:** 160.
-
-- [ ] **162. memory confidence를 calibrated support로 계산한다.** — `P2`
-  - **이유:** 모델 confidence 숫자는 실제 정확도와 일치하지 않을 수 있다.
-  - **산출물:** source authority, recency, corroboration, contradiction을 사용한 deterministic support bands.
-  - **검증:** held-out correction corpus에서 high-support false claim 비율이 정한 floor를 넘지 않는다.
-  - **선행:** 158–161.
-
-- [ ] **163. recall 결과에 “왜 기억했는지”를 bounded하게 설명한다.** — `P1`
-  - **이유:** 사용자가 잘못된 기억을 교정하려면 선택 근거와 source를 확인할 수 있어야 한다.
-  - **산출물:** chosen source, freshness, supersession, omitted-conflict reason의 safe projection.
-  - **검증:** 설명이 raw private turn이나 hidden prompt를 노출하지 않고 실제 reducer 결정과 일치한다.
-  - **선행:** 162.
-
-- [ ] **164. memory consolidation을 apply가 아닌 proposal로 만든다.** — `P2`
-  - **이유:** 여러 episode를 하나의 durable fact로 요약할 때 의미 왜곡 가능성이 있다.
-  - **산출물:** source set, proposed summary, conflicts, reversible apply action.
-  - **검증:** proposal 조회는 store를 바꾸지 않고 source 하나가 사라지면 stale로 닫힌다.
-  - **선행:** 160–163.
-
-- [ ] **165. forgetting과 decay를 목적·위험별로 분리한다.** — `P1`
-  - **이유:** 오래됐다는 이유로 안전상 중요한 veto나 correction까지 사라지면 안 된다.
-  - **산출물:** retain, decay rank, archive, delete, never-auto-delete classes.
-  - **검증:** explicit veto·permission revocation·security event는 generic age decay 대상이 아니다.
-  - **선행:** 157–164.
-
-- [ ] **166. 개인 ontology를 user-visible link graph로 제한한다.** — `P2`
-  - **이유:** hidden personality profile보다 사람이 검사할 수 있는 exact 관계가 더 신뢰할 만하다.
-  - **산출물:** person/project/place/topic 관계, source links, merge/split/forget controls.
-  - **검증:** unsupported 관계는 그래프에 추가되지 않고 inference는 fact와 다른 표시를 가진다.
-  - **선행:** 161–165.
-
-- [ ] **167. memory·notes·contacts·tasks 간 conflict를 transactionally 감지한다.** — `P1`
-  - **이유:** store마다 같은 개인 사실이 다르게 남으면 source 선택이 비결정적이 된다.
-  - **산출물:** cross-store conflict cue, read snapshot, owner resolution, no-hidden-write rule.
-  - **검증:** concurrent change fixture에서 stale resolution이 거부되고 어떤 store도 부분 적용되지 않는다.
-  - **선행:** 161, 166.
-
-- [ ] **168. 장기 correction/forget/recovery suite로 G13을 닫는다.** — `P0`
-  - **이유:** 단기 fixture는 수개월의 시간 변화와 compaction/migration 상호작용을 잡지 못한다.
-  - **산출물:** simulated multi-month corpus와 consented organic audit sample.
-  - **검증:** current fact precision, historical query, abstention, forget completeness, no-resurrection을 evaluator가 판정한다.
-  - **선행:** 157–167.
+- [ ] **156. Close G12 with a post-release incident drill.** — `P0`
+  - **Why:** It must be proven that the documented rollback and support paths work in the real installed environment.
+  - **Deliverable:** A drill report for crash-loop, migration failure, bad update, and ambiguous send.
+  - **Verification:** 0 data loss, 0 duplicate external effects, bounded recovery time, evaluator PASS.
+  - **Prerequisites:** 145–155.
 
 ---
 
-## Phase 14 — tasks, calendar, reminders, contacts, notes의 생활 loop
+## Phase 13 — Handle long-term personal memory including time, contradiction, and forgetting
 
-**진입 조건:** G13 green이고 각 personal store의 privacy gate가 유지된다.
+**Entry condition:** G12 green and G4 corrected recall still green.
 
-**Exit gate G14:** 개인 도메인들이 따로 존재하는 저장소가 아니라, exact authority와 explicit action으로
-일일·주간 계획 및 복귀를 돕는 하나의 검증된 생활 loop로 작동한다.
+**Exit gate G13:** Facts, preferences, episodes, and strategies are stored, retrieved, corrected, and
+forgotten while carrying their source and time range, and even under long-term use stale information
+does not overwrite the latest truth.
 
-- [ ] **169. 대화에서 task intent를 draft로 capture한다.** — `P1`
-  - **이유:** 사용자가 “해야겠다”고 말한 모든 문장을 자동 task로 만들면 noise가 된다.
-  - **산출물:** title, due ambiguity, source turn, proposed list, explicit create action.
-  - **검증:** 질문·가정·타인 task는 자동 생성되지 않고 confirm 전 store write가 0이다.
-  - **선행:** 066, 168.
+- [ ] **157. Make the personal memory source taxonomy a canonical schema.** — `P1`
+  - **Why:** A user statement, an inferred pattern, an imported note, and a task receipt each carry different authority.
+  - **Deliverable:** Source class, authority, consent, retention, and allowed-use fields.
+  - **Verification:** Memory without a source does not enter active recall or policy learning.
+  - **Prerequisites:** 051–058, 156.
 
-- [ ] **170. vague task를 실행 가능한 next action으로 명확화한다.** — `P1`
-  - **이유:** “여행 준비” 같은 항목은 Continuity next step으로 바로 사용하기 어렵다.
-  - **산출물:** bounded clarification, optional decomposition draft, original intent link.
-  - **검증:** 사용자 답 없이 세부 행동이나 deadline을 invent하지 않는다.
-  - **선행:** 169.
+- [ ] **158. Support facts with a time range as first-class.** — `P1`
+  - **Why:** An address, a job, or a preference may be true only for a specific period rather than "always true".
+  - **Deliverable:** valid-from/to, recorded-at, observed-at, and uncertainty semantics.
+  - **Verification:** A question about a past point in time and a present question yield different, exact answers from the same fact history.
+  - **Prerequisites:** 157.
 
-- [ ] **171. calendar free/busy와 event detail 권한을 분리한다.** — `P0`
-  - **이유:** 일정 가능성만 필요한 도구가 제목·참석자·메모까지 읽을 필요는 없다.
-  - **산출물:** availability-only capability와 explicit detail-read capability.
-  - **검증:** free/busy tool output에 private event content가 없고 provider fallback이 일어나지 않는다.
-  - **선행:** 073, 168.
+- [ ] **159. Model preference strength and evolution with explicit evidence.** — `P1`
+  - **Why:** Storing a single choice as a permanent preference makes personalization inconvenient instead.
+  - **Deliverable:** Preferences carrying stated/observed, strength, scope, repetition, contradiction, and expiry.
+  - **Verification:** A single weak observation is not promoted into a durable strong preference.
+  - **Prerequisites:** 157–158.
 
-- [ ] **172. exact calendar occurrence 기반 preparation Pack을 만든다.** — `P1`
-  - **이유:** 병원·미팅·여행 전에 필요한 note/task를 정확히 이어주는 것이 실질적 가치다.
-  - **산출물:** occurrence ID, user-linked sources, read-only context, one optional next action.
-  - **검증:** recurring series의 다른 occurrence와 섞이지 않고 Pack open만 delivery를 만든다.
-  - **선행:** 064, 171.
+- [ ] **160. Separate the episodic, semantic, and procedural memory boundaries.** — `P1`
+  - **Why:** A single event, a persisting fact, and an execution strategy must have different retrieval and forgetting policies.
+  - **Deliverable:** Store/interface separation and cross-reference rules.
+  - **Verification:** Deleting an episode does not automatically delete an independently confirmed semantic fact or an approved skill.
+  - **Prerequisites:** 157–159.
 
-- [ ] **173. reminder lifecycle을 create→snooze→fire→ack→expire로 명시한다.** — `P1`
-  - **이유:** 오래된 pending과 새 reminder가 같은 상태로 쌓이면 backlog가 반복된다.
-  - **산출물:** versioned state machine, exact time zone, receipt, idempotent transitions.
-  - **검증:** DST, clock rollback, restart, duplicate fire, stale snooze가 중복 전달을 만들지 않는다.
-  - **선행:** 029–032, 171.
+- [ ] **161. Resolve entity aliases and same-person conflicts owner-confirmed.** — `P1`
+  - **Why:** Automatically merging same-named people or projects links personal information incorrectly.
+  - **Deliverable:** Exact entity IDs, a candidate alias proposal, a merge/split preview, and an undo receipt.
+  - **Verification:** An ambiguous name is not auto-merged, and previous links are exactly restored after a split.
+  - **Prerequisites:** 160.
 
-- [ ] **174. contacts를 recipient가 아닌 관계 context로 안전하게 사용한다.** — `P1`
-  - **이유:** 관계 기억은 유용하지만 연락처 조회가 곧 전송 권한이 되어서는 안 된다.
-  - **산출물:** exact contact ID, bounded relationship facts, no-recipient projection.
-  - **검증:** name fuzzy match와 contact context만으로 draft recipient가 자동 결정되지 않는다.
-  - **선행:** 161, 171.
+- [ ] **162. Compute memory confidence as calibrated support.** — `P2`
+  - **Why:** A model confidence number may not match actual accuracy.
+  - **Deliverable:** Deterministic support bands using source authority, recency, corroboration, and contradiction.
+  - **Verification:** On a held-out correction corpus, the high-support false-claim rate does not exceed the set floor.
+  - **Prerequisites:** 158–161.
 
-- [ ] **175. note capture와 grounded retrieval의 round trip을 닫는다.** — `P1`
-  - **이유:** note를 저장해도 나중에 정확히 찾고 수정·삭제하지 못하면 개인 지식 기반이 아니다.
-  - **산출물:** source-aware create, cited recall, exact edit, conflict detection, forget path.
-  - **검증:** concurrent edit와 renamed file에서 lost update 없이 canonical source가 유지된다.
-  - **선행:** 167–174.
+- [ ] **163. Explain "why this was remembered" in a bounded way in recall results.** — `P1`
+  - **Why:** To correct a wrong memory, the user must be able to inspect the selection grounds and the source.
+  - **Deliverable:** A safe projection of chosen source, freshness, supersession, and omitted-conflict reason.
+  - **Verification:** The explanation does not expose raw private turns or hidden prompts and matches the actual reducer decision.
+  - **Prerequisites:** 162.
 
-- [ ] **176. user-invoked daily review를 actionable하게 만든다.** — `P1`
-  - **이유:** 단순 통계가 아니라 오늘의 held item, exact commitments, safe next action이 필요하다.
-  - **산출물:** today events/tasks/reminders, pending reviews, one owner-chosen focus.
-  - **검증:** overdue count만으로 자동 reschedule/send하지 않고 모든 card에 source/action이 있다.
-  - **선행:** 169–175.
+- [ ] **164. Make memory consolidation a proposal rather than an apply.** — `P2`
+  - **Why:** Summarizing multiple episodes into one durable fact carries a risk of distorting meaning.
+  - **Deliverable:** The source set, proposed summary, conflicts, and a reversible apply action.
+  - **Verification:** Viewing a proposal does not change the store, and it closes as stale if one source disappears.
+  - **Prerequisites:** 160–163.
 
-- [ ] **177. weekly review를 계획과 learning review로 분리한다.** — `P1`
-  - **이유:** 지난 활동량을 개인적 성과나 학습 성공으로 오인하지 않아야 한다.
-  - **산출물:** completed/open transitions, explicit outcomes, unresolved conflicts, next-week drafts.
-  - **검증:** token/tool-call 수는 diagnostics로만 남고 usefulness는 explicit outcome만 사용한다.
-  - **선행:** 176.
+- [ ] **165. Separate forgetting and decay by purpose and risk.** — `P1`
+  - **Why:** A safety-critical veto or correction must not disappear merely because it is old.
+  - **Deliverable:** The retain, decay rank, archive, delete, and never-auto-delete classes.
+  - **Verification:** Explicit vetoes, permission revocations, and security events are not subject to generic age decay.
+  - **Prerequisites:** 157–164.
 
-- [ ] **178. follow-up을 exact commitment에서 draft한다.** — `P1`
-  - **이유:** 대화나 event 후 해야 할 연락을 기억하는 것은 유용하지만 잘못된 recipient 전송은 위험하다.
-  - **산출물:** commitment source, recipient candidate, due window, draft content, explicit approve.
-  - **검증:** exact commitment나 recipient authority가 없으면 draft조차 actionable send로 승격되지 않는다.
-  - **선행:** 033–034, 174, 177.
+- [ ] **166. Constrain the personal ontology to a user-visible link graph.** — `P2`
+  - **Why:** Exact relations a human can inspect are more trustworthy than a hidden personality profile.
+  - **Deliverable:** Person/project/place/topic relations, source links, and merge/split/forget controls.
+  - **Verification:** Unsupported relations are not added to the graph, and inferences are marked differently from facts.
+  - **Prerequisites:** 161–165.
 
-- [ ] **179. personal status에서 daily/weekly loop의 막힘을 설명한다.** — `P1`
-  - **이유:** store별 화면을 돌아다니지 않고 무엇을 검토해야 하는지 알아야 한다.
-  - **산출물:** source conflict, stale reminder, pending draft, missing outcome, held automation의 action cards.
-  - **검증:** status 조회는 mutation-free이며 action target이 stale하면 실행을 거부한다.
-  - **선행:** 104, 176–178.
+- [ ] **167. Detect conflicts among memory, notes, contacts, and tasks transactionally.** — `P1`
+  - **Why:** When the same personal fact is stored differently per store, source selection becomes non-deterministic.
+  - **Deliverable:** A cross-store conflict cue, a read snapshot, owner resolution, and a no-hidden-write rule.
+  - **Verification:** In the concurrent-change fixture, a stale resolution is rejected and no store is partially applied.
+  - **Prerequisites:** 161, 166.
 
-- [ ] **180. 생활 도메인 loop의 multi-date organic audit로 G14를 닫는다.** — `P1`
-  - **이유:** 개별 tool 테스트가 실제 일상 계획과 복귀 가치를 증명하지 않는다.
-  - **산출물:** task/calendar/note/reminder/contact를 포함한 distinct real journeys와 negative outcomes.
-  - **검증:** exact-source success, correction burden, unwanted effects, time-to-resume를 독립 평가한다.
-  - **선행:** 169–179.
-
----
-
-## Phase 15 — web research, browser action, computer control의 안전한 실행
-
-**진입 조건:** G14 green이고 Browser/runner security gate가 fresh green이다.
-
-**Exit gate G15:** Muse가 최신 정보를 조사하고 browser/computer 작업을 실행하되, 페이지·파일·인증·
-외부 효과의 경계를 유지하며 critical journey를 pass^k로 완료한다.
-
-- [ ] **181. browsing archive를 explicit opt-in과 per-site retention으로 운영한다.** — `P1`
-  - **이유:** 전체 browsing history 상시 수집은 Attunement에 필요하지 않은 민감 데이터다.
-  - **산출물:** enable scope, site/category exclusions, inspect, pause, forget, retention.
-  - **검증:** opt-out와 private-site fixture의 visit가 archive에 기록되지 않는다.
-  - **선행:** 109–112, 180.
-
-- [ ] **182. web search의 freshness와 citation contract를 provider-neutral하게 만든다.** — `P1`
-  - **이유:** 최신 정보 질문에서 오래된 결과를 현재 사실처럼 답하면 안 된다.
-  - **산출물:** query time, result date, source URL, provider provenance, unsupported/unknown state.
-  - **검증:** stale-conflict corpus에서 최신 authoritative source가 선택되거나 명시적으로 abstain한다.
-  - **선행:** 060, 181.
-
-- [ ] **183. page extraction을 content type과 trust boundary별로 분리한다.** — `P1`
-  - **이유:** HTML, PDF, image, download를 같은 parser와 prompt 경계로 처리하면 injection과 누락이 생긴다.
-  - **산출물:** type detection, bounded extraction, source offsets, untrusted envelope.
-  - **검증:** malformed, huge, encrypted, prompt-injected documents가 안전한 terminal state를 낸다.
-  - **선행:** 078, 182.
-
-- [ ] **184. browser action 전에 inspect→plan→effect preview를 강제한다.** — `P0`
-  - **이유:** 페이지를 보자마자 click/fill하면 stale DOM과 잘못된 계정에서 행동할 수 있다.
-  - **산출물:** observed target identity, planned steps, effect class, revalidation point.
-  - **검증:** DOM 변경과 navigation 뒤에는 old target handle을 재사용하지 않는다.
-  - **선행:** 039–040, 183.
-
-- [ ] **185. form fill과 submit을 별도 권한으로 분리한다.** — `P0`
-  - **이유:** 입력 준비와 외부 제출은 위험도가 다르다.
-  - **산출물:** field-level preview, secret masking, submit effect summary, explicit confirmation.
-  - **검증:** fill 승인만으로 submit/navigation이 발생하지 않고 hidden field도 preview에 포함된다.
-  - **선행:** 184.
-
-- [ ] **186. download를 quarantine와 provenance 검사 뒤에만 노출한다.** — `P0`
-  - **이유:** 웹에서 받은 실행 파일·문서가 즉시 shell이나 parser로 이어지면 위험하다.
-  - **산출물:** content hash, source URL, MIME/signature check, safe filename, quarantine state.
-  - **검증:** executable mismatch, path traversal, overwrite, oversized download가 차단된다.
-  - **선행:** 079, 183–185.
-
-- [ ] **187. file upload에 exact path·content·destination preview를 요구한다.** — `P0`
-  - **이유:** 잘못된 파일이나 민감 파일을 외부 사이트에 올리는 것은 되돌리기 어렵다.
-  - **산출물:** canonical file identity, size/type, destination origin, redaction warning, explicit approve.
-  - **검증:** symlink swap, file mutation, origin change가 upload 직전 재검증에서 거부된다.
-  - **선행:** 073, 185–186.
-
-- [ ] **188. browser authentication과 account identity를 effect에 묶는다.** — `P0`
-  - **이유:** 여러 계정이 로그인된 상태에서 다른 사용자·조직으로 행동할 수 있다.
-  - **산출물:** observed account indicator, uncertainty, required owner selection, session expiry.
-  - **검증:** account identity가 확인되지 않은 send/purchase/admin effect는 실행되지 않는다.
-  - **선행:** 184–187.
-
-- [ ] **189. computer control을 accessibility tree 우선으로 만든다.** — `P1`
-  - **이유:** pixel 좌표만으로 macOS 앱을 조작하면 window 이동·해상도·locale에 취약하다.
-  - **산출물:** semantic element identity, window/app scope, coordinate fallback reason.
-  - **검증:** window 이동과 scale 변화에서도 target이 유지되고 ambiguous element는 거부된다.
-  - **선행:** 080–082, 188.
-
-- [ ] **190. multi-step computer action에 checkpoint와 recovery를 넣는다.** — `P1`
-  - **이유:** 중간 실패 뒤 처음부터 재실행하면 중복 입력·저장·전송이 발생한다.
-  - **산출물:** step state, observed postcondition, resumable/non-resumable effect classification.
-  - **검증:** crash/restart 후 마지막 verified checkpoint에서 재개하거나 안전하게 중단한다.
-  - **선행:** 129, 189.
-
-- [ ] **191. web/computer action을 personal thread와 exact provenance로 연결한다.** — `P1`
-  - **이유:** 수행한 행동이 어떤 사용자 목표와 권한에서 나왔는지 나중에 확인할 수 있어야 한다.
-  - **산출물:** thread, source request, action plan, effect receipts, outcome 분리.
-  - **검증:** action receipt만으로 helpful outcome이나 future permission이 생성되지 않는다.
-  - **선행:** 066, 184–190.
-
-- [ ] **192. critical browser/computer journey pass^k로 G15를 닫는다.** — `P0`
-  - **이유:** action 성공률이 낮으면 안전하더라도 실용적인 개인 에이전트가 아니다.
-  - **산출물:** research, form draft, download, upload preview, desktop workflow의 terminal-state graders.
-  - **검증:** strict pass^k, duplicate effect 0, wrong-account effect 0, injection fault suite PASS.
-  - **선행:** 181–191.
+- [ ] **168. Close G13 with a long-term correction/forget/recovery suite.** — `P0`
+  - **Why:** Short-term fixtures do not catch months of temporal change and compaction/migration interaction.
+  - **Deliverable:** A simulated multi-month corpus and a consented organic audit sample.
+  - **Verification:** The evaluator judges current-fact precision, historical queries, abstention, forget completeness, and no-resurrection.
+  - **Prerequisites:** 157–167.
 
 ---
 
-## Phase 16 — communication을 정확한 recipient와 draft-first로 연결하기
+## Phase 14 — The life loop of tasks, calendar, reminders, contacts, and notes
 
-**진입 조건:** G15 green이고 delivery safety가 fresh green이다.
+**Entry condition:** G13 green and each personal store's privacy gate retained.
 
-**Exit gate G16:** inbound context와 recipient identity가 정확히 연결되고, 모든 outbound communication은
-draft·review·approve·reconcile을 거쳐 중복이나 잘못된 수신자 없이 완료된다.
+**Exit gate G14:** The personal domains operate not as separately existing stores but as one verified
+life loop that helps with daily and weekly planning and return through exact authority and explicit
+action.
 
-- [ ] **193. recipient identity를 contact와 channel account에 exact하게 묶는다.** — `P0`
-  - **이유:** 같은 이름·별칭·주소가 여러 사람이나 계정에 대응할 수 있다.
-  - **산출물:** canonical contact ID, channel-specific address, verification source, expiry.
-  - **검증:** fuzzy name이나 대화 문맥만으로 recipient를 확정하지 않는다.
-  - **선행:** 174, 192.
+- [ ] **169. Capture task intent from conversation as a draft.** — `P1`
+  - **Why:** Turning every sentence where the user says "I should" into an automatic task becomes noise.
+  - **Deliverable:** Title, due ambiguity, source turn, a proposed list, and an explicit create action.
+  - **Verification:** Questions, hypotheticals, and other people's tasks are not auto-created, and store writes before confirm are 0.
+  - **Prerequisites:** 066, 168.
 
-- [ ] **194. channel account와 workspace identity를 effect 전에 표시한다.** — `P0`
-  - **이유:** 개인 Slack, 회사 Slack, 여러 email account에서 잘못된 발신 주체를 선택할 수 있다.
-  - **산출물:** provider, account, workspace, destination, observed authority의 send preview.
-  - **검증:** identity가 unknown/stale이면 draft는 유지되지만 approve/send는 disabled된다.
-  - **선행:** 123–124, 193.
+- [ ] **170. Clarify a vague task into an executable next action.** — `P1`
+  - **Why:** An item like "prepare for the trip" is hard to use directly as a Continuity next step.
+  - **Deliverable:** Bounded clarification, an optional decomposition draft, and a link to the original intent.
+  - **Verification:** It does not invent detailed actions or deadlines without a user answer.
+  - **Prerequisites:** 169.
 
-- [ ] **195. communication draft에 source와 unsupported claim 표시를 넣는다.** — `P1`
-  - **이유:** 개인 agent가 사실을 꾸며 메시지에 넣으면 사용자 관계에 직접 피해가 생긴다.
-  - **산출물:** cited source snippets, user-authored facts, uncertain placeholders, editable draft.
-  - **검증:** source가 없는 날짜·약속·금액·상태는 자동 확정 문장으로 생성되지 않는다.
-  - **선행:** 163, 193–194.
+- [ ] **171. Separate calendar free/busy authority from event-detail authority.** — `P0`
+  - **Why:** A tool that only needs schedule availability does not need to read titles, attendees, and notes.
+  - **Deliverable:** An availability-only capability and an explicit detail-read capability.
+  - **Verification:** The free/busy tool output contains no private event content and no provider fallback occurs.
+  - **Prerequisites:** 073, 168.
 
-- [ ] **196. tone preference를 recipient·context별 explicit rule로 제한한다.** — `P1`
-  - **이유:** 한 대화의 말투를 모든 관계에 일반화하면 부적절한 메시지가 된다.
-  - **산출물:** scope, source, examples, prohibited style, expiry가 있는 tone profile.
-  - **검증:** 업무와 가족 fixture가 서로의 tone preference를 가져오지 않는다.
-  - **선행:** 159, 195.
+- [ ] **172. Build a preparation Pack based on an exact calendar occurrence.** — `P1`
+  - **Why:** Exactly connecting the notes/tasks needed before a hospital visit, meeting, or trip is the substantive value.
+  - **Deliverable:** Occurrence ID, user-linked sources, read-only context, and one optional next action.
+  - **Verification:** It is not mixed up with another occurrence of a recurring series, and only Pack open creates a delivery.
+  - **Prerequisites:** 064, 171.
 
-- [ ] **197. attachment와 quoted history를 별도 review surface로 만든다.** — `P0`
-  - **이유:** 본문만 승인하고 민감 attachment나 긴 대화 history가 함께 전송될 수 있다.
-  - **산출물:** exact attachment hash, quoted range, redaction warning, total payload preview.
-  - **검증:** file mutation, hidden attachment, excessive quote, private marker가 send 전에 차단된다.
-  - **선행:** 187, 195.
+- [ ] **173. Specify the reminder lifecycle as create→snooze→fire→ack→expire.** — `P1`
+  - **Why:** If old pending items and new reminders pile up in the same state, the backlog recurs.
+  - **Deliverable:** A versioned state machine, exact time zone, receipts, and idempotent transitions.
+  - **Verification:** DST, clock rollback, restart, duplicate fire, and stale snooze do not produce duplicate delivery.
+  - **Prerequisites:** 029–032, 171.
 
-- [ ] **198. inbound thread context를 bounded하고 untrusted하게 처리한다.** — `P0`
-  - **이유:** 과거 메시지의 injection과 긴 thread가 system policy나 최신 intent를 덮을 수 있다.
-  - **산출물:** participant identity, selected turns, truncation reason, untrusted envelope.
-  - **검증:** quoted injection이 tool 권한과 recipient를 바꾸지 못하고 omitted context가 표시된다.
-  - **선행:** 078, 193–197.
+- [ ] **174. Use contacts safely as relationship context, not as recipients.** — `P1`
+  - **Why:** Relationship memory is useful, but a contact lookup must not itself become send authority.
+  - **Deliverable:** Exact contact ID, bounded relationship facts, and a no-recipient projection.
+  - **Verification:** A draft recipient is not decided automatically from a fuzzy name match and contact context alone.
+  - **Prerequisites:** 161, 171.
 
-- [ ] **199. inbound triage를 label/draft 수준으로만 자동화한다.** — `P1`
-  - **이유:** 읽지 않음 처리·보관·답장 같은 mutation을 초기 분류와 결합하면 오판 비용이 커진다.
-  - **산출물:** urgency/category/confidence proposal, owner review, no-mutation default.
-  - **검증:** triage 조회만으로 read state, archive, task, reply가 바뀌지 않는다.
-  - **선행:** 198.
+- [ ] **175. Close the round trip of note capture and grounded retrieval.** — `P1`
+  - **Why:** Storing a note is not a personal knowledge base if it cannot later be found exactly, edited, and deleted.
+  - **Deliverable:** Source-aware create, cited recall, exact edit, conflict detection, and a forget path.
+  - **Verification:** Under concurrent edits and a renamed file, the canonical source is retained with no lost update.
+  - **Prerequisites:** 167–174.
 
-- [ ] **200. 모든 outbound send에 final owner confirmation을 유지한다.** — `P0`
-  - **이유:** communication은 Muse의 장기 목표에서도 자동 전송보다 사용자 신뢰가 우선이다.
-  - **산출물:** immutable payload hash, recipient/account identity, expiry, one-shot approval.
-  - **검증:** draft 수정·recipient 변경·expiry 뒤에는 기존 승인을 재사용하지 않는다.
-  - **선행:** 033–034, 193–199.
+- [ ] **176. Make the user-invoked daily review actionable.** — `P1`
+  - **Why:** What is needed is today's held items, exact commitments, and a safe next action — not plain statistics.
+  - **Deliverable:** Today's events/tasks/reminders, pending reviews, and one owner-chosen focus.
+  - **Verification:** It does not auto-reschedule or auto-send from an overdue count alone, and every card has a source/action.
+  - **Prerequisites:** 169–175.
 
-- [ ] **201. scheduled send를 approval expiry와 delivery brake에 묶는다.** — `P0`
-  - **이유:** 승인한 메시지도 시간이 지나면 내용과 수신 맥락이 낡을 수 있다.
-  - **산출물:** scheduled-at, approval valid-until, revalidation, cancel, held reason.
-  - **검증:** expiry, account change, brake-on, clock jump에서 send가 발생하지 않는다.
-  - **선행:** 173, 200.
+- [ ] **177. Split the weekly review into a planning review and a learning review.** — `P1`
+  - **Why:** Past activity volume must not be mistaken for personal achievement or learning success.
+  - **Deliverable:** Completed/open transitions, explicit outcomes, unresolved conflicts, and next-week drafts.
+  - **Verification:** Token/tool-call counts remain diagnostics only, and usefulness uses explicit outcomes alone.
+  - **Prerequisites:** 176.
 
-- [ ] **202. ambiguous delivery status를 provider receipt와 reconcile한다.** — `P0`
-  - **이유:** timeout 뒤 재전송하면 중복 메시지가 생길 수 있다.
-  - **산출물:** pending/accepted/delivered/failed/unknown 상태와 manual reconciliation path.
-  - **검증:** success-before-ack와 restart replay에서 동일 effect ID가 최대 한 번만 전송된다.
-  - **선행:** 034, 201.
+- [ ] **178. Draft follow-ups from exact commitments.** — `P1`
+  - **Why:** Remembering the contact to make after a conversation or event is useful, but sending to a wrong recipient is dangerous.
+  - **Deliverable:** Commitment source, recipient candidate, due window, draft content, and explicit approve.
+  - **Verification:** Without an exact commitment or recipient authority, even a draft is not promoted into an actionable send.
+  - **Prerequisites:** 033–034, 174, 177.
 
-- [ ] **203. reply 이후 결과를 communication receipt와 별도 outcome으로 기록한다.** — `P1`
-  - **이유:** 메시지가 전달됐다는 사실이 목표 달성이나 도움됨을 의미하지 않는다.
-  - **산출물:** delivery receipt, optional user outcome, follow-up commitment의 분리된 links.
-  - **검증:** provider delivered event만으로 used outcome이나 future send permission이 생성되지 않는다.
-  - **선행:** 178, 202.
+- [ ] **179. Explain where the daily/weekly loop is stuck in the personal status.** — `P1`
+  - **Why:** The user must know what to review without wandering across per-store screens.
+  - **Deliverable:** Action cards for source conflict, stale reminder, pending draft, missing outcome, and held automation.
+  - **Verification:** Viewing status is mutation-free, and execution is rejected when an action target is stale.
+  - **Prerequisites:** 104, 176–178.
 
-- [ ] **204. wrong-recipient·duplicate·injection red-team으로 G16을 닫는다.** — `P0`
-  - **이유:** communication failure는 되돌리기 어려워 정상 journey보다 적대 검증이 중요하다.
-  - **산출물:** alias collision, account drift, attachment swap, prompt injection, ambiguous ack campaign.
-  - **검증:** wrong-recipient 0, unapproved send 0, duplicate effect 0, evaluator PASS.
-  - **선행:** 193–203.
-
----
-
-## Phase 17 — 목표·프로젝트·실행을 truth-preserving plan으로 운영하기
-
-**진입 조건:** G16 green이고 normal chat Continuity가 유지된다.
-
-**Exit gate G17:** Muse가 사용자의 목표를 bounded plan과 checkpoint로 전환하고, 실제 완료와 막힘을
-추측하지 않은 채 긴 작업을 안전하게 재개한다.
-
-- [ ] **205. personal work/project state를 thread와 분리된 canonical domain으로 고정한다.** — `P1`
-  - **이유:** 대화 thread, Continuity thread, project 실행 상태를 같은 ID로 쓰면 권한과 수명이 섞인다.
-  - **산출물:** project ID, goal, status, owner, source, linked threads/tasks의 명시적 관계.
-  - **검증:** project 삭제·완료가 linked evidence와 outcome을 암묵적으로 변경하지 않는다.
-  - **선행:** 066, 180, 204.
-
-- [ ] **206. goal decomposition을 실행 전 draft로 만든다.** — `P1`
-  - **이유:** 모델이 만든 하위 목표를 바로 task나 tool action으로 실행하면 scope가 확대될 수 있다.
-  - **산출물:** assumptions, subtasks, dependencies, unknowns, owner-editable plan.
-  - **검증:** confirm 전 task creation과 tool execution이 0이다.
-  - **선행:** 170, 205.
-
-- [ ] **207. plan에 acceptance criteria와 kill condition을 필수화한다.** — `P1`
-  - **이유:** “잘 해줘” 계획은 완료를 과장하고 끝없이 확장되기 쉽다.
-  - **산출물:** measurable outcome, non-goals, stop/kill criteria, evidence method.
-  - **검증:** 기준이 비어 있거나 모순인 plan은 active execution으로 전환되지 않는다.
-  - **선행:** 007, 206.
-
-- [ ] **208. next action을 exact dependency와 readiness에서 선택한다.** — `P1`
-  - **이유:** 보기 쉬운 작업을 우선해 실제 blocker를 건너뛰면 프로젝트가 진전되지 않는다.
-  - **산출물:** ready/blocked reason, required authority, cost/risk, one chosen action.
-  - **검증:** unmet dependency와 owner decision이 있는 task는 runnable로 표시되지 않는다.
-  - **선행:** 205–207.
-
-- [ ] **209. blocker와 decision을 first-class state로 만든다.** — `P1`
-  - **이유:** 실패를 무한 retry하거나 사용자 결정이 필요한 문제를 자동 추측하면 안 된다.
-  - **산출물:** blocker type, evidence, owner question, retry eligibility, resolved-by receipt.
-  - **검증:** 동일 blocker가 새 evidence 없이 반복될 때 no-progress로 종료된다.
-  - **선행:** 208.
-
-- [ ] **210. execution checkpoint에 plan version과 effect boundary를 묶는다.** — `P0`
-  - **이유:** plan 수정 후 오래된 checkpoint를 재개하면 이미 취소된 행동을 실행할 수 있다.
-  - **산출물:** plan digest, completed steps, pending effects, resume compatibility.
-  - **검증:** plan mismatch, corrupt checkpoint, ambiguous effect에서 자동 resume하지 않는다.
-  - **선행:** 129, 207–209.
-
-- [ ] **211. session handoff를 source-backed Continuity Pack으로 만든다.** — `P1`
-  - **이유:** 긴 작업 재개 시 모델 요약만 믿으면 결정과 blocker가 사라질 수 있다.
-  - **산출물:** goal, verified progress, exact artifacts, decisions, blockers, one next action.
-  - **검증:** unsupported completion claim은 제외되고 original source를 inspect할 수 있다.
-  - **선행:** 064, 210.
-
-- [ ] **212. plan 단계마다 tool·time·cost budget을 설정한다.** — `P1`
-  - **이유:** 전체 run budget만 있으면 한 subtask가 자원을 모두 소비할 수 있다.
-  - **산출물:** per-step attempt, wallclock, model, browser, external-effect budgets.
-  - **검증:** budget exhaustion이 명시적 terminal state를 만들고 다음 step으로 성공 처리되지 않는다.
-  - **선행:** 087–095, 207.
-
-- [ ] **213. progress projection을 verified effect에서만 계산한다.** — `P0`
-  - **이유:** agent가 “완료했다”고 말한 것과 실제 file/task/API 상태는 다를 수 있다.
-  - **산출물:** planned, attempted, verified, blocked, rolled-back 상태와 evidence link.
-  - **검증:** tool error와 unverifiable output이 completed percentage를 높이지 않는다.
-  - **선행:** 208–212.
-
-- [ ] **214. irreversible·user-visible step 앞에 review gate를 둔다.** — `P0`
-  - **이유:** 긴 plan 초기에 받은 포괄 승인으로 나중의 위험한 효과를 실행하면 안 된다.
-  - **산출물:** just-in-time preview, exact target/effect, plan context, approval expiry.
-  - **검증:** target 또는 payload가 바뀌면 재승인을 요구하고 금융/결제는 영구 거부한다.
-  - **선행:** 073, 200, 213.
-
-- [ ] **215. project outcome을 completion receipt와 분리해 review한다.** — `P1`
-  - **이유:** task를 모두 닫아도 사용자의 실제 목표가 달성되지 않았을 수 있다.
-  - **산출물:** verified deliverables, owner acceptance, adjusted/rejected outcome, residual work.
-  - **검증:** task count만으로 project success나 playbook reward가 생성되지 않는다.
-  - **선행:** 203, 213–214.
-
-- [ ] **216. multi-session real project audit로 G17을 닫는다.** — `P1`
-  - **이유:** 짧은 synthetic plan은 장기 resume, drift, owner decision의 현실적 비용을 못 잡는다.
-  - **산출물:** 여러 날짜의 실제 프로젝트 2개 이상과 실패·조정 사례.
-  - **검증:** completion truth, resume accuracy, duplicate effect, budget, owner burden을 독립 평가한다.
-  - **선행:** 205–215.
+- [ ] **180. Close G14 with a multi-date organic audit of the life-domain loop.** — `P1`
+  - **Why:** Individual tool tests do not prove real everyday planning and return value.
+  - **Deliverable:** Distinct real journeys spanning task/calendar/note/reminder/contact plus negative outcomes.
+  - **Verification:** Exact-source success, correction burden, unwanted effects, and time-to-resume are independently evaluated.
+  - **Prerequisites:** 169–179.
 
 ---
 
-## Phase 18 — self-learning과 skill/playbook을 proposal-first로 운영하기
+## Phase 15 — Safe execution of web research, browser action, and computer control
 
-**진입 조건:** G17 green이고 organic outcome이 충분하며 self-learning hold 해제는 별도 승인됐다.
+**Entry condition:** G14 green and the Browser/runner security gates fresh green.
 
-**Exit gate G18:** Muse가 경험에서 개선 proposal을 만들 수 있지만, held-out 검증·사용자 review·rollback
-없이는 active behavior를 바꾸지 않는다.
+**Exit gate G15:** Muse researches current information and executes browser/computer tasks while
+maintaining the page, file, authentication, and external-effect boundaries, and completes the critical
+journeys with pass^k.
 
-- [ ] **217. learning candidate의 source와 목적을 immutable하게 묶는다.** — `P0`
-  - **이유:** 어떤 경험에서 왜 규칙이 생겼는지 없으면 잘못된 학습을 되돌릴 수 없다.
-  - **산출물:** source runs/outcomes, proposed behavior, scope, expected benefit, expiry.
-  - **검증:** unclassified receipt나 model self-critique만으로 candidate가 생성되지 않는다.
-  - **선행:** 127–128, 216.
+- [ ] **181. Operate the browsing archive with explicit opt-in and per-site retention.** — `P1`
+  - **Why:** Continuously collecting the entire browsing history is sensitive data Attunement does not need.
+  - **Deliverable:** Enable scope, site/category exclusions, inspect, pause, forget, and retention.
+  - **Verification:** Visits in the opt-out and private-site fixtures are not recorded in the archive.
+  - **Prerequisites:** 109–112, 180.
 
-- [ ] **218. memory correction과 procedural skill proposal을 분리한다.** — `P0`
-  - **이유:** “내 이름은…” 같은 사실 교정이 tool 실행 전략을 바꾸면 안 된다.
-  - **산출물:** semantic fact, preference, prompt/playbook, executable skill의 distinct pipelines.
-  - **검증:** 각 candidate가 다른 permission·evaluation·activation gate를 사용한다.
-  - **선행:** 157–168, 217.
+- [ ] **182. Make the web search freshness and citation contract provider-neutral.** — `P1`
+  - **Why:** For a current-information question, an old result must not be answered as if it were a present fact.
+  - **Deliverable:** Query time, result date, source URL, provider provenance, and unsupported/unknown states.
+  - **Verification:** On a stale-conflict corpus, either the latest authoritative source is chosen or it explicitly abstains.
+  - **Prerequisites:** 060, 181.
 
-- [ ] **219. skill diff를 quarantine filesystem에서만 생성한다.** — `P0`
-  - **이유:** 생성 중인 code/instruction이 active skill search path에 보이면 즉시 행동이 변한다.
-  - **산출물:** isolated candidate directory, manifest, requested tools/permissions, checksum.
-  - **검증:** candidate build/test 동안 active skill registry와 runtime prompt digest가 변하지 않는다.
-  - **선행:** 126–128, 218.
+- [ ] **183. Separate page extraction by content type and trust boundary.** — `P1`
+  - **Why:** Handling HTML, PDF, image, and download through the same parser and prompt boundary produces injection and omissions.
+  - **Deliverable:** Type detection, bounded extraction, source offsets, and an untrusted envelope.
+  - **Verification:** Malformed, huge, encrypted, and prompt-injected documents yield a safe terminal state.
+  - **Prerequisites:** 078, 182.
 
-- [ ] **220. skill별 deterministic contract tests를 자동 생성·검토한다.** — `P1`
-  - **이유:** 자연어 skill은 성공 예시만 있으면 과도하게 넓은 입력에 작동할 수 있다.
-  - **산출물:** positive, boundary, forbidden-effect, malformed-input examples와 grader.
-  - **검증:** generated test 자체가 source requirement와 permission boundary를 약화하지 않는지 review한다.
-  - **선행:** 219.
+- [ ] **184. Enforce inspect→plan→effect preview before a browser action.** — `P0`
+  - **Why:** Clicking or filling the moment a page is seen can act on a stale DOM and in the wrong account.
+  - **Deliverable:** Observed target identity, planned steps, effect class, and a revalidation point.
+  - **Verification:** An old target handle is not reused after a DOM change or navigation.
+  - **Prerequisites:** 039–040, 183.
 
-- [ ] **221. held-out regression set과 baseline 비교를 강제한다.** — `P0`
-  - **이유:** 학습한 사례만 좋아지고 일반 성능이 나빠지는 overfit을 막아야 한다.
-  - **산출물:** immutable split, baseline artifact, quality/safety/cost deltas.
-  - **검증:** held-out safety regression 하나라도 있으면 activate gate가 닫힌다.
-  - **선행:** 220.
+- [ ] **185. Separate form fill and submit into distinct authorities.** — `P0`
+  - **Why:** Preparing input and submitting externally carry different risk.
+  - **Deliverable:** Field-level preview, secret masking, a submit effect summary, and explicit confirmation.
+  - **Verification:** Approving fill alone does not cause submit/navigation, and hidden fields are also included in the preview.
+  - **Prerequisites:** 184.
 
-- [ ] **222. playbook reward와 decay를 explicit outcome에만 연결한다.** — `P1`
-  - **이유:** completion이나 agent confidence를 reward로 쓰면 잘못된 전략이 강화된다.
-  - **산출물:** eligible outcomes, lower-confidence bound, negative weight, time decay.
-  - **검증:** receipt-only와 controlled replay가 production ranking을 올리지 않는다.
-  - **선행:** 006, 215, 221.
+- [ ] **186. Expose downloads only after quarantine and a provenance check.** — `P0`
+  - **Why:** An executable or document received from the web leading straight into a shell or parser is dangerous.
+  - **Deliverable:** Content hash, source URL, MIME/signature check, safe filename, and quarantine state.
+  - **Verification:** Executable mismatch, path traversal, overwrite, and oversized downloads are blocked.
+  - **Prerequisites:** 079, 183–185.
 
-- [ ] **223. competing skills와 policy conflict를 활성화 전에 해결한다.** — `P1`
-  - **이유:** 같은 trigger에 서로 다른 instructions가 적용되면 비결정적 행동이 된다.
-  - **산출물:** trigger overlap, permission mismatch, precedence proposal, owner decision.
-  - **검증:** unresolved conflict가 있는 candidate는 active registry에 들어가지 않는다.
-  - **선행:** 219–222.
+- [ ] **187. Require an exact path, content, and destination preview for file upload.** — `P0`
+  - **Why:** Uploading a wrong or sensitive file to an external site is hard to undo.
+  - **Deliverable:** Canonical file identity, size/type, destination origin, a redaction warning, and explicit approve.
+  - **Verification:** A symlink swap, file mutation, and origin change are rejected by revalidation immediately before upload.
+  - **Prerequisites:** 073, 185–186.
 
-- [ ] **224. activation·revoke·rollback을 versioned transaction으로 만든다.** — `P0`
-  - **이유:** partial activation이나 실패한 rollback은 prompt와 tool registry를 불일치시킨다.
-  - **산출물:** active generation, atomic switch, previous version, health probe, rollback receipt.
-  - **검증:** crash와 concurrent activation에서 정확히 한 generation만 visible하다.
-  - **선행:** 223.
+- [ ] **188. Bind browser authentication and account identity to the effect.** — `P0`
+  - **Why:** With multiple accounts logged in, it can act as a different user or organization.
+  - **Deliverable:** An observed account indicator, uncertainty, required owner selection, and session expiry.
+  - **Verification:** A send/purchase/admin effect whose account identity is unconfirmed is not executed.
+  - **Prerequisites:** 184–187.
 
-- [ ] **225. user preference가 safety/system policy를 덮지 못하게 한다.** — `P0`
-  - **이유:** “항상 바로 보내” 같은 선호를 학습해 approval gate가 약해질 수 있다.
-  - **산출물:** policy precedence, non-learnable constraints, rejected-proposal reason.
-  - **검증:** adversarial preference corpus가 permission, send, payment, retention guard를 바꾸지 못한다.
-  - **선행:** 073, 159, 224.
+- [ ] **189. Make computer control accessibility-tree-first.** — `P1`
+  - **Why:** Driving a macOS app from pixel coordinates alone is fragile against window moves, resolution, and locale.
+  - **Deliverable:** Semantic element identity, window/app scope, and a coordinate-fallback reason.
+  - **Verification:** The target is retained across window moves and scale changes, and ambiguous elements are rejected.
+  - **Prerequisites:** 080–082, 188.
 
-- [ ] **226. imported/community skill을 untrusted quarantine로 처리한다.** — `P0`
-  - **이유:** 외부 skill은 code, prompt injection, hidden network effect를 포함할 수 있다.
-  - **산출물:** provenance, signature/checksum, static permission scan, sandbox test, explicit install preview.
-  - **검증:** import만으로 code execution·network·active registration이 발생하지 않는다.
-  - **선행:** 125, 219–225.
+- [ ] **190. Add checkpoints and recovery to multi-step computer actions.** — `P1`
+  - **Why:** Re-running from the beginning after a mid-way failure causes duplicate input, saves, and sends.
+  - **Deliverable:** Step state, observed postconditions, and resumable/non-resumable effect classification.
+  - **Verification:** After a crash/restart it resumes from the last verified checkpoint or stops safely.
+  - **Prerequisites:** 129, 189.
 
-- [ ] **227. background curation을 resource admission과 owner schedule에 묶는다.** — `P1`
-  - **이유:** self-improvement가 foreground 작업과 privacy expectation을 침해하면 안 된다.
-  - **산출물:** idle-only claim, model budget, candidate cap, pause/resume, no-auto-activate.
-  - **검증:** resource pressure·owner pause·hold 상태에서 model curation start가 0이다.
-  - **선행:** 085–096, 217–226.
+- [ ] **191. Link web/computer actions to a personal thread with exact provenance.** — `P1`
+  - **Why:** It must later be possible to confirm which user goal and authority an executed action came from.
+  - **Deliverable:** Separation of thread, source request, action plan, effect receipts, and outcome.
+  - **Verification:** An action receipt alone does not create a helpful outcome or a future permission.
+  - **Prerequisites:** 066, 184–190.
 
-- [ ] **228. learning audit와 rollback drill로 G18을 닫는다.** — `P0`
-  - **이유:** candidate 품질뿐 아니라 잘못 활성화된 behavior를 찾고 되돌릴 수 있어야 한다.
-  - **산출물:** source→candidate→tests→approval→activation→outcomes chain과 revoke drill.
-  - **검증:** silent activation 0, held-out regression 0, rollback 후 baseline digest 복원, evaluator PASS.
-  - **선행:** 217–227.
-
----
-
-## Phase 19 — multi-agent를 단일 agent보다 나을 때만 사용하기
-
-**진입 조건:** G18 green이고 task family별 single-agent baseline이 존재한다.
-
-**Exit gate G19:** decomposition·handoff·permission·budget·cancellation이 검증되고, 선택된 task family에서
-multi-agent가 single-agent보다 held-out 결과를 실질적으로 개선한다.
-
-- [ ] **229. multi-agent 후보 task마다 single-agent baseline을 고정한다.** — `P0`
-  - **이유:** 비교 기준 없이 agent 수를 늘리면 비용과 복잡성만 증가해도 성공처럼 보인다.
-  - **산출물:** outcome quality, pass^k, cost, latency, tool/effect count baseline.
-  - **검증:** 같은 artifact, rubric, budget, held-out set으로 반복 측정한다.
-  - **선행:** 131, 228.
-
-- [ ] **230. decomposition gate가 실제 독립 subtask만 허용하게 한다.** — `P1`
-  - **이유:** 강하게 결합된 작업을 병렬화하면 서로 다른 암묵적 결정을 만든다.
-  - **산출물:** shared-state, ordering, context dependency, mergeability 판정.
-  - **검증:** 결합 fixture는 single-agent/serial plan으로 남고 독립 fixture만 fan-out된다.
-  - **선행:** 206–209, 229.
-
-- [ ] **231. agent 역할과 writable scope를 최소화한다.** — `P0`
-  - **이유:** 모든 subagent가 전체 filesystem과 tool 권한을 가지면 blast radius가 커진다.
-  - **산출물:** role, inputs, allowed paths/tools/effects, output schema, expiry.
-  - **검증:** scope 밖 write/tool call은 runtime에서 차단되고 advisory prompt에만 의존하지 않는다.
-  - **선행:** 073, 230.
-
-- [ ] **232. handoff를 typed artifact와 exact source links로 제한한다.** — `P1`
-  - **이유:** 자유 형식 요약이 decision, uncertainty, provenance를 잃을 수 있다.
-  - **산출물:** goal, inputs, assumptions, decisions, artifacts, blockers, verification schema.
-  - **검증:** required field나 source가 없는 handoff는 downstream 실행을 시작하지 않는다.
-  - **선행:** 007, 211, 231.
-
-- [ ] **233. message bus에 idempotency와 causal ordering을 적용한다.** — `P0`
-  - **이유:** retry와 out-of-order delivery가 subtask를 중복 실행하거나 stale decision을 적용할 수 있다.
-  - **산출물:** message ID, correlation/causation IDs, sequence, dedupe window, terminal ack.
-  - **검증:** duplicate, delayed, reordered, restart replay에서 effect가 정확히 한 번만 반영된다.
-  - **선행:** 231–232.
-
-- [ ] **234. shared state mutation을 optimistic concurrency와 merge gate로 보호한다.** — `P0`
-  - **이유:** 두 agent가 같은 file/store를 덮어쓰면 조용한 데이터 손상이 생긴다.
-  - **산출물:** base version, conflict result, owner/lead merge decision, atomic publish.
-  - **검증:** concurrent incompatible edits가 자동 last-write-wins되지 않는다.
-  - **선행:** 233.
-
-- [ ] **235. subagent별 token·time·tool·effect budget을 강제한다.** — `P1`
-  - **이유:** 하나의 subagent가 전체 orchestration budget을 소비하거나 tool loop에 빠질 수 있다.
-  - **산출물:** per-agent and aggregate budget, cancellation, budget-exhausted result.
-  - **검증:** child budget 초과가 sibling과 supervisor를 무제한 연쇄 retry시키지 않는다.
-  - **선행:** 212, 233–234.
-
-- [ ] **236. delegation이 permission을 증폭하지 못하게 한다.** — `P0`
-  - **이유:** supervisor가 없는 권한을 subagent 조합으로 획득하면 안 된다.
-  - **산출물:** authority intersection, non-delegable effects, approval ownership.
-  - **검증:** child들의 권한 합집합이 parent authority를 넘지 않고 external send는 owner gate를 유지한다.
-  - **선행:** 073, 214, 231–235.
-
-- [ ] **237. cancellation과 orphan subagent를 resident health에 포함한다.** — `P0`
-  - **이유:** supervisor 종료 뒤 child가 계속 tool을 실행하면 invisible background effect가 된다.
-  - **산출물:** process/task ownership, cooperative abort, lease expiry, orphan fencing.
-  - **검증:** supervisor crash와 user cancel 뒤 새 child effect가 0이고 late result는 discarded된다.
-  - **선행:** 016, 091, 235–236.
-
-- [ ] **238. evaluator를 maker agent와 context·권한에서 분리한다.** — `P0`
-  - **이유:** 같은 agent가 자기 output을 채점하면 self-preference와 shared assumption이 남는다.
-  - **산출물:** read-only evaluator role, artifact-only input, fixed rubric, independent trace.
-  - **검증:** evaluator가 maker scratch/context 없이 재현하고 write/effect tool이 없다.
-  - **선행:** 008, 232, 237.
-
-- [ ] **239. remote/hosted subagent는 owner-controlled egress threat model을 통과할 때만 연다.** — `P2`
-  - **이유:** source와 personal data가 외부 sandbox로 이동할 수 있다.
-  - **산출물:** data classification, upload manifest, secrets exclusion, retention/deletion, explicit opt-in.
-  - **검증:** local-only profile에서는 remote dispatch 0이고 approved subset 밖 file이 전송되지 않는다.
-  - **선행:** 073–084, 236–238.
-
-- [ ] **240. held-out multi-agent benchmark로 G19를 닫는다.** — `P1`
-  - **이유:** architecture가 안전해도 single-agent보다 결과가 낫지 않으면 기본 사용 가치가 없다.
-  - **산출물:** task-family별 paired baseline, quality/cost/latency/failure deltas, adopt/reject decision.
-  - **검증:** strict pass^k와 material improvement가 없는 family는 single-agent가 기본으로 유지된다.
-  - **선행:** 229–239.
+- [ ] **192. Close G15 with pass^k on the critical browser/computer journeys.** — `P0`
+  - **Why:** If the action success rate is low, it is not a practical personal agent even if it is safe.
+  - **Deliverable:** Terminal-state graders for research, form draft, download, upload preview, and desktop workflow.
+  - **Verification:** Strict pass^k, 0 duplicate effects, 0 wrong-account effects, injection fault suite PASS.
+  - **Prerequisites:** 181–191.
 
 ---
 
-## Phase 20 — provider/model 품질·fallback·비용을 한 계약으로 운영하기
+## Phase 16 — Connect communication with exact recipients and draft-first
 
-**진입 조건:** G19 green이며 multi-agent 여부와 무관한 canonical agent contract가 유지된다.
+**Entry condition:** G15 green and delivery safety fresh green.
 
-**Exit gate G20:** provider 변경, fallback, compaction, streaming, structured output, multimodal 입력에서도
-동일한 safety·grounding·message-integrity floor가 유지되고 비용·성능 선택이 재현 가능하다.
+**Exit gate G16:** Inbound context and recipient identity are exactly linked, and every outbound
+communication goes through draft, review, approve, and reconcile and completes with no duplicate and
+no wrong recipient.
 
-- [ ] **241. provider capability registry를 runtime probe와 version에 묶는다.** — `P1`
-  - **이유:** 문서상 지원과 실제 endpoint의 tool/stream/schema/context 지원이 다를 수 있다.
-  - **산출물:** model ID, provider, capabilities, limits, probe time, source, unknown fields.
-  - **검증:** probe 실패를 unsupported와 구분하고 stale capability는 routing에 사용하지 않는다.
-  - **선행:** 093–094, 240.
+- [ ] **193. Bind recipient identity exactly to a contact and a channel account.** — `P0`
+  - **Why:** The same name, alias, or address can correspond to several people or accounts.
+  - **Deliverable:** Canonical contact ID, channel-specific address, verification source, and expiry.
+  - **Verification:** A recipient is not settled from a fuzzy name or conversational context alone.
+  - **Prerequisites:** 174, 192.
 
-- [ ] **242. task-model routing을 explicit policy와 owner override로 만든다.** — `P1`
-  - **이유:** 자동 모델 선택이 data egress, 비용, latency, tool support를 몰래 바꿀 수 있다.
-  - **산출물:** task requirements, allowed providers, local/cloud boundary, rationale, override.
-  - **검증:** local-only profile에서 cloud model이 선택되지 않고 unsupported capability는 fail-close한다.
-  - **선행:** 099–100, 241.
+- [ ] **194. Display the channel account and workspace identity before the effect.** — `P0`
+  - **Why:** With a personal Slack, a company Slack, and several email accounts, the wrong sending identity can be chosen.
+  - **Deliverable:** A send preview of provider, account, workspace, destination, and observed authority.
+  - **Verification:** If the identity is unknown/stale the draft is retained but approve/send is disabled.
+  - **Prerequisites:** 123–124, 193.
 
-- [ ] **243. fallback을 error taxonomy와 effect boundary에 맞게 제한한다.** — `P0`
-  - **이유:** tool effect 후 모델 fallback이 전체 turn을 재실행하면 중복 행동이 생길 수 있다.
-  - **산출물:** retryable/non-retryable/ambiguous errors, safe replay boundary, fallback budget.
-  - **검증:** effect-before-error fixture가 이전 tool call을 재실행하지 않고 checkpoint에서 이어진다.
-  - **선행:** 034, 210, 242.
+- [ ] **195. Put source and unsupported-claim markers into the communication draft.** — `P1`
+  - **Why:** If a personal agent fabricates facts into a message, it directly damages the user's relationships.
+  - **Deliverable:** Cited source snippets, user-authored facts, uncertain placeholders, and an editable draft.
+  - **Verification:** Dates, appointments, amounts, and statuses without a source are not generated as automatically definite sentences.
+  - **Prerequisites:** 163, 193–194.
 
-- [ ] **244. provider credential rotation과 auth-profile fallback을 격리한다.** — `P0`
-  - **이유:** 다른 계정 credential로 자동 전환하면 비용·데이터·조직 경계가 바뀔 수 있다.
-  - **산출물:** profile identity, allowed scope, expiry, explicit rotation, redacted health.
-  - **검증:** unauthorized profile fallback 0, logs/trace에 secret 0, revoked profile 즉시 차단.
-  - **선행:** 077, 100, 243.
+- [ ] **196. Constrain tone preference to explicit per-recipient and per-context rules.** — `P1`
+  - **Why:** Generalizing the register of one conversation to every relationship produces inappropriate messages.
+  - **Deliverable:** A tone profile carrying scope, source, examples, prohibited style, and expiry.
+  - **Verification:** The work and family fixtures do not borrow each other's tone preference.
+  - **Prerequisites:** 159, 195.
 
-- [ ] **245. context compaction을 decision·authority·tool-pair 보존 계약으로 강화한다.** — `P0`
-  - **이유:** 긴 session 압축에서 승인 범위나 tool 결과가 빠지면 잘못된 재실행이 생긴다.
-  - **산출물:** preserved decisions, source refs, pending effects, message pairs, uncertainty.
-  - **검증:** adversarial long-run에서 approval 확대, orphan tool result, lost correction이 없다.
-  - **선행:** 210–213, 241.
+- [ ] **197. Make attachments and quoted history a separate review surface.** — `P0`
+  - **Why:** Approving only the body can send a sensitive attachment or a long conversation history along with it.
+  - **Deliverable:** Exact attachment hash, quoted range, redaction warning, and a total payload preview.
+  - **Verification:** File mutation, a hidden attachment, an excessive quote, and a private marker are blocked before send.
+  - **Prerequisites:** 187, 195.
 
-- [ ] **246. prompt-prefix cache를 provider별로 측정·무효화한다.** — `P1`
-  - **이유:** cache 최적화가 stale policy나 skill generation을 재사용하면 안전성이 깨진다.
-  - **산출물:** prefix digest, policy/skill/model version, hit evidence, invalidation rules.
-  - **검증:** policy·permission·skill 변경 후 old cache가 사용되지 않고 warm latency 이득이 재현된다.
-  - **선행:** 094, 224, 245.
+- [ ] **198. Handle inbound thread context as bounded and untrusted.** — `P0`
+  - **Why:** Injection in past messages and a long thread can override system policy or the latest intent.
+  - **Deliverable:** Participant identity, selected turns, truncation reason, and an untrusted envelope.
+  - **Verification:** Quoted injection cannot change tool authority or the recipient, and omitted context is displayed.
+  - **Prerequisites:** 078, 193–197.
 
-- [ ] **247. structured-output repair를 schema-safe하고 bounded하게 만든다.** — `P0`
-  - **이유:** JSON repair가 의미를 추측하거나 validation을 우회할 수 있다.
-  - **산출물:** parse/validate/repair attempt budget, original/repair trace, terminal schema error.
-  - **검증:** malformed security decision과 tool arguments는 guessed success로 복구되지 않는다.
-  - **선행:** 241–246.
+- [ ] **199. Automate inbound triage only at the label/draft level.** — `P1`
+  - **Why:** Coupling mutations such as mark-as-unread, archive, and reply to the initial classification raises the cost of a misjudgement.
+  - **Deliverable:** An urgency/category/confidence proposal, owner review, and no-mutation as the default.
+  - **Verification:** Viewing triage alone does not change read state, archive, task, or reply.
+  - **Prerequisites:** 198.
 
-- [ ] **248. streaming tool-call 조립과 message repair를 provider-neutral하게 검증한다.** — `P0`
-  - **이유:** chunk 순서, duplicate delta, partial arguments가 message-pair integrity를 깨뜨릴 수 있다.
-  - **산출물:** stream state machine, call identity, partial/cancel/error terminal states.
-  - **검증:** reordered/duplicated/truncated stream corpus에서 invalid tool execution이 0이다.
-  - **선행:** 247.
+- [ ] **200. Retain a final owner confirmation for every outbound send.** — `P0`
+  - **Why:** Even in Muse's long-term goals, communication puts user trust ahead of automatic sending.
+  - **Deliverable:** An immutable payload hash, recipient/account identity, expiry, and one-shot approval.
+  - **Verification:** After a draft edit, a recipient change, or expiry, an existing approval is not reused.
+  - **Prerequisites:** 033–034, 193–199.
 
-- [ ] **249. image/audio/document 입력의 provenance와 budget을 통합한다.** — `P1`
-  - **이유:** multimodal attachment가 context budget과 privacy 경계를 우회할 수 있다.
-  - **산출물:** source hash, type, size/token estimate, egress policy, extraction confidence.
-  - **검증:** unknown size, unsupported type, hidden metadata, private attachment가 dispatch 전에 처리된다.
-  - **선행:** 183, 197, 241–248.
+- [ ] **201. Bind scheduled sends to approval expiry and the delivery brake.** — `P0`
+  - **Why:** Even an approved message can become stale in content and receiving context as time passes.
+  - **Deliverable:** scheduled-at, approval valid-until, revalidation, cancel, and a held reason.
+  - **Verification:** No send occurs under expiry, an account change, brake-on, or a clock jump.
+  - **Prerequisites:** 173, 200.
 
-- [ ] **250. 완전 offline local-model path를 기능·품질별로 qualification한다.** — `P1`
-  - **이유:** local adapter가 존재해도 memory, tool, embedding, voice 중 cloud fallback이 남을 수 있다.
-  - **산출물:** blocked-network run, model/embedding/STT/TTS dependencies, unavailable feature disclosure.
-  - **검증:** network-denied 환경에서 hidden egress 0이고 지원 journey는 terminal grader를 통과한다.
-  - **선행:** 099, 242, 249.
+- [ ] **202. Reconcile ambiguous delivery status against provider receipts.** — `P0`
+  - **Why:** Resending after a timeout can create a duplicate message.
+  - **Deliverable:** The pending/accepted/delivered/failed/unknown states and a manual reconciliation path.
+  - **Verification:** Under success-before-ack and restart replay, the same effect ID is sent at most once.
+  - **Prerequisites:** 034, 201.
 
-- [ ] **251. quality·latency·cost·privacy Pareto report를 task family별로 만든다.** — `P2`
-  - **이유:** 하나의 “best model” 대신 개인 작업마다 다른 tradeoff가 있다.
-  - **산출물:** fixed task sets, pass^k, median/p95, estimated/actual cost, egress class.
-  - **검증:** unknown price와 failed run을 제외하지 않고 owner가 routing policy를 재현할 수 있다.
-  - **선행:** 241–250.
+- [ ] **203. Record the result after a reply as an outcome separate from the communication receipt.** — `P1`
+  - **Why:** The fact that a message was delivered does not mean the goal was achieved or that it helped.
+  - **Deliverable:** Separated links for delivery receipt, optional user outcome, and follow-up commitment.
+  - **Verification:** A provider delivered event alone does not create a used outcome or a future send permission.
+  - **Prerequisites:** 178, 202.
 
-- [ ] **252. cross-provider qualification으로 G20을 닫는다.** — `P0`
-  - **이유:** adapter별 green unit test가 전체 agent contract 보존을 증명하지 않는다.
-  - **산출물:** supported provider/model matrix와 capability-specific PASS/FAIL/UNAVAILABLE.
-  - **검증:** safety, grounding, tool integrity, compaction, cancellation floor가 모든 advertised path에서 유지된다.
-  - **선행:** 241–251.
-
----
-
-## Phase 21 — macOS·Windows·Linux·mobile·voice를 capability-aware하게 연결하기
-
-**진입 조건:** G20 green이고 각 platform의 privacy/permission 모델이 문서화됐다.
-
-**Exit gate G21:** 플랫폼과 디바이스가 지원하지 않는 기능을 추측하지 않고, pairing·voice·handoff가
-명시적 권한과 capability descriptor 안에서 동작한다.
-
-- [ ] **253. cross-platform runtime contract와 차이를 단일 matrix로 만든다.** — `P1`
-  - **이유:** macOS에서 검증된 launchd·permission 동작을 Windows/Linux에 그대로 주장하면 안 된다.
-  - **산출물:** service, filesystem, secrets, notifications, thermal, sandbox, browser capability matrix.
-  - **검증:** unsupported/unknown을 safe success로 표시하지 않고 platform-specific tests에 연결한다.
-  - **선행:** 024, 080, 086, 252.
-
-- [ ] **254. Windows resident service의 artifact/runtime truth를 구현·검증한다.** — `P1`
-  - **이유:** registration만으로 live runtime을 증명할 수 없다는 기존 한계를 닫아야 한다.
-  - **산출물:** stable entrypoint, service identity, PID/heartbeat, single writer, repair plan.
-  - **검증:** register-only, stale process, duplicate, restart, update scenarios가 G1과 같은 semantics를 가진다.
-  - **선행:** 013–024, 253.
-
-- [ ] **255. Linux service의 systemd/user-session 경계를 구현·검증한다.** — `P2`
-  - **이유:** system/user service 혼동과 headless 환경 차이가 credential·notification scope를 바꿀 수 있다.
-  - **산출물:** supported unit model, stable path, environment allowlist, health/repair.
-  - **검증:** logout, reboot, missing display, stale unit에서 hidden duplicate resident가 없다.
-  - **선행:** 013–024, 253.
-
-- [ ] **256. macOS desktop app과 CLI/daemon의 single-state contract를 닫는다.** — `P1`
-  - **이유:** app, menu bar, CLI가 별도 설정·resident를 만들면 사용자가 실제 상태를 알 수 없다.
-  - **산출물:** shared runtime settings, health, deep links, one repair path, window restoration.
-  - **검증:** app/CLI 동시 실행과 update에서 두 resident writer나 conflicting setting이 생기지 않는다.
-  - **선행:** 024, 098, 145, 253.
-
-- [ ] **257. mobile companion을 read/review-first 최소 surface로 제한한다.** — `P2`
-  - **이유:** 작은 화면에서 모든 tool 실행과 설정을 복제하면 권한 오류와 UX 복잡성이 커진다.
-  - **산출물:** status, Pack review, draft approve/reject, explicit limited actions.
-  - **검증:** mobile만으로 새 broad permission, self-learning activation, financial effect를 만들 수 없다.
-  - **선행:** 104, 120, 200, 253.
-
-- [ ] **258. device pairing을 mutual verification과 revoke로 보호한다.** — `P0`
-  - **이유:** pairing code 탈취나 stale device가 personal data와 approval에 접근할 수 있다.
-  - **산출물:** short-lived challenge, device identity, owner confirmation, capability grant, revoke.
-  - **검증:** replay, expired challenge, cloned identity, revoked device가 session을 만들지 못한다.
-  - **선행:** 073–084, 257.
-
-- [ ] **259. capability descriptor handshake를 versioned fail-close로 만든다.** — `P0`
-  - **이유:** 디바이스가 지원하지 않는 action을 server가 가능한 것으로 가정하면 잘못된 fallback이 생긴다.
-  - **산출물:** supported actions/data classes, versions, limits, unavailable reasons.
-  - **검증:** unknown future capability와 version mismatch가 자동 downgrade effect로 이어지지 않는다.
-  - **선행:** 241, 253–258.
-
-- [ ] **260. clipboard·file handoff를 one-shot explicit transfer로 제한한다.** — `P0`
-  - **이유:** clipboard와 nearby files 상시 동기화는 민감 정보 유출 경로가 된다.
-  - **산출물:** selected payload, source/destination device, preview, expiry, transfer receipt.
-  - **검증:** background clipboard scraping 0, symlink/file mutation 재검증, revoke 후 transfer 0.
-  - **선행:** 187, 258–259.
-
-- [ ] **261. voice 입력을 push-to-talk와 visible listening state로 시작한다.** — `P1`
-  - **이유:** always-listening은 개인 환경에서 큰 privacy·오탐 비용이 있다.
-  - **산출물:** explicit start/stop, live indicator, local buffer, cancel-before-send.
-  - **검증:** indicator가 꺼진 상태에서 audio capture 0이고 cancel한 utterance가 model/memory로 가지 않는다.
-  - **선행:** 099, 253.
-
-- [ ] **262. STT/TTS provider와 audio retention을 명시적으로 선택하게 한다.** — `P0`
-  - **이유:** 음성 데이터의 cloud egress와 저장 여부를 사용자가 알아야 한다.
-  - **산출물:** local/cloud provider, transcript/audio retention, egress preview, forget action.
-  - **검증:** local-only profile에서 cloud audio request 0이고 raw audio가 기본 영속되지 않는다.
-  - **선행:** 241–252, 261.
-
-- [ ] **263. voice interruption·barge-in·accessibility를 terminal state로 다룬다.** — `P1`
-  - **이유:** 말을 끊거나 인식이 불확실할 때 tool effect가 계속 진행되면 위험하다.
-  - **산출물:** listening/thinking/speaking/cancelled/needs-confirmation state와 accessible alternatives.
-  - **검증:** barge-in과 low-confidence command에서 external/tool effect가 confirmation 없이 실행되지 않는다.
-  - **선행:** 261–262.
-
-- [ ] **264. cross-device real journey audit로 G21을 닫는다.** — `P1`
-  - **이유:** pairing과 개별 기능 test만으로 실제 continuity handoff를 증명할 수 없다.
-  - **산출물:** desktop→mobile review, mobile revoke, voice draft, offline fallback journeys.
-  - **검증:** wrong-device disclosure 0, unauthorized effect 0, capability drift 0, evaluator PASS.
-  - **선행:** 253–263.
+- [ ] **204. Close G16 with a wrong-recipient, duplicate, and injection red-team.** — `P0`
+  - **Why:** Communication failures are hard to undo, so adversarial verification matters more than the happy journey.
+  - **Deliverable:** An alias collision, account drift, attachment swap, prompt injection, and ambiguous-ack campaign.
+  - **Verification:** 0 wrong recipients, 0 unapproved sends, 0 duplicate effects, evaluator PASS.
+  - **Prerequisites:** 193–203.
 
 ---
 
-## Phase 22 — 상시 evaluation, fault injection, drift canary
+## Phase 17 — Operate goals, projects, and execution as truth-preserving plans
 
-**진입 조건:** G21 green이며 advertised surfaces와 providers가 확정됐다.
+**Entry condition:** G16 green and normal-chat Continuity retained.
 
-**Exit gate G22:** 결과와 경로를 채점하는 versioned evaluation system이 model·provider·platform·release
-drift를 탐지하고, synthetic 결과를 organic value로 오인하지 않는다.
+**Exit gate G17:** Muse converts the user's goals into bounded plans and checkpoints and safely resumes
+long work without guessing at actual completion and blockage.
 
-- [ ] **265. golden journey catalog를 실제 개인 실패 family에서 구성한다.** — `P0`
-  - **이유:** 편리한 synthetic prompt만으로는 corrected memory, wrong recipient, stale daemon을 잡지 못한다.
-  - **산출물:** runtime, memory, Continuity, browser, communication, project, device journey set.
-  - **검증:** 각 journey가 관찰된 실패 또는 명시적 high-risk contract에 연결된다.
-  - **선행:** 142, 156, 168, 180, 192, 204, 216, 264.
+- [ ] **205. Fix personal work/project state as a canonical domain separate from threads.** — `P1`
+  - **Why:** Using the same ID for a conversation thread, a Continuity thread, and project execution state mixes authority and lifetime.
+  - **Deliverable:** Explicit relations among project ID, goal, status, owner, source, and linked threads/tasks.
+  - **Verification:** Deleting or completing a project does not implicitly change linked evidence and outcomes.
+  - **Prerequisites:** 066, 180, 204.
 
-- [ ] **266. terminal-state grader를 outcome-first로 만든다.** — `P0`
-  - **이유:** assistant 문구가 그럴듯해도 실제 effect와 store state가 틀릴 수 있다.
-  - **산출물:** final state, artifact digest, external effects, abstention, owner-visible result grader.
-  - **검증:** 말로 “완료”했지만 effect가 없는 fixture를 실패로 판정한다.
-  - **선행:** 265.
+- [ ] **206. Make goal decomposition a pre-execution draft.** — `P1`
+  - **Why:** Executing model-generated subgoals directly as tasks or tool actions can expand scope.
+  - **Deliverable:** Assumptions, subtasks, dependencies, unknowns, and an owner-editable plan.
+  - **Verification:** Task creation and tool execution before confirm are 0.
+  - **Prerequisites:** 170, 205.
 
-- [ ] **267. ordering이 계약인 곳에만 trace invariant를 추가한다.** — `P1`
-  - **이유:** 모든 내부 step을 고정하면 구현 개선을 막고 brittle eval이 된다.
-  - **산출물:** approval-before-send, guard-before-tool, checkpoint-before-resume 같은 최소 invariants.
-  - **검증:** 결과-equivalent refactor는 통과하고 안전 ordering 위반만 실패한다.
-  - **선행:** 266.
+- [ ] **207. Make acceptance criteria and kill conditions mandatory in a plan.** — `P1`
+  - **Why:** A "just do it well" plan easily overstates completion and expands without end.
+  - **Deliverable:** Measurable outcome, non-goals, stop/kill criteria, and evidence method.
+  - **Verification:** A plan whose criteria are empty or contradictory is not transitioned into active execution.
+  - **Prerequisites:** 007, 206.
 
-- [ ] **268. fault injection catalog를 I/O boundary별로 완성한다.** — `P0`
-  - **이유:** network timeout, disk full, process death, clock shift, corrupt data는 정상 test에서 드물다.
-  - **산출물:** model, store, browser, process, channel, device, scheduler fault controls.
-  - **검증:** 각 critical boundary에 deterministic failure와 expected terminal state가 있다.
-  - **선행:** 265–267.
+- [ ] **208. Select the next action from exact dependencies and readiness.** — `P1`
+  - **Why:** Prioritizing easy-looking work and skipping the real blocker means the project does not progress.
+  - **Deliverable:** Ready/blocked reason, required authority, cost/risk, and one chosen action.
+  - **Verification:** A task with an unmet dependency or a pending owner decision is not shown as runnable.
+  - **Prerequisites:** 205–207.
 
-- [ ] **269. mutation testing을 핵심 reducer와 guard에 적용한다.** — `P1`
-  - **이유:** green test가 실제로 잘못된 policy 변화를 잡는지 확인해야 한다.
-  - **산출물:** selected safety/attunement/recall/runtime mutations와 killed/survived report.
-  - **검증:** known off-by-one, inverted guard, missing freshness, duplicate effect mutations가 모두 잡힌다.
-  - **선행:** 268.
+- [ ] **209. Make blockers and decisions first-class states.** — `P1`
+  - **Why:** Retrying a failure indefinitely, or auto-guessing a problem that needs a user decision, is not allowed.
+  - **Deliverable:** Blocker type, evidence, owner question, retry eligibility, and a resolved-by receipt.
+  - **Verification:** When the same blocker recurs with no new evidence, it terminates as no-progress.
+  - **Prerequisites:** 208.
 
-- [ ] **270. 비결정적 journey에 strict pass^k와 seed accounting을 적용한다.** — `P0`
-  - **이유:** 평균 성공률이 높아도 사용자가 중요한 작업에서 한 번 실패하면 신뢰가 깨진다.
-  - **산출물:** required k, seeds/models, all-pass rule, abort/missing semantics.
-  - **검증:** 한 번의 fail·skip·unverified도 strict gate를 green으로 만들지 못한다.
-  - **선행:** 265–269.
+- [ ] **210. Bind the plan version and effect boundary to the execution checkpoint.** — `P0`
+  - **Why:** Resuming an old checkpoint after a plan edit can execute an action that was already cancelled.
+  - **Deliverable:** Plan digest, completed steps, pending effects, and resume compatibility.
+  - **Verification:** It does not auto-resume under a plan mismatch, a corrupt checkpoint, or an ambiguous effect.
+  - **Prerequisites:** 129, 207–209.
 
-- [ ] **271. eval pollution과 train/test leakage를 탐지한다.** — `P0`
-  - **이유:** golden answer가 prompt, memory, generated skill에 들어가면 성능이 거짓으로 상승한다.
-  - **산출물:** dataset fingerprints, runtime isolation, memory reset, skill registry snapshot.
-  - **검증:** seeded leakage가 preflight에서 발견되고 canonical report publish를 막는다.
-  - **선행:** 217–228, 265–270.
+- [ ] **211. Make the session handoff a source-backed Continuity Pack.** — `P1`
+  - **Why:** Trusting only a model summary when resuming long work can lose decisions and blockers.
+  - **Deliverable:** Goal, verified progress, exact artifacts, decisions, blockers, and one next action.
+  - **Verification:** Unsupported completion claims are excluded and the original source can be inspected.
+  - **Prerequisites:** 064, 210.
 
-- [ ] **272. model/provider/release drift canary를 versioned 비교한다.** — `P1`
-  - **이유:** 같은 model 이름과 API가 시간이 지나며 behavior를 바꿀 수 있다.
-  - **산출물:** baseline artifact, current result, material delta, auto-hold threshold.
-  - **검증:** known changed fixture가 rollout 전에 감지되고 organic history를 다시 쓰지 않는다.
-  - **선행:** 241–252, 270–271.
+- [ ] **212. Set tool, time, and cost budgets for every plan step.** — `P1`
+  - **Why:** With only an overall run budget, one subtask can consume all resources.
+  - **Deliverable:** Per-step attempt, wallclock, model, browser, and external-effect budgets.
+  - **Verification:** Budget exhaustion produces an explicit terminal state and is not treated as success into the next step.
+  - **Prerequisites:** 087–095, 207.
 
-- [ ] **273. security regression corpus를 실제 exploit family로 유지한다.** — `P0`
-  - **이유:** generic injection 문장만으로 새로운 tool/channel/device 경계를 보호할 수 없다.
-  - **산출물:** injection, SSRF, path escape, wrong-recipient, permission amplification, secret leak cases.
-  - **검증:** 새 capability는 대응 corpus case 없이는 advertised security gate를 통과하지 못한다.
-  - **선행:** 082–084, 204, 236, 258, 272.
+- [ ] **213. Compute the progress projection only from verified effects.** — `P0`
+  - **Why:** What the agent said it "completed" and the actual file/task/API state can differ.
+  - **Deliverable:** The planned, attempted, verified, blocked, and rolled-back states with evidence links.
+  - **Verification:** Tool errors and unverifiable output do not raise the completed percentage.
+  - **Prerequisites:** 208–212.
 
-- [ ] **274. technical·controlled·organic evidence dashboard를 물리적으로 분리한다.** — `P0`
-  - **이유:** 많은 synthetic pass를 실제 개인 가치처럼 보이게 만드는 시각적 혼동을 막아야 한다.
-  - **산출물:** separate panels/stores, immutable origin, denominators, promotion-disabled labels.
-  - **검증:** synthetic-only dataset이 organic graph, percentage, autonomy status를 렌더링하지 않는다.
-  - **선행:** 004–006, 142, 265–273.
+- [ ] **214. Place a review gate before irreversible and user-visible steps.** — `P0`
+  - **Why:** A blanket approval obtained early in a long plan must not execute a later dangerous effect.
+  - **Deliverable:** A just-in-time preview, exact target/effect, plan context, and approval expiry.
+  - **Verification:** If the target or payload changes it requires re-approval, and finance/payments are permanently refused.
+  - **Prerequisites:** 073, 200, 213.
 
-- [ ] **275. evaluation 자체에 time·model·compute budget을 둔다.** — `P1`
-  - **이유:** 300개 roadmap을 지속 검증하면서 evaluator가 일상 runtime을 방해할 수 있다.
-  - **산출물:** change-tier selection, preflight estimate, resource admission, cancel/resume, partial-unverified result.
-  - **검증:** budget 부족 시 축을 조용히 skip하지 않고 canonical report를 unverified로 남긴다.
-  - **선행:** 085–096, 265–274.
+- [ ] **215. Review the project outcome separately from the completion receipt.** — `P1`
+  - **Why:** Even with every task closed, the user's actual goal may not have been achieved.
+  - **Deliverable:** Verified deliverables, owner acceptance, adjusted/rejected outcome, and residual work.
+  - **Verification:** Task count alone does not create project success or a playbook reward.
+  - **Prerequisites:** 203, 213–214.
 
-- [ ] **276. quarterly full qualification으로 G22를 닫는다.** — `P1`
-  - **이유:** 개별 release gate만으로 장기 model·platform·personal-data drift를 놓칠 수 있다.
-  - **산출물:** versioned full battery, previous delta, open blockers, claims allowed/withdrawn.
-  - **검증:** independent evaluator가 fresh source/artifact/live evidence로 PASS/FAIL을 판정한다.
-  - **선행:** 265–275.
-
----
-
-## Phase 23 — plugin ecosystem과 외부 기여를 permission-first로 열기
-
-**진입 조건:** G22 green이고 core capability/security contracts가 versioned됐다.
-
-**Exit gate G23:** plugin과 외부 기여가 설치 전 capability·permission·provenance를 드러내고,
-core safety floor와 사용자 데이터를 우회하지 않은 채 호환성 검증을 통과한다.
-
-- [ ] **277. plugin manifest에 identity·version·capability·permission을 필수화한다.** — `P0`
-  - **이유:** 이름과 code만 있는 plugin은 어떤 데이터와 효과를 요구하는지 알 수 없다.
-  - **산출물:** signed identity 선택, entrypoints, tools/skills/apps, requested permissions, data egress, compatibility.
-  - **검증:** unknown field/version, undeclared entrypoint, missing permission이 install preflight를 막는다.
-  - **선행:** 073, 125, 252, 276.
-
-- [ ] **278. plugin install·upgrade·disable 대신 revoke/uninstall lifecycle을 만든다.** — `P0`
-  - **이유:** 단순 disabled 상태는 code·data·credential·background process가 남았는지 불명확하다.
-  - **산출물:** exact diff preview, explicit install, versioned grant, revoke, data retention choice, uninstall receipt.
-  - **검증:** revoke 즉시 tool/effect authority가 사라지고 uninstall이 user data를 기본 삭제하지 않는다.
-  - **선행:** 277.
-
-- [ ] **279. plugin 실행을 declared scope와 sandbox policy에 묶는다.** — `P0`
-  - **이유:** core가 안전해도 plugin이 shell/network/filesystem을 직접 사용하면 경계가 우회된다.
-  - **산출물:** per-plugin safe roots, network allowlist, secret handles, process limits, audit events.
-  - **검증:** undeclared read/write/network/process와 symlink/path escape가 runtime에서 차단된다.
-  - **선행:** 080–081, 277–278.
-
-- [ ] **280. plugin compatibility matrix와 contract suite를 제공한다.** — `P1`
-  - **이유:** Muse API 변화가 plugin을 조용히 오동작시키면 user store와 effect가 손상될 수 있다.
-  - **산출물:** supported core versions, tool schema tests, lifecycle tests, migration checks.
-  - **검증:** incompatible plugin은 load되지 않고 exact reason과 upgrade/rollback path를 제공한다.
-  - **선행:** 277–279.
-
-- [ ] **281. public SDK/API를 semver와 deprecation window로 관리한다.** — `P1`
-  - **이유:** 내부 package 구조를 그대로 ecosystem contract로 노출하면 안전한 변경이 어려워진다.
-  - **산출물:** minimal stable interfaces, compatibility policy, deprecation telemetry, removal gate.
-  - **검증:** breaking fixture가 CI에서 탐지되고 deprecated path 제거 전 usage/alternative가 확인된다.
-  - **선행:** 137, 280.
-
-- [ ] **282. 세 개의 reference plugin으로 최소 contract를 검증한다.** — `P2`
-  - **이유:** 문서만으로 notes-like local, read-only remote, draft-effect plugin의 차이를 검증하기 어렵다.
-  - **산출물:** local read/write, remote read-only, draft-first effect examples와 tests.
-  - **검증:** reference plugin이 privileged internal import 없이 공개 SDK만 사용한다.
-  - **선행:** 277–281.
-
-- [ ] **283. plugin developer quickstart를 threat model과 함께 작성한다.** — `P1`
-  - **이유:** “Hello world”만 제공하면 개발자가 permission과 untrusted-output 경계를 놓친다.
-  - **산출물:** scaffold, manifest, tests, permission rationale, safe storage, publish checklist.
-  - **검증:** 새 checkout에서 quickstart plugin이 build/test/install-preview까지 재현된다.
-  - **선행:** 282.
-
-- [ ] **284. plugin doctor와 support bundle을 core diagnostics에 통합한다.** — `P1`
-  - **이유:** plugin failure를 core crash로 오인하거나 전체 personal data를 공유하지 않게 해야 한다.
-  - **산출물:** loaded version, health, denied capability, crash count, redacted logs, isolate action.
-  - **검증:** plugin diagnostic에 secret/user content가 없고 unhealthy plugin만 격리할 수 있다.
-  - **선행:** 150, 278–283.
-
-- [ ] **285. OpenClaw·Hermes 등 외부 설정 import를 preview-only migration으로 제한한다.** — `P2`
-  - **이유:** 경쟁 제품의 넓은 권한과 channel 설정을 그대로 가져오면 Muse 정책이 약해질 수 있다.
-  - **산출물:** supported subset, source provenance, permission remap, skipped/unsafe items, explicit apply.
-  - **검증:** import만으로 credential copy, external send, skill activation, daemon start가 발생하지 않는다.
-  - **선행:** 121, 226, 277–284.
-
-- [ ] **286. security disclosure와 vulnerable-plugin response 절차를 만든다.** — `P0`
-  - **이유:** 외부 code ecosystem에서는 취약점 접수·격리·사용자 통지가 지연될 수 있다.
-  - **산출물:** private report channel, severity, affected-version query, revoke/advisory, patch SLA.
-  - **검증:** simulated vulnerable plugin을 식별하고 설치 차단·기존 revoke 안내까지 drill한다.
-  - **선행:** 147, 273, 277–285.
-
-- [ ] **287. external contribution에 test·license·provenance·review gate를 적용한다.** — `P1`
-  - **이유:** 기능 기여가 공급망·라이선스·개인 정보 fixture 위험을 가져올 수 있다.
-  - **산출물:** contributor checklist, required tests, DCO/license policy, generated-code/source declaration.
-  - **검증:** missing provenance, forbidden fixture data, bypassed hook이 merge gate를 통과하지 않는다.
-  - **선행:** 139, 265–276, 281–286.
-
-- [ ] **288. bounded ecosystem pilot으로 G23을 닫는다.** — `P1`
-  - **이유:** reference plugin만으로 실제 third-party 개발 경험과 permission 이해를 증명할 수 없다.
-  - **산출물:** 소수 pilot plugins, install/revoke journeys, developer feedback, incidents, adopt/hold decisions.
-  - **검증:** undeclared effect 0, core regression 0, revoke completeness PASS, evaluator review.
-  - **선행:** 277–287.
+- [ ] **216. Close G17 with a multi-session real project audit.** — `P1`
+  - **Why:** Short synthetic plans do not capture the realistic cost of long-term resume, drift, and owner decisions.
+  - **Deliverable:** Two or more real projects spanning multiple dates, including failure and adjustment cases.
+  - **Verification:** Completion truth, resume accuracy, duplicate effects, budget, and owner burden are independently evaluated.
+  - **Prerequisites:** 205–215.
 
 ---
 
-## Phase 24 — 가치·안전·복잡도를 계속 재평가하는 운영 루프
+## Phase 18 — Operate self-learning and skills/playbooks proposal-first
 
-**진입 조건:** G23 green이며 roadmap 001–288의 current/stale 상태가 구분돼 있다.
+**Entry condition:** G17 green, sufficient organic outcomes, and separate approval to lift the
+self-learning hold.
 
-**Exit gate G24:** Muse의 다음 cycle이 organic value, failure evidence, security, maintenance cost에 근거해
-승인되고, 가치가 없는 기능은 추가가 아니라 보류·축소·삭제된다.
+**Exit gate G18:** Muse may create improvement proposals from experience, but does not change active
+behavior without held-out verification, user review, and rollback.
 
-- [ ] **289. north-star value review를 분기마다 실행한다.** — `P1`
-  - **이유:** 기능·test·commit 증가가 실제 개인적 도움 증가를 의미하지 않는다.
-  - **산출물:** time-to-resume, exact answer success, correction burden, unwanted interruption, owner trust review.
-  - **검증:** denominator·dates·negative outcomes·missing data가 있고 technical activity는 분리된다.
-  - **선행:** 142, 276, 288.
+- [ ] **217. Bind a learning candidate's source and purpose immutably.** — `P0`
+  - **Why:** Without knowing from which experience and why a rule arose, wrong learning cannot be undone.
+  - **Deliverable:** Source runs/outcomes, proposed behavior, scope, expected benefit, and expiry.
+  - **Verification:** A candidate is not created from an unclassified receipt or a model self-critique alone.
+  - **Prerequisites:** 127–128, 216.
 
-- [ ] **290. weekly failure triage를 severity와 recurrence로 정렬한다.** — `P1`
-  - **이유:** 새 기능 아이디어가 반복 장애보다 먼저 선택되는 것을 막아야 한다.
-  - **산출물:** current incidents, repeated faults, user friction, evidence gaps, next narrow slice.
-  - **검증:** high-risk recurrent failure가 열린 상태에서 unrelated expansion을 active WIP로 선택하지 않는다.
-  - **선행:** 147, 155, 289.
+- [ ] **218. Separate memory correction from procedural skill proposals.** — `P0`
+  - **Why:** A factual correction such as "my name is…" must not change the tool-execution strategy.
+  - **Deliverable:** Distinct pipelines for semantic fact, preference, prompt/playbook, and executable skill.
+  - **Verification:** Each candidate uses a different permission, evaluation, and activation gate.
+  - **Prerequisites:** 157–168, 217.
 
-- [ ] **291. monthly memory·privacy·permission audit를 수행한다.** — `P0`
-  - **이유:** 장기 개인화는 데이터와 권한이 조용히 누적되는 위험이 있다.
-  - **산출물:** store growth, stale facts, unresolved conflicts, active grants, revoked remnants, retention actions.
-  - **검증:** audit 조회는 무변경이며 delete/revoke는 exact preview와 별도 authority를 요구한다.
-  - **선행:** 073–084, 157–168, 258, 278, 289.
+- [ ] **219. Generate skill diffs only in a quarantine filesystem.** — `P0`
+  - **Why:** If code/instructions still being generated become visible on the active skill search path, behavior changes immediately.
+  - **Deliverable:** An isolated candidate directory, manifest, requested tools/permissions, and a checksum.
+  - **Verification:** During candidate build/test, the active skill registry and the runtime prompt digest do not change.
+  - **Prerequisites:** 126–128, 218.
 
-- [ ] **292. quarterly competitor delta를 Muse fit lens로 재평가한다.** — `P3`
-  - **이유:** OpenClaw·Hermes의 새 기능을 반사적으로 복제하지 않고 실제 사용자 문제에 연결해야 한다.
-  - **산출물:** official change, user need, Muse edge, security/maintenance cost, adopt/reject/defer.
-  - **검증:** owner problem과 measurable gate가 없는 parity item은 active roadmap에 들어가지 않는다.
-  - **선행:** 132, 289.
+- [ ] **220. Auto-generate and review deterministic contract tests per skill.** — `P1`
+  - **Why:** A natural-language skill with only success examples can operate on excessively broad input.
+  - **Deliverable:** Positive, boundary, forbidden-effect, and malformed-input examples plus a grader.
+  - **Verification:** Review whether the generated tests themselves weaken the source requirements and permission boundaries.
+  - **Prerequisites:** 219.
 
-- [ ] **293. retention·export·forget completeness를 정기 검증한다.** — `P0`
-  - **이유:** 새 store, plugin, device가 forget/export 범위에서 빠질 수 있다.
-  - **산출물:** data inventory, export coverage, delete/tombstone semantics, backups/derived-index handling.
-  - **검증:** seeded identity가 active, archive, index, cache, device, plugin store에서 정책대로 사라진다.
-  - **선행:** 076, 112, 165, 260, 278, 291.
+- [ ] **221. Enforce a held-out regression set and baseline comparison.** — `P0`
+  - **Why:** Overfit, where only the learned examples improve while general performance degrades, must be prevented.
+  - **Deliverable:** An immutable split, a baseline artifact, and quality/safety/cost deltas.
+  - **Verification:** If there is even one held-out safety regression, the activate gate closes.
+  - **Prerequisites:** 220.
 
-- [ ] **294. dependency·secret·supply-chain maintenance cycle을 운영한다.** — `P0`
-  - **이유:** 장기 resident agent는 dependency 취약점과 credential drift에 계속 노출된다.
-  - **산출물:** version updates, vulnerability triage, credential expiry, SBOM delta, rollback plan.
-  - **검증:** high/critical unresolved finding이 release/update를 막고 automated update도 full gate를 지난다.
-  - **선행:** 139, 244, 286, 293.
+- [ ] **222. Connect playbook reward and decay to explicit outcomes only.** — `P1`
+  - **Why:** Using completion or agent confidence as a reward reinforces wrong strategies.
+  - **Deliverable:** Eligible outcomes, a lower-confidence bound, negative weight, and time decay.
+  - **Verification:** Receipt-only records and controlled replay do not raise production ranking.
+  - **Prerequisites:** 006, 215, 221.
 
-- [ ] **295. accessibility·localization regression을 핵심 journey에 유지한다.** — `P1`
-  - **이유:** 새 surface와 문구가 keyboard, screen reader, locale safety semantics를 깨뜨릴 수 있다.
-  - **산출물:** supported locale/a11y matrix, golden screenshots where useful, semantic journey tests.
-  - **검증:** permission/held/unverified 의미가 locale별로 같고 keyboard-only path가 지속 통과한다.
-  - **선행:** 106–107, 256–264, 288.
+- [ ] **223. Resolve competing skills and policy conflicts before activation.** — `P1`
+  - **Why:** When different instructions apply to the same trigger, behavior becomes non-deterministic.
+  - **Deliverable:** Trigger overlap, permission mismatch, a precedence proposal, and an owner decision.
+  - **Verification:** A candidate with an unresolved conflict does not enter the active registry.
+  - **Prerequisites:** 219–222.
 
-- [ ] **296. latency·memory·cost budget trend를 release별로 비교한다.** — `P1`
-  - **이유:** 기능이 누적되면서 first response와 resident resource가 서서히 악화될 수 있다.
-  - **산출물:** fixed hardware/profile baseline, median/p95, RSS/CPU, model cost, material-regression threshold.
-  - **검증:** 환경·model·cache 차이가 명시되고 threshold 초과가 release gate를 hold한다.
-  - **선행:** 088–096, 146, 251, 294.
+- [ ] **224. Make activation, revoke, and rollback a versioned transaction.** — `P0`
+  - **Why:** A partial activation or a failed rollback leaves the prompt and the tool registry inconsistent.
+  - **Deliverable:** Active generation, atomic switch, previous version, health probe, and a rollback receipt.
+  - **Verification:** Under a crash and under concurrent activation, exactly one generation is visible.
+  - **Prerequisites:** 223.
 
-- [ ] **297. 하중을 받지 않는 feature·rule·adapter를 정기적으로 prune한다.** — `P1`
-  - **이유:** 300개 roadmap은 복잡도를 영구 보존하는 명분이 되어서는 안 된다.
-  - **산출물:** usage/evidence, safety load, maintenance cost, migration/removal proposal.
-  - **검증:** active dependency와 user data export가 확인되기 전 삭제하지 않고 removal 후 dead path가 없다.
-  - **선행:** 289–296.
+- [ ] **225. Prevent user preferences from overriding safety/system policy.** — `P0`
+  - **Why:** Learning a preference like "always send right away" can weaken the approval gate.
+  - **Deliverable:** Policy precedence, non-learnable constraints, and a rejected-proposal reason.
+  - **Verification:** An adversarial preference corpus cannot change the permission, send, payment, or retention guards.
+  - **Prerequisites:** 073, 159, 224.
 
-- [ ] **298. 다음 30일 organic experiment를 하나만 선택한다.** — `P1`
-  - **이유:** 여러 제품 가설을 동시에 열면 어떤 변화가 가치를 만들었는지 알 수 없다.
-  - **산출물:** hypothesis, target journey, baseline, success/kill criteria, safety hold, evidence plan.
-  - **검증:** experiment 외 behavior/permission은 유지되고 결과가 나쁘면 자동 확장하지 않는다.
-  - **선행:** 289–297.
+- [ ] **226. Treat imported/community skills as untrusted quarantine.** — `P0`
+  - **Why:** An external skill can contain code, prompt injection, and hidden network effects.
+  - **Deliverable:** Provenance, signature/checksum, a static permission scan, a sandbox test, and an explicit install preview.
+  - **Verification:** Import alone causes no code execution, network access, or active registration.
+  - **Prerequisites:** 125, 219–225.
 
-- [ ] **299. 반복 release-readiness를 current HEAD와 evidence에 다시 묶는다.** — `P0`
-  - **이유:** 첫 release의 PASS는 다음 cycle의 code, model, data, plugin 상태를 보증하지 않는다.
-  - **산출물:** G0–G23 freshness, source/artifact hash, experiment outcome, unresolved blockers의 aggregate.
-  - **검증:** failed/unverified/stale gate 하나라도 있으면 release와 autonomy expansion을 막는다.
-  - **선행:** 276, 288, 298.
+- [ ] **227. Bind background curation to resource admission and the owner schedule.** — `P1`
+  - **Why:** Self-improvement must not encroach on foreground work and privacy expectations.
+  - **Deliverable:** An idle-only claim, model budget, candidate cap, pause/resume, and no-auto-activate.
+  - **Verification:** Under resource pressure, owner pause, and hold states, model curation starts are 0.
+  - **Prerequisites:** 085–096, 217–226.
 
-- [ ] **300. roadmap을 evidence로 갱신하고 다음 cycle을 승인한다.** — `P1`
-  - **이유:** 300번은 개발 종료가 아니라, 완료·기각·새 실패를 반영해 다음 목표를 더 작고 정확하게 만드는 지점이다.
-  - **산출물:** completed/removed/deferred summary, remaining blockers, next numbered successor roadmap 또는 종료 결정.
-  - **검증:** 기록-only 변경은 batch 규칙으로 정리되고, 새 task는 owner problem·acceptance·gate가 있을 때만 추가된다.
-  - **선행:** 289–299와 owner의 다음 cycle 결정.
+- [ ] **228. Close G18 with a learning audit and a rollback drill.** — `P0`
+  - **Why:** Beyond candidate quality, a wrongly activated behavior must be findable and reversible.
+  - **Deliverable:** The source→candidate→tests→approval→activation→outcomes chain plus a revoke drill.
+  - **Verification:** 0 silent activations, 0 held-out regressions, baseline digest restored after rollback, evaluator PASS.
+  - **Prerequisites:** 217–227.
 
 ---
 
-## Phase exit gate 요약
+## Phase 19 — Use multi-agent only when it is better than a single agent
 
-| Gate | 반드시 참이어야 하는 상태 | 실패 시 금지되는 다음 행동 |
+**Entry condition:** G18 green and a single-agent baseline exists per task family.
+
+**Exit gate G19:** Decomposition, handoff, permission, budget, and cancellation are verified, and on the
+selected task families multi-agent materially improves the held-out results over single-agent.
+
+- [ ] **229. Fix a single-agent baseline for every multi-agent candidate task.** — `P0`
+  - **Why:** Without a comparison basis, increasing the agent count looks like success even when only cost and complexity grow.
+  - **Deliverable:** A baseline of outcome quality, pass^k, cost, latency, and tool/effect count.
+  - **Verification:** Measured repeatedly with the same artifacts, rubric, budget, and held-out set.
+  - **Prerequisites:** 131, 228.
+
+- [ ] **230. Make the decomposition gate admit only genuinely independent subtasks.** — `P1`
+  - **Why:** Parallelizing tightly coupled work produces divergent implicit decisions.
+  - **Deliverable:** Judgements on shared state, ordering, context dependency, and mergeability.
+  - **Verification:** Coupled fixtures remain a single-agent/serial plan and only independent fixtures fan out.
+  - **Prerequisites:** 206–209, 229.
+
+- [ ] **231. Minimize agent roles and writable scope.** — `P0`
+  - **Why:** If every subagent has full filesystem and tool authority, the blast radius grows.
+  - **Deliverable:** Role, inputs, allowed paths/tools/effects, output schema, and expiry.
+  - **Verification:** Out-of-scope writes and tool calls are blocked at runtime and do not rely on an advisory prompt alone.
+  - **Prerequisites:** 073, 230.
+
+- [ ] **232. Constrain handoffs to typed artifacts with exact source links.** — `P1`
+  - **Why:** A free-form summary can lose decisions, uncertainty, and provenance.
+  - **Deliverable:** Goal, inputs, assumptions, decisions, artifacts, blockers, and a verification schema.
+  - **Verification:** A handoff missing a required field or a source does not start downstream execution.
+  - **Prerequisites:** 007, 211, 231.
+
+- [ ] **233. Apply idempotency and causal ordering to the message bus.** — `P0`
+  - **Why:** Retries and out-of-order delivery can execute a subtask twice or apply a stale decision.
+  - **Deliverable:** Message ID, correlation/causation IDs, sequence, dedupe window, and terminal ack.
+  - **Verification:** Under duplicate, delayed, reordered, and restart replay, an effect is reflected exactly once.
+  - **Prerequisites:** 231–232.
+
+- [ ] **234. Protect shared-state mutation with optimistic concurrency and a merge gate.** — `P0`
+  - **Why:** Two agents overwriting the same file/store causes silent data corruption.
+  - **Deliverable:** Base version, conflict result, an owner/lead merge decision, and atomic publish.
+  - **Verification:** Concurrent incompatible edits are not automatically last-write-wins.
+  - **Prerequisites:** 233.
+
+- [ ] **235. Enforce token, time, tool, and effect budgets per subagent.** — `P1`
+  - **Why:** One subagent can consume the whole orchestration budget or get stuck in a tool loop.
+  - **Deliverable:** Per-agent and aggregate budgets, cancellation, and a budget-exhausted result.
+  - **Verification:** A child budget overrun does not send siblings and the supervisor into unbounded cascading retries.
+  - **Prerequisites:** 212, 233–234.
+
+- [ ] **236. Prevent delegation from amplifying permissions.** — `P0`
+  - **Why:** Authority the supervisor lacks must not be acquired by combining subagents.
+  - **Deliverable:** Authority intersection, non-delegable effects, and approval ownership.
+  - **Verification:** The union of the children's authority does not exceed the parent authority, and external sends retain the owner gate.
+  - **Prerequisites:** 073, 214, 231–235.
+
+- [ ] **237. Include cancellation and orphan subagents in resident health.** — `P0`
+  - **Why:** If a child keeps executing tools after the supervisor exits, it becomes an invisible background effect.
+  - **Deliverable:** Process/task ownership, cooperative abort, lease expiry, and orphan fencing.
+  - **Verification:** After a supervisor crash and a user cancel, new child effects are 0 and late results are discarded.
+  - **Prerequisites:** 016, 091, 235–236.
+
+- [ ] **238. Separate the evaluator from the maker agent in context and authority.** — `P0`
+  - **Why:** When the same agent grades its own output, self-preference and shared assumptions remain.
+  - **Deliverable:** A read-only evaluator role, artifact-only input, a fixed rubric, and an independent trace.
+  - **Verification:** The evaluator reproduces without the maker's scratch/context and has no write/effect tools.
+  - **Prerequisites:** 008, 232, 237.
+
+- [ ] **239. Open remote/hosted subagents only when they pass an owner-controlled egress threat model.** — `P2`
+  - **Why:** Source and personal data can move to an external sandbox.
+  - **Deliverable:** Data classification, an upload manifest, secrets exclusion, retention/deletion, and explicit opt-in.
+  - **Verification:** On a local-only profile remote dispatch is 0, and no file outside the approved subset is transmitted.
+  - **Prerequisites:** 073–084, 236–238.
+
+- [ ] **240. Close G19 with a held-out multi-agent benchmark.** — `P1`
+  - **Why:** Even with a safe architecture, there is no default-use value if the outcome is no better than single-agent.
+  - **Deliverable:** A paired baseline per task family, quality/cost/latency/failure deltas, and an adopt/reject decision.
+  - **Verification:** Families without strict pass^k and material improvement keep single-agent as the default.
+  - **Prerequisites:** 229–239.
+
+---
+
+## Phase 20 — Operate provider/model quality, fallback, and cost under one contract
+
+**Entry condition:** G19 green and the canonical agent contract retained independently of whether
+multi-agent is in use.
+
+**Exit gate G20:** The same safety, grounding, and message-integrity floor is retained across provider
+changes, fallback, compaction, streaming, structured output, and multimodal input, and cost/performance
+choices are reproducible.
+
+- [ ] **241. Bind the provider capability registry to runtime probes and versions.** — `P1`
+  - **Why:** Documented support and an actual endpoint's tool/stream/schema/context support can differ.
+  - **Deliverable:** Model ID, provider, capabilities, limits, probe time, source, and unknown fields.
+  - **Verification:** A probe failure is distinguished from unsupported, and stale capabilities are not used for routing.
+  - **Prerequisites:** 093–094, 240.
+
+- [ ] **242. Make task-model routing an explicit policy with an owner override.** — `P1`
+  - **Why:** Automatic model selection can silently change data egress, cost, latency, and tool support.
+  - **Deliverable:** Task requirements, allowed providers, the local/cloud boundary, rationale, and override.
+  - **Verification:** On a local-only profile a cloud model is not selected, and an unsupported capability fails close.
+  - **Prerequisites:** 099–100, 241.
+
+- [ ] **243. Constrain fallback to the error taxonomy and effect boundaries.** — `P0`
+  - **Why:** A model fallback after a tool effect that re-runs the whole turn can produce duplicate actions.
+  - **Deliverable:** Retryable/non-retryable/ambiguous errors, a safe replay boundary, and a fallback budget.
+  - **Verification:** The effect-before-error fixture does not re-run the previous tool call and continues from the checkpoint.
+  - **Prerequisites:** 034, 210, 242.
+
+- [ ] **244. Isolate provider credential rotation and auth-profile fallback.** — `P0`
+  - **Why:** Automatically switching to a different account's credential can change cost, data, and organizational boundaries.
+  - **Deliverable:** Profile identity, allowed scope, expiry, explicit rotation, and redacted health.
+  - **Verification:** 0 unauthorized profile fallbacks, 0 secrets in logs/trace, and a revoked profile blocked immediately.
+  - **Prerequisites:** 077, 100, 243.
+
+- [ ] **245. Strengthen context compaction with a decision, authority, and tool-pair preservation contract.** — `P0`
+  - **Why:** If approval scope or a tool result is dropped during long-session compaction, wrong re-execution occurs.
+  - **Deliverable:** Preserved decisions, source refs, pending effects, message pairs, and uncertainty.
+  - **Verification:** In an adversarial long run there is no approval expansion, orphan tool result, or lost correction.
+  - **Prerequisites:** 210–213, 241.
+
+- [ ] **246. Measure and invalidate the prompt-prefix cache per provider.** — `P1`
+  - **Why:** If cache optimization reuses a stale policy or skill generation, safety breaks.
+  - **Deliverable:** Prefix digest, policy/skill/model version, hit evidence, and invalidation rules.
+  - **Verification:** After a policy, permission, or skill change the old cache is not used, and the warm-latency gain is reproducible.
+  - **Prerequisites:** 094, 224, 245.
+
+- [ ] **247. Make structured-output repair schema-safe and bounded.** — `P0`
+  - **Why:** JSON repair can guess at meaning or bypass validation.
+  - **Deliverable:** A parse/validate/repair attempt budget, an original/repair trace, and a terminal schema error.
+  - **Verification:** Malformed security decisions and tool arguments are not repaired into guessed success.
+  - **Prerequisites:** 241–246.
+
+- [ ] **248. Verify streaming tool-call assembly and message repair provider-neutrally.** — `P0`
+  - **Why:** Chunk order, duplicate deltas, and partial arguments can break message-pair integrity.
+  - **Deliverable:** A stream state machine, call identity, and partial/cancel/error terminal states.
+  - **Verification:** Invalid tool executions are 0 on a reordered/duplicated/truncated stream corpus.
+  - **Prerequisites:** 247.
+
+- [ ] **249. Unify provenance and budget for image, audio, and document input.** — `P1`
+  - **Why:** A multimodal attachment can bypass the context budget and the privacy boundary.
+  - **Deliverable:** Source hash, type, size/token estimate, egress policy, and extraction confidence.
+  - **Verification:** Unknown size, unsupported type, hidden metadata, and a private attachment are handled before dispatch.
+  - **Prerequisites:** 183, 197, 241–248.
+
+- [ ] **250. Qualify the fully offline local-model path per feature and quality.** — `P1`
+  - **Why:** Even with a local adapter present, a cloud fallback can remain in memory, tools, embedding, or voice.
+  - **Deliverable:** A blocked-network run, model/embedding/STT/TTS dependencies, and unavailable-feature disclosure.
+  - **Verification:** In a network-denied environment hidden egress is 0 and the supported journeys pass the terminal grader.
+  - **Prerequisites:** 099, 242, 249.
+
+- [ ] **251. Produce a quality, latency, cost, and privacy Pareto report per task family.** — `P2`
+  - **Why:** Instead of one "best model", each personal task has a different tradeoff.
+  - **Deliverable:** Fixed task sets, pass^k, median/p95, estimated/actual cost, and egress class.
+  - **Verification:** Unknown prices and failed runs are not excluded, and the owner can reproduce the routing policy.
+  - **Prerequisites:** 241–250.
+
+- [ ] **252. Close G20 with a cross-provider qualification.** — `P0`
+  - **Why:** Green unit tests per adapter do not prove preservation of the whole agent contract.
+  - **Deliverable:** A supported provider/model matrix with capability-specific PASS/FAIL/UNAVAILABLE.
+  - **Verification:** The safety, grounding, tool-integrity, compaction, and cancellation floors are retained on every advertised path.
+  - **Prerequisites:** 241–251.
+
+---
+
+## Phase 21 — Connect macOS, Windows, Linux, mobile, and voice capability-aware
+
+**Entry condition:** G20 green and each platform's privacy/permission model documented.
+
+**Exit gate G21:** Capabilities a platform or device does not support are not guessed at, and pairing,
+voice, and handoff operate within explicit authority and capability descriptors.
+
+- [ ] **253. Build the cross-platform runtime contract and its differences as a single matrix.** — `P1`
+  - **Why:** launchd and permission behavior verified on macOS must not be claimed as-is for Windows/Linux.
+  - **Deliverable:** A capability matrix for service, filesystem, secrets, notifications, thermal, sandbox, and browser.
+  - **Verification:** Unsupported/unknown is not marked as safe success and is linked to platform-specific tests.
+  - **Prerequisites:** 024, 080, 086, 252.
+
+- [ ] **254. Implement and verify the artifact/runtime truth of the Windows resident service.** — `P1`
+  - **Why:** The existing limitation that registration alone cannot prove a live runtime must be closed.
+  - **Deliverable:** Stable entrypoint, service identity, PID/heartbeat, single writer, and a repair plan.
+  - **Verification:** The register-only, stale process, duplicate, restart, and update scenarios have the same semantics as G1.
+  - **Prerequisites:** 013–024, 253.
+
+- [ ] **255. Implement and verify the systemd/user-session boundary of the Linux service.** — `P2`
+  - **Why:** Confusing system and user services, and headless environment differences, can change credential and notification scope.
+  - **Deliverable:** The supported unit model, a stable path, an environment allowlist, and health/repair.
+  - **Verification:** There is no hidden duplicate resident under logout, reboot, a missing display, or a stale unit.
+  - **Prerequisites:** 013–024, 253.
+
+- [ ] **256. Close the single-state contract between the macOS desktop app and the CLI/daemon.** — `P1`
+  - **Why:** If the app, menu bar, and CLI create separate settings and residents, the user cannot know the real state.
+  - **Deliverable:** Shared runtime settings, health, deep links, one repair path, and window restoration.
+  - **Verification:** Running the app and CLI concurrently and updating do not create two resident writers or conflicting settings.
+  - **Prerequisites:** 024, 098, 145, 253.
+
+- [ ] **257. Constrain the mobile companion to a read/review-first minimal surface.** — `P2`
+  - **Why:** Replicating every tool execution and setting on a small screen increases permission errors and UX complexity.
+  - **Deliverable:** Status, Pack review, draft approve/reject, and explicit limited actions.
+  - **Verification:** Mobile alone cannot create a new broad permission, self-learning activation, or financial effect.
+  - **Prerequisites:** 104, 120, 200, 253.
+
+- [ ] **258. Protect device pairing with mutual verification and revoke.** — `P0`
+  - **Why:** A stolen pairing code or a stale device can access personal data and approvals.
+  - **Deliverable:** A short-lived challenge, device identity, owner confirmation, capability grant, and revoke.
+  - **Verification:** A replay, an expired challenge, a cloned identity, and a revoked device cannot create a session.
+  - **Prerequisites:** 073–084, 257.
+
+- [ ] **259. Make the capability descriptor handshake versioned and fail-close.** — `P0`
+  - **Why:** If the server assumes an action the device does not support is possible, a wrong fallback occurs.
+  - **Deliverable:** Supported actions/data classes, versions, limits, and unavailable reasons.
+  - **Verification:** An unknown future capability and a version mismatch do not lead to an automatic downgrade effect.
+  - **Prerequisites:** 241, 253–258.
+
+- [ ] **260. Constrain clipboard and file handoff to a one-shot explicit transfer.** — `P0`
+  - **Why:** Continuous synchronization of the clipboard and nearby files becomes a sensitive-information leak path.
+  - **Deliverable:** Selected payload, source/destination device, preview, expiry, and a transfer receipt.
+  - **Verification:** 0 background clipboard scraping, revalidation of symlink/file mutation, and 0 transfers after revoke.
+  - **Prerequisites:** 187, 258–259.
+
+- [ ] **261. Start voice input with push-to-talk and a visible listening state.** — `P1`
+  - **Why:** Always-listening carries a large privacy and false-trigger cost in a personal environment.
+  - **Deliverable:** Explicit start/stop, a live indicator, a local buffer, and cancel-before-send.
+  - **Verification:** Audio capture is 0 while the indicator is off, and a cancelled utterance does not reach the model or memory.
+  - **Prerequisites:** 099, 253.
+
+- [ ] **262. Make the STT/TTS provider and audio retention an explicit choice.** — `P0`
+  - **Why:** The user must know whether voice data has cloud egress and whether it is stored.
+  - **Deliverable:** Local/cloud provider, transcript/audio retention, an egress preview, and a forget action.
+  - **Verification:** On a local-only profile cloud audio requests are 0 and raw audio is not persisted by default.
+  - **Prerequisites:** 241–252, 261.
+
+- [ ] **263. Handle voice interruption, barge-in, and accessibility as terminal states.** — `P1`
+  - **Why:** If a tool effect keeps progressing when speech is cut off or recognition is uncertain, it is dangerous.
+  - **Deliverable:** The listening/thinking/speaking/cancelled/needs-confirmation states plus accessible alternatives.
+  - **Verification:** Under barge-in and a low-confidence command, external/tool effects do not execute without confirmation.
+  - **Prerequisites:** 261–262.
+
+- [ ] **264. Close G21 with a cross-device real journey audit.** — `P1`
+  - **Why:** Pairing and individual feature tests alone cannot prove real continuity handoff.
+  - **Deliverable:** The desktop→mobile review, mobile revoke, voice draft, and offline fallback journeys.
+  - **Verification:** 0 wrong-device disclosures, 0 unauthorized effects, 0 capability drift, evaluator PASS.
+  - **Prerequisites:** 253–263.
+
+---
+
+## Phase 22 — Continuous evaluation, fault injection, drift canary
+
+**Entry condition:** G21 green and the advertised surfaces and providers settled.
+
+**Exit gate G22:** A versioned evaluation system that grades outcomes and paths detects model, provider,
+platform, and release drift, and synthetic results are not mistaken for organic value.
+
+- [ ] **265. Compose the golden journey catalog from real personal failure families.** — `P0`
+  - **Why:** Convenient synthetic prompts alone do not catch corrected memory, wrong recipients, and a stale daemon.
+  - **Deliverable:** A journey set for runtime, memory, Continuity, browser, communication, project, and device.
+  - **Verification:** Each journey is linked to an observed failure or an explicit high-risk contract.
+  - **Prerequisites:** 142, 156, 168, 180, 192, 204, 216, 264.
+
+- [ ] **266. Make the terminal-state grader outcome-first.** — `P0`
+  - **Why:** Even when the assistant's wording is plausible, the actual effect and store state can be wrong.
+  - **Deliverable:** A grader over final state, artifact digest, external effects, abstention, and owner-visible result.
+  - **Verification:** A fixture that says "done" in words but has no effect is judged as a failure.
+  - **Prerequisites:** 265.
+
+- [ ] **267. Add trace invariants only where ordering is a contract.** — `P1`
+  - **Why:** Pinning every internal step blocks implementation improvement and produces a brittle eval.
+  - **Deliverable:** Minimal invariants such as approval-before-send, guard-before-tool, and checkpoint-before-resume.
+  - **Verification:** An outcome-equivalent refactor passes and only safety-ordering violations fail.
+  - **Prerequisites:** 266.
+
+- [ ] **268. Complete the fault injection catalog per I/O boundary.** — `P0`
+  - **Why:** Network timeouts, disk full, process death, clock shift, and corrupt data are rare in normal tests.
+  - **Deliverable:** Model, store, browser, process, channel, device, and scheduler fault controls.
+  - **Verification:** Every critical boundary has a deterministic failure and an expected terminal state.
+  - **Prerequisites:** 265–267.
+
+- [ ] **269. Apply mutation testing to the core reducers and guards.** — `P1`
+  - **Why:** It must be confirmed that green tests actually catch a wrong policy change.
+  - **Deliverable:** Selected safety/attunement/recall/runtime mutations and a killed/survived report.
+  - **Verification:** Known off-by-one, inverted guard, missing freshness, and duplicate-effect mutations are all caught.
+  - **Prerequisites:** 268.
+
+- [ ] **270. Apply strict pass^k and seed accounting to non-deterministic journeys.** — `P0`
+  - **Why:** Even with a high average success rate, trust breaks when the user fails once on an important task.
+  - **Deliverable:** Required k, seeds/models, the all-pass rule, and abort/missing semantics.
+  - **Verification:** A single fail, skip, or unverified cannot turn the strict gate green.
+  - **Prerequisites:** 265–269.
+
+- [ ] **271. Detect eval pollution and train/test leakage.** — `P0`
+  - **Why:** If golden answers enter the prompt, memory, or a generated skill, performance rises falsely.
+  - **Deliverable:** Dataset fingerprints, runtime isolation, memory reset, and a skill registry snapshot.
+  - **Verification:** Seeded leakage is found in preflight and blocks publication of the canonical report.
+  - **Prerequisites:** 217–228, 265–270.
+
+- [ ] **272. Compare the model/provider/release drift canary versioned.** — `P1`
+  - **Why:** The same model name and API can change behavior over time.
+  - **Deliverable:** Baseline artifact, current result, material delta, and an auto-hold threshold.
+  - **Verification:** A known changed fixture is detected before rollout and does not rewrite organic history.
+  - **Prerequisites:** 241–252, 270–271.
+
+- [ ] **273. Maintain the security regression corpus as real exploit families.** — `P0`
+  - **Why:** Generic injection sentences alone cannot protect new tool, channel, and device boundaries.
+  - **Deliverable:** Injection, SSRF, path escape, wrong-recipient, permission amplification, and secret-leak cases.
+  - **Verification:** A new capability cannot pass the advertised security gate without a corresponding corpus case.
+  - **Prerequisites:** 082–084, 204, 236, 258, 272.
+
+- [ ] **274. Physically separate the technical, controlled, and organic evidence dashboards.** — `P0`
+  - **Why:** The visual confusion that makes many synthetic passes look like real personal value must be prevented.
+  - **Deliverable:** Separate panels/stores, immutable origin, denominators, and promotion-disabled labels.
+  - **Verification:** A synthetic-only dataset does not render an organic graph, percentage, or autonomy status.
+  - **Prerequisites:** 004–006, 142, 265–273.
+
+- [ ] **275. Put time, model, and compute budgets on the evaluation itself.** — `P1`
+  - **Why:** While continuously verifying a 300-item roadmap, the evaluator can disturb the everyday runtime.
+  - **Deliverable:** Change-tier selection, a preflight estimate, resource admission, cancel/resume, and a partial-unverified result.
+  - **Verification:** When the budget is short it does not silently skip an axis; it leaves the canonical report unverified.
+  - **Prerequisites:** 085–096, 265–274.
+
+- [ ] **276. Close G22 with a quarterly full qualification.** — `P1`
+  - **Why:** Individual release gates alone can miss long-term model, platform, and personal-data drift.
+  - **Deliverable:** A versioned full battery, the previous delta, open blockers, and claims allowed/withdrawn.
+  - **Verification:** An independent evaluator judges PASS/FAIL from fresh source/artifact/live evidence.
+  - **Prerequisites:** 265–275.
+
+---
+
+## Phase 23 — Open the plugin ecosystem and external contribution permission-first
+
+**Entry condition:** G22 green and the core capability/security contracts versioned.
+
+**Exit gate G23:** Plugins and external contributions disclose capability, permission, and provenance
+before installation, and pass compatibility verification without bypassing the core safety floor and
+user data.
+
+- [ ] **277. Make identity, version, capability, and permission mandatory in the plugin manifest.** — `P0`
+  - **Why:** A plugin with only a name and code gives no way to know which data and effects it requires.
+  - **Deliverable:** Optional signed identity, entrypoints, tools/skills/apps, requested permissions, data egress, and compatibility.
+  - **Verification:** An unknown field/version, an undeclared entrypoint, and a missing permission block the install preflight.
+  - **Prerequisites:** 073, 125, 252, 276.
+
+- [ ] **278. Build a revoke/uninstall lifecycle instead of plugin install, upgrade, and disable.** — `P0`
+  - **Why:** A plain disabled state leaves it unclear whether code, data, credentials, and background processes remain.
+  - **Deliverable:** An exact diff preview, explicit install, a versioned grant, revoke, a data-retention choice, and an uninstall receipt.
+  - **Verification:** Tool/effect authority disappears immediately on revoke, and uninstall does not delete user data by default.
+  - **Prerequisites:** 277.
+
+- [ ] **279. Bind plugin execution to the declared scope and the sandbox policy.** — `P0`
+  - **Why:** Even if the core is safe, the boundary is bypassed when a plugin uses shell/network/filesystem directly.
+  - **Deliverable:** Per-plugin safe roots, a network allowlist, secret handles, process limits, and audit events.
+  - **Verification:** Undeclared read/write/network/process access and symlink/path escape are blocked at runtime.
+  - **Prerequisites:** 080–081, 277–278.
+
+- [ ] **280. Provide a plugin compatibility matrix and a contract suite.** — `P1`
+  - **Why:** If a Muse API change silently breaks a plugin, the user store and effects can be corrupted.
+  - **Deliverable:** Supported core versions, tool schema tests, lifecycle tests, and migration checks.
+  - **Verification:** An incompatible plugin does not load and provides an exact reason and an upgrade/rollback path.
+  - **Prerequisites:** 277–279.
+
+- [ ] **281. Manage the public SDK/API with semver and a deprecation window.** — `P1`
+  - **Why:** Exposing the internal package structure as-is as the ecosystem contract makes safe change difficult.
+  - **Deliverable:** Minimal stable interfaces, a compatibility policy, deprecation telemetry, and a removal gate.
+  - **Verification:** A breaking fixture is detected in CI, and usage/alternatives are confirmed before removing a deprecated path.
+  - **Prerequisites:** 137, 280.
+
+- [ ] **282. Verify the minimum contract with three reference plugins.** — `P2`
+  - **Why:** It is hard to verify the differences between a notes-like local, a read-only remote, and a draft-effect plugin from documentation alone.
+  - **Deliverable:** Local read/write, remote read-only, and draft-first effect examples plus tests.
+  - **Verification:** The reference plugins use only the public SDK, with no privileged internal imports.
+  - **Prerequisites:** 277–281.
+
+- [ ] **283. Write the plugin developer quickstart together with a threat model.** — `P1`
+  - **Why:** Providing only a "Hello world" makes developers miss the permission and untrusted-output boundaries.
+  - **Deliverable:** Scaffold, manifest, tests, permission rationale, safe storage, and a publish checklist.
+  - **Verification:** In a new checkout, the quickstart plugin reproduces through build/test/install-preview.
+  - **Prerequisites:** 282.
+
+- [ ] **284. Integrate the plugin doctor and support bundle into core diagnostics.** — `P1`
+  - **Why:** A plugin failure must not be mistaken for a core crash, and the whole personal data set must not be shared.
+  - **Deliverable:** Loaded version, health, denied capability, crash count, redacted logs, and an isolate action.
+  - **Verification:** Plugin diagnostics contain no secret/user content, and only the unhealthy plugin can be isolated.
+  - **Prerequisites:** 150, 278–283.
+
+- [ ] **285. Constrain importing external configuration such as OpenClaw and Hermes to a preview-only migration.** — `P2`
+  - **Why:** Importing a competitor's broad permissions and channel settings as-is can weaken Muse's policy.
+  - **Deliverable:** The supported subset, source provenance, permission remap, skipped/unsafe items, and explicit apply.
+  - **Verification:** Import alone causes no credential copy, external send, skill activation, or daemon start.
+  - **Prerequisites:** 121, 226, 277–284.
+
+- [ ] **286. Build the security disclosure and vulnerable-plugin response procedure.** — `P0`
+  - **Why:** In an external code ecosystem, receiving a vulnerability report, isolating it, and notifying the user can be delayed.
+  - **Deliverable:** A private report channel, severity, an affected-version query, revoke/advisory, and a patch SLA.
+  - **Verification:** Drill it end to end: identify a simulated vulnerable plugin, block installation, and guide revocation of existing installs.
+  - **Prerequisites:** 147, 273, 277–285.
+
+- [ ] **287. Apply test, license, provenance, and review gates to external contributions.** — `P1`
+  - **Why:** A feature contribution can bring supply-chain, license, and personal-information fixture risk.
+  - **Deliverable:** A contributor checklist, required tests, a DCO/license policy, and a generated-code/source declaration.
+  - **Verification:** Missing provenance, forbidden fixture data, and a bypassed hook do not pass the merge gate.
+  - **Prerequisites:** 139, 265–276, 281–286.
+
+- [ ] **288. Close G23 with a bounded ecosystem pilot.** — `P1`
+  - **Why:** Reference plugins alone cannot prove the real third-party development experience and permission comprehension.
+  - **Deliverable:** A small number of pilot plugins, install/revoke journeys, developer feedback, incidents, and adopt/hold decisions.
+  - **Verification:** 0 undeclared effects, 0 core regressions, revoke completeness PASS, evaluator review.
+  - **Prerequisites:** 277–287.
+
+---
+
+## Phase 24 — An operating loop that continuously reassesses value, safety, and complexity
+
+**Entry condition:** G23 green and the current/stale status of roadmap 001–288 distinguished.
+
+**Exit gate G24:** Muse's next cycle is approved on the basis of organic value, failure evidence,
+security, and maintenance cost, and features without value are held, reduced, or deleted rather than
+added to.
+
+- [ ] **289. Run the north-star value review every quarter.** — `P1`
+  - **Why:** Growth in features, tests, and commits does not mean growth in actual personal help.
+  - **Deliverable:** Time-to-resume, exact answer success, correction burden, unwanted interruption, and an owner trust review.
+  - **Verification:** Denominator, dates, negative outcomes, and missing data are present, and technical activity is separated out.
+  - **Prerequisites:** 142, 276, 288.
+
+- [ ] **290. Sort the weekly failure triage by severity and recurrence.** — `P1`
+  - **Why:** New feature ideas must be prevented from being selected ahead of recurring failures.
+  - **Deliverable:** Current incidents, repeated faults, user friction, evidence gaps, and the next narrow slice.
+  - **Verification:** Unrelated expansion is not selected as active WIP while a high-risk recurrent failure is open.
+  - **Prerequisites:** 147, 155, 289.
+
+- [ ] **291. Perform a monthly memory, privacy, and permission audit.** — `P0`
+  - **Why:** Long-term personalization carries the risk of data and authority quietly accumulating.
+  - **Deliverable:** Store growth, stale facts, unresolved conflicts, active grants, revoked remnants, and retention actions.
+  - **Verification:** Viewing the audit changes nothing, and delete/revoke require an exact preview and a separate authority.
+  - **Prerequisites:** 073–084, 157–168, 258, 278, 289.
+
+- [ ] **292. Reassess the quarterly competitor delta through the Muse fit lens.** — `P3`
+  - **Why:** New OpenClaw and Hermes features must be connected to real user problems, not reflexively copied.
+  - **Deliverable:** Official change, user need, Muse edge, security/maintenance cost, and adopt/reject/defer.
+  - **Verification:** A parity item without an owner problem and a measurable gate does not enter the active roadmap.
+  - **Prerequisites:** 132, 289.
+
+- [ ] **293. Regularly verify retention, export, and forget completeness.** — `P0`
+  - **Why:** A new store, plugin, or device can fall outside the forget/export scope.
+  - **Deliverable:** A data inventory, export coverage, delete/tombstone semantics, and backups/derived-index handling.
+  - **Verification:** A seeded identity disappears per policy from the active, archive, index, cache, device, and plugin stores.
+  - **Prerequisites:** 076, 112, 165, 260, 278, 291.
+
+- [ ] **294. Operate a dependency, secret, and supply-chain maintenance cycle.** — `P0`
+  - **Why:** A long-lived resident agent remains continuously exposed to dependency vulnerabilities and credential drift.
+  - **Deliverable:** Version updates, vulnerability triage, credential expiry, SBOM delta, and a rollback plan.
+  - **Verification:** An unresolved high/critical finding blocks release/update, and automated updates also pass the full gate.
+  - **Prerequisites:** 139, 244, 286, 293.
+
+- [ ] **295. Keep accessibility and localization regressions on the core journeys.** — `P1`
+  - **Why:** New surfaces and wording can break keyboard, screen reader, and locale safety semantics.
+  - **Deliverable:** A supported locale/a11y matrix, golden screenshots where useful, and semantic journey tests.
+  - **Verification:** The meanings of permission/held/unverified are the same per locale and the keyboard-only path keeps passing.
+  - **Prerequisites:** 106–107, 256–264, 288.
+
+- [ ] **296. Compare the latency, memory, and cost budget trends per release.** — `P1`
+  - **Why:** As features accumulate, first response and resident resources can gradually degrade.
+  - **Deliverable:** A fixed hardware/profile baseline, median/p95, RSS/CPU, model cost, and a material-regression threshold.
+  - **Verification:** Environment, model, and cache differences are stated, and exceeding the threshold holds the release gate.
+  - **Prerequisites:** 088–096, 146, 251, 294.
+
+- [ ] **297. Regularly prune features, rules, and adapters that carry no load.** — `P1`
+  - **Why:** A 300-item roadmap must not become a justification for preserving complexity forever.
+  - **Deliverable:** Usage/evidence, safety load, maintenance cost, and a migration/removal proposal.
+  - **Verification:** Nothing is deleted before active dependencies and user-data export are confirmed, and there is no dead path after removal.
+  - **Prerequisites:** 289–296.
+
+- [ ] **298. Select exactly one organic experiment for the next 30 days.** — `P1`
+  - **Why:** Opening several product hypotheses at once makes it impossible to tell which change created value.
+  - **Deliverable:** Hypothesis, target journey, baseline, success/kill criteria, safety hold, and an evidence plan.
+  - **Verification:** Behavior/permissions outside the experiment are retained, and a bad result does not auto-expand.
+  - **Prerequisites:** 289–297.
+
+- [ ] **299. Rebind the recurring release-readiness to the current HEAD and evidence.** — `P0`
+  - **Why:** The first release's PASS does not guarantee the next cycle's code, model, data, and plugin state.
+  - **Deliverable:** An aggregate of G0–G23 freshness, source/artifact hash, experiment outcome, and unresolved blockers.
+  - **Verification:** If even one gate is failed/unverified/stale, it blocks release and autonomy expansion.
+  - **Prerequisites:** 276, 288, 298.
+
+- [ ] **300. Update the roadmap with evidence and approve the next cycle.** — `P1`
+  - **Why:** Number 300 is not the end of development; it is the point where completions, rejections, and new failures are reflected to make the next goals smaller and more exact.
+  - **Deliverable:** A completed/removed/deferred summary, remaining blockers, and the next numbered successor roadmap or a termination decision.
+  - **Verification:** Record-only changes are consolidated under the batch rules, and a new task is added only when it has an owner problem, acceptance, and a gate.
+  - **Prerequisites:** 289–299 and the owner's next-cycle decision.
+
+---
+
+## Phase exit gate summary
+
+| Gate | State that must be true | Next action forbidden on failure |
 | --- | --- | --- |
-| G0 | provenance와 evidence accounting 재현 가능 | 구현 착수 |
-| G1 | 정확히 한 resident writer, fresh heartbeat, pass^3 | delivery 활성화 |
-| G2 | local-only/lock/brake/hold 일치, unapproved send 0 | backlog/자동 전송 확대 |
-| G3 | Browser/CLI/API/Web terminal reliability pass^3 | 개인 journey claim |
-| G4 | capability 11/11 strict pass^3 | personal-agent qualification claim |
-| G5 | multi-date life/work organic Continuity audit PASS | proactive timing |
-| G6 | privacy/security adversarial review PASS | MCP/channel/tool 권한 확대 |
-| G7 | 24h resource soak PASS | background autonomy 확대 |
-| G8 | clean onboarding 10분 journey pass^3 | broad acquisition/public claim |
-| G9 | shadow 및 owner-reviewed cohort PASS | ongoing autonomous delivery |
-| G10 | 확장이 Muse positioning과 safety를 유지 | parity 목적 기능 추가 |
-| G11 | HEAD-bound release readiness PASS | tag, artifact publication, release |
-| G12 | installed release incident/rollback drill PASS | 다음 update rollout |
-| G13 | temporal/conflicting/forgotten memory audit PASS | 장기 개인화 확대 |
-| G14 | personal-domain multi-date organic audit PASS | 생활 자동화 확대 |
-| G15 | browser/computer critical journey strict pass^k | 더 넓은 computer action |
-| G16 | wrong-recipient·duplicate·injection communication audit PASS | communication surface 확대 |
-| G17 | multi-session project truth/resume audit PASS | 장기 자율 실행 확대 |
-| G18 | proposal-first learning과 rollback audit PASS | self-learning activation 확대 |
-| G19 | multi-agent가 paired baseline을 material하게 개선 | multi-agent 기본화 |
-| G20 | cross-provider agent contract qualification PASS | provider 자동 routing 확대 |
-| G21 | cross-device privacy/capability audit PASS | device/voice 권한 확대 |
-| G22 | versioned full evaluation과 drift canary PASS | claims·release 확대 |
-| G23 | plugin permission/revoke ecosystem pilot PASS | public ecosystem 확대 |
-| G24 | value·risk·maintenance 기반 다음 cycle 승인 | successor roadmap·release cycle |
+| G0 | Provenance and evidence accounting reproducible | Starting implementation |
+| G1 | Exactly one resident writer, fresh heartbeat, pass^3 | Activating delivery |
+| G2 | local-only/lock/brake/hold agree, 0 unapproved sends | Expanding backlog/automatic sending |
+| G3 | Browser/CLI/API/Web terminal reliability pass^3 | Personal journey claims |
+| G4 | Capability 11/11 strict pass^3 | personal-agent qualification claim |
+| G5 | Multi-date life/work organic Continuity audit PASS | Proactive timing |
+| G6 | Privacy/security adversarial review PASS | Expanding MCP/channel/tool authority |
+| G7 | 24h resource soak PASS | Expanding background autonomy |
+| G8 | Clean onboarding 10-minute journey pass^3 | Broad acquisition/public claims |
+| G9 | Shadow and owner-reviewed cohort PASS | Ongoing autonomous delivery |
+| G10 | Expansion retains Muse positioning and safety | Adding features for parity's sake |
+| G11 | HEAD-bound release readiness PASS | Tag, artifact publication, release |
+| G12 | Installed release incident/rollback drill PASS | The next update rollout |
+| G13 | Temporal/conflicting/forgotten memory audit PASS | Expanding long-term personalization |
+| G14 | Personal-domain multi-date organic audit PASS | Expanding life automation |
+| G15 | Browser/computer critical journey strict pass^k | Broader computer action |
+| G16 | Wrong-recipient, duplicate, and injection communication audit PASS | Expanding the communication surface |
+| G17 | Multi-session project truth/resume audit PASS | Expanding long-running autonomous execution |
+| G18 | Proposal-first learning and rollback audit PASS | Expanding self-learning activation |
+| G19 | Multi-agent materially improves on the paired baseline | Making multi-agent the default |
+| G20 | Cross-provider agent contract qualification PASS | Expanding automatic provider routing |
+| G21 | Cross-device privacy/capability audit PASS | Expanding device/voice authority |
+| G22 | Versioned full evaluation and drift canary PASS | Expanding claims and releases |
+| G23 | Plugin permission/revoke ecosystem pilot PASS | Expanding the public ecosystem |
+| G24 | Next cycle approved on value, risk, and maintenance grounds | Successor roadmap and release cycle |
 
-## 매 slice 종료 체크리스트
+## Per-slice closing checklist
 
-- [ ] acceptance criteria와 범위 밖이 구현 전에 고정됐다.
-- [ ] exact affected tests와 boundary test가 실행됐다.
-- [ ] 실패·취소·재시도·stale·corrupt 중 영향받는 경계가 검증됐다.
-- [ ] store/effect 전후 digest 또는 명시적 receipt가 남았다.
-- [ ] controlled·synthetic·organic evidence가 섞이지 않았다.
-- [ ] 사용자 노출 문구가 현재 증거보다 강하지 않다.
-- [ ] 별도 evaluator가 acceptance criteria별 PASS/FAIL을 기록했다.
-- [ ] `pnpm test:changed`와 해당 typecheck가 통과했다.
-- [ ] source/behavior 변경이면 pre-push hook을 skip하지 않고 task 단위 commit+push를 완료했다.
-- [ ] 기록-only 변경이면 task별 commit을 만들지 않고 다음 batch checkpoint를 명시했다.
-- [ ] 다음 slice를 열기 전에 WIP가 다시 0이 됐다.
+- [ ] Acceptance criteria and out-of-scope were fixed before implementation.
+- [ ] The exact affected tests and the boundary tests were run.
+- [ ] The affected boundaries among failure, cancellation, retry, stale, and corrupt were verified.
+- [ ] A before/after digest of the store/effect, or an explicit receipt, was left behind.
+- [ ] Controlled, synthetic, and organic evidence were not mixed.
+- [ ] User-facing wording is no stronger than the current evidence.
+- [ ] A separate evaluator recorded PASS/FAIL per acceptance criterion.
+- [ ] `pnpm test:changed` and the corresponding typecheck passed.
+- [ ] For a source/behavior change, the per-task commit+push completed without skipping the pre-push hook.
+- [ ] For a record-only change, no per-task commit was made and the next batch checkpoint was stated.
+- [ ] WIP returned to 0 before opening the next slice.
 
-## 현재 300-task cycle을 닫을 수 있는 조건
+## Conditions for closing the current 300-task cycle
 
-다음 항목을 모두 만족해야 이 roadmap cycle을 닫고 Muse를 “지속 검증되는 개인용 AI agent”라고
-부를 수 있다. Task 300은 제품 개발의 영구 종료가 아니라 다음 cycle을 evidence로 재설계하는
-checkpoint다.
+All of the following must be satisfied before this roadmap cycle can be closed and Muse can be called
+a "continuously verified personal AI agent". Task 300 is not the permanent end of product development
+but a checkpoint that redesigns the next cycle from evidence.
 
-1. G0–G24가 모두 현재 scope에서 fresh green이거나, 명시적으로 rejected/de-scoped된 gate는
-   owner decision과 사용자 영향 없는 제거 증거를 가진다.
-2. resident와 delivery safety는 여러 재시작과 24시간 이상 실행에서 유지된다.
-3. corrected-fact recall을 포함한 11-axis capability가 strict pass^3다.
-4. life/work Continuity가 여러 날짜의 organic outcome과 exact receipt로 독립 감사됐다.
-5. Observe와 timing은 owner가 승인한 범위 밖에서 작동하지 않는다.
-6. 설치 후 첫 source-backed value까지 10분 이내 journey가 pass^3다.
-7. external send, deletion, permission expansion에는 draft/preview와 explicit authority가 있다.
-8. release artifact, source commit, documentation, package metadata, provenance가 하나의 version을 가리킨다.
-9. OpenClaw·Hermes보다 기능 수가 적더라도 Muse의 세 proof가 실제로 성립한다:
+1. G0–G24 are all fresh green in the current scope, or any explicitly rejected/de-scoped gate has an
+   owner decision and evidence of removal with no user impact.
+2. Resident and delivery safety are retained across multiple restarts and runs of 24 hours or more.
+3. The 11-axis capability, including corrected-fact recall, is at strict pass^3.
+4. Life/work Continuity has been independently audited with organic outcomes and exact receipts across multiple dates.
+5. Observe and timing do not operate outside the scope the owner approved.
+6. The journey from installation to the first source-backed value within 10 minutes is at pass^3.
+7. External sends, deletion, and permission expansion have a draft/preview and explicit authority.
+8. The release artifact, source commit, documentation, package metadata, and provenance all point at one version.
+9. Even with fewer features than OpenClaw and Hermes, Muse's three proofs actually hold:
    exact personal grounding, explicit outcome adaptation, no silent permission expansion.
-10. long-term memory, personal domains, browser/computer, communication, project execution이 exact source와
-    permission boundary를 유지한다.
-11. self-learning과 multi-agent는 held-out baseline improvement 없이 기본 경로로 승격되지 않는다.
-12. plugin·device·provider 확장은 revoke, rollback, unavailable semantics를 가진다.
-13. organic evidence가 부족하거나 나쁘면 기능을 더 여는 대신 held/reject/kill 결정을 내릴 수 있다.
-14. 기록-only 변경은 batch되고 source/behavior 변경만 task별 검증·commit·push 규칙을 따른다.
-15. Task 300에서 다음 cycle의 목표 또는 종료 결정이 owner에게 다시 승인된다.
+10. Long-term memory, personal domains, browser/computer, communication, and project execution retain exact source and
+    permission boundaries.
+11. Self-learning and multi-agent are not promoted to the default path without held-out baseline improvement.
+12. Plugin, device, and provider expansions have revoke, rollback, and unavailable semantics.
+13. When organic evidence is insufficient or poor, a held/reject/kill decision can be made instead of opening more features.
+14. Record-only changes are batched and only source/behavior changes follow the per-task verification, commit, and push rules.
+15. At Task 300, the next cycle's goals or the termination decision are re-approved by the owner.

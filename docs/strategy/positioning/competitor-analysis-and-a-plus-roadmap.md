@@ -1,911 +1,2102 @@
-# Muse vs openclaw · hermes — 완전 분석·평가·A+ 도출 로드맵
+# Muse vs openclaw · hermes — full analysis, assessment, and A+ roadmap derivation
 
-> **작성**: Fable 5 (분석·계획 전담). **집행**: Sonnet 워커 (슬라이스 단위).
-> **일자**: 2026-07-11. 이 문서는 이전의 산발적 계획/평가 문서
-> (a-plus-plan 초안, agent-performance-levers, frontier-research, maturity-review)를
-> **흡수·대체하는 단일 정본**이다. 향후 이 라인의 갱신은 이 파일에 한다.
+> **Written by**: Fable 5 (owns analysis & planning). **Executed by**: Sonnet workers (per-slice).
+> **Date**: 2026-07-11. This document **absorbs and replaces** the earlier scattered
+> planning/assessment documents (the a-plus-plan draft, agent-performance-levers,
+> frontier-research, maturity-review) as the **single canonical source**. All future
+> updates to this line land in this file.
 >
-> **방법론**: (1) 3-에이전트 나란히 프로파일(Muse·openclaw·hermes, 독립 실행),
-> (2) **18-Haiku 정밀 스윕**(1차 7 메커니즘 + 2차 11 심층: 능력 전수조사·UX·
-> 음성/비전·브라우저·프롬프트·세션/i18n·웹평판·경쟁사 자체문서), (3) **Fable
-> 소스 스팟체크 12건 전부 일치 확인**, (4) 웹 평판 리서치. 경쟁사 클론 HEAD
-> 2026-07-07 기준(hermes `aaeba213d`, openclaw `2fe39692ad0`).
+> **Methodology**: (1) 3 agents profiling in parallel (Muse · openclaw · hermes, each
+> run independently), (2) an **18-Haiku fine-grained sweep** (round 1: 7 mechanisms +
+> round 2: 11 deep passes — full capability inventory, UX, voice/vision, browser,
+> prompts, session/i18n, web reputation, rivals' own documentation), (3) **all 12 of
+> Fable's source spot-checks confirmed matching**, (4) web-reputation research. Rival
+> clone HEADs as of 2026-07-07 (hermes `aaeba213d`, openclaw `2fe39692ad0`).
 
 ---
 
-## 0. 라이선스 — reference 사용은 합법 (확인 완료)
+## 0. Licensing — reference use is legal (confirmed)
 
-두 경쟁사 실제 `LICENSE` 파일 직접 확인:
+Directly confirmed both rivals' actual `LICENSE` files:
 
 - **hermes-agent**: MIT License, Copyright (c) 2025 Nous Research (`pyproject.toml` `license = "MIT"`)
 - **openclaw**: MIT License, Copyright (c) 2026 OpenClaw Foundation (`package.json` `"license": "MIT"`)
 
-MIT는 **코드 복사조차** (저작권·라이선스 고지만 유지하면) 허용한다. Muse의
-방침은 그보다 보수적이다 — **아이디어·메커니즘·상수 근거만 reference로 참조하고
-구현은 Muse 자체 설계·네이밍으로 재작성**한다. verbatim 복사가 없으므로 MIT의
-고지 의무조차 발생하지 않는다. 이는 이미 backlog의 40+ 슬라이스가 지켜온
-방식("reference-only, MIT/Apache-attributed, NO verbatim copy")이며, 본 로드맵의
-모든 슬라이스에 동일하게 적용된다. **진안의 "배끼지 말고 레퍼런스로"는 정확히
-이 방침과 일치하며, 법적으로 안전하다.**
+MIT permits **even outright copying of code** (as long as the copyright and license
+notice are kept). Muse's policy is more conservative than that — **reference only
+the ideas, mechanisms, and the reasoning behind constants, then rewrite the
+implementation in Muse's own design and naming.** Since nothing is copied verbatim,
+not even MIT's notice obligation is triggered. This is the practice 40+ backlog
+slices have already followed ("reference-only, MIT/Apache-attributed, NO verbatim
+copy"), and it applies identically to every slice in this roadmap. **Jinan's
+"reference it, don't copy it" matches this policy exactly, and it is legally
+safe.**
 
 ---
 
-## 1. 한 줄 결론
+## 1. One-line conclusion
 
-**Muse는 "범용 에이전트 인프라"로는 두 경쟁자 아래(종합 B+)지만, 스스로 고른
-세 축 — 결정론 grounding·검증된 자기학습·라이브-모델 검증 규율 — 에서는 둘 다
-명확히 앞서며, 그 세 축은 두 경쟁자가 코드로도·커뮤니티 호평으로도·자체 문서
-로도 투자 흔적이 없는 무주공산이다.** 따라잡는 게임에서는 지고 있고, 자기
-게임에서는 이미 이기고 있다. 이 로드맵은 **세 엣지를 절대 희생하지 않으면서**
-B-차원(agent loop·security·orchestration·tools·model posture)을 A+로 올린다.
+**As "general-purpose agent infrastructure" Muse sits below both rivals (overall
+B+), but on three axes Muse chose for itself — deterministic grounding, verified
+self-learning, and live-model verification discipline — it clearly leads both, and
+those three axes are unclaimed ground: neither rival shows any trace of investment
+there, whether in code, community praise, or their own documentation.** In the
+catch-up game Muse is losing; in its own game it is already winning. This roadmap
+raises the B-grade dimensions (agent loop · security · orchestration · tools ·
+model posture) to A+ **without ever sacrificing the three edges.**
 
 ---
 
-## 2. 3-에이전트 차원별 성적표
+## 2. Scorecard across the 3 agent profiles
 
-| 차원 | Muse | openclaw | hermes | 근거 요점 |
+| Dimension | Muse | openclaw | hermes | Evidence highlights |
 |---|:---:|:---:|:---:|---|
-| 에이전트 루프 | B+ | **A** | **A** | 셋 다 컴팩션·리트라이·체크포인트·abort 보유. openclaw 툴루프감지 820L·컴팩션 플래너 별도 워커, hermes 3k-LOC 압축기. Muse는 전 메커니즘 존재하나 예산이 작음(maxToolCalls 10 vs hermes 90/서브50) |
-| 메모리·자기학습 | **A-** | B+ | **A** | hermes: Curator+스킬 자기저작 실배선·기본-on(가지치기). Muse: Whetstone BKT·playbook RL·correction-decay — **유일하게 '교정하면 잊는' 정직 학습**이나 연료(실사용) 기근. openclaw: dreaming 3단계 깊게 구현됐지만 **기본 OFF** |
-| 도구·생태계 | B | **A+** | A | openclaw 149 확장·25+채널·52 프로바이더, hermes 103 툴·20채널·MCP 양방향. Muse ~96 툴+MCP 클라이언트+브라우저+macOS 심층 — 단일사용자 스코프로 **의도적 미확장**(채널 10/13 skip 판정) |
-| 오케스트레이션 | B | **A** | A- | openclaw SQLite task-flow·서브에이전트 레지스트리·crond. hermes delegate 3.4k-LOC·비동기 위임·하트비트. Muse Kanban+병렬분해+합성 — 개인 스코프엔 완결이나 단일 GPU라 병렬은 환상 |
-| **Grounding·정직성** | **A+** | D | D+ | **비교 불가 격차.** Muse 35개 표면 결정론 게이트·fabrication=0 릴리스 게이트·GROUNDED≠TRUE 완화. openclaw 프롬프트 경고뿐(프로파일러: "가장 계측 안 된 차원"). hermes X-search 한 곳의 citation 체크가 전부 |
-| 보안 | B+ | A- | **A** | hermes tirith 외부검증 바이너리+hardline+상시 security 드럼비트. openclaw 감사엔진 90파일+CodeQL+opt-in Docker 샌드박스. Muse fail-close draft-first·인젝션 배터리·egress 게이트는 원칙 준수하나 **runner가 env_clear+timeout+출력캡뿐, OS 샌드박스 없음** |
-| **검증 규율** | **A** | A- | B+ | (Round2 정정) Muse만 **라이브 fabrication=0 tripwire를 매 push 게이트**(pre-push 훅 `precheck:grounding`, Ollama-의존·없으면 skip) + 최고 인프라(pass^k·LLM-judge+meta-eval·MAST seam·41 eval). **정직한 한계**: 집계 `eval:agent`는 GitHub CI 미배선(클라우드엔 로컬 Ollama 없음), ci.yml=lint+build+test뿐 → 자동 강제는 grounding subset만. openclaw QA-Lab character-eval(LLM-judge)은 **advisory·override 가능**(비-게이트). hermes 33.5k 테스트 **전부 mock·에이전트 eval 0**. Muse 우위(유일 라이브 게이트+최고 인프라)는 유지하나 A+→A로 하향(집계 미강제) |
-| 모델 포스처 | B+ | A | A | 둘 다 성숙한 멀티모델 라우터. Muse 로컬 gemma4:12b 기본+BYO 클라우드+**프라이버시-계층 라우팅(경쟁사 둘 다 이 축 자체가 없음)** |
+| Agent loop | B+ | **A** | **A** | All three have compaction, retry, checkpoints, abort. openclaw has an 820-line tool-loop detector + a dedicated compaction-planner worker; hermes has a 3k-LOC compressor. Muse has every mechanism but a smaller budget (maxToolCalls 10 vs hermes' 90/sub-50) |
+| Memory & self-learning | **A-** | B+ | **A** | hermes: Curator + skill self-authoring actually wired and on-by-default (with pruning). Muse: Whetstone BKT · playbook RL · correction-decay — **the only one that honestly "forgets when corrected"**, but starved of fuel (real usage). openclaw: dreaming is a deeply implemented 3-stage pipeline, but **off by default** |
+| Tools & ecosystem | B | **A+** | A | openclaw: 149 extensions · 25+ channels · 52 providers. hermes: 103 tools · 20 channels · bidirectional MCP. Muse: ~96 tools + MCP client + browser + deep macOS coverage — **deliberately un-expanded** for single-user scope (10/13 channels judged skip) |
+| Orchestration | B | **A** | A- | openclaw: SQLite task-flow · subagent registry · crond. hermes: a 3.4k-LOC delegate · async delegation · heartbeats. Muse: Kanban board + parallel decomposition + synthesis — complete for a personal-scope tool, but "parallel" is an illusion on a single GPU |
+| **Grounding & honesty** | **A+** | D | D+ | **An incomparable gap.** Muse has 35 surfaces with deterministic gates · a fabrication=0 release gate · GROUNDED≠TRUE mitigations. openclaw has only prompt warnings (its own profiler: "the least instrumented dimension"). hermes' entire citation check is one X-search path |
+| Security | B+ | A- | **A** | hermes: tirith external verifier binary + hardline + a constant security drumbeat. openclaw: a 90-file audit engine + CodeQL + an opt-in Docker sandbox. Muse's fail-close draft-first, injection battery, and egress gate all honor the principle, but **the runner only does env_clear + timeout + output capping — no OS sandbox** |
+| **Verification discipline** | **A** | A- | B+ | (Round 2 correction) Muse is the only one with a **live fabrication=0 tripwire gating every push** (pre-push hook `precheck:grounding`, Ollama-dependent, skips if unreachable) plus the best-in-class infrastructure (pass^k · LLM-judge + meta-eval · MAST seam · 41 evals). **Honest limitation**: the aggregate `eval:agent` is NOT wired into GitHub CI (no local Ollama on cloud runners), and ci.yml is only lint+build+test → automatic enforcement covers only the grounding subset. openclaw's QA-Lab character-eval (LLM-judge) is **advisory and overridable** (not a gate). hermes' 33.5k tests are **all mocked, zero agent evals**. Muse's edge (the only live gate + best-in-class infra) still holds, but the grade drops A+→A (aggregate not enforced) |
+| Model posture | B+ | A | A | Both have mature multi-model routers. Muse defaults to local gemma4:12b + BYO cloud + **privacy-tiered routing (neither rival has this axis at all)** |
 
-**종합**: Muse ≈ **B+** (범용), 선택 엣지 **A+**. openclaw ≈ 멀티채널 게이트웨이
-표준급(폭 A+, 정직성 D). hermes ≈ 보안·자기개선 루프가 가장 잘 닫힌 개인
-에이전트(보안 A, 라이브검증 부재).
+**Overall**: Muse ≈ **B+** (general-purpose), chosen edges **A+**. openclaw ≈
+standard-setting multi-channel gateway (breadth A+, honesty D). hermes ≈ the
+individual agent with the tightest closed loop on security and self-improvement
+(security A, no live verification).
 
-### 규모의 진실 (공정성)
+### The scale truth (fairness)
 
-- 최근 3주 커밋: openclaw **6,160**(최다 기여자 혼자 2,585 + 봇 576),
-  hermes **3,041**(~130/일). 둘은 팀+자동화가 붙은 **제품**, Muse는 1인 프로젝트다.
-  절대 폭으로 붙는 건 성립하지 않는다.
-- 그런데 둘 다 최근 커밋의 **절반 이상이 `fix`**(openclaw 54%, hermes 52%) —
-  **폭이 스스로를 잡아먹는 유지비**가 드러난다(openclaw UTF-16 절단 버그가 12개
-  모듈 반복). Muse의 "깊이 우선·채널 skip" 판정은 사후적으로 옳았다.
-
----
-
-## 3. 경쟁사 능력 전수조사 — 무엇이 있고 무엇이 호평받는가
-
-18-스윕이 캔 능력 지도. **참조용**(무주공산 확인 + 아이디어 도출), 채택분은 §6.
-
-### 3.1 hermes-agent (Python, ~103 툴, 1,936 테스트파일)
-
-- **자기개선 루프(crown jewel)**: 스킬 자기저작(create/edit/patch/delete + AST
-  감사 + provenance) + **Curator**(7일 주기 fork, 결정론 stale→archive 가지치기 +
-  opt-in LLM consolidation, tar.gz 스냅샷/rollback). 웹 호평 1위: "20+ 스킬 쌓이면
-  40% 빠름", "몇 주 전 세부사항을 기억해 마법 같다".
-- **메모리**: 8 백엔드(2 first-party: Holographic HRR·Hindsight KG; 6 API 래퍼).
-  drift 감지(round-trip 해시), per-turn consolidation 예산, frozen-snapshot+
-  live-state, provenance ContextVar(foreground vs 자율 쓰기 구분). **한계(웹
-  비판)**: 메모리 2,200자·유저 1,375자 캡 → ~20 엔트리. 한글엔 특히 치명.
-- **오케스트레이션**: delegate 3.4k-LOC(leaf/orchestrator 역할·동시성 캡 3·
-  용량초과 거부·하트비트 스테일 idle450s/in-tool1200s), async 완료를 **큐로만→
-  idle 윈도우 드레인**(mid-LLM 삽입 없음), 부모-헤드룸 요약 예산(×0.5/n, floor
-  2000자, 초과분 파일 스필).
-- **신뢰성**: iteration budget(부모90/서브50, PTC 환불), jittered backoff(5s→120s
-  decorrelated), stream stale 180s·reasoning floor 600s, error 20-분류 taxonomy,
-  turn-retry one-shot 상태(같은 처방 이중적용 방지), message-sequence 복구.
-- **보안(crown jewel)**: tirith 외부 바이너리(SHA-256+cosign, homograph/pipe-to-
-  interpreter/terminal injection 스캔) + approval.py hardline(12 무조건차단) +
-  셸 난독화 해제(NFKC·ANSI·$IFS·라인연속·홈경로접기·subshell 앵커) + OSV MAL-*.
-  **로컬 exec 자체엔 OS 샌드박스 없음**(Docker/Modal/SSH/Daytona는 opt-in 백엔드).
-- **툴/미디어**: multi-backend 실행 추상화, checkpoint(git 스냅샷/rollback),
-  fuzzy_match 9전략(패치 안전), PTC(RPC 마샬링), 브라우저(AX-tree @eN refs·CDP
-  supervisor·lightpanda→Chrome 폴백·camoufox 안티탐지), computer-use(SOM/vision/ax),
-  voice(적응형 무음감지·Whisper 환각필터), vision(네이티브 fast-path·CPU-바운드).
-- **웹 일상 사용처**: 아침 브리핑(cron), 티켓 다이제스트, 코드리뷰, 가족 WhatsApp
-  비서. **웹 비판**: 무제한 셸(샌드박스 없음, CVE-2026-7396 path-traversal),
-  1-2 tok/s 오버헤드(직접 호출 45 tok/s 대비), 64K 토큰 최소요구.
-
-### 3.2 openclaw (TypeScript, 149 확장, 6,892 테스트파일)
-
-- **멀티채널 게이트웨이(crown jewel)**: 24+ 채널(WhatsApp·Telegram·Slack·Discord·
-  Signal·iMessage·Matrix·…) + 52 프로바이더. gateway가 인증·라우팅·HTTP tool-invoke
-  프론트. 웹 호평 1위: "이미 쓰는 채널에서 답한다", 비개발자 자연어 사용.
-- **메모리 "dreaming"**: 3단계(light 6h·deep nightly·REM weekly) 승격 스코어(빈도·
-  관련성·다양성·최근성 반감기 14d·min-recall 3·health<0.35 복구모드). **기본 OFF**.
-  LanceDB 하이브리드(BM25+vector), active-memory(회상 서브에이전트, 서킷브레이커).
-- **스킬 워크숍**: proposal 라이프사이클(pending→apply/reject/quarantine/stale 30d),
-  콘텐츠 스캐너(critical→차단), support 파일 32개/1MB 캡.
-- **에이전트 루프**: compaction 플래너(별도 워커, 40% 청크·1.2 안전마진), tool-loop
-  감지(창30·warn10·crit20·ping-pong·no-progress·휘발성ID 스트리핑), post-compaction
-  루프가드(창3), compaction safety timeout 180s, context-engine quarantine(64엔트리).
-- **보안**: exec-authorization-plan(셸 토폴로지 분석, heredoc/동적실행 거부),
-  exec-auto-reviewer(모델 리스크 triage — **allow-once/ask만 가능, deny·우회 불가**),
-  dangerous-tools(게이트웨이 HTTP 15툴 deny), plugin-trust(공급망 pinning/SRI),
-  secret-mask, **opt-in Docker 샌드박스**(cap-drop·seccomp·AppArmor·리소스캡).
-- **오케스트레이션**: 서브에이전트(깊이4 role 강등·상속 deny·target policy),
-  task-flow SQLite, cron isolated-agent(fresh context), ACPX(Agent Client Protocol),
-  codex-supervisor, delivery 백프레셔(soft25/hard50).
-- **UX**: command palette(Cmd+K 90+항목), exec-approval 모달(위험부위 span 하이라이트),
-  device pairing(QR/토큰), Logbook(주기 스크린샷→작업 타임라인), Phone Control
-  (arm/disarm 고위험), Canvas(비주얼 워크스페이스), companion 앱(Win/mac/iOS/Android).
-- **웹 일상 사용처**: 이메일 자동화(7AM 워크플로), PR 모니터링, CRM 통화 로깅.
-  **웹 비판(심각)**: 2026-03 CVE 홍수(4일 9건·CVSS 9.9 권한상승), 미인증 공개
-  인스턴스 63%, ClawHub 스킬 17% 악성 코드, 공급망(unvetted npm), "격일로 깨짐".
-
-### 3.3 Muse가 이미 동급 이상인 것 (2차 스윕이 역-확인 — 재구축 금지)
-
-- **스킬 저작/큐레이션**: Muse authored-skill-store가 이미 utility-aware
-  eviction(TinyLFU)·write-time subsumption(Voyager)·quarantine+리스크스캔·스냅샷
-  링+롤백·병합 semantic-coverage 게이트 보유 → openclaw workshop / hermes Curator
-  대비 **A급 parity**.
-- **PTC**: hermes code_execution RPC 마샬링 = Muse `run_tool_plan`이 이미 커버.
-- **프롬프트 stable-prefix**: `@muse/prompts`가 stablePrefix+stable/dynamic 섹션+
-  priority 보유 → cache-boundary 개념 존재.
-- **cost 추적**: `muse cost` 로컬(`~/.muse/token-usage.jsonl`)+admin 양쪽.
-- **비전 파이프라인**: gemma4 비전·whisper STT·KSS TTS 배선 완료.
-- **에러 taxonomy·retry·backoff·stream-idle·tool-dedup·위험명령 게이트(DS-2)·
-  파국명령 fail-close(TX-6)·resume 멱등성** 등 신뢰성 다수는 backlog에서 이미 출하.
+- Commits in the last 3 weeks: openclaw **6,160** (top contributor alone 2,585 +
+  bots 576), hermes **3,041** (~130/day). Both are **products** backed by a team +
+  automation; Muse is a one-person project. Matching absolute volume isn't a
+  meaningful goal here.
+- And yet, more than **half of both projects' recent commits are `fix`**
+  (openclaw 54%, hermes 52%) — revealing that **breadth eats itself in maintenance
+  cost** (openclaw's UTF-16 truncation bug recurred across 12 modules). Muse's
+  "depth-first, skip channels" call turned out to be right in hindsight.
 
 ---
 
-## 4. 포지셔닝 삼각검증 — Muse의 세 엣지가 무주공산
+## 3. Full inventory of rival capabilities — what exists, what gets praised
 
-가장 중요한 발견. **세 독립 소스가 같은 결론에 수렴**했다:
+The capability map the 18-sweep dug up. **For reference only** (confirming
+unclaimed ground + drawing out ideas); what got adopted is in §6.
 
-| 소스 | openclaw | hermes |
+### 3.1 hermes-agent (Python, ~103 tools, 1,936 test files)
+
+- **Self-improvement loop (crown jewel)**: skill self-authoring (create/edit/patch/
+  delete + AST audit + provenance) + **Curator** (7-day-cycle fork, deterministic
+  stale→archive pruning + opt-in LLM consolidation, tar.gz snapshot/rollback). #1
+  web praise: "40% faster once 20+ skills stack up," "remembers details from weeks
+  ago like magic."
+- **Memory**: 8 backends (2 first-party: Holographic HRR · Hindsight KG; 6 API
+  wrappers). Drift detection (round-trip hashing), per-turn consolidation budget,
+  frozen-snapshot + live-state, provenance ContextVar (distinguishes foreground vs.
+  autonomous writes). **Limitation (web criticism)**: memory entries capped at
+  2,200 chars, user entries at 1,375 → ~20 entries. Especially damaging for Korean.
+- **Orchestration**: a 3.4k-LOC delegate (leaf/orchestrator roles · concurrency cap
+  of 3 · capacity-exceeded rejection · heartbeat staleness at idle450s/in-tool1200s),
+  async completion goes **only through a queue → drained only in an idle
+  window** (no mid-LLM insertion), parent-headroom summary budget (×0.5/n, floor
+  2000 chars, overflow spilled to a file).
+- **Reliability**: iteration budget (parent 90/sub 50, PTC refunded), jittered
+  backoff (5s→120s, decorrelated), stream staleness at 180s · reasoning floor
+  600s, a 20-category error taxonomy, one-shot turn-retry state (prevents applying
+  the same remedy twice), message-sequence recovery.
+- **Security (crown jewel)**: an external tirith binary (SHA-256 + cosign, scans
+  for homograph / pipe-to-interpreter / terminal-injection) + approval.py
+  hardline (12 unconditional blocks) + shell de-obfuscation (NFKC · ANSI ·
+  `$IFS` · line continuation · home-path folding · subshell anchoring) + OSV
+  MAL-*. **No OS sandbox on local exec itself** (Docker/Modal/SSH/Daytona are
+  opt-in backends).
+- **Tools/media**: a multi-backend execution abstraction, checkpoints (git
+  snapshot/rollback), fuzzy_match with 9 strategies (safe patching), PTC (RPC
+  marshaling), browser (AX-tree `@eN` refs · a CDP supervisor · lightpanda→Chrome
+  fallback · camoufox anti-detection), computer-use (SOM/vision/AX), voice
+  (adaptive silence detection · Whisper hallucination filter), vision (native
+  fast-path · CPU-bound).
+- **Everyday web use cases**: morning briefings (cron), ticket digests, code
+  review, a family WhatsApp assistant. **Web criticism**: unrestricted shell (no
+  sandbox, CVE-2026-7396 path-traversal), 1-2 tok/s overhead (vs. 45 tok/s direct
+  calls), a 64K-token minimum requirement.
+
+### 3.2 openclaw (TypeScript, 149 extensions, 6,892 test files)
+
+- **Multi-channel gateway (crown jewel)**: 24+ channels (WhatsApp · Telegram ·
+  Slack · Discord · Signal · iMessage · Matrix · …) + 52 providers. The gateway is
+  the auth/routing/HTTP tool-invoke front end. #1 web praise: "it answers on the
+  channel I already use," non-developers using it in natural language.
+- **"Dreaming" memory**: 3 stages (light 6h · deep nightly · REM weekly), a
+  promotion score (frequency · relevance · diversity · recency half-life 14d ·
+  min-recall 3 · health<0.35 recovery mode). **Off by default.** LanceDB hybrid
+  (BM25+vector), active-memory (a recall sub-agent, circuit breaker).
+- **Skill workshop**: a proposal lifecycle (pending→apply/reject/quarantine/stale
+  30d), a content scanner (critical→block), a support-file cap of 32 files/1MB.
+- **Agent loop**: a compaction planner (a dedicated worker, 40% chunks · 1.2x
+  safety margin), tool-loop detection (window 30 · warn 10 · critical 20 ·
+  ping-pong · no-progress · volatile-ID stripping), a post-compaction loop guard
+  (window 3), a compaction safety timeout of 180s, context-engine quarantine (64
+  entries).
+- **Security**: exec-authorization-plan (shell topology analysis, rejects
+  heredoc/dynamic execution), an exec-auto-reviewer (model-based risk triage —
+  **can only downgrade to allow-once/ask, cannot deny or override**),
+  dangerous-tools (gateway denies 15 HTTP tools), plugin-trust (supply-chain
+  pinning/SRI), secret-mask, an **opt-in Docker sandbox** (cap-drop · seccomp ·
+  AppArmor · resource caps).
+- **Orchestration**: sub-agents (depth-4 role demotion · inherited denies ·
+  target policy), task-flow SQLite, cron isolated-agent (fresh context), ACPX
+  (Agent Client Protocol), a codex-supervisor, delivery backpressure (soft
+  25/hard 50).
+- **UX**: a command palette (Cmd+K, 90+ entries), an exec-approval modal
+  (highlights the risky span), device pairing (QR/token), a Logbook (periodic
+  screenshots → an activity timeline), Phone Control (arm/disarm for high-risk
+  actions), Canvas (a visual workspace), companion apps (Win/mac/iOS/Android).
+- **Everyday web use cases**: email automation (a 7AM workflow), PR monitoring,
+  CRM call logging. **Web criticism (serious)**: a March 2026 CVE flood (9 CVEs
+  in 4 days · CVSS 9.9 privilege escalation), 63% of public instances unauthenticated,
+  17% of ClawHub skills carrying malicious code, supply-chain issues (unvetted
+  npm), "breaks every other day."
+
+### 3.3 Where Muse already matches or beats them (round-2 sweep re-confirmed — do not rebuild)
+
+- **Skill authoring/curation**: Muse's authored-skill-store already has
+  utility-aware eviction (TinyLFU) · write-time subsumption (Voyager) ·
+  quarantine + risk scanning · snapshot ring + rollback · a semantic-coverage
+  merge gate → **A-grade parity** with openclaw's workshop / hermes' Curator.
+- **PTC**: hermes' code_execution RPC marshaling is already covered by Muse's
+  `run_tool_plan`.
+- **Prompt stable-prefix**: `@muse/prompts` has stablePrefix + stable/dynamic
+  sections + priority → the cache-boundary concept already exists.
+- **Cost tracking**: `muse cost` covers both local (`~/.muse/token-usage.jsonl`)
+  and admin.
+- **Vision pipeline**: gemma4 vision · Whisper STT · KSS TTS all wired.
+- **Error taxonomy, retry, backoff, stream-idle, tool-dedup, the dangerous-command
+  gate (DS-2), catastrophic-command fail-close (TX-6), resume idempotency** and
+  much more of this reliability class already shipped in the backlog.
+
+---
+
+## 4. Positioning triangulation — Muse's three edges are unclaimed ground
+
+The single most important finding. **Three independent sources converge on the
+same conclusion**:
+
+| Source | openclaw | hermes |
 |---|---|---|
-| 독립 프로파일러(코드) | grounding "가장 계측 안 된 차원", 프롬프트뿐 | grounding X-search 한 곳 빼면 부재 |
-| 웹 평판(커뮤니티) | #1 비판=보안(CVE·미인증·17% 악성스킬), #2=신뢰성("격일로 깨짐") | #1 비판=무제한 셸·샌드박스 없음; 메모리 2200자 |
-| **경쟁사 자체 문서** | **grounding/citations·privacy-first/local-only·eval/검증 3종 모두 문서 부재** | **동일 3종 모두 부재** |
+| Independent profiler (code) | Grounding is "the least instrumented dimension," prompt-only | Grounding is absent apart from one X-search path |
+| Web reputation (community) | #1 criticism = security (CVEs · unauthenticated · 17% malicious skills), #2 = reliability ("breaks every other day") | #1 criticism = unrestricted shell, no sandbox; memory 2200-char cap |
+| **Rivals' own documentation** | **grounding/citations · privacy-first/local-only · eval/verification — all three absent from documentation** | **Same three, all absent** |
 
-경쟁사 자체-문서 마이닝(hermes README/docs 355파일 + openclaw docs 699파일)
-결과: 양측 모두 grounding·프라이버시-우선·eval 프레임워크를 **crown-jewel로도
-문서 섹션으로도 제시하지 않는다.**
+Mining the rivals' own documentation (hermes README/docs across 355 files +
+openclaw docs across 699 files) found: neither presents grounding, privacy-first,
+or an eval framework **as a crown jewel or even as a documentation section.**
 
-→ **Muse의 세 엣지(결정론 grounding·로컬-우선 프라이버시·라이브 eval 게이트)는
-경쟁사가 "안 만든" 게 아니라 "문서로 내세울 것조차 없는" 무주공산이다.** 이는
-로드맵 방향을 바꾸지 않고 **확신**을 준다: B-차원을 A+로 올리되 세 엣지를 절대
-희생하지 말 것. 그리고 **경쟁사 최대 약점(보안·신뢰성)이 정확히 Muse 강점 축**
-이므로 W1(보안)·W2(신뢰성)를 먼저 두는 순서가 확정된다.
+→ **Muse's three edges (deterministic grounding · local-first privacy · a live
+eval gate) are not something rivals "chose not to build" — they are unclaimed
+ground rivals don't even have anything to put in their own docs.** This doesn't
+change the roadmap's direction, but it gives it **conviction**: raise the B-grade
+dimensions to A+ while never sacrificing the three edges. And because **rivals'
+biggest weaknesses (security, reliability) are exactly Muse's strength axes**, the
+ordering that puts W1 (security) and W2 (reliability) first is now settled.
 
-> 주의: 웹 평판의 구체 수치(스타 수·CVE 번호)는 미검증 커뮤니티 vibes로 취급하고
-> **방향성만** 채택한다. 경쟁사 실코드가 뒷받침하는 사실("로컬 exec OS 샌드박스
-> 부재")만 하중-주장에 쓴다.
-
----
-
-## 5. Muse의 정직한 강·약점
-
-**진짜 강점 3 (방어 가능한 이유 포함)**:
-1. **결정론 grounding 게이트 — 카테고리 유일.** 35개 표면 결정론(non-LLM-judged)
-   fail-close, fabrication=0 릴리스 게이트. 게이트웨이 제품은 처리량·채널이 우선
-   이라 사후에 35개 표면에 결정론 게이트를 소급 설치하는 건 Muse가 3개월 걸린
-   일 — **모방 비용이 가장 큰 자산.**
-2. **검증 규율이 곧 품질의 증거.** hermes는 33.5k 테스트가 있어도 "모델이 실제로
-   일을 해내는가"를 재는 게이트가 없다. Muse는 tool-selection 371·adversarial·
-   plan-quality가 실 로컬모델로 릴리스를 막는다. 소형 모델을 쓰기 때문에 생긴
-   규율이 우위가 됐다.
-3. **학습의 정직성.** hermes Curator는 "스킬을 늘리는" 루프, Muse Whetstone+
-   correction-decay는 "**틀림을 줄이는**" 루프. 'Learns you' 포지셔닝과 유일하게
-   일치.
-
-**진짜 약점 3 (냉정하게)**:
-1. **모델 천장이 모든 B등급의 공통 원인.** 멀티스텝 신뢰성(eval:computer-task
-   ~50-66%), 툴콜 예산 10, 병렬 환상 — 로컬 12B의 물리 한계.
-2. **runner 샌드박스 부재는 자기-원칙 위반급 갭.** "위험 실행은 crates/runner
-   경유"가 계약인데 그 runner가 env_clear+timeout+출력캡뿐. Muse의 비협상("가드는
-   결정론 코드")에 유일하게 못 미치는 지점.
-3. **연료 기근.** 학습 기계는 다 지었는데 ~/.muse가 사실상 비어 있음(7/7 발견).
-   위 A등급들이 아직 "실험실 A"라는 뜻.
+> Note: treat concrete web-reputation numbers (star counts, CVE numbers) as
+> unverified community vibes and adopt **only the direction**. Only load-bearing
+> claims backed by rivals' actual code ("no OS sandbox on local exec") are used
+> as facts.
 
 ---
 
-## 6. A+ 도출 — 우리가 해야 할 것 (전 차원 슬라이스 큐)
+## 5. Muse's honest strengths and weaknesses
 
-각 슬라이스: **참조**(reference-only, 아이디어 도출) · **Muse 현재**(2026-07-11
-검증) · **구현**(Muse 자체 설계) · **수용**(검증 게이트). 크기 (S/M/L).
+**3 real strengths (with defensible reasons)**:
+1. **The deterministic grounding gate — the only one in its category.** 35
+   surfaces with deterministic (non-LLM-judged) fail-close gates, a fabrication=0
+   release gate. A gateway product prioritizes throughput and channel count, so
+   retrofitting deterministic gates across 35 surfaces after the fact is work
+   that took Muse 3 months — **the asset with the highest cost to imitate.**
+2. **Verification discipline is itself evidence of quality.** hermes has 33.5k
+   tests but no gate that measures "does the model actually get the job done."
+   Muse's tool-selection (371 cases) · adversarial · plan-quality batteries block
+   a release against a real local model. The discipline forced by using a small
+   model became an edge.
+3. **Honesty in learning.** hermes' Curator is a loop that "grows the skill set";
+   Muse's Whetstone + correction-decay is a loop that "**shrinks how wrong it
+   is**." It's the only one that matches the 'Learns you' positioning.
 
-### 6.0 워커 계약 (모든 슬라이스 공통 — 어기면 무효)
+**3 real weaknesses (unflinchingly)**:
+1. **The model ceiling is the common cause behind every B grade.** Multi-step
+   reliability (eval:computer-task ~50-66%), a tool-call budget of 10, the
+   illusion of parallelism — all physical limits of a local 12B.
+2. **The runner's missing sandbox is a gap that violates Muse's own principle.**
+   The contract is "risky execution goes through `crates/runner`," but that
+   runner only does env_clear + timeout + output capping. The one place Muse
+   falls short of its own non-negotiable ("guards are deterministic code").
+3. **Fuel starvation.** The learning machinery is fully built, but `~/.muse` is
+   effectively empty (found 7/7 times). The A grades above are still
+   "laboratory A" grades.
 
-1. **VERIFY-FIRST.** 착수 전 Muse 코드에서 현 상태 확인(codegraph). 병행 루프가
-   먼저 출하했으면 **no-op 판정 후 ⏭️ 표기**하고 다음으로. "Muse 현재"는
-   2026-07-11 스냅샷일 뿐이다.
-2. **검증 사다리.** 최좁은 단위테스트 → mutation-RED → `pnpm test:changed` →
-   lint 0/0. 에이전트-facing(툴/프롬프트/어댑터)은 `eval:tools`/해당 라이브 배터리,
-   신규 라이브 케이스는 **STABLE 3/3** 선검증. 요청/응답 경로는 `smoke:live`.
-3. **maker≠judge.** 슬라이스 후 독립 평가자(별도 서브에이전트)가 PASS/FAIL,
-   FAIL은 구체 위반 명시.
-4. **비협상.** agent-core 벤더중립 · 가드는 fail-close 결정론 코드(보안≠프롬프트) ·
-   outbound draft-first · **grounded-surface 수·fabrication=0 절대 불변** · 주석은
-   WHY만 · 신규 내부의존성은 package.json+tsconfig references 양쪽.
-5. **경쟁사 코드는 이해용 참조.** 열어서 메커니즘 이해 후 Muse 패턴/네이밍으로
-   재설계. 상수는 로컬 12B·단일 GPU에 재보정하고 근거를 테스트에 남길 것.
+---
 
-### 6.0.1 ★ Round 1 적대적 검증 결과 (2026-07-11, 5-Haiku + Fable 재검증) — 워커 필독
+## 6. Deriving A+ — what we need to do (the full slice queue, every dimension)
 
-계획의 모든 "Muse 현재/갭" 주장을 실코드로 반증 시도했다. **false-gap 5건(계획이
-"없다"고 했으나 실재 → 삭제), 정련 4건.** 워커는 아래 삭제 슬라이스를 절대 짓지
-말 것(no-op이거나 기존 안전결정 위반).
+Each slice has: **Reference** (reference-only, for idea-generation) ·
+**Muse-current** (verified 2026-07-11) · **Implementation** (Muse's own design) ·
+**Acceptance** (the verification gate). Size (S/M/L).
 
-**삭제 (⏭️ 실재 확인 — 짓지 말 것):**
-- **D1-S4 (preflight 컴팩션)**: `workingBudgetTokens`가 이미 배선됨 —
-  `runtime-wiring.ts:126-129`(`maxContextWindowTokens × DEFAULT_WORKING_BUDGET_RATIO`,
-  env `MUSE_LLM_WORKING_BUDGET_TOKENS`) + `chat-ink-core.ts:905`. 창 사용률 %-임계
-  사전 컴팩션이 **기본 on**. 잔여(선택): 컴팩션 발생을 유저에게 표기하는지만 확인.
-- **D4-S5 (history-search 툴)**: `history_search` MuseTool이 이미 존재
-  (`packages/recall/src/history-search-tool.ts:20/40`, risk:read). 코어+툴 완결.
-- **D3-S5 (background_process start/stop 툴)**: `background_list`(read-only)는 이미
-  에이전트-facing(`domain-tools/src/background-list-tool.ts:20`), start/stop/logs는
-  **의도적 CLI-전용**("state-changing exec must stay user-initiated" — outbound-
-  safety). 에이전트 노출은 기존 안전결정 위반이라 **하지 말 것**.
-- **D7-S2 (doctor fix-steps)**: 각 체크가 이미 "run `muse X`" 수리단계 반환
-  (`commands-doctor-checks.ts:61/64/79/220/226`). 완비.
-- **D-KO-S2 (CJK 검색)**: `recall-lexical.ts:44-53`가 이미 Hangul/Han/Hiragana/
-  Katakana 음절-레벨 토큰 + NFC·전각→반각 정규화. `searchHistory`가 이걸 사용. 완비.
+### 6.0 Worker contract (common to every slice — violate it and the slice is void)
 
-**정련 (실-갭이나 범위 축소):**
-- **D3-S2 (하트비트)**: stale-detection 레지스트리(heartbeat/detectStalled/
-  markStalledAsTimedOut, `subagent-run-registry.ts:100/174/185`)는 이미 존재하나
-  **호출부가 orchestrator worker-settle 1곳뿐**(`orchestrator.ts:347`). 실-갭은
-  딱 하나: **단일 장기 run**(챗/ask 주경로, 멀티워커 아님)이 run 중 heartbeat 미방출.
-  → 슬라이스 = 기존 detectStalled **재사용** + agent-runtime 툴루프가 tool-start마다
-  heartbeat 호출(신규 감지기 짓지 말 것).
-- **D5-S3 (toolCalling 폴백)**: 단순 "미배선"이 아니라 **死코드** —
-  `canUseNativeTools`(`packages/model/src/index.ts:292`)가 정의됐으나 **호출부 0**.
-  계약(architecture.md:38)만 있고 런타임 미배선. 슬라이스는 그 함수를 실제
-  게이트로 배선.
-- **D-KO-S1 (UTF-16)**: safe 패턴이 이미 `truncateErrorBody`(`shared/src/index.ts:257-260`)에
-  존재 → 그걸 공유 헬퍼로 추출 + **정확한 미안전 3곳 배선**: `history-search.ts:206/213`
-  (스니펫), `tool-definition-helpers.ts:108`(툴 설명), `knowledge-corpus.ts:365`(요약).
-- **D2-S6 (write-approval 스테이징)**: `pending-approval-store.ts`가 **채널 경로엔
-  이미 존재**(`~/.muse/pending-approvals.json`, `{id,tool,arguments,draft,expiresAt}`).
-  CLI 로컬 쓰기만 동기(`actuator-tools.ts:262`). → 기존 스토어 **재사용**해 CLI 경로 확장.
+1. **VERIFY-FIRST.** Before starting, confirm current Muse state in code
+   (codegraph). If a parallel loop already shipped it, mark it **no-op with
+   ⏭️** and move on. "Muse-current" is only a 2026-07-11 snapshot.
+2. **Verification ladder.** Narrowest unit test → mutation-RED → `pnpm
+   test:changed` → lint 0/0. Agent-facing work (tools/prompts/adapters) needs
+   `eval:tools` / the matching live battery; a new live case needs **STABLE
+   3/3** pre-verification. Request/response paths need `smoke:live`.
+3. **maker≠judge.** After a slice, an independent evaluator (a separate
+   sub-agent) issues PASS/FAIL; a FAIL names the concrete violation.
+4. **Non-negotiables.** agent-core stays vendor-neutral · guards stay
+   fail-close deterministic code (security is never a prompt) · outbound stays
+   draft-first · **the count of grounded surfaces and fabrication=0 are
+   absolute invariants** · comments carry only WHY · any new internal
+   dependency goes into both package.json and tsconfig references.
+5. **Rival code is reference-only, for understanding.** Open it to understand
+   the mechanism, then redesign in Muse's own patterns/naming. Recalibrate any
+   constant for a local 12B on a single GPU and leave the reasoning in the
+   test.
 
-**전량 확정(짓기 정당) — 특히 D2 보안 7슬라이스 전부 false-gap 0**: runner OS
-샌드박스 부재(`crates/runner/src/main.rs`: env_clear+timeout+cap만)·DS-2에 NFKC/ANSI/
-홈경로 부재·토폴로지 AST 부재·run_command 시크릿 미-redaction(`runner.ts:88-103`,
-실제 유출 확인)·승인 span 하이라이트 부재·calendar 평문(`calendar/src/local-provider.ts:202`).
-나머지 D1(S1/S2/S3/S5/S6/S7)·D3(S1/S3/S4/S6)·D4(S1/S2/S3/S4)·D5(S1/S2/S4/S5)·
-D6·D7(S1/S3/S4)도 실-갭 확정.
+### 6.0.1 ★ Round 1 adversarial verification results (2026-07-11, 5-Haiku + Fable re-check) — required reading for workers
+
+Every "Muse-current/gap" claim in the plan was checked against real code for
+falsification. **5 false gaps** (the plan said "missing" but it actually exists
+→ deleted) **and 4 refinements.** Workers must not build the deleted slices
+below (they are either no-ops or would violate an existing safety decision).
+
+**Deleted (⏭️ confirmed to exist — do not build):**
+- **D1-S4 (preflight compaction)**: `workingBudgetTokens` is already wired —
+  `runtime-wiring.ts:126-129` (`maxContextWindowTokens × DEFAULT_WORKING_BUDGET_RATIO`,
+  env `MUSE_LLM_WORKING_BUDGET_TOKENS`) + `chat-ink-core.ts:905`. Threshold-%
+  preflight compaction is **on by default**. Remaining (optional): just check
+  whether a compaction event is surfaced to the user.
+- **D4-S5 (history-search tool)**: the `history_search` MuseTool already exists
+  (`packages/recall/src/history-search-tool.ts:20/40`, risk:read). Core + tool
+  are complete.
+- **D3-S5 (background_process start/stop tool)**: `background_list` (read-only)
+  is already agent-facing (`domain-tools/src/background-list-tool.ts:20`);
+  start/stop/logs are **intentionally CLI-only** ("state-changing exec must
+  stay user-initiated" — outbound-safety). Exposing them to the agent would
+  violate an existing safety decision, so **do not do it.**
+- **D7-S2 (doctor fix-steps)**: every check already returns a "run `muse X`"
+  repair step (`commands-doctor-checks.ts:61/64/79/220/226`). Complete.
+- **D-KO-S2 (CJK search)**: `recall-lexical.ts:44-53` already does
+  Hangul/Han/Hiragana/Katakana syllable-level tokenization + NFC ·
+  full-width→half-width normalization. `searchHistory` uses it. Complete.
+
+**Refined (real gaps, but narrower in scope than originally scoped):**
+- **D3-S2 (heartbeat)**: the stale-detection registry (heartbeat/detectStalled/
+  markStalledAsTimedOut, `subagent-run-registry.ts:100/174/185`) already
+  exists, but **only one caller uses it — the orchestrator's worker-settle
+  path** (`orchestrator.ts:347`). The real gap is exactly one thing: a
+  **single long-running run** (the main chat/ask path, not a multi-worker one)
+  never emits a heartbeat during the run. → the slice = **reuse** the
+  existing detectStalled + have the agent-runtime tool loop call heartbeat on
+  every tool-start (do not build a new detector).
+- **D5-S3 (toolCalling fallback)**: not simply "unwired" — it's **dead code**.
+  `canUseNativeTools` (`packages/model/src/index.ts:292`) is defined but has
+  **zero callers**. Only the contract (architecture.md:38) exists; nothing is
+  wired at runtime. The slice is to wire that function in as an actual gate.
+- **D-KO-S1 (UTF-16)**: the safe pattern already exists inside
+  `truncateErrorBody` (`shared/src/index.ts:257-260`) → extract it into a
+  shared helper + **wire it at the exact 3 unsafe sites**: `history-search.ts:206/213`
+  (snippets), `tool-definition-helpers.ts:108` (tool descriptions),
+  `knowledge-corpus.ts:365` (summaries).
+- **D2-S6 (write-approval staging)**: `pending-approval-store.ts` **already
+  exists on the channel path** (`~/.muse/pending-approvals.json`,
+  `{id,tool,arguments,draft,expiresAt}`). Only CLI local writes are synchronous
+  (`actuator-tools.ts:262`). → **reuse the existing store** to extend to the
+  CLI path.
+
+**Fully confirmed (justified to build) — the D2 security 7-slice set in
+particular has zero false gaps**: no OS sandbox in the runner (`crates/runner/src/main.rs`:
+just env_clear+timeout+cap) · DS-2 missing NFKC/ANSI/home-path handling ·
+missing topology AST · run_command not redacting secrets (`runner.ts:88-103`,
+actual leak confirmed) · missing approval-span highlighting · calendar stored
+in plaintext (`calendar/src/local-provider.ts:202`). The rest — D1(S1/S2/S3/S5/S6/S7)
+· D3(S1/S3/S4/S6) · D4(S1/S2/S3/S4) · D5(S1/S2/S4/S5) · D6 · D7(S1/S3/S4) —
+are also confirmed real gaps.
 
 ### D1 — Agent loop (B+ → A+)
 
-> **Muse 현재**: maxToolCalls 10·wallclock 300s(`agent-runtime.ts:284-288`).
-> no-progress 스톨감지+tool-failure-streak. 컴팩션: 결정론 `[Key details]` floor +
-> opt-in aux 요약(CMP-2 완결) + anti-resume + stale-image 스트립. stream idle-timeout·
-> 요청비례 타임아웃·retry-after·decorrelated jitter·에러분류기 전부 출하.
-> **갭**: ping-pong 감지·post-compaction 루프가드·단계적 요약·식별자보존·preflight·
-> one-shot 회복·예산 가시화·브라우저 소형모델 신뢰성.
+> **Muse-current**: maxToolCalls 10 · wallclock 300s (`agent-runtime.ts:284-288`).
+> No-progress stall detection + tool-failure streak. Compaction: deterministic
+> `[Key details]` floor + opt-in aux summary (CMP-2 complete) + anti-resume +
+> stale-image stripping. Stream idle-timeout · request-proportional timeout ·
+> retry-after · decorrelated jitter · an error classifier — all shipped.
+> **Gaps**: ping-pong detection · post-compaction loop guard · staged
+> summarization · identifier preservation · preflight · one-shot recovery ·
+> budget visibility · small-model browser reliability.
 
-- **D1-S1. Ping-pong + 휘발성-ID 스트리핑 루프감지 (M).** 참조: openclaw
-  `tool-loop-detection.ts`(창30·warn10·crit20·A↔B 교대·send결과 messageId/ts 제거).
-  Muse `tool-loop-progress.ts`는 동일-출력 스톨만. 자매 모듈 `tool-loop-pingpong.ts`,
-  서명 SHA256(tool+안정화 args), 결과해시에서 Muse 툴 휘발필드(runId/tsIso/id) 제거,
-  창/임계 12B 재보정(창20·warn6·block10 제안), CRITICAL은 blockedToolResult 합류.
-  수용: 교대루프 유닛5+(진짜진행 통과)·mutation·eval:computer-task 회귀 없음.
-- **D1-S2. Post-compaction 루프가드 (S).** 참조: openclaw `post-compaction-loop-
-  guard.ts`(창3). Muse 부재(anti-resume는 프롬프트뿐). 컴팩션턴(summaryInserted) 후
-  3-call 창 무장, 결정론 기본on. 수용: 시나리오 유닛+mutation.
-- **D1-S3. 단계적 요약 + 식별자 보존 (M).** 참조: openclaw `summarizeInStages()` +
-  hermes 요약예산(min 2000tok·ratio0.20·상한10K). Muse `summarizeDroppedContext`는
-  1회 요약(600자)→초과 시 통째 실패. tool-pair 경계 청크→청크별 aux 요약→병합,
-  전단계 FAIL-OPEN, **"불투명 식별자(UUID/경로/URL/숫자) 원문 보존" 지시 명문화**
-  (grounding 강화 겸). 수용: 경계 유닛+부분실패 보존+mutation·기존 CMP-2 무수정.
-- **D1-S4. ⏭️ 삭제(FALSE-GAP).** 컴팩션 preflight는 `workingBudgetTokens`로 이미
-  기본 배선(§6.0.1). 잔여(선택, 최소): 컴팩션 발생을 유저에게 1줄 표기하는지 확인,
-  없으면 display-only 티끌 슬라이스.
-- **D1-S5. 이터레이션 예산 재설계 + 가시화 (M).** 참조: hermes `iteration_budget.py`
-  (부모90/서브50·PTC 환불). Muse maxToolCalls=10(호출수만). (a) PTC 플랜스텝 계상
-  규칙 명문화(프로그래매틱=1). (b) 서브에이전트(보드)는 별도 하위예산. (c) 소진
-  중단 시 "예산 한도(N/M)" 명시 — **침묵 중단 금지**. 기본값 10은 12B 실증치라
-  불변(상향은 eval:computer-task로만). 수용: 계상·소진메시지 유닛+mutation.
-- **D1-S6. 턴-내 one-shot 회복 상태 (S).** 참조: hermes `turn_retry_state.py`.
-  Muse는 개별회복 산재. 턴 상태 객체로 통합(이중 재시도 구조적 불가), 동작불변
-  리팩터. 수용: 회복분기 각 1회 보장 유닛.
-- **D1-S7. 브라우저 refs + step-budget + dialog-inline + 인젝션 defang (L).** 참조:
-  hermes `browser_tool.py`(AX-tree @eN·dialog을 snapshot 인라인·lightpanda폴백),
-  openclaw `browser-tool.actions.ts`(compact ai 스냅샷·timeout 주입·stale-tab 복구·
-  page vision 라우팅). Muse는 puppeteer detached-Chrome(ambiguous fail-close) 보유.
-  (a) 스냅샷을 **숫자 인덱스 @e1…** 반환(CSS 셀렉터 생성 금지 — 12B 불가), (b)
-  action당 timeout+task별 step 카운터(하드캡·근접경고·답변에 `actions_used N/M`),
-  (c) pending dialog을 스냅샷 필드로+서버측 auto-dismiss, (d) **page 콘텐츠 `<page>`
-  래핑+미디어지시 defang**(인젝션 방어 — 브라우저는 untrusted 최대 통로). 수용:
-  refs 안정성·step소진·dialog-inline·인젝션 defang 계약("ignore above" 무력화)+
-  eval:computer-task 회귀없음. browser는 실 e2e 필요(조립경로 몰면 거짓 — 교훈).
+- **D1-S1. Ping-pong + volatile-ID stripping loop detection (M).** Reference:
+  openclaw's `tool-loop-detection.ts` (window 30 · warn 10 · crit 20 · A↔B
+  alternation · strips messageId/ts from send results). Muse's
+  `tool-loop-progress.ts` only catches identical-output stalls. A sister
+  module `tool-loop-pingpong.ts`, a SHA256 signature (tool + stabilized args),
+  strip volatile Muse-tool fields (runId/tsIso/id) from the result hash,
+  recalibrated window/thresholds for 12B (proposed window 20 · warn 6 · block
+  10), CRITICAL joins blockedToolResult. Acceptance: 5+ alternating-loop units
+  (genuine progress passes) · mutation · no eval:computer-task regression.
+- **D1-S2. Post-compaction loop guard (S).** Reference: openclaw's
+  `post-compaction-loop-guard.ts` (window 3). Muse lacks this (anti-resume is
+  prompt-only). Arm a 3-call window after a compaction turn (summaryInserted),
+  deterministic and on by default. Acceptance: scenario unit + mutation.
+- **D1-S3. Staged summarization + identifier preservation (M).** Reference:
+  openclaw's `summarizeInStages()` + hermes' summary budget (min 2000 tok ·
+  ratio 0.20 · cap 10K). Muse's `summarizeDroppedContext` does a single
+  summary pass (600 chars) → a full failure once it overflows. Chunk on
+  tool-pair boundaries → summarize each chunk (reusing the aux summarizer) →
+  merge, each stage FAIL-OPEN, and **explicitly instruct "preserve opaque
+  identifiers (UUIDs/paths/URLs/numbers) verbatim"** (also strengthens
+  grounding). Acceptance: boundary units + partial-failure preservation +
+  mutation · existing CMP-2 unmodified.
+- **D1-S4. ⏭️ Deleted (FALSE GAP).** Compaction preflight is already wired by
+  default via `workingBudgetTokens` (§6.0.1). Remaining (optional, minimal):
+  check whether a compaction event is surfaced to the user with a one-line
+  note; if not, a display-only trivial slice.
+- **D1-S5. Redesign the iteration budget + make it visible (M).** Reference:
+  hermes' `iteration_budget.py` (parent 90/sub 50 · PTC refunded). Muse's
+  maxToolCalls=10 (call count only). (a) codify a PTC plan-step accounting
+  rule (programmatic = 1). (b) sub-agents (the board) get a separate
+  sub-budget. (c) when exhausted, explicitly state "budget limit (N/M)" —
+  **no silent cutoff.** The default of 10 is empirically grounded for 12B and
+  stays fixed (raise it only via eval:computer-task). Acceptance: accounting +
+  exhaustion-message units + mutation.
+- **D1-S6. Turn-scoped one-shot recovery state (S).** Reference: hermes'
+  `turn_retry_state.py`. Muse's recovery logic is scattered across ad-hoc
+  spots. Consolidate into a single turn-state object (structurally rules out
+  double retry); a behavior-preserving refactor. Acceptance: a unit that
+  guarantees each recovery branch fires at most once.
+- **D1-S7. Browser refs + step-budget + inline dialogs + injection defanging
+  (L).** Reference: hermes' `browser_tool.py` (AX-tree `@eN` · dialogs
+  inlined into the snapshot · lightpanda fallback), openclaw's
+  `browser-tool.actions.ts` (compact AI snapshots · timeout injection ·
+  stale-tab recovery · page-vision routing). Muse has a puppeteer
+  detached-Chrome setup (fails closed on ambiguity). (a) return snapshots as
+  **numeric indices `@e1…`** (never generate CSS selectors — a 12B can't),
+  (b) a per-action timeout + a per-task step counter (hard cap, near-limit
+  warning, echo `actions_used N/M` in the answer), (c) surface a pending
+  dialog as a snapshot field + server-side auto-dismiss, (d) **wrap page
+  content in `<page>` + defang media directives** (injection defense — the
+  browser is the largest untrusted channel). Acceptance: ref stability · step
+  exhaustion · dialog-inline · an injection-defanging contract (neutralizes
+  "ignore the above") + no eval:computer-task regression. Browser needs a
+  real e2e (mocking the assembly path is a lie — lesson learned).
 
 ### D2 — Security (B+ → A+)
 
-> **Muse 현재**: runner `env_clear()`(시크릿 유출 원천차단 — hermes 블록리스트보다
-> 강함)+timeout상한+출력캡, **OS 샌드박스 없음**. 위험명령 게이트 DS-2(quote-aware
-> 정규화·$IFS·라인연속·치환·앵커)+TX-6 파국명령 fail-close. 승인 시크릿마스킹·
-> OSV MAL-*·암호화 다수스토어(잔여 calendar)·인젝션 배터리·egress fail-close.
-> **재조정**: hermes도 로컬 exec엔 OS 샌드박스 없음(Docker는 opt-in). openclaw만
-> opt-in Docker. Muse 갭은 "표준 미달"이 아니라 "**opt-in 격리 백엔드 부재**".
+> **Muse-current**: the runner does `env_clear()` (blocks secret leakage at
+> the source — stronger than hermes' blocklist) + a timeout ceiling + output
+> capping, **no OS sandbox.** The dangerous-command gate DS-2 (quote-aware
+> normalization · `$IFS` · line continuation · substitution · anchoring) +
+> TX-6 catastrophic-command fail-close. Approval secret masking · OSV MAL-* ·
+> multiple encrypted stores (calendar remaining) · injection battery ·
+> egress fail-close.
+> **Recalibration**: hermes also has no OS sandbox on local exec (Docker is
+> opt-in). Only openclaw has an opt-in Docker sandbox. Muse's gap isn't
+> "below standard" — it's "**missing an opt-in isolation backend**."
 
-- **D2-S1. runner seatbelt 샌드박스 (opt-in) (L) ★최우선.** 참조: openclaw
-  `sandbox/*`(cap-drop·리소스캡·네트워크모드·env새니타이즈, Docker기반). Muse는
-  macOS-우선이라 **seatbelt(`sandbox-exec` 프로파일)**가 정답 — 데몬/의존성0.
-  `crates/runner` `MUSE_RUNNER_SANDBOX=seatbelt` opt-in: 기본 deny-write, 허용=cwd
-  이하+$TMPDIR, 네트워크는 요청 플래그로만, `~/.ssh`·`~/.muse` 등 민감경로 읽기도
-  거부. 프로파일 문자열 코드생성(요청별 cwd 삽입·이스케이프검증), 실프로세스
-  Rust 유닛(탈출 3종 실패·허용 write 성공·네트워크 차단). 비-macOS는 "unsupported
-  →기존동작+경고". `muse doctor` 포스처체크. 수용: 실행계약 5+·기존 runner 무수정·
-  미설정 byte-identical·**eval:adversarial에 탈출시도 케이스 추가**.
-- **D2-S2. 셸 토폴로지 분석 fail-close (M).** 참조: openclaw `exec-authorization-
-  plan.ts`(heredoc·동적실행 "분석불가"로 거부)+hermes 서브셸 앵커. Muse DS-2는
-  문자열 패턴 레벨 — `$(...)`/백틱/heredoc 안 파국명령은 앵커가 놓칠 수 있음.
-  `parseRunnerCommandRequest` 앞단 토폴로지 패스: 치환/heredoc/eval 감지→**파국검사
-  불가→승인 필수 강등**(무조건 거부 아님·정당 heredoc 존중), quote-aware(DS-2
-  오탐 교훈). 수용: 우회 클래스별 차단+near-miss 통과 쌍·mutation-RED.
-- **D2-S3. 난독화 해제 확장 — NFKC+ANSI만 (S, VQ-3 확정).** 참조: hermes approval.py.
-  **VQ-3 결론**: DS-2에 $IFS/라인연속/치환·comment-strip 있고 **홈경로(`~`/`$HOME`)는 이미
-  RULES 패턴 내장**(:65/74/83). → 실부재 = **NFKC 유니코드 정규화 + ANSI 이스케이프 strip
-  2개만** 추가(전각→반각 homograph·ECMA-48 시퀀스). 수용: 우회 페이로드 쌍(전각 rm·ANSI
-  삽입)+기존 DS-2 무수정.
-- **D2-S4. runner 출력 시크릿 마스킹 (S).** 참조: openclaw secret-mask. Muse
-  `redactSecretsInText`가 runner stdout→모델 경로에 배선됐는지 **verify-first**,
-  미적용이면 run_command 결과 반환 직전 통과. 수용: 배선 유닛+대형출력 성능무해.
-- **D2-S5. 암호화-at-rest 잔여 calendar (S).** backlog "LAST encryption item".
-  reflections/belief-provenance 검증 템플릿 재사용. 수용: 라운드트립 3종+format-
-  preserving.
-- **D2-S6. exec 승인 span 하이라이트 + write-approval 스테이징 (M, 정련됨).** 참조:
-  openclaw `exec-approval.ts`(위험부위 span)+hermes `write_approval.py`. (a) 승인
-  프롬프트에서 위험 토큰(파괴 플래그·민감경로) 하이라이트 — 현 `summarizeToolArgs`
-  (`chat-ink-core.ts`)는 clip+redact만, 하이라이트 없음(§6.0.1). DS-2 분류기 재사용·
-  시크릿 마스킹 유지. (b) 스테이징은 **기존 `pending-approval-store.ts` 재사용** —
-  채널 경로엔 이미 존재(`~/.muse/pending-approvals.json`), CLI 로컬 쓰기만 동기
-  (`actuator-tools.ts:262`)이므로 그 스토어를 CLI 경로로 확장(신규 스토어 금지).
-  수용: 하이라이트 위치·스테이징 no-external-effect 계약(승인 전 절대 미실행)·mutation.
-- **D2-S7. eval:adversarial 확대 16→24+ (M).** 신규: 샌드박스 탈출3·토폴로지 우회3·
-  난독화2 — 전부 **결정론 가드가 막는 걸 코드로 검증**(모델 거부 의존 금지).
+- **D2-S1. runner seatbelt sandbox (opt-in) (L) ★ top priority.** Reference:
+  openclaw's `sandbox/*` (cap-drop · resource caps · network modes · env
+  sanitization, Docker-based). Muse is macOS-first, so **seatbelt**
+  (`sandbox-exec` profiles) is the right answer — zero daemon, zero
+  dependency. `crates/runner` `MUSE_RUNNER_SANDBOX=seatbelt` opt-in: default
+  deny-write, allow = cwd-and-below + `$TMPDIR`, network only via a
+  per-request flag, deny reading sensitive paths like `~/.ssh`/`~/.muse`.
+  Code-generated profile strings (per-request cwd injection + escape
+  validation), real-process Rust units (3 escape-attempt failures ·
+  successful allowed write · blocked network). Non-macOS: "unsupported →
+  existing behavior + warning." `muse doctor` posture check. Acceptance: 5+
+  execution contracts · existing runner unmodified · byte-identical when
+  unconfigured · **an escape-attempt case added to eval:adversarial.**
+- **D2-S2. Shell-topology analysis fail-close (M).** Reference: openclaw's
+  `exec-authorization-plan.ts` (rejects heredoc/dynamic execution as
+  "unanalyzable") + hermes' subshell anchoring. Muse's DS-2 works at the
+  string-pattern level — a catastrophic command inside `$(...)`/backticks/a
+  heredoc can slip past the anchor. A topology pass ahead of
+  `parseRunnerCommandRequest`: detect substitution/heredoc/eval → **cannot
+  verify for catastrophe → downgrade to requiring approval** (not an
+  unconditional reject — legitimate heredocs are respected), quote-aware
+  (a lesson from DS-2 false positives). Acceptance: a block-per-bypass-class +
+  near-miss-pass pairing · mutation-RED.
+- **D2-S3. Extend de-obfuscation — NFKC+ANSI only (S, VQ-3 confirmed).**
+  Reference: hermes' approval.py. **VQ-3 conclusion**: DS-2 already has
+  `$IFS`/line-continuation/substitution/comment-strip, and **home-path
+  (`~`/`$HOME`) is already built into the RULES patterns** (:65/74/83). →
+  the actual gap is **only NFKC Unicode normalization + ANSI escape strip**
+  (full-width→half-width homographs · ECMA-48 sequences). Acceptance: bypass
+  payload pairs (full-width rm · ANSI injection) + existing DS-2 unmodified.
+- **D2-S4. Mask secrets in runner output (S).** Reference: openclaw's
+  secret-mask. **Verify-first** whether `redactSecretsInText` is wired into
+  the runner stdout→model path; if not, run it right before returning the
+  run_command result. Acceptance: wiring unit + benign performance on large
+  output.
+- **D2-S5. Encryption-at-rest for the remaining calendar store (S).** The
+  backlog's "LAST encryption item." Reuse the reflections/belief-provenance
+  verification template. Acceptance: 3 round-trip cases + format-preserving.
+- **D2-S6. Approval span highlighting + write-approval staging (M, refined).**
+  Reference: openclaw's `exec-approval.ts` (highlights the risky span) +
+  hermes' `write_approval.py`. (a) highlight risky tokens (destructive flags ·
+  sensitive paths) in the approval prompt — the current `summarizeToolArgs`
+  (`chat-ink-core.ts`) only clips+redacts, no highlighting (§6.0.1). Reuse
+  the DS-2 classifier, keep secret masking. (b) staging **reuses the existing
+  `pending-approval-store.ts`** — it already exists on the channel path
+  (`~/.muse/pending-approvals.json`); only CLI local writes are synchronous
+  (`actuator-tools.ts:262`), so extend that store to the CLI path (no new
+  store). Acceptance: highlight positions · a no-external-effect staging
+  contract (absolutely nothing executes before approval) · mutation.
+- **D2-S7. Expand eval:adversarial 16→24+ (M).** New: 3 sandbox-escape · 3
+  topology-bypass · 2 obfuscation cases — all **scored in code by confirming
+  the deterministic guard actually blocks it** (never relying on model
+  refusal).
 
 ### D3 — Orchestration (B → A+)
 
-> **Muse 현재**: `@muse/multi-agent` 보드(의존성게이트·재시도사유·zombie reclaim
-> 30분·병렬분해+합성·REVIEW 파킹·read-only executor), X-3 백그라운드 레지스트리
-> (S1-S6·crash reconcile·cap50), 스케줄러 graceful drain+pause. race모드는 의도적
-> sequential 폴백(정직 문서화 — 단일 GPU).
+> **Muse-current**: the `@muse/multi-agent` board (dependency gates · retry
+> reasons · zombie reclaim after 30 min · parallel decomposition + synthesis ·
+> REVIEW parking · a read-only executor), the X-3 background registry
+> (S1-S6 · crash reconcile · cap 50), a scheduler with graceful drain/pause.
+> Race mode intentionally falls back to sequential (honestly documented — a
+> single GPU).
 
-- **D3-S1. 서브에이전트 역할 강등 + 상속 tool-deny (M).** 참조: openclaw
-  `subagent-capabilities.ts`(깊이≥max→leaf·부모 deny 상속)+hermes(max_spawn_depth1).
-  Muse 보드는 flat. expand가 재-expand 가능한지 **verify-first**(무한분해 위험).
-  태스크에 depth 필드·`MUSE_BOARD_MAX_DEPTH`기본1, 도달 시 expand 거부, executor
-  read-only 게이트에 부모 deny 상속(구조·프롬프트 아님). 수용: 깊이경계·상속 유닛+
-  mutation(강등제거→RED).
-- **D3-S2. 런타임 하트비트 — 단일-run 배선 (S, 정련됨).** 참조: hermes
-  `_heartbeat_loop`. **주의(§6.0.1)**: stale-detection 레지스트리(heartbeat/
-  detectStalled/markStalledAsTimedOut)는 이미 존재하나 호출부가 orchestrator
-  worker-settle 1곳뿐. 실-갭 = **단일 장기 run**이 run 중 heartbeat 미방출. 신규
-  감지기 금지 — **기존 detectStalled 재사용** + agent-runtime 툴루프가 tool-start/
-  delta마다 `heartbeat(runId)` 호출(in-tool 스테일→abort+사유). 수용: fake-clock
-  유닛(단일 run 스테일 감지)+정상 장기스트림 비오탐.
-- **D3-S3. 완료-이벤트 idle-드레인 계약 핀 (S).** 참조: hermes async_delegation
-  (완료 큐→idle 윈도우만 드레인·교대/캐시 보존). Muse jobCompletions/proactive
-  폴링이 사실상 이 패턴 — "생성 중 삽입 불가" **계약 테스트 부재**, verify-first 후
-  핀. 수용: busy 중 완료이벤트 미삽입 계약.
-- **D3-S4. 용량 거부 + 부모-헤드룸 요약예산 (M).** 참조: hermes(cap3 초과 async
-  거부·헤드룸×0.5/n·floor2000·파일스필). Muse `/job` 상한 verify-first·합성 예산
-  산식 없음. (a) job 동시상한(기본3·초과 명시거부), (b) `boardTaskPrompt` 합성에
-  헤드룸비례 per-child 예산+`~/.muse/board-spill/` 스필+답변에 경로 명시. 수용:
-  상한거부·예산경계 유닛+스필 왕복.
-- **D3-S5. ⏭️ 삭제(FALSE-GAP + 안전결정 위반).** `background_list`(read-only)는
-  이미 에이전트-facing, start/stop/logs는 **의도적 CLI-전용**(outbound-safety —
-  §6.0.1). 에이전트에 start/stop 노출은 기존 결정 위반이라 **하지 말 것**.
-- **D3-S6. eval:orchestration 래칫 (S).** D3-S1~S4 라이브 케이스 편입 pass^3, MAST
-  상위 실패모드(스텝반복·종료미인지) 2+ 포함.
-- **D3-S7. X-3 PID-재사용 kill 가드 (S) ★ (Round3 발견 — 실 안전 갭).** 참조: hermes
-  `process_registry.py`(커널 start-time로 PID 재사용 검증 후 kill). **검증됨(§9 #18)**:
-  Muse `stopBackgroundProcess`는 `kill(record.pid)`를 재사용 검증 없이 실행
-  (`background-process-spawn.ts:104`), `reconcileBackgroundProcesses`도 `isAlive(pid)`만
-  봄(:128) → 원 프로세스가 죽고 PID가 재활용되면 **무관한 유저 프로세스를 SIGTERM**.
-  record엔 `startedAt`(:64) 있으나 OS start-time과 미대조. 구현: spawn 시 OS
-  프로세스 start-time 캡처(macOS `ps -o lstart=`/Linux `/proc/<pid>/stat`), kill/
-  reconcile 전 대조 — 불일치면 kill 금지+record `exited` 마킹(fail-close, 결정론
-  가드). 수용: 재사용-시뮬 유닛(start-time 불일치→kill 안 함)+mutation. Muse
-  "위험 실행은 결정론 가드" 정신 정합.
+- **D3-S1. Demote sub-agent roles + inherited tool-deny (M).** Reference:
+  openclaw's `subagent-capabilities.ts` (depth≥max→leaf, parent denies
+  inherited) + hermes (max_spawn_depth 1). Muse's board is flat.
+  **Verify-first** whether an expanded task can be re-expanded (risk of
+  infinite decomposition). Add a depth field to tasks, `MUSE_BOARD_MAX_DEPTH`
+  defaulting to 1; deny expand once reached; the executor's read-only gate
+  inherits parent denies (structurally, not via prompt). Acceptance: depth-
+  boundary + inheritance units + mutation (remove the demotion → RED).
+- **D3-S2. Runtime heartbeat — wire the single-run case (S, refined).**
+  Reference: hermes' `_heartbeat_loop`. **Note (§6.0.1)**: the
+  stale-detection registry (heartbeat/detectStalled/markStalledAsTimedOut)
+  already exists, but only one caller uses it — the orchestrator's
+  worker-settle path. The real gap = a **single long-running run** never
+  emits a heartbeat during the run. No new detector — **reuse the existing
+  detectStalled** + have the agent-runtime tool loop call `heartbeat(runId)`
+  on every tool-start/delta (in-tool staleness → abort with a reason).
+  Acceptance: fake-clock unit (detects staleness in a single run) + no false
+  positive on a healthy long-running stream.
+- **D3-S3. Pin the completion-event idle-drain contract (S).** Reference:
+  hermes' async_delegation (completion queue drained only in an idle window,
+  preserving alternation/cache). Muse's jobCompletions/proactive polling
+  already effectively follows this pattern — the contract test that "nothing
+  can be inserted mid-generation" doesn't exist yet; verify-first, then pin
+  it. Acceptance: a contract that no completion event is inserted while busy.
+- **D3-S4. Capacity rejection + parent-headroom summary budget (M).**
+  Reference: hermes (async rejected once cap 3 is exceeded · headroom×0.5/n ·
+  floor 2000 · file spill). Muse's `/job` ceiling — verify-first — and no
+  synthesis budget formula exists. (a) a job concurrency cap (default 3,
+  overflow explicitly rejected), (b) `boardTaskPrompt` synthesis gets a
+  headroom-proportional per-child budget + spills to `~/.muse/board-spill/`
+  with the path stated in the answer. Acceptance: ceiling-rejection +
+  budget-boundary units + spill round-trip.
+- **D3-S5. ⏭️ Deleted (FALSE GAP + would violate a safety decision).**
+  `background_list` (read-only) is already agent-facing; start/stop/logs are
+  **intentionally CLI-only** (outbound-safety — §6.0.1). Exposing start/stop
+  to the agent would violate an existing decision — **do not do it.**
+- **D3-S6. eval:orchestration ratchet (S).** Fold D3-S1~S4 into live cases
+  under pass^3, including 2+ of MAST's top failure modes (step repetition,
+  unawareness of termination).
+- **D3-S7. X-3 PID-reuse kill guard (S) ★ (Round 3 finding — a real safety
+  gap).** Reference: hermes' `process_registry.py` (verifies via kernel
+  start-time before killing, to catch PID reuse). **Confirmed (§9 #18)**:
+  Muse's `stopBackgroundProcess` calls `kill(record.pid)` without any
+  reuse verification (`background-process-spawn.ts:104`), and
+  `reconcileBackgroundProcesses` only checks `isAlive(pid)` (:128) → if the
+  original process dies and the PID gets recycled, **an unrelated user
+  process gets SIGTERM'd.** The record has `startedAt` (:64) but it's never
+  compared against the OS's start-time. Implementation: capture the OS
+  process start-time at spawn (macOS `ps -o lstart=` / Linux
+  `/proc/<pid>/stat`), compare before kill/reconcile — on mismatch, refuse to
+  kill + mark the record `exited` (fail-close, a deterministic guard).
+  Acceptance: a reuse-simulation unit (start-time mismatch → no kill) +
+  mutation. Aligns with Muse's "risky execution = a deterministic guard"
+  spirit.
 
-### D4 — Tools (B → A+, 단일사용자 스코프의 A+)
+### D4 — Tools (B → A+, A+ scoped to a single-user)
 
-> **A+ 재정의**: 149 확장 추격이 아니라 — 개인비서 macOS 빌드가능 목록 잔여0 +
-> 모든 툴 12B 원샷 선택검증 + 외부 에이전트에게 안전한 MCP 서버.
+> **A+ redefined**: not chasing 149 extensions — instead, zero remaining items
+> on the personal-assistant macOS buildable list + every tool one-shot-
+> selectable by a 12B + an MCP server that's safe to expose to outside agents.
 
-- **D4-S1. `muse mcp serve` 확장 (M).** 참조: hermes `mcp_serve.py`(자신을 MCP
-  서버로). Muse는 read-only 3툴만. read 계열 확대(recall/notes·캘린더·태스크·
-  browsing) + write는 **draft-first 프록시**(외부요청→Muse 승인큐 파킹·자동실행
-  불가) + **grounded recall 노출 = 엣지의 수출**(외부도 인용-게이트 답 수신).
-  수용: MCP 계약(stdio 왕복)+write-파킹 no-external-effect+grounded-recall 인용
-  게이트. groundedSurfaces 35→36.
-- **D4-S2. macOS 커버리지 잔여 (S×4).** backlog 07-07 맵: Photos·앱종료·다크모드·
-  밝기/블루투스(Shortcuts) + Apple 연락처 '쓰기'(draft-first). mac_system_set enum
-  확장 우선(신규툴 신설 금지·혼동쌍 방지)+eval 케이스.
-- **D4-S3. `muse ask --with-tools` seam 리트로핏 (M).** backlog 07-10 (a): prepare-
-  only seam 진입점→레거시 조립 탈출·commands-ask.ts LOC 음수. 수용: cli ask 무수정+
-  seam parity.
-- **D4-S4. computer-control 신뢰성 — file_edit 결정론 리페어 (M).** eval:computer-
-  task ~50-66% 주범이 multi-step 편집. 실패 시 결정론 재정렬/재시도 1회(모델 재추론
-  금지). **참조(Round2)**: hermes `fuzzy_match.py`의 **9-전략 체인**(exact→line-trimmed
-  →whitespace-norm→indent-flex→escape-norm→trimmed-boundary→block-anchor→context-aware
-  →unicode-norm) + escape-drift 가드(모델이 넣은 spurious `\'`/`\"` 감지) + indent
-  리페어(대체문자열 들여쓰기를 파일 실제에 맞춤). Muse는 자체 결정론 매칭으로 재설계
-  (LLM 편집이 공백/이스케이프/들여쓰기 흔들림 → 단일 exact-match 50%+ 실패). 수용:
-  베이스라인 +10%p·pass^3 + fuzzy 전략별 유닛.
-- **D4-S5. ⏭️ 삭제(FALSE-GAP).** `history_search` MuseTool이 이미 존재
-  (`history-search-tool.ts:20`, risk:read — §6.0.1). 잔여(선택): hermes session_search의
-  앵커±윈도우/bookend 스크롤을 기존 툴에 옵션으로 더할지 — 저우선.
+- **D4-S1. Extend `muse mcp serve` (M).** Reference: hermes' `mcp_serve.py`
+  (turns itself into an MCP server). Muse currently exposes only 3 read-only
+  tools. Expand the read family (recall/notes · calendar · tasks · browsing)
+  + writes go through a **draft-first proxy** (an external request parks in
+  Muse's approval queue — no auto-execution) + **exposing grounded recall
+  itself is exporting the edge** (an external caller also gets a
+  citation-gated answer). Acceptance: an MCP contract (stdio round-trip) +
+  no-external-effect write-parking + a grounded-recall citation gate.
+  groundedSurfaces 35→36.
+- **D4-S2. Remaining macOS coverage (S×4).** From the backlog's 07-07 map:
+  Photos · quit app · dark mode · brightness/Bluetooth (via Shortcuts) +
+  Apple Contacts "write" (draft-first). Prefer expanding the `mac_system_set`
+  enum first (never create a new tool — avoid confusable pairs) + eval
+  cases.
+- **D4-S3. Retrofit the `muse ask --with-tools` seam (M).** From the 07-10
+  backlog (a): a prepare-only seam entry point → escape the legacy assembly
+  path → a negative LOC delta in commands-ask.ts. Acceptance: cli ask
+  unmodified + seam parity.
+- **D4-S4. computer-control reliability — deterministic file_edit repair
+  (M).** eval:computer-task's ~50-66% is mostly multi-step-edit failures. On
+  failure, deterministic re-alignment/one retry (never re-inferring with the
+  model). **Reference (Round 2)**: hermes' `fuzzy_match.py`'s **9-strategy
+  chain** (exact→line-trimmed→whitespace-norm→indent-flex→escape-norm→
+  trimmed-boundary→block-anchor→context-aware→unicode-norm) + an
+  escape-drift guard (detects spurious `\'`/`\"` the model inserted) +
+  indent repair (rebases the replacement string's indentation to the file's
+  actual indentation). Redesign Muse's own deterministic matcher for this
+  (LLM edits drift on whitespace/escaping/indentation → single exact-match
+  fails 50%+ of the time). Acceptance: baseline +10pp · pass^3 + a unit per
+  fuzzy strategy.
+- **D4-S5. ⏭️ Deleted (FALSE GAP).** The `history_search` MuseTool already
+  exists (`history-search-tool.ts:20`, risk:read — §6.0.1). Remaining
+  (optional): whether to add hermes' session_search's anchor±window/bookend
+  scrolling to the existing tool as an option — low priority.
 
 ### D5 — Model posture (B+ → A+)
 
-> **Muse 현재**: privacy-tiered routing이 chat 양 표면(단발+Ink) 완비 — **경쟁사
-> 둘 다 이 축 자체가 없음**. MUSE_VISION_MODEL/MUSE_AUX_COMPACTION 개별노브·DS-21
-> 컨텍스트 프로브·BYO-key 4종.
+> **Muse-current**: privacy-tiered routing is complete on both chat surfaces
+> (single-shot + Ink) — **neither rival has this axis at all.**
+> MUSE_VISION_MODEL/MUSE_AUX_COMPACTION individual knobs · DS-21 context
+> probe · 4 BYO-key types.
 
-- **D5-S1. privacy routing follow-ups 완결 (M).** (b) context-free 툴 사용의 클라우드
-  결정=**"no" 명문화**(툴은 개인데이터 통로→로컬 고정이 원칙), (c) personaPreamble
-  nuance 문서화, (d) KO 구어 소유격(내꺼/제꺼) 토큰(오탐 쌍) + `muse setup cloud`
-  안내단계. 수용: 각 유닛+기존 20 계약 무수정.
-- **D5-S2. auxiliary.<task> 모델피닝 일반화 (M).** 참조: hermes `auxiliary.<task>`
-  (태스크별 모델+폴백). Muse 개별노브는 단편. `resolveAuxiliaryModel(task,env)` 단일
-  리졸버(하위호환), 태스크 compaction/vision/rewrite/judge/embedding-rescue,
-  **로컬-우선 불변**(aux도 privacy 게이트 통과·개인컨텍스트 태스크는 클라우드 금지).
-  수용: 리졸버·하위호환·local-only 게이트 유닛.
-- **D5-S3. capability 死코드 배선 — 명시적 에러 (S, VQ-2 확정).** 참조: openclaw compat.
-  **VQ-2 결론**: `canUseNativeTools`(index.ts:292)는 死코드 + **텍스트 툴 프로토콜 자체가
-  미구현**(파서 부재). gemma4는 toolCalling=true라 실사용 무영향. → 이 슬라이스 = 그 함수를
-  게이트로 배선해 **toolCalling=false 모델에 조용한 실패 대신 명시적 "이 모델은 툴 호출 불가"
-  에러**. 완전 텍스트 프로토콜(파서+strict 파싱)은 **별도 L로 이연**(BYO 비-툴 클라우드 쓸
-  때만 필요). 수용: 케이퍼빌리티 부재 모델(mocked)이 명시 에러 받음+死코드 호출부 생김.
-- **D5-S4. 명시적 fallback chain (M).** 참조: openclaw allowlist+fallback(오타 조기
-  거부). Muse 원칙("숨은 재시도 금지"): 폴백은 **명시 설정**(`MUSE_MODEL_FALLBACKS`)
-  일 때만·각 폴백도 privacy/local-only 게이트·발생을 답변 1줄 표기. 수용: 체인워크·
-  게이트 유닛·미설정 byte-identical.
-- **D5-S5. 클라우드 라이브 왕복 실증 1회 (attended, S).** 진안 키로 privacy-routing
-  실왕복(context-free ☁️·개인 로컬고정) 기록.
+- **D5-S1. Complete the privacy-routing follow-ups (M).** (b) codify the
+  cloud decision for context-free tool use as **"no"** (a tool is a personal-
+  data conduit, so staying local is the principle), (c) document the
+  personaPreamble nuance, (d) add KO colloquial possessive tokens
+  (내꺼/제꺼, with false-positive pairs) + a `muse setup cloud` guidance
+  step. Acceptance: each as a unit + existing 20 contracts unmodified.
+- **D5-S2. Generalize auxiliary.<task> model pinning (M).** Reference:
+  hermes' `auxiliary.<task>` (a model + fallback per task). Muse's
+  individual knobs are fragmented. A single `resolveAuxiliaryModel(task,env)`
+  resolver (backward-compatible), tasks compaction/vision/rewrite/
+  judge/embedding-rescue, **local-first stays invariant** (aux also passes
+  the privacy gate — personal-context tasks may never go cloud). Acceptance:
+  resolver · backward-compat · local-only-gate units.
+- **D5-S3. Wire the dead capability code as an explicit error (S, VQ-2
+  confirmed).** Reference: openclaw's compat layer. **VQ-2 conclusion**:
+  `canUseNativeTools` (index.ts:292) is dead code + **the text tool
+  protocol itself isn't implemented** (no parser). Since gemma4 has
+  toolCalling=true, real usage is unaffected. → this slice = wire that
+  function in as a gate that produces an **explicit "this model can't call
+  tools" error** instead of silent failure for toolCalling=false models. A
+  full text protocol (parser + strict parsing) is **deferred to a separate
+  L** (only needed for a BYO non-tool-calling cloud model). Acceptance: a
+  mocked capability-less model gets an explicit error + the dead code gets a
+  caller.
+- **D5-S4. An explicit fallback chain (M).** Reference: openclaw's
+  allowlist+fallback (rejects typos early). Muse's principle ("no hidden
+  retries"): a fallback is used **only when explicitly configured**
+  (`MUSE_MODEL_FALLBACKS`) · each fallback also passes the privacy/local-only
+  gate · surface a one-line note when it fires. Acceptance: chain-walk +
+  gate units · byte-identical when unconfigured.
+- **D5-S5. One attended live cloud round-trip proof (S).** Using Jinan's
+  own key, record a real privacy-routing round-trip (context-free ☁️,
+  personal stays local).
 
-### D6 — Memory (A- → A+, 연료가 본질)
+### D6 — Memory (A- → A+, fuel is the real issue)
 
-- **D6-S1. Sleep-consolidation (opt-in) (L).** 참조: openclaw dreaming 승격스코어
-  (6요소·반감기14d·health<0.35 복구) — **기본 OFF까지 모방 말 것**. Muse식: episodic
-  →durable 승격을 **결정론 스코어**(재-recall·distinct질의·최근성 반감기·LLM없음)로
-  후보선정, 승격은 **draft 제안**(proactive "오래 기억할까요?")·**자동쓰기 금지**
-  (교정-망각 원칙). loop-v2 Sleep daemon 정합. 수용: 스코어 유닛+제안카드+자동쓰기
-  없음 계약(mutation).
-- **D6-S2. 연료 파이프라인 점검 (S, attended).** browsing auto-sync 실기기 on +
-  proactive/recap 연결(backlog99) + 주간 real-miss 리포트(`muse doctor --flywheel`,
-  scout-signals 재사용).
-- **D6-S3. 외부-편집 drift 감지 (round-trip) (S, VQ-7 확정).** 참조: hermes `memory_tool.py`.
-  **VQ-7 결론**: Muse 메모리 스토어는 이미 `withFileLock`(cross-process, memory-user-store-
-  file.ts:248/…)으로 **자체 writer 간 clobber 방지됨**. → 실-갭은 **외부 편집**(수동·patch 툴·
-  락 미경유 도구 append)뿐 = hermes가 정확히 잡는 케이스. 재직렬화 round-trip 해시 불일치 시
-  rewrite 차단+`.bak.<ts>`(defense-in-depth). 수용: 외부-수정 시나리오 유닛(락 밖 변경→차단)+계약.
-- **D6-S4. provenance 태그 — foreground vs 자율 (S).** 참조: hermes ContextVar. 자율
-  큐레이션이 **유저-지시** 사실 삭제 못 하게 origin 태그. authored-skill-store는
-  이미 성숙(§3.3) — 메모리 facts에도 같은 보호 verify-first. 수용: 자율-삭제-금지
-  계약(mutation).
+- **D6-S1. Sleep-consolidation (opt-in) (L).** Reference: openclaw's
+  dreaming promotion score (6 factors · 14d half-life · health<0.35
+  recovery) — **do not mimic "off by default."** Muse's way: select
+  episodic→durable promotion candidates by a **deterministic score**
+  (re-recall · distinct queries · recency half-life, no LLM); promotion is a
+  **draft proposal** ("want me to remember this longer?") · **never an
+  autowrite** (the correction-forgetting principle). Aligns with the loop-v2
+  Sleep daemon. Acceptance: score unit + proposal card + no-autowrite
+  contract (mutation).
+- **D6-S2. Audit the fuel pipeline (S, attended).** Turn on browsing
+  auto-sync on the real device + wire it into proactive/recap (backlog99) +
+  a weekly real-miss report (`muse doctor --flywheel`, reusing
+  scout-signals).
+- **D6-S3. Detect external-edit drift (round-trip) (S, VQ-7 confirmed).**
+  Reference: hermes' `memory_tool.py`. **VQ-7 conclusion**: Muse's memory
+  store already prevents clobbering **among its own writers** via
+  `withFileLock` (cross-process, memory-user-store-file.ts:248/…). → the
+  real gap is **external edits only** (manual · patch tools · appends by a
+  tool that bypasses the lock) — exactly the case hermes catches. Block a
+  rewrite on a re-serialization round-trip hash mismatch + `.bak.<ts>`
+  (defense-in-depth). Acceptance: an external-modification-scenario unit
+  (a change outside the lock → blocked) + the contract.
+- **D6-S4. Provenance tags — foreground vs. autonomous (S).** Reference:
+  hermes' ContextVar. Tag origin so autonomous curation can never delete a
+  **user-directed** fact. authored-skill-store is already mature (§3.3) —
+  verify-first whether memory facts have the same protection. Acceptance: an
+  autonomous-deletion-forbidden contract (mutation).
 
-### D7 — UX (신규 차원): 헤드리스를 "쓰기 좋은" 도구로
+### D7 — UX (new dimension): making headless "pleasant to use"
 
-> Muse는 Ink TUI + macOS 데스크톱(Muse.app, Swift) + 웹 콘솔 3표면. A+ = 일상
-> 마찰이 경쟁사 수준으로 낮음.
+> Muse has 3 surfaces: Ink TUI + a macOS desktop app (Muse.app, Swift) + a web
+> console. A+ = everyday friction as low as the rivals'.
 
-- **D7-S1. 슬래시 명령 단일소스 레지스트리 (M).** 현재 `SLASH_COMMANDS`가 chat-ink
-  단독(commander CLI와 분리). hermes COMMAND_REGISTRY처럼 name·desc·category·aliases·
-  platform-gate 1-엔트리가 CLI help·챗 autocomplete·(미래)채널 구동. 수용: 레지스트리
-  유닛+양쪽 반영+중복제거 증명.
-- **D7-S2. ⏭️ 삭제(FALSE-GAP).** doctor 체크가 이미 "run `muse X`" 수리단계 반환
-  (§6.0.1). 완비.
-- **D7-S3. 스마트-테일 터미널 출력 (S).** 참조: hermes terminal-output(마운트 하단
-  점프·하단근처만 tailing·위로읽으면 방해없음). 웹 콘솔 스트리밍 뷰에 적용. 수용:
-  스크롤 로직 유닛+실브라우저 측정(testing.md UI 규칙).
-- **D7-S4. desktop 반응성 (S, attended).** Muse.app에 스트리밍 경과타이머+상태반응
-  (성공/에러 시각신호). hermes activity-timer·status-dot 참조. 실기기 검증(attended).
+- **D7-S1. Single-source slash-command registry (M).** Currently
+  `SLASH_COMMANDS` exists only in chat-ink (separate from the commander
+  CLI). Like hermes' COMMAND_REGISTRY, a single entry per command
+  (name · desc · category · aliases · platform-gate) should drive CLI help ·
+  chat autocomplete · (future) channels. Acceptance: registry unit + both
+  surfaces reflect it + proof of deduplication.
+- **D7-S2. ⏭️ Deleted (FALSE GAP).** Every doctor check already returns a
+  "run `muse X`" repair step (§6.0.1). Complete.
+- **D7-S3. Smart-tail terminal output (S).** Reference: hermes' terminal-
+  output (jumps to the bottom on mount, tails only near the bottom, doesn't
+  disturb you while scrolled up). Apply to the web console's streaming view.
+  Acceptance: scroll-logic unit + a real-browser measurement (testing.md's
+  UI rule).
+- **D7-S4. Desktop responsiveness (S, attended).** Add a streaming
+  elapsed-time timer + status feedback (a visual signal on success/error) to
+  Muse.app. Reference: hermes' activity-timer · status-dot. Verify on a real
+  device (attended).
 
-### D-KO — 한국어/CJK (신규 차원): 진안-우선 언어의 A+
+### D-KO — Korean/CJK (new dimension): A+ for Jinan's primary language
 
-> Muse는 한국어-우선. 경쟁사는 i18n을 UI번역으로 다루나 **CJK 텍스트 안전성**은
-> openclaw가 UTF-16 버그를 3주간 12모듈에서 잡는 중(반면교사). hermes 2200자
-> 메모리 한계는 CJK에 특히 치명(한글 1자=여러 토큰).
+> Muse is Korean-first. Rivals treat i18n as UI translation, but **CJK text
+> safety** is something openclaw is still chasing a UTF-16 bug across 12
+> modules for 3 weeks (a cautionary tale). hermes' 2200-char memory cap is
+> especially damaging for CJK (1 Hangul character = multiple tokens).
 
-- **D-KO-S1. UTF-16 안전 절단 헬퍼 추출 + 미안전 3곳 배선 (S) ★ (정련됨).** 참조:
-  openclaw `utf16-slice.ts`. **주의(§6.0.1)**: safe 패턴이 이미
-  `truncateErrorBody`(`shared/src/index.ts:257-260`, lone high-surrogate 드롭)에 존재.
-  그걸 `truncateUtf16Safe`로 **추출**(중복 제거) + **미안전 4곳 배선(VQ-6 확정)**:
-  `recall/src/history-search.ts:206/213`(citation 스니펫), `tools/src/tool-definition-
-  helpers.ts:108`(툴 설명), `autoconfigure/src/knowledge-corpus.ts:365`(요약), **+
-  `voice/src/tts-truncate.ts:19/28`(TTS cap — raw slice, surrogate 가드 0 확인됨)**.
-  수용: 한글/이모지/조합문자 경계 유닛+4곳 byte-identical-when-safe.
-- **D-KO-S2. ⏭️ 삭제(FALSE-GAP).** `recall-lexical.ts:44-53`가 이미 Hangul/Han/
-  Hiragana/Katakana 음절-레벨 토큰+NFC·전각→반각 정규화. `searchHistory` 사용(§6.0.1).
-  cross-lingual recall(ask-cross-lingual.ts, v2-moe prefix)도 배선 완료. 완비.
-- **D-KO-S3. i18n 정적 메시지 카탈로그 (M, 저우선).** 현재 KO/EN이 `/[가-힣]/`
-  인라인 분기 다수. dotted-key 카탈로그 중앙화는 유지보수↑지만 **저우선**(인라인이
-  동작하고 진안 언어 KO 고정이라 다국어 압력 낮음·리팩터 리스크>이득 가능).
+- **D-KO-S1. Extract a UTF-16-safe truncation helper + wire the 3 unsafe
+  sites (S) ★ (refined).** Reference: openclaw's `utf16-slice.ts`. **Note
+  (§6.0.1)**: the safe pattern already exists in `truncateErrorBody`
+  (`shared/src/index.ts:257-260`, drops a lone high-surrogate). **Extract**
+  it as `truncateUtf16Safe` (removing duplication) + **wire the 4 unsafe
+  sites (VQ-6 confirmed)**: `recall/src/history-search.ts:206/213` (citation
+  snippets), `tools/src/tool-definition-helpers.ts:108` (tool descriptions),
+  `autoconfigure/src/knowledge-corpus.ts:365` (summaries), **+
+  `voice/src/tts-truncate.ts:19/28` (the TTS cap — a raw slice, confirmed
+  zero surrogate guarding)**. Acceptance: Hangul/emoji/combining-character
+  boundary units + byte-identical-when-safe at all 4 sites.
+- **D-KO-S2. ⏭️ Deleted (FALSE GAP).** `recall-lexical.ts:44-53` already
+  does Hangul/Han/Hiragana/Katakana syllable-level tokenization +
+  NFC/full-width→half-width normalization. `searchHistory` uses it
+  (§6.0.1). Cross-lingual recall (ask-cross-lingual.ts, the v2-moe prefix)
+  is also fully wired. Complete.
+- **D-KO-S3. A static i18n message catalog (M, low priority).** Currently
+  KO/EN branch on many inline `/[가-힣]/` checks. A centralized dotted-key
+  catalog improves maintainability but is **low priority** (the inline
+  version works, and since Jinan's language is fixed to KO, multilingual
+  pressure is low — the refactor risk may exceed the payoff).
 
 ---
 
-## 7. 웨이브 순서 (권장)
+## 7. Wave order (recommended)
 
-| 웨이브 | 슬라이스 | 이유 |
+| Wave | Slices | Rationale |
 |---|---|---|
-| **W1 (원칙 갭)** | D2-S1 seatbelt → D2-S2 토폴로지 → D1-S1/S2 루프가드 → D2-S6 승인 span+스테이징 → D3-S7 PID-가드 | 자기-원칙(결정론 가드) 유일 미달 + 루프이탈 12B 최빈사고 + PID-재사용 kill 안전갭. **경쟁사 공통 최대 약점(보안·신뢰성)이 Muse 강점 축** — 여기가 해자 |
-| **W2 (신뢰성)** | D1-S3/S5 → D3-S1/S2/S4 → D1-S7 브라우저 | 컴팩션·예산·서브에이전트 안전망 + 소형모델 브라우저 신뢰성 — eval:computer-task 상승 토대 (D1-S4 삭제됨) |
-| **W3 (능력·UX)** | D4-S4 → D4-S1 → D4-S2 → D7-S1 슬래시 | 신뢰성 위 커버리지 + 마찰 제거 — 각각 eval 래칫 동반 (D3-S5·D4-S5 삭제됨) |
-| **W4 (라우팅·KO)** | D5-S1~S4 → D1-S6 → D2-S3/S4/S5 → D-KO-S1 UTF-16 | 모델 천장 우회 완성 + 한국어-우선 마감 (D-KO-S2 삭제됨) |
-| **W5 (기억·마감)** | D-E1 eval-게이트 강제 → D6-S1~S4 → D3-S3/S6 → D2-S7 → D7-S3/S4 | 연료·consolidation·무결성·래칫·UX 마감. **D-E1이 검증규율 A→A+ 복원**(§8.5.2) (D7-S2 삭제됨) |
+| **W1 (principle gaps)** | D2-S1 seatbelt → D2-S2 topology → D1-S1/S2 loop guards → D2-S6 approval span+staging → D3-S7 PID guard | The only shortfall against Muse's own principle (deterministic guards) + the most common 12B failure mode (loop drift) + the PID-reuse kill safety gap. **Rivals' shared biggest weakness (security · reliability) is exactly Muse's strength axis** — this is where the moat is |
+| **W2 (reliability)** | D1-S3/S5 → D3-S1/S2/S4 → D1-S7 browser | Compaction · budget · sub-agent safety nets + small-model browser reliability — the foundation for eval:computer-task gains (D1-S4 deleted) |
+| **W3 (capability · UX)** | D4-S4 → D4-S1 → D4-S2 → D7-S1 slash | Coverage on top of reliability + friction removal — each paired with an eval ratchet (D3-S5 · D4-S5 deleted) |
+| **W4 (routing · KO)** | D5-S1~S4 → D1-S6 → D2-S3/S4/S5 → D-KO-S1 UTF-16 | Complete the model-ceiling workaround + wrap up Korean-first work (D-KO-S2 deleted) |
+| **W5 (memory · closeout)** | D-E1 eval-gate enforcement → D6-S1~S4 → D3-S3/S6 → D2-S7 → D7-S3/S4 | Fuel · consolidation · integrity · ratchets · UX closeout. **D-E1 restores the verification-discipline grade from A back to A+** (§8.5.2) (D7-S2 deleted) |
 
-각 웨이브 종료 = `pnpm self-eval` green + 해당 eval 래칫 수치 상승 + CHANGELOG
-[Unreleased] 갱신. 슬라이스당 1 커밋(Conventional Commits).
-
----
-
-## 8. Non-goals (재도출 금지 — 근거 포함)
-
-- **채널 스프롤**(Telegram/Discord/… 게이트웨이): 심사 10/13 skip. 경쟁사 fix-비율
-  52-54%가 폭의 유지비를 실증. openclaw CVE 홍수·미인증 인스턴스가 폭의 대가.
-- **멀티테넌트/게이트웨이 릴레이·과금**: off-strategy 50건 기각 유지.
-- **tirith-식 외부 바이너리 보안 의존**: 공급망+플랫폼 부담. Muse는 in-repo 결정론
-  가드 + OSV 조회(출하)로 동등 커버.
-- **LLM-판단이 최종 결정인 보안 게이트**: openclaw exec-auto-reviewer는 "ask로만
-  강등" 구조라 참조가치는 있으나 Muse 비협상("보안=결정론 코드") 위반이라 미도입.
-- **구독 OAuth 재사용 / banking / 자율 발송**: 영구 경계 유지.
-- **리더보드 추격 / 프런티어 모델 종속**: best-OSS-agent 리뷰 결론 — 증명은 게이트
-  on-vs-off DELTA.
-- **hermes 2200자식 하드 메모리 캡**: 웹에서 실제 비판받는 안티패턴. Muse는 압축·
-  episodic로 대응(캡 아님).
+Each wave ends with `pnpm self-eval` green + a higher number on the matching
+eval ratchet + a CHANGELOG [Unreleased] update. One commit per slice
+(Conventional Commits).
 
 ---
 
-## 8.5 ★ Round 2 통합 — 경쟁사 소스 재분석 (8-Haiku + Fable 재검증)
+## 8. Non-goals (do not re-derive these — reasoning included)
 
-미-스윕 영역(eval 방법론·grounding 공정사냥·프라이버시 실구현·프로액티비티·RAG
-내부·로컬모델 툴콜·config/온보딩·정체성+completeness critic)을 판 결과. **포지셔닝
-3중 재검증(전부 유지, 정직 정정 1건) + 신규 슬라이스 1 + 정련 참조 + false-gap 3.**
-
-### 8.5.1 포지셔닝 적대적 재검증 결과
-
-- **프라이버시(로컬-우선) — 검증 통과 ✅✅.** 둘 다 로컬-only **강제 전무**(hermes
-  config에 `redact_pii`만·`MUSE_LOCAL_ONLY` 등가물 0; openclaw도 클라우드-우선),
-  메모리/트랜스크립트/시크릿 **평문 저장**, 개인 컨텍스트가 기본으로 클라우드 모델에
-  주입. Muse의 fail-close egress 게이트는 **적대적 검증에서도 유일**.
-- **grounding — 검증 통과 (정직 뉘앙스) ✅.** answer-verification 게이트·abstain·
-  fabrication 측정 **여전히 0**. 단 공정하게: hermes에 **미머지** `feat/web-grounding-
-  citations` 브랜치(프롬프트 수준 citation 지시, 게이트 아님), openclaw에 citation
-  **표시**(`tools.citations.ts`, MEMORY.md#L5-L7 소스 위치)+untrusted-content 래핑
-  (`external-content.ts`, 인젝션 방어 — **Muse도 escapeSystemPromptMarkers로 보유**).
-  결론: 둘 다 citation 표시+인젝션 래핑은 있으나 **claim↔source 검증 게이트는 없음**.
-  Muse 결정론 게이트는 무경쟁. (경쟁사가 프롬프트-citation으로 이동 중이므로 Muse는
-  결정론 우위를 계속 벌려야 함.)
-- **eval — 내 주장 정정(성적표 A+→A).** §2 참조. Muse의 pre-push fabrication
-  tripwire는 유일 라이브 게이트지만 **로컬 Ollama 의존 + 집계 eval:agent는 CI
-  미배선**. 경쟁사 대비 우위는 유지되나 "라이브 eval이 릴리스를 게이트"는
-  **부분적으로만** 참. → 신규 슬라이스 D-E1.
-
-### 8.5.2 신규 슬라이스
-
-- **D-E1. eval 집계 게이트 실-강제 (M) ★.** 현 상태: `precheck:grounding`(fabrication
-  subset)만 pre-push 훅. `eval:agent`(tool-selection·judge·adversarial·plan-quality·
-  orchestration…)는 스크립트지만 자동 강제 없음. self-eval 회귀도 수동/루프-top.
-  → (a) pre-push 훅을 **eval:agent 핵심 subset**까지 확장(Ollama 있을 때, 시간 예산
-  내 — precheck-grounding처럼 skip-if-unreachable), (b) self-eval 회귀 fail-close를
-  **커밋 시** 자동 확인(tracked count 하락→차단), (c) GitHub CI에는 Ollama 없으니
-  **결정론 부분**(eval 하네스 자체 유닛, 스코어보드 파싱, 케이스 스키마)만 배선.
-  **(d) Tier-0 오염 필터(Round3, openclaw character-eval 참조)**: 배터리 실행 전
-  transcript에 "backend error"/"tool failed"/"model unsupported"/"timeout" 누출
-  정규식 스캔 → 인프라 실패를 **behavior 실패로 오인 말고 배제**(현 skip-if-Ollama-
-  unreachable보다 세밀). 이건 "검증 규율" 성적표를 A→A+로 되돌리는 유일한 실-작업.
-  수용: 훅이 실제 차단함을 증명(나쁜 케이스 주입→push 거부)+Tier-0 오염 배제 유닛+
-  skip-if-no-Ollama 계약.
-
-### 8.5.3 정련된 참조 (기존 슬라이스 강화)
-
-- **D4-S4 ← hermes 9-전략 fuzzy_match**(escape-drift 가드·indent 리페어). §6 D4-S4 갱신됨.
-- **D1-S1 ← openclaw unknown-tool 감지**(`extractUnknownToolName` 정규식·
-  UNKNOWN_TOOL_THRESHOLD 10·circuit-breaker 30). 존재하지-않는 툴 반복 호출 감지를
-  ping-pong 슬라이스에 병합.
-
-### 8.5.4 false-gap (Round2 — 짓지 말 것)
-
-- **Ollama 스키마 새니타이제이션**: `sanitizeOllamaToolSchema`가 이미 존재
-  (`adapter-ollama.ts:611`, sanitizeGeminiSchema의 Ollama 아날로그, :501 배선). 완비.
-- **프롬프트 제어문자 strip**: `stripUntrustedTerminalChars`가 이미 전 untrusted
-  진입점(active/ambient/attachment/episodic/inbox/skills/feeds)+`escapeSystemPromptMarkers`+
-  `neutralizeInjectionSpans`(recall/present.ts)에 광범위 배선. 완비.
-- **doctor fix-steps**: (Round1과 동일) 이미 "run `muse X`" 수리단계 반환.
-
-### 8.5.5 선택적 향상 (저우선 — 별도 backlog, grounding 엣지 훼손 금지)
-
-경쟁사에 있고 Muse에 없으나 코어 아님. 채택 시 반드시 grounding-surface·fabrication=0
-불변 유지: (a) **HyDE**(가설-문서 확장 후 임베딩, openclaw qmd) — recall 향상 가능,
-단 Muse RAG-Fusion과 중복 검토. (b) **concept-tag 파생 + 의미 dedup**(openclaw
-short-term-promotion) — faceted recall. (c) **active-hours 이진탐색 seeking**(openclaw
-heartbeat) — quiet-hours가 틱을 버리지 않고 다음 활성창으로 skip(현 Muse는 틱 버림).
-(d) **config loud-fail**(openclaw 원칙: 파손 config→침묵 default 금지, doctor
-migration으로 명시 복구; hermes 침묵-fallback은 안티패턴). Muse config 파싱실패가
-loud한지 verify-first. (e) **HRR 조합 대수 검색**(hermes holographic) — 다중-엔티티
-AND·모순탐지; Muse는 이미 contradiction-detection 보유라 ROI 낮음.
+- **Channel sprawl** (Telegram/Discord/… gateways): assessed as skip 10/13.
+  Rivals' 52-54% fix-commit ratio is empirical proof of breadth's upkeep
+  cost. openclaw's CVE flood and unauthenticated instances are the price of
+  that breadth.
+- **Multi-tenant/gateway relay + billing**: 50 off-strategy cases stay
+  rejected.
+- **tirith-style dependency on an external security binary**: a supply-chain
+  and platform burden. Muse gets equivalent coverage from in-repo
+  deterministic guards + OSV lookups (already shipped).
+- **A security gate whose final decision is LLM judgment**: openclaw's
+  exec-auto-reviewer is structured to "only downgrade to ask" — worth
+  referencing, but not adopted, since it violates Muse's non-negotiable
+  ("security = deterministic code").
+- **Reusing subscription OAuth / banking / autonomous sending**: the
+  permanent boundary stays in place.
+- **Chasing leaderboards / dependence on a frontier model**: the conclusion
+  of the best-OSS-agent review — proof is the gate ON-vs-OFF DELTA.
+- **hermes-style 2200-char hard memory caps**: an anti-pattern actually
+  criticized on the web. Muse handles this with compression + episodic
+  memory (not a cap).
 
 ---
 
-## 8.6 Round 3 통합 — 최종 스윕 (5-Haiku + Fable 재검증)
+## 8.5 ★ Round 2 consolidation — re-analyzing rival sources (8-Haiku + Fable re-check)
 
-코어 잔여(eval 내부·도메인 액추에이터·내구성/마이그레이션·성능·전체 completeness
-critic)를 판 최종 바퀴. **신규 실-슬라이스 1(D3-S7 안전) + 정련 2 + Muse 강점 3
-확증 + 저가치 향상 다수.**
+Judged the un-swept areas (eval methodology · a fair hunt for grounding ·
+real privacy implementation · proactivity · RAG internals · local-model tool
+calling · config/onboarding · identity + a completeness critic). **Positioning
+triangulation re-verified (all held, 1 honest correction) + 1 new slice +
+refined references + 3 false gaps.**
 
-### 8.6.1 확증된 Muse 강점 (경쟁사 대비 앞섬 — 재구축·과투자 금지)
+### 8.5.1 Positioning adversarial re-verification results
 
-- **도메인 액추에이터 = 해자, 갭 아님.** Muse 캘린더/리마인더/연락처/홈은
-  approval-gate(no-target 거부 포함)+id-idempotency(재-add→병합, 중복 0)+타임존
-  **서버 위임**(phrase 그대로, DST 안전, local 표시)+soft-fail 미러(Apple Reminders
-  실패해도 Muse write 성공)+구조화 에러(candidates 제시, 절대 추측 안 함)로 **두
-  경쟁사보다 명백히 견고**(둘 다 메시징-중심, idempotency·approval·구조화 피드백 부재).
-- **내구성 = 완비.** atomicWriteFile+부모dir fsync·withFileMutationQueue(파일별
-  직렬화)·backupVersionMismatchedStore 전부 출하. D6-S3은 **JSON 유지**가 정답
-  (SQLite 도입 불필요 — hermes WAL+fallback은 SQLite 쓸 때만). 잔여 소소: 암호화
-  스토어가 **키-재암호화 마이그레이션 전 백업 미생성** → `.plaintext-backup-<ts>`
-  권장(키 분실 복구용, D2 암호화 경로).
-- **성능 기반 = 있음.** V8 컴파일캐시·prompt stablePrefix·keep-alive·KV-quant·
-  working-budget 컴팩션 전부 보유. 하트비트 캐시-웜은 **클라우드 prompt-cache용**
-  이라 로컬-우선 Muse엔 저가치(스킵).
+- **Privacy (local-first) — verification passed ✅✅.** Neither has **any
+  enforcement** of local-only (hermes' config has only `redact_pii`, no
+  equivalent of `MUSE_LOCAL_ONLY`; openclaw is also cloud-first),
+  memory/transcripts/secrets are **stored in plaintext**, and personal
+  context is injected into cloud models by default. Muse's fail-close
+  egress gate is **still the only one, even under adversarial
+  verification.**
+- **Grounding — verification passed (an honest nuance) ✅.** An
+  answer-verification gate · abstention · fabrication measurement are
+  **still at zero** on both rivals. But fairly: hermes has an **unmerged**
+  `feat/web-grounding-citations` branch (a prompt-level citation
+  instruction, not a gate), openclaw **displays** citations
+  (`tools.citations.ts`, MEMORY.md#L5-L7 source locations) + wraps untrusted
+  content (`external-content.ts`, injection defense — **Muse also has
+  this via escapeSystemPromptMarkers**). Conclusion: both display
+  citations + wrap untrusted content, but **neither has a claim↔source
+  verification gate.** Muse's deterministic gate remains unrivaled. (Since
+  rivals are moving toward prompt-based citations, Muse needs to keep
+  widening its deterministic lead.)
+- **Eval — a correction to my own claim (grade A+→A).** See §2. Muse's
+  pre-push fabrication tripwire is the only live gate, but it's **local
+  Ollama-dependent + the aggregate eval:agent isn't wired into CI.** The
+  edge over rivals holds, but "live eval gates releases" is **only
+  partially** true. → new slice D-E1.
 
-### 8.6.2 정련 (기존 슬라이스 강화)
+### 8.5.2 New slice
 
-- **D-E1 ← Tier-0 오염 필터**(openclaw character-eval). §8.5.2 갱신됨.
-- **D3-S3 ← poll-vs-consumed 이중 dedup**(hermes process_registry #3): 백그라운드
-  프로세스 상태를 **poll(관찰)**한 것이 자율 완료-알림을 억제하면 안 됨(관찰≠소비).
-  idle-drain 계약 테스트에 이 구분 추가.
-- **D6-S3 ← hermes memory_tool drift+`.bak`**(#8): 재직렬화 round-trip 불일치→쓰기
-  차단+백업이 정확한 참조 구현. §6 D6-S3 그대로 유효.
+- **D-E1. Actually enforce the aggregate eval gate (M) ★.** Current state:
+  only `precheck:grounding` (the fabrication subset) runs as a pre-push
+  hook. `eval:agent` (tool-selection · judge · adversarial · plan-quality ·
+  orchestration…) is a script with no automatic enforcement.
+  self-eval regression checks are also manual/loop-top only. → (a) extend
+  the pre-push hook to the **core eval:agent subset** (when Ollama is
+  available, within a time budget — skip-if-unreachable, like
+  precheck-grounding), (b) auto-confirm self-eval regression fail-close **at
+  commit time** (a tracked count drop blocks), (c) since GitHub CI has no
+  Ollama, wire in only the **deterministic parts** (unit tests of the eval
+  harness itself, scoreboard parsing, case-schema tests). **(d) A Tier-0
+  contamination filter (Round 3, referencing openclaw's character-eval)**:
+  before running a battery, scan its transcript for a leaked "backend
+  error"/"tool failed"/"model unsupported"/"timeout" regex → **exclude an
+  infrastructure failure instead of mistaking it for a behavior failure**
+  (more precise than the current skip-if-Ollama-unreachable). This is the
+  one real piece of work that restores the "verification discipline" grade
+  from A back to A+. Acceptance: prove the hook actually blocks (inject a
+  bad case → push rejected) + a Tier-0-exclusion unit + a
+  skip-if-no-Ollama contract.
 
-### 8.6.3 저가치 향상 (별도 backlog, 저우선 — grounding 엣지 훼손 금지)
+### 8.5.3 Refined references (strengthening existing slices)
 
-completeness critic 10건 중 Muse-적합·미커버지만 코어 아님: (a) **orphaned-pipe
-드레인**(hermes #5 — 자식 종료해도 손자가 파이프 열면 poll이 영원히 running; X-3
-verify-first), (b) **connection-epoch 무효화**(openclaw #6 — 재연결 후 stale async
-결과 폐기; 웹콘솔/SSE verify-first), (c) **request coalescing**(openclaw #1 — 동일
-리소스 동시 fetch dedupe; 웹콘솔), (d) **parallel-tool-call 유도 프롬프트**+cold-start
-poll 지수백오프(성능 소형). **이미-커버**: frozen-snapshot+live-mutation(#7 =
-Muse chat-ink `memoryHolder`), external-drift(#8 = D6-S3). **skip**: watch-pattern
-strike-window(Muse는 watch-pattern 미채택), device-fingerprint·idempotency-dual-key
-(단일사용자 저가치).
+- **D4-S4 ← hermes' 9-strategy fuzzy_match** (escape-drift guard · indent
+  repair). §6 D4-S4 updated.
+- **D1-S1 ← openclaw's unknown-tool detection** (`extractUnknownToolName`
+  regex · UNKNOWN_TOOL_THRESHOLD 10 · circuit-breaker 30). Merge detection
+  of repeated calls to a nonexistent tool into the ping-pong slice.
+
+### 8.5.4 False gaps (Round 2 — do not build)
+
+- **Ollama schema sanitization**: `sanitizeOllamaToolSchema` already exists
+  (`adapter-ollama.ts:611`, the Ollama analog of sanitizeGeminiSchema, wired
+  at :501). Complete.
+- **Stripping control characters from prompts**: `stripUntrustedTerminalChars`
+  is already widely wired across every untrusted entry point
+  (active/ambient/attachment/episodic/inbox/skills/feeds) +
+  `escapeSystemPromptMarkers` + `neutralizeInjectionSpans`
+  (recall/present.ts). Complete.
+- **doctor fix-steps**: (same as Round 1) already returns "run `muse X`"
+  repair steps.
+
+### 8.5.5 Optional enhancements (low priority — a separate backlog, must not damage the grounding edge)
+
+Things rivals have and Muse doesn't, but that aren't core. Adopting any of
+these must preserve the grounded-surface count and the fabrication=0
+invariant: (a) **HyDE** (hypothetical-document expansion before embedding,
+openclaw's qmd) — could improve recall, but check for overlap with Muse's
+RAG-Fusion. (b) **derived concept-tags + semantic dedup** (openclaw's
+short-term-promotion) — faceted recall. (c) **binary-search seeking during
+active hours** (openclaw's heartbeat) — during quiet hours, skip to the next
+active window instead of dropping ticks (Muse currently drops ticks). (d)
+**loud-fail config** (openclaw's principle: a broken config must never
+silently fall back to a default; doctor migration should explicitly repair
+it; hermes' silent fallback is an anti-pattern). Verify-first whether Muse's
+config-parse failures are already loud. (e) **HRR compositional-algebra
+search** (hermes' holographic) — multi-entity AND · contradiction detection;
+Muse already has contradiction-detection, so ROI is low.
 
 ---
 
-## 9. 부록 — 근거 검증 로그 (Fable 직접 스팟체크, 2026-07-11)
+## 8.6 Round 3 consolidation — the final sweep (5-Haiku + Fable re-check)
 
-| # | 주장(스윕) | 검증 |
+The final pass over remaining core areas (eval internals · domain
+actuators · durability/migration · performance · a full completeness
+critic). **1 new real slice (D3-S7 safety) + 2 refinements + 3 confirmed
+Muse strengths + several low-value enhancements.**
+
+### 8.6.1 Confirmed Muse strengths (ahead of both rivals — do not rebuild or over-invest)
+
+- **Domain actuators = a moat, not a gap.** Muse's calendar/reminders/
+  contacts/home have an approval gate (including no-target rejection) +
+  id-idempotency (re-add merges, zero duplicates) + timezone handled by
+  **server delegation** (verbatim phrase, DST-safe, shown locally) +
+  soft-fail mirroring (Muse's write still succeeds even if Apple Reminders
+  fails) + structured errors (offers candidates, never guesses) — **clearly
+  more robust than both rivals** (both are messaging-centric and lack
+  idempotency · approval · structured feedback).
+- **Durability = complete.** atomicWriteFile + parent-dir fsync ·
+  withFileMutationQueue (per-file serialization) ·
+  backupVersionMismatchedStore — all shipped. D6-S3's answer is to **keep
+  JSON** (no need to introduce SQLite — hermes' WAL+fallback only makes
+  sense because it already uses SQLite). One minor remaining item: the
+  encrypted stores **don't create a backup before the key-re-encryption
+  migration** → recommend `.plaintext-backup-<ts>` (for key-loss recovery,
+  on the D2 encryption path).
+- **Performance foundation = present.** V8 compile cache · prompt
+  stablePrefix · keep-alive · KV-quant · working-budget compaction — all in
+  place. Heartbeat cache-warming is **for cloud prompt caching**, so it's
+  low value for local-first Muse (skip).
+
+### 8.6.2 Refinements (strengthening existing slices)
+
+- **D-E1 ← the Tier-0 contamination filter** (openclaw's character-eval).
+  §8.5.2 updated.
+- **D3-S3 ← poll-vs-consumed double dedup** (hermes' process_registry #3):
+  merely **polling (observing)** a background process's state must not
+  suppress the autonomous completion notification (observing ≠ consuming).
+  Add this distinction to the idle-drain contract test.
+- **D6-S3 ← hermes' memory_tool drift+`.bak`** (#8): block-write-on-
+  round-trip-mismatch + backup is the exact right reference implementation.
+  §6 D6-S3 stands as-is.
+
+### 8.6.3 Low-value enhancements (a separate backlog, low priority — must not damage the grounding edge)
+
+10 completeness-critic items that fit Muse and aren't covered but also
+aren't core: (a) **orphaned-pipe draining** (hermes #5 — a grandchild can
+keep a pipe open even after the child exits, leaving poll stuck "running"
+forever; verify-first on X-3), (b) **connection-epoch invalidation**
+(openclaw #6 — discard a stale async result after reconnecting; verify-first
+on the web console/SSE), (c) **request coalescing** (openclaw #1 — dedupe
+concurrent fetches of the same resource; web console), (d) a
+**parallel-tool-call-inducing prompt** + cold-start poll exponential backoff
+(minor performance). **Already covered**: frozen-snapshot+live-mutation (#7
+= Muse's chat-ink `memoryHolder`), external-drift (#8 = D6-S3). **Skip**:
+watch-pattern strike-window (Muse doesn't use watch-pattern), device-
+fingerprint · idempotency-dual-key (low value for a single user).
+
+---
+
+## 9. Appendix — evidence verification log (Fable's direct spot-checks, 2026-07-11)
+
+| # | Claim (from the sweep) | Verification |
 |---|---|---|
 | 1 | hermes iteration_budget 90/50 + execute_code refund | ✅ `agent/iteration_budget.py:1-28` |
 | 2 | openclaw post-compaction-loop-guard window=3 | ✅ `post-compaction-loop-guard.ts:15` |
-| 3 | openclaw exec-authorization-plan heredoc/dynamic 거부 | ✅ `src/infra/exec-authorization-plan.ts:101-103` |
-| 4 | hermes tool budget 100K/200K + 창비례 0.15 | ✅ `tools/budget_config.py:17-75` |
-| 5 | openclaw dreaming half-life14d·min-recall3·health0.35 | ✅ `dreaming.ts:40-47` |
-| 6 | openclaw 루프감지 30/10/20 | ✅ `tool-loop-detection.ts:39-49` |
-| 7 | hermes stream stale180s·reasoning floor600s | ✅ `reasoning_timeouts.py:7-72` |
-| 8 | Muse `muse cost` 로컬+admin 양쪽 | ✅ `commands-cost.ts:12-23` + admin 라우트 |
-| 9 | Muse prompts stablePrefix/stable-dynamic 보유 | ✅ `packages/prompts/src/index.ts:33-162` |
-| 10 | Muse UTF-16 범용 헬퍼 부재(툴-arg만) | ✅ shared surrogate 언급 1곳(:255)·범용 slice 없음 → D-KO-S1 정당 |
-| 11 | Muse SLASH_COMMANDS chat-ink 단독 | ✅ `chat-ink.ts:69`만 정의 → D7-S1 정당 |
-| 12 | 라이선스 MIT×2 | ✅ hermes `LICENSE`(Nous 2025)·openclaw `LICENSE`(Foundation 2026) |
-| 13 | Muse pre-push fabrication tripwire 존재·CI 미배선 | ✅ `.git/hooks/pre-push`→`precheck:grounding`(`install-git-hooks.sh:46`); ci.yml=lint+lint:comments+check만(eval 호출 0) |
-| 14 | 경쟁사 로컬-only 강제 부재 | ✅ hermes config `redact_pii`만·openclaw 클라우드-우선, 평문 저장(양 repo) |
-| 15 | 경쟁사 grounding 게이트 부재(citation 표시만) | ✅ openclaw `tools.citations.ts`(표시)·`external-content.ts`(래핑); hermes citation 브랜치 미머지; 검증 게이트 0 |
-| 16 | Ollama 스키마 새니타이저 존재 | ✅ `adapter-ollama.ts:611` sanitizeOllamaToolSchema(:501 배선) → 신규 아님 |
-| 17 | 프롬프트 제어문자 strip 광범위 배선 | ✅ stripUntrustedTerminalChars 7+ 진입점·escapeSystemPromptMarkers(recall/present.ts:845) |
-| 18 | X-3 kill/reconcile가 PID-재사용 미검증(안전갭) | ✅ `background-process-spawn.ts:104`(kill 무검증)·:128(isAlive만) → D3-S7 정당 |
-| 19 | Muse 도메인 액추에이터가 경쟁사보다 견고 | ✅ approval-gate+id-idempotency+타임존서버위임+soft-fail미러(loopback-calendar/contacts/reminders 테스트) — 갭 아님 |
-| 20 | Muse 내구성 완비(atomic+queue+backup) | ✅ atomic-file-store.ts(dir fsync)·withFileMutationQueue·store-version-backup.ts — D6-S3 JSON 유지 |
-| 21 | eval Tier-0 오염필터 부재(D-E1 세부) | ✅ eval-harness.mjs에 인프라-오염 사전배제 없음 → D-E1 (d) 정당 |
+| 3 | openclaw exec-authorization-plan rejects heredoc/dynamic | ✅ `src/infra/exec-authorization-plan.ts:101-103` |
+| 4 | hermes tool budget 100K/200K + 0.15 window-proportional | ✅ `tools/budget_config.py:17-75` |
+| 5 | openclaw dreaming half-life14d · min-recall3 · health0.35 | ✅ `dreaming.ts:40-47` |
+| 6 | openclaw loop detection 30/10/20 | ✅ `tool-loop-detection.ts:39-49` |
+| 7 | hermes stream stale180s · reasoning floor600s | ✅ `reasoning_timeouts.py:7-72` |
+| 8 | Muse `muse cost` local+admin both | ✅ `commands-cost.ts:12-23` + admin route |
+| 9 | Muse prompts has stablePrefix/stable-dynamic | ✅ `packages/prompts/src/index.ts:33-162` |
+| 10 | Muse lacks a general UTF-16 helper (only tool-args covered) | ✅ shared surrogate mention in 1 spot (:255) · no general slice → D-KO-S1 justified |
+| 11 | Muse SLASH_COMMANDS is chat-ink-only | ✅ defined only in `chat-ink.ts:69` → D7-S1 justified |
+| 12 | Both licensed MIT | ✅ hermes `LICENSE` (Nous 2025) · openclaw `LICENSE` (Foundation 2026) |
+| 13 | Muse's pre-push fabrication tripwire exists · not wired into CI | ✅ `.git/hooks/pre-push`→`precheck:grounding` (`install-git-hooks.sh:46`); ci.yml=lint+lint:comments+check only (0 eval calls) |
+| 14 | Rivals have no local-only enforcement | ✅ hermes config has only `redact_pii` · openclaw cloud-first, plaintext storage (both repos) |
+| 15 | Rivals lack a grounding gate (citation display only) | ✅ openclaw `tools.citations.ts` (display) · `external-content.ts` (wrapping); hermes citation branch unmerged; zero verification gates |
+| 16 | Ollama schema sanitizer exists | ✅ `adapter-ollama.ts:611` sanitizeOllamaToolSchema (wired at :501) → not new |
+| 17 | Control-char stripping widely wired in prompts | ✅ stripUntrustedTerminalChars at 7+ entry points · escapeSystemPromptMarkers (recall/present.ts:845) |
+| 18 | X-3 kill/reconcile doesn't verify PID reuse (a safety gap) | ✅ `background-process-spawn.ts:104` (kill, unverified) · :128 (isAlive only) → D3-S7 justified |
+| 19 | Muse's domain actuators are more robust than rivals' | ✅ approval-gate + id-idempotency + server-delegated timezone + soft-fail mirroring (loopback-calendar/contacts/reminders tests) — not a gap |
+| 20 | Muse's durability is complete (atomic+queue+backup) | ✅ atomic-file-store.ts (dir fsync) · withFileMutationQueue · store-version-backup.ts — D6-S3 stays JSON |
+| 21 | No Tier-0 contamination filter in eval (D-E1 detail) | ✅ eval-harness.mjs has no infra-contamination pre-exclusion → D-E1 (d) justified |
 
-**Muse-측 확정 팩트**: runner `env_clear()`+timeout-only(`crates/runner/src/main.rs:101`),
-`maxToolCalls=10`/`maxRunWallclockMs=300s`(`agent-runtime.ts:284-288`), no-progress
-감지 보유·ping-pong 부재(`tool-loop-progress.ts`), `muse mcp serve` read-only 3툴 *(2026-07-30 기준 6툴 — D4-S1a에서 `propose_action` 추가, 아래 참조)*
-(`commands-mcp-serve.ts`), authored-skill-store 성숙(eviction/subsumption/quarantine/
-snapshot/coverage-gate).
+**Confirmed Muse-side facts**: the runner does `env_clear()` + timeout-only
+(`crates/runner/src/main.rs:101`), `maxToolCalls=10`/`maxRunWallclockMs=300s`
+(`agent-runtime.ts:284-288`), no-progress detection exists but ping-pong
+doesn't (`tool-loop-progress.ts`), `muse mcp serve` exposed 3 read-only tools
+*(as of 2026-07-30, 6 tools — `propose_action` added in D4-S1a, see below)*
+(`commands-mcp-serve.ts`), authored-skill-store is mature
+(eviction/subsumption/quarantine/snapshot/coverage-gate).
 
-**경쟁사 자체-문서 3중검증**(§4): hermes README/docs 355파일 + openclaw docs 699파일
-마이닝 결과, 양측 모두 grounding/citations·privacy-first/local-only·eval/verification을
-crown-jewel로도 문서섹션으로도 미제시. 스윕 원문(메커니즘 카탈로그 전체·18에이전트)은
-세션 산출물로만 존재 — 이 문서가 채택분의 정본이며, 미채택 메커니즘 재검토는 다음
-delta-scout 주기에.
+**Triangulated verification of rivals' own documentation** (§4): mining
+hermes' README/docs across 355 files + openclaw's docs across 699 files
+found neither presents grounding/citations · privacy-first/local-only ·
+eval/verification as a crown jewel or even as a documentation section. The
+raw sweep (the full mechanism catalog · 18 agents) exists only as a session
+artifact — this document is the canonical record of what got adopted;
+re-examining unadopted mechanisms is for the next delta-scout cycle.
 
 ---
 
-## 10. ★ Fable 품질 판정 + 실행 체크리스트 (2026-07-11)
+## 10. ★ Fable's quality verdict + execution checklist (2026-07-11)
 
-### 10.1 판정: 집행 가능한 계획서인가? — **YES, 3개 조건부**
+### 10.1 Verdict: is this an executable plan? — **YES, with 3 conditions**
 
-**계획서로서 통과.** 근거: (a) 활성 34 슬라이스 전부 참조(reference)/현재(verified)/
-구현(Muse-설계)/수용(게이트) 4요소 완비, (b) false-gap 5 삭제·정련 4로 no-op 제거,
-(c) 하중-주장 21건 file:line 스팟체크(§9), (d) 웨이브 순서가 원칙갭→신뢰성→능력→
-라우팅→마감으로 논리적, (e) 비협상(grounding·fabrication=0·벤더중립·fail-close)이
-모든 슬라이스에 명시. Sonnet 워커가 §10.3 체크리스트로 바로 착수 가능.
+**Passes as a plan.** Grounds: (a) all 34 active slices have complete
+reference/current(verified)/implementation(Muse-designed)/acceptance(gate)
+elements, (b) 5 false gaps deleted · 4 refined to remove no-ops, (c) 21
+load-bearing claims spot-checked to file:line (§9), (d) the wave order is
+logically principle-gaps→reliability→capability→routing→closeout, (e) the
+non-negotiables (grounding · fabrication=0 · vendor-neutral · fail-close)
+are stated in every slice. A Sonnet worker can start directly from the §10.3
+checklist.
 
-**단, 3개 조건(착수 전 반드시 처리):**
+**But, 3 conditions (must be handled before starting):**
 
-1. **L-슬라이스 3개는 단일 커밋 불가 → 서브분할 필수.** D2-S1(seatbelt)·D1-S7
-   (브라우저)·D6-S1(sleep)은 각 3-4 커밋. §10.3에 서브스텝으로 분해함. "L을 한
-   번에"는 리뷰 불가·롤백 불가.
-2. **verify-first 항목은 착수 전 §11 큐에서 먼저 해소.** "Muse 현재"는 2026-07-11
-   스냅샷 — 병행 루프가 이동시켰을 수 있고, 일부는 배선점을 아직 특정 못 함
-   (D3-S2 heartbeat 호출점, D5-S3 게이트 위치 등). 큐 항목이 열린 슬라이스는
-   그 항목부터.
-3. **오탐-리스크 슬라이스는 near-miss 쌍 테스트가 수용의 일부.** D2-S1(정당 명령
-   차단)·D2-S2(정당 heredoc 차단)·D1-S1(정당 반복 차단)은 "막아야 할 것 차단 +
-   막으면 안 되는 것 통과" 양면 테스트 없이는 미완. §10.3에 명시.
+1. **The 3 L-slices can't be single commits → must be sub-divided.**
+   D2-S1 (seatbelt) · D1-S7 (browser) · D6-S1 (sleep) each need 3-4
+   commits. Broken into sub-steps in §10.3. "Do an L in one shot" isn't
+   reviewable or revertable.
+2. **Verify-first items must be resolved from the §11 queue before
+   starting.** "Muse-current" is a 2026-07-11 snapshot — a parallel loop
+   may have already moved things, and some haven't yet pinpointed the wiring
+   point (D3-S2's heartbeat call site, D5-S3's gate location, etc.). If a
+   slice has an open queue item, start from that item.
+3. **False-positive-risk slices require near-miss-pair tests as part of
+   acceptance.** D2-S1 (block a legitimate command) · D2-S2 (block a
+   legitimate heredoc) · D1-S1 (block a legitimate repetition) aren't done
+   without both-sided tests — "blocks what it should block + passes what it
+   must not block." Made explicit in §10.3.
 
-### 10.2 발견된 품질 이슈 + 처리 (Fable 리뷰)
+### 10.2 Quality issues found + how they're handled (Fable review)
 
-| # | 이슈 | 심각도 | 처리 |
+| # | Issue | Severity | Handling |
 |---|---|---|---|
-| Q1 | L-슬라이스 3개가 단일 커밋 크기 아님 | 높음 | §10.3에서 서브분할 |
-| Q2 | 슬라이스 간 의존성이 웨이브에만 암묵 — 명시 필요 | 중 | §10.4 의존성 표 신설 |
-| Q3 | verify-first 항목이 슬라이스 본문에 흩어짐 | 중 | §11 살아있는 큐로 집약 |
-| Q4 | 일부 수용 기준이 정량 아님("성능 무해") | 낮 | §11-VQ에 벤치 임계 확정 항목 |
-| Q5 | W4가 9슬라이스로 과적(W3=4) | 낮 | 대부분 S라 수용 — 필요시 W4를 W4a/W4b 분할 |
-| Q6 | D3-S7이 W1인데 X-3 파일을 여기서 처음 염(D3-S1/S4는 W2) | 낮 | 안전-우선 순서가 우위 — 유지, 노트만 |
-| Q7 | per-슬라이스 롤백/리스크 열 없음 | 중 | §10.3 각 항목에 리스크 태그 |
+| Q1 | 3 L-slices aren't single-commit sized | High | Sub-divided in §10.3 |
+| Q2 | Dependencies between slices are only implicit in the waves — need to be explicit | Med | New dependency table added, §10.4 |
+| Q3 | Verify-first items are scattered through slice bodies | Med | Consolidated into a living queue, §11 |
+| Q4 | Some acceptance criteria aren't quantified ("performance benign") | Low | Fixed benchmark thresholds added in §11-VQ |
+| Q5 | W4 is overloaded with 9 slices (W3 has 4) | Low | Most are S-sized so it's acceptable — split into W4a/W4b if needed |
+| Q6 | D3-S7 is in W1, but this is the first time it touches X-3 files (D3-S1/S4 are in W2) | Low | Safety-first ordering wins — keep it, note only |
+| Q7 | No per-slice rollback/risk column | Med | Risk tag added to every item in §10.3 |
 
-### 10.3 실행 체크리스트 (웨이브별 · 슬라이스별)
+### 10.3 Execution checklist (by wave · by slice)
 
-착수 규칙: 위→아래 순. 각 `[ ]`는 **1 커밋**(L의 서브스텝도 각 1 커밋). 모든
-슬라이스 공통 게이트 = `test:changed` → mutation-RED → lint 0/0 → (에이전트-facing
-이면 eval:tools/해당 배터리 STABLE 3/3, 요청경로면 smoke:live). ⚠=오탐리스크(near-miss
-쌍 테스트 필수), 🔒=fail-close 안전 슬라이스, 📈=eval 래칫 동반.
+Start rule: top→bottom order. Each `[ ]` is **1 commit** (an L's sub-steps
+are also 1 commit each). Common gate for every slice = `test:changed` →
+mutation-RED → lint 0/0 → (if agent-facing, eval:tools / the matching
+battery STABLE 3/3; if a request path, smoke:live). ⚠=false-positive risk
+(near-miss pair test required), 🔒=fail-close safety slice, 📈=paired with
+an eval ratchet.
 
-#### W1 — 원칙 갭 (보안·루프이탈·PID)
-- [x] **D2-S1a** ✅ 2026-07-11 seatbelt SBPL 프로파일 생성기(`build_seatbelt_profile`+`escape_sbpl_string`, 순수·미배선) — deny-default·file-read* broad·write는 cwd/$TMPDIR/pnpm·npm·cache만·network opt-in; 인젝션 이스케이프 Fable 검증. 26 test(12신규)·clippy clean. ⏭️b에서 배선
-- [x] **D2-S1b** ✅ 2026-07-11 🔒 runner `MUSE_RUNNER_SANDBOX=seatbelt` 배선(`spawn_plan`→`sandbox-exec -p`) + 실프로세스 탈출 3종 계약 테스트(cwd밖 write·~/.ssh write·network fail-close + allowNetwork opt-in, 정당명령 git/sh/node 통과). 실기기 발견 2건 반영: ①프로파일 경로 **canonicalize 필수**(/var→/private/var 심링크, 미해결시 전면 거부) ②`/dev/null`+`/dev/dtracehelper` write-data allowance 없으면 git 전멸 → 추가(+`/private/tmp` subpath). 미설정 byte-identical(스폰플랜 passthrough+`sandboxWarning` skip-serialize), canonicalize 실패 fail-close. allowNetwork는 caller-only(모델 tool-args에서 차단, 네거티브 테스트). 38 rust test(계약4·mutation-RED 검증)·clippy clean·평가자 PASS(maker≠judge)
-- [x] **D2-S1c** ✅ 2026-07-11 (S1b에 합류 배송) 비-macOS `RequestedUnsupported` 폴백(비샌드박스 실행+`sandboxWarning` 표면화, 유닛테스트) + `muse doctor` `runnerSandboxPostureCheck` 3-way(off/ok·darwin active/ok·비darwin warn)
-- [x] **D2-S1d** ✅ 2026-07-11 📈 eval:adversarial에 결정론 sandbox-탈출 3종 추가(실 `muse-runner` 바이너리를 seatbelt로 spawn→OS 거부를 코드 채점, 모델 거부 아님 — agent-testing #5). cwd밖 write·~/.ssh write·network 탈출; network 케이스는 `accepted` 리스너 플래그로 채점해 guard-OFF(연결 성공)면 RED(curl exit≠0만으론 가짜 통과). Ollama 무관·macOS-only(스킵≠통과), LLM 16케이스 무수정. adversarialCases 16→19 래칫, node:test 뮤테이션 락 2/2, Opus 독립평가자 guard-ON/OFF 재현 PASS
-- [x] **D2-S2a** ✅ 2026-07-11 🔒⚠ 순수 토폴로지 분류기 `classifyCommandTopology(command,args)`(packages/tools) — 비-셸 command는 항상 analyzable(near-miss: `echo '$(rm -rf /)'`·`node app '$(x)'`), 셸 `-c` 스크립트의 `$(`/백틱·`<(`/`>(`·`<<`·command-position `eval`을 quote-aware(단일따옴표=리터럴)로 감지→`{analyzable:false}`. 순수·미배선(D2-S1a 선례). Opus 평가자 1차 FAIL이 2 결함 적발→수리: ①개행이 POSIX 명령구분자인데 eval 감지서 누락(false neg) ②`$((` 산술을 command-sub로 오탐(false pos, `$((1+2))`); nested `$(( $(id) ))`는 여전히 검출. 22 test(우회/near-miss 쌍·mutation-RED 양방향)·Opus 재판정 PASS. sudo/env 래퍼 우회는 VQ-15
-- [x] **D2-S2b** ✅ 2026-07-11 🔒 D2-S2a 분류기를 wired 승인 게이트 `chatToolApprovalGate`에 배선(apps/cli). 발견: trust.json은 아직 런타임 미배선(`commands-trust.ts` "follow-up")이고 run_command는 이미 execute라 항상 사람에게 물음 → "auto-approve서 강등"의 live seam 부재. 정직한 실질: ①un-analyzable `run_command`는 risk가 read로 위조돼도 **절대 조용히 허용 안 됨**(read fast-path에 `&& topology.analyzable` 게이트 — 토폴로지 우회 불가 코드 불변식) ②승인 프롬프트에 "검사 불가 셸 구성(construct)" 경고 표면화(informed consent, 정당 heredoc은 사람이 승인). 무조건 거부 아님. 135 test(우회불가 불변식·경고표면·arg-hostility·mutation-RED 양방향)·Opus 평가자 PASS. 미배선 auto-approve seam은 VQ-16
-- [x] **D1-S1** ✅ 2026-07-11 ⚠ ping-pong 루프가드 `tool-loop-pingpong.ts`(agent-core) — A↔B 교대(2-값)를 trailing-alternation-run로 감지(창20·warn6·block10), 서명=name+stableJson(args)+결과(휘발필드 runId/tsIso/id/ts/timestamp 재귀 strip); block→`pingPongAbortedExecution`(post-compaction 미러, 양쪽 루프 배선). stall(A,A,A)·3-값 사이클·distinct 진행은 "none"(오탐 0). 19 test+model-loop 55·mutation-RED 양방향(교대조건·volatile strip)·Opus 평가자 PASS(임계 정확·false-positive 배터리·id-strip은 args 보존이라 안전). eval:computer-task는 ambient GEMINI_API_KEY 하이재킹(VQ-17)으로 local-forced 재실행
-- [x] **D1-S2** ✅ 2026-07-11 post-compaction 루프가드(창3) — `PostCompactionLoopGuard`(arm on summaryInserted, tool+args+result 서명 3연속→abort); 15/15 유닛+wiring, mutation 5 RED, 독립평가자 PASS(arming=run당1회 아키텍처 확인). ⏭️후속: plan-execute-loop 미커버(별도 슬라이스)
-- [x] **D2-S6a** ✅ 2026-07-11 승인 프롬프트 위험-토큰 하이라이트 — 순수 `identifyRiskyTokens`/`emphasizeRiskyTokens`(@muse/tools, DS-2 위험어휘 재사용: 파괴 플래그 -rf/--force·민감경로 //~/.ssh//etc//dev·파괴동사 rm/dd/mkfs at 명령위치)를 `chatToolApprovalGate` detail에 배선(summarizeToolArgs의 redact+strip 뒤에만 TRUSTED ANSI bold-red 적용). 안전명령·따옴표 속 rm은 미하이라이트(오탐0), non-overlap span·offset 정확·ReDoS cap. 13 test·mutation-RED 3-way·Opus 평가자 PASS. b(write-approval 스테이징)는 별도
-- [x] **D2-S6b** ✅ 2026-07-11 write-approval 스테이징 — CLI fs-write 게이트(actuator-tools/commands-ask)의 비대화형 거부를 기존 `pending-approval-store`(@muse/messaging 재사용, 신규 스토어 0)에 스테이징(`recordPendingApproval`→`~/.muse/pending-approvals.json`, `muse approvals`가 읽는 동일 파일). no-external-effect 계약: 실 createFsWriteTool 구동 e2e에서 파일 미생성+entry round-trip(isPendingApproval 통과) 검증. staging 실패는 deny 불변(try/catch), 대화형 승인경로 미영향. 29 test·mutation-RED 양방향·Opus 평가자 PASS(messaging/src 미수정 확인). CLI-write 재실행(content) 미배선=VQ-18
-- [x] **D3-S7** ✅ 2026-07-11 🔒 X-3 PID-재사용 kill 가드 — background-process record에 `osStartTime`(spawn 시 OS start-time 캡처, 주입식 reader) 추가, 순수 `pidIdentityMatches`(레거시=unset→검증불가 보존, set이면 현재값과 equality). `stopBackgroundProcess`/`reconcileBackgroundProcesses` kill/reconcile 전 대조 — 불일치(재사용/소멸)면 kill 금지+record `exited`(fail-close, 신규 결과 `pid_reused`). CLI가 `ps -o lstart= -p`로 배선(BSD+GNU, /proc 회피, 실기기 검증). 13 재사용-시뮬 유닛·mutation-RED 양방향·Opus 평가자 PASS(messaging 0편집·env 0). **W1(원칙 갭) 완주**
+#### W1 — principle gaps (security · loop drift · PID)
+- [x] **D2-S1a** ✅ 2026-07-11 seatbelt SBPL profile generator
+  (`build_seatbelt_profile`+`escape_sbpl_string`, pure · not yet wired) —
+  deny-default · broad file-read* · write limited to cwd/$TMPDIR/pnpm·npm·cache ·
+  network opt-in; escape correctness Fable-verified against injection. 26
+  tests (12 new) · clippy clean. Wired in ⏭️b
+- [x] **D2-S1b** ✅ 2026-07-11 🔒 Wired `MUSE_RUNNER_SANDBOX=seatbelt` into
+  the runner (`spawn_plan`→`sandbox-exec -p`) + real-process contracts for
+  3 escape attempts (write outside cwd · write to ~/.ssh · network fail-close
+  + allowNetwork opt-in, and legitimate commands git/sh/node pass through).
+  Two live-device findings addressed: ① the profile path **must be
+  canonicalized** (/var→/private/var symlink; unresolved → deny everything)
+  ② without `/dev/null`+`/dev/dtracehelper` write-data allowance, git fails
+  entirely → added those (+`/private/tmp` subpath). Byte-identical when
+  unconfigured (the spawn plan passes through + `sandboxWarning` is skipped
+  from serialization); canonicalize failure fails closed. allowNetwork is
+  caller-only (blocked from model tool-args, negative-tested). 38 rust
+  tests (4 contract, mutation-RED verified) · clippy clean · evaluator PASS
+  (maker≠judge)
+- [x] **D2-S1c** ✅ 2026-07-11 (shipped alongside S1b) Non-macOS
+  `RequestedUnsupported` fallback (unsandboxed execution +
+  `sandboxWarning` surfaced, unit-tested) + `muse doctor`
+  `runnerSandboxPostureCheck` 3-way (off/ok · darwin active/ok · non-darwin
+  warn)
+- [x] **D2-S1d** ✅ 2026-07-11 📈 Added 3 deterministic sandbox-escape
+  cases to eval:adversarial (spawns the real `muse-runner` binary under
+  seatbelt → an OS-level rejection is scored in code, not a model refusal —
+  agent-testing #5). Write outside cwd · write to ~/.ssh · network escape;
+  the network case is scored via an `accepted` listener flag, so with the
+  guard OFF (a successful connection) it goes RED (a nonzero curl exit
+  alone wouldn't have caught a fake pass). Ollama-independent · macOS-only
+  (skip≠pass), the 16 LLM cases unmodified. adversarialCases ratchet
+  16→19, 2/2 node:test mutation locks, Opus's independent evaluator
+  reproduced guard-ON/OFF and PASSed
+- [x] **D2-S2a** ✅ 2026-07-11 🔒⚠ A pure topology classifier
+  `classifyCommandTopology(command,args)` (packages/tools) — a non-shell
+  command is always analyzable (near-miss: `echo '$(rm -rf /)'`, `node
+  app '$(x)'`); for shell `-c` scripts, quote-aware detection (single-quotes
+  = literal) of `$(`/backticks · `<(`/`>(` · `<<` · a command-position `eval`
+  → `{analyzable:false}`. Pure · not yet wired (following D2-S1a's
+  precedent). Opus's evaluator FAILed the first pass, catching 2 real
+  defects: ① a newline is a POSIX command separator but the eval-detection
+  missed it (a false negative) ② `$((` arithmetic was misdetected as
+  command substitution (a false positive, `$((1+2))`); nested `$(( $(id) ))`
+  is still correctly caught. 22 tests (bypass/near-miss pairs · bidirectional
+  mutation-RED) · Opus's re-judgment PASSed. sudo/env wrapper bypasses are
+  tracked as VQ-15
+- [x] **D2-S2b** ✅ 2026-07-11 🔒 Wired the D2-S2a classifier into the live
+  approval gate `chatToolApprovalGate` (apps/cli). Finding: trust.json isn't
+  wired at runtime yet (`commands-trust.ts` — a follow-up), and run_command
+  is already an "execute" risk that always asks the human → no live seam
+  for "downgrading from auto-approve." Honest scope actually delivered:
+  ① an un-analyzable `run_command` is **never silently allowed**, even if
+  its risk is disguised as read (the read fast-path gets `&&
+  topology.analyzable` — a structural invariant that can't be bypassed by
+  the topology check) ② the approval prompt surfaces an "unanalyzable
+  shell construct" warning (informed consent — a human can still approve a
+  legitimate heredoc). Not an unconditional reject. 135 tests
+  (bypass-proof invariant · warning surface · arg-hostility ·
+  bidirectional mutation-RED) · Opus's evaluator PASSed. The unwired
+  auto-approve seam is tracked as VQ-16
+- [x] **D1-S1** ✅ 2026-07-11 ⚠ Ping-pong loop guard `tool-loop-pingpong.ts`
+  (agent-core) — detects A↔B alternation (a 2-value pattern) via a
+  trailing-alternation run (window 20 · warn 6 · block 10), signature = name
+  + stableJson(args) + result with volatile fields (runId/tsIso/id/ts/
+  timestamp) recursively stripped; on block → `pingPongAbortedExecution`
+  (mirroring post-compaction, wired into both loops). Stalls (A,A,A), a
+  3-value cycle, and genuinely distinct progress all resolve to "none"
+  (zero false positives). 19 units + 55 model-loop cases · bidirectional
+  mutation-RED (the alternation condition · volatile stripping) · Opus's
+  evaluator PASSed (correct threshold · a false-positive battery · id-strip
+  is safe because it preserves args). eval:computer-task got re-run
+  local-forced after an ambient GEMINI_API_KEY hijack (VQ-17)
+- [x] **D1-S2** ✅ 2026-07-11 Post-compaction loop guard (window 3) —
+  `PostCompactionLoopGuard` (arms on summaryInserted, aborts after 3
+  consecutive identical tool+args+result signatures); 15/15 units + wiring,
+  5 mutation RED, an independent evaluator PASSed (confirmed arming = once
+  per run architecture). ⏭️ follow-up: the plan-execute-loop path isn't
+  covered (a separate slice)
+- [x] **D2-S6a** ✅ 2026-07-11 Approval-prompt risky-token highlighting —
+  pure `identifyRiskyTokens`/`emphasizeRiskyTokens` (@muse/tools, reuses
+  DS-2's risk vocabulary: destructive flags -rf/--force · sensitive paths
+  //~/.ssh//etc//dev · destructive verbs rm/dd/mkfs in command position)
+  wired into `chatToolApprovalGate`'s detail (applied as TRUSTED ANSI
+  bold-red only after summarizeToolArgs' redact+strip). Safe commands and
+  a quoted "rm" aren't highlighted (zero false positives), spans don't
+  overlap, offsets are exact, ReDoS-capped. 13 tests · 3-way
+  mutation-RED · Opus's evaluator PASSed. (b) write-approval staging is
+  separate
+- [x] **D2-S6b** ✅ 2026-07-11 Write-approval staging — stages the CLI's
+  non-interactive fs-write-gate rejection into the existing
+  `pending-approval-store` (reusing @muse/messaging, zero new stores)
+  (`recordPendingApproval`→`~/.muse/pending-approvals.json`, the exact
+  file `muse approvals` reads). No-external-effect contract: driving the
+  real createFsWriteTool e2e confirms the file is never created + the
+  entry round-trips (passes isPendingApproval). A staging failure still
+  denies (try/catch), the interactive approval path is unaffected. 29
+  tests · bidirectional mutation-RED · Opus's evaluator PASSed (confirmed
+  messaging/src untouched). CLI-write replay (with content) isn't wired =
+  VQ-18
+- [x] **D3-S7** ✅ 2026-07-11 🔒 X-3 PID-reuse kill guard — added
+  `osStartTime` to the background-process record (OS start-time captured
+  at spawn, via an injectable reader), a pure `pidIdentityMatches`
+  (legacy=unset → treated as unverifiable and preserved; set → equality
+  against the current value). `stopBackgroundProcess`/
+  `reconcileBackgroundProcesses` compare before kill/reconcile — on
+  mismatch (reuse/gone), refuse to kill + mark the record `exited`
+  (fail-close, a new `pid_reused` result). Wired the CLI via
+  `ps -o lstart= -p` (BSD+GNU, avoiding /proc, verified on a real device).
+  13 reuse-simulation units · bidirectional mutation-RED · Opus's
+  evaluator PASSed (0 messaging edits · 0 env). **W1 (principle gaps)
+  complete**
 
-#### W2 — 신뢰성 (컴팩션·예산·서브에이전트·브라우저)
-- [x] **D1-S3** ✅ 2026-07-11 단계적 요약 — `summarizeDroppedContextInStages`+`chunkDroppedOnToolPairs`(@muse/memory, 순수): dropped를 tool-pair 경계로 청크(`role:"tool"` 앞 분할 절대금지, 오버사이즈 pair는 1청크)→청크별 summarizeDroppedContext 재사용(각 FAIL-OPEN, fallback:"")→비어있지않은 것만 병합·maxChars 캡. **부분실패=생존청크 보존**, 전실패=결정론 floor. 기존 `summarizeDroppedContext` byte-identical(additions-only). 식별자-보존 지시(UUID/경로/URL/숫자 VERBATIM)를 SUMMARIZER_SYSTEM_PROMPT에 명문화(grounding 강화). agent-runtime:578+chat-ink-core:941 양쪽 배선(1청크=단일샷 등가). 18 test(경계·부분실패·단일청크등가·mutation-RED 양방향)·Opus 평가자 PASS
-- [x] **D1-S5a** ✅ 2026-07-11 예산 소진 명시(침묵중단 금지) — 도구 예산 소진(toolCallCount≥maxToolCalls) 시 최종 합성 전에 "N/M 툴콜 소진, 최선의 최종답 지금" one-shot notice를 messages에 주입(proactive: 빈-도구 호출 前, budget에만·wallclock/stall 제외 엄격 게이트). 순수 `budgetExhaustionNotice`+`BudgetExhaustionTracker`(REVERIFY_NUDGE 패턴), 양쪽 루프. 정상종료·stall·wallclock은 미주입. maxToolCalls=10 불변. 62 test·mutation-RED(게이트제거→정상종료 오탐 RED, injection제거→미주입 RED)·Opus 평가자 PASS(설계편차 proactive 정당·기존 테스트 tightening 확인)
-- [x] **D1-S5b1** ✅ 2026-07-11 PTC 플랜스텝 계상 규칙 명문화(프로그래매틱=1) — run_tool_plan 1콜=1 예산슬롯(내부 N스텝 무관)이 이미 동작이나 암묵적 → agent-runtime PTC 인터셉트에 WHY주석 + 회귀락 테스트(3스텝 플랜 실행됨=effects[a,b,c] ∧ 예산 1슬롯=toolsUsed["run_tool_plan"]). 계상 동작 무변경(주석+테스트만). mutation-RED(스텝을 각 예산으로 세면 toolsUsed 길이3 RED)·Opus 평가자 PASS(행동락·주석정확성 확인). 유저-가시 변화 없어 CHANGELOG 생략
-- [x] **D1-S5b2** ✅ 2026-07-11 서브에이전트 별도 하위예산 — 순수 `resolveSubAgentToolBudget(부모)`(@muse/multi-agent: max(3, floor(부모×0.5)), uncapped→5·워커는 항상 cap) + ask-decompose 워커 execute에 배선(부모 metadata.maxTools 그대로 상속 대신 sub-budget shallow-override, args.metadata 무mutation). synthesize/planner는 부모예산 유지(lead-level). 6+23 test·mutation-RED 양방향·Opus PASS. 형제-감사: orchestrator.ts/commands-board는 서버측·maxTools 관례 부재로 backlog follow-up 기록. **D1-S5 완료(b1+b2)**
-- [x] **D3-S1a** ✅ 2026-07-11 서브에이전트 depth 강등 — AgentTask에 옵셔널 `depth`(부모0·서브 depth+1, omit-when-0), `resolveBoardMaxDepth(env)`(`MUSE_BOARD_MAX_DEPTH` 기본1·floor1), `expandTaskIntoSubtasks(...,maxDepth=1)`가 `(parent.depth??0)>=maxDepth`면 no-op(무한 재분해 차단; verify-first로 서브태스크 재-expand 가능 확인됨). back-compat(depth無=0·기존 no-op 가드 유지·maxDepth1도 첫 분해는 허용). CLI board expand 배선. 34 test(깊이경계 depth==maxDepth·parent+1·파싱테이블)·mutation-RED 양방향·Opus PASS. ENV.md 갱신
-- [x] **D3-S1b** ✅ 2026-07-11 부모 tool-deny 상속 — 순수 `inheritParentToolDeny(parent,child)`(@muse/multi-agent: child⊆parent 교집합, child가 부모에 없는 도구 요청시 드롭, parent unrestricted면 child 유지) + ask-decompose 워커 execute에 구조적 클램프 배선(worker allowedToolNames = 부모 교집합, args.metadata 무mutation, planner/synthesize 미클램프). 8+2 test·mutation-RED 양방향(강등제거→c 유출 RED). Opus PASS+유의미성 판정: 순수불변식은 진짜, 클램프가 실 enforcement point 사전배치=defense-in-depth. ⚠caveat: 현 프로덕션 호출자는 broader set 미전달이라 프로덕션 no-op(테스트-seam으로 검증), 유저-가시 변화 0→CHANGELOG 생략. 형제: orchestrator verbatim·board top-level→backlog follow-up. **D3-S1 완료(a+b)**
-- [x] **D3-S2** ✅ 2026-07-11 단일-run heartbeat 배선 — `ModelLoopRunner.heartbeat?`+`AgentRuntimeOptions.heartbeat` 주입 seam(agent-core는 multi-agent 미의존), model-loop 3 emission point(streamModelTurn text-delta·tool-call + runToolBatch genuine-exec만, progress/failureStreak와 동일 gating)에서 `emitHeartbeat`(try/catch, throw가 루프 안 깸). 신규 감지기 0(기존 detectStalled 재사용). 미배선시 byte-identical. 4+2 test(emission spy·fake-clock 스테일 감지[400ms heartbeat=비오탐, 침묵 150ms>timeout=감지])·mutation-RED 양방향·Opus PASS(deferral 정당 판정). ⚠DEFERRED=라이브 SubAgentRunRegistry 피딩(autoconfigure→multi-agent 의존 or apps/api 생성순서 재배치 = 아키텍처 결정)+stall-abort 폴러 → backlog. 유저-가시 변화 0
-- [x] **D3-S4a** ✅ 2026-07-11 job 동시상한 — `muse job run`(백그라운드)이 무제한 spawn(verify-first)이던 걸 cap(`MUSE_JOBS_MAX_CONCURRENT` 기본3·≥1)으로. 순수 `resolveJobsMaxConcurrent`+`jobConcurrencyRefusal(runningCount,cap, >=cap 거부)` + `countRunningJobs`(기존 jobSummary 재사용, running만) + `startBackgroundJobOrRefuse` 배선(at-cap→stderr 명시거부+exitCode1, start 미호출; inline 무변경). 27 test(파싱·실 jsonl fixture·at-cap spy 미호출)·mutation-RED 양방향·Opus PASS. ENV.md 갱신
-- [x] **D3-S4b** ✅ 2026-07-11 부모-헤드룸 요약예산 — 순수 `perChildSynthesisBudget(headroom,n)=max(2000,floor(headroom×0.5/n))`(div0/NaN/Inf/neg→floor2000) + `budgetAndSpillOutputs`(초과 자식 truncate + FULL 원본을 `~/.muse/board-spill/<taskid>-<i>.txt`로 스필[writeSpill 주입], 세그먼트에 정확한 경로 명시) + makeAgentExecutor 배선(실 fs, 답변에 스필 위치 note). boardTaskPrompt 순수 유지. `resolveBoardSynthesisHeadroom`(MUSE_BOARD_SYNTHESIS_HEADROOM 기본24000)·`boardSpillDir`(MUSE_BOARD_SPILL_DIR). 41 test(예산경계·round-trip 스필===원본·실fs 왕복)·mutation-RED 양방향(truncate제거·writeSpill스킵)·Opus PASS(데이터손실 없음 확인). ENV.md 갱신. **D3-S4 완료(a+b)**
-- [x] **D1-S7a** ✅ 2026-07-11 🔒 refs는 이미 숫자 인덱스(0-based)+CSS셀렉터 모델노출 없음 → (a)의 "숫자 인덱스" 요건 기충족. 델타="refs 안정성 유닛": `resolveTarget`(browser-tools.ts) 숫자-ref 분기가 현재 스냅샷에 없는 ref(stale/ghost/환각)를 그대로 통과시켜 유령 요소로 행동하던 구멍을 fail-close로 닫음 — `describeElement(ref)`=undefined면 "call browser_read" 거부(부분 부작용 0). resolveTarget이 click/hover/type/upload 단일 해소점이라 형제 4개 일괄. 3 행동테스트(valid proceed·ghost click 거부·ghost type 거부, calls 무기록 어서)·mutation-RED 양방향(가드제거→2 RED, Opus 독립 재현)·포맷 무변경(bare numeric 유지→eval 계약 무손상). `@e` 문자열포맷·DOM stale-attr 클리어(실브라우저)는 유닛범위 밖(→VQ-19)
-- [x] **D1-S7b1** ✅ 2026-07-11 브라우저 액션-예산 결정 코어(순수 agent-core/browser-action-budget.ts): createBrowserActionBudget(max, >0 정수검증)·recordBrowserAction·isBudgetExhausted(`used>=max` 경계정확 — 캡 N이 정확히 N 허용·N+1 거부)·isBudgetNearCap(exhausted 배제)·browserActionsLabel(`actions_used N/M`)·guardBrowserAction(exhausted→allowed:false+refusal, near→allowed:true+warning, else allowed:true). 행동 시퀀스 유닛(guard→record ×3 후 4th refused·label "3/3")·경계 mutation-RED 양방향(`>=`→`>` 2 RED, near-cap 1 RED). 코어-only 미배선(b2 배선). 기존 step-budget.ts=토큰예산이라 별개. Opus 독립 평가자 PASS(mutation 재현). ※fire 18 JUDGE-DRILL의 진짜-fix — 드릴이 위조한 off-by-one·선언-only를 정확히 rebut
-- [x] **D1-S7b2** ✅ 2026-07-11 b1 결정코어 배선. createBrowserActionTracker(agent-core, b1 순수 primitive 재사용 mutable seam: pre-decide→advance→post-label)를 buildBrowserTools가 공유 인스턴스 1개로 생성(per-task 수명, run당 1회)→browser의 최소 구조 seam BrowserActionGuard로 click/type/fill(BrowserActToolDeps 공유 3툴) 배선. execute 최상단 소진 시 fail-close 거부(controller/resolveTarget 미도달)+성공시 actionsUsed `N/M`·근접 budgetWarning 부착. actionBudget 미주입=byte-identical(기존 81 test 무변). resolveBrowserMaxActions 기본30·`MUSE_BROWSER_MAX_ACTIONS` 오버라이드. tracker 4 test+browser 7 test+config 7 test·mutation-RED 양방향(가드제거→controller 도달 RED, 소진체크 제거→cap 미준수 RED)·Opus 8축 PASS(fail-close·per-task·산술·byte-identical·의미론). @muse/browser는 agent-core 미의존(구조타입). ※형제 미배선(→backlog): upload/key(Enter)/open counting·timeout은 controller protocolTimeout 기존
-- [x] **D1-S7c** ✅ 2026-07-11 dialog 스냅샷 필드는 기존 완료; 델타=처분을 fail-close로. registerDialogHandler가 모든 dialog auto-ACCEPT(confirm OK·prompt 텍스트제출)하던 fail-open을 순수 dialog-policy.ts로 교체: `decideDialogDisposition`(confirm/prompt/unknown→dismiss, alert/beforeunload→accept)+`planDialogResponse`(dismiss는 response無)+`settleDialog`(fake spy로 accept/dismiss 실호출 검증). 페이지-발 confirm/prompt를 auto-commit 안 함(클릭 승인≠dialog 응답 승인, 브라우저=untrusted). 12 test·mutation-RED 양방향(confirm→accept·ternary flip)·Opus PASS(fail-close 방향·spy 행동·accept fall-through 없음·불변식 tighten-only). controller.ts+puppeteer 425 stale doc 동반수정. ※트레이드: 승인된 submit-confirm은 미완(fail-safe, 스냅샷서 surface)
-- [x] **D1-S7d1** ✅ 2026-07-12 🔒 결정론 page-content guard(순수 page-content-guard.ts, 자립·no @muse/recall): defangPageText(escape `</page>`/`<page>` break-out→fullwidth · `](` 중화로 markdown 이미지/링크 엑스필 차단 · instruction-override 정규식 `ignore/disregard/forget/override…previous/above…instructions/rules`→`[defanged-directive]`, `{0,40}?` bounded=ReDoS-safe)+wrapPageContent(`<page>…</page>`, escape-then-wrap 순서)+defangElementName. snapshotToJson가 text 래핑·elementsJson가 name defang → 전 snapshot-반환 툴(open/read/click/type/…) 조립경로 커버. 11 pure+2 assembly test(fake controller 악성 text→툴출력 defanged, OUTCOME 채점)·mutation-RED 양방향(instruction rule 제거→6 RED, `](` 제거→4 RED)·clean prose byte-identical·Opus 위협모델 PASS(boundary·media·ReDoS·조립경로·정직 positioning). 실 e2e=d2
-- [x] **D1-S7d2** ✅ 2026-07-12 🔒 실 detached-Chrome e2e(`scripts/eval-browser-injection.mjs`, `pnpm eval:browser-injection`, 모델-free·Chrome만). 악성 HTML 픽스처(ignore-above·`![](exfil)`·HTML-escaped `&lt;/page&gt;` 경계·인젝션 anchor label)를 loopback http serve→실 PuppeteerBrowserController(headless).open→browser_open/read 툴출력이 `<page>` 래핑+defanged 확인(9/9 assertion, OUTCOME). 실 Chrome RUN(skip 아님, 라이브 PASS)·mutation-kill(defang no-op→7/9 FAIL 재현 후 byte-identical 복원). Opus PASS→지적 2건 수정(경계 픽스처를 `&lt;/page&gt;`로 escape해 tautological 해소=이제 guard 무력화 시 boundary도 flip·헤더 슬라이스마커 제거). Chrome 없으면만 skip. **D1-S7(브라우저 신뢰성 L) 전체 완주(a+b1+b2+c+d1+d2)**
+#### W2 — reliability (compaction · budget · sub-agents · browser)
+- [x] **D1-S3** ✅ 2026-07-11 Staged summarization —
+  `summarizeDroppedContextInStages`+`chunkDroppedOnToolPairs` (@muse/memory,
+  pure): chunks dropped content on tool-pair boundaries (a split right
+  before a `role:"tool"` message is strictly forbidden; an oversized pair
+  becomes 1 chunk) → reuses summarizeDroppedContext per chunk (each
+  FAIL-OPEN, fallback:"") → merges only the non-empty results · caps at
+  maxChars. **A partial failure preserves the surviving chunks**, a total
+  failure falls back to the deterministic floor. The existing
+  `summarizeDroppedContext` stays byte-identical (additions-only).
+  Codified an identifier-preservation instruction (UUID/path/URL/number
+  VERBATIM) into SUMMARIZER_SYSTEM_PROMPT (strengthens grounding). Wired
+  in both agent-runtime:578 and chat-ink-core:941 (a 1-chunk case is
+  equivalent to the single-shot path). 18 tests (boundary · partial
+  failure · single-chunk equivalence · bidirectional mutation-RED) ·
+  Opus's evaluator PASSed
+- [x] **D1-S5a** ✅ 2026-07-11 Explicit budget-exhaustion notice (no
+  silent cutoff) — when the tool budget is exhausted
+  (toolCallCount≥maxToolCalls), injects an "N/M tool calls used, giving
+  my best final answer now" one-shot notice into messages before final
+  synthesis (proactive: before the empty-tools call, budget-only, a
+  strict gate excluding wallclock/stall). Pure `budgetExhaustionNotice`+
+  `BudgetExhaustionTracker` (mirroring the REVERIFY_NUDGE pattern), wired
+  into both loops. Normal completion · stall · wallclock don't inject it.
+  maxToolCalls=10 stays fixed. 62 tests · bidirectional mutation-RED (gate
+  removed → false positive on normal completion goes RED; injection
+  removed → missing injection goes RED) · Opus's evaluator PASSed
+  (confirmed the design deviation to proactive is legitimate, confirmed
+  the strict budget gate, confirmed guaranteed termination, confirmed the
+  existing agent-runtime tests were tightened, not loosened)
+- [x] **D1-S5b1** ✅ 2026-07-11 Codified the PTC step-accounting rule
+  (programmatic=1) — run_tool_plan already counts as 1 call = 1 budget slot
+  (regardless of internal step count) but implicitly so → added a WHY
+  comment to the agent-runtime PTC intercept + a regression-lock test (a
+  3-step plan executes = effects[a,b,c] ∧ 1 slot consumed =
+  toolsUsed["run_tool_plan"]). Accounting behavior unchanged (comment +
+  test only). Bidirectional mutation-RED (counting steps individually →
+  toolsUsed length 3 goes RED) · Opus's evaluator PASSed (confirmed
+  behavior-locking · comment accuracy trace). No user-visible change, so
+  CHANGELOG omitted
+- [x] **D1-S5b2** ✅ 2026-07-11 Separate sub-agent tool sub-budget — pure
+  `resolveSubAgentToolBudget(parent)` (@muse/multi-agent:
+  max(3, floor(parent×0.5)), uncapped→5, a worker is always capped) +
+  wired into the ask-decompose worker's execute (a shallow override
+  instead of inheriting the parent's metadata.maxTools verbatim, args.metadata
+  left unmutated). synthesize/planner keep the parent's budget
+  (lead-level). 6+23 tests · bidirectional mutation-RED · Opus PASSed.
+  Sibling audit: orchestrator.ts/commands-board also inherit the parent's
+  metadata (same class) but are server-side with no maxTools convention →
+  logged as a backlog follow-up. **D1-S5 complete (b1+b2)**
+- [x] **D3-S1a** ✅ 2026-07-11 Board-task depth demotion — added an
+  optional `depth` to AgentTask (parent=0, sub=depth+1),
+  `resolveBoardMaxDepth(env)` (`MUSE_BOARD_MAX_DEPTH` default 1 ·
+  floor 1), and `expandTaskIntoSubtasks(...,maxDepth=1)` no-ops (rejects
+  re-decomposition) once `(parent.depth??0)>=maxDepth` — confirmed via
+  verify-first that sub-tasks could be re-expanded (grandchild infinite
+  decomposition). Back-compat (missing depth = 0, existing no-op guard
+  kept, maxDepth 1 still allows the first decomposition). Wired the CLI
+  board expand path. 34 tests (depth boundary depth==maxDepth · parent+1
+  · a parsing table) · bidirectional mutation-RED · Opus PASSed. ENV.md
+  updated
+- [x] **D3-S1b** ✅ 2026-07-11 Parent tool-deny inheritance — pure
+  `inheritParentToolDeny(parent,child)` (@muse/multi-agent: intersects
+  child⊆parent, drops a requested tool not present on the parent, keeps
+  the child as-is if the parent is unrestricted) + a structural clamp
+  wired into the ask-decompose worker's execute (worker
+  allowedToolNames = the parent intersection, args.metadata left
+  unmutated, planner/synthesize unclamped). 8+2 tests · bidirectional
+  mutation-RED (removing the demotion → tool `c` leaks → RED). Opus PASSed
+  + an explicit significance judgment: the pure invariant is real, and
+  pre-placing the clamp at the actual enforcement point is genuine
+  defense-in-depth. ⚠caveat: the current production caller never passes a
+  broader set, so the clamp is a production no-op (verified via a
+  test-only seam), zero user-visible change → CHANGELOG omitted honestly.
+  Siblings: orchestrator verbatim · board top-level → backlog follow-up.
+  **D3-S1 complete (a+b)**
+- [x] **D3-S2** ✅ 2026-07-11 Single-run heartbeat wiring —
+  `ModelLoopRunner.heartbeat?`+an `AgentRuntimeOptions.heartbeat` injection
+  seam (agent-core stays independent of multi-agent), 3 model-loop
+  emission points (streamModelTurn text-delta · tool-call + only
+  genuine-exec in runToolBatch, gated the same way as
+  progress/failureStreak) call `emitHeartbeat` (try/catch, a throw never
+  breaks the loop). Zero new detectors (reuses the existing
+  detectStalled). Byte-identical when unwired. 4+2 tests (emission spy ·
+  fake-clock stall detection [400ms heartbeat = no false positive, 150ms
+  silence>timeout = detected]) · bidirectional mutation-RED · Opus
+  PASSed (judged the deferral legitimate). ⚠DEFERRED = feeding the live
+  SubAgentRunRegistry (autoconfigure→multi-agent dependency, or
+  reordering apps/api's construction order — an architectural decision) +
+  a stall-abort poller → backlog. Zero user-visible change
+- [x] **D3-S4a** ✅ 2026-07-11 Job concurrency cap — `muse job run`
+  (background) previously spawned unbounded jobs (verify-first) → now
+  capped (`MUSE_JOBS_MAX_CONCURRENT` default 3, ≥1). Pure
+  `resolveJobsMaxConcurrent`+`jobConcurrencyRefusal(runningCount,cap,
+  >=cap refused)` + `countRunningJobs` (reuses the existing jobSummary,
+  running only) + wired into `startBackgroundJobOrRefuse` (at-cap →
+  explicit stderr rejection + exitCode 1, start never called; inline
+  unchanged). 27 tests (parsing · a real jsonl fixture · an at-cap spy
+  never called) · bidirectional mutation-RED · Opus PASSed. ENV.md
+  updated
+- [x] **D3-S4b** ✅ 2026-07-11 Parent-headroom summary budget — pure
+  `perChildSynthesisBudget(headroom,n)=max(2000,floor(headroom×0.5/n))`
+  (div0/NaN/Inf/neg→floor 2000) + `budgetAndSpillOutputs` (truncates
+  over-budget children + spills the FULL original to
+  `~/.muse/board-spill/<taskid>-<i>.txt` [writeSpill is injectable],
+  the exact path stated in the segment) + wired into makeAgentExecutor
+  (real fs, the spill location noted in the answer). boardTaskPrompt
+  stays pure. `resolveBoardSynthesisHeadroom`
+  (MUSE_BOARD_SYNTHESIS_HEADROOM default 24000) ·
+  `boardSpillDir` (MUSE_BOARD_SPILL_DIR). 41 tests (budget boundaries ·
+  round-trip spill === original · real-fs round-trip) · bidirectional
+  mutation-RED (truncate removed · writeSpill skipped) · Opus PASSed
+  (confirmed no data loss). ENV.md updated. **D3-S4 complete (a+b)**
+- [x] **D1-S7a** ✅ 2026-07-11 🔒 Refs were already numeric indices
+  (0-based) with no CSS-selector model exposure → requirement (a)
+  ("numeric index") was already met. The delta = a "ref-stability unit":
+  closed a hole where `resolveTarget` (browser-tools.ts)'s numeric-ref
+  branch let through a ref not present in the current snapshot
+  (stale/ghost/hallucinated), letting the agent act on a ghost element —
+  now fails closed. `describeElement(ref)`=undefined → "call
+  browser_read" is refused (zero partial side effects). resolveTarget is
+  the single resolution point for click/hover/type/upload, so all 4
+  siblings share the fix. 3 behavior tests (valid proceeds · ghost click
+  rejected · ghost type rejected, calls never recorded) · bidirectional
+  mutation-RED (removing the guard → 2 RED, reproduced independently by
+  Opus) · format unchanged (`@e` string format kept → the eval contract
+  unaffected). `@e` string formatting and DOM stale-attribute clearing
+  (in a real browser) are out of unit scope (→VQ-19)
+- [x] **D1-S7b1** ✅ 2026-07-11 The browser action-budget decision core
+  (pure agent-core/browser-action-budget.ts):
+  createBrowserActionBudget(max, requires a positive integer) ·
+  recordBrowserAction · isBudgetExhausted (`used>=max`, boundary-exact —
+  a cap of N allows exactly N and rejects N+1) · isBudgetNearCap
+  (excludes exhausted) · browserActionsLabel (`actions_used N/M`) ·
+  guardBrowserAction (exhausted→allowed:false+refusal, near→allowed:
+  true+warning, else allowed:true). A behavior-sequence unit (guard→
+  record ×3, then the 4th refused, label "3/3") · bidirectional
+  boundary mutation-RED (`>=`→`>` gives 2 RED, near-cap gives 1 RED).
+  Core-only, not yet wired (b2 wires it). The existing
+  step-budget.ts is a token budget so it's a separate concern. Opus's
+  independent evaluator PASSed (reproduced the mutations). ※this is the
+  real fix behind fire 18's JUDGE-DRILL — the drill's forged off-by-one
+  and declaration-only bugs are correctly rebutted here
+- [x] **D1-S7b2** ✅ 2026-07-11 Wired b1's decision core. Created
+  createBrowserActionTracker (agent-core, a mutable seam reusing b1's
+  pure primitive: pre-decide→advance→post-label); buildBrowserTools
+  creates a single shared instance (a per-task lifetime, once per run) →
+  wired via a minimal structural seam BrowserActionGuard into
+  click/type/fill (3 tools sharing BrowserActToolDeps). On exhaustion at
+  the top of execute, fails closed (controller/resolveTarget never
+  reached) + on success attaches actionsUsed `N/M` · a near-limit
+  budgetWarning. Byte-identical when actionBudget isn't injected
+  (existing 81 tests unchanged). resolveBrowserMaxActions default 30 ·
+  `MUSE_BROWSER_MAX_ACTIONS` override. 4 tracker + 7 browser + 7 config
+  tests · bidirectional mutation-RED (removing the guard → controller
+  reached → RED; removing the exhaustion check → cap not honored → RED)
+  · Opus's 8-axis review PASSed (fail-close · per-task lifetime ·
+  arithmetic · byte-identical · semantics). @muse/browser stays
+  independent of agent-core (structural typing). ※Siblings unwired
+  (→backlog): upload/key(Enter)/open counting · timeout uses the
+  controller's existing protocolTimeout
+- [x] **D1-S7c** ✅ 2026-07-11 The dialog snapshot field already existed;
+  the delta = making the disposition fail-close. registerDialogHandler
+  previously auto-ACCEPTed every dialog (confirm OK · prompt submitted
+  the text) — a fail-open path — now replaced with pure dialog-policy.ts:
+  `decideDialogDisposition` (confirm/prompt/unknown→dismiss,
+  alert/beforeunload→accept) + `planDialogResponse` (dismiss has no
+  response) + `settleDialog` (a fake spy verifies real accept/dismiss
+  calls). 12 tests · bidirectional mutation-RED (confirm→accept · a
+  ternary flip) · Opus PASSed (fail-close direction · spy behavior · no
+  accept fall-through · tightening-only invariant). controller.ts +
+  puppeteer:425's stale doc updated alongside. ※Trade-off: an approved
+  "click submit → page confirm" flow is currently left incomplete
+  (fail-safe, surfaced in the snapshot)
+- [x] **D1-S7d1** ✅ 2026-07-12 🔒 A deterministic page-content guard (pure
+  page-content-guard.ts, self-contained · no @muse/recall dependency):
+  defangPageText (escapes `</page>`/`<page>` break-out to full-width ·
+  neutralizes `](` to block markdown image/link exfiltration ·
+  an instruction-override regex `ignore/disregard/forget/override…
+  previous/above…instructions/rules`→`[defanged-directive]`, bounded
+  `{0,40}?` = ReDoS-safe) + wrapPageContent (`<page>…</page>`,
+  escape-then-wrap order) + defangElementName. snapshotToJson wraps text ·
+  elementsJson defangs names → covers every snapshot-returning tool
+  (open/read/click/type/…) along the assembly path. 11 pure + 2 assembly
+  tests (a fake controller with malicious text → the tool output is
+  defanged, OUTCOME-scored) · bidirectional mutation-RED (removing the
+  instruction rule → 6 RED, removing `](` → 4 RED) · clean prose stays
+  byte-identical · Opus's threat-model review PASSed (boundary · media ·
+  ReDoS · assembly path · honest positioning). The real e2e is d2
+- [x] **D1-S7d2** ✅ 2026-07-12 🔒 A real detached-Chrome e2e
+  (`scripts/eval-browser-injection.mjs`, `pnpm eval:browser-injection`,
+  model-free, Chrome-only). Malicious HTML fixtures (ignore-above ·
+  `![](exfil)` · an HTML-escaped `&lt;/page&gt;` boundary · an injection-
+  anchor label) served over loopback HTTP → a real
+  PuppeteerBrowserController (headless).open → confirmed the
+  browser_open/read tool output is `<page>`-wrapped and defanged (9/9
+  assertions, OUTCOME-scored). A real Chrome RUN (not skipped, a live
+  PASS) · mutation-kill (defang made a no-op → 7/9 FAIL reproduced, then
+  byte-identical restored). Opus PASSed → 2 findings fixed: the boundary
+  fixture was originally tautological (the browser parses `<page>` as an
+  empty tag, so innerText never reached it) → escaped it as `&lt;/page&gt;`
+  to reach it literally, making the test genuine (re-verified: disabling
+  the guard now flips the boundary count to 2, FAIL); removed a stray
+  header slice-marker. **D1-S7 (browser reliability, L) fully complete
+  (a+b1+b2+c+d1+d2)**
 
-#### W3 — 능력·UX
-- [x] **D4-S4** ✅ 2026-07-12 📈 file_edit 결정론 리페어 강화(fs-write-tools.ts). 기존 사다리(exact→trailing-ws→trim→unicode-fold→escape\n\r\t→hint)에 2개 추가: (1)**indent-preserve** — fuzzy가 indentation-relaxed(trim)로 매칭 성공 시 new_string을 파일의 실제 들여쓰기로 re-base(reindentToFile: oldIndent 프리픽스 제거→fileIndent 부착, blank 유지, 중첩 상대 indent 보존) → 12B의 틀린 들여쓰기가 파일 오염하던 버그 수정(exact/trailing-ws 경로는 no-op=byte-identical), (2)**escape-drift 확장** — unescapeQuotes(`\"`/`\'`/`\\`)를 기존 fail-close 가드(유니크 매칭 시만 채택) 하에 retry 루프化. 53 test·mutation-RED 양방향(re-indent 무력화→indent 오염 RED, unescapeQuotes 제거→`\"` RED)·Opus PASS(re-indent 정확·보수적·fail-close·wrong-place 없음). eval:computer-task 회귀-STABLE(local-forced pass^3). ※+10%p는 stochastic north-star(per-fire 확증 불가). 미추가 형제=whitespace-collapse·first/last-line anchoring(backlog)
-- [x] **D4-S1a** ✅ 2026-07-12 `muse mcp serve` write draft-first 프록시. `propose_action` MCP 툴(mcp-serve-tools.ts, buildMcpServeTools에 4번째): 외부 클라이언트가 action+draft(+arguments) 제안→기존 PendingApproval 큐(@muse/messaging recordPendingApproval 재사용, `resolvePendingApprovalsFile`=muse approvals 읽는 동일 파일, 신규 스토어0)에 파킹(source "mcp-serve"·providerId "mcp"·risk write·7일 TTL), "승인 대기, `muse approvals`로 검토" 반환. **실행 경로 0**(action/arguments는 파킹 데이터일 뿐 dispatch 안 됨) — outbound-safety 수출. blank action/draft→stage 전 throw(fail-close), stage reject→staged:true 아님. no-external-effect 계약: 실 recordPendingApproval temp round-trip + notesDir 무변 검증. 16 test·mutation-RED 양방향(stage 제거→round-trip RED, blank검증 제거→RED)·Opus outbound-safety 위협모델 PASS(실행경로 없음·provenance 구분). raw-draft spoofing 후속=VQ-20
-- [x] **D4-S1b** ✅ 2026-07-12 📈 **이미-성립 불변식**(fire 24 분해가 배터리 존재를 몰랐음). `apps/cli/scripts/verify-mcp-serve-grounding.mjs`가 `muse mcp serve` 최초 커밋 `cc1fdde81`(2026-07-07)에서 배터리+release-gate 등록(`eval-self-improving.mjs:62`)까지 함께 배송됨 → groundedSurfaces에 이미 카운트(현재 38). 실 MCP wire(SDK Client·initialize→tools/call·`buildMcpServeTools` 프로덕션 배선)로 인용게이트 행동검증: answerable→모든 인용이 실 seed(vpn.md) resolve·비-corpus 인용 차단·grounded 사실 포함, unanswerable→refusal·무-날조. 이 fire서 라이브 재실행 4/4 PASS 실증. **중복 배터리 날조=groundedSurfaces ratchet이 막는 count-inflation이라 안 함**(정직). Opus 독립 검증 PASS(등록·행동·라이브·no-gap). "stdio 왕복" 실subprocess와 read 확대는 D4-S1c
-- [x] **D4-S1c1** ✅ 2026-07-12 `muse mcp serve` 캘린더 read 툴. `calendar_read`(buildMcpServeTools 5번째 read, risk read): from/to ISO 필수→독립 파싱→기존 `LocalCalendarProvider.listEvents({from,to})` 위임(윈도우 필터=provider), 이벤트 구조화 반환(startsAt/endsAt ISO 직렬화)+from/to echo. **양-bound pass-through 구조적 보장**(from,to 독립 파싱해 한 콜에 둘 다 전달=상한 drop 불가). fail-close: missing/blank/unparseable(NaN)/`to<=from`→throw, source 미호출(spy 검증). McpServeDependencies에 injectable listCalendarEvents(기본 LocalCalendarProvider). 19 test·mutation-RED 양방향(`to:from` drop→both-bounds RED, fail-close 제거→RED)·Opus PASS(pass-through·fail-close·OUTCOME·read-only). ※fire 26 JUDGE-DRILL 진짜-fix(드릴이 위조한 ignore-upper-bound를 구조적으로 rebut)
-- [x] **D4-S1c2** ✅ 2026-07-12 `muse mcp serve` 태스크 read 툴. `tasks_read`(buildMcpServeTools 6번째, risk read): status enum(open 기본/done/all)→기존 `LocalFileTasksProvider.list(status)` 위임, 태스크 구조화 반환(createdAt/completedAt ISO). status **pass-through**(하드코딩 아님, 정확 전달)·invalid status→throw+source 미호출(fail-close, spy 검증). McpServeDependencies에 injectable listTasks. `Task` 타입 domain-tools barrel export 1줄 추가(기존 타입 노출). 23 test·mutation-RED 양방향(하드코딩 open→done pass-through RED, invalid 가드 제거→RED)·Opus PASS(pass-through·fail-close·OUTCOME·read-only·barrel benign)
-- [x] **D4-S1c3** ✅ 2026-07-12 MCP 실 stdio subprocess 왕복 계약. `apps/cli/scripts/verify-mcp-stdio-contract.mjs`(`pnpm mcp:stdio-contract`, 모델-free): 실 `muse mcp serve` subprocess를 StdioClientTransport(process.execPath+dist)로 spawn→initialize→tools/list(6툴 다 확인)→tools/call `tasks_read`로 seed된 2 태스크 round-trip(count·title)+status open→1 필터. **InMemory 아닌 실 stdio wire**("listening on stdio (6 tools)" stderr 확인). skip=spawn실패만·assertion실패는 exit 1. 라이브 ALL PASS·mutation-RED(seed 1개→count RED, 데이터 민감)·Opus 독립 재실행 PASS. 형제: stale MCP_SERVE_INSTRUCTIONS("3 tools"→정확한 6툴, propose_action=park-not-execute 정직) 수정. **D4-S1(mcp serve 확장) 전체 완주(a·b·c1·c2·c3)**
-- [x] **D4-S2a** ✅ 2026-07-12 macOS 사진 검색 — 제약("신규툴 신설 금지") 준수: 기존 `mac_spotlight_search`에 `imagesOnly` 플래그 확장(신규 툴 0). mdfind ARGV는 불변(query를 predicate로 안 넣음=injection-safe), imagesOnly면 반환 경로를 이미지 확장자(jpg/png/heic/…)로 **코드 후-필터**(cap은 필터 후 적용, total=필터 카운트). 반환 경로가 곧 export 핸들. default(플래그 무) byte-identical. 3 test·mutation-RED(필터 제거→.txt/.pdf leak RED)·Opus 8축 PASS(injection-safe·필터정확·total/cap·no 혼동툴). eval:tools는 6m40s timeout(무거운 로컬셋, 미완 — 변경 가산적이라 selection 회귀 위험 near-zero, 결정론게이트로 판정). Photos.app 관리-라이브러리 딥 export는 설계 포크=VQ-21
-- [x] **D4-S2b** ✅ 2026-07-12 macOS 앱종료 — mac_system_set에 `quit_app` enum+`app` param(volume value 선례, optional). osascript `tell application "<escapeAppleScript(app)>" to quit`(공유 escaper 재사용, backslash-first 순서로 escaper-escape 우회 방지). 빈/공백 app→fail-close(osascript 미호출). 신규툴 0. 4 test(happy·인젝션 escaped·blank fail-close·non-zero)·mutation-RED 양방향(escaper 제거→breakout RED, guard 제거→osascript 호출 RED)·Opus 위협모델 PASS(breakout 구성 불가·additionalProperties 유지·no 혼동툴). eval:tools는 로컬셋 heavy timeout(가산 enum+키워드, selection 회귀 near-zero — 결정론게이트+Opus 무혼동 확인으로 판정)
-- [x] **D4-S2c** ✅ 2026-07-12 macOS 다크모드 — mac_system_set에 `dark_mode_on`/`dark_mode_off` parameterless enum. 고정 osascript `tell application "System Events" to tell appearance preferences to set dark mode to true/false`(유저입력 無=인젝션 표면 0, 이스케이프 불요). on→true/off→false 매핑. 신규툴 0. 3 test(captured 스크립트 true/false pin)·mutation-RED(ternary flip→off-test kill)·Opus PASS(매핑정확·고정스크립트·무관 breakage 없음)
-- [x] **D4-S2d** ✅ 2026-07-12 macOS 블루투스 — mac_system_set에 `bluetooth_on`/`bluetooth_off` enum, focus 패턴 **exact 미러**(named Shortcut `shortcuts run` argv=인젝션 없음, 클린 Bluetooth CLI 부재). `MUSE_BLUETOOTH_ON_SHORTCUT`/`OFF` env override(actuator-tools 배선)+bluetoothShortcutSetupMessage(missing→"Set Bluetooth" 액션 안내)+**doctor check 완전 배선**(runLocalDoctor에 focus 옆 별개 check, focus test 무영향, 4 행동테스트). 신규툴 0·docs:env. 5+4 test·mutation-RED(이름 해소 무력화→override/off test RED)·Opus PASS(미러 정확·배선·argv-not-shell). 밝기(value→Shortcut-input)는 D4-S2d2
-- [x] **D4-S2d2** ✅ 2026-07-12 macOS 밝기 — mac_system_set에 `brightness` enum, **value-passing 메커니즘**(focus/bluetooth parameterless와 다름): `value`(0–100) clamp+round → named Shortcut("Muse Set Brightness")에 **stdin input**으로 전달(`shortcuts run --input-path - --output-path -`, `mac_shortcut_run` 선례 재사용). `DEFAULT_BRIGHTNESS_SHORTCUT`+`MUSE_BRIGHTNESS_SHORTCUT` env override(actuator 배선)+`brightnessShortcutSetupMessage`(missing→"Set Brightness" 액션+Shortcut Input 안내)+**doctor check**(`brightnessShortcutCheck` 단일 shortcut, focus/bluetooth 미러, runLocalDoctor 배선). value는 groundedArgs 유지(날조 차단). 신규툴 0·docs:env. 9+4 test·mutation-RED 양방향(stdin input 제거→value 미전달 RED, clamp 제거→150→"100" RED)·Opus PASS(stdin 값전달 실검증·threat-model numeric-coercion+argv-not-shell·형제 무손상·envInventory). **D4-S2 mac 배치 완전 종료(a·b·c·d·d2·e)**
-- [x] **D4-S2e** ✅ 2026-07-12 Apple 연락처 '쓰기'(draft-first 게이트). `mac_contacts_write` 툴(risk execute): name 필수+phone/email 옵션→Contacts.app `make new person`. **draft-first 강제**(message-send `sendMessageWithApproval` 미러): `decision=await approvalGate(draft)`(throw→deny)→`if(!approved) return{written:false}` **osascript 전 반환**·승인시만 write·action-log(refused/performed/failed). deny/throw/timeout→**write 0**(spy `called`=false 검증). 필드 escapeAppleScript(인젝션). `buildContactsApprovalGate`(non-interactive fail-close, messaging 미러)+actuator 등록+armed-lockstep. 6 tool test+3 CLI-gate parity test·mutation-RED 양방향(gate 제거→deny-write RED, blank 제거→RED)·eval:tools 골든 3(EN/KO save-contact·negative)·Opus outbound-safety 위협모델 PASS. ※fire 34 JUDGE-DRILL 진짜-fix(드릴이 위조한 decision.approved 무시=fail-open을 정확히 rebut). **D4-S2 mac 배치 완주(a·b·c·d·e), 밝기 d2만 잔여**
-- [x] **D7-S1a** ✅ 2026-07-12 슬래시 명령 단일소스 레지스트리 — chat-ink 로컬 SLASH_COMMANDS(`{cmd,desc}` **27개**)를 `slash-command-registry.ts` 1-엔트리(name·desc·category·aliases?·platforms)로 추출, chat SLASH_COMMANDS를 `slashCommandsForPlatform("chat")`로 **파생**(하드코딩 배열 제거=단일소스). desc byte-identical·순서 보존(autocomplete 메뉴 불변). platforms: 세션계열 15=chat-only, list/show 12=chat+cli. 중복제거 증명: 6 test — `Set(names).size===len` 유니크+name/alias 충돌 스캔+플랫폼 게이팅(cli는 chat-only 제외)+matchSlashCommands 파생목록 동작·mutation-RED 양방향(dup→RED, 게이트 무력화→RED)·Opus PASS(옛배열 제거·byte-identical·real dedup). CLI-help 반영=D7-S1b
-- [x] **D7-S1b** ✅ 2026-07-12 CLI help 반영 — 레지스트리 `cli` 태그를 **실제 CLI 명령 surface(`COMMAND_STUBS` 생성 매니페스트, `muse --help`/completion 권위 소스)와 cross-check**해 drift 락킹. 발견: cli-태그 12개 중 **jobs·pref·reflect 3개가 실재 `muse <name>` 없음**(CLI엔 `runs`/`job`·`remember`·`reflections`). 정정: `CommandEntry.cliName?` 추가→`reflect`={cliName:"reflections"} 유지, `jobs`·`pref`=chat-only(깔끔한 1:1 CLI 명령 없음). `slashCommandsForPlatform("cli")`는 `cliName ?? name` 투영. drift-lock test(`slash-command-registry.cli-drift.test.ts` 4): cli-태그 모든 항목이 `COMMAND_STUBS`에 실재 assert(선언 아닌 실 매니페스트 대조)+투영 cmd 실재+reflect→reflections(never reflect)+chat 27 불변. mutation-RED 양방향(reflect cliName 제거→RED, jobs cli 복귀→RED) 독립 재현. chat surface 불변(27). Opus PASS(COMMAND_STUBS=commander 트리 pin 확인·독립 mutation 재현·3정정 사실확인). 비차단: cli 투영은 아직 프로덕션 소비자 없음(정직 — drift-lock+태그정정이 delivered 범위)
+#### W3 — capability · UX
+- [x] **D4-S4** ✅ 2026-07-12 📈 Strengthened file_edit deterministic
+  repair (fs-write-tools.ts). Added 2 rungs to the existing ladder
+  (exact→trailing-ws→trim→unicode-fold→escape\n\r\t→hint): (1)
+  **indent-preserve** — when fuzzy matches by relaxing indentation
+  (trim), re-base new_string onto the file's real indentation
+  (reindentToFile: strips the old_string's indent prefix, attaches the
+  file's indent, keeps blank lines, preserves nested relative indent) →
+  fixes a bug where the 12B's wrong indentation contaminated the file
+  (the exact/trailing-ws paths remain no-ops = byte-identical), (2)
+  extended **escape-drift** — turned unescapeQuotes (`\"`/`\'`/`\\`) into
+  a retry loop under the existing fail-close guard (adopted only on a
+  unique match). 53 tests · bidirectional mutation-RED (disabling
+  re-indent → indent contamination goes RED; removing unescapeQuotes →
+  `\"` goes RED) · Opus PASSed (re-indent accuracy · conservatism ·
+  fail-close · no wrong-place edits). eval:computer-task regression-
+  STABLE (local-forced pass^3). ※the +10pp figure is a stochastic
+  north-star (can't be confirmed per-fire). Unaddressed siblings =
+  whitespace-collapse · first/last-line anchoring (backlog)
+- [x] **D4-S1a** ✅ 2026-07-12 `muse mcp serve` write draft-first proxy.
+  A `propose_action` MCP tool (mcp-serve-tools.ts, the 4th in
+  buildMcpServeTools): an external client proposes an action + draft
+  (+ arguments) → parked into the existing PendingApproval queue
+  (reusing @muse/messaging's recordPendingApproval,
+  `resolvePendingApprovalsFile` = the exact file `muse approvals` reads,
+  zero new stores) (source "mcp-serve" · providerId "mcp" · risk write ·
+  a 7-day TTL), returns "pending approval, review with `muse approvals`."
+  **Zero execution path** (action/arguments are just parked data, never
+  dispatched) — this is the edge's export of outbound-safety. A
+  blank action/draft throws before staging (fail-close); a rejected stage
+  never returns staged:true. No-external-effect contract: verified via a
+  real recordPendingApproval temp round-trip + confirmed notesDir stays
+  unchanged. 16 tests · bidirectional mutation-RED (removing staging →
+  round-trip goes RED, removing blank validation → RED) · Opus's
+  outbound-safety threat-model review PASSed (no execution path ·
+  provenance distinction). raw-draft spoofing is a follow-up = VQ-20
+- [x] **D4-S1b** ✅ 2026-07-12 📈 **An invariant that already held** (the
+  fire-24 decomposition didn't know the battery existed).
+  `apps/cli/scripts/verify-mcp-serve-grounding.mjs` shipped alongside
+  `muse mcp serve`'s first commit `cc1fdde81` (2026-07-07), including
+  battery + release-gate registration (`eval-self-improving.mjs:62`) →
+  already counted in groundedSurfaces (currently 38). Verified the
+  citation gate's real behavior against the real MCP wire (SDK Client ·
+  initialize→tools/call · `buildMcpServeTools`'s production wiring):
+  answerable → every citation resolves against a real seed (vpn.md), a
+  non-corpus citation is blocked, grounded facts are included;
+  unanswerable → refusal, zero fabrication. This fire re-ran it live 4/4
+  PASS as proof. **Did not fake a duplicate battery to inflate the count**
+  — the groundedSurfaces ratchet is exactly what blocks that
+  (honesty). Opus's independent verification PASSed (registration ·
+  behavior · live · no gap). Real "stdio round-trip" via a real
+  subprocess and expanded reads = D4-S1c
+- [x] **D4-S1c1** ✅ 2026-07-12 `muse mcp serve`'s calendar read tool.
+  `calendar_read` (the 5th read tool in buildMcpServeTools, risk read):
+  requires from/to as ISO strings → parsed independently → delegates to
+  the existing `LocalCalendarProvider.listEvents({from,to})` (the
+  provider owns the window filter), returns structured events
+  (startsAt/endsAt ISO-serialized) + echoes from/to. **Structurally
+  guaranteed pass-through of both bounds** (from and to are parsed
+  independently and both delivered in one call — the upper bound can't
+  structurally be dropped). Fail-close: missing/blank/unparseable
+  (NaN)/`to<=from` → throws, the source is never called (spy-verified).
+  McpServeDependencies got an injectable listCalendarEvents (defaults to
+  LocalCalendarProvider). 19 tests · bidirectional mutation-RED
+  (dropping `to:from` → both-bounds test goes RED; removing fail-close →
+  RED) · Opus PASSed (pass-through · fail-close · OUTCOME · read-only).
+  ※this is the real fix behind fire 26's JUDGE-DRILL (the drill's forged
+  ignore-upper-bound bug is structurally rebutted here)
+- [x] **D4-S1c2** ✅ 2026-07-12 `muse mcp serve`'s task-read tool.
+  `tasks_read` (the 6th in buildMcpServeTools, risk read): a status enum
+  (open by default/done/all) → delegates to the existing
+  `LocalFileTasksProvider.list(status)`, returns structured tasks
+  (createdAt/completedAt ISO). Status is **passed through** (not
+  hardcoded, delivered exactly) · an invalid status → throws + the
+  source is never called (fail-close, spy-verified). McpServeDependencies
+  got an injectable listTasks. Added a 1-line barrel export of the
+  `Task` type from domain-tools (exposing an existing type). 23 tests ·
+  bidirectional mutation-RED (hardcoded "open"→pass-through goes RED,
+  removing the guard→fail-close goes RED) · Opus PASSed (pass-through ·
+  fail-close · OUTCOME · read-only · a benign barrel export)
+- [x] **D4-S1c3** ✅ 2026-07-12 The real MCP stdio subprocess round-trip
+  contract. `apps/cli/scripts/verify-mcp-stdio-contract.mjs`
+  (`pnpm mcp:stdio-contract`, model-free): spawns a real `muse mcp serve`
+  subprocess via StdioClientTransport(process.execPath+dist) →
+  initialize→tools/list (confirms all 6 tools)→tools/call `tasks_read`
+  round-trips 2 seeded tasks (count · title) + filters status
+  open→1. **A real stdio wire, not InMemory** (confirmed via the
+  "listening on stdio (6 tools)" stderr message). A real live RUN (not
+  skipped, mutation-RED — seed 1 fewer task → count goes RED, data-
+  sensitive), Opus independently re-ran it and PASSed. Sibling: fixed
+  stale MCP_SERVE_INSTRUCTIONS ("3 tools"→the accurate 6 tools,
+  propose_action=park-not-execute stated honestly). **D4-S1 (mcp serve
+  extension) fully complete (a·b·c1·c2·c3)**
+- [x] **D4-S2a** ✅ 2026-07-12 macOS photo search — honored the
+  constraint ("never create a new tool") by extending the existing
+  `mac_spotlight_search` with an `imagesOnly` flag (zero new tools). The
+  mdfind ARGV stays unchanged (query is never embedded into a predicate =
+  injection-safe); when imagesOnly, returned paths are **post-filtered
+  in code** by image extension (jpg/png/heic/…) (the cap applies after
+  filtering, total = the filtered count). The returned path is itself the
+  export handle. Default behavior (flag absent) is byte-identical. 3
+  tests · mutation-RED (removing the filter → .txt/.pdf leak goes RED) ·
+  Opus's 8-axis review PASSed (injection-safe · filter accuracy ·
+  total/cap ordering · no confusable tool). eval:tools timed out at
+  6m40s (a heavy local test set, incomplete — but the change is additive,
+  so the selection-regression risk is near-zero; judged by the
+  deterministic gate instead). Photos.app's managed-library deep export
+  is a separate design fork = VQ-21
+- [x] **D4-S2b** ✅ 2026-07-12 macOS quit-app. Added a `quit_app` enum +
+  `app` param to mac_system_set (optional, following the volume-value
+  precedent). osascript `tell application "<escapeAppleScript(app)>" to
+  quit` (reuses the shared escaper, backslash-first order prevents
+  bypassing the escaper via escaping the escaper). A blank/whitespace
+  app fails closed (osascript is never called). Zero new tools. 4 tests
+  (happy path · escaped injection · blank fail-close · non-zero) ·
+  bidirectional mutation-RED (removing the escaper → breakout goes RED,
+  removing the guard → osascript still called goes RED) · Opus's
+  threat-model review PASSed (breakout impossible to construct ·
+  additionalProperties kept · no confusable tool)
+- [x] **D4-S2c** ✅ 2026-07-12 macOS dark mode. Added parameterless
+  `dark_mode_on`/`dark_mode_off` enum values to mac_system_set. A fixed
+  osascript (`tell application "System Events" to tell appearance
+  preferences to set dark mode to true/false`) — no user input, so zero
+  injection surface, no escaping needed. on→true, off→false. Zero new
+  tools. 3 tests (pin the captured script's true/false) · mutation-RED
+  (a ternary flip kills the off-test) · Opus PASSed (mapping accuracy ·
+  fixed script · no unrelated breakage)
+- [x] **D4-S2d** ✅ 2026-07-12 macOS Bluetooth. Added
+  `bluetooth_on`/`bluetooth_off` to mac_system_set (an exact mirror of
+  the focus pattern: a named Shortcut invoked via `shortcuts run` argv —
+  no clean Bluetooth CLI exists). `MUSE_BLUETOOTH_ON/OFF_SHORTCUT` env
+  overrides (wired into actuator-tools) +
+  bluetoothShortcutSetupMessage (missing→"Set Bluetooth" guidance) + a
+  **fully wired doctor check** (the orchestrator finished the worker's
+  unwired bluetoothShortcutsCheck — dead code — by wiring it into
+  runLocalDoctor as a separate check next to focus, no impact on the
+  focus test, 4 behavior tests). Zero new tools · docs:env. 5+4 tests ·
+  mutation-RED (disabling name resolution → override/off tests go RED) ·
+  Opus PASSed (correct name resolution · override precedence · setup
+  message says Bluetooth not focus · shortcut argv, no shell injection ·
+  doctor check fully wired · additionalProperties kept · docs:env).
+  Brightness (value→Shortcut-input) is D4-S2d2
+- [x] **D4-S2d2** ✅ 2026-07-12 macOS brightness. Added a `brightness`
+  enum to mac_system_set — a **value-passing mechanism**, unlike the
+  parameterless focus/bluetooth: `value` (0–100) is clamped+rounded →
+  delivered to a named Shortcut ("Muse Set Brightness") via **stdin
+  input** (`shortcuts run --input-path - --output-path -`, reusing the
+  `mac_shortcut_run` precedent). `DEFAULT_BRIGHTNESS_SHORTCUT`+
+  `MUSE_BRIGHTNESS_SHORTCUT` env override (wired into the actuator) +
+  `brightnessShortcutSetupMessage` (missing→"Set Brightness" action +
+  Shortcut Input guidance) + a **doctor check**
+  (`brightnessShortcutCheck`, a single shortcut, mirroring
+  focus/bluetooth, wired into runLocalDoctor). value stays under
+  groundedArgs (blocks fabrication). Zero new tools · docs:env. 9+4
+  tests · bidirectional mutation-RED (removing stdin input → value never
+  delivered goes RED; removing the clamp → 150→"100" goes RED) · Opus
+  PASSed (real verification of stdin value delivery · threat-model:
+  numeric coercion + argv-not-shell · siblings unaffected ·
+  envInventory). **The D4-S2 macOS batch fully complete (a·b·c·d·d2·e)**
+- [x] **D4-S2e** ✅ 2026-07-12 Apple Contacts "write" (a draft-first
+  gate). The `mac_contacts_write` tool (risk execute): name required +
+  phone/email optional → Contacts.app `make new person`. **Enforces
+  draft-first** (mirroring message-send's `sendMessageWithApproval`):
+  `decision=await approvalGate(draft)` (a throw = deny) → `if(!approved)
+  return{written:false}` **before osascript runs** — a write happens
+  only on approval, action-log records refused/performed/failed. Deny/
+  throw/timeout → **zero writes** (verified via a spy `called`=false).
+  Field values go through escapeAppleScript (injection defense).
+  `buildContactsApprovalGate` (non-interactive fail-close, mirroring
+  messaging) + registered on the actuator + armed-lockstep. 6 tool tests
+  + 3 CLI-gate parity tests · bidirectional mutation-RED (removing the
+  gate → deny-write goes RED, removing the blank check → RED) ·
+  eval:tools golden set of 3 (EN/KO save-contact · negative) · Opus's
+  outbound-safety threat-model review PASSed. ※this is the real fix
+  behind fire 34's JUDGE-DRILL (the drill's forged fail-open —
+  ignoring decision.approved — is correctly rebutted here). **The D4-S2
+  macOS batch complete (a·b·c·d·e), only brightness d2 remained**
+- [x] **D7-S1a** ✅ 2026-07-12 Single-source slash-command registry —
+  extracted chat-ink's local SLASH_COMMANDS (**27** `{cmd,desc}` entries)
+  into `slash-command-registry.ts`'s single-entry-per-command shape
+  (name · desc · category · aliases? · platforms), chat's SLASH_COMMANDS
+  is now **derived** from `slashCommandsForPlatform("chat")` (removing
+  the hardcoded array = single-sourced). desc stays byte-identical ·
+  order preserved (the autocomplete menu is unchanged). Platforms:
+  15 session-related entries are chat-only, 12 list/show entries are
+  chat+cli. Proof of deduplication: 6 tests — `Set(names).size===len`
+  uniqueness + name/alias collision scanning + platform gating (cli
+  excludes chat-only) + matchSlashCommands still works against the
+  derived list · bidirectional mutation-RED (dup → RED, disabling the
+  gate → RED) · Opus PASSed (confirmed the old array removed ·
+  byte-identical · real dedup). CLI-help reflection = D7-S1b
+- [x] **D7-S1b** ✅ 2026-07-12 Reflected into CLI help — the registry's
+  `cli` tags are **cross-checked against the real CLI command surface**
+  (`COMMAND_STUBS`, the generated manifest that's the authoritative
+  source for `muse --help`/completion) to lock out drift. Finding: 3 of
+  the 12 cli-tagged entries — jobs · pref · reflect — **don't actually
+  have a `muse <name>` command** (the CLI has `runs`/`job`,
+  `remember`, `reflections`). Fix: added `CommandEntry.cliName?` →
+  `reflect` = {cliName:"reflections"} kept, `jobs`·`pref` became
+  chat-only (no clean 1:1 CLI command). `slashCommandsForPlatform("cli")`
+  projects `cliName ?? name`. 4 drift-lock tests
+  (`slash-command-registry.cli-drift.test.ts`): every cli-tagged entry
+  asserted to actually exist in `COMMAND_STUBS` (checked against the
+  real manifest, not a claim) + the projected command actually exists +
+  reflect→reflections (never reflect) + chat's 27 unchanged.
+  Bidirectional mutation-RED (removing reflect's cliName → RED,
+  restoring jobs to cli → RED), independently reproduced. The chat
+  surface stays unchanged (27). Opus PASSed (COMMAND_STUBS pins the
+  commander tree · independently reproduced the mutations · confirmed
+  the 3 fixes as facts). Non-blocking: the cli projection has no
+  production consumer yet (honestly — drift-lock + tag correction is the
+  delivered scope)
 
-#### W4 — 라우팅·KO
-- [x] **D5-S1** ✅ 2026-07-12 privacy routing follow-ups (3파트, 순수 additive·기존 20 계약 무수정). **(b)** context-free 툴 사용→클라우드 "no" 결정론 codification: `PrivacyRequestInput.usesTools?` 결정론 신호(hasPersonalContext 다음 tier)→툴-요청은 텍스트 무관 로컬 고정("no personal-data conduit rides a cloud request"); resolvePrivacyRoutedModel 스루(route flip 유닛 증명). 정책층 defense-in-depth(chat cloud turn은 이미 buildCloudTurnRequest로 구조적 toolless, Opus 실검증). **(c)** personaPreamble nuance 문서화(persona=fixed string이나 chosen relationship 노출→personal, hasPersonalContext 유지). **(d)** KO 구어 소유격 `내꺼`/`제꺼`(꺼=aspirated) 토큰 추가+오탐 쌍 방어(`제거`removal/`내용`/`안내`는 거≠꺼로 context-free 유지, negative 유닛)·`muse setup cloud` privacy-routing 안내단계(cloudPrivacyRoutingGuidance, action stdout 실배선·behavioral 캡처 테스트). policy +12 유닛·cli setup +3 유닛·mutation-RED(usesTools 브랜치 제거→route-flip RED, 제꺼 제거→RED)·Opus PASS(20 계약 무수정·꺼/거 판별·additive·fail-close 보존)
-- [x] **D5-S2** ✅ 2026-07-12 `resolveAuxiliaryModel(task,env)` 통합 리졸버(autoconfigure, 순수 additive). 태스크 compaction/vision/rewrite/judge/embedding-rescue. precedence: `MUSE_AUX_<TASK>_MODEL`(신규 일반화) > legacy per-task(vision→MUSE_VISION_MODEL·embedding-rescue→MUSE_RECALL_EMBED_MODEL; compaction/rewrite/judge는 legacy 노브 無) > sessionModel. **로컬-우선 불변(fail-close)**: 선택 모델이 cloud(`classifyProviderLocality`)이고 `isPersonalContext` 또는 `MUSE_LOCAL_ONLY`면 override→sessionModel(`keptLocalForPrivacy:true`)·aux 노브가 개인 태스크를 클라우드로 escalate 불가; personal-context 없고 local-only 아니면 cloud 존중(route:cloud). 11 유닛(precedence·하위호환·local-only 게이트 positive/negative)·mutation-RED 양방향(override 브랜치 제거→personal-cloud RED·legacy fallback 제거→MUSE_VISION_MODEL RED)·docs:env(MUSE_AUX_*_MODEL 5). Opus PASS(gemini→cloud/ollama→local 실검증·negative case·resolveVisionModel 무변경·envInventory:pass). **미배선(리졸버+유닛 스코프, 콜사이트 마이그레이션=follow-up)** — 로드맵 수용 "리졸버·하위호환·local-only 게이트 유닛" 정확 충족
-- [x] **D5-S3** ✅ 2026-07-12 canUseNativeTools 死코드→실게이트 배선(VQ-2). @muse/model `canUseNativeTools`(toolCalling∧structuredOutput, 死코드)를 AgentRuntime 요청경로(prepareInvocation, modelTools 직후)에 `assertModelCanUseTools(selected, tools.length)`로 배선 → tools 노출된 채 capability-부재 모델이면 **명시적 `ModelToolCallingUnsupportedError`**(조용한 무시 대신). fail-OPEN 안전(tools 0·미지 modelId·listModels throw→무차단, 기존동작 보존)·per-instance `toolCapabilityCache`(핫패스 반복 listModels 회피). 완전 텍스트 프로토콜(파서)은 별도 L 이연. gemma4(toolCalling=true) 무영향, codex/*가 실제 형제. 6 behavioral(run 경로: toolCalling=false·structuredOutput=false→throw, capable→no-throw, tools0·미지·listModels-throw→fail-open)·mutation-RED 양방향(throw 무력화·toolCount 0)·Opus PASS(실배선·fail-open 4분기·핫패스 회귀 없음·executeToolPlanGated 무개입)
-- [x] **D5-S4** ✅ 2026-07-12 명시적 fallback 체인 리졸버 `resolveModelFallbackChain(env, isPersonalContext?)`(autoconfigure, 순수 additive·미배선). "숨은 재시도 금지" — `MUSE_MODEL_FALLBACKS`(콤마 구분) 설정 시에만 순차 체인; 미설정/blank→`{chain:[],dropped:[]}`(byte-identical, 폴백 없음). **각 폴백 fail-close 게이트**(resolveAuxiliaryModel local-first 미러): cloud 폴백은 `MUSE_LOCAL_ONLY` 또는 `isPersonalContext`면 dropped(reason 표기)·context-free+non-local-only면 chain 유지. order 보존·공백/빈 엔트리 필터. 10 유닛(unset·체인워크·local-only 게이트·privacy 게이트·negative control)·mutation-RED 양방향(local-only drop 제거→RED·personal drop 제거→RED)·docs:env(MUSE_MODEL_FALLBACKS)·Opus PASS(locality 실검증·negative control·resolveAuxiliaryModel 무변경·fail-close). **미배선**(체인→ModelFallbackStrategy 구성 + "폴백 X 사용" 답변 마커 = follow-up; runtime-assembly는 타루프 HANG 블로커라 미접촉) — 로드맵 수용 "체인워크·게이트 유닛·미설정 byte-identical" 정확 충족
-- [x] **D1-S6a** ✅ 2026-07-12 (JUDGE-DRILL fire) 턴-내 one-shot 회복 상태 **프리미티브** `OneShotRecoveryState`(agent-core). `claim(branch)`가 첫 claim만 true·이후 false 반환→`if(state.claim(x)){recover}`이 턴당 최대 1회(이중 재시도 구조적 불가). 회복 분기(repair/false-done-reprompt/reverify)의 산재된 flag를 단일 상태객체로 통합할 기반. 4 유닛(guaranteed-once·guarded-body 정확 1회·distinct 브랜치 독립·hasClaimed 순수쿼리)·mutation-RED(once-guard 제거→3 RED)·index export. ※JUDGE-DRILL: 고의결함(claim 항상 true+hollow 테스트) 주입→독립 Opus ④b가 정확 FAIL(claim 반전·2번째-claim-false 미검증 지목)→롤백→진짜 fix Opus PASS. model-loop.ts 산재 flag 실배선은 D1-S6b(1112줄 중앙파일·다루프 접촉이라 별도 신중 배선)
-- [x] **D1-S6b** ✅ 2026-07-12 **already-satisfied**(독립 Opus 적대판정 NO_TARGET). D1-S6 전제("Muse 개별회복 산재 raw flag→double-fire 가능")가 현 코드에선 거짓 — 5개 턴-내 회복 분기 전부 이미 at-most-once: false-done(runResistingFalseDone 단일 비루프 호출)·reverify(ReverifyNudgeTracker.nudged per-turn)·post-compaction/ping-pong(터미널 return + 전용 Guard 클래스)·attributed-repair(단일-패스). 강제 배선은 무동작-변경 인위적 리팩터(진안 "관련없는 리팩터 금지"). OneShotRecoveryState(D1-S6a)는 **미래/신규 회복 분기용 프리미티브**로 존재. 코드 변경 0(honest, 카운트-인플레 아님 — 독립 evaluator가 already-satisfied 확인)
-- [x] **D2-S3** ✅ 2026-07-12 난독화 해제 확장(VQ-3, 🔒). dangerous-command DS-2 정규화기에 실부재 2벡터만 추가(NFKC+ANSI; $IFS/라인연속/comment-strip/홈경로는 기존). `normalizeCommandNfkc`(전각 `ｒｍ`→`rm` NFKC fold)+`stripAnsiEscapes`(ECMA-48 CSI `\x1b[…` strip, ReDoS-safe char-class)를 파이프라인 **front**에 추가 → clean ASCII엔 no-op이라 기존 DS-2 byte-identical(무수정). 전각/ANSI 우회 페이로드 차단. **DETECTION-only**(순수 변환, executor는 원본 실행, folded 사본 스코프 밖 미유출 — Opus 위협모델 실검증 zero 외부 caller). 9 신규 test(전각 rm/sudo/타깃·ANSI 삽입·no-over-block 인용내 전각·helper 유닛)+기존 27 무수정 green(36/36)·mutation-RED 양방향(NFKC 제거→전각 RED·ANSI 제거→RED)·Opus PASS(독립 우회 프로빙·quote-awareness 유지·ReDoS-safe)
-- [x] **D2-S4** ✅ 2026-07-12 runner stdout→모델 시크릿 마스킹(VQ-4, 🔒). `redactSecretsInText`(@muse/shared)를 subprocess 출력→모델 경로 2 sink에 배선: (1) `runner.ts` run_command 반환 stdout/stderr, (2) 형제-감사로 발견한 `muse-tools-skills.ts` skill 반환 stdout/stderr(둘 다 raw로 모델에 유출되던 동일 취약클래스). truncation 무결: capTruncated를 **pre-redact 길이**로 계산(redact가 길이 바꿔 flag 오염 방지)한 뒤 redact. 대형출력 성능무해(256KB<250ms 실측 17.7ms, SECRET_PATTERNS ReDoS-safe). 5 신규 test(runner/skills 마스킹·truncation 보존·no-over-mask·대형출력 perf)·mutation-RED 양방향·Opus PASS(두 sink 배선·truncation 실검증·no over-mask·perf 실측·제3형제 없음 확인). ※openclaw secret-mask 참조
-- [x] **D2-S5** ✅ 2026-07-12 calendar 스토어 암호화-at-rest(🔒, backlog "LAST encryption item"). memory-encryption AES-256-GCM envelope를 **@muse/calendar in-package mirror**(belief-provenance 선례 — @muse/memory/@muse/stores heavy dep 회피, node:crypto/node:os만). `calendar-encryption.ts`(EncryptedCalendarEnvelope·encrypt/decrypt/isEnvelope·`MUSE_MEMORY_KEY` 재사용+calendar per-host fallback·`MUSE_CALENDAR_ENCRYPT` opt-in). local-provider readAll(envelope 자동감지→decrypt, **wrong-key throw는 quarantine catch 밖서 propagate**=fail-closed ciphertext 파괴 안 함)+writeAll(format-preserving: flag OR 기존 암호화상태). 4 라운드트립 test(envelope round-trip·raw 바이트 plaintext 無·wrong-key fail-closed 파일 무변경·plaintext default+format-preserving)·mutation-RED 양방향·docs:env(MUSE_CALENDAR_ENCRYPT). Opus PASS(per-encryption random iv/salt·no plaintext leak·fail-closed 파괴無·byte-identical default·heavy dep無·단일 write경로). D2-S5로 암호화-at-rest 큐 완료(notes-index는 의도적 plaintext)
-- [x] **D-KO-S1** ✅ 2026-07-12 ★ truncateUtf16Safe 추출 + 미안전 4곳 배선(VQ-6). `truncateErrorBody`(shared)의 lone-high-surrogate 드롭을 `truncateUtf16Safe(text,cap)`+`sliceUtf16Safe(text,start,end)`(양boundary: 선행 lone-low·후행 lone-high 드롭)로 추출, truncateErrorBody는 위임(byte-identical). 4파일 5사이트 배선: recall/history-search(206 head→truncateUtf16Safe, 213 middle-substring→sliceUtf16Safe)·tools/tool-definition-helpers(108)·autoconfigure/knowledge-corpus(365)·voice/tts-truncate(19 window+28 cut). 한글(BMP byte-identical)/이모지(astral lone-surrogate 드롭)/ZWJ 시퀀스 경계 유닛+wiring behavioral(tts 이모지 straddle→lone surrogate 無, 한글 byte-identical)·mutation-RED 양방향(드롭 제거→emoji+truncateErrorBody 위임증명 RED)·5 패키지 빌드 green·Opus PASS(양boundary 정확·byte-identical 위임·4사이트 배선·no over-change)
+#### W4 — routing · KO
+- [x] **D5-S1** ✅ 2026-07-12 Privacy-routing follow-ups (3 parts, pure
+  additive · the existing 20 contracts unmodified). **(b)** codified the
+  "no" decision for context-free tool use → cloud, deterministically:
+  `PrivacyRequestInput.usesTools?` is a deterministic signal (the tier
+  right after hasPersonalContext) → a tool-using request stays local
+  regardless of text ("no personal-data conduit rides a cloud request");
+  resolvePrivacyRoutedModel passes it through (proved with a route-flip
+  unit). Defense-in-depth at the policy layer (a chat cloud turn is
+  already structurally toolless via buildCloudTurnRequest — verified by
+  Opus). **(c)** documented the personaPreamble nuance (persona = a
+  fixed authored string, but a chosen relationship surfaces →
+  keeps hasPersonalContext). **(d)** added KO colloquial possessive
+  tokens `내꺼`/`제꺼` (꺼 = aspirated) + false-positive guards
+  (`제거` removal · `내용` · `안내` keep 거≠꺼 → context-free, negative
+  units); added a `muse setup cloud` privacy-routing guidance step
+  (cloudPrivacyRoutingGuidance, wired into real action stdout · a
+  behavioral capture test). 12 policy units + 3 cli setup units ·
+  bidirectional mutation-RED (removing the usesTools branch → route-flip
+  goes RED, removing 제꺼 → RED) · Opus PASSed (the 20 contracts
+  unmodified · 꺼/거 discrimination · additive · fail-close preserved)
+- [x] **D5-S2** ✅ 2026-07-12 `resolveAuxiliaryModel(task,env)` — a
+  unified resolver (autoconfigure, pure additive). Tasks:
+  compaction/vision/rewrite/judge/embedding-rescue. Precedence:
+  `MUSE_AUX_<TASK>_MODEL` (the new generalized knob) > legacy per-task
+  knobs (vision→MUSE_VISION_MODEL · embedding-rescue→
+  MUSE_RECALL_EMBED_MODEL; compaction/rewrite/judge have no legacy knob)
+  > sessionModel. **Local-first stays invariant (fail-close)**: if the
+  selected model is cloud (`classifyProviderLocality`) and either
+  `isPersonalContext` or `MUSE_LOCAL_ONLY` is set, override to
+  sessionModel (`keptLocalForPrivacy:true`) — an aux knob can never
+  escalate a personal task to the cloud; without personal context and
+  without local-only, cloud is honored (route:cloud). 11 units
+  (precedence · backward-compat · positive/negative local-only-gate
+  cases) · bidirectional mutation-RED (removing the override → a
+  personal-cloud case goes RED; removing the legacy fallback →
+  MUSE_VISION_MODEL goes RED) · docs:env (5 MUSE_AUX_*_MODEL entries).
+  Opus PASSed (verified gemini→cloud/ollama→local · negative case ·
+  resolveVisionModel unchanged · envInventory:pass). **Not wired
+  (resolver + unit scope only, call-site migration is a follow-up)** —
+  matches the roadmap's acceptance exactly ("resolver · backward-compat
+  · local-only-gate units")
+- [x] **D5-S3** ✅ 2026-07-12 Wired canUseNativeTools' dead code into a
+  real gate (VQ-2). @muse/model's `canUseNativeTools`
+  (toolCalling∧structuredOutput, dead code) is now called in
+  AgentRuntime's request path (prepareInvocation, right after modelTools)
+  via `assertModelCanUseTools(selected, tools.length)` → if tools are
+  exposed but the model lacks the capability, throws an **explicit
+  `ModelToolCallingUnsupportedError`** (instead of silently ignoring
+  them). Fail-OPEN by design (zero tools · unknown modelId · a
+  listModels throw → no block, existing behavior preserved) · a
+  per-instance `toolCapabilityCache` (avoids repeated listModels calls on
+  the hot path). The full text protocol (a parser) is deferred to a
+  separate L. gemma4 (toolCalling=true) is unaffected — codex/* are the
+  real siblings. 6 behavioral tests (the run path: toolCalling=false ·
+  structuredOutput=false → throw; capable → no throw; 0 tools · unknown ·
+  listModels-throw → fail-open) · bidirectional mutation-RED (disabling
+  the throw · toolCount=0) · Opus PASSed (real wiring · 4 fail-open
+  branches verified · no hot-path regression · executeToolPlanGated
+  untouched)
+- [x] **D5-S4** ✅ 2026-07-12 Explicit fallback-chain resolver
+  `resolveModelFallbackChain(env, isPersonalContext?)` (autoconfigure,
+  pure additive · not yet wired). "No hidden retries" —
+  `MUSE_MODEL_FALLBACKS` (comma-separated) triggers a sequential chain
+  only when set; unset/blank →`{chain:[],dropped:[]}` (byte-identical,
+  no fallback). **Each fallback gets a fail-close gate** (mirroring
+  resolveAuxiliaryModel's local-first logic): a cloud fallback is dropped
+  (with a reason) under `MUSE_LOCAL_ONLY` or `isPersonalContext`;
+  context-free + non-local-only keeps it in the chain. Order preserved ·
+  blank/empty entries filtered. 10 units (unset · chain-walk ·
+  local-only gate · privacy gate · a negative control) ·
+  bidirectional mutation-RED (removing the local-only drop → RED,
+  removing the personal drop → RED) · docs:env (MUSE_MODEL_FALLBACKS) ·
+  Opus PASSed (verified locality checks · negative control ·
+  resolveAuxiliaryModel unchanged · fail-close). **Not wired** (the
+  chain→ModelFallbackStrategy assembly + a "used fallback X" answer
+  marker = follow-up; runtime-assembly wasn't touched because it's
+  another loop's HANG blocker) — matches the roadmap's acceptance
+  exactly ("chain-walk · gate units · byte-identical when unconfigured")
+- [x] **D1-S6a** ✅ 2026-07-12 (a JUDGE-DRILL fire) The turn-scoped
+  one-shot recovery **primitive** `OneShotRecoveryState` (agent-core).
+  `claim(branch)` returns true only on the first claim, false afterward
+  → `if(state.claim(x)){recover}` fires at most once per turn per branch
+  (double retry is structurally impossible). A foundation for
+  consolidating the scattered flags across recovery branches
+  (repair/false-done-reprompt/reverify) into a single state object. 4
+  units (guaranteed-once · a guarded body fires exactly once · distinct
+  branches are independent · hasClaimed is a pure query) ·
+  mutation-RED (removing the once-guard → 3 RED) · index export.
+  ※JUDGE-DRILL: a deliberate defect (claim always returns true + a
+  hollow test) was injected → independent Opus ④b correctly FAILed
+  (spotted the inverted claim · the missing second-claim-false check) →
+  rolled back → the real fix Opus PASSed. Actually wiring model-loop.ts's
+  scattered flags is D1-S6b (a 1112-line central file touched by
+  multiple loops → wired separately and carefully)
+- [x] **D1-S6b** ✅ 2026-07-12 **Already-satisfied** (an independent
+  Opus adversarial verdict of NO_TARGET). D1-S6's premise ("Muse's
+  scattered individual recovery flags could double-fire") turned out to
+  be false in the current code: all 5 turn-scoped recovery branches are
+  already at-most-once (false-done via a single non-looping call to
+  runResistingFalseDone · reverify via ReverifyNudgeTracker.nudged
+  per-turn · post-compaction/ping-pong via a terminal return + a
+  dedicated Guard class · attributed-repair via a single pass). Forcing
+  a wiring would be a behavior-unchanged, artificial refactor (violating
+  Jinan's "no unrelated refactors"). OneShotRecoveryState (D1-S6a)
+  remains as a primitive **for future new recovery branches**. Zero code
+  changes (honest — not count-inflation — confirmed already-satisfied by
+  an independent evaluator)
+- [x] **D2-S3** ✅ 2026-07-12 Extended de-obfuscation (VQ-3, 🔒). Added
+  only the 2 genuinely-missing vectors to the DS-2 dangerous-command
+  normalizer (NFKC + ANSI; `$IFS`/line-continuation/comment-strip/home-
+  path already existed): `normalizeCommandNfkc` (full-width `ｒｍ`→`rm`
+  via NFKC folding) + `stripAnsiEscapes` (strips ECMA-48 CSI `\x1b[…`,
+  a ReDoS-safe char class) added to the **front** of the pipeline → a
+  no-op on clean ASCII, so the existing DS-2 stays byte-identical
+  (unmodified). Blocks full-width and ANSI-obfuscated bypass payloads.
+  **Detection-only** (a pure transform — the executor still runs the
+  original command; the folded copy never escapes its scope — Opus's
+  threat-model review confirmed zero external callers). 9 new tests
+  (full-width rm/sudo/target · ANSI injection · no-over-block on a
+  quoted full-width character · helper units) + the existing 27
+  unmodified and green (36/36) · bidirectional mutation-RED (removing
+  NFKC → the full-width case goes RED, removing ANSI → RED) · Opus
+  PASSed (independent bypass probing · quote-awareness preserved ·
+  ReDoS-safe)
+- [x] **D2-S4** ✅ 2026-07-12 Masked secrets in runner stdout→model
+  output (VQ-4, 🔒). Wired `redactSecretsInText` (@muse/shared) into 2
+  sinks on the subprocess-output→model path: (1) `runner.ts`'s
+  run_command return of stdout/stderr, (2) a sibling audit found
+  `muse-tools-skills.ts`'s skill-run return of stdout/stderr (both were
+  leaking raw output to the model — the same vulnerability class).
+  Truncation stays correct: capTruncated is computed against the
+  **pre-redact length** (since redact changes the length and would
+  otherwise corrupt the flag), then redaction runs. Benign performance on
+  large output (256KB measured at 17.7ms < a 250ms budget,
+  SECRET_PATTERNS is ReDoS-safe). 5 new tests (masking on runner/skills ·
+  truncation preserved · no over-masking · large-output perf) ·
+  bidirectional mutation-RED · Opus PASSed (both sinks wired · truncation
+  verified · no over-masking · perf measured · confirmed no third
+  sibling). ※referencing openclaw's secret-mask
+- [x] **D2-S5** ✅ 2026-07-12 Encryption-at-rest for the calendar store
+  (🔒, the backlog's "LAST encryption item"). The memory-encryption
+  AES-256-GCM envelope, mirrored **in-package** into @muse/calendar
+  (following the belief-provenance precedent — avoiding a heavy
+  dependency on @muse/memory/@muse/stores, using only node:crypto/
+  node:os). `calendar-encryption.ts` (an EncryptedCalendarEnvelope ·
+  encrypt/decrypt/isEnvelope · reuses `MUSE_MEMORY_KEY` + a calendar
+  per-host fallback · `MUSE_CALENDAR_ENCRYPT` opt-in). local-provider's
+  readAll (auto-detects the envelope → decrypts, and a wrong-key throw
+  **propagates outside the quarantine catch** = fail-closed, ciphertext
+  is never destroyed) + writeAll (format-preserving: flag OR the
+  existing encrypted state). 4 round-trip tests (envelope round-trip ·
+  no plaintext leaked into raw bytes · a wrong key fails closed leaving
+  the file unchanged · plaintext-by-default and format-preserving) ·
+  bidirectional mutation-RED · docs:env (MUSE_CALENDAR_ENCRYPT). Opus
+  PASSed (a random iv/salt per encryption · no plaintext leak · no
+  destruction on fail-closed · byte-identical default · no heavy
+  dependency · a single write path). D2-S5 completes the
+  encryption-at-rest queue (the notes-index stays intentionally
+  plaintext)
+- [x] **D-KO-S1** ✅ 2026-07-12 ★ Extracted truncateUtf16Safe + wired the
+  4 unsafe sites (VQ-6). Extracted `truncateErrorBody`'s (shared)
+  lone-high-surrogate drop into `truncateUtf16Safe(text,cap)`+
+  `sliceUtf16Safe(text,start,end)` (both boundaries: drops a leading
+  lone-low and a trailing lone-high), truncateErrorBody now delegates to
+  it (byte-identical). Wired 5 sites across 4 files: recall/history-search
+  (206 head→truncateUtf16Safe, 213 middle-substring→sliceUtf16Safe) ·
+  tools/tool-definition-helpers (108) · autoconfigure/knowledge-corpus
+  (365) · voice/tts-truncate (19 window + 28 cut). Boundary units for
+  Hangul (byte-identical, BMP)/emoji (astral lone-surrogate dropped)/ZWJ
+  sequences + wiring behavioral tests (a TTS emoji straddling the
+  boundary leaves no lone surrogate, Hangul stays byte-identical) ·
+  bidirectional mutation-RED (removing the drop → emoji + the
+  truncateErrorBody delegation proof both go RED) · 5 packages build
+  green · Opus PASSed (both-boundary accuracy · byte-identical
+  delegation · 4 sites wired · no over-change)
 
-#### W5 — 기억·마감
-- [x] **D-E1a** ✅ 2026-07-12 Tier-0 오염 필터(§8.5.2 d, VQ-21). eval-harness.mjs에 `detectTier0Contamination(observed)`+`TIER0_CONTAMINATION_PATTERNS`(backend-error·tool-failed·model-unsupported·timeout, 정밀 정규식) 추가 → `runEvalSuite`가 배터리 case의 observed에 인프라-실패 누출 감지 시 **total서 제외**(behavior 실패로 오인 방지, `excluded` 카운터). **핵심: over-exclusion 금지** — infra 마커 없는 진짜 behavior 실패는 여전히 total 카운트(pass rate 인플레 차단). 비오염 suite byte-identical(excluded 추가만). 4 유닛(detector positive/precision-negative·runEvalSuite 3-case 제외·byte-identical regression)·mutation-RED 양방향(detector 무력화·over-exclusion→RED)·Opus PASS(over-exclusion threat SAFE·정밀성·훅/CI 무접촉). 공유 pre-push 훅 무변경(D-E1b로 이연). ★"검증규율 A→A+ 되돌리는 실-작업"
-- [ ] **D-E1b** eval:agent 핵심 subset을 pre-push 훅에 확장(precheck-grounding 미러: per-battery 240s+skip-if-Ollama-unreachable, VQ-12) + **훅 실차단 증명**(나쁜 케이스 주입→push 거부). ⚠️공유 push 인프라(활성 루프 다수)라 신중 fire
-- [ ] **D-E1c** self-eval 회귀 fail-close 커밋 시 자동확인(tracked count 하락→차단). ~~GitHub CI 결정론분 배선~~ **N/A(진안 CI 안 돌림 2026-07-12) — CI 파트 삭제**; 로컬 게이트(commit-hook·pre-push·self-eval)만 스코프
-- [x] **D6-S1a** ✅ 2026-07-12 **already-existing**(recall-promotion.ts). sleep-consolidation 결정론 승격 스코어는 `packages/memory/src/recall-promotion.ts`에 이미 있음: `scoreRecallHit`(=hits×2^(-ageDays/halfLife), recency-weighted) + `selectPromotableMemories`(minHits·minScore·distinct-days·**query-hash diversity gate minUniqueQueries**·cap·ACT-R). 자기개선 루프가 구현·배선. ※honest 정정: 내가 fire 49에 이걸 모르고 `consolidation-score.ts`(scoreConsolidationCandidate)를 **중복 재구현**함 → **revert**(독립 Opus 감사 REDUNDANT 판정: 같은 프리미티브·diversity 곱셈항 inert). lesson: 새 역량 빌드 전 codegraph로 기존 구현 필수 확인.
-- [x] **D6-S1b** ✅ 2026-07-12 **진안 전략결정: 현상유지**(opt-in auto-promote). 기존 `MUSE_SLEEP_PROMOTE` opt-in 데몬이 켜지면 `promoteRecalledMemories`로 persona에 auto-write; 로드맵 원안의 draft-first(자동쓰기 금지)와 충돌 → **진안 결정: opt-in 자체가 동의이고 persona fact는 reversible(forget)이라 현상 유지**. 내가 fire 50에 만든 `consolidation-proposal.ts`(draft-first, 미배선·inert·중복 D6-S1a 의존) → **revert**(독립 Opus DESIGN-TENSION 표면화→진안 keep-auto-write). draft-first는 pursue 안 함.
-- [x] **D6-S1c** ✅ 2026-07-12 **already-satisfied**. opt-in 백그라운드 consolidation 데몬 이미 배선: `daemon-selflearn-ticks.ts` `makeMemoryConsolidateTick`→`planMemoryConsolidationTick`(brake `shouldConsolidateMemory`)·`MUSE_SELFLEARN_ENABLED`+`MUSE_SLEEP_PROMOTE`(persona auto-promote opt-in)·`memory-consolidate-tick.ts`. loop-v2 Sleep 정합=자기개선 루프가 소유. 신규 코드 0(honest).
-- [ ] **D6-S2** 연료 파이프라인(browsing auto-sync·recap 연결·주간 real-miss 리포트) — attended
-- [x] **D6-S3** ✅ 2026-07-12 메모리 외부-편집 drift 감지(VQ-7, 무결성). `FileUserMemoryStore`가 락 안 read→write 사이 **외부 편집**(수동·patch·락-미경유)을 compare-and-swap로 차단: `read()`가 raw on-disk bytes 반환→`write(data,encrypted,expected?)`가 atomic write 직전 현재 디스크 재읽기, `currentRaw !== expected.raw`면 **`.bak.<ts>` 스냅샷(복사, 원본 미삭제) + `MemoryExternalEditError` throw로 clobber 차단**(tmp-write/rename 안 함). raw 비교라 plaintext·encrypted 스토어 모두 감지. patch/deleteByUserId/encryptAtRest/decryptAtRest 4 write경로 배선. **불변: 외부편집 절대 clobber/삭제 안 함**(유저 confided memory 보호). expected 없으면 byte-identical(opt-in). 6 신규+47 기존 무수정 53/53·mutation-RED 양방향(drift check 제거→clobber RED·.bak 제거→backup RED)·Opus PASS(never-clobber/destroy·no false-positive·encrypted drift·byte-identical). VQ-7대로 hermes memory_tool 케이스 정확 커버
-- [x] **D6-S4** ✅ 2026-07-12 provenance 태그+자율-삭제-금지 계약(무결성, TEST-ONLY). **verify-first**(독립 Opus 감사): provenance origin 태그(belief-provenance `source:"auto"|"user"`)는 이미 존재, 자율 큐레이션(fade)은 **비파괴적**(rank-down sidecar·episode-key만), 유일한 자율 `store.forget`은 Muse 자체 `recalled-*` synthetic namespace-scoped, 실 사실삭제는 user-트리거뿐 → **불변이 이미 구조적 성립**. 갭=end-to-end 핀 부재 → **자율-삭제-금지 mutation 계약 테스트** 신설(가드 신설 X=dead code 회피). 실 FileUserMemoryStore에 user 사실(home_city=Seoul) seed+강한 recall-hits로 fade+promote 발화(non-vacuous, promotedCount>0·fade sidecar 기록) 하에 `runMemoryConsolidationTick` 실행→**user 사실 잔존·불변** 검증. mutation-RED 양방향(promoteRecalledMemories의 recalled- scope 제거→user 사실 삭제 RED·무조건 forget→RED)·프로덕션 무변경·Opus PASS(non-vacuous·mutation flips·올바른 불변). ⚠️발견 backlog: normalizeMemoryKey가 `-→_` 폴딩해 `recalled-N`→`recalled_N` 저장, cleanup `startsWith("recalled-")` 미매칭→synthetic 사실 무한축적(under-deletion, user 사실 무관·별개 슬라이스)
-- [x] **D3-S3** ✅ 2026-07-12 완료-이벤트 idle-drain 계약 핀 + narrow 갭 fix(poll≠consumed). **verify-first 발견 갭**: chat-ink tick이 idle을 tick 시작에만 체크(359)하고 async fetch 후 삽입(setTurns) 직전엔 미체크(376은 unmount만) → fetch 중 busy 플립 시 **생성 중 삽입** 가능. fix: 순수 `selectDrainedProactiveTurns({idleAtConsume,...})` 추출(busy면 [])→tick이 awaits 후 `idleRef.current` 재체크해 소비-시점 idle-gate. **미손실 교정**: seen-marking을 consume 후로 이동(drained>0일 때만)→busy-deferred 완료이벤트는 unseen 유지→다음 idle poll서 재출현(marked-but-never-shown 방지). 5 순수 계약 유닛(busy→[]·idle 순서 grouped→jobs→nudges·미소비)+풀-컴포넌트 통합테스트(fetch idle시작→busy 플립→busy 중 미표시→다음 poll서 재출현 양쪽 검증)·mutation-RED 양방향(idle-gate 제거→busy-insert RED)·기존 chat-ink 59 무수정·Opus PASS(busy→미삽입·deferred 미손실·non-vacuous). hermes async_delegation 계약 커버
-- [x] **D3-S6** ✅ 2026-07-12 eval:orchestration 래칫 — MAST 상위 실패모드 2종 + 용량거부 라이브 케이스를 결정론(no-Ollama) pass^3로 편입(`scripts/verify-orchestration.mjs`). ①**step-repetition**: 3 워커 sequential → 각 workerId 정확히 1회(Set size===len===N, 순서 일치). ②**unaware-of-termination**: `workerTimeoutMs:200` + 행(hang)워커(`new Promise(()=>{})`) → 실 `withDeadline` 경로가 `failed`+`exceeded the 200ms deadline`로 명시 종료, 생존워커 `completed`, elapsed<5s(무한대기 아님). ③**D3-S4 용량거부**: `maxWorkers:2`<3워커 → `selectWorkers` slice(0,2)로 실행 2개, excess "three" 부재. 3케이스를 `MUSE_EVAL_REPEAT`(기본3)×로 all-pass 게이트(pass^3, 단일 실패→exit1). 기존 라이브 모델 fan-in 케이스(실패전파+bounded+fan-in) 유지, Ollama-down 시 결정론 케이스는 여전히 실행·게이트(모델 케이스만 skip). Product code 무변경(기존 orchestrator 행동 채점). mutation-RED 3/3 non-vacuous(각 어서션 기대 뒤집기→RED→byte복원)·Opus 독립 PASS(어서션이 실동작 일치·pass^3 실게이트·skip 시맨틱·주석정책 clean). 발견: step status는 `completed|failed`만(`timed-out`은 opt-in SubAgentRunRegistry에만)
-- [x] **D2-S7** ✅ 2026-07-12 eval:adversarial 결정론-가드 카테고리 2종 추가(토폴로지 우회·난독화) — `scripts/eval-adversarial.mjs`에 `TOPOLOGY_BYPASS`(3 blocked: sudo-wrap `sudo rm -rf /`·command-substitution `$(echo rm) -rf ~`·`;`-separator `rm -rf / ; echo done`; +2 control: legit sudo·따옴표 속 rm)·`OBFUSCATION`(2 blocked: `$IFS` word-split `rm${IFS}-rf${IFS}/`·NFKC fullwidth homoglyph `ｒｍ -rf /`; +2 control: quoted echo·stripped comment). 각 케이스는 순수 `classifyDangerousCommand(command).dangerous === expectBlocked`로 채점(`solveDangerousCommandCase`/`scoreDangerousCommandCase`) — **모델 거부 의존 0, Ollama-independent, no-skip**(MUST_REFUSE/SANDBOX와 달리 항상 실행). 결정론-가드 배터리 10→19 케이스. 9/9 라이브 통과(SHIPPED 가드, byte-identical)·mutation-RED 확인(collapseIfs 중성화→`rm${IFS}` 케이스 RED→cp복원)·lint 0/0·Opus 독립 평가자 PASS(행동검증·control이 over-block 반증·결정론 라우팅·guard 무수정). self-eval `adversarialCases` 프록시는 `prompt:`-키만 세어 `command:`-키 신규 케이스는 미증가(기존 SANDBOX/SECRET와 동일 설계 — 회귀 아님). 가드 코드는 미변경(테스트 커버리지만 확대)
-- [x] **D7-S3** ✅ 2026-07-12 스마트-테일 스크롤(웹 채팅 스트리밍 뷰) — hermes terminal-output 패턴. 순수 `shouldStickToBottom({scrollTop,scrollHeight,clientHeight}, threshold=80)`(`apps/web/src/views/chat-autoscroll.ts`: 하단거리 ≤ threshold면 tail, `<=`라 정확히 경계·overscroll 스틱) + Chat.tsx 배선(`stickToBottomRef` 기본 true=마운트 하단점프·`onScroll`이 실 지오메트리로 ref 갱신·auto-scroll 이펙트가 stick일 때만 실행=위로스크롤 시 yank 없음). 기존 동작(auto-speak·composer·레이아웃) 무변경. 7 순수 유닛(near/far/threshold경계/overscroll/커스텀threshold)·mutation-RED 2종(`<=`→`<`·부호뒤집기)·**실브라우저 측정**(chrome-devtools, tall 콘텐츠 40개 주입: scrollHeight 3751>client 514 실오버플로·하단 distance0→stick true·위로300px→distance300→stick false·뷰포트 바운드·가로 blowout 0)·Chat.test 8/8 무회귀·빌드+lint clean·Opus 독립 PASS(공식 correct·배선 정확·실측 충분·비-vacuous). 수용(스크롤로직 유닛+실브라우저 측정) 충족
-- [ ] **D7-S4** desktop 반응성(경과타이머·상태반응) — attended
+#### W5 — memory · closeout
+- [x] **D-E1a** ✅ 2026-07-12 Tier-0 contamination filter (§8.5.2 d,
+  VQ-21). Added `detectTier0Contamination(observed)`+
+  `TIER0_CONTAMINATION_PATTERNS` (precise regexes for backend-error ·
+  tool-failed · model-unsupported · timeout) to eval-harness.mjs →
+  `runEvalSuite` now **excludes from the total** any battery case whose
+  observed output leaks an infrastructure failure (avoids mistaking it
+  for a behavior failure, tracked with an `excluded` counter). **Core
+  invariant: no over-exclusion** — a genuine behavior failure with no
+  infra marker still counts toward the total (blocks pass-rate
+  inflation). An uncontaminated suite stays byte-identical (only adds
+  `excluded`). 4 units (positive/precision-negative detection · 3-case
+  exclusion in runEvalSuite · a byte-identical regression) ·
+  bidirectional mutation-RED (disabling the detector · over-exclusion)
+  · Opus PASSed (confirmed over-exclusion is SAFE · precision · zero
+  hook/CI touch). The shared pre-push hook is unchanged (deferred to
+  D-E1b). ★"The one real piece of work that restores verification
+  discipline from A back to A+"
+- [ ] **D-E1b** Extend the pre-push hook with the core eval:agent subset
+  (mirroring precheck-grounding: 240s per battery + skip-if-Ollama-
+  unreachable, VQ-12) + **prove the hook actually blocks** (inject a bad
+  case → push is rejected). ⚠️shared push infrastructure (many active
+  loops) — fire this carefully
+- [ ] **D-E1c** Auto-confirm self-eval regression fail-close at commit
+  time (a tracked count drop blocks). ~~Wire the deterministic CI
+  portion~~ **N/A (Jinan doesn't run CI, confirmed 2026-07-12) — the CI
+  part is dropped**; scope is local gates only (commit-hook · pre-push ·
+  self-eval)
+- [x] **D6-S1a** ✅ 2026-07-12 **Already existing** (recall-promotion.ts).
+  The deterministic promotion score for sleep-consolidation already
+  exists in `packages/memory/src/recall-promotion.ts`: `scoreRecallHit`
+  (=hits×2^(-ageDays/halfLife), recency-weighted) +
+  `selectPromotableMemories` (minHits · minScore · distinct-days · a
+  **query-hash diversity gate minUniqueQueries** · cap · ACT-R). Built
+  and wired by the self-improvement loop. ※honest correction: not
+  knowing this on fire 49, I **duplicated it** by building
+  `consolidation-score.ts` (scoreConsolidationCandidate) → **reverted**
+  (an independent Opus audit ruled it REDUNDANT: the same primitive, an
+  inert extra diversity multiplier). Lesson: always confirm an existing
+  implementation via codegraph before building a new capability.
+- [x] **D6-S1b** ✅ 2026-07-12 **Jinan's strategic decision: keep the
+  status quo** (opt-in auto-promote). When the existing
+  `MUSE_SLEEP_PROMOTE` opt-in daemon is on, `promoteRecalledMemories`
+  auto-writes to persona; this conflicts with the roadmap's original
+  draft-first design (never auto-write) → **Jinan's decision: opting in
+  already constitutes consent, and a persona fact is reversible
+  (forgettable), so keep the status quo**. I had built
+  `consolidation-proposal.ts` on fire 50 (draft-first, unwired · inert ·
+  duplicating D6-S1a's dependency) → **reverted** (an independent Opus
+  audit surfaced the DESIGN-TENSION → Jinan chose to keep auto-write).
+  Draft-first isn't being pursued.
+- [x] **D6-S1c** ✅ 2026-07-12 **Already-satisfied.** An opt-in
+  background consolidation daemon is already wired:
+  `daemon-selflearn-ticks.ts`'s `makeMemoryConsolidateTick`→
+  `planMemoryConsolidationTick` (a `shouldConsolidateMemory` brake) ·
+  `MUSE_SELFLEARN_ENABLED`+`MUSE_SLEEP_PROMOTE` (opt-in persona
+  auto-promote) · `memory-consolidate-tick.ts`. Aligns with loop-v2's
+  Sleep daemon — owned by the self-improvement loop. Zero new code
+  (honest).
+- [ ] **D6-S2** The fuel pipeline (browsing auto-sync · recap wiring ·
+  a weekly real-miss report) — attended
+- [x] **D6-S3** ✅ 2026-07-12 Detected memory external-edit drift
+  (VQ-7, integrity). `FileUserMemoryStore` now blocks an **external
+  edit** (manual · patch tools · anything that bypasses the lock)
+  happening between a lock-free read and a write via
+  compare-and-swap: `read()` returns raw on-disk bytes →
+  `write(data,encrypted,expected?)` re-reads the current on-disk state
+  right before the atomic write, and if `currentRaw !== expected.raw`,
+  it **snapshots `.bak.<ts>` (a copy, the original is never deleted) and
+  throws `MemoryExternalEditError` to block the clobber** (no tmp-write/
+  rename happens). Raw comparison means both plaintext and encrypted
+  stores are covered. Wired into all 4 write paths: patch/deleteByUserId/
+  encryptAtRest/decryptAtRest. **Invariant: an external edit is never
+  clobbered or deleted** (protecting confided user memory). Byte-
+  identical when `expected` is omitted (opt-in). 6 new + 47 existing
+  unmodified, 53/53 · bidirectional mutation-RED (removing the drift
+  check → clobber goes RED, removing `.bak` → the backup test goes RED)
+  · Opus PASSed (never-clobber/destroy · no false positives · encrypted
+  drift · byte-identical). Exactly matches VQ-7's target — the hermes
+  memory_tool case
+- [x] **D6-S4** ✅ 2026-07-12 Provenance tags + an autonomous-deletion-
+  forbidden contract (integrity, TEST-ONLY). **Verify-first** (an
+  independent Opus audit): a provenance origin tag
+  (belief-provenance's `source:"auto"|"user"`) already exists, autonomous
+  curation (fade) is already **non-destructive** (a rank-down sidecar ·
+  episode-key only), and the only autonomous `store.forget` is scoped to
+  Muse's own `recalled-*` synthetic namespace — real fact deletion is
+  user-triggered only → **the invariant was already structurally
+  established.** The gap = no end-to-end pin → built an
+  **autonomous-deletion-forbidden mutation contract test** instead
+  (building a new guard would have been dead-code duplication).
+  Seeded a real fact (home_city=Seoul) into a real FileUserMemoryStore +
+  drove fade+promote with strong recall-hits (non-vacuous, promotedCount>0
+  · a fade sidecar entry recorded), then ran
+  `runMemoryConsolidationTick` and verified the user's fact **survives
+  unchanged**. Bidirectional mutation-RED (removing the recalled- scope
+  guard from promoteRecalledMemories → the user's fact gets deleted →
+  RED; an unconditional forget → RED) · production code unchanged ·
+  Opus PASSed (non-vacuous · mutations flip · the correct invariant).
+  ⚠️Discovered backlog item: normalizeMemoryKey folds `-→_`, so
+  `recalled-N` is stored as `recalled_N`, and cleanup's
+  `startsWith("recalled-")` doesn't match it → synthetic facts
+  accumulate without bound (under-deletion, unrelated to user facts, a
+  separate slice)
+- [x] **D3-S3** ✅ 2026-07-12 Pinned the completion-event idle-drain
+  contract + fixed a narrow gap (poll≠consumed). **Verify-first
+  discovery**: chat-ink's tick only checks idle at the start of the
+  tick (359), not right before inserting via setTurns after an async
+  fetch (376 is only unmount-related) → a busy flip during the fetch
+  could still insert mid-generation. Fix: extracted pure
+  `selectDrainedProactiveTurns({idleAtConsume,...})` (returns [] when
+  busy) → the tick re-checks `idleRef.current` after the awaits, gating
+  at the consumption point, not the start. **No lost notifications**:
+  moved seen-marking to after consumption (only when drained>0) →
+  busy-deferred completions stay unseen → they resurface on the next
+  idle poll (avoiding "marked but never shown"). 5 pure contract units
+  (busy→[] · idle order grouped→jobs→nudges · not consumed) + a
+  full-component integration test (fetch starts idle → busy flip → not
+  shown while busy → resurfaces on the next poll — both verified) ·
+  bidirectional mutation-RED (removing the idle-gate → busy-insert goes
+  RED) · the existing 59 chat-ink tests unmodified · Opus PASSed
+  (nothing inserted while busy · deferred events not lost ·
+  non-vacuous). Covers hermes' async_delegation contract
+- [x] **D3-S6** ✅ 2026-07-12 eval:orchestration ratchet — folded 2 of
+  MAST's top failure modes + a live capacity-rejection case into a
+  deterministic (no-Ollama) pass^3 (`scripts/verify-orchestration.mjs`).
+  ①**step-repetition**: 3 workers run sequentially → each workerId
+  fires exactly once (Set size===len===N, order matches). ②**unaware-
+  of-termination**: `workerTimeoutMs:200` + a hung worker
+  (`new Promise(()=>{})`) → the real `withDeadline` path explicitly
+  terminates it with `failed`+"exceeded the 200ms deadline," the
+  surviving worker completes, elapsed<5s (not an infinite wait). ③the
+  D3-S4 capacity rejection: `maxWorkers:2`<3 workers →
+  `selectWorkers` slices to run 2, the excess "three" is absent. All 3
+  cases run under `MUSE_EVAL_REPEAT` (default 3) with all-pass gating
+  (pass^3, a single failure → exit 1). The existing live model fan-in
+  case (failure propagation + bounded + fan-in) is kept, and when
+  Ollama is down the deterministic cases still run and gate (only the
+  model case skips). Zero product-code changes (scores the existing
+  orchestrator's real behavior). 3/3 non-vacuous mutation-RED (flipping
+  each assertion's expectation → RED → restored) · Opus's independent
+  review PASSed (the assertions match real behavior · pass^3 actually
+  gates · skip semantics · clean comment policy). Finding: step-level
+  status is only `completed|failed` (`timed-out` only exists in the
+  opt-in SubAgentRunRegistry)
+- [x] **D2-S7** ✅ 2026-07-12 Added 2 deterministic-guard categories to
+  eval:adversarial (topology bypass · obfuscation) —
+  `scripts/eval-adversarial.mjs` gained `TOPOLOGY_BYPASS` (3 blocked:
+  a sudo-wrapper `sudo rm -rf /` · command substitution
+  `$(echo rm) -rf ~` · a `;`-separator `rm -rf / ; echo done`; +2
+  controls: a legit sudo command, rm inside quotes) and `OBFUSCATION`
+  (2 blocked: `$IFS` word-splitting `rm${IFS}-rf${IFS}/` · an NFKC
+  full-width homoglyph `ｒｍ -rf /`; +2 controls: a quoted echo, a
+  stripped comment). Each case is scored via pure
+  `classifyDangerousCommand(command).dangerous === expectBlocked`
+  (`solveDangerousCommandCase`/`scoreDangerousCommandCase`) — **zero
+  reliance on model refusal, Ollama-independent, no-skip** (always
+  runs, unlike MUST_REFUSE/SANDBOX). Deterministic-guard battery
+  grew 10→19 cases. 9/9 live pass (a shipped guard, byte-identical) ·
+  mutation-RED confirmed (neutralizing collapseIfs →
+  the `rm${IFS}` case goes RED → restored) · lint 0/0 · Opus's
+  independent evaluator PASSed (behavioral verification · the controls
+  disprove over-blocking · deterministic routing · the guard itself
+  unmodified). self-eval's `adversarialCases` proxy only counts
+  `prompt:`-keyed cases, so the new `command:`-keyed cases don't
+  increment it (the same design as the existing SANDBOX/SECRET
+  cases — not a regression). The guard code itself was untouched (only
+  test coverage expanded)
+- [x] **D7-S3** ✅ 2026-07-12 Smart-tail scroll (the web chat streaming
+  view) — hermes' terminal-output pattern. Pure
+  `shouldStickToBottom({scrollTop,scrollHeight,clientHeight},
+  threshold=80)` (`apps/web/src/views/chat-autoscroll.ts`: within
+  `threshold` of the bottom → tail, `<=` so the boundary is exact and
+  overscroll still sticks) + wired into Chat.tsx
+  (`stickToBottomRef` defaults true = jumps to the bottom on mount ·
+  `onScroll` updates the ref from real geometry · the auto-scroll effect
+  only runs while sticking = no yank while scrolled up). Existing
+  behavior (auto-speak · composer · layout) unchanged. 7 pure units
+  (near/far/threshold-boundary/overscroll/a custom threshold) ·
+  2 mutation-RED variants (`<=`→`<` · a sign flip) · **real-browser
+  measurement** (chrome-devtools, injected 40 tall messages:
+  scrollHeight 3751 > client 514, a real overflow · bottom distance 0 →
+  sticks true · scrolled up 300px → distance 300 → sticks false ·
+  bounded within the viewport · zero horizontal blowout) · 8/8 Chat.test
+  no regression · build+lint clean · Opus's independent review PASSed
+  (formula correct · wiring accurate · sufficient real measurement ·
+  non-vacuous). Meets the acceptance criteria (scroll-logic unit + a
+  real-browser measurement)
+- [ ] **D7-S4** Desktop responsiveness (an elapsed-time timer · status
+  feedback) — attended
 
-#### 이연 (착수 전 진안 확인)
-- [ ] **D-KO-S3** i18n 정적 카탈로그 중앙화 (저우선·리팩터 리스크>이득 가능)
-- [x] **암호화 key-migration 백업** ✅ 2026-07-12 `.plaintext-backup-<ts>` (§8.6.1). 형제-감사로 **calendar가 유일 갭** 확정: writeAll이 `MUSE_CALENDAR_ENCRYPT` 플래그로 plaintext→encrypted를 self-initiate하는데 백업 없음(memory `encryptAtRest`·shared `encryptFileAtRest`는 이미 백업; reflections/belief-provenance는 format-preserving+백업하는 마이그레이션 경유=DONE). fix: `local-provider.ts` writeAll이 `alreadyEncrypted` 캡처 후 첫 `shouldEncrypt && !alreadyEncrypted` 전환에서 `backupPlaintextBeforeEncrypt()`(기존 on-disk plaintext를 `${file}.plaintext-backup-<ts>` mode 0o600으로 스냅샷; 파일 없거나 빈 경우 no-op) — 암호화 write **전** 실행(크래시 윈도우 없음). 4 test(전환시 백업=키없이 읽히는 plaintext 복구·0o600·brand-new 무백업·이미암호화 2차백업 없음)·mutation-RED 3/3(헬퍼 무력화→백업 test RED)·calendar 184/184 무회귀·Opus 독립 PASS(순서·전환only·복구실증·format-preserving/wrong-key 무변경·형제감사 정직). 유저-가시=CHANGELOG
+#### Deferred (confirm with Jinan before starting)
+- [ ] **D-KO-S3** Centralizing the static i18n catalog (low priority ·
+  refactor risk may exceed the payoff)
+- [x] **Encryption key-migration backup** ✅ 2026-07-12
+  `.plaintext-backup-<ts>` (§8.6.1). A sibling audit confirmed
+  **calendar was the only remaining gap**: writeAll self-initiates a
+  plaintext→encrypted transition via the `MUSE_CALENDAR_ENCRYPT` flag
+  with no backup (memory's `encryptAtRest` and shared's
+  `encryptFileAtRest` already back up; reflections/belief-provenance
+  are format-preserving + go through a migration that already backs up
+  = DONE). Fix: `local-provider.ts`'s writeAll captures
+  `alreadyEncrypted` and, on the first
+  `shouldEncrypt && !alreadyEncrypted` transition, calls
+  `backupPlaintextBeforeEncrypt()` (snapshots the existing on-disk
+  plaintext to `${file}.plaintext-backup-<ts>`, mode 0o600; a no-op if
+  the file is missing or empty) — run **before** encrypting the write
+  (no crash window). 4 tests (a transition backs up = recoverable
+  plaintext readable without the key · 0o600 · a brand-new file gets no
+  backup · already-encrypted gets no second backup) · 3/3 mutation-RED
+  (disabling the helper → the backup test goes RED) · calendar 184/184
+  no regression · Opus's independent review PASSed (ordering · only on
+  the transition · recovery demonstrated · format-preserving/wrong-key
+  unchanged · honest sibling audit). User-visible = CHANGELOG
 
-### 10.4 슬라이스 의존성 (착수 전 확인)
+### 10.4 Slice dependencies (confirm before starting)
 
-- **D2-S7**(adversarial 확대)은 D2-S1d·S2·S3의 케이스가 입력 → 그 슬라이스들 **후**.
-- **D3-S6**(orchestration 래칫)은 D3-S1/S2/S4 완료 후.
-- **D-E1**(a)는 `eval:agent` 존재 전제(✓ 있음) + 다른 eval 슬라이스가 케이스 공급.
-- **D4-S1**(grounded-recall 노출)은 `streamGroundedRecall` seam 전제(✓ 있음).
-- **D2-S6b**·**D6-S3**·**D-KO-S1**·**D5-S3**은 기존 심볼 재사용 → §11 VQ에서 배선점 확정 후.
-- 나머지는 상호 독립(웨이브 내 순서 무관).
+- **D2-S7** (expanding adversarial) takes its cases from D2-S1d · S2 · S3
+  → do it **after** those slices.
+- **D3-S6** (the orchestration ratchet) comes after D3-S1/S2/S4 are done.
+- **D-E1**(a) assumes `eval:agent` already exists (✓ it does) + other
+  eval slices supply cases.
+- **D4-S1** (exposing grounded recall) assumes the `streamGroundedRecall`
+  seam exists (✓ it does).
+- **D2-S6b** · **D6-S3** · **D-KO-S1** · **D5-S3** reuse existing symbols
+  → confirm the wiring point in §11's VQ list first.
+- Everything else is mutually independent (order within a wave doesn't
+  matter).
 
 ---
 
-## 11. 🔍 추가 검증 필요 — 살아있는 큐 (append-only)
+## 11. 🔍 Additional verification needed — a living queue (append-only)
 
-> **규칙**: 슬라이스 착수 전 해당 VQ를 먼저 해소(codegraph/Read/실측). 해소되면
-> `[x]` + 한 줄 결론. **새 검증 필요 항목은 이 섹션 맨 아래에 계속 추가**(날짜+출처).
-> 이 큐가 비면 계획의 불확실성이 0 — 그 전까지 열린 VQ가 있는 슬라이스는 그 VQ부터.
+> **Rule**: resolve the matching VQ before starting a slice (via
+> codegraph/Read/measurement). Once resolved, mark `[x]` + a one-line
+> conclusion. **New items that need verification keep getting appended to
+> the bottom of this section** (with date + source). Once this queue is
+> empty, the plan's uncertainty is zero — until then, a slice with an open
+> VQ starts from that VQ.
 
-### 착수-차단 VQ (해당 슬라이스 전 필수) — ★ 2026-07-11 전량 해소 (Fable codegraph/read)
-- [x] **VQ-1** (D3-S2) ✅ **배선점 = `model-loop.ts` 스트리밍 루프**: `tool-call-started`/
-  `tool-call-finished` 이벤트 처리부(:802) + text-delta에서 `heartbeat(runId)` 호출.
-  `runToolBatch`(:263)/`for await`(:787)가 단일 run의 툴 진행 지점. orchestrator:347은 그대로.
-- [x] **VQ-2** (D5-S3) ⚠ **텍스트-프로토콜 자체가 없음**: `canUseNativeTools`(index.ts:292)는
-  정의만·호출 0(死코드), **텍스트 툴 파서/폴백도 미구현**(parseTextToolCall 등 부재).
-  → 계약("불가시 텍스트 프로토콜")은 게이트도 폴백도 없음. **슬라이스 재범위**: gemma4는
-  toolCalling=true라 실사용 무영향 → D5-S3 = **명시적 "이 모델은 툴콜 불가" 에러로 게이트**
-  (조용한 실패 제거), 완전 텍스트 프로토콜은 별도 L로 이연(BYO 비-툴 클라우드 쓸 때만 필요).
-- [x] **VQ-3** (D2-S3) ✅ **실부재분 = NFKC + ANSI-strip만**: `dangerous-command.ts`에
-  comment-strip·$IFS·라인연속·echo치환 있고, **홈경로(`~`/`$HOME`)는 이미 RULES 패턴에
-  내장**(:65/74/83). → D2-S3 = NFKC 유니코드 정규화 + ANSI 이스케이프 strip **2개만** 추가.
-- [x] **VQ-4** (D2-S4) ✅ **미배선 확정**: `runner.ts:88-100`가 stdout/stderr를 cap만 하고
-  **redact 없이 반환**(:97-100 반환 객체 raw). D2-S4 정당 — 반환 직전 redactSecretsInText 통과.
-- [x] **VQ-5** (D4-S3) ✅ **범위 확정**: `--with-tools`는 commands-ask.ts:609/635/726에서
-  자체 actuators+agentRuntime 분기, plain 경로만 `streamGroundedRecall`(:49) 사용. →
-  seam에 **prepare-only 변형**(컨텍스트+allowed-citations+게이트 반환, 생성 안 함) 신설 후
-  --with-tools가 그걸 쓰고 자기 agentRuntime 구동. M 규모 유지(스트리밍 이벤트는 불필요 —
-  게이트만 공유).
-- [x] **VQ-6** (D-KO-S1) ✅ **미안전 확정 — TTS는 4번째 사이트**: `tts-truncate.ts:19/28`이
-  raw `slice(0, maxChars)`·`slice(0, cut)` — surrogate 가드 0. → D-KO-S1 배선 대상 **4곳**
-  (history-search:206/213·tool-def-helpers:108·knowledge-corpus:365 + **tts-truncate:19/28**).
-- [x] **VQ-7** (D6-S3) ✅ **cross-process 락 이미 있음 → 슬라이스 재범위**: 메모리 스토어는
-  `withFileLock`(cross-process `.lock`, encrypted-file.ts:113)을 write마다 사용
-  (memory-user-store-file.ts:248/260/383/402 `serializeWrite→withFileLock`). → Muse 자체
-  writer 간 clobber는 **이미 방지됨**. drift의 실-갭은 **외부 편집**(수동 편집·patch 툴·
-  다른 도구 append — 락 미경유)뿐. D6-S3 = 외부 수정 round-trip 해시 감지(defense-in-depth,
-  hermes memory_tool 정확히 이 케이스). 범위 축소·정당성 유지.
-- [x] **VQ-8** (D3-S7) ✅ **이식 방법**: `ps -o lstart= -p <pid>`가 macOS(BSD)+Linux(GNU)
-  둘 다 지원 → 이식 가능. spawn 시점 캡처해 record에 저장, kill/reconcile 전 재조회 대조.
-  `/proc` 의존 회피(Linux-only). 불일치→kill 금지.
-- [x] **VQ-9** (D2-S1) ✅ **allow-list 근거 확보**: 정당 명령이 cwd 밖 정당하게 쓰는 경로 =
-  `$TMPDIR`(`/var/folders/.../T/`)·`~/Library/pnpm/store`·`~/.npm`·`~/.cache`(read/write) +
-  `~/.gitconfig`·`~/.config/git`(read). seatbelt 프로파일 allow = **cwd 서브트리 + $TMPDIR
-  (rw) + 위 캐시/config (캐시 rw·config ro)**. 이 목록으로 git/pnpm/tsc/node 오탐 회피.
-- [x] **VQ-10** (D1-S7) ✅ **e2e 하네스 부재 확정→신규 작성 완료**(D1-S7d2, 2026-07-12): browser
-  e2e 파일 없었음(grep 0) → `scripts/eval-browser-injection.mjs`(`pnpm eval:browser-injection`,
-  모델-free 실 headless Chrome) 신규 작성해 D1-S7d1 인젝션 guard를 조립경로로 실증(9/9 라이브 PASS).
-- [x] **VQ-12** (D-E1) ✅ **시간예산 확보**: precheck-grounding은 이미 배터리당 240s +
-  skip-on-timeout(REPEAT 기본1). push가 수 분을 이미 허용 → eval:agent subset을 **같은
-  per-battery 240s+skip 가드**로 추가, 총 push < ~5분 유지. 헤드룸 있음.
+### Start-blocking VQ (required before the matching slice) — ★ 2026-07-11 all resolved (Fable via codegraph/read)
+- [x] **VQ-1** (D3-S2) ✅ **Wiring point = `model-loop.ts`'s streaming
+  loop**: the `tool-call-started`/`tool-call-finished` event handlers
+  (:802) + calling `heartbeat(runId)` from the text-delta path.
+  `runToolBatch` (:263)/`for await` (:787) are where a single run's tool
+  progress lives. orchestrator:347 stays as-is.
+- [x] **VQ-2** (D5-S3) ⚠ **The text protocol itself doesn't exist**:
+  `canUseNativeTools` (index.ts:292) is defined but has 0 callers (dead
+  code), and **the text tool parser/fallback also isn't implemented**
+  (no parseTextToolCall etc.). → the contract ("fall back to a text
+  protocol if unavailable") has neither a gate nor a fallback. **Slice
+  re-scoped**: since gemma4 has toolCalling=true, real usage is
+  unaffected → D5-S3 = gate it with an **explicit "this model can't call
+  tools" error** (removing silent failure); the full text protocol is
+  deferred to a separate L (only needed for a BYO non-tool-calling
+  cloud model).
+- [x] **VQ-3** (D2-S3) ✅ **The real gap = NFKC + ANSI-strip only**:
+  `dangerous-command.ts` already has comment-strip · `$IFS` · line
+  continuation · echo substitution, and **home-path (`~`/`$HOME`) is
+  already built into the RULES patterns** (:65/74/83). → D2-S3 = add
+  **only** NFKC Unicode normalization + ANSI escape stripping.
+- [x] **VQ-4** (D2-S4) ✅ **Confirmed unwired**: `runner.ts:88-100` only
+  caps stdout/stderr and **returns them without redaction** (:97-100,
+  the returned object is raw). D2-S4 is justified — pass through
+  redactSecretsInText right before returning.
+- [x] **VQ-5** (D4-S3) ✅ **Scope confirmed**: `--with-tools` branches
+  into its own actuators + agentRuntime in commands-ask.ts:609/635/726;
+  only the plain path uses `streamGroundedRecall` (:49). → add a
+  **prepare-only variant** to the seam (returns context + allowed
+  citations + the gate, without generating), then have --with-tools use
+  it and drive its own agentRuntime. Stays M-sized (streaming events
+  aren't needed — only the gate is shared).
+- [x] **VQ-6** (D-KO-S1) ✅ **Confirmed unsafe — TTS is the 4th site**:
+  `tts-truncate.ts:19/28` does a raw `slice(0, maxChars)`/
+  `slice(0, cut)` — zero surrogate guarding. → D-KO-S1's wiring target
+  is **4 sites** (history-search:206/213 · tool-def-helpers:108 ·
+  knowledge-corpus:365 + **tts-truncate:19/28**).
+- [x] **VQ-7** (D6-S3) ✅ **Cross-process locking already exists → slice
+  re-scoped**: the memory store already uses `withFileLock`
+  (cross-process `.lock`, encrypted-file.ts:113) on every write
+  (memory-user-store-file.ts:248/260/383/402
+  `serializeWrite→withFileLock`). → clobbering **among Muse's own
+  writers is already prevented**. The real gap in drift-detection is
+  **external edits** (manual editing · patch tools · another tool
+  appending outside the lock) only. D6-S3 = round-trip hash detection
+  for external modifications (defense-in-depth, exactly the hermes
+  memory_tool case). Scope narrowed, justification held.
+- [x] **VQ-8** (D3-S7) ✅ **Portable method**: `ps -o lstart= -p <pid>`
+  works on both macOS (BSD) and Linux (GNU) → portable. Capture at spawn
+  time and store on the record, re-query and compare before
+  kill/reconcile. Avoids depending on `/proc` (Linux-only). A mismatch
+  blocks the kill.
+- [x] **VQ-9** (D2-S1) ✅ **Allowlist grounds confirmed**: legitimate
+  commands legitimately use paths outside cwd = `$TMPDIR`
+  (`/var/folders/.../T/`) · `~/Library/pnpm/store` · `~/.npm` ·
+  `~/.cache` (read/write) + `~/.gitconfig` · `~/.config/git` (read).
+  The seatbelt profile's allowlist = **the cwd subtree + $TMPDIR (rw) +
+  the caches/config above (caches rw, config ro)**. This list avoids
+  false positives for git/pnpm/tsc/node.
+- [x] **VQ-10** (D1-S7) ✅ **Confirmed no e2e harness existed → wrote a
+  new one** (D1-S7d2, 2026-07-12): no browser e2e file existed
+  (grep 0 hits) → wrote `scripts/eval-browser-injection.mjs`
+  (`pnpm eval:browser-injection`, model-free, a real headless Chrome)
+  to prove the D1-S7d1 injection guard along the assembly path (9/9
+  live PASS).
+- [x] **VQ-12** (D-E1) ✅ **Time budget confirmed available**:
+  precheck-grounding already allows 240s per battery +
+  skip-on-timeout (REPEAT default 1). A push already tolerates several
+  minutes → add the eval:agent subset under the **same per-battery 240s
+  + skip guard**, keeping total push time under ~5 minutes. Headroom
+  exists.
 
-### 정량-확정 VQ (수용 기준의 숫자 채우기)
-- [ ] **VQ-Q1** (D2-S4) 시크릿 마스킹 "성능 무해"의 실측 임계 — 대형 stdout(10MB cap)에서 redact 추가 지연 ms 상한 확정.
-- [ ] **VQ-Q2** (D1-S1) ping-pong 창/임계(창20·warn6·block10)를 gemma4 실 트레이스로 재보정 — 제안값이 정당 반복(재시도 루프)을 오탐하는지 실측.
-- [ ] **VQ-Q3** (D6-S1) sleep-consolidation 승격 스코어 임계(반감기·min-recall) — Muse ~/.muse 실데이터 기근 상태에서 의미있는 값인지(연료 VQ-7과 연동).
+### Quantify-and-confirm VQ (fill in the numbers behind acceptance criteria)
+- [ ] **VQ-Q1** (D2-S4) Confirm the measured threshold behind "secret
+  masking is performance-benign" — the added redaction latency ceiling
+  (ms) on large stdout (a 10MB cap).
+- [ ] **VQ-Q2** (D1-S1) Recalibrate the ping-pong window/thresholds
+  (window 20 · warn 6 · block 10) against real gemma4 traces — measure
+  whether the proposed values false-positive on legitimate repetition
+  (a retry loop).
+- [ ] **VQ-Q3** (D6-S1) Sleep-consolidation promotion score thresholds
+  (half-life · min-recall) — whether they're meaningful given Muse's
+  current `~/.muse` fuel starvation (tied to fuel VQ-7).
 
-### 저가치·조건부 VQ (필요성부터 판정)
-- [ ] **VQ-11** orphaned-pipe 드레인(X-3) — Muse detached-node spawn이 손자-파이프 hang에 실제 취약한지. 취약하면 슬라이스 승격, 아니면 폐기.
-- [ ] **VQ-13** connection-epoch 무효화(웹콘솔/SSE) — 재연결 후 stale 결과 적용 레이스가 Muse 웹콘솔에 실재하는지. 실재만 슬라이스화.
-- [ ] **VQ-14** request coalescing(웹콘솔 동시 fetch) — 단일사용자라 동시성 낮음, 실측 후 판정.
+### Low-value / conditional VQ (decide necessity first)
+- [ ] **VQ-11** Orphaned-pipe draining (X-3) — whether Muse's
+  detached-node spawn is actually vulnerable to a grandchild-pipe hang.
+  If vulnerable, promote to a slice; otherwise discard.
+- [ ] **VQ-13** Connection-epoch invalidation (web console/SSE) —
+  whether a stale-result-applied-after-reconnect race actually exists
+  in Muse's web console. Only turn into a slice if real.
+- [ ] **VQ-14** Request coalescing (concurrent web-console fetches) —
+  concurrency is low for a single user; judge after measuring.
 
-### 전략-레벨 오픈 질문 (진안 결정)
-- [ ] **VQ-S1** eval 성적표 A→A+ 복원은 D-E1 하나에 달림 — GitHub CI에 로컬 Ollama가 없어 "라이브 게이트"는 구조적으로 pre-push 로컬 훅에 머문다. 클라우드 러너에 self-hosted Ollama를 붙일지(비용/복잡도) vs 로컬-훅으로 충분하다 볼지.
-- [ ] **VQ-S2** D6(sleep-consolidation)은 연료(~/.muse 실데이터) 없이는 실효 0 — 연료 확보(D6-S2, 실사용)가 D6-S1보다 먼저여야 하는지 순서 재고.
-- [ ] **VQ-S3** W4 과적(9슬라이스) — W4a(라우팅 D5)·W4b(보안마감 D2-S3/S4/S5+KO)로 분할할지.
-- [ ] **VQ-21** (D4-S2a) Photos.app **관리-라이브러리** 딥 쿼리(앨범/얼굴/날짜)+실 export는 "신규툴 신설 금지" 제약과 충돌 — mdfind는 관리 라이브러리 내부(.photoslibrary 패키지)를 잘 못 봄. AppleScript(`tell application "Photos"`)나 osxphotos가 필요하나 (a)새 mac 툴 vs 기존 확장 결정 (b)Photos 자동화 권한(TCC) 모델. D4-S2a는 제약-준수판(mac_spotlight_search imagesOnly=이미지 파일 검색+경로 export)까지 배송; 딥 라이브러리 export는 진안 결정 필요(툴-home 포크). — 2026-07-12 D4-S2a 설계
-- [ ] **VQ-20** (D4-S1a) MCP `propose_action`으로 파킹된 액션은 외부(신뢰불가) 클라이언트가 `draft`/`arguments`를 완전 제어 — `muse approvals`가 `draft`를 raw로 사람에게 보여줘 spoofing 표면(예: draft는 무해해 보이나 arguments가 다른 draft↔args desync). 파킹 자체는 no-effect이고 승인은 사람-확인+fail-close라 현재 계약 위반은 아니나, draft 새니타이즈(제어바이트·hidden-Unicode)+draft↔arguments 일치 표시가 후속. 기존 CLI-write 스테이징 경로와 동일 표면이라 이번에 악화된 건 아님. — 2026-07-12 D4-S1a Opus 평가자 발견
-- [ ] **VQ-19** (D1-S7a/D1-S7d) 브라우저 ref numeric-index 충돌 — refs는 스냅샷마다 0-based 재할당이고 `data-muse-ref` DOM 속성이 이전 스냅샷에서 안 지워짐. 페이지가 바뀌어 새 요소가 옛 index `3`을 물려받으면(또는 stale 속성이 남으면) 옛 `3`이 *다른* 요소로 해소될 수 있음. D1-S7a의 tool-boundary 가드는 현재 스냅샷에 없는 ref만 막지, 같은 번호가 *다른* 요소로 살아있는 경우는 못 막음 — `captureSnapshot` 시작에서 stale `data-muse-ref` 클리어(또는 generation-scoped ref) 필요, 실브라우저 e2e로 검증(D1-S7d 인접). Muse가 실제로 이 충돌에 취약한지 확인 후 슬라이스화. — 2026-07-11 D1-S7a Opus 평가자 발견
-- [ ] **VQ-18** (D2-S6b) CLI fs-write 스테이징 entry는 `{path,action}`만 담아(FsWriteDraft가 content 미보유) `muse approvals approve` 재실행 불가 — 채널 경로처럼 full-args 재실행 라운드트립을 CLI에 완성하려면 게이트에 원본 쓰기 args를 스레드해야(현재는 리뷰 가능한 worklist item까지). — 2026-07-11 D2-S6b 발견
-- [ ] **VQ-17** (D-E1/eval infra) `eval:computer-task`(및 다른 "LOCAL OLLAMA ONLY" 배터리?)가 로컬 모델을 강제하지 않아, ambient `GEMINI_API_KEY`가 있으면 `resolveDefaultModel`이 클라우드로 라우팅→Gemini API 에러로 죽음(정책 위반). eval 스크립트가 `MUSE_LOCAL_ONLY=true` 또는 `MUSE_DEFAULT_MODEL=ollama/…`를 명시 강제해야. testing.md의 "cloud APIs never used" 계약과 어긋남. — 2026-07-11 D1-S1 발견
-- [ ] **VQ-16** (D2-S2b) auto-approve seam 부재 — `classifyCommandTopology` 강등의 완전한 형태(자동승인을 명시승인으로)는 트리거할 auto-approve 경로가 없어 미실증: trust.json(`muse trust`)은 런타임 미배선, 채널(Telegram/Slack) 경로가 execute를 무인 실행하는지 미확인. trust.json 배선 또는 채널 auto-approve 시 반드시 topology를 consult해 un-analyzable을 fail-closed. — 2026-07-11 D2-S2b 발견
-- [ ] **VQ-15** (D2-S2a/b) 셸 래퍼 우회 — `classifyCommandTopology`는 `command`가 직접 셸(sh/bash/…)일 때만 판정하므로 `sudo sh -c '$(x)'`·`env X=y bash -c '…'`는 program이 sudo/env로 풀려 미검출(analyzable=true). DS-2는 CMD_START로 sudo/env 래퍼를 이미 처리 — D2-S2b 배선 시 래퍼를 벗겨 실 program을 해석하거나, 별도 형제 슬라이스로 승격할지. — 2026-07-11 D2-S2a Opus 평가자 발견
+### Strategy-level open questions (Jinan decides)
+- [ ] **VQ-S1** Restoring the eval scorecard from A→A+ hinges entirely on
+  D-E1 — since GitHub CI has no local Ollama, "live gate" is
+  structurally confined to the local pre-push hook. Whether to attach
+  self-hosted Ollama to a cloud runner (cost/complexity) vs. accept that
+  a local hook is enough.
+- [ ] **VQ-S2** D6 (sleep-consolidation) has zero real effect without
+  fuel (real `~/.muse` data) — should securing fuel (D6-S2, real usage)
+  come before D6-S1?
+- [ ] **VQ-S3** W4 is overloaded (9 slices) — split into W4a (routing,
+  D5) / W4b (security closeout, D2-S3/S4/S5+KO)?
+- [ ] **VQ-21** (D4-S2a) A deep query into Photos.app's **managed
+  library** (albums/faces/dates) + a real export conflicts with the
+  "never create a new tool" constraint — mdfind can't see inside a
+  managed library well (the `.photoslibrary` package). AppleScript
+  (`tell application "Photos"`) or osxphotos would be needed, but (a)
+  whether to add a new mac tool vs. extend an existing one and (b) the
+  Photos automation permission (TCC) model are both open. D4-S2a
+  shipped the constraint-compliant version (mac_spotlight_search
+  imagesOnly = image-file search + path export); a deep library export
+  needs a decision from Jinan (a tool-home fork). — 2026-07-12,
+  designed during D4-S2a
+- [ ] **VQ-20** (D4-S1a) An action parked via MCP's `propose_action` has
+  its `draft`/`arguments` fully controlled by an external (untrusted)
+  client — `muse approvals` shows `draft` raw to the human, a spoofing
+  surface (e.g., a draft that looks harmless but whose arguments desync
+  from it). Parking itself has no effect, and approval is a human
+  confirmation with fail-close, so this doesn't violate the current
+  contract, but draft sanitization (control bytes, hidden Unicode) + a
+  draft↔arguments consistency display should follow. Not a new
+  regression — the same surface as the existing CLI-write staging path.
+  — 2026-07-12, found by D4-S1a's Opus evaluator
+- [ ] **VQ-19** (D1-S7a/D1-S7d) A browser ref numeric-index collision —
+  refs are reassigned 0-based on every snapshot, and the
+  `data-muse-ref` DOM attribute isn't cleared from the previous
+  snapshot. If a new element inherits the old index `3` (or a stale
+  attribute lingers), the old `3` could now resolve to a *different*
+  element. D1-S7a's tool-boundary guard only blocks a ref absent from
+  the current snapshot, not one that's still alive but pointing at a
+  *different* element — needs clearing stale `data-muse-ref` at the
+  start of `captureSnapshot` (or a generation-scoped ref), verified via
+  a real-browser e2e (adjacent to D1-S7d). Confirm whether Muse is
+  actually vulnerable to this before turning it into a slice. —
+  2026-07-11, found by D1-S7a's Opus evaluator
+- [ ] **VQ-18** (D2-S6b) The CLI fs-write staging entry only holds
+  `{path,action}` (FsWriteDraft has no content field), so
+  `muse approvals approve` can't replay it — completing a full-args
+  replay round-trip for the CLI, like the channel path has, would
+  require threading the original write args through the gate (currently
+  it's only a reviewable worklist item). — 2026-07-11, found during
+  D2-S6b
+- [ ] **VQ-17** (D-E1/eval infra) `eval:computer-task` (and possibly
+  other "LOCAL OLLAMA ONLY" batteries?) doesn't force a local model, so
+  with an ambient `GEMINI_API_KEY` present, `resolveDefaultModel` routes
+  to the cloud → dies on a Gemini API error (a policy violation). The
+  eval script should explicitly force `MUSE_LOCAL_ONLY=true` or
+  `MUSE_DEFAULT_MODEL=ollama/…`. This conflicts with testing.md's
+  "cloud APIs never used" contract. — 2026-07-11, found during D1-S1
+- [ ] **VQ-16** (D2-S2b) No auto-approve seam exists — the complete
+  form of classifyCommandTopology's downgrade (turning auto-approve
+  into explicit approval) has no auto-approve path to trigger it in
+  practice: trust.json (`muse trust`) isn't wired at runtime, and
+  it's unconfirmed whether channel paths (Telegram/Slack) execute
+  unattended. Once trust.json is wired, or a channel auto-approves on
+  execute, it must consult the topology check and fail-closed on
+  un-analyzable commands. — 2026-07-11, found during D2-S2b
+- [ ] **VQ-15** (D2-S2a/b) Shell-wrapper bypass — `classifyCommandTopology`
+  only makes a determination when `command` is directly a shell
+  (sh/bash/…), so `sudo sh -c '$(x)'` · `env X=y bash -c '…'` go
+  undetected because the program resolves through sudo/env
+  (analyzable=true). DS-2 already handles sudo/env wrappers via
+  CMD_START — when wiring D2-S2b, decide whether to strip the wrapper
+  and resolve the real program, or promote this to a separate sibling
+  slice. — 2026-07-11, found by D2-S2a's Opus evaluator
 
-<!-- 새 VQ는 이 줄 위에 "- [ ] **VQ-N** (슬라이스) 내용 — 발견 날짜/출처" 형식으로 추가 -->
+<!-- Add new VQs above this line as "- [ ] **VQ-N** (slice) content — discovery date/source" -->
