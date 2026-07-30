@@ -214,6 +214,14 @@ elif [ "$needs_doc_links" -eq 1 ]; then
     echo "pre-push: BLOCKED — a documentation reference does not resolve" >&2
     exit 1
   fi
+  # A command a doc tells an agent to run is the same class of claim as a link.
+  if [ -f scripts/check-doc-claims.mjs ]; then
+    echo "pre-push: reference gate — node scripts/check-doc-claims.mjs" >&2
+    if ! node scripts/check-doc-claims.mjs >&2; then
+      echo "pre-push: BLOCKED — a documented command does not exist" >&2
+      exit 1
+    fi
+  fi
 else
   echo "pre-push: reference gate skipped (no markdown changed)" >&2
 fi

@@ -249,12 +249,23 @@ GPT-5.6 family guidance); re-audit it on every model upgrade (§4 ratchet & prun
   transformation, Terra for everyday implementation, Sol for complex refactors, architecture,
   security, and release decisions (this is the `Sol/high`/`Sol/xhigh` gate-strength shorthand in
   [roles §1.5](roles.md)).
-- **Rules in a document are followed unreliably — a gate is not.** On HANDBOOK.md, a benchmark
-  built precisely for "the rules live somewhere other than the request", the best frontier
-  configuration scores **36.2% strict pass@1** (Claude Fable 5) and most score **under 25%**
-  ([arXiv 2607.25398](https://arxiv.org/abs/2607.25398)). So adding a line to this contract buys
-  far less compliance than it appears to. Prefer deleting a rule, or promoting it to a gate that
-  fails closed, over writing a longer contract.
+- **A rule in a document is followed unreliably — a gate is not.** The limit is not how many
+  rules a model can hold; it is whether policy stored *away from the request* survives a
+  multi-step task. On HANDBOOK.md, built for exactly that setup, the best frontier configuration
+  scores **36.2% strict pass@1** and most score **under 25%**
+  ([arXiv 2607.25398](https://arxiv.org/abs/2607.25398)); its named failure modes are overriding
+  policy for a plausible-sounding request, running the required check and then ignoring its
+  result, and reporting compliance that did not happen. Robustness also does not transfer between
+  surfaces — a model that holds a rule against a direct contradiction can still lose it when the
+  contradiction arrives inside tool output (**20.5–98.2%** across 37 models,
+  [arXiv 2607.25987](https://arxiv.org/abs/2607.25987)). So: prefer deleting a rule, or promoting
+  it to a gate that fails closed, over writing a longer contract — and never treat a line here as
+  protection for a safety-critical path.
+- **Prune this contract by ablation, not by intuition.** When a model upgrade lands, the question
+  for each line is not "is it still true" but "does removing it change what the agent does".
+  Anthropic's own guidance for the current generation is that scaffolding built for weaker models
+  now costs quality; the method that finds it is deleting a section and checking whether any gate
+  or observed behavior actually moves.
 
 ---
 

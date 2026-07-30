@@ -151,11 +151,11 @@ the OpenClaw / Anthropic field names so authors can lift a SKILL.md between
 ecosystems. The memory-consolidation idea (surfacing what recurs across
 sessions rather than recalling a single one) informed Muse's deterministic
 `recurringThemes()` / `muse episode themes`
-(`packages/mcp/src/personal-episodes-store.ts`). Patterns flagged for future
+(`packages/stores/src/episode-analytics.ts`). Patterns flagged for future
 Muse slices: the rest of sleep/"dreaming" memory consolidation — its
 near-duplicate-episode consolidation informed Muse's deterministic
 `planEpisodeConsolidation()` / `muse episode consolidate`
-(`packages/mcp/src/personal-episodes-store.ts`); short→long promotion with a
+(`packages/stores/src/episode-analytics.ts`); short→long promotion with a
 weighted score is still future. Its *skill-workshop* scan-before-activate
 idea informed Muse's deterministic `scanSkillBodyForRisks()` — auto-authored
 skill bodies flagged for prompt-injection / dangerous-shell / embedded-secrets

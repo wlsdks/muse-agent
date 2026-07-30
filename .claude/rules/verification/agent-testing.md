@@ -115,7 +115,7 @@ identities are fail-closed.
 
 | Concern | Muse gate |
 |---|---|
-| Tool selection + args + irrelevance | `pnpm eval:tools` (`eval:tools:nl`) |
+| Tool selection + args + irrelevance | `pnpm eval:tools` |
 | Terminal-state / trajectory (deterministic) | `*-terminal-state.test.ts`, `*-trajectory.test.ts` (agent-core) |
 | Plan quality (valid∧complete∧ordered∧efficient) | `pnpm eval:plan-quality` |
 | LLM-judge + its meta-eval | `pnpm eval:judge` |

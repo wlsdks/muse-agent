@@ -484,8 +484,9 @@ Mostly operator-facing screens, but used directly for cost and quality decisions
 - **Guided first run (onboard)** ✅ — walks a first-time user step by step (point at a notes folder
   → bulk ingest → first question), taking them from install to a **private, source-citing first
   answer** (`muse onboard`). Each step shows "done/to-do" and tells you the next command to type.
-- **Web app** ✅ — Chat, Voice, Today, tasks, reminders, inbox, notes, memory, scheduler, calendar,
-  history, cost, tools, orchestration panels.
+- **Web app** ✅ — Chat, home, continuity, work, tasks, reminders, notes, calendar, scheduler,
+  agents, board, flows, skills, tools, MCP, messaging, activity, journey, autonomy,
+  self-improvement, prompt-lab, integrations and settings views. Voice is CLI-only.
 - **API server** ✅ — most of the above over HTTP (proactive notifications as a real-time stream).
   Publishes a standard Agent Card for interop with other agents.
 - **Local execution sandbox** ✅ — potentially risky local command execution happens only in an

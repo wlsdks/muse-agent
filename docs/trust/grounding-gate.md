@@ -14,9 +14,9 @@ related: [../product/glossary.md, ../product/SYSTEM-MAP.md]
 
 Muse's product identity is Attunement, but the deterministic trust floor that stops it inventing
 claims about a person — and reasons to intervene — is the **grounding gate**. This document shows
-*how a single question passes through that gate*, as one flow, for the mental model. Symbol- and
-the code is `packages/agent-core/src/grounding-verifier.ts` and its tests; terms live
-in the [glossary](../product/glossary.md).
+*how a single question passes through that gate*, as one flow, for the mental model. The code is
+`packages/agent-core/src/grounding-verifier.ts` and its tests; terms live in the
+[glossary](../product/glossary.md).
 
 > The key point: on this path the gate is **deterministic code, not a model call**:
 > `verifyGrounding` in `packages/agent-core/src/grounding-verifier.ts` (re-exported through

@@ -43,8 +43,10 @@ explicit deployment choices, not the product's identity.
 | Config | `~/.config/muse/config.json` |
 | Run state | `.muse/runs/*.jsonl` |
 
-Plain files. Memory, episodes and the action log are encrypted at rest; credentials live in the OS
-keychain or an encrypted auth store, never in plain text.
+Plain files, plaintext by default. Memory, episodes and the action log can be encrypted at rest
+with an explicit `… encrypt` command; credentials live in the OS keychain or an encrypted auth
+store, never in plain text. What each store actually covers:
+[privacy-and-data](../trust/privacy-and-data.md).
 
 ## One runtime, every surface
 

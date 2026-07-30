@@ -105,7 +105,7 @@ it should not copy Attunement validation into MAG.
 
 ## Proposed fail-closed command
 
-`pnpm qualify:mag-standalone` should eventually:
+A `qualify:mag-standalone` script — which does not exist yet — should eventually:
 
 1. bind the report to the exact source revision;
 2. create a temporary clean-room workspace containing only qualified MAG packages,

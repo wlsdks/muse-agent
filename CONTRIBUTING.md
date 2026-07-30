@@ -21,7 +21,7 @@ Read these in order:
 ## Local setup
 
 ```bash
-# Requirements: Node.js 24 LTS + pnpm 10
+# Requirements: Node.js >= 22.12 (24 LTS recommended) + pnpm 10
 pnpm install
 pnpm check:toolchain
 pnpm build
@@ -67,8 +67,9 @@ but never exercises the actual model contract.
 - **Tests are the only form of verification.** Add the narrowest
   useful test (unit before integration before HTTP smoke) for every
   new behavior.
-- **Lint is `error`-only.** Every rule in `eslint.config.js` is set to `error` and
-  blocks `pnpm lint` exit-0. New violations don't ship.
+- **Lint must be clean.** `pnpm lint` requires 0 errors and 0 warnings; every rule
+  `eslint.config.js` enables is at `error`, and a handful are deliberately `off`
+  (see `.claude/rules/engineering/code-style.md`). New violations don't ship.
 
 ## Provider credentials
 

@@ -20,7 +20,9 @@ calls is to point it at a local open-source model via **Ollama**.
 **Default: `gemma4:12b`** *(~16 GB unified memory / VRAM)* — Muse's zero-config
 local model. It's natively **multimodal** (the agent can SEE images — receipts,
 contracts, charts, handwriting — via `muse ask --image`), has strong grounding,
-and runs fully local under Ollama. Apache-2.0, no API key.
+and runs fully local under Ollama. No API key. Licensed under the Gemma Terms of Use plus
+Google's Prohibited Use Policy — not Apache-2.0; check the license table below before commercial
+use.
 
 On a smaller machine, point Muse at a lighter qwen tier instead
 (`muse config set defaultModel ollama/<tag>`) — all run locally, no key:
@@ -68,7 +70,7 @@ Pass `--check` to dry-run without writing.
 
 | Tier | Model | Size on disk | Min RAM | Strengths | Weaknesses |
 | --- | --- | --- | --- | --- | --- |
-| **default** | `gemma4:12b` | 7.6 GB | ~16 GB | **zero-config default** — native multimodal (vision/OCR/charts), strong grounding (faithfulness 0.94), Apache-2.0; ~16 tok/s | needs Ollama ≥ 0.30 + ~16 GB; slower than the small qwen tiers |
+| **default** | `gemma4:12b` | 7.6 GB | ~16 GB | **zero-config default** — native multimodal (vision/OCR/charts), strong grounding (faithfulness 0.94), Gemma Terms; ~16 tok/s | needs Ollama ≥ 0.30 + ~16 GB; slower than the small qwen tiers |
 | **low** | `qwen3.5:2b-q4_K_M` | 1.9 GB | 6 GB | lightest daily-driver — Apr 2026 Qwen 3.5, 159 ms first-token via `OllamaProvider` (think:false auto) | thinking model (Muse handles automatically); text-only |
 | **mid** | `qwen2.5:7b-instruct` | 4.7 GB | 8 GB | proven baseline, 201 ms first-token, 27 tok/s | older (Sep 2024) |
 | **high** | `qwen3.5:9b-q4_K_M` | 6.6 GB | 12 GB | best reply quality at moderate cost, Apr 2026 Qwen 3.5 | needs ≥ 12 GB RAM |

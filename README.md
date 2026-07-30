@@ -180,7 +180,7 @@ None of the three is finished. The next section says exactly how far each one go
 
 | Area | Notes |
 | --- | --- |
-| Memory, grounded recall with citations, local personal stores | Encryption at rest for memory, episodes and the action log |
+| Memory, grounded recall with citations, local personal stores | Optional encryption at rest for memory, episodes and the action log |
 | Guarded tools and browser actions, traces, checkpoints | Fail-close guards, bounded loops, timeouts |
 | Explicit continuity threads | `start → link → muse continue → outcome`, end to end |
 | One runtime across CLI, web/API, messaging, scheduled jobs | Same guards, same approvals, same traces |
@@ -301,8 +301,9 @@ Enforced as deterministic code, never as a prompt instruction:
 `agent-core` never talks to a vendor SDK — everything goes through one `ModelProvider` interface, so
 swapping models does not touch agent logic. Adapters ship for OpenAI, Anthropic, Gemini, OpenRouter,
 Ollama and supported OpenAI-compatible endpoints (LM Studio is that adapter with a local
-`baseUrl`, not a dedicated one); missing capabilities degrade explicitly rather than silently. Your data stays in plain files under `~/.muse/`, with memory, episodes and the action
-log encrypted at rest and credentials in the OS keychain. CLI, web/API chat, messaging channels,
+`baseUrl`, not a dedicated one); missing capabilities degrade explicitly rather than silently. Your data stays in plain files under `~/.muse/` — plaintext by default, with memory, episodes and
+the action log encryptable at rest on request ([what is and is not
+covered](docs/trust/privacy-and-data.md)) and credentials in the OS keychain. CLI, web/API chat, messaging channels,
 scheduled jobs and delegated workers all share one composition root, so guards, approvals and traces
 are identical on every surface; risky local execution goes through the Rust `runner` as a child
 process. MCP works both directions — external servers behind an allowlist, and `muse mcp serve`

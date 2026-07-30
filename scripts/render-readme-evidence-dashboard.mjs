@@ -88,7 +88,7 @@ async function directoryInventory() {
     for (const entry of await readdir(join(repoRoot, root), { withFileTypes: true })) if (entry.isDirectory()) names.push(`${root}/${entry.name}`);
   }
   names.sort();
-  if (names.length !== 41) throw new Error(`workspace inventory count drift: ${names.length}`);
+  if (names.length !== 44) throw new Error(`workspace inventory count drift: ${names.length}`);
   return names;
 }
 async function mcpInventory() {
