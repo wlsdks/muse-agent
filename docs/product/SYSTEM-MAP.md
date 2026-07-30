@@ -339,8 +339,7 @@ Capabilities that send something to a third party or change external system stat
   are registered** (so mic audio cannot leak). There is also a wake-word mode.
 - **Multi-agent collaboration** — specialist agents run **sequentially or in parallel**, and each
   collaboration's mode, duration and success/failure counts are kept in a history. (Race mode is
-  currently parked deliberately and falls back to sequential — details in
-  [`../design/channels/a2a-swarm.md`](../design/channels/a2a-swarm.md).)
+  currently parked deliberately and falls back to sequential.)
 - **Model tiering** — within one task, simple lookups go to a fast model and deep reasoning to a
   strong one, automatically.
 - **Agent specs** — agents with a role, tools and instructions can be registered, and the right one

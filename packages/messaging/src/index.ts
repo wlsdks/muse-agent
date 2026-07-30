@@ -1,3 +1,10 @@
+/**
+ * Outbound/inbound messaging providers.
+ *
+ * KakaoTalk is deliberately absent: Kakao restricts general bot APIs to verified
+ * business channels, and the unofficial libraries violate its ToS with an
+ * account-suspension risk to the owner. Revisit only if a single-user path appears.
+ */
 export {
   MessagingProviderError,
   MessagingValidationError,

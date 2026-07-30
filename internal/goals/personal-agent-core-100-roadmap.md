@@ -2,9 +2,11 @@
 title: Muse personal-agent Core 100 roadmap
 audience: [owner, product, engineering, evaluation]
 purpose: Finish the smallest essential remaining program for a trusted daily provider-neutral personal AI agent
-status: active-authoritative
+status: superseded-by-successor-roadmap
 updated: 2026-07-28
 reconciledSourceHead: d693cea6fb1b6bf4889fa99dd38d9e5e0ae04642
+supersededBy:
+  - personal-agent-successor-roadmap.md
 supersedesForActivation:
   - personal-agent-productization-roadmap.md
 related:

@@ -43,10 +43,13 @@ rival-watch remembers where the next scout starts.**
   Shadow Muse·Continuity Capsule·Policy Card and the
   agent-native **Muse Attunement Graph (MAG)** in stages, without duplicating Core100/legacy-300's
   general foundation work.
-- `personal-agent-core-100-roadmap.md` — **current authoritative execution doc.** As of the 2026-07-28
-  source reconciliation, excludes already-closed work and re-composes the remaining core needed for a
-  daily provider-neutral personal agent into 100 active-wall-clock ≤20-minute slices. The next task,
-  lane, gate, and model choice follow this doc.
+- `personal-agent-successor-roadmap.md` — **current authoritative execution doc.** Core100-100
+  concluded with the decision `continue-with-successor`, so PA-S001..S008 is the live order; the
+  next task, lane, gate, and model choice follow this doc.
+- `personal-agent-core-100-roadmap.md` — **superseded, kept for its slice definitions and
+  `legacyRefs`.** It re-composed the remaining core into 100 ≤20-minute slices and its program is
+  finished; do not activate from it. Both files claimed `active-authoritative` until 2026-07-30,
+  which pointed agents at completed work.
 - `personal-agent-productization-roadmap.md` — historical reference for the 300-task legacy
   requirements and stable IDs. Not used for new BUILD/EVIDENCE activation; consult a section only
   when detailed rationale from Core100's `legacyRefs` is needed.
@@ -58,8 +61,7 @@ subject to record grammar/checker** (an explicit exception, like growth-backlog)
 
 | file | nature |
 |---|---|
-| `docs/strategy/competitor-analysis-and-a-plus-roadmap.md` | **active** — §10.3 execution checklist + §11 append-only verification queue (ledger of the a-plus-roadmap thread) |
-| `docs/strategy/assistant-value-master-plan.md` | active status board (T2-③/④ open) |
+| `../../docs/strategy/positioning/competitor-analysis-and-a-plus-roadmap.md` | **closed 2026-07-30** — kept only for the residual §10.3 items and the §11 queue; new rival findings go to `rival-watch.md` |
 | `docs/strategy/agent-research-findings-2026.md` | research ledger (edited in place) |
 | `../../docs/strategy/positioning/differentiation.md` · `security-sweep-2-plan.md` | closed ledgers (see the status stamp at the top) |
 | `CHANGELOG.md` (root) | release log — Keep-a-Changelog, curated by the release skill |

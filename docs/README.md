@@ -87,9 +87,9 @@ others it interacts with:
 | Folder | Notes |
 |---|---|
 | [`design/attunement/`](design/attunement/README.md) | The architecture and data contract, the [graph engine](design/attunement/attunement-graph.md) and its [core](design/attunement/agent-native-graph-core.md), [continuity-timing-loop](design/attunement/continuity-timing-loop.md), [observe-o1](design/attunement/observe-o1.md), [muse-work](design/attunement/muse-work.md) |
-| [`design/memory/`](design/memory/) | [episodic-memory](design/memory/episodic-memory.md), [context-engineering-roadmap](design/memory/context-engineering-roadmap.md), [resumable-notes-indexing](design/memory/resumable-notes-indexing.md), [background-review-engine](design/memory/background-review-engine.md) — the one design still in progress |
-| [`design/proactive/`](design/proactive/) | [proactive-surfacing](design/proactive/proactive-surfacing.md), [pattern-detection](design/proactive/pattern-detection.md), [reminder-firing](design/proactive/reminder-firing.md), [agent-self-followup](design/proactive/agent-self-followup.md), [progressive-autonomy-p0](design/proactive/progressive-autonomy-p0.md) |
-| [`design/channels/`](design/channels/) | [messaging](design/channels/messaging.md), [line-webhook](design/channels/line-webhook.md), [voice-mode](design/channels/voice-mode.md), [phase-d-chat-stream-routing](design/channels/phase-d-chat-stream-routing.md), [a2a-swarm](design/channels/a2a-swarm.md) |
+| [`design/memory/`](design/memory/) | [resumable-notes-indexing](design/memory/resumable-notes-indexing.md), [background-review-engine](design/memory/background-review-engine.md) — the one design still in progress |
+| [`design/proactive/`](design/proactive/) | [progressive-autonomy-p0](design/proactive/progressive-autonomy-p0.md) |
+| [`design/channels/`](design/channels/) | [voice-mode](design/channels/voice-mode.md) — Phase F wake-word is the unbuilt part |
 | [`design/platform/`](design/platform/) | [actuator-modes](design/platform/actuator-modes.md), [macos-control](design/platform/macos-control.md), [mascot](design/platform/mascot.md) |
 
 For a feature's "what", see the product docs above; for the "why", look here.

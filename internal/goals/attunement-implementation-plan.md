@@ -218,8 +218,8 @@ invoking the public CLI command once. The actual ledger moved from 21 to 22
 deliveries and from zero to one `none` interaction; tasks and the receipt outbox
 were unchanged, no receipt or outcome was created, and exact coverage remains
 life `0/10`, work `0/10`. This is collection readiness, not natural completion
-evidence or permission. Evidence:
-[`../../docs/evaluations/continuity-natural-collection-cycle-1-2026-07-18.md`](../../docs/evaluations/continuity-natural-collection-cycle-1-2026-07-18.md).
+evidence or permission. The current aggregate is
+[`../../docs/evaluations/continuity-interaction-longitudinal-audit-2026-07-18.md`](../../docs/evaluations/continuity-interaction-longitudinal-audit-2026-07-18.md).
 
 The shared exact-artifact resolver boundary now revalidates artifact id, type,
 provider, and role before evidence can become available or a delivery can open.

@@ -1,10 +1,15 @@
 # Muse vs openclaw · hermes — full analysis, assessment, and A+ roadmap derivation
 
 > **Written by**: Fable 5 (owns analysis & planning). **Executed by**: Sonnet workers (per-slice).
-> **Date**: 2026-07-11. This document **absorbs and replaces** the earlier scattered
-> planning/assessment documents (the a-plus-plan draft, agent-performance-levers,
-> frontier-research, maturity-review) as the **single canonical source**. All future
-> updates to this line land in this file.
+> **CLOSED 2026-07-30 — not canonical, and no longer the place for new findings.**
+> Written 2026-07-11 by absorbing the earlier scattered planning documents, and its
+> §10.3 program is 61/67 done. New rival findings go to
+> [`../../../internal/goals/rival-watch.md`](../../../internal/goals/rival-watch.md)
+> (the successor `differentiation.md` names); the MAG landscape has its own dated
+> snapshot. Kept ONLY for the residual open items in §10.3 and the §11 queue — the
+> rival snapshot below is frozen at clone HEADs from 2026-07-07 and its Muse-side
+> claims have been overtaken by its own executed roadmap. Do not ground on it for
+> current state.
 >
 > **Methodology**: (1) 3 agents profiling in parallel (Muse · openclaw · hermes, each
 > run independently), (2) an **18-Haiku fine-grained sweep** (round 1: 7 mechanisms +
