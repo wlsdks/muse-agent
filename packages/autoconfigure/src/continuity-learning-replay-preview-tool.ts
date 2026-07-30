@@ -26,7 +26,7 @@ export interface ContinuityLearningReplayPreviewToolDeps {
   }> | undefined>;
 }
 
-function parseInput(args: JsonObject): Readonly<{
+export function parseLearningReplayPreviewInput(args: JsonObject): Readonly<{
   readonly draft: ExperienceLearningProposalDraft;
   readonly evidenceCases: unknown;
   readonly opportunityId: string;
@@ -102,7 +102,7 @@ export function createContinuityLearningReplayPreviewTool(
       risk: "read"
     },
     execute: async (args): Promise<JsonObject> => {
-      const input = parseInput(args);
+      const input = parseLearningReplayPreviewInput(args);
       const result = await deps.previewReplay(input);
       if (!result) {
         throw new Error("continuity learning replay preview held: stale opportunity, invalid draft, or invalid evidence");

@@ -17,6 +17,9 @@ import {
 import {
   createContinuityLearningReplayPreviewTool
 } from "../src/continuity-learning-replay-preview-tool.js";
+import {
+  createContinuityLearningApplyTool
+} from "../src/continuity-learning-apply-tool.js";
 import { createMuseRuntimeAssembly } from "../src/index.js";
 
 let directory: string | undefined;
@@ -86,7 +89,7 @@ describe("continuity learning preview tool", () => {
     ).items[0]!.opportunityId;
     const recordedAt = (await readAttunementState(attunementFile))
       .deliveries[0]!.outcome!.recordedAt;
-    const proposedAt = new Date(Date.parse(recordedAt) + 1_000).toISOString();
+    const proposedAt = recordedAt;
     const expiresAt = new Date(Date.parse(proposedAt) + 24 * 60 * 60_000).toISOString();
     const before = await readFile(attunementFile);
     const draft = {
@@ -131,7 +134,7 @@ describe("continuity learning preview tool", () => {
     });
     expect(await readFile(attunementFile)).toEqual(before);
 
-    const evidenceObservedAt = new Date(Date.parse(proposedAt) + 1_000).toISOString();
+    const evidenceObservedAt = proposedAt;
     const evidenceCases = Array.from({ length: 10 }, (_, index) => {
       const caseId = `agent-replay-${index.toString()}`;
       const common = {
@@ -180,6 +183,51 @@ describe("continuity learning preview tool", () => {
     });
     expect(await readFile(attunementFile)).toEqual(before);
 
+    const applyTool = tool("muse.continuity.learning.apply");
+    expect(applyTool.definition.risk).toBe("write");
+    const applied = await applyTool.execute({
+      draft,
+      evidenceCases,
+      opportunityId,
+      previewId: (result as { readonly previewId: string }).previewId,
+      replayInputHash: (
+        replay as {
+          readonly replayBundle: { readonly replay: { readonly inputHash: string } };
+        }
+      ).replayBundle.replay.inputHash
+    }, { runId: "apply-learning" });
+    expect(applied).toMatchObject({
+      approval: {
+        authority: "owner-explicit",
+        previewId: (result as { readonly previewId: string }).previewId
+      },
+      policyAuditId: expect.stringMatching(/^learning_policy_audit_[a-f0-9]{64}$/u),
+      promotion: {
+        policyAfter: {
+          detail: "compact",
+          nextStep: "contextual"
+        },
+        promotionApplied: true
+      }
+    });
+    const appliedState = await readAttunementState(attunementFile);
+    expect(appliedState.experienceLearningPolicyAudits).toHaveLength(1);
+    expect(appliedState.threads.find((entry) => entry.id === thread.id)?.policy)
+      .toMatchObject({ detail: "compact", nextStep: "contextual" });
+    const afterApply = await readFile(attunementFile);
+    await expect(applyTool.execute({
+      draft,
+      evidenceCases,
+      opportunityId,
+      previewId: (result as { readonly previewId: string }).previewId,
+      replayInputHash: (
+        replay as {
+          readonly replayBundle: { readonly replay: { readonly inputHash: string } };
+        }
+      ).replayBundle.replay.inputHash
+    }, { runId: "replay-apply" })).rejects.toThrow(/held/u);
+    expect(await readFile(attunementFile)).toEqual(afterApply);
+
     await expect(tool("muse.continuity.learning.preview").execute({
       draft: {
         expectedBenefit: "Wrong scope.",
@@ -199,7 +247,7 @@ describe("continuity learning preview tool", () => {
       },
       opportunityId
     }, { runId: "held-scope" })).rejects.toThrow(/held/u);
-    expect(await readFile(attunementFile)).toEqual(before);
+    expect(await readFile(attunementFile)).toEqual(afterApply);
   });
 
   it("rejects non-plain, extra, stale, and malformed input before producing a preview", async () => {
@@ -279,5 +327,48 @@ describe("continuity learning preview tool", () => {
       { runId: "proxy" }
     )).rejects.toThrow();
     expect(previewReplay).toHaveBeenCalledTimes(1);
+  });
+
+  it("binds apply to exact preview and replay ids before the write dependency", async () => {
+    const apply = vi.fn(async () => undefined);
+    const tool = createContinuityLearningApplyTool({ apply });
+    const draft = {
+      expectedBenefit: "Less interruption.",
+      expiresAt: "2026-07-31T12:00:00.000Z",
+      experienceId: "apply-1",
+      proposedAt: "2026-07-30T12:00:00.000Z",
+      proposedBehavior: "Wait longer.",
+      proposedChange: {
+        adjustment: "increase-cooldown",
+        kind: "thread-timing"
+      },
+      scope: {
+        kind: "thread-timing",
+        threadId: "thread-1"
+      }
+    };
+    const valid = {
+      draft,
+      evidenceCases: [],
+      opportunityId: `learning_opportunity_${"a".repeat(64)}`,
+      previewId: `learning_preview_${"b".repeat(64)}`,
+      replayInputHash: "c".repeat(64)
+    };
+    expect(tool.definition.risk).toBe("write");
+    await expect(tool.execute(valid, { runId: "held" })).rejects.toThrow(/held/u);
+    expect(apply).toHaveBeenCalledTimes(1);
+
+    for (const input of [
+      { ...valid, previewId: "learning_preview_invalid" },
+      { ...valid, replayInputHash: "short" },
+      { ...valid, extra: true }
+    ]) {
+      await expect(tool.execute(input as never, { runId: "invalid" })).rejects.toThrow();
+    }
+    await expect(tool.execute(
+      new Proxy(valid, {}),
+      { runId: "proxy" }
+    )).rejects.toThrow();
+    expect(apply).toHaveBeenCalledTimes(1);
   });
 });

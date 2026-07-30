@@ -17,8 +17,10 @@ import {
   buildExperienceLearningProposalPreview,
   buildExperienceLearningReplayBundle,
   buildExperienceLearningReviewQueue,
+  createExperienceLearningApprovalReceipt,
   createLocalExactArtifactResolver,
   fingerprintContinuityPolicy,
+  promoteApprovedExperienceLearningContinuityPolicy,
   proposeExperienceLearningFromDelivery,
   readAttunementState,
   readPreparedContinuityPack,
@@ -57,6 +59,7 @@ import { createContinuityOutcomeTool } from "./continuity-outcome-tool.js";
 import { createContinuityLearningOpportunityTool } from "./continuity-learning-opportunity-tool.js";
 import { createContinuityLearningPreviewTool } from "./continuity-learning-preview-tool.js";
 import { createContinuityLearningReplayPreviewTool } from "./continuity-learning-replay-preview-tool.js";
+import { createContinuityLearningApplyTool } from "./continuity-learning-apply-tool.js";
 import { createQualificationLearningWriteGate } from "./qualification-learning-active-skill-write-gate.js";
 import { resolveWeaknessesFile } from "./provider-paths.js";
 import type { MuseEnvironment } from "./index.js";
@@ -223,7 +226,27 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
             return undefined;
           }
           const preview = buildExperienceLearningProposalPreview(proposal.candidate);
-          return preview ? { candidate: proposal.candidate, preview } : undefined;
+          return preview
+            ? {
+                candidate: proposal.candidate,
+                currentPolicy: thread.policy,
+                nextPolicyVersion: state.nextPolicyVersion,
+                preview
+              }
+            : undefined;
+        };
+        const resolveLearningReplay = async (
+          opportunityId: string,
+          draft: ExperienceLearningProposalDraft,
+          evidenceCases: unknown
+        ) => {
+          const resolved = await resolveLearningProposal(opportunityId, draft);
+          if (!resolved) return undefined;
+          const replayBundle = buildExperienceLearningReplayBundle(
+            resolved.candidate,
+            evidenceCases
+          );
+          return replayBundle ? { ...resolved, replayBundle } : undefined;
         };
         return [
           createContinuityPackPreviewTool(previewPackDeps),
@@ -240,15 +263,62 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
           }),
           createContinuityLearningReplayPreviewTool({
             previewReplay: async ({ draft, evidenceCases, opportunityId }) => {
-              const resolved = await resolveLearningProposal(opportunityId, draft);
-              if (!resolved) return undefined;
-              const replayBundle = buildExperienceLearningReplayBundle(
-                resolved.candidate,
+              const resolved = await resolveLearningReplay(
+                opportunityId,
+                draft,
                 evidenceCases
               );
-              return replayBundle
-                ? { preview: resolved.preview, replayBundle }
+              return resolved
+                ? { preview: resolved.preview, replayBundle: resolved.replayBundle }
                 : undefined;
+            }
+          }),
+          createContinuityLearningApplyTool({
+            apply: async ({
+              draft,
+              evidenceCases,
+              opportunityId,
+              previewId,
+              replayInputHash
+            }) => {
+              const resolved = await resolveLearningReplay(
+                opportunityId,
+                draft,
+                evidenceCases
+              );
+              if (!resolved
+                || resolved.preview.previewId !== previewId
+                || resolved.replayBundle.replay.inputHash !== replayInputHash) {
+                return undefined;
+              }
+              const approvedAt = new Date().toISOString();
+              const approval = createExperienceLearningApprovalReceipt(
+                resolved.preview,
+                resolved.replayBundle,
+                approvedAt
+              );
+              if (!approval) return undefined;
+              const promotion = await promoteApprovedExperienceLearningContinuityPolicy(
+                deps.attunementFile!,
+                {
+                  approvalReceipt: approval,
+                  appliedAt: approvedAt,
+                  candidate: resolved.candidate,
+                  currentPolicy: resolved.currentPolicy,
+                  nextPolicyVersion: resolved.nextPolicyVersion,
+                  preview: resolved.preview,
+                  replayBundle: resolved.replayBundle
+                },
+                policyWriteGate
+              );
+              const policyAuditId = (await readAttunementState(deps.attunementFile!))
+                .experienceLearningPolicyAudits
+                ?.find((audit) =>
+                  audit.kind === "promotion"
+                  && audit.candidateId === promotion.candidateId
+                  && audit.policyAfter.version === promotion.policyAfter.version
+                )?.id;
+              return policyAuditId ? { approval, policyAuditId, promotion } : undefined;
             }
           }),
           createContinuityOutcomeTool({
