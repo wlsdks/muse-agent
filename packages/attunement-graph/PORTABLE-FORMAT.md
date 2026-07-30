@@ -1,11 +1,13 @@
 # MAG portable format (`.magx`) v1
 
-Status: **encoder core verified-current; broader implementation pending**. This document
-fixes the portable wire contract. AWG-070a3a1a2 implements its independently verified
+Status: **encoder core and golden integration verified-current**. This document fixes
+the portable wire contract. AWG-070a3a1a2 implements its independently verified
 package-private transactional encoder core and mandatory exact-head identity-sink
-boundary. The checked-in byte-identical golden corpus and broad limit qualification
-remain pending. No decoder, filesystem publisher, SQLite staging sink, Worker command,
-public administration API, or public export exists.
+boundary. AWG-070a3a1a3a0b adds an independently verified production generator and
+production/clean-room/checked-in byte/report integration with recoverable refresh
+rollback. Negative ordering, broad limit qualification, streaming, and reduced-budget
+qualification remain pending. No decoder, runtime filesystem publisher, SQLite staging
+sink, Worker command, public administration API, or public export exists.
 
 ## 1. Purpose and boundary
 

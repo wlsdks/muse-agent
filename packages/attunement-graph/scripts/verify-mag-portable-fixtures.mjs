@@ -580,7 +580,19 @@ async function checkCorpus(root) {
     ])
   ].sort();
   assert.deepEqual((await readdir(actualRoot)).sort(), expectedNames, "corpus file set");
-  const derived = await deriveCorpus(actualRoot);
+  const derived = await deriveCorpus(checkedInRoot);
+  assert.deepEqual(
+    await readFile(join(actualRoot, README_FILE)),
+    await readFile(join(checkedInRoot, README_FILE)),
+    "README.md exact bytes"
+  );
+  for (const [inputFile, expected] of derived.inputs) {
+    assert.deepEqual(
+      await readFile(join(actualRoot, inputFile)),
+      expected,
+      `${inputFile} exact bytes`
+    );
+  }
   const actualManifest = await readJson(join(actualRoot, MANIFEST_FILE), MANIFEST_FILE);
   assert.deepEqual(actualManifest.value, derived.manifest, "corpus manifest");
   for (const { artifact, manifestCase } of derived.cases) {

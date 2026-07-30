@@ -8,6 +8,19 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a3a0b production `.magx`
+  golden-corpus generator and three-way production/clean-room/checked-in integration.
+  Package-local modes fail closed around read-only comparison, isolated external
+  generation, and explicit checked-in refresh. Refresh stages on the same filesystem,
+  requires the clean-room verifier before publication, preserves the exact original
+  directory, publishes the whole corpus, verifies the checked-in result independently,
+  and either restores the original or retains an exact recovery path on every injected
+  publication, restore, and cleanup failure. Three fresh evaluator passes exposed and
+  closed backup-deletion, candidate-authority, nonexistent-path, and build-artifact
+  defects before the final no-P0/P1 PASS. Ordering, streaming, reduced budgets, broad
+  limits, decoder, runtime filesystem/SQLite/Worker integration, admin, and public
+  export/rebuild remain pending; runtime behavior and public exports are unchanged.
+
 - Added the independently verified AWG-070a3a1a3a0a clean-room `.magx` v1
   compatibility corpus and package-local oracle. Trusted stored-projection inputs
   cover empty, two-generation, raw UTF-8 Unicode ordering, and normalization-distinct

@@ -50,6 +50,10 @@ The current implementation includes:
   with a mandatory exact-head identity sink, prospective byte/hash/count preparation,
   non-throwing post-sink state commits, and exactly-once abort with original-failure
   pinning;
+- an independently verified AWG-070a3a1a3a0b production golden-corpus generator with
+  read-only comparison modes, isolated external generation, clean-room-gated
+  transactional checked-in refresh, recoverable rollback states, and exact
+  pending-cleanup reporting;
 - exact Continuity observation, change, Capsule-presentation, resume-runtime, and Shadow
   decision-receipt compatibility Modules used by Muse.
 
@@ -58,11 +62,11 @@ program. AWG-070a remains `partial` until physical-forget fixtures and the compl
 byte-identical conformance corpus pass. AWG-070b remains `partial` until backup, portable
 export, and the complete physical-profile program pass.
 
-The AWG-070a3a0, AWG-070a3a1a0, and AWG-070a3a1a2 foundations are
-`verified-current`. The checked-in byte-identical golden corpus and broad limit
-qualification remain pending. AWG-070a3a1a2 implements only the package-private encoder
-core: no decoder, export/rebuild, filesystem or SQLite staging, Worker/admin runtime,
-checked-in `.magx` fixture, or public `./admin` subpath ships here.
+The AWG-070a3a0, AWG-070a3a1a0, AWG-070a3a1a2, and AWG-070a3a1a3a0b
+foundations are `verified-current`. Broad limit, negative-order, and streaming
+qualification remain pending. The package still ships no decoder, runtime
+export/rebuild, filesystem or SQLite staging, Worker/admin runtime, or public `./admin`
+subpath.
 
 Still required before a standalone release:
 

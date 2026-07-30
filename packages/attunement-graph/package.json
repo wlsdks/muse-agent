@@ -50,6 +50,7 @@
   "scripts": {
     "benchmark:continuity-changes": "pnpm build && node scripts/benchmark-continuity-changes.mjs",
     "build": "tsc -b",
+    "fixtures:portable": "pnpm build && node scripts/generate-mag-portable-fixtures.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify:local-mag": "pnpm build && node scripts/verify-local-mag.mjs",
