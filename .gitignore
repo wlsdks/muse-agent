@@ -34,6 +34,11 @@ pnpm-debug.log*
 *.pem
 *.key
 *.cert
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
 
 # Local app and agent state
 .muse/
@@ -64,8 +69,12 @@ Thumbs.db
 *.swp
 *.swo
 
-# Claude Code session state (rules / commands / agents are checked in)
+# Agent session state (rules / harness / agents / skills ARE checked in)
 .claude/scheduled_tasks.lock
+# local per-machine permissions and paths — was covered only by the owner's global
+# gitignore, so a fresh clone would have committed it
+.claude/settings.local.json
+.codex/
 
 # self-eval fitness log — local trend, rebuildable; not committed (avoids parallel-loop churn)
 docs/self-eval-scoreboard.json
@@ -88,19 +97,15 @@ docs/test-report.json
 # seed lives in fixtures/mock-corpus/.
 .muse-dev/
 
-# harness runner run artifact (regenerated each run)
-harness/runner/last-trace.json
-
 # stray runner-agent artifacts
 __pycache__/
 *.pyc
-
-# harness runner session snapshots (run artifact)
-harness/runner/sessions/
-
-harness/runner/last-project-trace.json
 
 # loop scratchpad — local only, like docs/self-eval-scoreboard.json (avoid parallel-loop churn)
 docs/tool-selection-scoreboard.md
 /scratchpad/
 /.playwright-mcp/
+
+# rebase/merge leftovers (several agents rebase on this machine)
+*.orig
+*.rej

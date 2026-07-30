@@ -10,6 +10,23 @@ not restate the Claude-specific contract in [`CLAUDE.md`](CLAUDE.md) or the doma
 [`.claude/rules/`](.claude/rules/) — those are auto-loaded for Claude Code and must be read
 explicitly by any agent that is not.
 
+A non-Claude agent resolves the **nearest** `AGENTS.md` walking up from the file it is editing,
+and **composes** it with this one — verified by asking Codex CLI 0.145 to list its loaded context.
+So the surfaces whose rules actually bind carry their own, and an agent gets them without
+following any pointer:
+
+| Directory | Carries |
+| --- | --- |
+| [`packages/messaging`](packages/messaging/AGENTS.md) | the outbound edge — draft-first, link-preview suppression |
+| [`packages/secrets`](packages/secrets/AGENTS.md) | credentials, and that encryption at rest is opt-in |
+| [`packages/model`](packages/model/AGENTS.md) | the only place a vendor SDK may appear; local-only throws |
+| [`packages/tools`](packages/tools/AGENTS.md) | one-shot tool selection for a small local model |
+
+Everything else falls through to this file. Note what a non-Claude agent does **not** get:
+`CLAUDE.md` and `.claude/rules/` are not loaded for it. That is survivable because the binding
+half is not prose — the hooks in `scripts/githooks/` run from `core.hooksPath`, which is plain git
+config, so every commit and push faces the same 14 checks whichever agent produced it.
+
 ## The floor — restated here on purpose
 
 Everything else in this repository is a pointer. These are not, because they are the boundaries

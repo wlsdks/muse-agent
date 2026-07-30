@@ -23,9 +23,12 @@ Each model declares its capabilities so the runtime can route safely:
 
 `packages/model` ships adapters for:
 
-- OpenAI (Responses API — `/v1/responses`). OpenAI-compatible endpoints
-  used by Ollama, OpenRouter, LM Studio, and other compat backends still
-  use `/v1/chat/completions` via `OpenAICompatibleProvider`.
+- OpenAI (Responses API — `/v1/responses`). OpenRouter, LM Studio and other
+  compat backends use `/v1/chat/completions` via `OpenAICompatibleProvider`.
+  **Ollama is the exception**: `adapter-ollama.ts` overrides `generate` and
+  `stream` onto the native `/api/chat` (stripping `/v1`), because the compat
+  endpoint does NOT honour `think: false` — a reasoning model streams its
+  thoughts and first-token went to 134 s. Only `listModels` stays on `/v1`.
 - Anthropic
 - Google Gemini
 - OpenRouter

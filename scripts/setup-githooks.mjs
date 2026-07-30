@@ -62,7 +62,9 @@ export function findHookFiles(hooksDir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (entry.isFile()) results.push(full);
+      // Documentation beside the hooks is not a hook. Marking README.md executable made
+      // `pnpm install` dirty the worktree with a mode change on every run.
+      else if (entry.isFile() && !entry.name.endsWith(".md")) results.push(full);
     }
   };
   walk(hooksDir);
