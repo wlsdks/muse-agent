@@ -1,8 +1,8 @@
 ---
 title: Where your data lives — privacy summary
 audience: [users, product, developers, AI agents]
-purpose: One place for "what is stored where, and what can never leave"
-updated: 2026-07-13
+purpose: One place for "what is stored where, and what each privacy posture blocks"
+updated: 2026-07-30
 related: [design/attunement.md, SYSTEM-MAP.md, FEATURES.md, strategy/differentiation.md, README.md]
 ---
 
@@ -10,8 +10,9 @@ related: [design/attunement.md, SYSTEM-MAP.md, FEATURES.md, strategy/differentia
 
 Muse handles one person's private data and working rhythm, so "what it observes, where it stores
 that, and where it may send it" matters as much as any feature. Personal stores are file-backed by
-default today, and the model provider is your choice. If you need a hard on-device boundary,
-`MUSE_LOCAL_ONLY=true` fails closed.
+default today, and the model provider is your choice. If you need fail-closed protection from
+covered remote model, voice, image, indexing, and Home Assistant paths, set
+`MUSE_LOCAL_ONLY=true`.
 
 For behaviour details see the [system map](SYSTEM-MAP.md) and the [feature definitions](FEATURES.md);
 for "why it was designed this way" see the [differentiation doc](strategy/differentiation.md).
@@ -28,8 +29,8 @@ for "why it was designed this way" see the [differentiation doc](strategy/differ
   makes no model calls and no automatic data collection.
 - **The semantic index (embeddings) uses a loopback endpoint by default.** But with
   `MUSE_LOCAL_ONLY` off, pointing `OLLAMA_BASE_URL` at a remote address means the personal text
-  being indexed can be sent to that address. If you need a hard on-device guarantee, turn on
-  `MUSE_LOCAL_ONLY=true` so remote endpoints are refused.
+  being indexed can be sent to that address. If you need Muse's semantic-index transport restricted
+  to a loopback endpoint, turn on `MUSE_LOCAL_ONLY=true` so remote endpoints are refused.
 - **Encryption at rest is plaintext by default and opt-in.** "Stored on your machine" does not mean
   encrypted. The default is plaintext; some stores (user-memory, episodes, action-log, contacts,
   playbook) can be switched on with an `… encrypt` command (for example `muse memory encrypt`,
@@ -39,7 +40,7 @@ for "why it was designed this way" see the [differentiation doc](strategy/differ
   checkpoints. Full-disk encryption (FileVault and equivalents) is recommended separately at the OS
   level.
 
-## What can never leave (the explicit local-only posture)
+## What local-only blocks (the explicit local-only posture)
 
 - **No egress to cloud AI or cloud voice.** Under `MUSE_LOCAL_ONLY=true` nothing can reach a cloud
   LLM or a cloud voice service. Selecting a cloud model does not silently disable it — the runtime
@@ -70,9 +71,9 @@ command (`muse doctor`) reports the current posture.
 ## If you use a cloud provider
 
 Muse is provider-neutral, so you may choose a cloud model. In that case the chosen provider's
-request boundary and policies apply. Users who need an on-device guarantee should turn on
-`MUSE_LOCAL_ONLY=true`; under that posture a cloud provider is refused before it is even
-instantiated.
+request boundary and policies apply. Users who need the covered remote-provider paths to fail
+closed should turn on `MUSE_LOCAL_ONLY=true`; under that posture a cloud model provider is refused
+before it is even instantiated.
 
 ## The Muse Observe data boundary (O1 collection available)
 
@@ -149,11 +150,14 @@ submissions) pass through separate safeguards:
 
 - **No banking, payments or transfers.** Muse does not connect accounts and does not move money (an
   irreversible risk, so a permanent product boundary).
-- **No cloud memory store, and no autonomous outbound sends.**
+- **No hosted/cloud personal-memory store is shipped.** Shipping one would first require the
+  encryption, identity, conflict, deletion, export, and recovery gates in the
+  [Attunement product contract](strategy/attunement.md). Autonomous outbound sends remain
+  permanently out of scope.
 
 ---
 
 *Summary: personal stores are file-backed by default today, and you choose the model provider and
-the deployment shape. `MUSE_LOCAL_ONLY=true` fails closed on cloud egress, and future Observe work
-does not ship unless it is visible, pausable, inspectable and forgettable. Anything going to another
-person always passes through your confirmation.*
+the deployment shape. `MUSE_LOCAL_ONLY=true` fails closed on the covered remote-provider paths, and
+future Observe work does not ship unless it is visible, pausable, inspectable and forgettable.
+Anything going to another person always passes through your confirmation.*

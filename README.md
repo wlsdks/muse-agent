@@ -9,7 +9,7 @@
 <p>Muse holds the threads you didn't finish, answers from your own notes with receipts you can open,<br/>
 and asks before it does anything on your behalf. You choose the model and where it runs.</p>
 
-<p><a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-22c55e.svg" /></a> <a href="package.json"><img alt="Node ≥ 22.12" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-43853d.svg" /></a> <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178c6.svg" /></a> <a href="#architecture"><img alt="Provider-neutral" src="https://img.shields.io/badge/architecture-provider--neutral-6f42c1.svg" /></a> <a href="https://ollama.com"><img alt="Runs on Ollama" src="https://img.shields.io/badge/runs%20on-Ollama-000000.svg" /></a></p>
+<p><a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-22c55e.svg" /></a> <a href="package.json"><img alt="Node ≥ 22.12" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-43853d.svg" /></a> <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178c6.svg" /></a> <a href="#architecture"><img alt="Provider-neutral" src="https://img.shields.io/badge/architecture-provider--neutral-6f42c1.svg" /></a></p>
 
 </div>
 
@@ -39,8 +39,8 @@ honest *"I'm not sure."*
 
 **🔐 You decide where it runs**
 
-Plain files in `~/.muse/`, no cloud account required. `MUSE_LOCAL_ONLY=true` turns cloud egress
-into a hard error.
+Plain files in `~/.muse/`, no cloud account required. `MUSE_LOCAL_ONLY=true` turns covered remote
+model and cloud voice egress into a hard error.
 
 </td>
 </tr>
@@ -65,7 +65,7 @@ into a hard error.
 | --- | --- |
 | **Node.js** | ≥ 22.12 (24 LTS recommended) |
 | **pnpm** | 10 (`corepack enable`) |
-| **A model** | [Ollama](https://ollama.com) on your machine, or any provider API key |
+| **A model** | [Ollama](https://ollama.com) on your machine, or credentials for a supported provider |
 | **OS** | macOS, Linux, Windows (CLI, API, recall, Ollama, opt-in PowerShell actuators) |
 
 ### Install from source
@@ -83,7 +83,8 @@ wrong afterwards, `muse doctor` diagnoses and repairs the local setup in one pas
 
 ### Local or cloud — your choice
 
-Any provider works. If you want no API key and no egress at all, point Muse at a model on your own
+Supported choices include OpenAI, Anthropic, Gemini, OpenRouter, Ollama, and OpenAI-compatible
+endpoints. If you want a local model with no model-provider API key, point Muse at one on your own
 machine:
 
 ```bash
@@ -93,8 +94,9 @@ muse setup local
 ```
 
 Local-only is a supported posture, not Muse's identity. Turn it on explicitly with
-`MUSE_LOCAL_ONLY=true` and every cloud provider becomes a hard error instead of a silent fallback —
-including voice, so microphone audio can never reach a cloud API by accident.
+`MUSE_LOCAL_ONLY=true` and remote model and cloud voice paths become hard errors instead of silent
+fallbacks. This is a scoped egress policy, not a claim that Muse audits every network path on the
+computer.
 
 ---
 
@@ -301,7 +303,7 @@ Sources: [grounding manifest](docs/benchmarks/readme-qualified-evidence-v1.json)
 | 🚫 | **Move money.** No bank or brokerage connections, no payments, no transfers. Permanently out of scope. |
 | ✋ | **Send to a third party on its own.** Email, chat, forms and bookings are draft-first: you confirm the exact content and recipient, or nothing leaves. |
 | 🧵 | **Guess your threads.** Continuity threads and their source links are yours to author. Automatic detection is later, opt-in work. |
-| 👤 | **Pretend to be a workspace.** Single user, single environment — no multi-tenancy, no RBAC. |
+| 👤 | **Pretend to be a workspace.** One user and one private control plane — no multi-tenancy, no RBAC. |
 | 📊 | **Promote evidence.** Tests, synthetic replays, diagnostics, agent trials and real outcomes stay separate ledgers. |
 
 Enforced as deterministic code, never as a prompt instruction:
@@ -311,7 +313,7 @@ Enforced as deterministic code, never as a prompt instruction:
 
 ## Architecture
 
-### Any model, one boundary
+### Supported models, one boundary
 
 `agent-core` never talks to a vendor SDK. Everything goes through one `ModelProvider` interface, so
 swapping models does not touch agent logic.
@@ -325,8 +327,9 @@ interface ModelProvider {
 }
 ```
 
-Adapters ship for OpenAI, Anthropic, Gemini, OpenRouter, Ollama, LM Studio and any
-OpenAI-compatible endpoint. Select one with `MUSE_MODEL=<provider>/<model>` plus its usual API-key
+Adapters ship for OpenAI, Anthropic, Gemini, OpenRouter, Ollama, and supported OpenAI-compatible
+endpoints. LM Studio uses that compatible adapter with a local `baseUrl`; it is not a dedicated
+adapter. Select one with `MUSE_MODEL=<provider>/<model>` plus its usual API-key
 variable; override explicitly with `MUSE_MODEL_PROVIDER_ID`, `MUSE_MODEL_API_KEY` and
 `MUSE_MODEL_BASE_URL`. Missing capabilities degrade explicitly — no native tool calling falls back
 to a strictly parsed text protocol, no structured output falls back to a parser plus validator.

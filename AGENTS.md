@@ -1,8 +1,9 @@
 # Muse
 
-A provider-neutral personal AI conductor for **one user, one local environment, no shared
-workspace**. One coherent reasoning loop, any LLM, any tool, any MCP server. The runtime discipline
-is what stays durable — provider-specific code is kept at the edges.
+A provider-neutral personal AI conductor for **one user, one private control plane, no shared
+workspace**. One coherent reasoning loop across local, self-hosted, and cloud deployment choices;
+provider-specific code stays at the edges. Local-only is an explicit fail-close privacy posture,
+not the product identity.
 
 This file is the cross-agent product brief (the open `AGENTS.md` standard). It does not duplicate
 the Claude-specific contract in [`CLAUDE.md`](CLAUDE.md) or the domain rules in

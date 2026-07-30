@@ -3,14 +3,12 @@ title: Muse Attunement — product contract
 audience: [product, design, engineering, agents]
 purpose: Define Muse's product wedge without claiming roadmap capabilities are shipped
 status: north-star
-updated: 2026-07-29
+updated: 2026-07-30
 related: [../design/attunement.md, ../design/attunement-graph.md, ../goals/attunement-implementation-plan.md, ../goals/attunement-wow-graph-roadmap.md, ../privacy-and-data.md]
 ---
 
 # Muse Attunement
 
-> **Product goal: Muse learns how you live and work, then gets better at knowing when and how to help.**
->
 > **Product goal: Muse learns how one person lives and works, and gets better at when and how to help.**
 
 Attunement is Muse's product direction. It is not a claim that the complete loop is
@@ -153,7 +151,8 @@ and adaptation contracts do not depend on a particular model vendor, storage ven
 execution location. Provider-specific behavior stays behind adapters.
 
 - Local file stores and Ollama remain fully supported deployment choices.
-- Cloud and self-hosted providers are first-class choices when the owner configures them.
+- Supported cloud and self-hosted model or execution providers are first-class choices when the
+  owner configures them.
 - `MUSE_LOCAL_ONLY=true` remains a strict opt-in privacy posture that fails closed before
   prohibited egress; it is a safety feature, not the product tagline.
 - Every external data path must state what leaves the device, which provider receives it,

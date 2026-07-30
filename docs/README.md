@@ -43,7 +43,7 @@ from docs alone**:
 | **[grounding-gate.md](grounding-gate.md)** | How the grounding gate — the trust floor — handles one question: flow + worked example | Anyone who wants the core behavior / AI agents |
 | **[FEATURES.md](FEATURES.md)** | Per-feature detailed definitions (what, and how it behaves from the user's perspective) | Product and design decisions |
 | **[feature-catalog/INDEX.md](feature-catalog/INDEX.md)** | Exhaustively verified full feature inventory (run/test/source evidence per feature; 2026-06-14) | Anyone who needs exact facts / AI agents |
-| **[privacy-and-data.md](privacy-and-data.md)** | Where my data lives and what never leaves (privacy summary) | People checking before adopting |
+| **[privacy-and-data.md](privacy-and-data.md)** | Where data lives and what each privacy posture blocks | People checking before adopting |
 
 ## To run it yourself
 

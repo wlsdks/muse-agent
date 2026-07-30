@@ -7,7 +7,7 @@ status_legend:
   "⬜": outline only, code verification pending
   "⚙️": needs external integration or configuration
   "⚠️": known gap (not yet trustworthy)
-updated: 2026-07-13
+updated: 2026-07-30
 related: [strategy/attunement.md, design/attunement.md, FEATURES.md, README.md, feature-catalog/INDEX.md, strategy/differentiation.md]
 ---
 
@@ -102,10 +102,12 @@ app, **the same engine** does the work.
 - **Clarify** — when the target is ambiguous ("do that thing"), it does **not** guess and execute;
   it asks what you mean.
 
-## 2. Model & deployment choice — a swappable brain, with an explicit hard local boundary
+## 2. Model & deployment choice — a swappable brain, with an explicit opt-in local boundary
 
-- **Vendor-neutral** — a conductor structure that connects to any model: OpenAI, Anthropic, Google,
-  OpenRouter, Ollama, LM Studio and more. You are not tied to one company's AI.
+- **Vendor-neutral** — a conductor structure with adapters for OpenAI, Anthropic, Gemini,
+  OpenRouter, Ollama, and supported OpenAI-compatible endpoints. LM Studio uses the compatible
+  adapter with a local `baseUrl`; it is not a dedicated adapter. You are not tied to one company's
+  AI.
 - **Capability-based routing** — each model declares "can it stream, can it call tools, can it see
   images, how large is its context", and work is distributed safely to match.
 - **Fallback policy** — a model without tool calling gets the text protocol instead; a small context
@@ -113,9 +115,9 @@ app, **the same engine** does the work.
 - **Local-only mode (explicit opt-in)** — under `MUSE_LOCAL_ONLY=true`, **nothing can reach a cloud
   AI or voice service.** Selecting a cloud model is **refused loudly** rather than silently
   disabled, and only local voice engines are registered. A remote host counts as external.
-- **First-class local path** — you can start with a local model including Ollama and no API key, and
-  a cloud model is selectable through the provider-neutral adapter. Personal file-backed stores are
-  local by default.
+- **Flexible deployment paths** — local, self-hosted, and cloud models are first-class choices
+  behind the provider-neutral adapter. You can start with Ollama and no API key, or select a
+  supported cloud provider. Personal file-backed stores remain local by default today.
 
 ## 3. Tool system — choosing its own tools
 
@@ -152,8 +154,9 @@ Tools come in two kinds — Muse's built-ins, and tools connected from outside (
 
 ## 4. Personal assistant data — calendar, tasks, reminders, contacts, notes
 
-Muse manages your personal life data directly. All of it is stored **on your machine, under your
-account**.
+Muse manages personal life data through one owner-controlled interface. Muse-owned personal stores
+are file-backed **on your machine, under your account** by default; connected providers retain
+their data under their configured terms.
 
 - **Calendar** — several calendars at once (Google, CalDAV, macOS, local file), natural-language
   query, add, edit and delete, finding free time, export to the standard `.ics` format.
@@ -349,6 +352,7 @@ Capabilities that send something to a third party or change external system stat
   and contacts is never exchanged — "share the know-how, not the data". It is off by default (must
   be turned on explicitly), sending know-how also **leaves only after the draft is confirmed**, and
   there are commands to open the intake for peer know-how and to review and promote what arrives.
+  This is know-how exchange, not personal-data sync, multi-device continuity, or hosted storage.
 - **Multi-Muse consensus reasoning (council)** — one question is put to peer Muse instances, each
   **reasons with evidence**, and the answers are merged on your side. It can run several rounds of
   **debate where each refines its view after seeing the others' reasoning**. When merging, **only
