@@ -36,25 +36,20 @@ Runtime invariants, always:
 
 ## Stack
 
-| Area | Choice |
-| --- | --- |
-| Language | TypeScript 7 native compiler; TypeScript 6 API compatibility alias for tooling |
-| Runtime | Node.js >= 22.12 (24 LTS recommended) |
-| Package manager | pnpm workspace |
-| Server | Fastify |
-| Database | PostgreSQL via Kysely (optional — runs in-memory by default) |
-| Web UI | React + Vite + TanStack Query |
-| CLI | commander + Ink TUI + clack-prompts wizards |
-| Local runner | Rust separate process (`crates/runner`) |
-| Model layer | `packages/model` ModelProvider adapters |
-| Provider adapters | OpenAI (Responses API), Anthropic, Gemini, OpenRouter, Ollama + OpenAI-compat presets (Groq, DeepSeek, Together, Mistral, Moonshot, Cerebras). "LM Studio" = the OpenAI-compatible adapter pointed at a local `baseUrl` (no dedicated class/preset). |
-| Calendar adapters | Local file, local ICS, Google Calendar, CalDAV (iCloud / Fastmail / Proton), macOS Calendar.app |
-| Observability | OpenTelemetry + pino + persisted trace events |
-| Tests | Vitest 4.1 + Browser Mode/Playwright + opt-in fast-check + Testcontainers |
+TypeScript 7 (with the TS6 API alias for tooling) on a pnpm workspace: Fastify, React + Vite,
+commander + Ink, Vitest, OpenTelemetry + pino, and a Rust `crates/runner` for risky execution.
+`package.json` and the imports are authoritative for anything more specific.
+
+The parts you would guess wrong: PostgreSQL is **optional** and every store falls back to
+in-memory, so the default run has no database. "LM Studio" is not a dedicated adapter — it is the
+OpenAI-compatible one pointed at a local `baseUrl`. OpenAI uses the Responses API while
+compat backends use `/v1/chat/completions`. All of that, plus the rule that a vendor SDK may only
+appear inside `packages/model/src/adapter-<name>.ts`, is owned by
+[`.claude/rules/engineering/architecture.md`](.claude/rules/engineering/architecture.md).
 
 ## Repository layout
 
-Five apps, 39 workspace packages, one Rust crate. The packages worth knowing by name:
+`ls` answers the shape of the tree. The packages worth knowing by name, and what each owns:
 
 | Package | Owns |
 | --- | --- |
@@ -68,13 +63,6 @@ Five apps, 39 workspace packages, one Rust crate. The packages worth knowing by 
 | `proactivity` · `scheduler` · `messaging` · `voice` | Speaking first, cron and locks, channels, STT/TTS |
 | `multi-agent` · `a2a` · `agent-specs` · `skills` | Supervisor and orchestrator, peer protocol, agent definitions, learned skills |
 | `observability` · `runtime-state` · `resilience` · `db` | Spans and metrics, run history and traces, retry policy, Kysely queries and migrations |
-
-```
-apps/     api (Fastify) · cli (commander + Ink) · web (React + Vite) · desktop (macOS) · mac-helper
-crates/   runner — Rust sandbox for shell/process/file execution
-docs/     product · trust · setup · architecture · design · strategy · development · evaluations · benchmarks
-.claude/  rules (auto-loaded with CLAUDE.md) · harness (operating contract) · agents · skills
-```
 
 `ls packages` is the authoritative list; this table is a map, not an inventory.
 

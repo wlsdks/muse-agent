@@ -61,41 +61,17 @@ When a recurring bug class shows up, add a single rule to
 3. Set the rule to `error` once the sweep is clean — `warn` is for
    the transition period only.
 
-## Comments — write one ONLY when it is necessary
+## Comments — only when the code cannot carry it
 
-The default is **no comment**. A comment is a liability: it rots,
-it lies eventually, and it costs every future reader (human or AI
-agent) attention and context-window budget. Write one only when
-the code cannot carry the information itself.
+Default to **no comment**. One earns its place only by carrying a WHY a reader cannot derive:
+a non-obvious constraint ("this API rejects 401 — never retry, it is permanent"), a workaround
+whose reason is invisible, or a deliberate surprising choice. Narrating WHAT the code does,
+restating a signature, or naming a task/PR/caller is deleted on sight.
 
-**Allowed (the WHY a reader cannot derive from the code):**
-
-- A non-obvious constraint or invariant ("this API rejects 401 —
-  never retry it; it is a permanent failure").
-- A workaround whose reason is invisible ("upstream lib mutates
-  the array; clone before passing").
-- A deliberate, surprising choice ("strict `Number()` not
-  `parseFloat` so `4h` is rejected, not silently 4").
-
-**Forbidden — delete on sight:**
-
-- **Round / iteration / goal markers.** `// Goal 158 —`,
-  `// goal 070`, `round 167`, `added in iter #57`. The history
-  lives in `git blame`, the commit message, and `CHANGELOG.md`.
-  In source it is pure rot and noise. This is a hard rule.
-- **WHAT narration.** `// loop over users`, `// increment count`,
-  `// return the result` — the code already says this.
-- **Task / PR / caller references.** `// used by the X flow`,
-  `// added for issue #42`, `// see PR 1234`.
-- **Restating the signature** in a docstring
-  (`@param x the x value`).
-
-**When in doubt, delete it.** If removing the comment loses
-information a competent reader genuinely needs, rewrite it as one
-short WHY line. Otherwise it goes.
-
-`internal/goals/*.md` is where goal/iteration context belongs — never
-in source comments.
+**Round / iteration / goal markers are a hard no** — `// Goal 158`, `round 167`, `iter #57`.
+History belongs to `git blame`, the commit message and `CHANGELOG.md`; goal context belongs in
+`internal/goals/*.md`. This one is enforced, not requested: `pnpm lint:comments`
+(`scripts/check-comment-markers.mjs`), which self-eval runs every time.
 
 ## Naming
 
