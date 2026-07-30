@@ -18,6 +18,10 @@
       "types": "./dist/mag-backend.d.ts",
       "import": "./dist/mag-backend.js"
     },
+    "./local": {
+      "types": "./dist/local.d.ts",
+      "import": "./dist/local.js"
+    },
     "./continuity": {
       "types": "./dist/continuity-projection.d.ts",
       "import": "./dist/continuity-projection.js"
@@ -48,6 +52,7 @@
     "build": "tsc -b",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:local-mag": "pnpm build && node scripts/verify-local-mag.mjs",
     "verify:continuity-capsules": "pnpm build && node scripts/verify-continuity-capsules.mjs",
     "verify:continuity-resume-runtime": "pnpm build && node scripts/verify-continuity-resume-runtime.mjs"
   },

@@ -7,6 +7,7 @@ export type MagErrorCode =
   | "SNAPSHOT_CONFLICT"
   | "SNAPSHOT_SCOPE_MISMATCH"
   | "STORE_FAILURE"
+  | "UNSUPPORTED_STORE_PROFILE"
   | "UNSUPPORTED_OPERATOR";
 
 export class MagError extends Error {

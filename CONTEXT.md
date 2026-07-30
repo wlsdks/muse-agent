@@ -50,9 +50,11 @@ documents rather than here.
   **Working Graph** is an expiring, token-budgeted decision slice.
 - **Muse Attunement Graph (MAG)** is the canonical name for the whole agent-native graph
   architecture. **MAG Engine** is the semantics/operators/compiler; **MAG Store** is the
-  future built-in durable journal and index layer whose selected default is capability-gated
-  `node:sqlite`. PostgreSQL is optional; Redis/MySQL/external Graph DBs are not required.
-  A receipt is evidence projected into MAG, not a database.
+  built-in durable journal and index layer whose selected default is capability-gated
+  `node:sqlite`. The AWG-070a1 worker-isolated projection-journal foundation exists;
+  export/rebuild, backup, physical forget, complete benchmarks, and default Muse composition
+  remain. PostgreSQL is optional; Redis/MySQL/external Graph DBs are not required. A
+  receipt is evidence projected into MAG, not a database.
 - MAG is an independently extractable product Module developed inside Muse until its
   clean-room package gate passes. Muse applications depend on the MAG public Interface;
   the Engine never depends on Muse API/web/CLI/scheduler/autoconfigure/model/UI packages.

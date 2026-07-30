@@ -9,6 +9,7 @@ export { createInMemoryMagStore, InMemoryMagStoreBackend } from "./mag-in-memory
 export type { MagStoreBackend, MagStoredProjection } from "./mag-backend.js";
 export {
   runMagStoreConformance,
+  type MagStoreConformanceBackend,
   type MagStoreBackendFactory,
   type MagStoreConformanceCase,
   type MagStoreConformanceReport

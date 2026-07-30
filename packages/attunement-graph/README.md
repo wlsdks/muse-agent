@@ -33,14 +33,24 @@ The current implementation includes:
 - bounded graph traversal and Activation Subgraph compilation;
 - a neutral `open → project → execute → close` lifecycle;
 - an explicit in-memory semantic oracle and backend conformance harness;
+- an AWG-070a1 worker-isolated SQLite Adapter with an append-only projection journal,
+  exact per-scope heads, compare-and-swap writes, restart recovery, and fail-stop Worker
+  lifecycle;
 - exact Continuity observation, change, Capsule-presentation, resume-runtime, and Shadow
   decision-receipt compatibility Modules used by Muse.
 
+This is the **durable projection-journal foundation**, not completion of the SQLite
+program. AWG-070a remains `partial` until physical-forget fixtures and the complete
+byte-identical conformance corpus pass. AWG-070b remains `partial` until backup, portable
+export, and the complete physical-profile program pass.
+
 Still required before a standalone release:
 
-- a worker-isolated durable SQLite Store;
-- export/rebuild, migrations, corruption recovery, and physical forget;
+- portable export/rebuild, destructive migration, backup, and physical forget/compaction
+  with their complete fixture matrices;
+- the 10K/100K/1M performance and event-loop-delay benchmark matrix;
 - Markdown, Obsidian, and Notion Source Adapters;
+- Muse default-path composition and unsupported-platform profile work where needed;
 - a clean-room build and packed-install gate with no Muse workspace dependency;
 - a minimal non-Muse example agent and complete public release metadata.
 
@@ -130,17 +140,56 @@ await mag.close();
 Commands and operators use immutable versioned identifiers. A persisted value never
 contains a moving `latest` alias.
 
+### Durable local store
+
+The public `@muse/attunement-graph/local` subpath adds durability without exposing SQLite,
+SQL, Workers, or migrations. It exports `openLocalMag` and `OpenLocalMagOptions`; the
+returned value has the same `project → execute → close` Interface as `openMag`.
+
+```ts
+import { openLocalMag } from "@muse/attunement-graph/local";
+import type { MagScope } from "@muse/attunement-graph";
+
+const scope: MagScope = {
+  sourceId: "notes",
+  threadId: "trip-planning"
+};
+
+const mag = await openLocalMag({
+  databasePath: "/absolute/local/path/attunement-graph.sqlite",
+  scope
+});
+
+// Use the same mag.project(...) and mag.execute(...) commands shown above.
+await mag.close();
+```
+
+Callers must provide an explicit absolute regular-file path and exact scope. The shipped
+physical profile requires Node `>=24.12.0`, SQLite
+`3.44.6–3.44.x`, `3.50.7–3.50.x`, or `>=3.51.3`, defensive mode, and a runtime-probed
+local filesystem from this allowlist:
+
+- macOS APFS or HFS+;
+- Linux ext4, XFS, Btrfs, overlayfs, or tmpfs.
+
+The Adapter fails closed before opening or mutating unsupported state. Relative, URI,
+special, NUL-containing, symlinked/noncanonical component, non-regular, and non-local paths
+are rejected before SQLite opens the file. Windows, network filesystems, and unknown or
+unclassified operating-system/filesystem profiles are not supported. The database, WAL,
+and shared-memory files must belong to the current effective user and remain owner-only.
+
 ## Target architecture
 
-The neutral Engine and in-memory oracle shown below exist. SQLite and the three Source
-Adapters are selected or planned components, not current package Implementations.
+The neutral Engine, in-memory oracle, and AWG-070a1 SQLite projection-journal foundation
+shown below exist. The three Source Adapters and the remaining SQLite maintenance and
+qualification work are planned, not current package Implementations.
 
 ```text
 Agent or Muse product
   → MAG Interface
     → MAG Engine
       → MagStore capability
-        → SQLite Store [planned]
+        → SQLite Store [AWG-070a1 foundation]
         → in-memory semantic oracle
 
 Markdown / Obsidian / Notion [planned]
@@ -161,12 +210,18 @@ The Engine owns graph meaning:
 
 ### MAG Store
 
-The current Store seam owns atomic compare-and-swap and detached snapshot reads. A future
-durable Store Implementation will own:
+The Store seam owns atomic compare-and-swap and detached snapshot reads. The shipped local
+Adapter adds:
 
-- the durable journal and snapshot indexes;
-- crash recovery, migrations, export/rebuild, and physical forget;
-- writer serialization, WAL/checkpoint policy, and shutdown.
+- an append-only durable projection journal and exact head for each encoded
+  `(sourceId, threadId)`;
+- transactionally serialized compare-and-swap, restart recovery, and same-file writer
+  races;
+- a capability/version-gated safe WAL profile, bounded passive checkpoint, and deterministic
+  Worker shutdown.
+
+It does not yet provide portable export/rebuild, destructive migration, backup, physical
+forget/compaction, or their full qualification corpus.
 
 SQLite is the selected local default. PostgreSQL may become an optional deployment
 Adapter. Redis may be used only as a disposable cache or queue. MySQL and external
@@ -187,11 +242,12 @@ round-trip, and rebuild behavior explicitly.
 ## Runtime and language strategy
 
 MAG is **TypeScript-first**. TypeScript owns the public Interface, semantics, validation,
-operators, and cross-implementation conformance corpus. The planned SQLite Store will
-perform durable query and transaction work in its native engine.
+operators, and cross-implementation conformance corpus. The SQLite Store performs durable
+query and transaction work in its native engine.
 
-The production SQLite Adapter will isolate synchronous database work in a worker so MAG
-does not stall an agent host's application event loop.
+The SQLite Adapter imports `node:sqlite` only inside one long-lived Worker so synchronous
+database work does not stall an agent host's application event loop. Importing the root
+package does not load SQLite.
 
 Rust is an optional, benchmark-gated acceleration layer—not a second MAG implementation
 and not a required dependency. Candidate kernels are:
@@ -245,6 +301,11 @@ The conformance contract covers atomic compare-and-swap, replay, collision/corru
 scope isolation, immutable snapshots, detached reads, bounded execution, failure
 atomicity, and lifecycle races. Durable Implementations additionally require restart,
 crash, migration, export/rebuild, and physical-forget qualification.
+
+AWG-070a1 covers the durable projection-journal subset, including restart, same-file
+writer races, bounded close/checkpoint behavior, and fail-stop crash boundaries. It does
+not claim the remaining migration, export/rebuild, backup, physical-forget, or complete
+cross-backend corpus gates.
 
 The existing Continuity comparison benchmark is a deterministic capability baseline, not
 a cross-language throughput result:

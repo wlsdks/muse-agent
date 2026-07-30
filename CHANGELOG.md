@@ -8,6 +8,21 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the AWG-070a1 **durable projection-journal foundation** for MAG. The public
+  `@muse/attunement-graph/local` subpath now opens an explicit absolute database path and
+  exact scope, then exposes the same closed `project | execute | close` Interface as the
+  neutral Engine. SQLite stays inside one long-lived Worker; the Adapter fail-closes on
+  unsupported Node/SQLite, path, ownership, permission, operating-system, or filesystem
+  profiles and persists an append-only journal plus exact per-scope heads through
+  transactional compare-and-swap, restart/replay, same-file writer races, bounded
+  checkpoint/close, and fail-stop crash boundaries. The supported profile is Node
+  `>=24.12.0`, fixed safe SQLite WAL release ranges, owner-only files, and runtime-probed
+  macOS APFS/HFS+ or Linux ext4/XFS/Btrfs/overlayfs/tmpfs. Windows, network filesystems,
+  and unknown profiles are unsupported. This does not complete AWG-070a or AWG-070b:
+  physical-forget fixtures, the full byte-identical corpus, backup, portable export/rebuild,
+  destructive migration, complete physical-profile qualification, Source Adapters,
+  Muse default-path composition, and the 10K/100K/1M benchmark matrix remain.
+
 - Added the independently verified neutral **MAG lifecycle**. A non-Muse caller can now
   open one exact scope over an explicit opaque Store capability, commit a bounded
   `canonical-projection@1` through atomic compare-and-swap, execute a pinned

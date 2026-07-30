@@ -94,9 +94,11 @@ This is built from three product mechanisms:
 A procedural skill teaches an agent how to do a task better. An Attunement Policy teaches
 Muse how to collaborate with this person better.
 
-These three mechanisms and the underlying
-[Muse Attunement Graph (MAG)](../design/attunement-graph.md) are target architecture, not a
-shipped claim. Their dependency-ordered work lives in the
+These three product mechanisms remain target architecture rather than a shipped wow claim.
+Their underlying [Muse Attunement Graph (MAG)](../design/attunement-graph.md) has bounded
+library substrates, including the worker-isolated durable projection-journal foundation,
+but not yet the complete Source Adapter, Policy Card, maintenance, qualification, or
+product-composition program. Dependency-ordered work lives in the
 [wow + graph roadmap](../goals/attunement-wow-graph-roadmap.md).
 
 ## The compounding loop

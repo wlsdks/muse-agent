@@ -60,9 +60,12 @@ Its intended advantage is a small set of bounded, verified personal-temporal ope
 the model asks what changed, what evidence supports a policy, or what forgetting would
 invalidate; Muse computes the exact path, completeness, and authority boundary in code.
 The [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md) defines the
-proposed next architecture: scope-safe snapshots, proof-closed Working Graphs, typed
-completeness, an immutable logical journal, and the selected embedded SQLite **MAG Store**
-with no external Graph DB requirement. MAG keeps its storage contract Adapter-based;
+architecture: scope-safe snapshots, proof-closed Working Graphs, typed completeness, an
+immutable logical journal, and the selected embedded SQLite **MAG Store** with no external
+Graph DB requirement. Its bounded worker-isolated projection-journal foundation is now
+implemented behind `@muse/attunement-graph/local`; portable export/rebuild, backup,
+physical forget, full benchmarks, and Muse default composition remain roadmap work.
+MAG keeps its storage contract Adapter-based;
 PostgreSQL may be optional, while Redis/MySQL/property-graph servers are not required or
 planned as default storage.
 MAG is deliberately being built as an independently extractable product Module. Muse is
@@ -70,7 +73,7 @@ its first consumer and dogfood environment; the current private workspace packag
 yet a standalone release. Its closed public Interface, Source/Store Adapter boundaries,
 clean-room package gate, and history-preserving repository split are fixed in
 [ADR 0001](docs/adr/0001-mag-product-module-boundary.md). MAG remains TypeScript-first;
-SQLite work will run behind an isolated worker, and only benchmark-proven hot kernels may
+SQLite runs behind an isolated worker, and only benchmark-proven hot kernels may
 move to Rust behind the same conformance contract, as fixed in
 [ADR 0002](docs/adr/0002-mag-language-runtime-boundary.md).
 The package now exposes the first independently verified neutral lifecycle:

@@ -259,3 +259,14 @@ it("close is idempotent and permanently closes project and execute", async () =>
 it("runs the backend-neutral Store conformance corpus", async () => {
   await expect(runMagStoreConformance(() => new InMemoryMagStoreBackend())).resolves.toMatchObject({ passed: true });
 });
+
+it("disposes each lifecycle-scoped conformance backend", async () => {
+  let disposals = 0;
+  await expect(runMagStoreConformance(() => ({
+    backend: new InMemoryMagStoreBackend(),
+    dispose: () => {
+      disposals += 1;
+    }
+  }))).resolves.toMatchObject({ passed: true });
+  expect(disposals).toBe(5);
+});

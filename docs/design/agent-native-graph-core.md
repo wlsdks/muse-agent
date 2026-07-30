@@ -2,8 +2,8 @@
 title: Muse Attunement Graph (MAG) Core — semantic engine and local storage blueprint
 audience: [engineering, product, security, agents]
 purpose: Fix the core architecture and staged delivery plan for Muse's built-in graph engine
-status: decision-proposal
-updated: 2026-07-29
+status: partial-implementation
+updated: 2026-07-30
 related: [attunement-graph.md, ../goals/attunement-wow-graph-roadmap.md, ../../CONTEXT.md]
 ---
 
@@ -17,11 +17,12 @@ related: [attunement-graph.md, ../goals/attunement-wow-graph-roadmap.md, ../../C
 This is the implementation blueprint beneath
 [Muse Attunement Graph (MAG)](attunement-graph.md). It synthesizes independent Sol-class
 architecture reviews, direct source inspection, and current primary-source research. It
-does not claim the durable engine is implemented.
+now records the shipped AWG-070a1 durable projection-journal foundation without claiming
+the remaining durable-engine program is complete.
 
 Canonical naming: **Muse Attunement Graph (MAG)** is the whole product architecture,
-**MAG Engine** is its semantics/operators/compiler, and **MAG Store** is the future durable
-embedded journal/index layer.
+**MAG Engine** is its semantics/operators/compiler, and **MAG Store** is its embedded
+journal/index layer. The local Store exists at a deliberately bounded foundation stage.
 
 The target is not a smaller Neo4j. It is a graph engine optimized for an AI agent that must
 assemble a small truthful context, reason over change, show its evidence, know when its
@@ -54,10 +55,10 @@ alone.
 | In-memory append/traverse/forget adapter | `verified-current` as a reference adapter | Keep it as the semantic oracle, not as durable storage. |
 | Activation Subgraph v1 | `partial` | It is bounded, but not yet scope-safe or proof-closed enough for flagship decisions. |
 | Continuity projection/change/observation/Capsule Modules | `verified-current` at their documented pure boundaries | Reuse them as the first operator workload; do not reimplement them in a database layer. |
-| Logical append journal and immutable lifecycle | `partial` | Current live insertion order is not a durable append-only history; later retraction needs separate events. |
+| Durable projection journal and exact scoped head | `verified-current` for AWG-070a1 | The Worker-backed SQLite Adapter persists projection commits and exact heads; full assertion lifecycle, portable export, and physical forget remain outside this slice. |
 | Shadow Muse decision provenance | `partial` | Existing no-send timing decisions now have a fresh-policy snapshot and an exact process-local Source/Graph receipt binding; return/card/durability remain. |
 | Policy Card and user-facing runtime composition | `missing` | They remain the next product-shaped workloads. |
-| Durable local engine, recovery, migration, physical forget | `missing` | Do not select or build storage before the v2 semantic contract. |
+| Durable local engine program | `partial` | AWG-070a1 ships the projection-journal foundation; backup, portable export/rebuild, destructive migration, physical forget/compaction, complete profile qualification, and performance matrices remain. |
 
 Two current contracts need explicit correction:
 
@@ -293,54 +294,57 @@ SQLite supplies crash consistency, atomic transactions, compact indexes, and a s
 local deployment. It does not define graph semantics, expose SQL publicly, or become a
 required external Graph DB.
 
-The architecture selection is final; production implementation and migration remain
-unshipped roadmap work:
+AWG-070a1 implements the durable projection-journal foundation behind
+`@muse/attunement-graph/local`. `openLocalMag` accepts an explicit absolute
+`databasePath` and exact `MagScope`, privately owns one Worker-backed Adapter, and returns
+the same closed `project | execute | close` Interface as `openMag`. The local Module
+composes the existing Engine rather than reimplementing graph meaning.
 
-- Muse currently supports Node `>=22.12`; Node 22.12 requires
-  `--experimental-sqlite`, while Node 22.13 unflags the module. AWG-070 must decide whether
-  to raise the effective durable-engine minimum, ship a capability-gated fallback, or use a
-  different binding.
-- SQLite's official WAL documentation records a rare multi-connection reset/checkpoint
-  corruption bug through 3.51.2, fixed in 3.51.3 with selected backports. Any WAL profile
-  must inspect the bundled SQLite version and fail closed or choose a safe non-WAL mode.
-- Start with one writer. Reader concurrency, checkpoints, durability pragmas, file
-  permissions, and shutdown behavior are explicit conformance inputs.
-- Extension loading remains disabled.
-- Startup executes `SELECT sqlite_version()` and enables WAL only for an accepted fixed
-  version/profile. The current development runtime, Node 24.16.0, reports SQLite 3.53.0.
+The shipped physical profile is intentionally narrow and fails closed:
+
+- `node:sqlite` is imported only in one long-lived Worker; the supported runtime is Node
+  `>=24.12.0` with defensive mode;
+- WAL is allowed only for SQLite `3.44.6–3.44.x`, `3.50.7–3.50.x`, or `>=3.51.3`;
+- profile v1 uses a regular local file, fixed application ID, `user_version=1`, STRICT
+  tables, extensions and double-quoted string literals disabled, foreign keys on,
+  `trusted_schema=OFF`, verified WAL, `synchronous=FULL`, and a finite busy deadline;
+- supported filesystems are macOS APFS/HFS+ and Linux
+  ext4/XFS/Btrfs/overlayfs/tmpfs, detected at runtime;
+- the database, WAL, and shared-memory files must be owned by the current effective user
+  and owner-only.
+
+Relative, URI/special, NUL-containing, symlinked/noncanonical component, non-regular, and
+non-local paths are rejected before SQLite opens the file. Windows, network filesystems,
+and unknown or unclassified OS/filesystem profiles remain unsupported until equivalent
+ACL, locking, and test guarantees exist.
 
 Do not build a custom physical WAL. Muse owns the logical journal; SQLite or another proven
 embedded substrate owns fsync, locking, and crash recovery.
 
-### Candidate physical layout
+### Current and future physical layout
 
 ```text
-~/.muse/attunement-graph/
-  CURRENT
-  graph-<generation-id>.sqlite
-  graph-<generation-id>.sqlite-wal
-  graph-<generation-id>.sqlite-shm
-  quarantine/
+/caller-selected/absolute/path/graph.sqlite
+/caller-selected/absolute/path/graph.sqlite-wal
+/caller-selected/absolute/path/graph.sqlite-shm
 ```
 
-The directory and files use owner-only permissions. `CURRENT` points to a fully verified
-generation. Rebuild, migration, compaction, and physical forget create and verify a new
-generation before an atomic pointer swap.
+AWG-070a1 uses the caller-selected file and validates its sidecars. Muse default-path
+composition is not part of this slice. A later export/rebuild, migration, compaction, and
+physical-forget program may introduce verified generations and an atomic generation
+pointer; that layout is not shipped.
 
-Minimum tables:
+The foundation's physical contract includes:
 
-- `meta` — engine, journal, assertion, index, and compatibility versions;
-- `commits` and `commit_records` — sequence, hashes, scope, and canonical records;
-- `refs` and `source_refs` — compact interned identifiers;
-- `assertions` — canonical bytes plus extracted hot-path columns;
-- `assertion_sources` and derived dependencies — reverse provenance;
-- `assertion_scopes` — mandatory isolation membership;
-- `assertion_lifecycle` — immutable retraction/supersession;
-- `projection_heads` — version, receipt, freshness, and commit per scope;
-- `graph_observations` — verified relational receipts only.
+- versioned metadata with a fixed application identity;
+- one append-only projection-journal row per committed transition;
+- one exact head per encoded `(sourceId, threadId)`, foreign-keyed to its exact journal
+  generation and commit;
+- canonical bounded snapshot payloads that are hostile-validated again on read.
 
-Canonical assertion bytes remain the export/conformance truth. SQL columns and indexes are
-materializations, not an alternative semantic representation.
+The complete assertion/index/lifecycle schema, portable export representation, and
+generation-rewrite layout remain roadmap work. Canonical semantic bytes—not SQL columns—
+remain the cross-backend conformance truth.
 
 ### Three-temperature runtime
 
@@ -356,23 +360,29 @@ entire digital life.
 
 ## Recovery, migration, and physical forget
 
-- Startup checks format/capability versions, database integrity, journal hash tail,
-  projection heads, and index consistency.
-- Corrupt or future-version state is quarantined and reported `unavailable`; Muse never
-  silently opens an empty graph and claims no change.
-- Index-only migrations rebuild freely. Semantic/journal migrations create a new
-  generation and retain a portable verified export until the replacement passes.
-- Normal compaction may rebuild indexes and remove dead generations. Historical provenance
-  is not pruned until a reviewed retention contract exists.
-- Projection eviction is not privacy forget.
-- Physical forget requires an authoritative disposition receipt, computes the exact
-  dependency closure, rewrites a generation without those records and identifiers,
-  verifies it, swaps `CURRENT`, and deletes the old database plus WAL/SHM files.
-- The removal inventory includes portable exports, quarantined generations, temporary
-  rewrite files, and backups owned by this Module; a retained export is still retained
-  personal data.
-- If old-generation cleanup fails, the receipt reports `pending-physical-deletion`; it must
-  not claim completion.
+AWG-070a1 ships only the recovery behavior needed by the durable projection-journal
+foundation:
+
+- empty-file initialization is one transaction; foreign, partial, future-version, corrupt,
+  or incoherent journal/head state fails closed;
+- reopen validates application and schema identity, bounded canonical payloads, scope,
+  generation, commit, and exact head-to-journal coherence;
+- a crash before commit leaves no write, a lost acknowledgement may expose one complete
+  write after reopen, and an acknowledged write must reopen exactly;
+- a timed-out or unexpectedly exited Worker fail-stops the local Instance and requires
+  reopen; no failure silently becomes an empty graph.
+
+The remaining recovery and maintenance program is not shipped:
+
+- portable export/rebuild and backup must define recovery artifacts and verification;
+- destructive migration and compaction must create and verify a replacement generation
+  before an atomic swap;
+- physical forget must use an authoritative disposition receipt, compute the exact
+  dependency closure, rewrite without those records and identifiers, verify the result,
+  and remove old database, WAL, shared-memory, export, temporary, and backup copies;
+- failed cleanup must report `pending-physical-deletion`, never completion;
+- projection eviction is not privacy forget, and historical provenance cannot be pruned
+  without a reviewed retention contract.
 
 SQLite documents that ordinary deletion can leave recoverable page content. A generation
 rewrite or verified `VACUUM`/secure-delete policy is therefore part of the privacy gate,
@@ -451,10 +461,10 @@ benchmarks are not Muse evidence. They cannot select the backend or qualify the 
 | Research/architecture critic, Sol xhigh | Use one per-thread in-memory Working Graph over a local durable Adapter; require typed completeness | Ranking after traversal, token estimation, freshness, and physical forget are insufficiently explicit in v1. |
 | Product/maintenance synthesis | Build Shadow and Policy workloads before choosing the durable backend | A generic graph engine or broad backend matrix can consume years without producing the Muse moment. |
 
-The reviews disagreed mainly on how strongly to name SQLite before a bake-off. This
-blueprint names it as the first candidate because it is the smallest credible transactional
-substrate, while withholding selection until capability, recovery, forget, portability,
-and product-query gates pass.
+The reviews disagreed mainly on how strongly to name SQLite before a bake-off. AWG-070a1
+selected it for the bounded local projection-journal foundation after capability, safe-WAL,
+path, ownership, concurrency, restart, and crash-boundary gates. Broader recovery, forget,
+portability, backup, performance, and product-composition qualification remains withheld.
 
 ## Alternatives and dissent
 
@@ -496,8 +506,11 @@ Use it as a canonical portable export, not as transactional serving storage.
 
 ### Remaining implementation decisions
 
-- Node 22.12 compatibility strategy for an unflagged SQLite path;
-- exact durability/checkpoint policy after crash and power-loss tests;
+- portable export/rebuild and backup formats;
+- destructive migration and generation-swap policy;
+- physical-forget/compaction implementation and complete fixtures;
+- equivalent safe Windows and additional local-filesystem profiles;
+- the complete cross-backend corpus and 10K/100K/1M performance matrix;
 - source-receipt vault retention and encryption policy;
 - measured cache sizes and eviction rhythm from real dogfood;
 - whether any operator benefits enough from lexical/vector seed nomination to pay its cost.
@@ -653,12 +666,18 @@ Do not build the database first.
    evidence, the Shadow-to-Return card, and durability remain.
 5. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
    reject, rollback, and no hidden promotion.
-6. **AWG-070a — SQLite MAG Store conformance:** snapshot identity, projection compare-and-swap,
-   restart, crash, corruption, future version, lifecycle, physical-forget fixtures, and
-   byte-identical operator results.
-7. **AWG-070b — SQLite physical profile:** schema/indexes, single-writer transactions,
-   capability/version gate, WAL/checkpoint policy, owner-only files, backup, and portable
-   journal export.
+6. **AWG-070a — SQLite MAG Store conformance (`partial`):** AWG-070a1 ships the
+   Worker-isolated durable projection-journal foundation: exact scoped heads,
+   compare-and-swap, restart/replay, same-file writer races, corruption/future-state
+   rejection, crash-boundary fail-stop behavior, and a bounded byte-identical command
+   corpus. AWG-070a remains partial until physical-forget fixtures and the complete
+   byte-identical conformance corpus pass.
+7. **AWG-070b — SQLite physical profile (`partial`):** AWG-070a1 ships the safe-version
+   gate, local-filesystem allowlist, owner-only files, defensive SQLite profile, verified
+   WAL, `synchronous=FULL`, bounded busy/checkpoint behavior, and Worker isolation.
+   AWG-070b remains partial until backup, portable export, and the complete physical-profile
+   program pass. Windows, network filesystems, and unknown OS/filesystem profiles remain
+   unsupported.
 8. **AWG-080 — durable engine:** recovery/export/rebuild, generation migration/compaction,
    authorized physical forget, then local runtime composition.
 9. **AWG-090 — qualification:** controlled scenarios followed by repeated local dogfood;
@@ -680,8 +699,10 @@ subject, bounded head assessments, and an assembly-local finite evidence pool; i
 continuous or current freshness, an automatically observed stopping point, causality,
 completeness, persistence, or user value. The Provider-bound paths make no authoritative
 absence, permission, or action claim.
-Persistence remains explicitly out of scope until freshness, Shadow, and Policy workloads
-make the backend requirements real.
+The durable projection-journal foundation is now shipped. Muse default-path composition,
+portable export/rebuild, destructive migration, backup, physical forget/compaction, the
+complete cross-backend corpus, and the 10K/100K/1M performance matrix remain out of scope
+for AWG-070a1.
 
 Core semantic and persistence PLAN work uses `gpt-5.6-sol` at `ultra` or `xhigh`;
 implementation begins only from a bounded accepted handoff, and completion uses a fresh
