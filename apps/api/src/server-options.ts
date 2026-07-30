@@ -32,7 +32,11 @@ import type { McpRouteMcp } from "./mcp-routes.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
 import type { DeliverySafetySupplier } from "./delivery-safety-resolver.js";
 import type { ApiDependencyReadinessSnapshot } from "./api-readiness.js";
-import type { AdaptationLoopHealthInput, AgentLoopHealthInput } from "@muse/shared";
+import type {
+  AdaptationLoopHealthInput,
+  AgentLoopHealthInput,
+  EventLoopHealthInput
+} from "@muse/shared";
 
 export interface ServerOptions {
   /**
@@ -44,6 +48,9 @@ export interface ServerOptions {
   readonly adaptationLoopHealthSnapshot?: () => AdaptationLoopHealthInput | undefined;
   /** Latest validated in-process agent loop evidence; read-only and owner scoped. */
   readonly agentLoopHealthSnapshot?: () => AgentLoopHealthInput | undefined;
+  /** Current durable event admission evidence; read-only and owner scoped. */
+  readonly eventLoopHealthSnapshot?: () =>
+    EventLoopHealthInput | Promise<EventLoopHealthInput | undefined> | undefined;
   /** Fail-open observation only after an approved learning promotion commits. */
   readonly experienceLearningPromotionObserver?: (receipt: ExperienceLearningPromotionReceipt) => void;
   /** Lazy canonical projection shared by authenticated delivery-safety surfaces. */

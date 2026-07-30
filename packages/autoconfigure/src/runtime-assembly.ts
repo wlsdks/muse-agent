@@ -279,6 +279,7 @@ export interface MuseRuntimeAssembly {
   readonly observability: {
     readonly adaptationLoopHealthSnapshot: () => import("@muse/shared").AdaptationLoopHealthInput | undefined;
     readonly agentLoopHealthSnapshot: () => import("@muse/shared").AgentLoopHealthInput | undefined;
+    readonly eventLoopHealthSnapshot: () => Promise<import("@muse/shared").EventLoopHealthInput>;
     readonly experienceLearningPromotionObserver: (receipt: unknown) => void;
     readonly budgetTracker: MonthlyBudgetTracker;
     readonly driftDetector: PromptDriftDetector;
@@ -661,6 +662,13 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     observability: {
       adaptationLoopHealthSnapshot: adaptationLoopHealthObserver.snapshot,
       agentLoopHealthSnapshot: agentLoopHealthObserver.snapshot,
+      eventLoopHealthSnapshot: async () => Object.freeze({
+        journal: await triggerAdmissionJournalStore.read(),
+        // The current scheduler lifecycle owns durable admission/settlement
+        // state only. Lease/retry work-state integration is a separate
+        // controller contract and must not be fabricated here.
+        workStates: Object.freeze([])
+      }),
       experienceLearningPromotionObserver: adaptationLoopHealthObserver.observe,
       budgetTracker,
       driftDetector,

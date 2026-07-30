@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import {
+  admitTriggerToJournal,
+  createTriggerAdmissionJournal,
+  createTriggerEnvelope
+} from "@muse/shared";
 
 import { buildServer } from "../src/server.js";
 import { createAuthService } from "./helpers/test-auth.js";
@@ -19,8 +24,22 @@ describe("GET /api/loop-health", () => {
     await server.close();
   });
 
-  it("combines validated agent and adaptation evidence but stays degraded without event evidence", async () => {
+  it("combines current agent, event, and adaptation evidence into healthy supervision", async () => {
     const endedAt = new Date(Date.now() - 1_000).toISOString();
+    const now = new Date();
+    const journal = admitTriggerToJournal(
+      createTriggerAdmissionJournal({ maxPending: 2 }),
+      {
+        envelope: createTriggerEnvelope({
+          generation: "route-event-g1",
+          occurredAt: now,
+          receivedAt: now,
+          source: "cron",
+          sourceId: "daily-brief"
+        }),
+        now
+      }
+    ).journal;
     const server = buildServer({
       adaptationLoopHealthSnapshot: () => Object.freeze({
         evidenceId: "learning_promotion_route",
@@ -34,6 +53,10 @@ describe("GET /api/loop-health", () => {
         verificationEvidenceId: "eval:route",
         verificationStatus: "passed"
       }),
+      eventLoopHealthSnapshot: async () => Object.freeze({
+        journal,
+        workStates: Object.freeze([])
+      }),
       logger: false
     });
 
@@ -43,9 +66,32 @@ describe("GET /api/loop-health", () => {
     expect(response.statusCode).toBe(200);
     expect(body.adaptation).toEqual({ level: "healthy", reasons: [] });
     expect(body.agent).toEqual({ level: "healthy", reasons: [] });
-    expect(body.level).toBe("degraded");
-    expect(body.reasons).toContain("partial-observability");
+    expect(body.event).toMatchObject({
+      counts: { queued: 1 },
+      level: "healthy",
+      reasons: []
+    });
+    expect(body.level).toBe("healthy");
+    expect(body.reasons).toEqual([]);
     expect(body.generatedAt).not.toBe(endedAt);
+    await server.close();
+  });
+
+  it("fails event observation closed to unknown when its snapshot throws", async () => {
+    const server = buildServer({
+      eventLoopHealthSnapshot: async () => {
+        throw new TypeError("invalid trigger admission journal");
+      },
+      logger: false
+    });
+
+    const response = await server.inject({ method: "GET", url: "/api/loop-health" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      event: { level: "unknown", reasons: ["event-evidence-missing"] },
+      level: "unknown"
+    });
     await server.close();
   });
 

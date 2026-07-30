@@ -4,7 +4,8 @@ import { parseBoolean, resolveActionLogFile, resolvePendingApprovalsFile } from 
 import {
   createLoopSupervisorHealthSnapshot,
   type AdaptationLoopHealthInput,
-  type AgentLoopHealthInput
+  type AgentLoopHealthInput,
+  type EventLoopHealthInput
 } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 
@@ -27,6 +28,8 @@ import { projectApiHealth } from "./api-readiness.js";
 export interface CoreRouteHealthOptions {
   readonly adaptationLoopHealthSnapshot?: () => AdaptationLoopHealthInput | undefined;
   readonly agentLoopHealthSnapshot?: () => AgentLoopHealthInput | undefined;
+  readonly eventLoopHealthSnapshot?: () =>
+    EventLoopHealthInput | Promise<EventLoopHealthInput | undefined> | undefined;
   readonly dependencyReadiness?: ServerOptions["dependencyReadiness"];
   readonly localOnly: boolean;
   readonly modelConfigured: boolean;
@@ -61,6 +64,7 @@ export function registerCoreRoutes(
   server.get("/api/loop-health", async () => {
     let adaptation: AdaptationLoopHealthInput | undefined;
     let agent: AgentLoopHealthInput | undefined;
+    let event: EventLoopHealthInput | undefined;
     try {
       adaptation = healthOptions.adaptationLoopHealthSnapshot?.();
     } catch {
@@ -71,9 +75,15 @@ export function registerCoreRoutes(
     } catch {
       agent = undefined;
     }
+    try {
+      event = await healthOptions.eventLoopHealthSnapshot?.();
+    } catch {
+      event = undefined;
+    }
     return createLoopSupervisorHealthSnapshot({
       ...(adaptation ? { adaptation } : {}),
       ...(agent ? { agent } : {}),
+      ...(event ? { event } : {}),
       generatedAt: new Date()
     });
   });

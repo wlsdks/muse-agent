@@ -271,6 +271,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   registerCoreRoutes(server, apiRouteMethods, {
     adaptationLoopHealthSnapshot: options.adaptationLoopHealthSnapshot,
     agentLoopHealthSnapshot: options.agentLoopHealthSnapshot,
+    eventLoopHealthSnapshot: options.eventLoopHealthSnapshot,
     dependencyReadiness: options.dependencyReadiness,
     localOnly: integrationEnv.localOnly,
     modelConfigured: Boolean(options.modelProvider && options.defaultModel),
