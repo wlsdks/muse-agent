@@ -181,7 +181,7 @@ Status legend: ✅ ran live · 🧪 tests-as-evidence · ⬜ code-only · ⚠ br
 
 ### I1. Weakness ledger
 - **What:** Records what Muse noticed it couldn't answer / didn't actually do. Ledger `~/.muse/weaknesses.json` (`resolveWeaknessesFile`), store `packages/mcp/src/weakness-ledger.ts`, recall side `packages/recall/src/weakness.ts`. README principle 3 = Whetstone.
-- **Status:** ✅ **`doctor --weaknesses` ran and showed REAL data** — "🪨 Whetstone — what I've noticed I'm weak at (13 topics)" with counts + last-seen dates (e.g. "할일 — couldn't answer (24×, last 2026-06-06)"). README's `muse doctor --weaknesses` claim **VERIFIED**.
+- **Status:** ✅ **`doctor --weaknesses` ran and showed REAL data** — "🪨 Whetstone — what I've noticed I'm weak at (13 topics)" with counts + last-seen dates (e.g. "tasks — couldn't answer (24×, last 2026-06-06)"). README's `muse doctor --weaknesses` claim **VERIFIED**.
 - **Evidence:** `apps/cli/src/commands-doctor-checks.ts`, `commands-doctor.test.ts`.
 
 ### I2. `doctor --run-outcomes`
@@ -216,11 +216,11 @@ Status legend: ✅ ran live · 🧪 tests-as-evidence · ⬜ code-only · ⚠ br
 
 **docs/FEATURES.md** — ACCURATE and detailed (Korean). Lines 107-110 cover reflection/themes/consolidation/dreaming; 158-159 cover self-authored skills (quarantine, curate, consolidate, archive/restore) + playbook consolidate. All claims map to real code.
 
-**docs/SYSTEM-MAP.md** — ACCURATE. §5 "기억 (장·단기)" covers auto fact-learning (default-on), recall, consolidation, dreaming-promotion. §9 "자기개선" covers playbook consolidate + RL-style reward/decay (applies to skills too). §11 covers swarm quarantine. No stale claims found.
+**docs/SYSTEM-MAP.md** — ACCURATE. §5 "Memory (long and short term)" covers auto fact-learning (default-on), recall, consolidation, dreaming-promotion. §9 "Self-improvement" covers playbook consolidate + RL-style reward/decay (applies to skills too). §11 covers swarm quarantine. No stale claims found.
 
 ### Drift / suspicious items (small):
 1. **`muse specs` is genuinely server-only** (verified): requires API server at :3030, `--local` is `unknown option`, no auto-fallback (every other domain command falls back to the local store). Follow-up: add `--local` or document the server requirement. (⚠ only surface in this domain that doesn't work standalone. = INDEX B3.)
-2. **Self-learning is now ON by default** (was off) — `MUSE_PLAYBOOK_DISTILL_ENABLED` + `MUSE_SKILL_AUTHOR_ENABLED` default true; `muse learned`'s empty-digest hint now shows how to set them `=false` to opt out. Background skill CONSOLIDATION (`MUSE_SKILL_CONSOLIDATE_ENABLED`) is unaffected and stays off by default (FEATURES.md §158 "기본 꺼짐" still applies to that step only).
+2. **Self-learning is now ON by default** (was off) — `MUSE_PLAYBOOK_DISTILL_ENABLED` + `MUSE_SKILL_AUTHOR_ENABLED` default true; `muse learned`'s empty-digest hint now shows how to set them `=false` to opt out. Background skill CONSOLIDATION (`MUSE_SKILL_CONSOLIDATE_ENABLED`) is unaffected and stays off by default (FEATURES.md §158 "off by default" still applies to that step only).
 3. **Episodic memory is OFF by default** (`MUSE_EPISODIC_MEMORY_ENABLED=true` required). This is the substrate reflections/themes/dreaming feed on — so a fresh install shows "no episodes / no reflections / no themes" until enabled. Help text documents the flag; just flagging the dependency chain (episodes → themes/reflections/consolidate) for docs accuracy.
 
 ### NOT broken (clarifications):

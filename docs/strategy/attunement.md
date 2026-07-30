@@ -11,7 +11,7 @@ related: [../design/attunement.md, ../design/attunement-graph.md, ../goals/attun
 
 > **Product goal: Muse learns how you live and work, then gets better at knowing when and how to help.**
 >
-> **제품 목표: Muse는 한 사람의 삶과 일을 배우고, 언제 어떻게 도울지 점점 더 잘 맞춥니다.**
+> **Product goal: Muse learns how one person lives and works, and gets better at when and how to help.**
 
 Attunement is Muse's product direction. It is not a claim that the complete loop is
 already shipped. Muse already has personal memory, pattern primitives, interruption
@@ -91,7 +91,7 @@ This is built from three product mechanisms:
 
 > **Muse does not remember apps; it remembers the state you intended to continue.**
 >
-> **Muse는 앱을 기억하지 않고, 내가 이어가려던 상태를 기억한다.**
+> **Muse doesn't remember apps. It remembers the state you meant to continue.**
 
 A procedural skill teaches an agent how to do a task better. An Attunement Policy teaches
 Muse how to collaborate with this person better.

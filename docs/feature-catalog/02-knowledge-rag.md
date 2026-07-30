@@ -94,13 +94,13 @@ The "notes/fetch/fs servers" are loopback MCP servers (`McpManager`-managed, loc
 
 ## D. Doc drift (README ↔ FEATURES.md ↔ SYSTEM-MAP.md ↔ reality)
 
-1. ✅ PARTLY FIXED 2026-06-14 — the deterministic data/text tools (`csv`/`summarize`/`keywords`/`benford`/`trend`/`diversity`/`on-this-day`) now have a dedicated section in `docs/FEATURES.md` (### 결정론적 데이터 분석 도구). They are still NOT enumerated as commands in `docs/SYSTEM-MAP.md` — remaining gap there. (`muse weather`/`muse time` likewise only in SYSTEM-MAP prose.)
+1. ✅ PARTLY FIXED 2026-06-14 — the deterministic data/text tools (`csv`/`summarize`/`keywords`/`benford`/`trend`/`diversity`/`on-this-day`) now have a dedicated section in `docs/FEATURES.md` (### Deterministic data-analysis tools). They are still NOT enumerated as commands in `docs/SYSTEM-MAP.md` — remaining gap there. (`muse weather`/`muse time` likewise only in SYSTEM-MAP prose.)
 
 2. **CORRECTED (was overstated) — NOT a quality bug.** `recall` resolves an omitted `--embed-model` to `DEFAULT_EMBED_MODEL` = `nomic-embed-text-v2-moe` at runtime (`commands-recall.ts:381-383`) — identical to `ask`/`note`. Only the `.option(...)` help-description string (`:357`) is stale (`default 'nomic-embed-text'`), and recall warns on index-model mismatch (`:313-326`). So results are NOT silently degraded; this is a cosmetic help-text fix only.
 
 3. **CORRECTED — no discrepancy.** `ask --help` DOES list `--with-tools` (plus `--actuators`, `--best-of`, `--why`, `--verify-claims`, `--shell`). The original capture missed it; there is no doc/help gap.
 
-4. No false claims found in the grounding/citation prose: FEATURES.md L108/231 and SYSTEM-MAP §6 (L116-117 "확신 없으면 인용 안 함 / 잘 모르겠다") accurately describe the implemented gate.
+4. No false claims found in the grounding/citation prose: FEATURES.md L108/231 and SYSTEM-MAP §6 ("No citation without confidence" / "I'm not sure") accurately describe the implemented gate.
 
 ---
 
