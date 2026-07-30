@@ -114,6 +114,7 @@ export type {
   ExperienceReplayEvidenceCase,
   ExperienceReplayEvidenceReceipt
 } from "./experience-learning-replay-evidence.js";
+export { reduceExperienceLearningContinuityPolicy } from "./experience-learning-policy-reducer.js";
 export { projectExperienceLearningSource } from "./experience-learning-source.js";
 export type {
   ExperienceLearningSourceHeldReason,
