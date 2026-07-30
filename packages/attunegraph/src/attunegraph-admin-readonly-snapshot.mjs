@@ -801,7 +801,20 @@ async function unlinkDataPhase(state, name, index) {
   const pinned = state.entryStats.get(name);
   try {
     const current = await lstat(path, { bigint: true });
-    if (pinned === undefined || !sameFile(pinned, current, false)) {
+    if (pinned === undefined) {
+      // A read-only SQLite connection to a WAL-profile snapshot may create its
+      // own -wal/-shm sidecar even though that sidecar was absent at capture
+      // time. Cleanup owns only these four fixed names inside its pinned
+      // private directory. Admit a late sidecar as a new, owner-private,
+      // single-link regular file on the same filesystem before unlinking it;
+      // symlinks, hardlinks, replacements, foreign owners/modes, and oversized
+      // files still fail closed.
+      admitRegularFile(
+        current,
+        Number(state.directoryStats.uid),
+        state.directoryStats.dev
+      );
+    } else if (!sameFile(pinned, current, false)) {
       failSnapshot("WORKER_FAILURE");
     }
     await unlink(path);

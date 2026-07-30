@@ -278,11 +278,16 @@ A future encoder MUST accept caller-supplied `expectedScope` for every projectio
 mandatory exact-head validation sink; it must not infer scope from an unadmitted value or
 make head validation optional.
 
-## 7. Future `./admin` public contract
+## 7. `./admin` public contract and future transfer operations
 
-This section is normative design for a future `@attunegraph/core/admin` subpath. It
-is documentation only in this slice: `./admin`, the functions, report, error class, and
-codes are not exported.
+`@attunegraph/core/admin` now ships a deliberately smaller offline read-only
+Interface: `openAttuneGraphAdminReadonlyApplication` plus its bounded summary,
+integrity, exact-head, error, options, application, and scope contracts. It
+requires an explicitly closed/quiescent source and exposes no filesystem,
+SQLite, Worker, snapshot, inspector, export, rebuild, or mutation capability.
+
+The journal-transfer contract below remains normative future design. These
+transfer functions, report, error class, and codes are not exported.
 
 ```ts
 interface ExportLocalAttuneGraphJournalOptions {

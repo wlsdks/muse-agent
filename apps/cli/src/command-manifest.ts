@@ -109,6 +109,15 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "subcommands": []
   },
   {
+    "name": "attunegraph",
+    "description": "Inspect AttuneGraph stores through the local read-only Lens",
+    "argsTerm": "",
+    "hasOptions": false,
+    "subcommands": [
+      "inspect"
+    ]
+  },
+  {
     "name": "auth",
     "description": "Manage CLI credentials",
     "argsTerm": "",

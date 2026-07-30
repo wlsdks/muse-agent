@@ -252,9 +252,10 @@ describe("production AttuneGraph portable fixture integration", () => {
     expect(artifacts).toEqual([]);
   });
 
-  it("pins root, local, backend, testing, extension-kit, and package exports", async () => {
-    const [root, local, backend, testing, extensionKit, packageJson] = await Promise.all([
+  it("pins root, admin, local, backend, testing, extension-kit, and package exports", async () => {
+    const [root, admin, local, backend, testing, extensionKit, packageJson] = await Promise.all([
       import("@attunegraph/core"),
+      import("@attunegraph/core/admin"),
       import("@attunegraph/core/local"),
       import("@attunegraph/core/backend"),
       import("@attunegraph/core/testing"),
@@ -271,6 +272,10 @@ describe("production AttuneGraph portable fixture integration", () => {
       "MAX_GRAPH_QUERY_CONSIDERED_ASSERTIONS", "MAX_GRAPH_QUERY_DEPTH",
       "MAX_GRAPH_QUERY_SEEDS", "MAX_GRAPH_QUERY_VISITED_REFS",
       "compileActivationSubgraph", "createAttuneGraphEngine", "openAttuneGraph"
+    ]);
+    expect(Object.keys(admin).sort()).toEqual([
+      "AttuneGraphAdminReadonlyError",
+      "openAttuneGraphAdminReadonlyApplication"
     ]);
     expect(Object.keys(local)).toEqual(["openLocalAttuneGraph"]);
     expect(Object.keys(backend)).toEqual(["createAttuneGraphStore"]);
@@ -294,7 +299,7 @@ describe("production AttuneGraph portable fixture integration", () => {
       "settleCandidateInventory"
     ]);
     expect(Object.keys(packageJson.exports).sort()).toEqual([
-      ".", "./backend", "./extension-kit", "./local", "./testing"
+      ".", "./admin", "./backend", "./extension-kit", "./local", "./testing"
     ]);
   });
 });

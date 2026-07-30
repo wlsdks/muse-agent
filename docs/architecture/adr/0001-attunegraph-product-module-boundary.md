@@ -74,6 +74,7 @@ The Interface is intentionally closed:
 | --- | --- | --- | --- |
 | AttuneGraph Engine | `@attunegraph/core` | shipped in the monorepo | Canonical values, projections, versioned operators, proof closure, completeness, errors |
 | Local AttuneGraph | `@attunegraph/core/local` | shipped | `openLocalAttuneGraph()` with SQLite isolated behind a worker boundary |
+| Read-only Admin | `@attunegraph/core/admin` | shipped offline Interface | Summary, integrity, and exact-head inspection from an explicitly closed/quiescent snapshot |
 | Store Kit | `@attunegraph/core/backend` | shipped expert seam | Transactional journal/snapshot adapter contract |
 | Conformance | `@attunegraph/core/testing` | shipped | In-memory semantic oracle and store conformance |
 | Extension Kit | `@attunegraph/core/extension-kit` | shipped narrow seam | Canonical envelopes, settlement, normalization, and witness-path helpers |

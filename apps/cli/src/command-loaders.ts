@@ -18,6 +18,14 @@ export interface LazyCommandLoader {
 
 export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
   {
+    id: "attunegraph",
+    names: ["attunegraph"],
+    load: async (program, io, _deps) => {
+      const module = await import("./commands-attunegraph.js");
+      module.registerAttuneGraphCommands(program, io);
+    }
+  },
+  {
     id: "autonomy",
     names: ["autonomy"],
     load: async (program, io, _deps) => {

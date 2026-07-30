@@ -100,6 +100,7 @@ export const COMMAND_GROUPS: ReadonlyArray<{
   {
     heading: "Diagnostics",
     commands: [
+      "attunegraph",
       "metrics",
       "telemetry",
       "traces",

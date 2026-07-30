@@ -22,6 +22,10 @@
       "types": "./dist/local.d.ts",
       "import": "./dist/local.js"
     },
+    "./admin": {
+      "types": "./dist/admin.d.ts",
+      "import": "./dist/admin.js"
+    },
     "./extension-kit": {
       "types": "./dist/extension-kit.d.ts",
       "import": "./dist/extension-kit.js"

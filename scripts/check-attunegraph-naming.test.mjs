@@ -26,7 +26,8 @@ for (const [label, path, content] of [
   ["dotted identity", "note.md", word("muse.", short, ".canonical-projection.v1")],
   ["worker identity", "note.md", word(short, "-admin-validation-v1-")],
   ["core-only local subpath on Muse integration", "note.md", word("@muse/", "attunegraph", "/local")],
-  ["core-only backend subpath on Muse integration", "note.md", word("@muse/", "attunegraph", "/backend")]
+  ["core-only backend subpath on Muse integration", "note.md", word("@muse/", "attunegraph", "/backend")],
+  ["core-only admin subpath on Muse integration", "note.md", word("@muse/", "attunegraph", "/admin")]
 ]) {
   test(`rejects ${label}`, () => assert.ok(fixture(path, content).length > 0));
 }

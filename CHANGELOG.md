@@ -8,6 +8,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a4e2b3 AttuneGraph Lens vertical slice. The neutral
+  `@attunegraph/core/admin` subpath now exposes the production read-only Admin
+  Interface without qualification, filesystem, SQLite, snapshot, Worker transport,
+  or inspector authority. `muse attunegraph inspect` consumes that Interface to
+  report summary, optional integrity, and an optional exact scope head from an
+  explicitly attested `closed-quiescent` store. It emits one deterministic,
+  path/scope-redacted human or JSON document only after cleanup succeeds. Write,
+  repair, live-web Admin, backup/restore, and export/rebuild activation remain
+  roadmap work.
+
 - Renamed the graph product and every current code, package, path, and persisted/wire
   identity to **AttuneGraph**, with no compatibility alias. The dependency-free engine,
   SQLite/Worker persistence, portable format, and conformance surface now live in

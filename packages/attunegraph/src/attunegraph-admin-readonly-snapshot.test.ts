@@ -95,6 +95,28 @@ it("acquires an exact private snapshot without invoking unsafe option fields", a
   }
 });
 
+it("releases a bounded owner-private SQLite sidecar created after capture", async () => {
+  const fixture = await sourceFixture({ "": "main-bytes" });
+  try {
+    const lease = await acquireAttuneGraphAdminReadonlySnapshot({
+      databasePath: fixture.databasePath,
+      sourceState: "closed-quiescent"
+    });
+    const lateSidecar = `${lease.snapshotDatabasePath}-shm`;
+    await writeFile(lateSidecar, "sqlite-readonly-sidecar", { mode: 0o600 });
+    await chmod(lateSidecar, 0o600);
+
+    await lease.release();
+
+    await expect(readFile(lateSidecar)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(dirname(lease.snapshotDatabasePath))).rejects.toMatchObject({
+      code: "ENOENT"
+    });
+  } finally {
+    await rm(fixture.directory, { force: true, recursive: true });
+  }
+});
+
 it("brands only same-module failures and rejects proxy or forged authority", async () => {
   const fixture = await sourceFixture({ "": "main" });
   try {

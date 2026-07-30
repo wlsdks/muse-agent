@@ -14,6 +14,9 @@
   ],
   "references": [
     {
+      "path": "../../packages/attunegraph"
+    },
+    {
       "path": "../../packages/a2a"
     },
     {

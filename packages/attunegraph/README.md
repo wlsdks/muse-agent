@@ -28,6 +28,8 @@ public repository, registry release, or hosted service already exists.
   Activation Subgraph compilation.
 - `@attunegraph/core/backend` — the expert store-adapter seam.
 - `@attunegraph/core/local` — the durable local SQLite adapter.
+- `@attunegraph/core/admin` — the offline, read-only Admin Interface for
+  explicitly closed and quiescent local stores.
 - `@attunegraph/core/testing` — in-memory adapters and executable conformance
   contracts.
 - `@attunegraph/core/extension-kit` — a narrow set of canonicalization,
@@ -123,6 +125,35 @@ The local adapter keeps SQLite, SQL, worker lifecycle, and physical schema
 private. It validates the runtime, filesystem, ownership, file mode, exact
 physical identity, schema, and safety pragmas before serving data. Unsupported,
 future, corrupt, and incompatible stores fail closed.
+
+## Read-only Admin
+
+```ts
+import {
+  openAttuneGraphAdminReadonlyApplication
+} from "@attunegraph/core/admin";
+
+const admin = await openAttuneGraphAdminReadonlyApplication({
+  databasePath: "/absolute/local/path/attunegraph.sqlite",
+  sourceState: "closed-quiescent"
+});
+
+const summary = await admin.inspectSummary();
+const integrity = await admin.verifyIntegrity();
+const head = await admin.inspectHead({
+  sourceId: "notes",
+  threadId: "trip-planning"
+});
+
+console.log(summary, integrity, head);
+await admin.close();
+```
+
+This Interface is deliberately offline and read-only. The caller must stop the
+writer and explicitly attest `closed-quiescent`; snapshot acquisition can
+detect source changes while copying, but cannot prove the lifecycle. The
+Interface exposes no SQLite handle, filesystem authority, Worker transport,
+repair, export, or mutation primitive.
 
 ## Portable format
 

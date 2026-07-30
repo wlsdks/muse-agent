@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@attunegraph/core": "workspace:*",
     "@clack/prompts": "^1.6.0",
     "@muse/a2a": "workspace:*",
     "@muse/agent-core": "workspace:*",

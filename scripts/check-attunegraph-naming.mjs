@@ -10,7 +10,7 @@ const oldPath = word("packages/", "attunement-", "graph");
 const oldFormat = word("muse-", short, "-portable");
 const oldExtension = word(".", short, "x");
 const museIntegrationPackage = word("@muse/", "attunegraph");
-const coreOnlySubpaths = ["backend", "extension-kit", "local", "testing"];
+const coreOnlySubpaths = ["admin", "backend", "extension-kit", "local", "testing"];
 
 const patterns = [
   ["old package", new RegExp(escape(oldPackage), "i")],

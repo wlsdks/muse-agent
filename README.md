@@ -189,7 +189,7 @@ None of the three is finished. The next section says exactly how far each one go
 
 | Area | Where it actually stands |
 | --- | --- |
-| AttuneGraph engine | Exact projection, *"what changed since I stopped"*, content-addressed receipts, bounded resume compilation, canonical `.atgx`, and a worker-isolated SQLite journal — verified engine substrate; public Admin UI and default automatic delivery remain roadmap |
+| AttuneGraph engine | Exact projection, *"what changed since I stopped"*, content-addressed receipts, bounded resume compilation, canonical `.atgx`, a worker-isolated SQLite journal, and the offline read-only `muse attunegraph inspect` Lens — verified engine substrate; write/repair/live-web Admin and default automatic delivery remain roadmap |
 | Continuity Capsule | Render data returned from an explicit API call. No product UI, no automatic timing |
 | Shadow Muse | The ledger records the decision. It does not surface anything on its own yet |
 
@@ -222,6 +222,9 @@ What is verified today, and what those words do **not** mean:
 - The neutral lifecycle `openAttuneGraph({ scope, store }) → project → execute → close`, plus a durable
   projection journal and typed worker boundary. Portable export/rebuild, backup, physical forget and
   the 10K/100K/1M benchmarks are still pending.
+- The public `@attunegraph/core/admin` Interface and `muse attunegraph inspect` Lens can inspect
+  summary, integrity, and one exact scope head from an explicitly attested closed/quiescent store.
+  They do not inspect a live writer, repair data, expose raw SQL, or provide the future web Admin.
 - Observation receipts are *caller-declared* integrity evidence. They prove bytes and boundaries —
   not that Muse observed you, and not your exact stopping point.
 - Freshness is honest by construction: only exact endpoint equality under a bounded head

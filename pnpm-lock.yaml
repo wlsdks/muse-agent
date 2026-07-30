@@ -125,6 +125,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@attunegraph/core':
+        specifier: workspace:*
+        version: link:../../packages/attunegraph
       '@clack/prompts':
         specifier: ^1.6.0
         version: 1.6.0

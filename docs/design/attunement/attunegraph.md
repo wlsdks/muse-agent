@@ -584,6 +584,14 @@ SQLite profile. Exact operators for `changes-since`, `resume-context`,
 Expert Source and Store Adapter Interfaces stay in separate subpaths. Raw assertion
 mutation, SQL/Cypher, and arbitrary traversal plans do not become product Interfaces.
 
+The offline `@attunegraph/core/admin` Interface is also shipped. It opens a
+parent-owned snapshot only after the local caller explicitly attests
+`sourceState: "closed-quiescent"`, then exposes bounded summary, integrity, and
+exact-scope-head reads through a dedicated Worker. Muse's first Adapter is
+`muse attunegraph inspect --database <absolute-path> --source-state closed-quiescent`.
+It emits no source path or scope IDs. Live-store inspection, write/repair,
+backup/restore, export/rebuild activation, and a web Admin remain roadmap work.
+
 AttuneGraph consumes explicit verified source observations. It must not import every personal store
 and create a second composition root. `AttuneGraph*` and Activation Subgraph v1 exports
 are the canonical public vocabulary.
@@ -592,8 +600,9 @@ are the canonical public vocabulary.
 
 **SQLite via capability-gated `node:sqlite` is the selected default AttuneGraph Store.** The
 physical v1 profile uses the `ATG1` application identity (`0x41544731`). The
-selection fixes the architecture, not the shipped-status claim: durable schema, migration,
-recovery, and runtime composition remain roadmap work. AttuneGraph owns the logical journal and
+durable projection journal and offline read-only Admin ship; migration, full
+recovery, default runtime composition, backup, physical forget, and scale qualification remain
+roadmap work. AttuneGraph owns the logical journal and
 domain operators; SQLite owns local transactions, indexes, locking, and crash recovery.
 
 AttuneGraph remains TypeScript-first: the public Interface, graph semantics, validation, and

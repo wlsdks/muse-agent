@@ -85,7 +85,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | partial (`AWG-050b1` binds fresh timing-policy snapshots to exact process-local Source/Graph comparison evidence; return/card/durability pending) |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-065** | Neutral AttuneGraph product boundary | Closed `AttuneGraph*` interface, forbidden-import gate, and Muse integration package keep private Continuity types outside the standalone Engine without copying validation | completed (dependency-free `@attunegraph/core` plus explicit `@muse/attunegraph` integration; no compatibility alias) |
-| **AWG-070** | SQLite AttuneGraph Store v1 | Implement the selected worker-isolated `node:sqlite` default behind the AttuneGraph Store contract with version-gated physical profile, journal replay, indexes, restart/crash/corruption tests, portable export, and 10K/100K/1M operator benchmarks; record measured TS/SQLite optimization and activate a Rust kernel only when end-to-end evidence justifies it | partial (`AWG-070a1` durable projection journal, `AWG-070a2` typed Worker boundary, the `.atgx` encoder/decoder/order/budget/non-retention chain through `AWG-070a3a1a4b`, indexed validation `a4c`, POSIX staging lifecycle `a4d`, Admin protocol/fail-stop spine `a4e1`, shared physical-schema/read-only inspector core `a4e2a`, parent-owned closed-store offline snapshot lease `a4e2b1`, and dedicated read-only Admin Worker/application `a4e2b2` independently verified; export/rebuild/activation, public `./admin`, backup, physical forget, complete profile/corpus, and 10K/100K/1M benchmarks pending) |
+| **AWG-070** | SQLite AttuneGraph Store v1 | Implement the selected worker-isolated `node:sqlite` default behind the AttuneGraph Store contract with version-gated physical profile, journal replay, indexes, restart/crash/corruption tests, portable export, and 10K/100K/1M operator benchmarks; record measured TS/SQLite optimization and activate a Rust kernel only when end-to-end evidence justifies it | partial (`AWG-070a1` durable projection journal, `AWG-070a2` typed Worker boundary, the `.atgx` encoder/decoder/order/budget/non-retention chain through `AWG-070a3a1a4b`, indexed validation `a4c`, POSIX staging lifecycle `a4d`, Admin protocol/fail-stop spine `a4e1`, shared physical-schema/read-only inspector core `a4e2a`, parent-owned closed-store offline snapshot lease `a4e2b1`, dedicated read-only Admin Worker/application `a4e2b2`, and public offline `./admin` plus Muse Lens CLI `a4e2b3` independently verified; export/rebuild/activation, write/repair/live-web Admin, backup, physical forget, complete profile/corpus, and 10K/100K/1M benchmarks pending) |
 | **AWG-080** | Durable local graph adapter | Selected adapter passes conformance, export/rebuild, corruption, migration, forget, and crash-recovery gates | pending |
 | **AWG-085** | Standalone AttuneGraph qualification | Clean-room build/test, forbidden-import audit, packed install, non-Muse example, license/security/contribution docs, and history-preserving repository split rehearsal pass without workspace dependencies | pending |
 | **AWG-090** | Dogfood qualification | Controlled scenarios plus repeated organic use; reconstruction-cost and policy-correction evidence remain separately reported | pending |
@@ -127,6 +127,33 @@ timing in real life.
 - **Scope truth:** this is a neutral TypeScript lifecycle and in-memory semantic oracle,
   not SQLite durability, a clean-room package, a Source Adapter, a standalone release, or
   evidence of user-visible usefulness.
+
+## Current 070a4e2b3 activation
+
+- **Classification:** the private read-only Admin application was `verified-current`;
+  its public Interface and user entry point were `missing`.
+- **Maker / evaluator:** `gpt-5.6-sol` / `high` implemented the persistence-facing
+  public Interface and Muse Adapter; a fresh `gpt-5.6-sol` / `high` instance performed
+  the independent FULL completion gate.
+- **Selection reason / escalation trigger:** the slice combines a public Interface,
+  owner-local path admission, Worker lifecycle cleanup, and a user CLI, so it stayed on
+  Sol. Any live-store authority, write/repair operation, broader deletion scope,
+  credential/permission change, migration, or release decision escalates to a separate
+  Sol/xhigh persistence or security evaluation.
+- **Shipped neutral delta:** `@attunegraph/core/admin` exposes only the read-only opener,
+  application/error/result/options contracts, and `AttuneGraphScope`. Qualification,
+  filesystem, SQLite, snapshot, Worker transport, and inspector authority remain private.
+- **Muse Adapter:** `muse attunegraph inspect` reports summary, optional integrity, and an
+  optional exact scope head from one absolute normalized database path. The caller must
+  explicitly pass `--source-state closed-quiescent`; invocation alone is not lifecycle proof.
+  Output is single-document, path/scope-redacted, and cleanup preserves the first failure.
+- **Scope truth:** this is the first AttuneGraph Lens CLI, not the future live web Admin,
+  write/repair, backup/restore, export/rebuild activation, or organic usefulness evidence.
+- **Independent gate:** a fresh Sol/high evaluator passed every acceptance item after
+  reproducing the public builds, 35/35 focused core tests, 31/31 focused CLI tests,
+  real closed-store built CLI smoke, 19/19 Module/naming gates, 391/391 changed-scope
+  tests, TS7 typecheck, and lint. Full `pnpm check` also passed across all 43 tested
+  workspace projects, including AttuneGraph 330/330 and CLI 4,970/4,970.
 
 ## Current 050b activation
 
