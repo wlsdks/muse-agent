@@ -1,187 +1,209 @@
 ---
-title: 에이전트 팀 구성 (Agent Team Roles)
-audience: [기획자, 개발자, AI 에이전트]
-purpose: 어떤 에이전트가 들어와도 동일하게 일하도록, 팀의 역할·경계·핸드오프를 한곳에서 정의
+title: Agent Team Roles
+audience: [planners, developers, AI agents]
+purpose: Define the team's roles, boundaries, and handoffs in one place, so any agent that joins works the same way
 status: draft
 updated: 2026-06-13
 sources_basis: [Anthropic building-effective-agents, Anthropic multi-agent research system, Anthropic 3-agent harness (InfoQ 2026-04), Addy Osmani — Code Agent Orchestra, Cognition multi-agents-working 2026-04 (clean-context reviewer)]
 related: [team-roles.md, ../README.md]
 ---
 
-# 에이전트 팀 구성 (Agent Team Roles)
+# Agent Team Roles
 
-> **이 문서는?** Muse 작업에 **어떤 AI 에이전트가 투입되든 똑같은 방식으로 협업**하도록, 팀의 역할과
-> 경계, 주고받는 방식을 정의한 하네스의 첫 번째 조각입니다. 특정 모델·도구·프레임워크에 묶이지 않은
-> **벤더 중립** 역할 정의 — 새 에이전트는 이 문서만 읽으면 자기 자리를 압니다.
+> **What is this document?** The first piece of the harness: it defines the team's roles,
+> boundaries, and exchange rules so that **whichever AI agent is put on the work collaborates the
+> same way**. Vendor-neutral role definitions, bound to no specific model, tool, or framework — a
+> new agent knows its place by reading this document alone.
 >
-> 근거: 2026년 5월 기준, Anthropic(building-effective-agents · multi-agent research system ·
-> 3-agent harness)과 Addy Osmani(Code Agent Orchestra)가 **수렴한** 검증된 패턴만 담았습니다.
-> 출처는 문서 끝에.
+> Basis: as of May 2026, only patterns on which Anthropic (building-effective-agents · multi-agent
+> research system · 3-agent harness) and Addy Osmani (Code Agent Orchestra) **converge**. Sources
+> at the end.
 
-## 0. 두 개의 큰 원칙 (먼저 새겨둘 것)
+## 0. Two big principles (internalize these first)
 
-- **단순하게 시작한다.** 한 에이전트로 충분하면 팀을 만들지 않습니다. 여러 에이전트는 토큰을
-  **약 15배** 더 쓰므로(단일 에이전트 대비), 그만한 가치가 있는 일에만 씁니다. 작업 가치가 비용을
-  정당화할 때 — 병렬화가 크게 먹히거나, 한 컨텍스트에 안 들어가는 분량이거나, 복잡한 도구를 많이
-  다뤄야 할 때 — 비로소 팀으로 갑니다.
-- **검증이 병목이다.** 이제 막히는 곳은 "만드는 것"이 아니라 "맞는지 확인하는 것"입니다. 그래서 팀
-  구조의 핵심은 **만드는 역할과 판정하는 역할을 분리**하는 데 있습니다(에이전트는 자기 일을 늘
-  후하게 평가하므로).
-- **결과가 서로 맞물려야 하면 단일 스레드가 이긴다(반대 관점).** 병렬 워커들이 **서로의 전체 맥락을
-  못 보면** 각자 충돌하는 암묵적 가정으로 일해, 끝에 합쳐도 어긋난 결과가 나옵니다(예: 한쪽은 새를,
-  다른 쪽은 배경을 따로 만들면 스타일·규칙이 안 맞음). 그래서 **결과물이 서로 일관돼야 하는 일은
-  나누지 말고 한 줄기 맥락**으로 진행하고, 맥락이 너무 길면 쪼개는 대신 **압축**합니다. 멀티에이전트는
-  **읽기 전용 병렬**(정보 수집·조사처럼 서로 안 부딪히는 일)에서 안전합니다 — 충돌하는 쓰기/결정이
-  생기는 순간 단일 스레드를 우선하세요.
-  - **2026 진화(map-reduce-and-manage):** Cognition도 "Devin이 Devin을 관리"로 선회했지만 핵심은
-    그대로 — **쓰기(상태 변경)는 단일 스레드로 유지**하고, 추가 에이전트는 **행위가 아니라 지능을 더한다**
-    (매니저가 쪼개고→자식이 격리 실행→매니저가 종합·보고). 병렬은 읽기·탐색·판정에, 합쳐지는 쓰기는 한 곳으로.
+- **Start simple.** If one agent suffices, do not build a team. Multiple agents use roughly
+  **15× the tokens** of a single agent, so use them only where the work justifies the cost — when
+  parallelization pays off heavily, the work does not fit one context, or many complex tools are
+  involved. (How eagerly a given model delegates also differs — see the model-calibration section
+  in [AGENTS.md §7](../AGENTS.md) for the current per-model delegation posture.)
+- **Verification is the bottleneck.** The choke point now is not "making it" but "confirming it is
+  right". So the core of the team structure is **separating the maker role from the judging role**
+  (agents always grade their own work generously).
+- **When results must interlock, a single thread wins (the counter-principle).** Parallel workers
+  who **cannot see each other's full context** work under conflicting implicit assumptions, and
+  merging at the end still yields mismatched results (e.g. one draws the bird, another the
+  background — styles and rules disagree). So **work whose outputs must be mutually consistent is
+  not split**; run it as one thread of context, and when the context gets too long, **compact**
+  instead of splitting. Multi-agent is safe for **read-only parallelism** (information gathering,
+  research — work that does not collide); the moment conflicting writes/decisions appear, prefer a
+  single thread.
+  - **2026 evolution (map-reduce-and-manage):** Cognition too pivoted to "Devin manages Devin",
+    but the core stands — **keep writes (state changes) on a single thread**; extra agents add
+    **intelligence, not action** (a manager decomposes → children execute in isolation → the
+    manager synthesizes and reports). Parallelism for reads, exploration, and judging; converging
+    writes go to one place.
 
-## 1. 핵심 역할 (Roles) — 필수 2개 + 선택
+## 1. Core roles — 2 mandatory + optional
 
-계약은 **딱 두 역할만 필수**로 요구합니다. 나머지는 오케스트레이터/워커가 채우는 **인라인 필드**이거나
-L-size·보안급 슬라이스에서만 별도 인스턴스로 띄우는 **선택 역할**입니다. 역할이 서로 섞이면 조율
-비용과 디버깅 지옥이 생기므로, 필수 2역할의 경계만큼은 절대 좁게 지킵니다.
+The contract requires **exactly two roles**. The rest are **inline fields** filled by the
+orchestrator/worker, or **optional roles** spawned as separate instances only for L-size or
+security-grade slices. Blurred roles create coordination cost and debugging hell, so the boundary
+between the two mandatory roles is held absolutely tight.
 
-### 필수 — 워커 · 독립 평가자
+### Mandatory — worker · independent evaluator
 
-- **워커(Worker / Builder)** — 위임받은 목표를 **한 번에 하나씩** 실제로 만듭니다. 위임 시점에
-  받은 WHAT+WHY+수용 기준(아래 "인라인 필드" 참고)을 스스로 계획 삼아 진행하며, 자기 파일 범위를
-  좁게 가질수록 더 좋은 결과를 냅니다. 오케스트레이터 없이 단일 세션이면 이 역할이 위임·계획도
-  겸합니다.
-- **독립 평가자(Independent Evaluator)** — 만든 결과를 **다른 인스턴스**(harness-evaluator
-  서브에이전트, 또는 최소 빌드 대화 이력이 전혀 없는 새 세션)에서 판정합니다. **만든 자 ≠ 판정하는
-  자는 절대 타협하지 않습니다** — 자기 채점 PASS는 무효이고, 그마저 불가하면 "미분리 자기평가"라
-  적고 사람 검토를 요청합니다. FAIL 판정은 구체적 위반 사항(어떤 기준·어떤 입력·무엇이 틀렸는지)을
-  명시합니다.
+- **Worker (builder)** — actually builds the delegated goal, **one thing at a time**. It treats
+  the WHAT+WHY+acceptance criteria received at delegation (see "inline fields" below) as its plan,
+  and produces better results the narrower its file scope. In a single session without an
+  orchestrator, this role also covers delegation and planning.
+- **Independent evaluator** — judges the built result in a **different instance** (the
+  harness-evaluator subagent, or at minimum a fresh session with zero build-conversation history).
+  **Maker ≠ judge is never compromised** — a self-graded PASS is void; if separation is truly
+  impossible, record "unseparated self-evaluation" and request human review. A FAIL verdict names
+  the concrete violation (which criterion, which input, what went wrong).
 
-### 인라인 필드 (플래너·큐레이터는 역할이 아니라 이 두 곳에 적는 내용)
+### Inline fields (planner and curator are not roles — they are content written in these two places)
 
-- **플래너 역할 → 위임 전 헤더에.** 별도 플래너 패스 없이, 위임하는 쪽(오케스트레이터 또는 워커
-  자신)이 핸드오프 헤더에 **WHAT + WHY + 수용 기준**을 먼저 적고 시작합니다
-  ([handoff-template](handoff-template.md) 참고).
-- **큐레이터 역할 → 완료 후 커밋 바디에.** 무엇이 통했고 무엇을 교정했는지, 재사용할 절차는
-  무엇인지는 별도 "학습" 섹션이 아니라 **커밋 바디의 write-back**으로 남깁니다
+- **Planner role → the header, before delegation.** No separate planner pass: the delegating side
+  (orchestrator, or the worker itself) writes **WHAT + WHY + acceptance criteria** in the handoff
+  header before starting ([handoff-template](handoff-template.md)).
+- **Curator role → the commit body, after completion.** What worked, what was corrected, and what
+  procedure is reusable go into the **commit-body write-back**, not a separate "learning" section
   ([muse-dev-patterns §8](../../.claude/skills/muse-dev-patterns/SKILL.md)).
 
-### 선택 (L-size·보안급 슬라이스에서만 별도 인스턴스로)
+### Optional (separate instances only for L-size · security-grade slices)
 
-- **오케스트레이터(Orchestrator / Lead)** — 여러 워커에게 나눠 위임할 때만 별도로 존재하는 지휘자.
-  전체 맥락과 계획을 소유하고 결과를 종합하되 직접 구현엔 손대지 않습니다. 단일 워커로 끝나는
-  슬라이스는 이 역할이 없어도 됩니다.
-- **리뷰어(Reviewer)** — 병합 전 읽기 전용으로 전체를 보는 검토자. 강한 모델을 씁니다.
-  **작업 이력이 없는 클린 컨텍스트가 기능**입니다 — Cognition 실측(2026): 태스크 이력 없는
-  리뷰어가 PR당 ~2버그(그중 58% 심각)를 잡음; 같은 이유로 리뷰어에겐 diff+기준만 주고,
-  "정확성에 영향 있는 갭만 표시"를 명시합니다(갭을 찾으라면 늘 찾아내므로).
-- **피처 리드(Feature Lead)** — 큰 기능을 받아 다시 하위 작업으로 쪼개 자기 전문가들을
-  스폰합니다. 한 사람의 컨텍스트를 터뜨리지 않고 **3배 깊은 분해**를 얻는 층입니다.
+- **Orchestrator (lead)** — exists separately only when delegating across multiple workers. Owns
+  the full context and plan, synthesizes results, never implements directly. A slice finished by a
+  single worker needs no orchestrator.
+- **Reviewer** — a read-only, whole-picture reviewer before merge. Use a strong model.
+  **A clean context with no task history is the feature** — Cognition measured (2026): a reviewer
+  with no task history catches ~2 bugs per PR (58% of them severe). For the same reason, give the
+  reviewer only the diff + criteria, and state "flag only gaps that affect correctness" (ask it to
+  find gaps and it always will).
+- **Feature lead** — takes a large feature, re-decomposes it, and spawns its own specialists. The
+  layer that buys **3× deeper decomposition** without blowing one person's context.
 
-> **전체 의식(별도 플래너 패스 + 무거운 다단 핸드오프)은 L-size 또는 보안급 슬라이스 전용**입니다.
-> 보통 슬라이스는 워커 + 독립 평가자 둘로 끝냅니다. 규모 감각(Osmani): 팀을 키워도 **3~5 역할**이
-> 최적 — 더 깊이 필요하면 단일 거대 팀이 아니라 피처 리드가 자기 하위 팀을 스폰하는 **계층**으로
-> 늘립니다.
+> **The full ceremony (separate planner pass + heavy multi-stage handoff) is reserved for L-size
+> or security-grade slices.** An ordinary slice finishes with worker + independent evaluator.
+> Sense of scale (Osmani): even growing the team, **3–5 roles** is optimal — for more depth, scale
+> as a **hierarchy** where a feature lead spawns its own sub-team, not one giant flat team.
 
-## 1.5 작업 surface별 maker/evaluator 권한
+## 1.5 Maker/evaluator permissions per work surface
 
-`read-only evaluator`는 단순히 Edit 도구가 없다는 뜻이 아닙니다. 평가 명령이나 브라우저가 상태를
-쓸 수 있으므로, **레포와 owner state는 읽기 전용**, 쓰기가 필요한 재현은 **평가자가 만든 disposable
-fixture**에만 허용합니다. maker와 evaluator는 동시에 같은 checkout/file을 쓰지 않습니다.
+`read-only evaluator` does not simply mean "no Edit tool". Evaluation commands or a browser can
+write state, so: **the repo and owner state are read-only**, and any reproduction that needs
+writes is allowed only against a **disposable fixture the evaluator created**. Maker and evaluator
+never use the same checkout/file at the same time.
 
-| Surface | Maker / worker와 허용 쓰기 | Independent evaluator와 허용 읽기·실행 | 평가자 금지 권한 | Gate 강도 |
+| Surface | Maker/worker and allowed writes | Independent evaluator: allowed reads/execution | Forbidden to the evaluator | Gate strength |
 | --- | --- | --- | --- | --- |
-| Runtime | 활성 slice의 runtime source/test/config만 쓰는 단일 worker. 명시된 좁은 test·trace를 실행한다. | fresh context에서 handoff, acceptance slice, current diff/source, trace를 읽고 격리된 프로세스·fixture로 정상/실패/취소/재시도를 재현한다. | repo 편집, worker와 같은 프로세스/상태 재사용, owner daemon/scheduler 상태 변경, FAIL 직접 수정. | controller/maker와 evaluator 모두 Sol/high가 필요한 process·scheduler·concurrency 경계는 처음부터 그 강도로 시작한다. |
-| Store / persistence | 활성 store/schema/migration과 migration test만 쓰며 backup·restore·rollback acceptance를 함께 만든다. | schema/diff를 읽고 disposable database 또는 임시 HOME 복제본에서 round-trip, corruption, rollback을 실행한다. | owner DB·`~/.muse`·backup 수정, 실제 migration 적용, fixture 결과를 organic evidence로 승격, FAIL 직접 수정. | persistence/migration은 maker와 fresh evaluator 모두 Sol/high; release 최종 판정은 별도 gate를 따른다. |
-| Security / permission / credential | Sol/high maker 하나만 scoped guard/policy/test를 쓴다. 실제 secret은 코드나 handoff에 넣지 않는다. | fresh evaluator가 artifact/diff와 redacted fixture를 읽고 sandbox에서 adversarial deny-path를 실행한다. | credential 조회·복사, grant/approval/policy 발급·변경, external egress, repo 편집, FAIL 직접 수정. | 보안·credential 최종 gate는 fresh Sol/xhigh. |
-| UI / browser | 활성 UI source/test와 evaluator용 disposable state만 쓴다. | fresh evaluator가 current build와 acceptance를 읽고 isolated browser profile/test account에서 Chromium/Playwright 및 접근성·실패 상태를 관찰한다. | 사용자의 실제 browser profile·clipboard·download/upload·account state 변경, snapshot 승인값 임의 갱신, repo 편집, FAIL 직접 수정. | 일반 UI는 위험도에 맞는 fresh evaluator; upload/download·computer-control 경계는 Sol/high부터 시작한다. |
-| Release / publication | controller가 검증된 commit 후보와 provenance를 준비한다. standing authorization 범위의 정상 push 외 tag/release/publication은 별도 권한이다. | fresh checkout에서 HEAD/time/input hash, required checks, rollback artifact, remote 상태를 읽고 재현한다. | source 수정, tag/release/publish/push, credential·protection 변경, stale artifact를 green으로 사용, FAIL 직접 수정. | 최종 release gate는 fresh Sol/xhigh; evaluator PASS도 publication 권한이 아니다. |
+| Runtime | A single worker writing only the active slice's runtime source/test/config. Runs the named narrow tests/traces. | From a fresh context, reads the handoff, acceptance slice, current diff/source, traces; reproduces normal/failure/cancel/retry in isolated processes and fixtures. | Editing the repo, reusing the worker's process/state, mutating owner daemon/scheduler state, fixing a FAIL directly. | Process/scheduler/concurrency boundaries that need Sol/high for both controller/maker and evaluator start at that strength. |
+| Store / persistence | Writes only the active store/schema/migration and its migration tests; builds backup/restore/rollback acceptance alongside. | Reads schema/diff; runs round-trip, corruption, and rollback against a disposable database or a temp-HOME clone. | Modifying the owner DB, `~/.muse`, or backups; applying real migrations; promoting fixture results to organic evidence; fixing a FAIL directly. | Persistence/migration: Sol/high for both maker and fresh evaluator; the final release verdict follows its own gate. |
+| Security / permission / credential | One Sol/high maker writes scoped guard/policy/tests. Real secrets never enter code or the handoff. | A fresh evaluator reads the artifact/diff and redacted fixtures; runs adversarial deny-paths in a sandbox. | Reading/copying credentials, issuing/changing grants/approvals/policy, external egress, editing the repo, fixing a FAIL directly. | The final security/credential gate is a fresh Sol/xhigh. |
+| UI / browser | Writes only active UI source/tests and disposable state for the evaluator. | A fresh evaluator reads the current build and acceptance; observes via Chromium/Playwright in an isolated browser profile/test account, including accessibility and failure states. | Mutating the user's real browser profile, clipboard, downloads/uploads, account state; arbitrarily refreshing snapshot approvals; editing the repo; fixing a FAIL directly. | Ordinary UI: a fresh evaluator at matching risk; upload/download and computer-control boundaries start at Sol/high. |
+| Release / publication | The controller prepares the verified commit candidate and provenance. Beyond a normal push within standing authorization, tag/release/publication is a separate permission. | From a fresh checkout, reads and reproduces HEAD/time/input hashes, required checks, rollback artifacts, remote state. | Modifying source; tag/release/publish/push; changing credentials/protection; using a stale artifact as green; fixing a FAIL directly. | The final release gate is a fresh Sol/xhigh; even an evaluator PASS is not publication permission. |
 
-평가자에게 전달하는 입력은 다음 allowlist로 제한합니다.
+(`Sol/high` / `Sol/xhigh` are gate-strength shorthand — the strongest review model tier at
+high/xhigh effort. Current mapping: [AGENTS.md §7](../AGENTS.md).)
 
-1. activation/handoff와 구조화된 acceptance slice,
-2. 판정할 current artifact 또는 commit/diff와 직접 관련 source,
-3. 재현할 검증 명령·fixture·provenance,
-4. 이미 알려진 blocker와 이전 evaluator의 **구체적 판정**(재평가 cycle일 때만).
+Restrict the inputs handed to the evaluator to this allowlist:
 
-maker의 전체 대화, 숨은 추론, 자기평가, 무관한 dirty file은 전달하지 않습니다. 평가자는 permanent
-handoff나 repo를 직접 고치지 않고 PASS/FAIL과 기준별 근거를 반환하며, controller가 기록합니다.
-새 context가 불가능하면 PASS가 아니라 `미분리 자기평가`로 남깁니다.
+1. the activation/handoff and the structured acceptance slice,
+2. the current artifact or commit/diff to judge, with directly related source,
+3. the verification commands, fixtures, and provenance to reproduce,
+4. already-known blockers and the previous evaluator's **concrete verdicts** (re-evaluation cycles
+   only).
 
-## 2. 일이 흐르는 모양 (Patterns)
+Do not pass the maker's full conversation, hidden reasoning, self-evaluation, or unrelated dirty
+files. The evaluator does not fix the permanent handoff or the repo; it returns PASS/FAIL with
+per-criterion evidence, and the controller records it. If a fresh context is impossible, record
+`unseparated self-evaluation`, not PASS.
 
-작업 성격에 맞는 모양을 고릅니다(Anthropic의 5가지 + 합의된 합성 패턴). 한 가지를 고집하지 말고
-조합하세요.
+## 2. Shapes of work (patterns)
 
-- **프롬프트 체이닝** — 고정된 순서의 단계로 쪼개 앞 단계 출력이 뒤 단계 입력이 되게. 단계 사이에
-  점검 게이트를 둡니다. (정해진 절차)
-- **라우팅** — 입력을 분류해 알맞은 전문 처리로 보냅니다. (서로 다른 종류의 요청)
-- **병렬화** — 독립 하위작업을 나눠 동시에(sectioning) 하거나, 같은 일을 여러 번 돌려 표를
-  모읍니다(voting). (속도 / 다중 관점)
-- **오케스트레이터-워커** — 미리 못 쪼개는 복잡한 일을 지휘자가 **동적으로** 분해해 위임. (예측
-  불가한 분해 — 여러 파일 코드 변경)
-- **플래너-제너레이터-평가자** — 위 핵심 3역할이 도는 하네스(3-agent harness). (긴 자율 작업)
-- **합의/토론(consensus/debate)** — 여러 에이전트가 서로의 추론을 보고 견해를 다듬어 결론에
-  수렴. (복잡한 의사결정)
+Pick the shape that fits the work (Anthropic's five + the agreed composite pattern). Do not cling
+to one; combine.
 
-## 3. 주고받는 규칙 (Handoffs)
+- **Prompt chaining** — split into fixed-order steps where each output feeds the next, with check
+  gates between steps. (Fixed procedures.)
+- **Routing** — classify the input and send it to the matching specialist path. (Heterogeneous
+  request kinds.)
+- **Parallelization** — split independent subtasks and run them concurrently (sectioning), or run
+  the same task multiple times and collect votes (voting). (Speed / multiple perspectives.)
+- **Orchestrator-workers** — a conductor **dynamically** decomposes work that cannot be
+  pre-partitioned and delegates. (Unpredictable decomposition — multi-file code changes.)
+- **Planner-generator-evaluator** — the 3-agent harness of those three core roles. (Long
+  autonomous work.)
+- **Consensus/debate** — several agents see each other's reasoning, refine positions, and
+  converge. (Complex decisions.)
 
-- **서브에이전트에겐 "너는 서브에이전트다"라고 말한다.** 안 그러면 자기가 독립 에이전트인 줄 알고
-  사용자에게 직접 말을 겁니다. 자기 역할·경계를 항상 명시.
-- **위임은 구체적으로.** 각 워커에게 ① 목표 ② 출력 형식 ③ 쓸 도구·소스 안내 ④ 분명한 작업 경계를
-  줍니다. 모호하면 워커들이 일을 중복하거나 오해합니다.
-- **결과는 압축해서 올린다.** 워커는 원본을 통째로 넘기지 않고 **핵심만 추린 요약**(지능형 필터)으로
-  돌려줍니다. 분량이 크면 대화 이력 대신 **외부 파일**에 적어 정보 손실을 막습니다.
-- **컨텍스트는 합치지 말고 리셋한다.** 핸드오프 사이에 컨텍스트를 깔끔히 끊고, 구조화된
-  아티팩트(JSON 명세·기능 목록·커밋 단위 진행)로 다음 역할이 "정해진 상태에서" 이어받게 합니다 —
-  망각도, 한계 근처의 소심함도 피합니다.
-- **에이전트끼리 직접 메시지.** 모든 소통이 지휘자를 거치면 병목이 됩니다. 의존성 기반 작업
-  목록(백엔드가 API 완료 표시 → 막혀 있던 프런트/테스트가 자동 해제)으로 흐름을 만듭니다.
+## 3. Exchange rules (handoffs)
 
-## 4. 안전·검증 게이트 (Gates)
+- **Tell a subagent "you are a subagent."** Otherwise it believes it is an independent agent and
+  addresses the user directly. Always state its role and boundaries.
+- **Delegate concretely.** Give each worker ① the goal ② the output format ③ tool/source guidance
+  ④ clear task boundaries. Vague delegation makes workers duplicate or misread the work.
+- **Return results compressed.** A worker returns a **distilled summary** (intelligent filter),
+  not the raw bulk. If it is large, write it to an **external file** instead of conversation
+  history to avoid information loss.
+- **Reset context, don't merge it.** Cut context cleanly between handoffs and let the next role
+  pick up "from a defined state" via structured artifacts (JSON specs, feature lists,
+  commit-grained progress) — avoiding both forgetting and near-limit timidity.
+- **Agents message each other directly.** Routing everything through the conductor becomes a
+  bottleneck. Build flow with a dependency-based task list (backend marks the API done → the
+  blocked frontend/tests unblock automatically).
 
-- **계획 승인 게이트** — 구현 전에 계획을 한 번 검토. 나쁜 코드를 고치는 것보다 나쁜 계획을 고치는
-  게 훨씬 쌉니다.
-- **만든 자 ≠ 판정하는 자** — 평가자는 독립, 적은 예시로 보정된 명시적 채점 기준(품질·독창성·완성도·
-  동작)을 씁니다.
-- **완료 시 자동 검증** — 작업 완료 훅으로 테스트를 자동 실행. 사람은 병합 전에 전체 맥락으로 최종
-  검토.
-- **격리** — 동시 작업은 별도 작업공간(예: git worktree)에서 — 서로 안 밟게.
-- **재개 가능한 체크포인트** — 긴 자율 작업은 상태를 들고 돌므로, 사소한 실패가 큰 행동 변화로
-  번지지 않게 재시작이 아니라 **체크포인트에서 재개**합니다.
+## 4. Safety & verification gates
 
-## 5. 공유 컨텍스트 (Shared Context)
+- **Plan approval gate** — review the plan once before implementation. Fixing a bad plan is far
+  cheaper than fixing bad code.
+- **Maker ≠ judge** — the evaluator is independent and uses explicit grading criteria (quality,
+  originality, completeness, behavior) calibrated with a few examples.
+- **Automated verification on completion** — run tests automatically via a completion hook. A
+  human does the final full-context review before merge.
+- **Isolation** — concurrent work happens in separate workspaces (e.g. git worktrees) — no
+  trampling.
+- **Resumable checkpoints** — long autonomous work carries state, so a minor failure must not
+  cascade into a large behavior change: **resume from a checkpoint**, not a restart.
 
-- **팀 규칙 문서는 사람이 직접 큐레이션한다.** 스타일·함정·아키텍처 결정·테스트 전략을 사람이
-  적습니다. **LLM이 자동 생성한 규칙 문서는 이점이 없고 오히려 성공률을 ~3% 낮춥니다** — 자동
-  생성 금지.
-- **명확한 소유권** — 역할당 한 파일. 의존성은 보고로 주고받습니다.
-- **누적 학습** — 공유 컨텍스트 파일에 세션을 가로질러 패턴이 쌓이게 합니다.
+## 5. Shared context
 
-## 6. 흔한 실패 모드 (피할 것)
+- **The team rules document is curated by humans.** Style, pitfalls, architecture decisions, and
+  test strategy are written by people. **LLM-auto-generated rules documents bring no benefit and
+  actually lower success rates by ~3%** — no auto-generation.
+- **Clear ownership** — one file per role. Dependencies are exchanged as reports.
+- **Cumulative learning** — let patterns accumulate across sessions in the shared context file.
 
-- 간단한 일에 서브에이전트를 과다 스폰.
-- 존재하지 않는 것을 끝없이 탐색(처음부터 너무 길고 좁은 질의 → 넓게 시작해 좁혀라).
-- 권위 있는 출처 대신 검색 상위의 얄팍한 콘텐츠를 고름(출처 품질 편향).
-- 역할 경계가 번져 조율 비용 폭발.
-- 비결정적 행동으로 디버깅 난항 → **전 과정 추적(tracing)**으로 결정 패턴을 관찰.
+## 6. Common failure modes (avoid)
 
-## 7. 새 에이전트가 합류할 때 (체크리스트)
+- Over-spawning subagents for simple work.
+- Endlessly searching for something that doesn't exist (queries too long and narrow from the start
+  → start broad, then narrow).
+- Picking shallow top-of-search content over authoritative sources (source-quality bias).
+- Role boundaries blurring until coordination cost explodes.
+- Non-deterministic behavior making debugging intractable → observe decision patterns with
+  **end-to-end tracing**.
 
-1. 자기 **역할 한 개**를 위에서 고른다(겹치지 않게).
-2. 오케스트레이터가 준 **목표·출력 형식·도구·경계**를 확인한다.
-3. 자신이 서브에이전트임을 인지하고, 사용자에게 직접 말 걸지 않는다.
-4. 끝나면 **압축 요약**(+ 필요 시 외부 파일)으로 결과를 올린다.
-5. 상태 변경·외부 전송은 해당 게이트를 거친다.
+## 7. When a new agent joins (checklist)
+
+1. Pick **one role** from above (no overlap).
+2. Confirm the **goal, output format, tools, and boundaries** given by the orchestrator.
+3. Know you are a subagent; do not address the user directly.
+4. When done, report upward with a **compressed summary** (+ an external file if needed).
+5. State changes and outbound sends go through their gates.
 
 ---
 
-> 예정이던 조각들은 채워졌습니다 — 역할 프롬프트는 [role-prompts](role-prompts.md), 핸드오프 포맷은
-> [handoff-template](handoff-template.md), 검증 게이트 실행 형태는 [../runner/](../runner/). 이 문서는
-> "누가 무엇을"의 합의 기준이며, 하네스가 구체화되면 갱신됩니다.
+> The pieces once planned are now filled: role prompts are [role-prompts](role-prompts.md), the
+> handoff format is [handoff-template](handoff-template.md), and the executable form of the
+> verification gates is [../runner/](../runner/). This document is the agreed baseline for "who
+> does what", updated as the harness concretizes.
 
-## 출처 (검증 기반)
+## Sources (verified basis)
 
-- Anthropic — [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (5개 워크플로 패턴 + 단순성·투명성·ACI 원칙)
-- Anthropic — [How we built our multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (lead/subagent 위임·압축 반환·토큰 경제학·실패 모드)
-- InfoQ — [Anthropic Designs Three-Agent Harness](https://www.infoq.com/news/2026/04/anthropic-three-agent-harness-ai/) (planner/generator/evaluator + 컨텍스트 리셋·핸드오프 아티팩트, 2026-04)
-- Addy Osmani — [The Code Agent Orchestra](https://addyosmani.com/blog/code-agent-orchestra/) (3~5 팀·AGENTS.md 인간 큐레이션·검증 병목·worktree 격리)
-- Cognition — [Multi-Agents: What's Actually Working](https://cognition.ai/blog/multi-agents-working) (2026-04; 클린-컨텍스트 리뷰어 PR당 ~2버그/58% 심각 — 신선함이 기능)
+- Anthropic — [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (5 workflow patterns + simplicity/transparency/ACI principles)
+- Anthropic — [How we built our multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (lead/subagent delegation · compressed returns · token economics · failure modes)
+- InfoQ — [Anthropic Designs Three-Agent Harness](https://www.infoq.com/news/2026/04/anthropic-three-agent-harness-ai/) (planner/generator/evaluator + context reset · handoff artifacts, 2026-04)
+- Addy Osmani — [The Code Agent Orchestra](https://addyosmani.com/blog/code-agent-orchestra/) (3–5 team · human-curated AGENTS.md · verification bottleneck · worktree isolation)
+- Cognition — [Multi-Agents: What's Actually Working](https://cognition.ai/blog/multi-agents-working) (2026-04; clean-context reviewer ~2 bugs/PR, 58% severe — freshness is the feature)

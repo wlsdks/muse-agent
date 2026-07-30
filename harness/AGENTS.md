@@ -1,200 +1,260 @@
 ---
-title: 에이전트 하네스 운영 계약 (Agent Harness — Operating Contract)
-audience: [AI 에이전트, 개발자, 기획자]
-purpose: 이 파일을 읽은 에이전트가 "하네스대로" 일하게 만드는 진입점 — 역할·핸드오프·게이트·검증을 한 장으로 강제
-format: AGENTS.md (vendor-neutral, 어떤 에이전트/도구든 읽음)
+title: Agent Harness — Operating Contract
+audience: [AI agents, developers, planners]
+purpose: The entrypoint that makes any agent that reads it work "the harness way" — roles, handoff, gates, and verification enforced in one page
+format: AGENTS.md (vendor-neutral, readable by any agent/tool)
 updated: 2026-07-30
 ---
 
-# 에이전트 하네스 — 운영 계약
+# Agent Harness — Operating Contract
 
-> **이 파일이 진입점입니다.** 당신(에이전트)이 이 파일을 읽었다면, 지금부터 아래 규약대로
-> 일하세요. 이 한 장이 "어떤 에이전트가 와도 같은 방식으로 일하게" 만드는 계약이고,
-> 세부는 같은 폴더의 문서들이 풉니다. **이 폴더 하나가 곧 하네스입니다 — 복사해서 어떤
-> 프로젝트에든 떨어뜨리면 그 프로젝트의 에이전트들이 이 방식으로 움직입니다.**
+> **This file is the entrypoint.** If you (an agent) have read this file, work by the contract below
+> from now on. This one page is what makes any agent work the same way, and the documents in this
+> folder resolve the details. **This folder IS the harness — copy it into any project and that
+> project's agents operate this way.**
 >
-> **하네스는 에이전트를 둘러싼 실행 인프라(제어플레인)입니다 — 규칙만이 아니라 *실행*합니다.**
-> 루프(계획→실행→검증)를 돌리고, 게이트를 런타임에 강제하고, 도구를 실행하고, 트레이스를 남깁니다
-> (2026 합의: Claude Code 5계층·OpenAI Harness Engineering·제어플레인 글들). **하네스가 아닌 것**은
-> ① 모델 자체 ② 에이전트가 만들어내는 **도메인/앱 작업**(예: backoff 함수)입니다 — 그건 하네스를
-> 통과하는 워크로드일 뿐. `runner/`의 게이트·루프 코드는 그래서 하네스 본체이고, 거기서 짜이는
-> 함수 결과물은 워크로드입니다.
+> **The harness is the execution infrastructure (control plane) around the agent — it *executes*,
+> not just instructs.** It runs the loop (plan → execute → verify), enforces gates at runtime,
+> executes tools, and leaves traces (2026 consensus: Claude Code's five layers · OpenAI Harness
+> Engineering · control-plane essays). **What the harness is NOT:** ① the model itself, and ② the
+> **domain/app work** the agent produces (e.g. a backoff function) — that is workload passing
+> through the harness. The gate/loop code in `runner/` is harness proper; the functions produced
+> inside it are workload.
 
-## 0. 한 줄 원칙
+## 0. The one-line principle
 
-**먼저 위험을 분류하고, FAST S/M은 얇게 검토하며, FULL은 역할·핸드오프·독립 평가로 분리하고,
-모든 경로를 해당 fail-closed 게이트로 검증한다.** 불확실하면 FAST로 추정하지 말고 FULL로 승격한다.
+**Classify risk first; review FAST S/M thinly; separate FULL into roles, handoff, and independent
+evaluation; and verify every path with its fail-closed gate.** When uncertain, do not guess FAST —
+escalate to FULL.
 
-## 1. 한 작업이 흐르는 길 (이대로 돌리세요)
+## 1. How one task flows (run it exactly like this)
 
 ```
-요청 ─▶ [RISK]
-          ├─ FAST S/M ─▶ compact card ─▶ BUILD ─▶ named checks + adversarial self-check
-          │                                      └─ controller diff review ─▶ thin-review
-          └─ FULL ─▶ PLAN ─▶ BUILD ─▶ 독립 EVAL ─┬─ PASS ─▶ 완료
-                                                  └─ FAIL ─▶ BUILD (반복 한도까지)
+request ─▶ [RISK]
+             ├─ FAST S/M ─▶ compact card ─▶ BUILD ─▶ named checks + adversarial self-check
+             │                                      └─ controller diff review ─▶ thin-review
+             └─ FULL ─▶ PLAN ─▶ BUILD ─▶ independent EVAL ─┬─ PASS ─▶ done
+                                                            └─ FAIL ─▶ BUILD (until retry cap)
 ```
 
-FULL 티어의 필수 역할은 **워커**와 **독립 평가자** 둘뿐입니다(§2). PLAN·LEARN은 별도 에이전트가 아니라
-**인라인 필드** — 위임 전 헤더에 WHAT+WHY+수용 기준을 적고, 완료 후 학습/write-back은 커밋 바디에
-적습니다([muse-dev-patterns §8](../.claude/skills/muse-dev-patterns/SKILL.md)). 별도 플래너 패스 +
-무거운 다단 핸드오프로 가는 **전체 의식은 L-size 또는 보안급 슬라이스 전용**입니다(§2).
+The FULL tier requires only two roles: the **worker** and the **independent evaluator** (§2).
+PLAN and LEARN are not separate agents but **inline fields** — write WHAT+WHY+acceptance criteria
+in the header before delegating, and write learnings/write-back in the commit body after completion
+([muse-dev-patterns §8](../.claude/skills/muse-dev-patterns/SKILL.md)). The **full ceremony** —
+a separate planner pass plus heavy multi-stage handoff — is **reserved for L-size or
+security-grade slices** (§2).
 
-- FULL 티어 작업은 **핸드오프 양식 한 장**([handoff-template](core/handoff-template.md))을 열며
-  시작합니다. FAST S/M은 §1.6 compact card만 채우고 별도 파일·컨텍스트 리셋을 생략합니다. FULL
-  티어를 위임할 때는 **양식 파일의 경로를 반드시 함께** 넘깁니다.
-- FULL의 각 단계는 자기 칸만 채우고, 다음 단계는 **그 양식만** 입력으로 받습니다(컨텍스트 리셋).
-- 단계 사이 화살표마다 **게이트**를 통과해야 다음으로 갑니다(§3).
+- A FULL-tier task **starts by opening one handoff form** ([handoff-template](core/handoff-template.md)).
+  FAST S/M fills only the §1.6 compact card and skips the separate file and context reset. When
+  delegating a FULL-tier task, **always pass the form file's path along with it**.
+- Each FULL stage fills only its own section, and the next stage receives **only that form** as
+  input (context reset).
+- Every arrow between stages passes through a **gate** before the next stage begins (§3).
 
-## 1.5 오케스트레이션 모드 먼저 고르기
+## 1.5 Choose the orchestration mode first
 
-비자명한 작업은 시작 전에 **모드**부터 고른다 (상황별 표·근거: [claude-code-integration §8](reference/claude-code-integration.md)):
+For any non-trivial task, pick a **mode** before starting (situation table and evidence:
+[claude-code-integration §8](reference/claude-code-integration.md)):
 
-- **그냥 작업** — 사소·단일 단계·엄격 순차·같은 파일 편집·루틴.
-- **서브에이전트**(`.claude/agents/harness-*`) — 노이즈 격리·"하고 보고" 반복.
-- **에이전트 팀** — 워커들이 협업·상호 도전·결과를 주고받는 병렬.
-- **워크플로**(Dynamic Workflows) — 결정론·반복·대규모 다단계(코드베이스 스윕·대량 마이그레이션).
+- **Just work** — trivial, single-step, strictly sequential, same-file edits, routine.
+- **Subagents** (`.claude/agents/harness-*`) — noise isolation, "do and report" repetition.
+- **Agent team** — workers that collaborate, challenge each other, and exchange results in parallel.
+- **Workflow** (Dynamic Workflows) — deterministic, repetitive, large-scale multi-step work
+  (codebase sweeps, mass migrations).
 
-기본은 **단일 세션**. 독립 스레드로 분해될 때만 다중으로(멀티에이전트 4~15배 토큰). **어느 모드든 아래
-역할·게이트·핸드오프·검증 규약은 그대로 적용**한다.
+The default is a **single session**. Go multi only when the work decomposes into independent
+threads (multi-agent costs 4–15× tokens). **Whatever the mode, the role, gate, handoff, and
+verification contract below applies unchanged.**
 
-## 1.6 FAST S/M — 안전한 내부 작업의 기본 빠른 경로
+## 1.6 FAST S/M — the default fast path for safe internal work
 
-다음 조건을 **모두** 만족하면 FAST S/M입니다.
+A task is FAST S/M only when **all** of the following hold:
 
-- active 작업이 20분 이내이고, 한 package의 직접 소유 파일 최대 3개에 국한된다.
-- deterministic local contract이며 실패 시 해당 diff만 되돌리면 복구된다.
-- 사용자 노출 문자열/i18n, public API·CLI·UI 계약, 영속 포맷·migration·credential, 보안·권한·guard,
-  외부 효과, browser/computer/audio, process·scheduler·concurrency, harness gate, release를 건드리지 않는다.
+- Active work fits in 20 minutes and touches at most 3 directly-owned files in one package.
+- It is a deterministic local contract, and reverting that diff alone recovers from failure.
+- It touches none of: user-visible strings/i18n, public API/CLI/UI contracts, persisted
+  formats/migrations/credentials, security/permission/guard, external effects,
+  browser/computer/audio, process/scheduler/concurrency, harness gates, release.
 
-FAST S/M은 별도 handoff 파일·planner·새 evaluator context를 만들지 않습니다. 작업 전에 아래 compact
-card를 채우고, 워커가 named test + affected typecheck/lint, 명시적 적대적 자가점검을 수행한 뒤
-**controller/lead**(기본: 작업을 활성화한 현재 세션)가 current diff를 훑어 `review-tier:
-thin-review`로 기록합니다. FAST에서는 controller/lead가 워커와 같아도 되지만 이것을 **독립 PASS라고 부르지
-않습니다**. 범위가 커지거나 위 제외 경계가 발견되거나 BUILD↔review 한 번에서 material progress가
-없으면 즉시 FULL 티어로 승격합니다.
+FAST S/M creates no separate handoff file, no planner, no fresh evaluator context. Before working,
+fill the compact card below; the worker runs the named tests plus the affected typecheck/lint and
+an explicit adversarial self-check; then the **controller/lead** (default: the current session that
+activated the task) skims the current diff and records `review-tier: thin-review`. In FAST the
+controller/lead may be the same as the worker, but this is **never called an independent PASS**.
+If scope grows, an excluded boundary above is discovered, or one BUILD↔review round makes no
+material progress, escalate to the FULL tier immediately.
 
 `Task/goal+missing delta · acceptance · scope/out-of-scope · named verify command · active/command timeout ·
 risk tier · rollback/no-op`
 
-## 2. 역할 — 필수 2개 + 인라인 필드 + 선택
+## 2. Roles — 2 mandatory + inline fields + optional
 
-FULL 티어가 요구하는 역할은 **워커**와 **독립 평가자** 둘뿐입니다. FULL에서는 **만든 자 ≠ 판정하는
-자**를 항상 지킵니다 — 별도 인스턴스를 띄울 수단이 없으면(순수 단일 세션): **핸드오프 양식만 입력으로 받는 새
-컨텍스트** — 빌드 대화 이력이 전혀 없는 새 세션/새 대화여야 하며, 같은 세션 안의 "다시 보기"는
-해당 안 됨 — 에서 평가를 돌리고, 그마저 불가하면 자기 채점 PASS는 무효 — 평가 칸에 "미분리
-자기평가"라 적고 사람 검토를 요청합니다.
+The FULL tier requires exactly two roles: the **worker** and the **independent evaluator**. In FULL,
+**maker ≠ judge always holds** — if there is no way to spawn a separate instance (pure single
+session): run the evaluation in a **fresh context whose only input is the handoff form** — a new
+session/conversation with zero build-conversation history; a "second look" inside the same session
+does not qualify. If even that is impossible, a self-graded PASS is void — record "unseparated
+self-evaluation" in the evaluation section and request human review.
 
-| 역할 | 필수? | 한 일 | 프롬프트 |
+| Role | Mandatory? | Job | Prompt |
 |---|---|---|---|
-| 워커(빌더) | **필수** | WHAT+WHY+수용 기준을 받아 결과물 생성 | [role-prompts](core/role-prompts.md) |
-| 독립 평가자 | **FULL 필수** | **다른 인스턴스**로 독립 판정(PASS/FAIL+근거) | 〃 |
-| 플래너 | 인라인 필드 | 위임 전 헤더에 WHAT+WHY+수용 기준을 적음(별도 패스 아님) | 〃 |
-| 큐레이터/학습자 | 인라인 필드 | 완료 후 커밋 바디에 학습/write-back을 적음(§muse-dev-patterns §8) | 〃 |
-| 오케스트레이터 | 선택(L-size) | 맥락·계획 소유, 여러 워커 위임, 결과 종합 | 〃 |
-| 리뷰어 | 선택(보안급) | 병합 전 전체 맥락 리스크 점검 | 〃 |
+| Worker (builder) | **Mandatory** | Receives WHAT+WHY+acceptance criteria and produces the artifact | [role-prompts](core/role-prompts.md) |
+| Independent evaluator | **Mandatory in FULL** | Independent verdict (PASS/FAIL + evidence) from a **different instance** | 〃 |
+| Planner | Inline field | Writes WHAT+WHY+acceptance criteria in the header before delegation (not a separate pass) | 〃 |
+| Curator/learner | Inline field | Writes learnings/write-back in the commit body after completion (§muse-dev-patterns §8) | 〃 |
+| Orchestrator | Optional (L-size) | Owns context and plan, delegates to multiple workers, synthesizes | 〃 |
+| Reviewer | Optional (security-grade) | Full-context risk review before merge | 〃 |
 
-전체 의식(별도 플래너 패스 + 무거운 다단 핸드오프)은 **L-size 또는 보안급 슬라이스 전용**입니다.
-자세히는 [team-roles](core/team-roles.md). 새 에이전트 합류 절차는 [team-roles §7](core/team-roles.md).
+The full ceremony (separate planner pass + heavy multi-stage handoff) is **reserved for L-size or
+security-grade slices**. Details: [team-roles](core/team-roles.md). Onboarding checklist for a new
+agent: [team-roles §7](core/team-roles.md).
 
-## 3. 게이트 (fail-closed — 이게 핵심 안전장치)
+## 3. Gates (fail-closed — this is the core safety mechanism)
 
-- **계획 게이트(앞단)** — 수용 기준이 비었거나 모순이면 BUILD 진입 거부. FAST는 §1.6 조건을
-  모두 기계적으로 충족하고 compact card가 완전·무모순일 때 controller/lead가 진입시키며,
-  불확실하면 FULL로 승격한다. FULL의 판정 주체는 **오케스트레이터 또는 평가자**이고 플래너
-  자신이 자기 계획을 통과시키지 않는다.
-- **완료 게이트(뒷단)** — FULL은 평가자 PASS(+가능하면 자동 채점) 없이는 완료 거부. FAST S/M은
-  named 검증 + 적대적 자가점검 + controller diff review가 모두 있어야 `thin-review`로 완료한다.
-- **권한 게이트** — 도구를 위험 등급(읽기/쓰기/실행/외부전송/금지)으로 가르고, 외부 전송은
-  **자동 금지·초안 먼저·사람 확인**, 금융/결제는 영구 거부. 단 프로젝트 소유자가 버전 관리된
-  호스트 규약에서 목적지·검증·실패 한계를 좁혀 standing authorization한 정상 Git push만 그 범위
-  안에서 사전 승인으로 취급한다. → [permission-matrix](core/permission-matrix.md).
-- **막힘 우선** — 불확실/모호하면 통과시키지 말고 멈춰 사람에게 올립니다.
+- **Plan gate (front)** — refuse BUILD entry if acceptance criteria are empty or contradictory.
+  For FAST, the controller/lead admits the task when every §1.6 condition is mechanically satisfied
+  and the compact card is complete and consistent; when uncertain, escalate to FULL. In FULL the
+  gate is judged by the **orchestrator or the evaluator** — the planner never passes its own plan.
+- **Completion gate (back)** — FULL is not done without an evaluator PASS (+ automated grading
+  where possible). FAST S/M completes as `thin-review` only with named verification + adversarial
+  self-check + controller diff review, all present.
+- **Permission gate** — classify tools by risk tier (read/write/execute/outbound/forbidden);
+  outbound is **auto-forbidden, draft-first, human-confirmed**; finance/payments are permanently
+  refused. The only exception: a normal Git push under a standing authorization the project owner
+  has recorded in versioned host rules — with destination, verification, and failure limits
+  narrowed — counts as pre-approved within that scope. → [permission-matrix](core/permission-matrix.md).
+- **Blocked-first** — when uncertain or ambiguous, do not pass; stop and escalate to a human.
 
-게이트 정의·통과 조건은 [verification-and-guardrails](core/verification-and-guardrails.md).
+Gate definitions and pass conditions: [verification-and-guardrails](core/verification-and-guardrails.md).
 
-## 3.5 두 층을 구분하라 — 지시(advisory) vs 강제(enforced)
+## 3.5 Distinguish the two layers — advisory vs enforced
 
-하네스는 두 층으로 작동한다(2026 합의: Claude Code 게이트 사다리 "지시는 advisory, 훅은 보장" ·
-Thoughtworks "Guides & Sensors"):
+The harness operates in two layers (2026 consensus: the Claude Code gate ladder "instructions are
+advisory, hooks are guarantees" · Thoughtworks "Guides & Sensors"):
 
-- **지시 층(Guides)** — 이 폴더의 md 계약·역할 프롬프트·핸드오프 양식. 모델이 *따르기로 선택*하는
-  조향 입력. **대화형 세션(Claude Code/Codex가 이 파일을 읽는 보통의 경우)에선 이 층만으로 하네스가
-  완전하다.**
-- **강제 층(Sensors/Gates)** — 훅·린트·테스트·[runner/](runner/) 게이트. 모델이 말로 우회할 수 없는
-  결정론 코드. 같은 규칙이 반복 위반되면(실무 기준 **3~4회** — Cherny: 그 시점에 lint/훅으로 자동화)
-  지시에서 이 층으로 **승급**시킨다.
+- **Advisory layer (Guides)** — this folder's md contracts, role prompts, handoff form. Steering
+  input the model *chooses to follow*. **For interactive sessions (the usual case where Claude
+  Code/Codex reads this file), this layer alone makes the harness complete.**
+- **Enforced layer (Sensors/Gates)** — hooks, lint, tests, the [runner/](runner/) gates.
+  Deterministic code the model cannot talk its way around. When the same rule is violated
+  repeatedly (in practice **3–4 times** — Cherny: automate it as lint/hooks at that point),
+  **promote** it from advisory to this layer.
 
-**runner는 하네스의 전제조건이 아니다.** runner가 *필수*인 곳은 ① 헤드리스 자동화(`claude -p`
-사이클 — 지시가 아무것도 강제 못 하는 곳) ② 게이트가 실제로 fail-closed임을 테스트로 증명할 때
-③ 다른 에이전트 CLI로 포팅할 때, 셋뿐이다.
+**The runner is not a prerequisite of the harness.** The runner is *required* in exactly three
+places: ① headless automation (`claude -p` cycles — where instructions enforce nothing) ② proving
+by test that a gate really fails closed ③ porting to another agent CLI.
 
-## 3.6 평가자가 필수인 경우 — 리스크 티어링
+## 3.6 When the evaluator is mandatory — risk tiering
 
-독립 평가자(별도 인스턴스)는 diff가 다음 중 하나를 건드리면 **무조건 필수**입니다: 사용자 노출
-문자열/i18n, 온디스크·영속 포맷(스토어·체크포인트·자격증명), 광고된 public 플래그/CLI/API/UI 계약,
-보안·권한·guard·외부전송 경로, process·scheduler·concurrency, harness gate, 되돌릴 수 없는 것,
-release. 내부 리팩터/타입 배관/순수 테스트 변경처럼 §1.6을 전부 만족하는
-경우엔 더 얇은 티어로 충분합니다: 워커가 명시적 적대적 자가점검("이게 틀리는 입력을 찾아라")을
-하고 controller/lead가 diff를 훑습니다. **어느 티어를 썼는지 커밋 바디에 반드시 적습니다** — 생략
-가능한 의식이 아닙니다. 근거: 한 세션에서 실제 평가자가 잡은 4건 전부가 **조용히 실패하는 부류**
-(데이터 손상, 죽은 로케일 문자열, 거짓말하는 플래그, 타이밍 버그)였습니다 — green 테스트 스위트가
-드러내지 못하는 바로 그 부류입니다.
+An independent evaluator (separate instance) is **unconditionally required** when the diff touches
+any of: user-visible strings/i18n, on-disk/persisted formats (stores, checkpoints, credentials),
+advertised public flags/CLI/API/UI contracts, security/permission/guard/outbound paths,
+process/scheduler/concurrency, harness gates, anything irreversible, release. For internal
+refactors, type plumbing, and pure test changes that satisfy all of §1.6, a thinner tier is
+enough: the worker runs an explicit adversarial self-check ("find an input where this is wrong")
+and the controller/lead skims the diff. **Always record which tier was used in the commit body** —
+this is not optional ceremony. The independent evaluator is a real cost (a second full-context
+pass) — spend it where it pays. Evidence: in one session, all 4 real evaluator catches were
+**silent-failure classes** (data corruption, a dead locale string, a lying flag, a timing bug) —
+exactly the class a green test suite does not surface.
 
-## 3.7 PLAN 검토와 BUILD↔EVAL은 서로 다른 예산이다
+## 3.7 PLAN review and BUILD↔EVAL are separate budgets
 
-PLAN 검토 예산과 구현 후 BUILD↔EVAL 수정 예산을 한 카운터로 합치지 않습니다. PLAN에서는 raw
-`PLAN FAIL` 수만으로 작업을 `BLOCKED`로 올리지 않습니다. **material progress**는 이전 blocker를
-닫거나 수용 기준·회계를 측정 가능하게 만든 변경이고, **no-progress**는 같은 blocker가 새 증거나
-수정 없이 반복되는 상태입니다. PLAN은 no-progress가 확인되거나 헤더에 명시한 시간·비용 cap에
-도달했을 때만 `BLOCKED`로 승격합니다.
+Do not merge the PLAN-review budget and the post-implementation BUILD↔EVAL repair budget into one
+counter. In PLAN, never escalate a task to `BLOCKED` on the raw `PLAN FAIL` count alone.
+**Material progress** is a change that closes a previous blocker or makes acceptance
+criteria/accounting measurable; **no-progress** is the same blocker repeating with no new evidence
+or fix. PLAN escalates to `BLOCKED` only on confirmed no-progress or on reaching the time/cost cap
+declared in the header.
 
-BUILD↔EVAL은 PLAN과 별도의 반복 횟수·시간·비용 cap을 가집니다. 평가자는 **한 pass에서 합리적으로
-발견 가능한 blocker를 묶어서** 반환합니다. 뒤 pass에서 새 blocker를 제시하면 왜 앞 pass에서는
-발견할 수 없었는지(앞선 수정이 새 경로를 열었는지, 필요한 증거가 뒤늦게 생겼는지)를 기록합니다.
-구체적 회계 필드는 [handoff-template](core/handoff-template.md), 종료 판정은
-[loop-budget](reference/loop-budget.md)을 따릅니다.
+BUILD↔EVAL has its own iteration/time/cost caps, separate from PLAN. The evaluator returns
+**blockers bundled — everything reasonably discoverable in one pass**. If a later pass raises a
+new blocker, record why it could not have been found earlier (did a prior fix open a new path; did
+required evidence appear late). Concrete accounting fields:
+[handoff-template](core/handoff-template.md); termination judgment: [loop-budget](reference/loop-budget.md).
 
-평가 데이터의 양은 근거 품질과 별도입니다. synthetic family/profile/journey/turn 또는 controlled
-replay가 많아져도 organic 사용자 근거나 agent PASS가 되지 않습니다. `realismProxy`는 결정적 전환
-coverage 이름일 뿐 현실성 증명이 아닙니다. 출처인 immutable `dataOrigin`과 실제 실행 여부인
-`executionEvidence`를 독립 회계하고, factual interaction receipt를 feedback/outcome/policy 승격으로
-환산하지 않습니다.
+The volume of evaluation data is separate from evidence quality. More synthetic
+families/profiles/journeys/turns or controlled replay never becomes organic user evidence or an
+agent PASS. `realismProxy` is only the name of deterministic transition coverage, not a proof of
+realism. Account the immutable `dataOrigin` (provenance) and `executionEvidence` (did it actually
+run) as independent axes, and never convert a factual interaction receipt into
+feedback/outcome/policy promotion.
 
-## 4. 토대 (progressive disclosure)
+## 4. Foundations (progressive disclosure)
 
-모든 작업은 이 entrypoint와 선택한 surface 문서만 읽습니다. 아래 reference는 해당 위험·기능을 실제로
-건드릴 때만 추가로 읽습니다. `golden-set`, `pass^k`, runner spec, 전체 architecture/observability
-문서는 harness/runtime/eval 슬라이스와 phase gate용이지, 일반 FAST S/M의 선행 독서가 아닙니다.
+Every task reads only this entrypoint plus the surface documents it selected. The references below
+are read additionally only when the task actually touches that risk/feature. `golden-set`,
+`pass^k`, the runner spec, and the full architecture/observability documents are for
+harness/runtime/eval slices and phase gates — not prerequisite reading for ordinary FAST S/M.
 
-- **루프 한도** — 횟수·시간·예산 하드캡(반복 2~3회 상한). → [loop-budget](reference/loop-budget.md).
-- **메모리** — 내구성 사실만 장기 저장, 일회성 드롭, 약한 추론 보류. → [memory-layers](reference/memory-layers.md).
-- **압축** — 한계 전 선제·주기적으로 줄이되 **결정·출처는 보존**. → [context-compaction](reference/context-compaction.md).
-- **도구·스킬·MCP** — 한-shot 선택 가능한 이름·스키마, 허용목록·격리. → [tool-design](reference/tool-design.md) · [skills-and-mcp](reference/skills-and-mcp.md).
-- **관측·복구** — 전 과정 상관 ID 트레이스, 체크포인트 재개. → [failure-modes-and-observability](reference/failure-modes-and-observability.md) · [debugging-and-dx](reference/debugging-and-dx.md).
-- **래칫·가지치기** — 규칙 한 줄은 관찰된 실패 하나에서 오고(실패→지시 한 줄→반복되면 훅/코드로
-  승급), 모델이 좋아져 하중을 안 받는 컴포넌트는 삭제한다. → [architecture §5](reference/architecture.md).
+- **Loop caps** — hard caps on iterations, time, and budget (2–3 retry ceiling). → [loop-budget](reference/loop-budget.md).
+- **Memory** — store only durable facts long-term, drop one-offs, hold weak inferences. → [memory-layers](reference/memory-layers.md).
+- **Compaction** — reduce pre-emptively and periodically before the limit, but **preserve decisions and sources**. → [context-compaction](reference/context-compaction.md).
+- **Tools, skills, MCP** — names/schemas selectable in one shot; allowlists and isolation. → [tool-design](reference/tool-design.md) · [skills-and-mcp](reference/skills-and-mcp.md).
+- **Observability & recovery** — correlation-ID traces end to end, checkpoint resume. → [failure-modes-and-observability](reference/failure-modes-and-observability.md) · [debugging-and-dx](reference/debugging-and-dx.md).
+- **Ratchet & pruning** — every rule line comes from one observed failure (failure → one advisory
+  line → promoted to hook/code when repeated), and components that no longer carry load as models
+  improve get deleted. → [architecture §5](reference/architecture.md).
 
-## 5. 검증 (이게 진짜 되는지 — 안 하면 한 걸로 안 침)
+## 5. Verification (does it really work — unverified means not done)
 
-- **개별 작업의 "완료"는 §3 완료 게이트가 판정**합니다(FULL은 독립 PASS, FAST S/M은
-  `thin-review`; 둘 다 명시한 검증 방법을 실제 실행).
-  아래 골든셋·pass^k는 *하네스 자체*의 신뢰도 검증입니다 — 매 작업마다 요구되는 것이 아닙니다.
-- 대표 과제 묶음([golden-set](reference/golden-set.md))으로 결과+경로를 채점하고, 같은 과제를 여러 번 돌려
-  **pass^k**(매번 통과)로 비결정성 내성을 확인합니다. (최소 설치라 reference/가 없으면 핵심만:
-  실사용에서 길어온 대표 과제 몇 개의 *결과*를 채점하고, 안전-결정적 검증은 같은 과제 반복
-  전부-통과로 봅니다.)
-- 하네스 자체 검증 규약은 [harness-acceptance](reference/harness-acceptance.md). 게이트를 코드로 강제하는
-  러너 계약은 [runner-spec](reference/runner-spec.md).
+- **"Done" for an individual task is judged by the §3 completion gate** (FULL: independent PASS;
+  FAST S/M: `thin-review`; both actually execute the named verification method).
+  The golden set and pass^k below verify the *harness itself* — they are not required per task.
+- Grade a representative task bundle ([golden-set](reference/golden-set.md)) on outcome+path, and
+  run the same task repeatedly for **pass^k** (passes every time) to confirm tolerance to
+  non-determinism. (In a minimal install without reference/, keep the essence: grade the
+  *outcomes* of a few representative tasks drawn from real use, and treat safety-critical checks
+  as all-pass over repeats.)
+- The harness's own acceptance contract is [harness-acceptance](reference/harness-acceptance.md).
+  The runner contract that enforces gates as code is [runner-spec](reference/runner-spec.md).
 
-## 6. 이 프로젝트에 맞추기
+## 6. Adapting to this project
 
-추상 역할을 실제 프로젝트 런타임에 어떻게 잇는지는 어댑터 문서 하나로 둡니다 — 예시는
-[muse-mapping](host/muse-mapping.md). **새 프로젝트에 깔 때는 이 파일을 복제해 당신 프로젝트용
-매핑으로 바꾸세요.** (설치법은 [INSTALL](INSTALL.md).)
+How the abstract roles connect to a real project runtime lives in one adapter document — example:
+[muse-mapping](host/muse-mapping.md). **When installing in a new project, clone that file and
+rewrite it as your project's mapping.** (Installation: [INSTALL](INSTALL.md).)
+
+## 7. Model-specific calibration (the ONLY model-named section — everything else is vendor-neutral)
+
+Everything above is model-agnostic. This section pins how to calibrate the harness to the current
+frontier models (2026-07-30, from Anthropic's Claude Opus 5 prompting guide and the Claude 5 /
+GPT-5.6 family guidance); re-audit it on every model upgrade (§4 ratchet & pruning).
+
+- **Do not add model self-verification steps.** Current frontier models (Claude Opus 5 and peers)
+  verify their own work unprompted. Instructions like "include a final verification step",
+  "double-check your answer", "re-verify before responding", or "use a subagent to verify your own
+  output" now make output *worse*: they compound into over-verification that burns tokens for no
+  quality gain — Anthropic explicitly names "legacy harness scaffolding that adds separate
+  verification steps" as the failure. **This does NOT touch two other things this harness runs
+  on:** ① deterministic gates (tests, lint, typecheck, runner gates, pass^k) are programs, not
+  model self-checks — keep them all; ② the **independent evaluator** (§3.6) is a *different*
+  instance with a fresh context judging a finished build against acceptance criteria — that is not
+  self-verification, and its recorded catches (4/4 silent-failure classes) justify its cost at the
+  §3.6 risk tiers.
+- **Delegation posture differs per model — state which applies.**
+  - *Claude Opus 5*: delegates readily and must be **capped** — delegate only large, genuinely
+    independent, parallelizable tracks; never work finishable in a handful of tool calls; never a
+    subagent to verify your own output; prefer one subagent over several; keep spawn counts low.
+  - *Claude Fable 5*: the opposite — delegate freely and keep subagents **long-lived across
+    subtasks** instead of respawning per step.
+- **Long autonomous runs (Fable 5)** need three things this harness already encodes — wire them,
+  don't improvise: explicit **stopping points** (destructive actions, scope changes, decisions
+  that belong to the human → the §3 permission gate and blocked-first rule), a **learning
+  repository** where each run's lessons land (→ curator write-back, commit body), and the **why**
+  of the work stated up front (→ the WHY field in the handoff header).
+- **Effort levels** (cost lever, host maps these in its adapter): Claude Opus 5 — use low/medium
+  liberally as the main cost lever, xhigh only for the hardest coding/agentic work. Claude
+  Fable 5 — high for everyday work, xhigh for the hardest. GPT-5.6 — Luna for low-risk repeatable
+  transformation, Terra for everyday implementation, Sol for complex refactors, architecture,
+  security, and release decisions (this is the `Sol/high`/`Sol/xhigh` gate-strength shorthand in
+  [team-roles §1.5](core/team-roles.md)).
+- **Instruction budget.** Frontier models reliably follow ~150–200 discrete instructions, and the
+  host system prompt already consumes ~50. Past that, models ignore instructions wholesale rather
+  than filtering — keep this entrypoint short and rely on §4 progressive disclosure.
 
 ---
 
-> 요약: **읽었으면 따르세요.** 위험을 먼저 분류하고 → FAST는 compact card와 `thin-review`로,
-> FULL은 역할·양식·독립 평가로 → 해당 게이트를 실제 검증합니다. 세부는 위 링크들이, 설치는
-> [INSTALL](INSTALL.md)이 풉니다.
+> Summary: **if you read this, follow it.** Classify risk first → FAST via compact card and
+> `thin-review`, FULL via roles, form, and independent evaluation → actually verify the relevant
+> gate. The links above resolve the details; [INSTALL](INSTALL.md) resolves installation.

@@ -1,76 +1,87 @@
 ---
-title: Muse 문서 안내 (인덱스)
-audience: [기획자, 개발자, AI 에이전트]
-purpose: Muse 문서 집합의 단일 진입점 — 어떤 문서가 무엇을 담는지
-updated: 2026-07-29
+title: Muse documentation guide (index)
+audience: [planners, developers, AI agents]
+purpose: Single entry point to the Muse documentation set — which document holds what
+updated: 2026-07-30
 related: [strategy/attunement.md, design/attunement-graph.md, goals/attunement-wow-graph-roadmap.md, SYSTEM-MAP.md, FEATURES.md]
 ---
 
-# Muse 문서 안내
+# Muse documentation guide
 
-Muse 문서는 "필요한 것만, 짧게, 잘 분리해서" 유지합니다. 처음이라면 **[SYSTEM-MAP](SYSTEM-MAP.md)** 한 장만 봐도 전체 윤곽이 잡힙니다.
+The Muse docs are kept "only what's needed, short, well separated." If you're new, reading just
+**[SYSTEM-MAP](SYSTEM-MAP.md)** gives you the whole outline.
 
-> **언어 규칙:** 루트 `README.md`가 링크하는 공개 진입 문서(SYSTEM-MAP · grounding-gate ·
-> privacy-and-data · setup-local-llm · ENV · strategy/design/goals)는 **영어**로 씁니다. 그 외
-> 내부 운영 문서(이 인덱스 · FEATURES · glossary · goals 저널 · feature-catalog 감사 기록)는
-> 한국어를 유지합니다.
+> **Language rule:** every document in this repository is written in **English**. The only
+> exception is quoted material — UI strings, CLI output samples, and user utterances may stay in
+> their original language, marked as quotes.
 
-## AI 에이전트(Claude Code · Codex)라면 — 이 순서로
+## If you are an AI agent (Claude Code · Codex) — read in this order
 
-레포를 처음 여는 에이전트가 **docs만 읽고 Muse를 이해**하도록 한 권장 읽기 순서:
+The recommended reading order so an agent opening the repo for the first time can **understand Muse
+from docs alone**:
 
-1. [`../README.md`](../README.md) — Muse가 무엇인가 (정체성·Continuity·현재 상태 경계)
-2. [`../CLAUDE.md`](../CLAUDE.md) — 모든 에이전트가 먼저 읽는 계약 (비협상 규칙)
-3. [`strategy/attunement.md`](strategy/attunement.md) — 제품 약속과 current/roadmap 경계
-4. [`glossary.md`](glossary.md) — Muse 전용 용어 (Attunement·Observe·grounding floor… grep 없이)
-5. [`SYSTEM-MAP.md`](SYSTEM-MAP.md) — 기능 구조 한 장
-6. [`grounding-gate.md`](grounding-gate.md) — 신뢰 바닥선(그라운딩 게이트)을 한 흐름으로
-7. [`FEATURES.md`](FEATURES.md) → [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md) — 기능 상세 + 전수 검증 증거
-8. 그다음 깊이: [`design/attunement.md`](design/attunement.md) · [`design/attunement-graph.md`](design/attunement-graph.md) · [`goals/attunement-implementation-plan.md`](goals/attunement-implementation-plan.md) · [`goals/attunement-wow-graph-roadmap.md`](goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
+1. [`../README.md`](../README.md) — what Muse is (identity, Continuity, current status boundary)
+2. [`../CLAUDE.md`](../CLAUDE.md) — the contract every agent reads first (non-negotiable rules)
+3. [`strategy/attunement.md`](strategy/attunement.md) — the product promise and the current/roadmap boundary
+4. [`glossary.md`](glossary.md) — Muse-specific terms (Attunement, Observe, grounding floor… without grep)
+5. [`SYSTEM-MAP.md`](SYSTEM-MAP.md) — the feature structure on one page
+6. [`grounding-gate.md`](grounding-gate.md) — the trust floor (grounding gate) as one flow
+7. [`FEATURES.md`](FEATURES.md) → [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md) — feature detail + exhaustive verification evidence
+8. Then go deeper: [`design/attunement.md`](design/attunement.md) · [`design/attunement-graph.md`](design/attunement-graph.md) · [`goals/attunement-implementation-plan.md`](goals/attunement-implementation-plan.md) · [`goals/attunement-wow-graph-roadmap.md`](goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
 
-## 제품을 이해하려면
+## To understand the product
 
-| 문서 | 무엇 | 누구에게 |
+| Document | What | For whom |
 |---|---|---|
-| **[strategy/attunement.md](strategy/attunement.md)** | Muse의 wedge, 사용자 순간, current/experimental/roadmap 경계 | 제품·설계·개발 모두 |
-| **[design/attunement.md](design/attunement.md)** | 구현된 Slice A와 후속 Observe의 privacy·closed-loop 기술 계약 | 개발·보안·AI 에이전트 |
-| **[design/attunement-graph.md](design/attunement-graph.md)** | agent-native 시간·출처 그래프와 personal context compiler의 모듈 계약·연구 근거 | 제품·개발·보안 |
-| **[goals/attunement-implementation-plan.md](goals/attunement-implementation-plan.md)** | 의존성 순서의 vertical slices, gate, kill criterion | 실행·평가 담당 |
-| **[goals/attunement-wow-graph-roadmap.md](goals/attunement-wow-graph-roadmap.md)** | Shadow Muse·Capsule·Policy Card·Graph Engine의 별도 장기 실행 순서 | 실행·평가 담당 |
-| **[SYSTEM-MAP.md](SYSTEM-MAP.md)** | Muse 기능을 한눈에 보는 구조 지도 (말로만, 빠른 파악용) | 기획·개발 모두 / 처음 보는 사람 |
-| **[glossary.md](glossary.md)** | Muse 전용 용어의 단일 정의 (용어마다 한 줄 + 어디 사는지) | 처음 보는 사람 / AI 에이전트 |
-| **[grounding-gate.md](grounding-gate.md)** | 신뢰 바닥선인 그라운딩 게이트가 질문 하나를 어떻게 처리하나 — 흐름 + 워크드 예시 | 핵심 동작을 이해하려는 사람 / AI 에이전트 |
-| **[FEATURES.md](FEATURES.md)** | 기능별 상세 정의 (사용자 입장에서 무엇을 어떻게) | 기획·설계 의사결정 |
-| **[feature-catalog/INDEX.md](feature-catalog/INDEX.md)** | 전수 검증된 전체 기능 인벤토리 (기능마다 실행/테스트/소스 증거; 2026-06-14) | 정확한 사실이 필요한 사람 / AI 에이전트 |
-| **[privacy-and-data.md](privacy-and-data.md)** | 내 데이터는 어디 있고 무엇이 절대 안 나가나 (프라이버시 요약) | 도입 전 확인하는 사람 |
+| **[strategy/attunement.md](strategy/attunement.md)** | Muse's wedge, user moments, current/experimental/roadmap boundary | Product, design, and dev alike |
+| **[design/attunement.md](design/attunement.md)** | The privacy and closed-loop technical contract of the implemented Slice A and the follow-on Observe | Dev, security, AI agents |
+| **[design/attunement-graph.md](design/attunement-graph.md)** | Module contract and research basis of the agent-native time/provenance graph and personal context compiler | Product, dev, security |
+| **[goals/attunement-implementation-plan.md](goals/attunement-implementation-plan.md)** | Dependency-ordered vertical slices, gates, kill criterion | Execution and evaluation owners |
+| **[goals/attunement-wow-graph-roadmap.md](goals/attunement-wow-graph-roadmap.md)** | The separate long-horizon execution order for Shadow Muse, Capsule, Policy Card, Graph Engine | Execution and evaluation owners |
+| **[SYSTEM-MAP.md](SYSTEM-MAP.md)** | Structural map of Muse's features at a glance (words only, for quick orientation) | Planners and devs / first-time readers |
+| **[glossary.md](glossary.md)** | Single definition of Muse-specific terms (one line per term + where it lives) | First-time readers / AI agents |
+| **[grounding-gate.md](grounding-gate.md)** | How the grounding gate — the trust floor — handles one question: flow + worked example | Anyone who wants the core behavior / AI agents |
+| **[FEATURES.md](FEATURES.md)** | Per-feature detailed definitions (what, and how it behaves from the user's perspective) | Product and design decisions |
+| **[feature-catalog/INDEX.md](feature-catalog/INDEX.md)** | Exhaustively verified full feature inventory (run/test/source evidence per feature; 2026-06-14) | Anyone who needs exact facts / AI agents |
+| **[privacy-and-data.md](privacy-and-data.md)** | Where my data lives and what never leaves (privacy summary) | People checking before adopting |
 
-## 직접 돌려보려면
+## To run it yourself
 
-| 문서 | 무엇 |
+| Document | What |
 |---|---|
-| **[setup-local-llm.md](setup-local-llm.md)** | 로컬 LLM(Ollama 등)으로 Muse를 띄우는 설치 가이드 |
-| **[guides/remote-access.md](guides/remote-access.md)** | `muse remote enable` — Tailscale로 휴대폰에서 Muse 웹 UI 열기 (tailnet-only) |
+| **[setup-local-llm.md](setup-local-llm.md)** | Installation guide for running Muse on a local LLM (Ollama etc.) |
+| **[guides/remote-access.md](guides/remote-access.md)** | `muse remote enable` — open the Muse web UI from your phone via Tailscale (tailnet-only) |
 
-## 더 깊이 — 설계 노트
+## Deeper — design notes
 
-[`design/`](design/) 폴더에는 개별 기능의 설계 노트가 한 주제당 한 파일로 들어 있습니다. 대부분은 **이미 출시된 기능의 설계 근거(왜 그렇게 만들었나)** 기록이고, [background-review-engine](design/background-review-engine.md)이 현재 진행 중인 설계입니다. 기능의 "무엇"은 위 제품 문서를, "왜"는 여기를 보세요:
+The [`design/`](design/) folder holds design notes for individual features, one file per topic. Most
+are **the design rationale for features already shipped** (why it was built that way);
+[background-review-engine](design/background-review-engine.md) is the one design currently in
+progress. For a feature's "what," see the product docs above; for the "why," look here:
 
 - Attunement: [architecture and data contract](design/attunement.md), [graph engine](design/attunement-graph.md), [implementation slices](goals/attunement-implementation-plan.md), [wow + graph roadmap](goals/attunement-wow-graph-roadmap.md), [continuity-timing-loop](design/continuity-timing-loop.md)
-- 기억·인지: [episodic-memory](design/episodic-memory.md), [proactive-surfacing](design/proactive-surfacing.md), [pattern-detection](design/pattern-detection.md), [context-engineering-roadmap](design/context-engineering-roadmap.md)
-- 능동·후속: [agent-self-followup](design/agent-self-followup.md), [reminder-firing](design/reminder-firing.md), [background-review-engine](design/background-review-engine.md)
-- 채널·음성: [messaging](design/messaging.md), [line-webhook](design/line-webhook.md), [voice-mode](design/voice-mode.md), [phase-d-chat-stream-routing](design/phase-d-chat-stream-routing.md)
-- 멀티에이전트·연합: [a2a-swarm](design/a2a-swarm.md)
+- Memory and perception: [episodic-memory](design/episodic-memory.md), [proactive-surfacing](design/proactive-surfacing.md), [pattern-detection](design/pattern-detection.md), [context-engineering-roadmap](design/context-engineering-roadmap.md)
+- Proactivity and follow-up: [agent-self-followup](design/agent-self-followup.md), [reminder-firing](design/reminder-firing.md), [background-review-engine](design/background-review-engine.md)
+- Channels and voice: [messaging](design/messaging.md), [line-webhook](design/line-webhook.md), [voice-mode](design/voice-mode.md), [phase-d-chat-stream-routing](design/phase-d-chat-stream-routing.md)
+- Multi-agent and federation: [a2a-swarm](design/a2a-swarm.md)
 
-## 에이전트 하네스 (운영 구조)
+## Agent harness (operating structure)
 
-[`../harness/`](../harness/README.md) — 어떤 AI 에이전트가 들어와도 동일하게 협업하도록 하는 팀 구성·역할·핸드오프 정의(2026-05 검증된 멀티에이전트 패턴 기반). **지금 구성을 한눈에 보려면 → [구성도 & 자가평가(architecture)](../harness/reference/architecture.md)** (한 장 다이어그램 + 12칸 자가평가 + 문서 지도). 역할 정의는 [팀 구성(team-roles)](../harness/core/team-roles.md).
+[`../harness/`](../harness/README.md) — the team composition, roles, and handoff definitions that
+let any AI agent collaborate the same way (based on multi-agent patterns verified 2026-05). **For
+the current setup at a glance → [diagram & self-assessment (architecture)](../harness/reference/architecture.md)**
+(one-page diagram + 12-cell self-assessment + doc map). Role definitions:
+[team-roles](../harness/core/team-roles.md).
 
-## 자율 확장 루프 (운영)
+## Autonomous expansion loops (operations)
 
-이 문서들은 Muse를 스스로 확장하는 자율 루프의 운영 장치입니다(제품 기능 설명이 아님):
+These documents are the operating machinery of the autonomous loops that expand Muse itself (not
+product-feature descriptions):
 
-- [`goals/`](goals/) — 작업 장부(backlog·growth-backlog·rival-watch)와 활성 루프 저널 — 지도는 [`goals/README.md`](goals/README.md)
+- [`goals/`](goals/) — work ledgers (backlog · growth-backlog · rival-watch) and active loop journals — map at [`goals/README.md`](goals/README.md)
 
 ---
 
-> 정리 원칙: 한 문서에 모든 걸 몰아넣지 않습니다. 새 주제는 **작은 새 문서 + 여기 인덱스에 링크 한 줄**로 추가하고, 이미 출시돼 본문에 흡수된 거대 계획/감사 기록은 git 히스토리에 맡기고 제거합니다.
+> Housekeeping principle: don't pile everything into one document. A new topic is added as a
+> **small new document + one link line in this index**, and giant plan/audit records already
+> shipped and absorbed into the main docs are removed and left to git history.

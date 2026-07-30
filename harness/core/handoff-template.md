@@ -1,137 +1,153 @@
 ---
-title: 핸드오프 아티팩트 양식 (Handoff Artifact)
-audience: [개발자, AI 에이전트]
-purpose: FULL 티어에서 워커→독립 평가자가 컨텍스트 리셋을 넘어 "정해진 상태"를 주고받는 단일 양식
+title: Handoff Artifact
+audience: [developers, AI agents]
+purpose: The single form through which, on the FULL tier, worker → independent evaluator exchange a "defined state" across the context reset
 status: draft
 updated: 2026-07-30
 related: [team-roles.md, role-prompts.md, ../README.md]
 ---
 
-# 핸드오프 아티팩트 양식 (Handoff Artifact)
+# Handoff Artifact
 
 ## FAST S/M compact card
 
-[`../AGENTS.md` §1.6](../AGENTS.md)의 조건을 **모두** 만족하는 작업은 별도 handoff 파일을 만들지 않고
-아래 7개 항목만 chat/scratch에 기록합니다. 이 경로에는 독립 평가자가 없으므로 결과는 `PASS`가 아니라
-`review-tier: thin-review`입니다. 조건을 하나라도 벗어나면 아래 FULL 양식으로 승격합니다.
+A task that satisfies **all** conditions of [`../AGENTS.md` §1.6](../AGENTS.md) creates no separate
+handoff file; record only the 7 items below in chat/scratch. This path has no independent
+evaluator, so the result is `review-tier: thin-review`, not `PASS`. If any condition is broken,
+escalate to the FULL form below.
 
 - **Task / goal + missing delta:**
 - **Acceptance:**
 - **Scope / out-of-scope:**
 - **Named verify command:**
-- **Budget:** active ≤20분, command timeout ≤12분
-- **Risk tier:** FAST S/M인 근거와 제외 경계 확인
+- **Budget:** active ≤20 min, command timeout ≤12 min
+- **Risk tier:** why this is FAST S/M, with the exclusion boundaries checked
 - **Rollback / no-op:**
 
-> **왜 이게 골격인가?** 하네스가 "어떤 에이전트가 들어와도 동일하게" 굴러가는 비결은 **컨텍스트를
-> 합치지 않고 끊되, 구조화된 아티팩트로 다음 역할이 정해진 상태에서 이어받는 것**입니다([team-roles
-> §3](team-roles.md)). 이 파일이 FULL 티어 아티팩트의 **단일 양식** — 해당 작업당 이 한 장을 채워 넘깁니다.
-> 매 핸드오프는 "이전 에이전트의 머릿속"이 아니라 이 문서를 읽고 시작합니다.
+> **Why is this the skeleton?** The harness runs the same way "whichever agent comes in" because
+> **context is cut, not merged, and the next role picks up from a defined state via a structured
+> artifact** ([team-roles §3](team-roles.md)). This file is the **single form** for FULL-tier
+> artifacts — fill one copy per task and pass it on. Every handoff starts from reading this
+> document, not "the previous agent's head".
 >
-> **기본은 이 5칸(아래)뿐입니다.** 필수 역할이 [team-roles §1](team-roles.md)에서 워커·독립
-> 평가자 둘로 줄었으므로, 별도 플래너 패스나 리뷰/학습 섹션은 기본 양식에 없습니다 — PLAN은
-> 아래 "헤더" 칸에, LEARN은 [muse-dev-patterns §8](../../.claude/skills/muse-dev-patterns/SKILL.md)에
-> 따라 완료 후 **커밋 바디**에 적습니다. **전체 의식(별도 플래너 패스 + 리뷰·학습 섹션까지 다 쓰는
-> 무거운 다단 핸드오프)은 L-size 또는 보안급 슬라이스에서만** 씁니다 — 그때는 이 문서 끝의
-> "부록: 전체 의식" 섹션을 이어 붙이세요.
+> **The default is only these 5 sections (below).** Since the mandatory roles shrank to worker +
+> independent evaluator ([team-roles §1](team-roles.md)), there is no separate planner pass and no
+> review/learning section in the default form — PLAN goes in the "Header" section below, and LEARN
+> goes in the **commit body** after completion per
+> [muse-dev-patterns §8](../../.claude/skills/muse-dev-patterns/SKILL.md). **The full ceremony
+> (separate planner pass + the review and learning sections of a heavy multi-stage handoff) is for
+> L-size or security-grade slices only** — in that case append the "Appendix: full ceremony"
+> section at the end of this document.
 
-## 쓰는 법
+## How to use
 
-1. FULL 티어 작업(기능/버그/슬라이스)마다 이 양식을 복사해 한 파일로 둔다 — **작업 파일이지 영구 기록이
-   아니다**: 슬라이스의 워크트리(또는 스크래치패드)에 두고, **레포에 커밋하지 않는다**. 영구 기록은
-   커밋 바디가 담당한다(수용 기준·검증 결과·학습 — [muse-dev-patterns §8](../../.claude/skills/muse-dev-patterns/SKILL.md)).
-   과거에 커밋됐던 인스턴스 7개는 삭제됐다(2026-07-18 — 머지 후 단 한 번도 참조되지 않아
-   커밋 관행 자체를 중단; git history가 보존). **위임할 때 이 파일 경로를 반드시 함께
-   넘긴다** — 컨텍스트가 리셋된 다음 역할이 읽을 유일한 입력이므로.
-2. 위임하는 쪽(오케스트레이터 또는 워커 자신, L-size가 아니면 별도 플래너 없음)이 **헤더 + 수용
-   기준 + 검증 방법**을 먼저 채운다. 워커는 자기 섹션만, 평가자는 자기 섹션만 채운다(경계).
-3. 다음 역할은 이 문서 + 코드만 보고 시작한다. 막히면 `## 열린 질문`에 적고 멈춘다(추측 금지).
-4. 상태는 `## 상태 로그`에 한 줄씩 누적(누가·언제·무엇). 되돌릴 수 있게.
-
----
-
-## 헤더 (목표 + 맥락)
-
-- **작업 이름:** <짧고 고유하게>
-- **한 줄 목표 (WHAT / `what`):** <이 작업이 끝나면 사용자가 무엇을 할 수 있나>
-- **제품 맥락 (WHY / `why`):** <왜 이게 필요한가, 누구를 위한 것인가>
-- **현재 단계:** `BUILD | EVAL | DONE | BLOCKED`
-- **담당(현재):** <역할/에이전트>
-
-## 1. 수용 기준 (PASS / `passCriteria`)
-
-- <"무엇이 참이어야 통과인가" — 구체적·검증 가능, 체크리스트로>
-  - [ ] <기준 1>
-  - [ ] <기준 2>
-- **범위 밖 (`outOfScope`):** <하지 않을 경계. "없음"도 명시적으로 적기>
-
-## 2. 검증·근거·복구
-
-- **검증 명령 (`verificationCommands`):** <평가자가 그대로 재실행할 명령/관찰>
-- **Active budget (`activeBudgetMinutes`):** <양의 정수, 최대 20>
-- **단일 명령 timeout (`commandTimeoutMinutes`):** <양의 정수, 최대 12>
-- **검증 budget (`validationMinutes`):** <양의 정수, 최대 6>
-- **PLAN-review budget:** <기본 1 pass / active budget 안; 다른 cap이 필요할 때만 덮어쓰기>
-- **BUILD↔EVAL budget:** <기본 2 pass / active budget 안; 다른 cap이 필요할 때만 덮어쓰기>
-- **진전 판정:** `material-progress | no-progress` — material progress는 이전 blocker를 닫거나
-  acceptance/accounting을 측정 가능하게 만든 변경, no-progress는 같은 blocker가 새 증거·수정 없이
-  반복되는 상태
-- **근거 회계 (`evidenceAccounting`, agent/eval/replay/policy 작업만):** <semantic family/surface
-  variant/profile/journey/turn 수; `realismProxy` 이름; immutable `dataOrigin`; independent
-  `executionEvidence`; controlled replay/organic production evidence; receipt와 feedback 분리>
-- **Rollback / recovery (`rollback`):** <실패·회귀 때 되돌릴 변경, 보존할 데이터, 재개 조건>
-
-## 3. 워커 노트 (워커/빌더가 채움)
-
-- **건드린 범위:** <파일/모듈 — 좁게>
-- **한 일:** 수용 기준별로 무엇을 했는지 한 줄
-  - <기준 1> → <한 일>
-- **결정/가정:** <비자명한 선택과 이유>
-- **검증 실행 결과:** <돌린 명령 + 결과. 안 돌렸으면 "미실행"이라고 적기>
-- **평가자가 특히 봐야 할 곳:** <다음 역할에 전달>
-
-## 4. 평가자 판정 (독립 평가자가 채움 — 워커와 반드시 다른 에이전트)
-
-- **판정:** `PASS | FAIL`
-- **수용 기준 대조:** 위 1의 각 기준에 충족/미충족 + 근거
-  - <기준 1> → 충족? <근거(실제로 돌려보거나 확인한 것)>
-- **구체적 피드백(FAIL이면 워커가 바로 고칠 수 있게):**
-  - <한 pass에서 합리적으로 발견 가능한 blocker를 묶어: 무엇이·왜 잘못됐나 + 어디>
-- **새 blocker provenance:** <뒤 pass에서 새 blocker가 나왔다면 왜 이전 pass에서 발견 불가능했는지;
-  없으면 "없음">
-- **반복 횟수:** <이번이 몇 번째 BUILD↔EVAL 사이클인지>
+1. For each FULL-tier task (feature/bug/slice), copy this form into one file — **a working file,
+   not a permanent record**: keep it in the slice's worktree (or scratchpad) and **do not commit
+   it to the repo**. The permanent record is the commit body (acceptance criteria, verification
+   results, learnings — [muse-dev-patterns §8](../../.claude/skills/muse-dev-patterns/SKILL.md)).
+   The 7 previously committed instances were deleted (2026-07-18 — never once referenced after
+   merge, so the committing practice itself was stopped; git history preserves them). **When
+   delegating, always pass this file's path along** — it is the only input the context-reset next
+   role will read.
+2. The delegating side (orchestrator or the worker itself; no separate planner unless L-size)
+   fills **header + acceptance criteria + verification method** first. The worker fills only its
+   section; the evaluator only its section (boundaries).
+3. The next role starts from this document + the code only. If stuck, write it under
+   `## Open questions` and stop (no guessing).
+4. Status accumulates one line at a time in `## Status log` (who, when, what). Keep it revertible.
 
 ---
 
-## 열린 질문 (BLOCKED일 때)
+## Header (goal + context)
 
-- <답이 없으면 추측하지 말고 여기 적고 멈춘다 — 사람/오케스트레이터가 푼다>
+- **Task name:** <short and unique>
+- **One-line goal (WHAT / `what`):** <what can the user do once this task is done>
+- **Product context (WHY / `why`):** <why this is needed, who it is for>
+- **Current phase:** `BUILD | EVAL | DONE | BLOCKED`
+- **Owner (current):** <role/agent>
 
-## 상태 로그 (BLOCKED 또는 retry 때만 append-only)
+## 1. Acceptance criteria (PASS / `passCriteria`)
 
-- <YYYY-MM-DD HH:MM> · <역할> · <PLAN-review | BUILD↔EVAL> · <누적 예산> ·
-  <material-progress | no-progress> · <닫힌 blocker/새 증거 한 줄>
+- <"what must be true to pass" — concrete, verifiable, as a checklist>
+  - [ ] <criterion 1>
+  - [ ] <criterion 2>
+- **Out of scope (`outOfScope`):** <the boundary of what will not be done. Write "none" explicitly
+  if none>
+
+## 2. Verification, evidence, recovery
+
+- **Verification commands (`verificationCommands`):** <commands/observations the evaluator re-runs
+  as-is>
+- **Active budget (`activeBudgetMinutes`):** <positive integer, max 20>
+- **Single-command timeout (`commandTimeoutMinutes`):** <positive integer, max 12>
+- **Validation budget (`validationMinutes`):** <positive integer, max 6>
+- **PLAN-review budget:** <default 1 pass / within the active budget; override only when a
+  different cap is needed>
+- **BUILD↔EVAL budget:** <default 2 passes / within the active budget; override only when a
+  different cap is needed>
+- **Progress judgment:** `material-progress | no-progress` — material progress is a change that
+  closes a previous blocker or makes acceptance/accounting measurable; no-progress is the same
+  blocker repeating with no new evidence or fix
+- **Evidence accounting (`evidenceAccounting`, agent/eval/replay/policy work only):** <semantic
+  family / surface variant / profile / journey / turn counts; the `realismProxy` name; immutable
+  `dataOrigin`; independent `executionEvidence`; controlled replay / organic production evidence;
+  receipts kept separate from feedback>
+- **Rollback / recovery (`rollback`):** <what to revert on failure/regression, what data to
+  preserve, resume conditions>
+
+## 3. Worker notes (filled by the worker/builder)
+
+- **Scope touched:** <files/modules — keep narrow>
+- **What was done:** one line per acceptance criterion
+  - <criterion 1> → <what was done>
+- **Decisions/assumptions:** <non-obvious choices and why>
+- **Verification run results:** <commands run + results. If not run, write "not run">
+- **Where the evaluator should look hardest:** <handed to the next role>
+
+## 4. Evaluator verdict (filled by the independent evaluator — MUST be a different agent than the worker)
+
+- **Verdict:** `PASS | FAIL`
+- **Criteria check:** for each criterion in §1, met/not met + evidence
+  - <criterion 1> → met? <evidence (what was actually run or checked)>
+- **Concrete feedback (on FAIL, so the worker can fix immediately):**
+  - <bundle the blockers reasonably discoverable in one pass: what is wrong, why, and where>
+- **New-blocker provenance:** <if a later pass raised a new blocker, why it could not have been
+  found in the earlier pass; otherwise "none">
+- **Iteration count:** <which BUILD↔EVAL cycle this is>
 
 ---
 
-## 부록: 전체 의식 (L-size · 보안급 슬라이스 전용)
+## Open questions (when BLOCKED)
 
-기본 5칸으로 부족한 큰 작업(여러 워커, 사람 병합 승인 필요, 회귀 위험 큰 보안/영속 포맷 변경)만
-아래 두 섹션을 추가로 이어 붙입니다. 보통 슬라이스에는 쓰지 않습니다.
+- <if there is no answer, do not guess — write it here and stop; a human/orchestrator resolves it>
 
-### 부록 A. 병합 리뷰 (리뷰어/사람)
+## Status log (append-only; only on BLOCKED or retry)
 
-- **병합 전 점검:** <전체 맥락에서 본 리스크>
-- **승인:** <누가·언제>
-
-### 부록 B. 학습 (기본은 커밋 바디 — 여기는 여러 워커의 학습을 한 곳에 모아야 할 때만)
-
-- **통한 전략(강화):** <다음에 더 자주 쓸 것>
-- **교정·실패(약화/래칫):** <약화할 전략 / 규칙 한 줄로 박을 실패>
-- **재사용 절차:** <이 작업에서 추출한 스킬/절차 — 없으면 "없음">
+- <YYYY-MM-DD HH:MM> · <role> · <PLAN-review | BUILD↔EVAL> · <cumulative budget> ·
+  <material-progress | no-progress> · <one line: blocker closed / new evidence>
 
 ---
 
-> 규칙: 이 양식은 [team-roles](team-roles.md)의 역할·게이트와 1:1로 맞물립니다. 양식이 바뀌면 거기도
-> 함께 갱신하세요. 압축 반환·외부 파일 원칙([team-roles §3](team-roles.md))대로, 분량이 크면 본문
-> 대신 링크로 가리킵니다.
+## Appendix: full ceremony (L-size · security-grade slices only)
+
+Only large work where the default 5 sections are not enough (multiple workers, human merge
+approval required, high-regression-risk security/persisted-format changes) appends the two
+sections below. Not used on ordinary slices.
+
+### Appendix A. Merge review (reviewer/human)
+
+- **Pre-merge check:** <risks seen in full context>
+- **Approval:** <who, when>
+
+### Appendix B. Learning (default is the commit body — use this only to collect multiple workers' learnings in one place)
+
+- **Strategies that worked (reinforce):** <use more often next time>
+- **Corrections/failures (weaken/ratchet):** <strategies to weaken / failures to pin as a one-line
+  rule>
+- **Reusable procedure:** <skill/procedure extracted from this task — "none" if none>
+
+---
+
+> Rule: this form interlocks 1:1 with the roles and gates in [team-roles](team-roles.md). If the
+> form changes, update there too. Per the compressed-return / external-file principle
+> ([team-roles §3](team-roles.md)), point to links instead of inlining anything large.
