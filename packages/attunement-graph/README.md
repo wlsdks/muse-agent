@@ -66,6 +66,9 @@ The current implementation includes:
   UTF-8/canonical record validation, exact shared projection admission, async
   transactional sink abort pinning, and essential fixture, corruption, reduced-limit,
   and hostile sink-failure tests;
+- an independently verified AWG-070a3a1a4b structural streaming qualification with
+  exhaustive valid/invalid chunk families, exact closed retained-state ledgers, and two
+  deterministic 4,096-generation current-only runs;
 - exact Continuity observation, change, Capsule-presentation, resume-runtime, and Shadow
   decision-receipt compatibility Modules used by Muse.
 
@@ -76,9 +79,10 @@ export, and the complete physical-profile program pass.
 
 The AWG-070a3a0, AWG-070a3a1a0, AWG-070a3a1a2, AWG-070a3a1a3a0b,
 AWG-070a3a1a3a1, AWG-070a3a1a3b, and AWG-070a3a1a4a foundations,
-qualifications, and decoder implementation are `verified-current`. Exhaustive
-chunk-boundary and structural 4,096-generation non-retention qualification belongs to
-AWG-070a3a1a4b. Production-scale 100K/1M/1 TiB execution remains pending. The package
+qualifications, decoder implementation, and structural decoder non-retention evidence
+through AWG-070a3a1a4b are `verified-current`. This is a structural JavaScript-heap
+qualification with 4,096-run corroboration, not RSS or empirical asymptotic proof.
+Production-scale 100K/1M/1 TiB execution remains pending. The package
 still ships no public decoder, runtime export/rebuild, filesystem or SQLite staging,
 Worker/admin runtime, or public `./admin` subpath.
 

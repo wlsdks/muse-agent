@@ -8,6 +8,15 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a4b structural streaming qualification
+  for the package-private `.magx` decoder. Valid and representative corrupt artifacts
+  now produce exact-equal reports, terminal failures, and sink traces across one-chunk,
+  bytewise, LF/multibyte-boundary, and irregular chunking. Closed retained-state ledgers
+  reject hidden record, projection, or identity history, while two fresh current-only
+  4,096-generation runs match exactly. This qualifies bounded structural JavaScript
+  retention with deterministic corroboration, not RSS, empirical asymptotics,
+  production scale, or cross-runtime behavior.
+
 - Added the independently verified AWG-070a3a1a4a package-private streaming `.magx` v1
   decoder.
   It incrementally validates fatal UTF-8 canonical NDJSON, record/store/state identities,
