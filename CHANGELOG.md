@@ -8,6 +8,25 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Documented the required standalone MAG Admin surface. A shared future `./admin` core
+  will back CLI and local UI/API surfaces, remain read-only by default, expose health,
+  scope/head/provenance/integrity/storage state, and control verify, export, rebuild,
+  backup, physical forget, and compaction. Destructive maintenance requires impact
+  preview, application-boundary confirmation, an immutable audit receipt, and a verified
+  recovery or replacement path; it is never an agent/model tool.
+
+- Added the independently verified AWG-070a3a1a2 package-private transactional `.magx`
+  encoder core. It prepares canonical bytes, counters, total length, report, and copied
+  SHA-256 state before every mandatory identity-sink callback; sink success is followed
+  only by non-throwing local state assignment. Every failure after first sink engagement,
+  including caught callback reentry and hostile abort behavior, pins the original failure
+  and aborts exactly once. Focused tests cover empty and two-generation output,
+  independent record/state/footer recomputation, order/lifecycle, mutation isolation,
+  every sink failure point, and reentry. A fresh evaluator independently reconstructed
+  the empty and two-generation artifacts byte-for-byte and found no P0/P1 blocker.
+  Golden fixtures, broad byte/count qualification, decoder, filesystem/SQLite/Worker,
+  and public admin/export/rebuild remain pending.
+
 - Added the independently verified AWG-070a3a1a0 package-private foundations for a future
   portable codec: an internal canonical helper may override only the body/full byte
   ceilings, and exact portable projection admission returns the Engine-normalized

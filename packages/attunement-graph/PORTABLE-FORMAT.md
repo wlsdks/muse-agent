@@ -1,10 +1,11 @@
 # MAG portable format (`.magx`) v1
 
-Status: **implementation pending normative contract**. This document fixes the portable
-wire contract before a codec, filesystem publisher, SQLite staging sink, Worker command,
-or public administration API exists. Nothing in this document is a shipped runtime or
-public export. AWG-070a3a1a0 has independently verified package-private
-canonical byte-limit and exact projection-admission seams for a future codec.
+Status: **encoder core verified-current; broader implementation pending**. This document
+fixes the portable wire contract. AWG-070a3a1a2 implements its independently verified
+package-private transactional encoder core and mandatory exact-head identity-sink
+boundary. The checked-in byte-identical golden corpus and broad limit qualification
+remain pending. No decoder, filesystem publisher, SQLite staging sink, Worker command,
+public administration API, or public export exists.
 
 ## 1. Purpose and boundary
 

@@ -919,13 +919,14 @@ export function canonicalizeImmutableEnvelopeForInternalUse(
 
 export function mintCanonicalImmutableEnvelopeFromFrozenUnsignedForInternalUse(
   input: unknown,
-  spec: CanonicalImmutableEnvelopeSpec
+  spec: CanonicalImmutableEnvelopeSpec,
+  limits: CanonicalImmutableEnvelopeByteLimits = DEFAULT_CANONICAL_BYTE_LIMITS
 ): CanonicalImmutableEnvelopeResult {
   return canonicalizeImmutableEnvelopeWithInternalOptions(
     input,
     "muse-frozen",
     spec,
-    DEFAULT_CANONICAL_BYTE_LIMITS,
+    limits,
     true,
     true
   );

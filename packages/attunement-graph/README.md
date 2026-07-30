@@ -46,6 +46,10 @@ The current implementation includes:
 - an independently verified AWG-070a3a1a0 package-private foundation: canonical admission can
   override only its body/envelope byte ceilings, and portable code can obtain one exact
   normalized projection plus its detached scope/head/store-envelope identity;
+- an independently verified AWG-070a3a1a2 package-private transactional encoder core
+  with a mandatory exact-head identity sink, prospective byte/hash/count preparation,
+  non-throwing post-sink state commits, and exactly-once abort with original-failure
+  pinning;
 - exact Continuity observation, change, Capsule-presentation, resume-runtime, and Shadow
   decision-receipt compatibility Modules used by Muse.
 
@@ -54,10 +58,11 @@ program. AWG-070a remains `partial` until physical-forget fixtures and the compl
 byte-identical conformance corpus pass. AWG-070b remains `partial` until backup, portable
 export, and the complete physical-profile program pass.
 
-The AWG-070a3a0 and AWG-070a3a1a0 foundations are `verified-current`. Neither implements a
-codec, export/rebuild, filesystem or SQLite staging, Worker/admin runtime, or a public
-`./admin` subpath. A future encoder must require caller-supplied `expectedScope` and a
-mandatory exact-head validation sink.
+The AWG-070a3a0, AWG-070a3a1a0, and AWG-070a3a1a2 foundations are
+`verified-current`. The checked-in byte-identical golden corpus and broad limit
+qualification remain pending. AWG-070a3a1a2 implements only the package-private encoder
+core: no decoder, export/rebuild, filesystem or SQLite staging, Worker/admin runtime,
+checked-in `.magx` fixture, or public `./admin` subpath ships here.
 
 Still required before a standalone release:
 
@@ -253,6 +258,25 @@ second document database:
 
 Source text will remain in the source system. An Adapter must define drift, deletion,
 round-trip, and rebuild behavior explicitly.
+
+### Dedicated Admin surface
+
+Standalone MAG requires its own administration surface; it is not merely a tab coupled
+to the Muse application. A shared `@muse/attunement-graph/admin` core will back both a
+CLI and any future local Admin UI/API so operational semantics cannot drift between
+surfaces.
+
+The surface is read-only by default and must expose health, physical profile, scopes,
+exact heads, provenance coverage, integrity results, storage size, and pending
+maintenance. Its controlled operations are `verify`, `export`, `rebuild`, `backup`,
+`forget`, and `compact`. Destructive operations require an exact impact preview,
+explicit confirmation at the application boundary, an immutable audit receipt, and a
+verified recovery or replacement path. The Maintenance Module is never an agent/model
+tool, and no graph-derived fact grants permission to invoke it.
+
+The first normative API is the future `./admin` portable export/rebuild contract in
+[`PORTABLE-FORMAT.md`](PORTABLE-FORMAT.md). Backup, physical forget, compaction, and the
+visual administration surface remain separately gated work.
 
 ## Runtime and language strategy
 
