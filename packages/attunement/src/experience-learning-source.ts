@@ -5,6 +5,7 @@ import type {
   ExperienceSourceRunClass,
   ExplicitExperienceOutcome
 } from "./experience-learning-candidate.js";
+import { isExperienceLearningOutcome } from "./experience-learning-candidate.js";
 import { OUTCOMES, type ContinuityDelivery } from "./types.js";
 
 export type ExperienceLearningSourceHeldReason =
@@ -14,6 +15,7 @@ export type ExperienceLearningSourceHeldReason =
   | "missing-explicit-outcome"
   | "missing-policy-provenance"
   | "missing-run-id"
+  | "non-negative-outcome"
   | "unclassified-evidence";
 
 export type ExperienceLearningSourceProjection =
@@ -73,6 +75,9 @@ export function projectExperienceLearningSource(
     runId: delivery.runId
   });
   if (outcome.id !== expectedOutcomeId) return held("missing-explicit-outcome");
+  if (!isExperienceLearningOutcome(outcome.outcome)) {
+    return held("non-negative-outcome");
+  }
 
   const evidenceClass: ExperienceSourceRunClass = delivery.evidenceClass === "organic"
     ? "organic-production"

@@ -54,6 +54,24 @@ describe("experience learning candidate proposal", () => {
     })).toBeUndefined();
   });
 
+  it("admits only outcomes that identify a correction opportunity", () => {
+    expect(proposeExperienceLearningCandidate({
+      ...input(),
+      outcome: { ...input().outcome!, outcome: "used" }
+    })).toBeUndefined();
+
+    for (const outcome of ["adjusted", "ignored", "rejected"] as const) {
+      expect(proposeExperienceLearningCandidate({
+        ...input(),
+        outcome: { ...input().outcome!, outcome }
+      })).toMatchObject({
+        activation: "none",
+        outcome: { outcome },
+        status: "proposed"
+      });
+    }
+  });
+
   it("creates a detached proposal while keeping the active behavior digest unchanged", () => {
     const mutable = input();
     const candidate = proposeExperienceLearningCandidate(mutable);

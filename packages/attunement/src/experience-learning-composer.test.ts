@@ -5,9 +5,9 @@ import {
   proposeExperienceLearningFromDelivery,
   type ExperienceLearningProposalDraft
 } from "./experience-learning-composer.js";
-import type { ContinuityDelivery } from "./types.js";
+import type { ContinuityDelivery, ContinuityOutcome } from "./types.js";
 
-function delivery(): ContinuityDelivery {
+function delivery(outcome: ContinuityOutcome = "rejected"): ContinuityDelivery {
   const base = {
     evidenceClass: "organic" as const,
     evidenceRefs: [],
@@ -27,11 +27,11 @@ function delivery(): ContinuityDelivery {
       id: continuityOutcomeId({
         deliveryId: base.id,
         evidenceClass: "organic",
-        outcome: "rejected",
+        outcome,
         recordedAt,
         runId: base.runId
       }),
-      outcome: "rejected",
+      outcome,
       policyVersion: 2,
       recordedAt
     }
@@ -88,6 +88,21 @@ describe("proposeExperienceLearningFromDelivery", () => {
     });
     expect(JSON.stringify({ proposal, source })).toBe(before);
     expect(Object.isFrozen(result)).toBe(true);
+  });
+
+  it("holds a successful outcome without creating activation authority or mutating input", () => {
+    const source = delivery("used");
+    const proposal = draft();
+    const before = JSON.stringify({ proposal, source });
+
+    expect(proposeExperienceLearningFromDelivery({
+      delivery: source,
+      draft: proposal
+    })).toEqual({
+      reason: "non-negative-outcome",
+      status: "held"
+    });
+    expect(JSON.stringify({ proposal, source })).toBe(before);
   });
 
   it.each([

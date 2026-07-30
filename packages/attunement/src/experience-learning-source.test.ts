@@ -102,6 +102,86 @@ describe("projectExperienceLearningSource", () => {
     });
   });
 
+  it("holds a successful owner outcome outside the improvement-candidate loop", () => {
+    const input = delivery();
+    const outcome = "used" as const;
+    const recordedAt = input.outcome!.recordedAt;
+    expect(projectExperienceLearningSource({
+      ...input,
+      outcome: {
+        ...input.outcome!,
+        id: continuityOutcomeId({
+          deliveryId: input.id,
+          evidenceClass: input.evidenceClass,
+          outcome,
+          recordedAt,
+          runId: input.runId
+        }),
+        outcome
+      }
+    })).toEqual({
+      reason: "non-negative-outcome",
+      status: "held"
+    });
+  });
+
+  it("validates successful outcome evidence before classifying it as non-negative", () => {
+    const input = delivery();
+    const outcome = "used" as const;
+
+    const beforeRun = "2026-07-29T02:59:59.000Z";
+    expect(projectExperienceLearningSource({
+      ...input,
+      outcome: {
+        ...input.outcome!,
+        id: continuityOutcomeId({
+          deliveryId: input.id,
+          evidenceClass: input.evidenceClass,
+          outcome,
+          recordedAt: beforeRun,
+          runId: input.runId
+        }),
+        outcome,
+        recordedAt: beforeRun
+      }
+    })).toEqual({
+      reason: "invalid-temporal-order",
+      status: "held"
+    });
+
+    const mismatchedClass = "organic" as const;
+    expect(projectExperienceLearningSource({
+      ...input,
+      outcome: {
+        ...input.outcome!,
+        evidenceClass: mismatchedClass,
+        id: continuityOutcomeId({
+          deliveryId: input.id,
+          evidenceClass: mismatchedClass,
+          outcome,
+          recordedAt: input.outcome!.recordedAt,
+          runId: input.runId
+        }),
+        outcome
+      }
+    })).toEqual({
+      reason: "evidence-class-mismatch",
+      status: "held"
+    });
+
+    expect(projectExperienceLearningSource({
+      ...input,
+      outcome: {
+        ...input.outcome!,
+        id: `continuity_outcome_${"f".repeat(64)}`,
+        outcome
+      }
+    })).toEqual({
+      reason: "missing-explicit-outcome",
+      status: "held"
+    });
+  });
+
   it.each([
     ["unknown evidence class", "synthetic", "adjusted"],
     ["unknown outcome", "controlled", "model-approved"]

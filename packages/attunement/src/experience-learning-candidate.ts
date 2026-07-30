@@ -52,6 +52,12 @@ export type ExperienceLearningChange =
 export const EXPERIENCE_SOURCE_RUN_CLASSES = ["controlled", "organic-production"] as const;
 export type ExperienceSourceRunClass = (typeof EXPERIENCE_SOURCE_RUN_CLASSES)[number];
 
+const EXPERIENCE_LEARNING_OUTCOMES: readonly ContinuityOutcome[] = [
+  "adjusted",
+  "ignored",
+  "rejected"
+];
+
 export interface ExperienceSourceRun {
   readonly behaviorDigest: string;
   readonly completedAt: string;
@@ -129,6 +135,7 @@ export function proposeExperienceLearningCandidate(
   const outcome = input.outcome;
   if (!sourceRun || !outcome) return undefined;
   if (!isSourceRun(sourceRun) || !isExplicitOutcome(outcome)) return undefined;
+  if (!isExperienceLearningOutcome(outcome.outcome)) return undefined;
   if (sourceRun.runId !== outcome.runId) return undefined;
   if (!isDigest(input.activeBehaviorDigest)) return undefined;
   const proposedChange = parseExperienceLearningChange(input.proposedChange, input.scope?.kind);
@@ -184,6 +191,12 @@ export function proposeExperienceLearningCandidate(
     sourceRun: sourceCopy,
     status: "proposed"
   });
+}
+
+export function isExperienceLearningOutcome(
+  outcome: ContinuityOutcome
+): outcome is Exclude<ContinuityOutcome, "used"> {
+  return EXPERIENCE_LEARNING_OUTCOMES.includes(outcome);
 }
 
 export function parseExperienceLearningChange(
