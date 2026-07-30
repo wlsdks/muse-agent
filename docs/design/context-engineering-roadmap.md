@@ -195,9 +195,12 @@ request path). Phase 4/5 are gated by unit + integration tests.
 
 ## Carrying notes / open decisions
 
-- **Embedding path is intentionally out of scope.** For personal
-  single-user use, the token-overlap baseline carries Phase 3 with
-  zero infra cost. Re-introducing pgvector / `ModelProvider.embed`
+- **Embedding path — superseded 2026-07-30.** This was written when the
+  token-overlap baseline was the plan. Episodic recall now embeds by default
+  (`context-engineering-builders.ts:245`, local Ollama, `nomic-embed-text-v2-moe`)
+  and falls back to Jaccard token overlap when no embedder is reachable. The
+  original reasoning below is kept as the record of why it started
+  overlap-only. Re-introducing pgvector / `ModelProvider.embed`
   is a future option once the corpus / language demands it, not a
   default.
 - **Inbox cursor reset**: the `lastInjectedAt` cursor accumulates per

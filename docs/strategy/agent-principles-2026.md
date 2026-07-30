@@ -107,9 +107,10 @@ Partially encoded / genuine gaps (candidate slices, strongest first):
   approve/deny per gate class in the action log + surface in
   `muse doctor`; widen pre-approved safe classes instead of adding
   prompts.
-- **#6 time-bound permissions (GAP, low urgency single-user)**: consents
-  (`performConsentedAction`) are scoped but not time-bound; no expiry on
-  standing consents. Candidate: TTL on recorded consents.
+- **#6 time-bound permissions (CLOSED 2026-07-30)**: consents
+  (`performConsentedAction`) are scoped, and `personal-consent-store.ts` now
+  carries `expiresAt` with expiry checks, so a standing consent can be
+  time-bound.
 - **#2 namespacing (MINOR)**: verb_noun enforced; no explicit
   family-prefix rule for related tools — worth one line in
   `tool-calling.md` next time tools multiply.

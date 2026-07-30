@@ -18,7 +18,7 @@ corepack enable && pnpm install:muse && muse onboard
 
 </div>
 
-<p align="center"><img src="docs/images/muse-continue.gif" alt="A real terminal session: starting a thread, linking a note and a task, then muse continue handing the thread back with its next step and sources" width="880" /></p>
+<p align="center"><img src="docs/images/muse-continue.gif" alt="A real session: muse thread start, two muse thread link calls, then muse continue handing the thread back with its connected context, next step and receipts" width="900" /></p>
 
 <p align="center"><i>A real session: you park a thread, and a week later Muse hands it back — with its sources.</i></p>
 

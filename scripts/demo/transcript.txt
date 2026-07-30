@@ -1,0 +1,16 @@
+CMD|muse thread start "Plan Mina's birthday" --kind life
+OUT|Started life thread thread_57325a09-748c-4389-9b56-53cd9a742745: Plan Mina's birthday
+CMD|muse thread link $T note birthday.md --role context
+OUT|Linked local:note:birthday.md as context
+CMD|muse thread link $T task $TASK --role next-step
+OUT|Linked local:task:task_dccaec41-9edd-41bb-abb6-e47be690c7e1 as next-step
+GAP|# ── a week later, you come back ──
+CMD|muse continue $T
+OUT|Plan Mina's birthday [life]
+OUT|Connected context:
+OUT|  - [note:birthday.md] birthday.md — Mina's birthday party
+OUT|  - [task:task_dccaec41-9edd-41bb-abb6-e47be690c7e1] Order the cake (3 days notice)
+OUT|Next step: Order the cake (3 days notice) [task_dccaec41-9edd-41bb-abb6-e47be690c7e1]
+OUT|Delivery: delivery_4eb1ee2a-28dd-4e3f-99b0-efb93ec73e4e
+OUT|Run: continuity_run_28643a94-e404-4956-978a-25f900eb6e15
+OUT|Record feedback: muse thread outcome delivery_4eb1ee2a-28dd-4e3f-99b0-efb93ec73e4e <used|adjusted|ignored|rejected>

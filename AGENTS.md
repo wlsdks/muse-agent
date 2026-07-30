@@ -103,16 +103,11 @@ adversarial and fault tests, and local trace review. See
 ## Repository publication
 
 The owner grants **standing authorization for a verified normal Git push** from the current Muse
-task branch (or verified local `main`) to its configured `origin` upstream: after the applicable
-risk-tier completion gate and required checks pass, fetch, rebase, run the unskipped versioned
-pre-push hook, and publish without asking again.
-
-- **Not authorized**: alternate remotes/refspecs, remote deletion, tags/releases,
-  force/force-with-lease, `--no-verify`, credentials, branch-protection changes.
-- On hook, auth, protection, or unresolved divergence failure: at most one safe fetch/rebase retry,
-  then stop and report.
-- Autonomous scheduled loops keep their own push tiers; third-party human/action sends remain
-  draft-first under [`.claude/rules/outbound-safety.md`](.claude/rules/outbound-safety.md).
+task branch (or verified local `main`) to its configured `origin` upstream, after the applicable
+risk-tier completion gate and required checks pass. The full contract — what is *not* authorized
+(alternate remotes/refspecs, remote deletion, tags/releases, force-push, `--no-verify`, credentials,
+branch-protection), the retry-once-then-stop rule on failure, and the loop tiers — lives in
+[`.claude/rules/commits.md`](.claude/rules/commits.md) and is not restated here.
 
 **Commit boundary = product-behavior change**, not every roadmap checkbox. A completed slice that
 changes runtime/source code, tests, executable scripts, build/package configuration,
@@ -139,32 +134,12 @@ roadmap's own execution-order table and scope-specific gates outrank raw task nu
   readings lead to materially different work. If a task seems mistaken, say so briefly and continue
   as specified — never silently narrow, widen or transform it.
 
-### Model routing for [`personal-agent-productization-roadmap.md`](internal/goals/personal-agent-productization-roadmap.md)
+### Model routing
 
-Do not hand that unsliced 300-task program to one default worker configuration. The roadmap's own
-model-routing section is authoritative for fallbacks, escalation and stage-specific defaults.
-
-| Model | Role |
-| --- | --- |
-| `gpt-5.6-sol`, `high` | Program controller, planner and independent gate evaluator. Complex refactors, architecture, security, permissions, credentials, persistence migrations, external effects, process/concurrency control, self-modification and release decisions all start here — `xhigh` for the hardest security/release evaluations. |
-| `gpt-5.6-terra`, `high` | Default everyday implementation worker, but only once a task is activated with a clear missing delta, bounded S/M scope, deterministic acceptance and no high-risk boundary. |
-| `gpt-5.6-luna` | Clear, repeatable, low-risk record or transformation work only. No required roadmap step may depend on Luna being available. |
-
-Claude-model effort and delegation calibration (Opus 5 / Fable 5) lives in
-[`CLAUDE.md`](CLAUDE.md). Every task activation header records the maker model, reasoning effort,
-selection reason, risk tier and escalation trigger; FULL also records evaluator model/effort, FAST
-records evaluator `n/a — thin-review`. Maker/evaluator separation in FULL needs a fresh agent
-context and role — changing only the model name is not independent evaluation.
-
-## Agent operating harness
-
-For non-trivial multi-step work, operate under the portable harness in [`harness/`](harness/):
-entrypoint [`harness/AGENTS.md`](harness/AGENTS.md), risk tiers included. Qualifying FAST S/M uses
-its compact card and `thin-review`; FULL uses planner / worker / evaluator with maker ≠ judge and
-the handoff template. Both use the fail-closed plan / completion / permission gates and golden-set +
-`pass^k` verification. The folder is self-contained — copy it into another project and point that
-project's `AGENTS.md`/`CLAUDE.md` at it ([`harness/INSTALL.md`](harness/INSTALL.md)). Muse-runtime
-mapping: [`harness/host/muse-mapping.md`](harness/host/muse-mapping.md).
+The 300-task productization program routes work across model tiers (controller/evaluator vs
+implementation vs low-risk transformation) and records maker, effort, risk tier and escalation
+trigger in every task activation header. That routing table lives with the program it governs:
+[`internal/goals/personal-agent-productization-roadmap.md`](internal/goals/personal-agent-productization-roadmap.md).
 
 ## TypeScript 7 toolchain
 

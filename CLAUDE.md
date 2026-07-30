@@ -14,8 +14,8 @@ Attunement: Shadow Muse → Continuity Capsule → visible Policy Card. Product 
 
 ## Trust floor — never traded for a feature
 
-- **Provider/MCP-neutral.** Cloud, self-hosted and local models are all allowed; no cloud vendor
-  owns the runtime, and no vendor SDK is hard-wired into core code.
+- **Provider/MCP-neutral.** Cloud, self-hosted and local models are all allowed (the rule that
+  enforces it is under Non-negotiables).
 - **Owner-controlled placement.** `MUSE_LOCAL_ONLY=true` is a strict opt-in posture that refuses
   cloud egress in code, not in a prompt.
 - **Deterministic grounding.** Supported grounded personal-data paths cite sources, lower weak

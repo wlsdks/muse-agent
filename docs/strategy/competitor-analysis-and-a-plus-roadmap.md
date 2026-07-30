@@ -695,7 +695,7 @@ strike-window(Muse는 watch-pattern 미채택), device-fingerprint·idempotency-
 
 **Muse-측 확정 팩트**: runner `env_clear()`+timeout-only(`crates/runner/src/main.rs:101`),
 `maxToolCalls=10`/`maxRunWallclockMs=300s`(`agent-runtime.ts:284-288`), no-progress
-감지 보유·ping-pong 부재(`tool-loop-progress.ts`), `muse mcp serve` read-only 3툴
+감지 보유·ping-pong 부재(`tool-loop-progress.ts`), `muse mcp serve` read-only 3툴 *(2026-07-30 기준 6툴 — D4-S1a에서 `propose_action` 추가, 아래 참조)*
 (`commands-mcp-serve.ts`), authored-skill-store 성숙(eviction/subsumption/quarantine/
 snapshot/coverage-gate).
 
