@@ -132,6 +132,7 @@ export type {
 export {
   EXPERIENCE_LEARNING_PROMOTION_MIN_CASES,
   ExperienceLearningPromotionError,
+  projectVerifiedExperienceLearningPromotionHealth,
   promoteExperienceLearningCandidate,
   rollbackExperienceLearningPromotion
 } from "./experience-learning-promotion.js";

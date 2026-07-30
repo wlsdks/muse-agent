@@ -1,4 +1,8 @@
-import { sha256Hex } from "@muse/shared";
+import {
+  assertPlainDataTree,
+  sha256Hex,
+  type AdaptationLoopHealthInput
+} from "@muse/shared";
 
 import {
   EXPERIENCE_LEARNING_SCOPES,
@@ -200,6 +204,29 @@ export async function rollbackExperienceLearningPromotion(
     }));
     if (!applied) throw new ExperienceLearningPromotionError("stale-active-policy");
     return rollbackReceipt;
+  });
+}
+
+/**
+ * Projects only a fully recomputed promotion receipt into the cross-loop health
+ * contract. This grants no mutation authority and never creates approval.
+ */
+export function projectVerifiedExperienceLearningPromotionHealth(
+  value: unknown
+): AdaptationLoopHealthInput | undefined {
+  try {
+    assertPlainDataTree(value, "experienceLearningPromotionReceipt");
+  } catch {
+    return undefined;
+  }
+  const receipt = value as unknown as ExperienceLearningPromotionReceipt;
+  if (!isValidPromotionReceipt(receipt)) {
+    return undefined;
+  }
+  return Object.freeze({
+    evidenceId: receipt.promotionId,
+    evidenceVerified: true,
+    status: "promoted"
   });
 }
 

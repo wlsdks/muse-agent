@@ -5,6 +5,7 @@ import {
   compareExperienceLearningReplay,
   ExperienceLearningPromotionError,
   fingerprintContinuityPolicy,
+  projectVerifiedExperienceLearningPromotionHealth,
   promoteExperienceLearningCandidate,
   proposeExperienceLearningCandidate,
   rollbackExperienceLearningPromotion,
@@ -128,6 +129,11 @@ describe("experience learning promotion", () => {
     expect(receipt.activeBehaviorDigestAfter).not.toBe(receipt.activeBehaviorDigestBefore);
     expect(receipt.activeBehaviorDigestAfter).toBe(fingerprintContinuityPolicy(receipt.policyAfter));
     expect(policy.current()).toEqual(receipt.policyAfter);
+    expect(projectVerifiedExperienceLearningPromotionHealth(receipt)).toEqual({
+      evidenceId: receipt.promotionId,
+      evidenceVerified: true,
+      status: "promoted"
+    });
   });
 
   it("fails before mutation for insufficient, regressing, tampered, expired, or mismatched evidence", async () => {
@@ -249,5 +255,27 @@ describe("experience learning promotion", () => {
       gate,
       policy.swap
     )).rejects.toMatchObject({ code: "invalid-input" });
+  });
+
+  it("rejects tampered or active promotion evidence without invoking caller code", async () => {
+    const input = promotionInput();
+    const policy = inMemoryCas(CURRENT_POLICY);
+    const receipt = await promoteExperienceLearningCandidate(input, gate, policy.swap);
+    expect(projectVerifiedExperienceLearningPromotionHealth({
+      ...receipt,
+      promotionId: "learning_promotion_forged"
+    })).toBeUndefined();
+
+    let calls = 0;
+    const accessor = { ...receipt } as Record<string, unknown>;
+    Object.defineProperty(accessor, "promotionId", {
+      enumerable: true,
+      get: () => {
+        calls += 1;
+        return receipt.promotionId;
+      }
+    });
+    expect(projectVerifiedExperienceLearningPromotionHealth(accessor)).toBeUndefined();
+    expect(calls).toBe(0);
   });
 });
