@@ -116,7 +116,7 @@ Tested with throwaway /tmp CSVs (exp.csv: category,amount; weight.csv: kg).
 HIGH — features entirely MISSING from feature docs:
 1. **`muse anomaly`** — NOT in FEATURES.md, SYSTEM-MAP.md, or README. Fully shipped + ran live (robust most-unusual-days). No mention anywhere.
 2. **`muse recap`** (evening recap) — NOT in FEATURES.md, SYSTEM-MAP.md, or README. Shipped + ran live.
-3. **Calendar section is badly under-documented.** FEATURES.md §일정 lists only 4 items (multi-provider, CRUD, free-time, .ics export). MISSING: `conflicts` (double-booking detection incl. all-day handling), `focus` (longest free block, Leroy 2009), `block` (time-blocking, Gollwitzer 1999), `tomorrow`/`this-week`/`show`, `import` (bulk .ics), and the **`--remind` event→reminder linkage** (a notable cross-store feature, only in MEMORY notes, not user docs). SYSTEM-MAP §4 same gap.
+3. **Calendar section is badly under-documented.** FEATURES.md's calendar section lists only 4 items (multi-provider, CRUD, free-time, .ics export). MISSING: `conflicts` (double-booking detection incl. all-day handling), `focus` (longest free block, Leroy 2009), `block` (time-blocking, Gollwitzer 1999), `tomorrow`/`this-week`/`show`, `import` (bulk .ics), and the **`--remind` event→reminder linkage** (a notable cross-store feature, only in MEMORY notes, not user docs). SYSTEM-MAP §4 same gap.
 4. **Tasks analytics missing from FEATURES.md:** `tasks flow` (Little's Law), `tasks next` (EDF + aging), `tasks open-loops` (Zeigarnik). FEATURES lists only add/CRUD/urgent/due/tag.
 5. **Contacts analytics partly missing from FEATURES.md:** `dupes`, `overdue`, `link`, `network`, `related` (PMI), encrypt/decrypt. FEATURES §연락처 covers only store/import/birthday/recipient-resolution.
 

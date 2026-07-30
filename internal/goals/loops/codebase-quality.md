@@ -229,7 +229,7 @@ ratchet: testFiles 928 · fabrication 0 · groundedSurfaces 27 · isRecord dups 
   canonical one to leaf @muse/shared and migrated the 3 apps/cli copies (commands-doctor +
   chat-export-ingest import it; credential-store re-exports it for its importers). Semantically
   identical guard. Unblocks the deferred commands-doctor decompose.
-- **Why:** "흩어진 책임 cohere" — a generic guard belongs in shared, not 11 hand-rolled copies.
+- **Why:** "cohere the scattered responsibility" — a generic guard belongs in shared, not 11 hand-rolled copies.
 - **Review point + VERIFIER FIX:** the ④b judge first FALSE-FAILed: it ran `git diff main`, but
   this branch lags a fast-moving main (8 loops), so main's NEWER commits (buildDiskContents etc.)
   showed as if this slice DELETED them. Re-judged against the COMMIT ONLY (`git show ad54874b`) →

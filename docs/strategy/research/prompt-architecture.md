@@ -68,7 +68,7 @@ shared-scope channels force neutral register and scope-filter D1 out.
 6. Grounding gates stay deterministic post-generation code — never in-prompt.
 
 Future personalization blocks (tone-from-corrections, time-of-day brevity,
-반말/존댓말 register) each land as: registry.register(layer) + snapshot +
+반말/존댓말 (informal/formal) register) each land as: registry.register(layer) + snapshot +
 one eval case. Zero new hardcoded identity strings, ever.
 
 ## S3 — user-manageable prompt surface (admin/web, 진안 2026-07-11)

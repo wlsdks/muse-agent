@@ -65,7 +65,7 @@ probe, not code reading. The repo's standing pattern:
   fix (or inject the inverse mutation) and confirm the test goes RED, then
   restore. A test that passes with the fix removed is vacuous — the loop
   journals log this check on every fire (`RED → GREEN` / "뮤테이션 RED
-  확인"), and evaluator judges have repeatedly caught tests that skipped it.
+  확인" [mutation RED confirmed]), and evaluator judges have repeatedly caught tests that skipped it.
   When the RED direction is deterministic by construction (the assertion
   literally names the value the mutation flips), reasoning it through is
   acceptable — say so explicitly instead of claiming a run.
