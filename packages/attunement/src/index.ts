@@ -82,13 +82,17 @@ export {
   EXPERIENCE_LEARNING_MAX_TTL_MS,
   EXPERIENCE_LEARNING_SCOPES,
   EXPERIENCE_SOURCE_RUN_CLASSES,
+  EXPERIENCE_TIMING_ADJUSTMENTS,
+  parseExperienceLearningChange,
   proposeExperienceLearningCandidate
 } from "./experience-learning-candidate.js";
 export type {
+  ExperienceLearningChange,
   ExperienceLearningCandidate,
   ExperienceLearningScope,
   ExperienceSourceRun,
   ExperienceSourceRunClass,
+  ExperienceTimingAdjustment,
   ExplicitExperienceOutcome,
   ProposeExperienceLearningCandidateInput
 } from "./experience-learning-candidate.js";

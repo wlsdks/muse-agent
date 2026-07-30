@@ -2,6 +2,7 @@ import { sha256Hex } from "@muse/shared";
 
 import {
   EXPERIENCE_LEARNING_SCOPES,
+  parseExperienceLearningChange,
   proposeExperienceLearningCandidate,
   type ExperienceLearningCandidate
 } from "./experience-learning-candidate.js";
@@ -37,6 +38,7 @@ export interface ExperienceLearningPolicyTransition {
   readonly activeBehaviorDigestBefore: string;
   readonly candidateId: string;
   readonly proposedBehavior: string;
+  readonly proposedChange: ExperienceLearningCandidate["proposedChange"];
   readonly replayInputHash: string;
   readonly scope: ExperienceLearningCandidate["scope"];
 }
@@ -112,6 +114,7 @@ export async function promoteExperienceLearningCandidate(
       transition.scope.kind,
       transition.scope.threadId,
       transition.proposedBehavior,
+      transition.proposedChange,
       input.approval.approvedAt,
       input.appliedAt
     ]))}`;
@@ -181,6 +184,7 @@ function validatePromotion(input: ExperienceLearningPromotionInput): ExperienceL
     outcome: candidate.outcome,
     proposedAt: candidate.proposedAt,
     proposedBehavior: candidate.proposedBehavior,
+    proposedChange: candidate.proposedChange,
     scope: candidate.scope,
     sourceRun: candidate.sourceRun
   });
@@ -218,13 +222,15 @@ function validatePromotion(input: ExperienceLearningPromotionInput): ExperienceL
   const activeBehaviorDigestAfter = computePromotedDigest(
     candidate.activeBehaviorDigestBefore,
     candidate.scope,
-    candidate.proposedBehavior
+    candidate.proposedBehavior,
+    candidate.proposedChange
   );
   return Object.freeze({
     activeBehaviorDigestAfter,
     activeBehaviorDigestBefore: candidate.activeBehaviorDigestBefore,
     candidateId: candidate.candidateId,
     proposedBehavior: candidate.proposedBehavior,
+    proposedChange: Object.freeze({ ...candidate.proposedChange }) as ExperienceLearningCandidate["proposedChange"],
     replayInputHash: recomputedReplay.inputHash,
     scope: Object.freeze({ ...candidate.scope })
   });
@@ -267,6 +273,7 @@ function isValidPromotionReceipt(value: ExperienceLearningPromotionReceipt): boo
     "promotionApplied",
     "promotionId",
     "proposedBehavior",
+    "proposedChange",
     "replayInputHash",
     "schemaVersion",
     "scope"
@@ -288,15 +295,19 @@ function isValidPromotionReceipt(value: ExperienceLearningPromotionReceipt): boo
     || !isExactRecord(value.scope, ["kind", "threadId"])
     || !EXPERIENCE_LEARNING_SCOPES.includes(value.scope.kind as ExperienceLearningCandidate["scope"]["kind"])
     || typeof value.scope.threadId !== "string"
-    || value.scope.threadId.length === 0
+    || value.scope.threadId.length === 0) {
+    return false;
+  }
+  const scope = value.scope as unknown as ExperienceLearningCandidate["scope"];
+  const proposedChange = parseExperienceLearningChange(value.proposedChange, scope.kind);
+  if (!proposedChange
     || Date.parse(value.approvedAt) > Date.parse(value.appliedAt)
     || value.activeBehaviorDigestAfter !== computePromotedDigest(
       value.activeBehaviorDigestBefore,
-      value.scope as unknown as ExperienceLearningCandidate["scope"],
-      value.proposedBehavior
-    )) {
-    return false;
-  }
+      scope,
+      value.proposedBehavior,
+      proposedChange
+    )) return false;
   const expectedId = `learning_promotion_${sha256Hex(JSON.stringify([
     value.candidateId,
     value.replayInputHash,
@@ -305,6 +316,7 @@ function isValidPromotionReceipt(value: ExperienceLearningPromotionReceipt): boo
     value.scope.kind,
     value.scope.threadId,
     value.proposedBehavior,
+    proposedChange,
     value.approvedAt,
     value.appliedAt
   ]))}`;
@@ -314,14 +326,16 @@ function isValidPromotionReceipt(value: ExperienceLearningPromotionReceipt): boo
 function computePromotedDigest(
   activeBehaviorDigestBefore: string,
   scope: ExperienceLearningCandidate["scope"],
-  proposedBehavior: string
+  proposedBehavior: string,
+  proposedChange: ExperienceLearningCandidate["proposedChange"]
 ): string {
   return sha256Hex(JSON.stringify([
     "muse.experience-learning-promotion.v1",
     activeBehaviorDigestBefore,
     scope.kind,
     scope.threadId,
-    proposedBehavior
+    proposedBehavior,
+    proposedChange
   ]));
 }
 

@@ -1,6 +1,15 @@
 import { sha256Hex } from "@muse/shared";
 
-import { OUTCOMES, type ContinuityOutcome } from "./types.js";
+import {
+  DETAIL_LEVELS,
+  NEXT_STEP_PRESENTATIONS,
+  OUTCOMES,
+  SUPPRESSION_MODES,
+  type ContinuityDetailLevel,
+  type ContinuityOutcome,
+  type ContinuitySuppression,
+  type NextStepPresentation
+} from "./types.js";
 
 const DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
 const ID_MAX = 160;
@@ -13,6 +22,32 @@ export const EXPERIENCE_LEARNING_SCOPES = [
   "thread-suppression"
 ] as const;
 export type ExperienceLearningScope = (typeof EXPERIENCE_LEARNING_SCOPES)[number];
+
+export const EXPERIENCE_TIMING_ADJUSTMENTS = [
+  "increase-cooldown",
+  "increase-stable-focus"
+] as const;
+export type ExperienceTimingAdjustment = (typeof EXPERIENCE_TIMING_ADJUSTMENTS)[number];
+
+/**
+ * The complete adaptive authority surface. It can only alter presentation,
+ * suppression, or make proactive timing more conservative; it has no fields
+ * for permission, source, recipient, retention, or external actions.
+ */
+export type ExperienceLearningChange =
+  | Readonly<{
+      detail: ContinuityDetailLevel;
+      kind: "thread-display";
+      nextStep: NextStepPresentation;
+    }>
+  | Readonly<{
+      kind: "thread-suppression";
+      suppression: ContinuitySuppression;
+    }>
+  | Readonly<{
+      adjustment: ExperienceTimingAdjustment;
+      kind: "thread-timing";
+    }>;
 
 export const EXPERIENCE_SOURCE_RUN_CLASSES = ["controlled", "organic-production"] as const;
 export type ExperienceSourceRunClass = (typeof EXPERIENCE_SOURCE_RUN_CLASSES)[number];
@@ -40,6 +75,7 @@ export interface ProposeExperienceLearningCandidateInput {
   readonly outcome?: ExplicitExperienceOutcome;
   readonly proposedAt: string;
   readonly proposedBehavior: string;
+  readonly proposedChange: ExperienceLearningChange;
   readonly scope: {
     readonly kind: ExperienceLearningScope;
     readonly threadId: string;
@@ -59,6 +95,7 @@ export interface ExperienceLearningCandidate {
   readonly pipeline: "collaboration-policy";
   readonly proposedAt: string;
   readonly proposedBehavior: string;
+  readonly proposedChange: ExperienceLearningChange;
   readonly scope: {
     readonly kind: ExperienceLearningScope;
     readonly threadId: string;
@@ -84,6 +121,7 @@ export function proposeExperienceLearningCandidate(
     "outcome",
     "proposedAt",
     "proposedBehavior",
+    "proposedChange",
     "scope",
     "sourceRun"
   ])) return undefined;
@@ -93,6 +131,7 @@ export function proposeExperienceLearningCandidate(
   if (!isSourceRun(sourceRun) || !isExplicitOutcome(outcome)) return undefined;
   if (sourceRun.runId !== outcome.runId) return undefined;
   if (!isDigest(input.activeBehaviorDigest)) return undefined;
+  const proposedChange = parseExperienceLearningChange(input.proposedChange, input.scope?.kind);
   if (!isBoundedText(input.experienceId, ID_MAX)
     || !isBoundedText(input.proposedBehavior, TEXT_MAX)
     || !isBoundedText(input.expectedBenefit, TEXT_MAX)
@@ -102,7 +141,8 @@ export function proposeExperienceLearningCandidate(
     || Date.parse(input.expiresAt) - Date.parse(input.proposedAt) > EXPERIENCE_LEARNING_MAX_TTL_MS
     || Date.parse(outcome.recordedAt) > Date.parse(input.proposedAt)
     || Date.parse(sourceRun.completedAt) > Date.parse(outcome.recordedAt)
-    || !isScope(input.scope)) {
+    || !isScope(input.scope)
+    || !proposedChange) {
     return undefined;
   }
 
@@ -122,6 +162,7 @@ export function proposeExperienceLearningCandidate(
     scopeCopy.kind,
     scopeCopy.threadId,
     input.proposedBehavior,
+    proposedChange,
     input.expectedBenefit,
     input.proposedAt,
     input.expiresAt
@@ -138,10 +179,53 @@ export function proposeExperienceLearningCandidate(
     pipeline: "collaboration-policy",
     proposedAt: input.proposedAt,
     proposedBehavior: input.proposedBehavior,
+    proposedChange,
     scope: scopeCopy,
     sourceRun: sourceCopy,
     status: "proposed"
   });
+}
+
+export function parseExperienceLearningChange(
+  value: unknown,
+  expectedKind?: ExperienceLearningScope
+): ExperienceLearningChange | undefined {
+  if (!isExactRecord(value, expectedKind === "thread-display"
+    ? ["detail", "kind", "nextStep"]
+    : expectedKind === "thread-suppression"
+      ? ["kind", "suppression"]
+      : expectedKind === "thread-timing"
+        ? ["adjustment", "kind"]
+        : [])) {
+    return undefined;
+  }
+  if (expectedKind === "thread-display"
+    && value.kind === expectedKind
+    && DETAIL_LEVELS.includes(value.detail as ContinuityDetailLevel)
+    && NEXT_STEP_PRESENTATIONS.includes(value.nextStep as NextStepPresentation)) {
+    return Object.freeze({
+      detail: value.detail as ContinuityDetailLevel,
+      kind: expectedKind,
+      nextStep: value.nextStep as NextStepPresentation
+    });
+  }
+  if (expectedKind === "thread-suppression"
+    && value.kind === expectedKind
+    && SUPPRESSION_MODES.includes(value.suppression as ContinuitySuppression)) {
+    return Object.freeze({
+      kind: expectedKind,
+      suppression: value.suppression as ContinuitySuppression
+    });
+  }
+  if (expectedKind === "thread-timing"
+    && value.kind === expectedKind
+    && EXPERIENCE_TIMING_ADJUSTMENTS.includes(value.adjustment as ExperienceTimingAdjustment)) {
+    return Object.freeze({
+      adjustment: value.adjustment as ExperienceTimingAdjustment,
+      kind: expectedKind
+    });
+  }
+  return undefined;
 }
 
 function isSourceRun(value: unknown): value is ExperienceSourceRun {

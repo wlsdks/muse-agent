@@ -24,6 +24,10 @@ function candidate(): ExperienceLearningCandidate {
     },
     proposedAt: "2026-07-29T03:06:00.000Z",
     proposedBehavior: "Offer only during an explicit review window.",
+    proposedChange: {
+      adjustment: "increase-cooldown",
+      kind: "thread-timing"
+    },
     scope: { kind: "thread-timing", threadId: "thread-1" },
     sourceRun: {
       behaviorDigest: digest("b"),

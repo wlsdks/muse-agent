@@ -33,6 +33,10 @@ function candidate(): ExperienceLearningCandidate {
     },
     proposedAt: "2026-07-29T03:06:00.000Z",
     proposedBehavior: "Offer only during an explicit review window.",
+    proposedChange: {
+      adjustment: "increase-cooldown",
+      kind: "thread-timing"
+    },
     scope: { kind: "thread-timing", threadId: "thread-1" },
     sourceRun: {
       behaviorDigest: digest("b"),
@@ -96,6 +100,10 @@ describe("experience learning promotion", () => {
       authority: "owner-explicit",
       candidateId: input.candidate.candidateId,
       promotionApplied: true,
+      proposedChange: {
+        adjustment: "increase-cooldown",
+        kind: "thread-timing"
+      },
       replayInputHash: input.replay.inputHash,
       schemaVersion: 1
     });
@@ -189,6 +197,18 @@ describe("experience learning promotion", () => {
     )).rejects.toMatchObject({ code: "invalid-input" });
     await expect(rollbackExperienceLearningPromotion(
       { ...receipt, proposedBehavior: "Tampered behavior." },
+      "2026-07-29T03:10:00.000Z",
+      gate,
+      policy.swap
+    )).rejects.toMatchObject({ code: "invalid-input" });
+    await expect(rollbackExperienceLearningPromotion(
+      {
+        ...receipt,
+        proposedChange: {
+          adjustment: "increase-stable-focus",
+          kind: "thread-timing"
+        }
+      },
       "2026-07-29T03:10:00.000Z",
       gate,
       policy.swap

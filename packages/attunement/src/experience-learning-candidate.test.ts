@@ -23,6 +23,10 @@ function input(): ProposeExperienceLearningCandidateInput {
     },
     proposedAt: "2026-07-29T03:06:00.000Z",
     proposedBehavior: "Offer this thread only during an explicit review window",
+    proposedChange: {
+      adjustment: "increase-cooldown",
+      kind: "thread-timing"
+    },
     scope: {
       kind: "thread-timing",
       threadId: "thread-work"
@@ -65,6 +69,10 @@ describe("experience learning candidate proposal", () => {
         runId: "run-17"
       },
       pipeline: "collaboration-policy",
+      proposedChange: {
+        adjustment: "increase-cooldown",
+        kind: "thread-timing"
+      },
       scope: {
         kind: "thread-timing",
         threadId: "thread-work"
@@ -81,15 +89,37 @@ describe("experience learning candidate proposal", () => {
     expect(Object.isFrozen(candidate?.sourceRun)).toBe(true);
     expect(Object.isFrozen(candidate?.outcome)).toBe(true);
     expect(Object.isFrozen(candidate?.scope)).toBe(true);
+    expect(Object.isFrozen(candidate?.proposedChange)).toBe(true);
 
     (mutable.sourceRun as { runId: string }).runId = "mutated-run";
     (mutable.outcome as { outcome: string }).outcome = "used";
     (mutable.scope as { threadId: string }).threadId = "other-thread";
+    (mutable.proposedChange as { adjustment: string }).adjustment = "increase-stable-focus";
     expect(candidate).toMatchObject({
       outcome: { outcome: "rejected", runId: "run-17" },
+      proposedChange: { adjustment: "increase-cooldown" },
       scope: { threadId: "thread-work" },
       sourceRun: { runId: "run-17" }
     });
+  });
+
+  it("accepts only an exact typed change matching the declared scope", () => {
+    expect(proposeExperienceLearningCandidate({
+      ...input(),
+      proposedChange: { kind: "thread-display", detail: "compact", nextStep: "direct" }
+    })).toBeUndefined();
+    expect(proposeExperienceLearningCandidate({
+      ...input(),
+      proposedChange: {
+        adjustment: "increase-cooldown",
+        kind: "thread-timing",
+        permission: "allow-send"
+      }
+    } as never)).toBeUndefined();
+    expect(proposeExperienceLearningCandidate({
+      ...input(),
+      proposedChange: { adjustment: "decrease-cooldown", kind: "thread-timing" }
+    } as never)).toBeUndefined();
   });
 
   it("rejects unclassified receipts, extra model fields, and invalid time authority", () => {
@@ -140,6 +170,13 @@ describe("experience learning candidate proposal", () => {
     expect(proposeExperienceLearningCandidate({
       ...input(),
       expiresAt: "2026-07-31T00:00:00.000Z"
+    })!.candidateId).not.toBe(baseline.candidateId);
+    expect(proposeExperienceLearningCandidate({
+      ...input(),
+      proposedChange: {
+        adjustment: "increase-stable-focus",
+        kind: "thread-timing"
+      }
     })!.candidateId).not.toBe(baseline.candidateId);
   });
 });
