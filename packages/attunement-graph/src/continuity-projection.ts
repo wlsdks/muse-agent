@@ -586,7 +586,7 @@ export function projectContinuityState(
   const interactions = state.interactionReceipts
     .filter((receipt) => receipt.threadId === thread.id)
     .sort(compareById);
-  const policyAudits = state.experienceLearningPolicyAudits
+  const policyAudits = (state.experienceLearningPolicyAudits ?? [])
     .filter((audit) => audit.threadId === thread.id)
     .sort(compareById);
   const resets = state.resetReceipts
