@@ -3,7 +3,7 @@ title: 에이전트 하네스 운영 계약 (Agent Harness — Operating Contrac
 audience: [AI 에이전트, 개발자, 기획자]
 purpose: 이 파일을 읽은 에이전트가 "하네스대로" 일하게 만드는 진입점 — 역할·핸드오프·게이트·검증을 한 장으로 강제
 format: AGENTS.md (vendor-neutral, 어떤 에이전트/도구든 읽음)
-updated: 2026-07-19
+updated: 2026-07-30
 ---
 
 # 에이전트 하네스 — 운영 계약
@@ -22,27 +22,28 @@ updated: 2026-07-19
 
 ## 0. 한 줄 원칙
 
-**작업을 역할로 쪼개고, 양식 한 장으로 넘기고, 매 단계 fail-closed 게이트로 막고, 만든 자와
-판정하는 자를 분리하고, 그게 실제로 되는지 검증한다.** 불확실하면 진행이 아니라 멈춤이 기본.
+**먼저 위험을 분류하고, FAST S/M은 얇게 검토하며, FULL은 역할·핸드오프·독립 평가로 분리하고,
+모든 경로를 해당 fail-closed 게이트로 검증한다.** 불확실하면 FAST로 추정하지 말고 FULL로 승격한다.
 
 ## 1. 한 작업이 흐르는 길 (이대로 돌리세요)
 
 ```
-요청 ─▶ [PLAN] 헤더에 WHAT+WHY+수용기준 ──(계획 게이트)──▶ [BUILD] 워커 ──▶ [EVAL] 독립 평가자
-                                                                              │
-                                        PASS ─▶ [LEARN] 커밋 바디 write-back ─▶ 완료
-                                        FAIL ─▶ 피드백 → [BUILD] (반복 한도까지)
+요청 ─▶ [RISK]
+          ├─ FAST S/M ─▶ compact card ─▶ BUILD ─▶ named checks + adversarial self-check
+          │                                      └─ controller diff review ─▶ thin-review
+          └─ FULL ─▶ PLAN ─▶ BUILD ─▶ 독립 EVAL ─┬─ PASS ─▶ 완료
+                                                  └─ FAIL ─▶ BUILD (반복 한도까지)
 ```
 
-필수 역할은 **워커**와 **독립 평가자** 둘뿐입니다(§2). PLAN·LEARN은 별도 에이전트가 아니라
+FULL 티어의 필수 역할은 **워커**와 **독립 평가자** 둘뿐입니다(§2). PLAN·LEARN은 별도 에이전트가 아니라
 **인라인 필드** — 위임 전 헤더에 WHAT+WHY+수용 기준을 적고, 완료 후 학습/write-back은 커밋 바디에
 적습니다([muse-dev-patterns §8](../.claude/skills/muse-dev-patterns/SKILL.md)). 별도 플래너 패스 +
 무거운 다단 핸드오프로 가는 **전체 의식은 L-size 또는 보안급 슬라이스 전용**입니다(§2).
 
-- 한 작업은 **핸드오프 양식 한 장**([handoff-template](core/handoff-template.md))을 열며 시작합니다
-  (사소한 단일 단계 작업은 §1.5 "그냥 작업"으로 양식 생략 가능). 위임할 때는 **양식 파일의 경로를
-  반드시 함께** 넘깁니다 — 컨텍스트가 리셋된 다음 역할이 읽을 유일한 입력이므로.
-- 각 단계는 자기 칸만 채우고, 다음 단계는 **그 양식만** 입력으로 받습니다(컨텍스트 리셋).
+- FULL 티어 작업은 **핸드오프 양식 한 장**([handoff-template](core/handoff-template.md))을 열며
+  시작합니다. FAST S/M은 §1.6 compact card만 채우고 별도 파일·컨텍스트 리셋을 생략합니다. FULL
+  티어를 위임할 때는 **양식 파일의 경로를 반드시 함께** 넘깁니다.
+- FULL의 각 단계는 자기 칸만 채우고, 다음 단계는 **그 양식만** 입력으로 받습니다(컨텍스트 리셋).
 - 단계 사이 화살표마다 **게이트**를 통과해야 다음으로 갑니다(§3).
 
 ## 1.5 오케스트레이션 모드 먼저 고르기
@@ -57,10 +58,29 @@ updated: 2026-07-19
 기본은 **단일 세션**. 독립 스레드로 분해될 때만 다중으로(멀티에이전트 4~15배 토큰). **어느 모드든 아래
 역할·게이트·핸드오프·검증 규약은 그대로 적용**한다.
 
+## 1.6 FAST S/M — 안전한 내부 작업의 기본 빠른 경로
+
+다음 조건을 **모두** 만족하면 FAST S/M입니다.
+
+- active 작업이 20분 이내이고, 한 package의 직접 소유 파일 최대 3개에 국한된다.
+- deterministic local contract이며 실패 시 해당 diff만 되돌리면 복구된다.
+- 사용자 노출 문자열/i18n, public API·CLI·UI 계약, 영속 포맷·migration·credential, 보안·권한·guard,
+  외부 효과, browser/computer/audio, process·scheduler·concurrency, harness gate, release를 건드리지 않는다.
+
+FAST S/M은 별도 handoff 파일·planner·새 evaluator context를 만들지 않습니다. 작업 전에 아래 compact
+card를 채우고, 워커가 named test + affected typecheck/lint, 명시적 적대적 자가점검을 수행한 뒤
+**controller/lead**(기본: 작업을 활성화한 현재 세션)가 current diff를 훑어 `review-tier:
+thin-review`로 기록합니다. FAST에서는 controller/lead가 워커와 같아도 되지만 이것을 **독립 PASS라고 부르지
+않습니다**. 범위가 커지거나 위 제외 경계가 발견되거나 BUILD↔review 한 번에서 material progress가
+없으면 즉시 FULL 티어로 승격합니다.
+
+`Task/goal+missing delta · acceptance · scope/out-of-scope · named verify command · active/command timeout ·
+risk tier · rollback/no-op`
+
 ## 2. 역할 — 필수 2개 + 인라인 필드 + 선택
 
-계약이 요구하는 역할은 **워커**와 **독립 평가자** 둘뿐입니다. **만든 자 ≠ 판정하는 자**는 항상
-지킵니다 — 별도 인스턴스를 띄울 수단이 없으면(순수 단일 세션): **핸드오프 양식만 입력으로 받는 새
+FULL 티어가 요구하는 역할은 **워커**와 **독립 평가자** 둘뿐입니다. FULL에서는 **만든 자 ≠ 판정하는
+자**를 항상 지킵니다 — 별도 인스턴스를 띄울 수단이 없으면(순수 단일 세션): **핸드오프 양식만 입력으로 받는 새
 컨텍스트** — 빌드 대화 이력이 전혀 없는 새 세션/새 대화여야 하며, 같은 세션 안의 "다시 보기"는
 해당 안 됨 — 에서 평가를 돌리고, 그마저 불가하면 자기 채점 PASS는 무효 — 평가 칸에 "미분리
 자기평가"라 적고 사람 검토를 요청합니다.
@@ -68,7 +88,7 @@ updated: 2026-07-19
 | 역할 | 필수? | 한 일 | 프롬프트 |
 |---|---|---|---|
 | 워커(빌더) | **필수** | WHAT+WHY+수용 기준을 받아 결과물 생성 | [role-prompts](core/role-prompts.md) |
-| 독립 평가자 | **필수** | **다른 인스턴스**로 독립 판정(PASS/FAIL+근거) | 〃 |
+| 독립 평가자 | **FULL 필수** | **다른 인스턴스**로 독립 판정(PASS/FAIL+근거) | 〃 |
 | 플래너 | 인라인 필드 | 위임 전 헤더에 WHAT+WHY+수용 기준을 적음(별도 패스 아님) | 〃 |
 | 큐레이터/학습자 | 인라인 필드 | 완료 후 커밋 바디에 학습/write-back을 적음(§muse-dev-patterns §8) | 〃 |
 | 오케스트레이터 | 선택(L-size) | 맥락·계획 소유, 여러 워커 위임, 결과 종합 | 〃 |
@@ -79,9 +99,12 @@ updated: 2026-07-19
 
 ## 3. 게이트 (fail-closed — 이게 핵심 안전장치)
 
-- **계획 게이트(앞단)** — 수용 기준이 비었거나 모순이면 BUILD 진입 거부. 판정 주체는
-  **오케스트레이터 또는 평가자** — 플래너 자신이 자기 계획을 통과시키지 않는다.
-- **완료 게이트(뒷단)** — 평가자 PASS(+가능하면 자동 채점) 없이는 완료 거부.
+- **계획 게이트(앞단)** — 수용 기준이 비었거나 모순이면 BUILD 진입 거부. FAST는 §1.6 조건을
+  모두 기계적으로 충족하고 compact card가 완전·무모순일 때 controller/lead가 진입시키며,
+  불확실하면 FULL로 승격한다. FULL의 판정 주체는 **오케스트레이터 또는 평가자**이고 플래너
+  자신이 자기 계획을 통과시키지 않는다.
+- **완료 게이트(뒷단)** — FULL은 평가자 PASS(+가능하면 자동 채점) 없이는 완료 거부. FAST S/M은
+  named 검증 + 적대적 자가점검 + controller diff review가 모두 있어야 `thin-review`로 완료한다.
 - **권한 게이트** — 도구를 위험 등급(읽기/쓰기/실행/외부전송/금지)으로 가르고, 외부 전송은
   **자동 금지·초안 먼저·사람 확인**, 금융/결제는 영구 거부. 단 프로젝트 소유자가 버전 관리된
   호스트 규약에서 목적지·검증·실패 한계를 좁혀 standing authorization한 정상 Git push만 그 범위
@@ -109,10 +132,11 @@ Thoughtworks "Guides & Sensors"):
 ## 3.6 평가자가 필수인 경우 — 리스크 티어링
 
 독립 평가자(별도 인스턴스)는 diff가 다음 중 하나를 건드리면 **무조건 필수**입니다: 사용자 노출
-문자열/i18n, 온디스크·영속 포맷(스토어·체크포인트·자격증명), 광고된 플래그/계약/API 동작,
-보안·권한·외부전송 경로, 되돌릴 수 없는 것. 내부 리팩터/타입 배관/순수 테스트 변경처럼 가벼운
+문자열/i18n, 온디스크·영속 포맷(스토어·체크포인트·자격증명), 광고된 public 플래그/CLI/API/UI 계약,
+보안·권한·guard·외부전송 경로, process·scheduler·concurrency, harness gate, 되돌릴 수 없는 것,
+release. 내부 리팩터/타입 배관/순수 테스트 변경처럼 §1.6을 전부 만족하는
 경우엔 더 얇은 티어로 충분합니다: 워커가 명시적 적대적 자가점검("이게 틀리는 입력을 찾아라")을
-하고 오케스트레이터가 diff를 훑습니다. **어느 티어를 썼는지 커밋 바디에 반드시 적습니다** — 생략
+하고 controller/lead가 diff를 훑습니다. **어느 티어를 썼는지 커밋 바디에 반드시 적습니다** — 생략
 가능한 의식이 아닙니다. 근거: 한 세션에서 실제 평가자가 잡은 4건 전부가 **조용히 실패하는 부류**
 (데이터 손상, 죽은 로케일 문자열, 거짓말하는 플래그, 타이밍 버그)였습니다 — green 테스트 스위트가
 드러내지 못하는 바로 그 부류입니다.
@@ -137,7 +161,11 @@ coverage 이름일 뿐 현실성 증명이 아닙니다. 출처인 immutable `da
 `executionEvidence`를 독립 회계하고, factual interaction receipt를 feedback/outcome/policy 승격으로
 환산하지 않습니다.
 
-## 4. 토대 (모든 단계에 적용)
+## 4. 토대 (progressive disclosure)
+
+모든 작업은 이 entrypoint와 선택한 surface 문서만 읽습니다. 아래 reference는 해당 위험·기능을 실제로
+건드릴 때만 추가로 읽습니다. `golden-set`, `pass^k`, runner spec, 전체 architecture/observability
+문서는 harness/runtime/eval 슬라이스와 phase gate용이지, 일반 FAST S/M의 선행 독서가 아닙니다.
 
 - **루프 한도** — 횟수·시간·예산 하드캡(반복 2~3회 상한). → [loop-budget](reference/loop-budget.md).
 - **메모리** — 내구성 사실만 장기 저장, 일회성 드롭, 약한 추론 보류. → [memory-layers](reference/memory-layers.md).
@@ -149,7 +177,8 @@ coverage 이름일 뿐 현실성 증명이 아닙니다. 출처인 immutable `da
 
 ## 5. 검증 (이게 진짜 되는지 — 안 하면 한 걸로 안 침)
 
-- **개별 작업의 "완료"는 §3 완료 게이트가 판정**합니다(평가자 PASS + 검증 방법 실제 실행).
+- **개별 작업의 "완료"는 §3 완료 게이트가 판정**합니다(FULL은 독립 PASS, FAST S/M은
+  `thin-review`; 둘 다 명시한 검증 방법을 실제 실행).
   아래 골든셋·pass^k는 *하네스 자체*의 신뢰도 검증입니다 — 매 작업마다 요구되는 것이 아닙니다.
 - 대표 과제 묶음([golden-set](reference/golden-set.md))으로 결과+경로를 채점하고, 같은 과제를 여러 번 돌려
   **pass^k**(매번 통과)로 비결정성 내성을 확인합니다. (최소 설치라 reference/가 없으면 핵심만:
@@ -166,5 +195,6 @@ coverage 이름일 뿐 현실성 증명이 아닙니다. 출처인 immutable `da
 
 ---
 
-> 요약: **읽었으면 따르세요.** 역할로 쪼개고 → 양식으로 넘기고 → 게이트로 막고 → 분리해서
-> 검증한다. 세부는 위 링크들이, 설치는 [INSTALL](INSTALL.md)이 풉니다.
+> 요약: **읽었으면 따르세요.** 위험을 먼저 분류하고 → FAST는 compact card와 `thin-review`로,
+> FULL은 역할·양식·독립 평가로 → 해당 게이트를 실제 검증합니다. 세부는 위 링크들이, 설치는
+> [INSTALL](INSTALL.md)이 풉니다.

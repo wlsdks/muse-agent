@@ -35,7 +35,7 @@ platform-specific gate. The role and write boundaries come from
 
 | Change surface | Deterministic base | Required real platform | Failure, corruption, and rollback | Controlled-live / preflight | Independent evaluator and PASS rule |
 | --- | --- | --- | --- | --- | --- |
-| Pure deterministic code | Named examples for exact behavior and no collateral mutation; add seeded property tests only for a genuine large-space invariant or untrusted boundary. Run the affected typecheck/lint and `test:changed`. | None unless the code consumes a platform contract hidden by a fake. | Exercise invalid, empty, boundary, cancellation, and retry inputs that the contract admits; mutation-RED the guarded branch. | Not required. A live result cannot replace the deterministic contract. | Fresh evaluator re-runs the named acceptance checks from the diff; every criterion must pass. |
+| Pure deterministic code | Named examples for exact behavior and no collateral mutation; add seeded property tests only for a genuine large-space invariant or untrusted boundary. Run the affected typecheck/lint and `test:changed`. | None unless the code consumes a platform contract hidden by a fake. | Exercise invalid, empty, boundary, cancellation, and retry inputs that the contract admits; mutation-RED the guarded branch. | Not required. A live result cannot replace the deterministic contract. | When every harness §1.6 condition holds: adversarial self-check + controller diff review, recorded only as `thin-review`. Otherwise a fresh evaluator re-runs every named criterion for PASS. |
 | UI / browser interaction | Static markup/contract tests plus reducer or API tests below the view. | Real Chromium Browser Mode for focus, keyboard, effects, visibility, responsive layout, and DOM events; Playwright E2E for a critical built-assets/API journey. | Observe loading, empty, validation, error, cancel, retry, and stale-state behavior; prove no unrelated state mutation. Visual snapshots alone are insufficient. | Use an isolated local build/profile and controlled fixture. A real user profile/account, upload, download, clipboard, or external effect requires its own approval and higher-risk row. | Fresh evaluator operates the isolated browser from acceptance criteria and measured observations; Node/static green cannot substitute for the browser gate. |
 | Persistent store / schema / migration | Exact serialization and query examples plus seeded round-trip/invariant properties at JSON/schema boundaries. | Real file-store path and disposable PostgreSQL/Testcontainers when PostgreSQL semantics, migration, locking, JSONB, or ordering matter. | Corrupt/truncated/version-skewed state, partial write, restart, concurrent access, backup, restore, and rollback; assert owner data and unrelated rows remain byte-stable. | Run upgrade/restore/rollback preflight only on a disposable database or temporary HOME copy; never on owner state. | Fresh Sol/high evaluator reproduces round-trip, corruption, and rollback from a clean fixture. In-memory green cannot substitute for a required backend. |
 | Permission / approval / outbound send | Exact allow/deny tests bind action, effect, recipient, account, freshness, and one-shot consumption; property/adversarial tests cover unknown and attacker-controlled inputs. | Exercise the real guard/hook/approval chokepoint in an isolated fixture. Browser/computer surfaces also inherit the UI row. | Denial, stale/replayed approval, recipient ambiguity, cancellation, timeout, retry, and partial failure must create no send, grant widening, or collateral mutation. | Draft/preflight or a fake/local sink only. Never perform an unapproved real third-party send; lack of controlled-live proof remains `unverified`, not PASS. | Fresh Sol/high evaluator checks deny paths and authority separation; security/credential final gates use fresh Sol/xhigh. |
@@ -125,13 +125,17 @@ package-specific experiment proves another pool safe.
 ## Execution ladder
 
 1. During editing: one named test or `pnpm test:changed --uncommitted`.
-2. Before commit: affected build/typecheck, relevant repeated critical test,
-   lint, then `pnpm check` once.
+2. Before a slice commit: named/related tests plus affected build/typecheck and
+   lint, each bounded to the activated slice. Run `pnpm check` at an
+   integration/phase/merge gate, or when the touched contract explicitly
+   requires the full workspace proof.
 3. Pull request: Linux and Windows full checks plus the Linux Chromium component
    gate. Real PostgreSQL and broader E2E gates should remain separate jobs so
    failures are attributable.
-4. Agent-facing behavior: deterministic code test, live selection/terminal-state
-   eval, then strict repeated `pass^k`; a skipped live eval is not a pass.
+4. Agent-facing behavior at its activated phase/release gate: deterministic
+   code test, live selection/terminal-state eval, then strict repeated `pass^k`.
+   Do not impose this live ladder on every inner helper slice; when the gate is
+   activated, a skipped live eval is not a pass.
 
 `test:changed` is an inner-loop accelerator, not the merge proof. It resolves
 related tests inside each changed package; a central shared package can affect

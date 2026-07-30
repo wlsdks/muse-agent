@@ -1,17 +1,31 @@
 ---
 title: 핸드오프 아티팩트 양식 (Handoff Artifact)
 audience: [개발자, AI 에이전트]
-purpose: 워커→독립 평가자가 컨텍스트 리셋을 넘어 "정해진 상태"를 주고받는 단일 양식
+purpose: FULL 티어에서 워커→독립 평가자가 컨텍스트 리셋을 넘어 "정해진 상태"를 주고받는 단일 양식
 status: draft
-updated: 2026-07-16
+updated: 2026-07-30
 related: [team-roles.md, role-prompts.md, ../README.md]
 ---
 
 # 핸드오프 아티팩트 양식 (Handoff Artifact)
 
+## FAST S/M compact card
+
+[`../AGENTS.md` §1.6](../AGENTS.md)의 조건을 **모두** 만족하는 작업은 별도 handoff 파일을 만들지 않고
+아래 7개 항목만 chat/scratch에 기록합니다. 이 경로에는 독립 평가자가 없으므로 결과는 `PASS`가 아니라
+`review-tier: thin-review`입니다. 조건을 하나라도 벗어나면 아래 FULL 양식으로 승격합니다.
+
+- **Task / goal + missing delta:**
+- **Acceptance:**
+- **Scope / out-of-scope:**
+- **Named verify command:**
+- **Budget:** active ≤20분, command timeout ≤12분
+- **Risk tier:** FAST S/M인 근거와 제외 경계 확인
+- **Rollback / no-op:**
+
 > **왜 이게 골격인가?** 하네스가 "어떤 에이전트가 들어와도 동일하게" 굴러가는 비결은 **컨텍스트를
 > 합치지 않고 끊되, 구조화된 아티팩트로 다음 역할이 정해진 상태에서 이어받는 것**입니다([team-roles
-> §3](team-roles.md)). 이 파일이 그 아티팩트의 **단일 양식** — 한 작업당 이 한 장을 채워 넘깁니다.
+> §3](team-roles.md)). 이 파일이 FULL 티어 아티팩트의 **단일 양식** — 해당 작업당 이 한 장을 채워 넘깁니다.
 > 매 핸드오프는 "이전 에이전트의 머릿속"이 아니라 이 문서를 읽고 시작합니다.
 >
 > **기본은 이 5칸(아래)뿐입니다.** 필수 역할이 [team-roles §1](team-roles.md)에서 워커·독립
@@ -23,7 +37,7 @@ related: [team-roles.md, role-prompts.md, ../README.md]
 
 ## 쓰는 법
 
-1. 한 작업(기능/버그/슬라이스)마다 이 양식을 복사해 한 파일로 둔다 — **작업 파일이지 영구 기록이
+1. FULL 티어 작업(기능/버그/슬라이스)마다 이 양식을 복사해 한 파일로 둔다 — **작업 파일이지 영구 기록이
    아니다**: 슬라이스의 워크트리(또는 스크래치패드)에 두고, **레포에 커밋하지 않는다**. 영구 기록은
    커밋 바디가 담당한다(수용 기준·검증 결과·학습 — [muse-dev-patterns §8](../../.claude/skills/muse-dev-patterns/SKILL.md)).
    과거에 커밋됐던 인스턴스 7개는 삭제됐다(2026-07-18 — 머지 후 단 한 번도 참조되지 않아
@@ -57,14 +71,14 @@ related: [team-roles.md, role-prompts.md, ../README.md]
 - **Active budget (`activeBudgetMinutes`):** <양의 정수, 최대 20>
 - **단일 명령 timeout (`commandTimeoutMinutes`):** <양의 정수, 최대 12>
 - **검증 budget (`validationMinutes`):** <양의 정수, 최대 6>
-- **PLAN-review budget:** <시간/비용 cap; raw PLAN FAIL 횟수와 분리>
-- **BUILD↔EVAL budget:** <수정 반복 횟수/시간/비용 cap; PLAN 카운터와 분리>
+- **PLAN-review budget:** <기본 1 pass / active budget 안; 다른 cap이 필요할 때만 덮어쓰기>
+- **BUILD↔EVAL budget:** <기본 2 pass / active budget 안; 다른 cap이 필요할 때만 덮어쓰기>
 - **진전 판정:** `material-progress | no-progress` — material progress는 이전 blocker를 닫거나
   acceptance/accounting을 측정 가능하게 만든 변경, no-progress는 같은 blocker가 새 증거·수정 없이
   반복되는 상태
-- **근거 회계 (`evidenceAccounting`):** <semantic family/surface variant/profile/journey/turn 수; `realismProxy` 이름;
-  immutable `dataOrigin`; independent `executionEvidence`; controlled replay/organic production evidence;
-  receipt와 feedback 분리>
+- **근거 회계 (`evidenceAccounting`, agent/eval/replay/policy 작업만):** <semantic family/surface
+  variant/profile/journey/turn 수; `realismProxy` 이름; immutable `dataOrigin`; independent
+  `executionEvidence`; controlled replay/organic production evidence; receipt와 feedback 분리>
 - **Rollback / recovery (`rollback`):** <실패·회귀 때 되돌릴 변경, 보존할 데이터, 재개 조건>
 
 ## 3. 워커 노트 (워커/빌더가 채움)
@@ -93,7 +107,7 @@ related: [team-roles.md, role-prompts.md, ../README.md]
 
 - <답이 없으면 추측하지 말고 여기 적고 멈춘다 — 사람/오케스트레이터가 푼다>
 
-## 상태 로그 (append-only)
+## 상태 로그 (BLOCKED 또는 retry 때만 append-only)
 
 - <YYYY-MM-DD HH:MM> · <역할> · <PLAN-review | BUILD↔EVAL> · <누적 예산> ·
   <material-progress | no-progress> · <닫힌 blocker/새 증거 한 줄>

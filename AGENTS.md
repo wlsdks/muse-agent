@@ -40,8 +40,10 @@ rebuildable projection. Contract:
 This repo ships a portable, vendor-neutral agent harness in
 [`harness/`](harness/). For any non-trivial, multi-step task, operate
 under it: read [`harness/AGENTS.md`](harness/AGENTS.md) first and follow
-its roles (planner / worker / evaluator — maker ≠ judge), the handoff
-template, the fail-closed gates (plan / completion / permission), and the
+its risk tiers. Qualifying FAST S/M uses its compact card and
+`thin-review`; FULL uses planner / worker / evaluator with maker ≠ judge
+and the handoff template. Both use the applicable fail-closed gates
+(plan / completion / permission) and the
 verification discipline (golden-set + pass^k). The `harness/` folder is
 self-contained — copy it into any project and point that project's
 `AGENTS.md`/`CLAUDE.md` at `harness/AGENTS.md` to reuse it
@@ -85,7 +87,7 @@ See [`docs/development/ai-agent-testing-strategy.md`](docs/development/ai-agent-
 
 The owner grants standing authorization for a verified normal Git push from the
 current Muse task branch (or verified local `main`) to its configured `origin`
-upstream. After the independent completion gate and required checks pass, fetch,
+upstream. After the applicable risk-tier completion gate and required checks pass, fetch,
 rebase, run the unskipped versioned pre-push hook, and publish without asking for
 another approval. This does not authorize alternate remotes/refspecs, remote
 deletion, tags/releases, force/force-with-lease, `--no-verify`, credentials, or
@@ -97,7 +99,7 @@ sends remain draft-first under the outbound policy.
 Use product-behavior changes as the commit boundary, not every roadmap checkbox.
 When a completed slice changes runtime/source code, tests, executable scripts,
 build/package configuration, schemas/migrations, UI contracts, or enforced
-security policy, run its required checks and independent completion gate, then
+security policy, run its required checks and applicable risk-tier completion gate, then
 commit and push that slice. Documentation-, evidence-, ledger-, and status-only
 updates do not require a per-task commit or push; batch them at the next phase
 exit, related source commit, branch/worktree transition, long-session handoff,
@@ -129,11 +131,12 @@ work; no required roadmap step may depend on Luna being available. Security,
 permissions, credentials, persistence migrations, external effects,
 process/concurrency control, self-modification, and release decisions start on
 Sol, with `xhigh` reserved for the hardest security/release evaluations. Record
-the maker and evaluator model, reasoning effort, selection reason, and
-escalation trigger in every task activation header. Maker/evaluator separation
-requires a fresh agent context and role; changing only the model name is not
-independent evaluation. The roadmap's model-routing section is authoritative
-for fallbacks, escalation, and stage-specific defaults.
+the maker model, reasoning effort, selection reason, risk tier, and escalation
+trigger in every task activation header. FULL additionally records evaluator
+model/effort; FAST records evaluator `n/a — thin-review`. Maker/evaluator
+separation in FULL requires a fresh agent context and role; changing only the
+model name is not independent evaluation. The roadmap's model-routing section
+is authoritative for fallbacks, escalation, and stage-specific defaults.
 
 ## TypeScript 7 toolchain
 
