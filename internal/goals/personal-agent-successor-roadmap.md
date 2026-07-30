@@ -8,8 +8,8 @@ activatedFromHead: 926c01738b9be9a8b1c3668ec61c2b66d17dce63
 updated: 2026-07-29
 related:
   - personal-agent-core-100-roadmap.md
-  - ../development/personal-agent-qualification.md
-  - ../development/ai-agent-testing-strategy.md
+  - ../../docs/development/personal-agent-qualification.md
+  - ../../docs/development/ai-agent-testing-strategy.md
   - ../../harness/AGENTS.md
 ---
 

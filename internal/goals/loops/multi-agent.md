@@ -1,4 +1,4 @@
-# Loop journal — multi-agent (오케스트레이션·서브에이전트 핸드오프 신뢰성)
+# Loop journal — multi-agent (orchestration · sub-agent handoff reliability)
 
 Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordination-failure
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
@@ -27,7 +27,7 @@ in fire 20 and this is the same mechanism applied to 2 more call sites + a DRY r
 
 **Risk** — Same honest scope as fire 20 (bounds the WAIT not the compute). ★pnpm check RED only in the
 pre-existing, proven-unrelated `@muse/autoconfigure` sibling regression. Blast radius clean (multi-agent 250
-pass · lint 0 · eval:orchestration PASS). ★FINAL FIRE — 진안 ended the loop here (merge to main + cleanup).
+pass · lint 0 · eval:orchestration PASS). ★FINAL FIRE — Jinan ended the loop here (merge to main + cleanup).
 
 ## fire 20 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · 0fb6e829 — ★NEW CAPABILITY (breaks the sentinel streak)
 meta: value-class=new-capability · pkg=@muse/multi-agent · kind=termination-guard · verdict=PASS · firesSinceDrill=8
@@ -40,7 +40,7 @@ NO timeout anywhere in worker execution (runSequential + runParallel both `await
 catch marks that worker `failed`, and the run proceeds with survivors. Omitted ⇒ transparent worker.run (legacy).
 Wired into both runSequential + runParallel.
 
-**Why** — This is the theme's THIRD pillar ("명시적 termination") and it was genuinely UNCOVERED — fire-16's audit
+**Why** — This is the theme's THIRD pillar ("explicit termination") and it was genuinely UNCOVERED — fire-16's audit
 checked the COUNCIL's termination (round cap) but MISSED that the orchestrator has no hung-worker bound. MAST
 "unaware of termination" (a hung sub-agent). A real new capability, not exposure/hardening.
 
@@ -102,7 +102,7 @@ orchestration path that landed since is confirmed guard-covered. No clean high-v
 lesson: A degenerate-but-honest loop on a complete theme STILL earns its keep as a regression sentinel — this
 fire caught a new orchestration entry-point from a sibling loop and verified it didn't slip past the coordination
 guards. That IS the residual value when no new capability remains. ★REPOINT still the right call (vein complete);
-no new notification (nothing requiring 진안 action changed — the merge ask is now resolved, only the repoint
+no new notification (nothing requiring Jinan action changed — the merge ask is now resolved, only the repoint
 recommendation stands, already surfaced 4×).
 
 ## fire 16 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · NO-SHIP (evidence-backed completeness)
@@ -130,7 +130,7 @@ lesson: This no-ship DIFFERS from the fire-11/13 premature ones — it's backed 
 (CLI+API exposure, dedup design, council termination), not an assumption. The fire-14 correction taught: audit
 the actual layers before claiming exhausted. Having now done that exhaustively, the theme IS comprehensively
 complete. ★REPOINT remains the right call (4th surfacing — async only, no new notification: nothing new since
-fire 15's). ⑤c merge of fires 7-15 still needs 진안's manual `loop/multi-agent → main` merge.
+fire 15's). ⑤c merge of fires 7-15 still needs Jinan's manual `loop/multi-agent → main` merge.
 
 ## fire 15 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · d08bb006
 meta: value-class=wiring(exposure-completion) · pkg=@muse/cli · kind=human-stderr-surfacing · verdict=PASS · firesSinceDrill=3
@@ -209,7 +209,7 @@ No clean high-value single-fire slice. (Full assessment: fire 11.)
 lesson: 2nd honest no-ship on a confirmed-mature theme (fire 11 was the 1st; fire 12 was the mandatory drill).
 The loop is now in regression-sentinel mode (⓪ self-eval + ⑤c merge-retry) rather than producing new value.
 This is the DEGENERATE-LOOP signal: a mature theme with no repoint produces near-empty fires. ★STRONGLY
-RECOMMEND 진안 repoint cron `972211ed` to a fresh axis (3rd surfacing) OR stop it (`CronDelete 972211ed`) —
+RECOMMEND Jinan repoint cron `972211ed` to a fresh axis (3rd surfacing) OR stop it (`CronDelete 972211ed`) —
 continuing on this theme will keep no-shipping. Surfaced async; per ⑥ the loop does not block or self-repoint.
 
 ## fire 12 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · 75950bde — ★JUDGE-DRILL
@@ -266,7 +266,7 @@ surface beats a forced marginal slice.
 lesson: A theme genuinely SATURATES — after ~10 ships covering every clean coordination mode across both
 surfaces, the honest move is to recognize it, NOT scrape for a marginal/calibration-murky/same-well slice. The
 two prior judges' "maturing" notes were the early signal; this fire confirmed it by exhaustive scan. ★REPOINT
-RECOMMENDED (surfaced async to 진안 via PushNotification + backlog) — a fresh theme axis will restore high
+RECOMMENDED (surfaced async to Jinan via PushNotification + backlog) — a fresh theme axis will restore high
 marginal value. (Note: fire 12 is the mandatory JUDGE-DRILL per the hard-counter regardless of repoint.)
 
 ## fire 10 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · ae106337
@@ -326,7 +326,7 @@ orchestrator.run + real POST→GET, identical-output workers flag redundancy but
 neutralization; fabrication-on-all-failed; bounded termination; observability). The high-value single-fire
 vein is THIN. NEXT FIRE SHOULD PIVOT to a fresh (pkg,kind) / different surface — remaining in-theme work is
 either god-file-untestable (subtaskRedundancies CLI surfacing) or calibration-risky (semantic task-derailment).
-Surfaced async for 진안 to consider a theme repoint.
+Surfaced async for Jinan to consider a theme repoint.
 
 review: gates green — multi-agent build clean · history-signals 4 pass · api signal-exposure 6 pass · lint 0 ·
 `pnpm check` exit 0 (clean) · independent Opus ④ judge VERDICT PASS.
@@ -381,7 +381,7 @@ pre-execution exact-text `dedupeSubtasks` can't catch it — distinct sub-task T
 the same OUTPUT, or a sequenced step that just echoes its upstream. This is the runtime OUTPUT-level guard.
 
 **Review points** — (1) CALIBRATION (the binding risk — Muse rejected naive semantic dedup that over-merges
-"1분기"/"2분기"): the Jaccard≥0.9 floor means distinct-value pairs (Q1 5억 vs Q2 7억, ~0.2) and elaborations
+"Q1"/"Q2"): the Jaccard≥0.9 floor means distinct-value pairs (Q1 500M vs Q2 700M, ~0.2) and elaborations
 (~0.5) are NOT flagged — only near-verbatim echo (~1.0). The independent Opus ④ judge did the math and
 confirmed no realistic distinct-but-valuable pair clears 0.9. (2) SURFACE-ONLY: advisory annotation
 (`subtaskRedundancies` field + reason line), never drops a worker / blocks synthesis / changes finalAnswer —

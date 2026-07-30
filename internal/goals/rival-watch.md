@@ -10,7 +10,7 @@
 ## Watermark
 
 - **last scout:** 2026-07-17 15:39 (fire 2)
-- **base:** 2026-06-23 exhaustive teardown (재스카웃 금지 — delta only)
+- **base:** 2026-06-23 exhaustive teardown (do not re-scout — delta only)
 - **local clones (persistent, owner-designated 2026-07-17):** `$HOME/ai/<name>` —
   fetch, never re-clone (`git -C $HOME/ai/<name> fetch origin`).
 - **roster:**
@@ -26,15 +26,15 @@
 > fire start; promote to the roster only when one meets the enrollment bar.
 > **License rule (all roster+shelf): reference-only, NO verbatim copy —
 > reimplement with attribution.**
-> 🚨 **AGPL repos (khoj): IDEAS ONLY, ZERO code. 한 줄도, 주석 한 줄도,
-> 식별자 이름 하나도 옮기지 않는다 — 읽고 덮고, 자기 설계로 다시 쓴다.
+> 🚨 **AGPL repos (khoj): IDEAS ONLY, ZERO code. Not one line, not one
+> comment, not one identifier name gets carried over — read it, close it, and rewrite it in your own design.
 > Violation = the slice fails review, no exceptions (owner directive
 > 2026-07-17).**
 
-- khoj — https://github.com/khoj-ai/khoj — 🚨 **AGPL-3.0 — 절대 주의. 코드를 단 한 줄도,
-  주석도, 스키마·프롬프트 문구도 베끼지 않는다. 읽고 아이디어만 참조 → 완전히 자기 말로
-  재구현. 한 줄이라도 옮기면 Muse 전체가 네트워크 카피레프트 의무에 걸린다. diff에 khoj
-  유래 문자열이 보이면 그 슬라이스는 FAIL이다.** — `$HOME/ai/khoj` (36k★, personal
+- khoj — https://github.com/khoj-ai/khoj — 🚨 **AGPL-3.0 — extreme caution. Not one line of
+  code, not a comment, not a schema/prompt phrase gets copied. Read for ideas only → reimplement
+  entirely in your own words. Carrying over even one line puts all of Muse under network
+  copyleft obligations. If a diff shows a khoj-derived string, that slice is FAIL.** — `$HOME/ai/khoj` (36k★, personal
   second brain / doc+web memory)
 - letta — https://github.com/letta-ai/letta — Apache-2.0 — `$HOME/ai/letta` (24k★, MemGPT-lineage stateful memory)
 - leon — https://github.com/leon-ai/leon — MIT — `$HOME/ai/leon` (17k★, local personal assistant since 2019)
@@ -47,4 +47,4 @@
 ## Scout log
 
 - 2026-07-17 15:39 · fire 2 (same-day re-fire, window = fire 1 SHAs → now): 11 commits total (openclaw 4: fixes/CI · hermes 5: Codex commentary streaming — coding-engine channel, lens-out · QwenPaw 2: version bump + bounded summary history) — **no material delta**; watermark bumped, nothing fed. Honest-empty outcome per guardrail.
-- 2026-07-17 · first delta fire (window 6/23→7/17: openclaw 7,828 commits/9 releases, hermes 3,297 commits/3 releases — high-velocity: swept via releases+CHANGELOG, not raw log) · fed: BKP-1(build★5), OBS-LOG-1(maybe⏳), GOAL-CT-1(⚠), JRN-2(maybe) → parity §22; 2 ◦ hardening lines → backlog (config-plane egress audit, install provenance ack) · skipped w/ reason: MoA-first-class(기존 MoA 판정 정신 — 로컬 단일모델 정체성), scale-to-zero/drain·hosted workspace(멀티테넌트), Vertex AI(cloud org), desktop coding Projects(코딩 에이전트 영역), GPT-5.6 defaults(cloud).
+- 2026-07-17 · first delta fire (window 6/23→7/17: openclaw 7,828 commits/9 releases, hermes 3,297 commits/3 releases — high-velocity: swept via releases+CHANGELOG, not raw log) · fed: BKP-1(build★5), OBS-LOG-1(maybe⏳), GOAL-CT-1(⚠), JRN-2(maybe) → parity §22; 2 ◦ hardening lines → backlog (config-plane egress audit, install provenance ack) · skipped w/ reason: MoA-first-class(matches existing MoA verdict — local single-model identity), scale-to-zero/drain·hosted workspace(multi-tenant), Vertex AI(cloud org), desktop coding Projects(coding-agent territory), GPT-5.6 defaults(cloud).

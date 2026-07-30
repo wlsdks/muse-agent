@@ -153,7 +153,7 @@ test RED; restored → 12/12 GREEN. ④b independent Opus judge: PASS.
 ## fire 7 · 2026-06-22 · skill v2.1.0 · (pending commit)
 meta: value-class=i18n-completeness · area=web · kind=i18n · verdict=PASS · firesSinceDrill=7
 ratchet: testFiles +1 (autonomy-labels.test.ts, 4 cases) · companion×refactor 1 · companion×feature 1 · settings×feature 1 · server×refactor 1 · web×ux 1 · web×i18n 1 · tests×test 1 · fabrication 0
-browser-check: Automation 뷰 — 탭(액션 로그/목표/회피) 렌더, raw i18n 키 누출 0, .content bounded+scroll, nav-icon 16px, 신규 콘솔에러 0 (배지 텍스트는 서버데이터 필요 → 단위테스트로 매핑 커버)
+browser-check: Automation view — tabs (action log/objectives/vetoes) render, raw i18n key leak 0, .content bounded+scroll, nav-icon 16px, new console errors 0 (badge text needs server data → covered by unit-test mapping)
 
 - **What**: localize the Automation view's status badges — pure `actionResultLabel`
   / `objectiveStatusLabel` (reuse actstatus.* for results; new auto.status.active/

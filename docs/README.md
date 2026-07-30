@@ -45,7 +45,7 @@ from docs alone**:
 5. [`product/SYSTEM-MAP.md`](product/SYSTEM-MAP.md) — the feature structure on one page
 6. [`trust/grounding-gate.md`](trust/grounding-gate.md) — the trust floor (grounding gate) as one flow
 7. [`product/FEATURES.md`](product/FEATURES.md) → [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md) — feature detail + exhaustive verification evidence
-8. Then go deeper: [`design/attunement/README.md`](design/attunement/README.md) · [`design/attunement-graph.md`](design/attunement/attunement-graph.md) · [`goals/attunement-implementation-plan.md`](../internal/goals/attunement-implementation-plan.md) · [`goals/attunement-wow-graph-roadmap.md`](../internal/goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
+8. Then go deeper: [`design/attunement/README.md`](design/attunement/README.md) · [`design/attunement/attunement-graph.md`](design/attunement/attunement-graph.md) · [`../internal/goals/attunement-implementation-plan.md`](../internal/goals/attunement-implementation-plan.md) · [`../internal/goals/attunement-wow-graph-roadmap.md`](../internal/goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
 
 ## To understand the product
 
@@ -99,7 +99,7 @@ the current setup at a glance → [diagram & self-assessment (architecture)](../
 These documents are the operating machinery of the autonomous loops that expand Muse itself (not
 product-feature descriptions):
 
-- [`goals/`](../internal/goals/) — work ledgers (backlog · growth-backlog · rival-watch) and active loop journals — map at [`goals/README.md`](../internal/goals/README.md)
+- [`goals/`](../internal/goals/) — work ledgers (backlog · growth-backlog · rival-watch) and active loop journals — map at [`../internal/goals/README.md`](../internal/goals/README.md)
 
 ---
 

@@ -9,7 +9,7 @@ One invocation = one new user-visible capability slice, end-to-end: source →
 score → design-gate → build → verify → push. Sibling `improve-muse` hardens
 what exists.
 
-Every slice MUST carry a one-sentence **user story** — "진안 asks X / lives
+Every slice MUST carry a one-sentence **user story** — "Jinan asks X / lives
 situation X, and Muse now does Y." No user story ⇒ filler, drop the item.
 
 **Boundary (one item, one owner):** MISSING capability → here.
@@ -85,10 +85,10 @@ not a stub.
 
 | Excuse | Reality |
 |---|---|
-| "유저 스토리는 나중에" | No user story ⇒ filler. Write the sentence or drop it. |
-| "점수 없이 감으로 픽" | Unscored or unanchored pick = invalid. Re-pick. |
-| "저수지에 있으니 가치 있음" | Reservoir is rung 4 and still needs SCORE + freshness. |
-| "substrate를 attunement로 재라벨" | ROADMAP ≠ shipped claim. Build the missing stage. |
-| "유닛 그린이니 delivered" | Live-path proof or it doesn't exist for the user. |
+| "The user story can come later" | No user story ⇒ filler. Write the sentence or drop it. |
+| "Pick by gut feel, no score" | Unscored or unanchored pick = invalid. Re-pick. |
+| "It's in the reservoir, so it's valuable" | Reservoir is rung 4 and still needs SCORE + freshness. |
+| "Relabel substrate as attunement" | ROADMAP ≠ shipped claim. Build the missing stage. |
+| "Unit tests are green, so it's delivered" | Live-path proof or it doesn't exist for the user. |
 
 Golden set: [`evals.md`](evals.md) — grade outcome shapes, grow from real misses.

@@ -8,7 +8,7 @@ updated: 2026-05-31
 # Harness Runner (code)
 
 Enforces the state machine and fail-closed gates defined by
-[`../runner-spec.md`](../reference/runner-spec.md) **as real code**. Documents (instructions) are
+[`../reference/runner-spec.md`](../reference/runner-spec.md) **as real code**. Documents (instructions) are
 something the model "chooses to follow", but this runner has **code refuse disallowed
 transitions** — even if the model tries to skip a stage or pass with empty criteria, the runner
 blocks it.

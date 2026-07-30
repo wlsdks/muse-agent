@@ -14,7 +14,7 @@ verification. For any non-trivial, multi-step task, operate under it.
 
 ## The contract (entrypoint: `harness/AGENTS.md`)
 
-Read [`harness/AGENTS.md`](../../../harness/AGENTS.md) first, then follow it:
+Read [`../../../harness/AGENTS.md`](../../../harness/AGENTS.md) first, then follow it:
 
 1. **Two mandatory roles: worker (build) → independent evaluator
    (PASS/FAIL)**. Planner/curator are inline fields the worker or
@@ -56,9 +56,9 @@ bug) — exactly the class a green test suite does not surface.
 ## Project mapping
 
 How the abstract roles map to Muse's real runtime lives in
-[`harness/host/muse-mapping.md`](../../../harness/host/muse-mapping.md). When reusing
+[`../../../harness/host/muse-mapping.md`](../../../harness/host/muse-mapping.md). When reusing
 the harness in another project, that mapping file is the one thing you
 rewrite; the rest of `harness/` is copied as-is
-([`harness/INSTALL.md`](../../../harness/INSTALL.md)).
+([`../../../harness/INSTALL.md`](../../../harness/INSTALL.md)).
 
 This rule is a pointer; `harness/AGENTS.md` is the authority.

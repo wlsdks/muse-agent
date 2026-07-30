@@ -1,7 +1,7 @@
 # Episodic memory cross-session recall
 
 > **Reference note (audited 2026-07-30):** the env name(s) `MUSE_EPISODIC_MEMORY_LLM_BUDGET_PER_DAY` in this design were never
-> implemented under those names. The generated [`../setup/ENV.md`](../../setup/ENV.md) inventory is authoritative for
+> implemented under those names. The generated [`../../setup/ENV.md`](../../setup/ENV.md) inventory is authoritative for
 > what the code actually reads.
 
 

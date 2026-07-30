@@ -1,106 +1,109 @@
-# internal/goals — 작업 선정의 복리 장부 (the work ledgers)
+# internal/goals — the work-selection compounding ledger (the work ledgers)
 
-> 이름은 역사적 잔재("goal 번호" 시대). 실체는 **"다음에 뭘 만들지 / 뭘 만들었지 /
-> 뭘 왜 버렸지"가 세션을 넘어 살아남는 곳**이다. 어떤 파일도 통째로 읽지 말 것 —
-> 전부 retrieval 인덱스다(grep으로 필요한 섹션만).
+> The name is historical residue (the "goal number" era). What it actually is: **the place
+> where "what to build next / what got built / why we dropped it" survives across sessions**.
+> Never read any file whole — they are all retrieval indexes (grep for the section you need).
 
-## 활성 장부 — 스킬이 쓰고 소비한다
+## Active ledgers — written and consumed by the skills
 
-| 파일 | 쓰는 쪽 | 읽는(소비하는) 쪽 | 내용 |
+| file | writer | reader (consumer) | contents |
 |---|---|---|---|
-| `backlog.md` | improve-muse([open] 추가/제거), scout(for=improve-muse 레코드), grow(부채 레코드) | **improve-muse** rung 4 | **열린 것만**: [open] · [decision] · [blocked] · [rejected] (2026-07-17 수명 분리) |
-| `backlog-archive.md` | improve-muse/grow의 완료 ✓ 라인 (완료 시 backlog에서 이쪽으로 이동) | freshness guard·dedup의 grep 대상 | 완료·superseded·exhausted 역사 (append-only) |
-| `growth-backlog.md` | scout(`[scout 날짜]` 행) | **grow-muse** rung 4 (build 행만; done 처리도 grow) | 역량 기회 저수지 (231 base + scout 델타) — **자체 행 형식 유지, 레코드 문법·체커 대상 아님(명시적 예외)** |
-| `judgment-lens.md` | (2026-06-23 생성 후 동결) | scout의 판정 기준서 (fit/verdict/edge 판례, ⛔51 skip 포함) | Muse-정체성 렌즈 |
-| `rival-watch.md` | **scout 전용** | 다음 scout (워터마크가 델타의 펜스) | 로스터·선반(~/ai 클론, 라이선스, 🚨khoj AGPL)·fire 로그 |
+| `backlog.md` | improve-muse (adds/removes [open]), scout (records for=improve-muse), grow (debt records) | **improve-muse** rung 4 | **open only**: [open] · [decision] · [blocked] · [rejected] (lifecycle split 2026-07-17) |
+| `backlog-archive.md` | improve-muse/grow's completed ✓ lines (moved here from backlog on completion) | grep target for freshness guard/dedup | done/superseded/exhausted history (append-only) |
+| `growth-backlog.md` | scout (`[scout date]` rows) | **grow-muse** rung 4 (build rows only; done-marking is also grow) | capability-opportunity reservoir (231 base + scout deltas) — **keeps its own row format, not subject to record grammar/checker (explicit exception)** |
+| `judgment-lens.md` | (created then frozen 2026-06-23) | scout's judgment criteria doc (fit/verdict/edge precedents, incl. ⛔51 skip) | Muse-identity lens |
+| `rival-watch.md` | **scout only** | next scout (watermark is the delta fence) | roster/shelf (~/ai clones, licensing, 🚨khoj AGPL), fire log |
 
-흐름 한 줄: **scout이 두 백로그를 채우고 → grow/improve가 소비하고 ✓ 플립하고 →
-rival-watch가 다음 정찰의 시작점을 기억한다.**
+One-line flow: **scout fills the two backlogs → grow/improve consume and flip ✓ →
+rival-watch remembers where the next scout starts.**
 
-> 2026-07-17 개명: `capability-parity-backlog.md` → `growth-backlog.md`,
-> `capability-parity-judgment.md` → `judgment-lens.md` (아카이브·과거 커밋의
-> 옛 이름은 이 파일들을 가리킨다).
+> 2026-07-17 rename: `capability-parity-backlog.md` → `growth-backlog.md`,
+> `capability-parity-judgment.md` → `judgment-lens.md` (old names in the archive/past
+> commits point to these files).
 
-## 스킬 산출물 전체 인벤토리 (이게 전부다)
+## Full inventory of skill output artifacts (this is all of it)
 
-- **레포 안 (md 3+1):** `backlog.md`·`growth-backlog.md`·`rival-watch.md`에 쓰고,
-  `judgment-lens.md`는 읽기 전용 렌즈(2026-06-23 동결). 스킬이 다른 md를 만들지 않는다.
-- **레포 안 (md 아님):** 코드/테스트 커밋 자체(improve·grow의 슬라이스 — 검증 증거는 커밋
-  본문에), 그리고 스킬 문서 자신들(`.claude/skills/*`).
-- **레포 밖:** `~/ai/<name>` 라이벌 클론(scout; fetch로 유지), `docs/self-eval-scoreboard.json`
-  (gitignored 로컬 — ORIENT의 `pnpm self-eval`이 간접 기록), 세션 메모리 노트(스킬 계약이
-  아니라 에이전트의 자체 기록).
+- **In-repo (md 3+1):** writes to `backlog.md`·`growth-backlog.md`·`rival-watch.md`,
+  `judgment-lens.md` is a read-only lens (frozen 2026-06-23). The skills create no other md.
+- **In-repo (not md):** the code/test commits themselves (improve/grow slices — verification
+  evidence lives in the commit body), and the skill docs themselves (`.claude/skills/*`).
+- **Outside the repo:** `~/ai/<name>` rival clones (scout; kept via fetch), `docs/self-eval-scoreboard.json`
+  (gitignored local — ORIENT's `pnpm self-eval` records it indirectly), session memory notes (the
+  agent's own record, not a skill contract).
 
-## 아카이브 / 설계 문서 — 스킬이 쓰지 않는다
+## Archive / design docs — not written by the skills
 
-- `competitor-teardown.md` — 2026-06-23 경쟁사 전수분해 (재스카웃 금지, 읽기 전용 근거 문서)
-- `loops/` — **활성 루프만** fire 저널을 가진다. `loops/INDEX.md`가 단일 지도(은퇴 루프는
-  행만 남고 저널은 삭제 — git history가 보존; 2026-07-18 정리). 저널을 새로 만들면 반드시
-  행 추가. `prompt-system.md`는 루프 종료 후에도 진안-직접 모드로 계속 쓰이는 활성 저널이다.
+- `competitor-teardown.md` — 2026-06-23 exhaustive competitor teardown (do not re-scout, read-only reference doc)
+- `loops/` — **only active loops** carry a fire journal. `loops/INDEX.md` is the single map (a
+  retired loop keeps only its row, journal deleted — preserved in git history; cleaned up 2026-07-18). A new journal
+  MUST add a row. `prompt-system.md` is an active journal still used in Jinan-direct mode even after the loop ended.
 - `attunement-implementation-plan.md`, `attunement-slice-b-safety-contract.md` —
-  사람-지시 설계/계획 문서 (마감된 계획 문서는 삭제한다 — 잔여 항목은 backlog 레코드로)
-- `attunement-wow-graph-roadmap.md` — **별도 활성 장기 프로그램.** Core100/legacy 300의
-  일반 기반 작업을 복제하지 않고 Shadow Muse·Continuity Capsule·Policy Card와
-  agent-native **Muse Attunement Graph (MAG)**만 단계적으로 연구·구축·dogfood한다.
-- `personal-agent-core-100-roadmap.md` — **현재 권위 실행 문서.** 2026-07-28 source reconciliation
-  기준으로 이미 닫힌 작업을 제외하고, daily provider-neutral personal agent에 필요한 남은 핵심을
-  100개의 active-wall-clock 20분 이하 slice로 재구성했다. 다음 task, lane, gate, 모델 선택은 이
-  문서를 따른다.
-- `personal-agent-productization-roadmap.md` — 300-task legacy 요구사항과 stable ID를 찾는
-  역사 참조. 새 BUILD/EVIDENCE activation에는 사용하지 않으며, Core100 `legacyRefs`의 상세
-  rationale이 필요할 때만 해당 구간을 읽는다.
+  human-directed design/planning docs (a closed planning doc is deleted — remaining items become backlog records)
+- `attunement-wow-graph-roadmap.md` — **separate active long-running program.** Researches/builds/dogfoods
+  Shadow Muse·Continuity Capsule·Policy Card and the
+  agent-native **Muse Attunement Graph (MAG)** in stages, without duplicating Core100/legacy-300's
+  general foundation work.
+- `personal-agent-core-100-roadmap.md` — **current authoritative execution doc.** As of the 2026-07-28
+  source reconciliation, excludes already-closed work and re-composes the remaining core needed for a
+  daily provider-neutral personal agent into 100 active-wall-clock ≤20-minute slices. The next task,
+  lane, gate, and model choice follow this doc.
+- `personal-agent-productization-roadmap.md` — historical reference for the 300-task legacy
+  requirements and stable IDs. Not used for new BUILD/EVIDENCE activation; consult a section only
+  when detailed rationale from Core100's `legacyRefs` is needed.
 
-## goals 밖의 기록성(축적형) 문서 — 지도 완결용 (2026-07-17 전수조사)
+## Accumulating (ledger-style) docs outside `goals` — for a complete map (full 2026-07-17 survey)
 
-이 디렉토리 밖에도 기록이 축적되는 문서가 있다. 전부 **자체 형식이며 레코드 문법·체커
-대상이 아니다** (growth-backlog와 같은 명시적 예외):
+Docs outside this directory also accumulate a record. All of them are **their own format, not
+subject to record grammar/checker** (an explicit exception, like growth-backlog):
 
-| 파일 | 성격 |
+| file | nature |
 |---|---|
-| `docs/strategy/competitor-analysis-and-a-plus-roadmap.md` | **활성** — §10.3 실행 체크리스트 + §11 append-only 검증 큐 (a-plus-roadmap 스레드의 원장) |
-| `docs/strategy/assistant-value-master-plan.md` | 활성 상태판 (T2-③/④ open) |
-| `docs/strategy/agent-research-findings-2026.md` | 연구 원장 (in-place 편집) |
-| `../../docs/strategy/positioning/differentiation.md` · `security-sweep-2-plan.md` | 마감된 원장 (상단 상태 스탬프 참조) |
-| `CHANGELOG.md` (루트) | 릴리스 로그 — Keep-a-Changelog, release 스킬이 큐레이션 |
-| `.claude/skills/loop-creator/CHANGELOG.md` | 스킬 버전 원장 |
+| `docs/strategy/competitor-analysis-and-a-plus-roadmap.md` | **active** — §10.3 execution checklist + §11 append-only verification queue (ledger of the a-plus-roadmap thread) |
+| `docs/strategy/assistant-value-master-plan.md` | active status board (T2-③/④ open) |
+| `docs/strategy/agent-research-findings-2026.md` | research ledger (edited in place) |
+| `../../docs/strategy/positioning/differentiation.md` · `security-sweep-2-plan.md` | closed ledgers (see the status stamp at the top) |
+| `CHANGELOG.md` (root) | release log — Keep-a-Changelog, curated by the release skill |
+| `.claude/skills/loop-creator/CHANGELOG.md` | skill version ledger |
 
-마감된 원장·감사 스냅샷·핸드오프 인스턴스는 **삭제**가 기본이다(2026-07-18 진안 지시 —
-git history가 보존; 남겨두면 에이전트가 습관적으로 계속 기록한다). 감사 증거는 커밋
-바디에 적는다 — 별도 증거-원장 md를 새로 만들지 말 것.
+Closed ledgers, audit snapshots, and handoff instances are **deleted by default** (Jinan directive
+2026-07-18 — git history preserves them; leaving them around makes agents keep habitually
+appending). Audit evidence goes in the commit body — don't create a new separate evidence-ledger md.
 
-## 동시성 (2026-07-17, 공개연구 기반)
+## Concurrency (2026-07-17, based on public research)
 
-세 장부(backlog·growth-backlog·rival-watch)는 `.gitattributes`의 **`merge=union`**으로
-병렬 append 충돌을 자동 해소한다 (여러 루프/워크트리가 동시에 쓰는 게 일상이라 —
-git 공식 드라이버, rebase에도 적용, RED→GREEN 재현 검증됨). 알려진 트레이드오프:
-같은 줄을 동시에 고치면 충돌 대신 **중복 줄**이 생길 수 있다 → 큐레이션 규칙이 잡는다.
-동시 작성자가 훨씬 늘면 다음 단계는 GitLab-식 **엔트리-파일 분리**(항목=파일,
-상태=디렉토리 이동; git-bug/ripissue 계열 prior art) — 지금은 과잉이라 미채택.
+The three ledgers (backlog·growth-backlog·rival-watch) auto-resolve parallel-append conflicts via
+`.gitattributes`'s **`merge=union`** (several loops/worktrees writing concurrently is routine —
+it's git's official driver, applies under rebase too, RED→GREEN reproduction verified). Known
+trade-off: fixing the same line concurrently can produce a **duplicate line** instead of a
+conflict → the curation rule catches it. If concurrent writers grow much further, the next step
+is a GitLab-style **entry-per-file split** (item=file, status=directory move; prior art in the
+git-bug/ripissue family) — overkill for now, not adopted.
 
-## 기록 템플릿 (2026-07-17 진안 지시 — 분석 가능한 데이터로)
+## Record template (2026-07-17 Jinan directive — analyzable data)
 
-backlog.md·backlog-archive.md의 모든 최상위 `- ` 줄은 이 문법을 따른다
-(`scripts/check-ledger-format.mjs`가 self-eval 게이트로 강제):
+Every top-level `- ` line in backlog.md·backlog-archive.md follows this grammar
+(enforced by `scripts/check-ledger-format.mjs` as a self-eval gate):
 
 ```
-- [status] YYYY-MM-DD key=value ... :: 자유 서술 (제목/내용)
-  이어지는 상세는 2칸 들여쓰기 (여러 줄 허용, 자유 산문)
+- [status] YYYY-MM-DD key=value ... :: free-form description (title/body)
+  continuation detail indented 2 spaces (multiple lines allowed, free prose)
 ```
 
-- **status** (단어만): `open` 해야할 것 · `done` 완료 · `blocked` 막힘 ·
-  `decision` 사람 결정 대기 · `rejected` 기각(재유도 금지) · `superseded` 대체됨
-- **필드** (있는 것만, 공백 구분): `commit=<sha>` `kind=<fix|feat|test|docs|guard|scout>`
+- **status** (word only): `open` needs doing · `done` complete · `blocked` blocked ·
+  `decision` awaiting human decision · `rejected` rejected (do not re-propose) · `superseded` superseded
+- **fields** (only if present, space-separated): `commit=<sha>` `kind=<fix|feat|test|docs|guard|scout>`
   `src=<probe|scout|owner|loop|audit>` `prio=<1-5>` `gate="before->after"`
   `for=<improve-muse|grow-muse>`
-- **이모지·장식기호 금지** (수학 기호는 허용). 화살표는 `->`.
-- 분석 예: `grep '^- \[done\]' | ...` 로 날짜·커밋·게이트델타가 바로 뽑힌다.
-- **강제**: commit-msg 훅 + self-eval 게이트(`check-ledger-format.mjs`) — 문법·금지기호·
-  kind 닫힌집합·(2026-07-18 이후 날짜의 [done]엔) commit= 필수·들여쓰기 레코드 금지.
-- **범위**: backlog.md + backlog-archive.md만. growth-backlog(자체 행 형식)·rival-watch
-  (워터마크 형식)·judgment-lens(동결)는 명시적 예외. 2026-07-18 이전의 과거 레코드는
-  필드 없는 텍스트 데이터로 남는다(아카이브는 이동 커밋이라 git-blame 날짜 복원 불가).
+- **no emoji/decorative symbols** (math symbols allowed). Arrows are `->`.
+- analysis example: `grep '^- \[done\]' | ...` pulls date·commit·gate-delta directly.
+- **enforcement**: commit-msg hook + self-eval gate (`check-ledger-format.mjs`) — grammar, forbidden
+  symbols, closed `kind` set, (for `[done]` dated after 2026-07-18) required commit=, no indented records.
+- **scope**: backlog.md + backlog-archive.md only. growth-backlog (its own row format)·rival-watch
+  (watermark format)·judgment-lens (frozen) are explicit exceptions. Historical records from before
+  2026-07-18 remain fieldless text data (the archive is a move commit, so git-blame dates can't be recovered).
 
-## 큐레이션 규칙 (모든 장부 공통)
+## Curation rule (applies to every ledger)
 
-완료는 델타 붙은 한 줄로 압축하고, 항목을 더할 때마다 낡은 줄 하나 이상 지운다
-(순증가 ≈ 0). 장부가 무한히 자라면 다음 pick의 판단을 흐리는 노이즈가 된다.
+Compress a completed item into one line with its delta, and remove at least one stale line every
+time you add one (net growth ≈ 0). An unboundedly growing ledger becomes noise that blurs the
+judgment of the next pick.

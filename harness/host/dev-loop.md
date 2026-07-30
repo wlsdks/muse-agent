@@ -13,7 +13,7 @@ updated: 2026-06-08
 > to a new project, do not use it as-is — **rewrite it as your project's loop**
 > ([INSTALL §1](../INSTALL.md)).
 
-> **This file is the contract for "what to build and how".** Where [`AGENTS.md`](../AGENTS.md) is
+> **This file is the contract for "what to build and how".** Where [`../AGENTS.md`](../AGENTS.md) is
 > *roles, handoff, gates* (how one slice is executed), this file is *how that slice is chosen,
 > verified, and its learning accumulated*. The two skills `.claude/skills/improve-muse` (HARDEN)
 > and `grow-muse` (GROW) each run stages 0–7 end-to-end (pick → BUILD → VERIFY → COMMIT+PUSH) —
@@ -29,16 +29,16 @@ ANALYZE+COMPOUND half is missing** → every session re-pays the orientation cos
 
 1. **Direction doesn't accumulate.** No single entrypoint, and the persistent backlog had been
    deleted, so "what's next" was re-discovered per slice by an expensive scout subagent and thrown
-   away. → Fix: write [`backlog.md`](../../internal/goals/backlog.md) once and the next fire reads it
+   away. → Fix: write [`../../internal/goals/backlog.md`](../../internal/goals/backlog.md) once and the next fire reads it
    first.
 2. **Data doesn't pick the slice.** Traces pile up in `.muse/runs/` but nobody reads them, and
    work is picked by "feels high-value". → Fix (incremental): outcome-logging instrumentation →
    failure clustering picks the slice. (No labels yet, so the backlog takes priority for now; see
-   [`backlog.md`](../../internal/goals/backlog.md).)
+   [`../../internal/goals/backlog.md`](../../internal/goals/backlog.md).)
 
 ## 1. Principles (the consensus across public methodology — follow them)
 
-All cross-verified against primary sources (§4). On conflict, [`CLAUDE.md`](../../CLAUDE.md) +
+All cross-verified against primary sources (§4). On conflict, [`../../CLAUDE.md`](../../CLAUDE.md) +
 `.claude/rules/*.md` win.
 
 1. **Data picks the slice, not feelings.** Read your own traces → classify failures → rank by
@@ -49,7 +49,7 @@ All cross-verified against primary sources (§4). On conflict, [`CLAUDE.md`](../
    over tools; capability = tools × planner (Weng · Willison · Huyen · Ng; Ng's "GPT-3.5 loop >
    GPT-4 zero-shot"). The weaker the model, the more performance swings on harness quality
    (METR ~23.8pt). But get the first action right — an 8B's coherence collapses at 3+ steps of
-   reasoning ([`tool-calling.md`](../../.claude/rules/safety/tool-calling.md)).
+   reasoning ([`../../.claude/rules/safety/tool-calling.md`](../../.claude/rules/safety/tool-calling.md)).
 3. **Improve by subtraction.** Ablate tools and remove the ones contributing nothing (Huyen); the
    CLAUDE.md 100-line cap; subtractive correction-decay. Contracts, skills, and backlog become
    noise an 8B ignores if they only ever grow — add a line, prune a line.
@@ -116,7 +116,7 @@ sourcing ladder and permission boundaries.
    reservoir (D/T/N/C scored). Gap-finding and the capability-parity reservoir belong to
    grow-muse. **Never ask the human "what should I build" — probes and data pick.**
 3. **PLAN** — WHAT+WHY+the gate to strengthen, as a one-line contract in
-   [`handoff-template.md`](../core/handoff-template.md). If trivial (a typo, one line), skip and
+   [`../core/handoff-template.md`](../core/handoff-template.md). If trivial (a typo, one line), skip and
    short-circuit to 5 (skill self-gate).
 4. **BUILD** — one vertical slice, minimal scope, deterministic code (not prompts). Own the
    prompt/schema/control flow; strengthen one gate or add one verb_noun tool. No new framework
@@ -131,7 +131,7 @@ sourcing ladder and permission boundaries.
 6. **WRITE-BACK (completion gate — no done declaration without it)** — (a) the fixed failure
    becomes a STABLE-3/3 golden case; (b) Jinan's repeated correction becomes one line in
    `.claude/rules/*.md` (after-correction); (c) chosen + discarded directions + sources go to
-   [`backlog.md`](../../internal/goals/backlog.md), durable facts to MEMORY.md; (d) before→after to
+   [`../../internal/goals/backlog.md`](../../internal/goals/backlog.md), durable facts to MEMORY.md; (d) before→after to
    the self-eval scoreboard. When a set grows, prune one stale line.
 7. **COMMIT + PUSH** — one Conventional Commit + `git push` (current branch). The `improve-muse` /
    `grow-muse` skills hold standing push authorization (2026-06-27, Jinan) — but push **only when

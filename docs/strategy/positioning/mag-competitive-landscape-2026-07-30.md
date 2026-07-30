@@ -4,9 +4,9 @@ audience: [product, engineering, agents]
 status: research-snapshot
 observedAt: 2026-07-30
 related:
-  - ../design/attunement-graph.md
-  - ../design/agent-native-graph-core.md
-  - ../adr/0001-mag-product-module-boundary.md
+  - ../../design/attunement/attunement-graph.md
+  - ../../design/attunement/agent-native-graph-core.md
+  - ../../architecture/adr/0001-mag-product-module-boundary.md
 ---
 
 # MAG open-source competitive landscape — 2026-07-30

@@ -82,7 +82,7 @@ DELTA, never the base.
 
 ## Guardrails
 
-- **Delta-only:** ground marked 재스카웃-금지/exhausted is not re-derived;
+- **Delta-only:** ground marked re-scout-forbidden/exhausted is not re-derived;
   the watermark is the fence. An empty delta is a VALID outcome — record
   the watermark bump and say so (unlike the building skills, this one may
   finish with "nothing new upstream").
@@ -103,11 +103,11 @@ DELTA, never the base.
 
 | Excuse | Reality |
 |---|---|
-| "철저하게 전체를 다시 뜯자" | The base teardown is done and judged. Delta from the watermark only. |
-| "README/블로그가 그렇다니까" | Unverified ⇒ ⚠, never `build`. Read the implementing file. |
-| "그들이 하니까 우리도" | Fit lens first — 51 skips exist because rivals serve multi-tenant cloud. |
-| "찾았으니 바로 고치자" | Scout ships intelligence, not code. Tag it for the building skills. |
-| "델타가 없네, 억지로 만들자" | An empty delta is a valid, honest outcome. Bump the watermark and stop. |
-| "khoj 구현이 딱 맞는데 조금만 갖다 쓰자" | AGPL — 한 줄도 금지. 아이디어를 자기 말로 재구현하거나 버린다. |
+| "Let's thoroughly tear the whole thing apart again" | The base teardown is done and judged. Delta from the watermark only. |
+| "The README/blog says so" | Unverified ⇒ ⚠, never `build`. Read the implementing file. |
+| "They do it, so should we" | Fit lens first — 51 skips exist because rivals serve multi-tenant cloud. |
+| "Found it, let's fix it right now" | Scout ships intelligence, not code. Tag it for the building skills. |
+| "No delta, let's force one" | An empty delta is a valid, honest outcome. Bump the watermark and stop. |
+| "khoj's implementation fits perfectly, let's just borrow a little" | AGPL — not even one line. Reimplement the idea in your own words, or drop it. |
 
 Golden set: [`evals.md`](evals.md).

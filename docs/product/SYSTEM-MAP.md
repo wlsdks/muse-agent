@@ -19,9 +19,9 @@ related: [../strategy/attunement.md, ../design/attunement/README.md, FEATURES.md
 > outline of "what Muse can do" from this one page.
 >
 > - Deeper per-feature descriptions: [`FEATURES.md`](FEATURES.md) · **the verified full inventory
->   with evidence (audited 2026-06-14): [`feature-catalog/INDEX.md`](../feature-catalog/INDEX.md)** ·
+>   with evidence (audited 2026-06-14): [`../feature-catalog/INDEX.md`](../feature-catalog/INDEX.md)** ·
 >   product identity and strategy: [`../strategy/positioning/differentiation.md`](../strategy/positioning/differentiation.md) ·
->   documentation index: [`README.md`](../README.md)
+>   documentation index: [`../README.md`](../README.md)
 >
 > **Reading convention (for humans and agents alike):** each area starts with a `## number. name`
 > heading, and every capability inside it is one line of the form
@@ -340,7 +340,7 @@ Capabilities that send something to a third party or change external system stat
 - **Multi-agent collaboration** — specialist agents run **sequentially or in parallel**, and each
   collaboration's mode, duration and success/failure counts are kept in a history. (Race mode is
   currently parked deliberately and falls back to sequential — details in
-  [`feature-catalog/INDEX.md`](../feature-catalog/INDEX.md).)
+  [`../feature-catalog/INDEX.md`](../feature-catalog/INDEX.md).)
 - **Model tiering** — within one task, simple lookups go to a fast model and deep reasoning to a
   strong one, automatically.
 - **Agent specs** — agents with a role, tools and instructions can be registered, and the right one

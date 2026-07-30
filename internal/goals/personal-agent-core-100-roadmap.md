@@ -8,9 +8,9 @@ reconciledSourceHead: d693cea6fb1b6bf4889fa99dd38d9e5e0ae04642
 supersedesForActivation:
   - personal-agent-productization-roadmap.md
 related:
-  - ../strategy/attunement.md
-  - ../development/personal-agent-qualification.md
-  - ../development/ai-agent-testing-strategy.md
+  - ../../docs/strategy/attunement.md
+  - ../../docs/development/personal-agent-qualification.md
+  - ../../docs/development/ai-agent-testing-strategy.md
   - ../../harness/AGENTS.md
 ---
 

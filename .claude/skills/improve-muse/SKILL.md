@@ -71,10 +71,10 @@ a coherent unit, not the narrowest edit.
 
 | Excuse | Reality |
 |---|---|
-| "할 게 없다" | Rungs 3 and 5 never come up empty. Probe, then subtract. |
-| "백로그에 [open]이니 할 일" | Freshness first — already-shipped items move to the archive as [done], not work. |
-| "커밋했으니 done" | Done = the gate MOVED. No delta ⇒ shipped-but-insufficient. |
-| "백로그 통째로 읽고 고르기" | Grep the section. Full-loading rots the pick. |
-| "새 기능이 더 가치 있어 보임" | Record it `for=grow-muse`, keep hardening. One item, one owner. |
+| "There's nothing to do" | Rungs 3 and 5 never come up empty. Probe, then subtract. |
+| "It's [open] in the backlog, so it's work" | Freshness first — already-shipped items move to the archive as [done], not work. |
+| "Committed, so done" | Done = the gate MOVED. No delta ⇒ shipped-but-insufficient. |
+| "Read the whole backlog and pick" | Grep the section. Full-loading rots the pick. |
+| "The new feature looks more valuable" | Record it `for=grow-muse`, keep hardening. One item, one owner. |
 
 Golden set: [`evals.md`](evals.md) — grade outcome shapes, grow from real misses.

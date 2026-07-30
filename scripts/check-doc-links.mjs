@@ -47,8 +47,17 @@ for (const file of files) {
   for (const m of body.matchAll(/\]\(#([^)\s]+)\)/gu)) {
     if (!anchors.get(normalize(file))?.has(m[1])) problems.push(`${file}: missing own anchor #${m[1]}`);
   }
+  // frontmatter `related:` comes in two YAML shapes and BOTH must be checked:
+  //   related: [a.md, b.md]        inline flow sequence
+  //   related:                     block sequence — the paths are on following `- ` lines,
+  //     - a.md                     which a line-prefixed scan silently skips. That gap let six
+  //     - b.md                     broken paths pass as clean the day the gate landed.
+  let inRelatedBlock = false;
   for (const line of raw.split("\n")) {
-    if (!line.startsWith("related:")) continue;
+    const isKey = line.startsWith("related:");
+    if (isKey) inRelatedBlock = !line.slice("related:".length).trim();
+    else if (inRelatedBlock && !/^\s*-\s/u.test(line)) inRelatedBlock = false;
+    if (!isKey && !inRelatedBlock) continue;
     for (const m of line.matchAll(/[\p{L}\p{N}_./-]+\.md/gu)) {
       if (!existsSync(join(ROOT, normalize(join(dir, m[0]))))) problems.push(`${file}: missing frontmatter related ${m[0]}`);
     }

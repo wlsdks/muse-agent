@@ -753,38 +753,38 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   permission.
 
 - **Talk the Builder into shape.** After Muse drafts a flow you can keep
-  talking — "8시 반으로 바꾸고 텔레그램 123으로 보내줘" updates the same
-  draft in place (canvas and form follow), Muse replies naming exactly
+  talking — "change it to 8:30 and send it via Telegram to 123" updates the
+  same draft in place (canvas and form follow), Muse replies naming exactly
   what changed, and your manual edits between turns are respected.
-  Nothing is created until you click 만들기. The Flows nav item is now
+  Nothing is created until you click Create. The Flows nav item is now
   called Builder.
 - **Fresh UI actually shows up after updates.** The server now sends the
   standard SPA cache contract (index always revalidates, hashed assets
   cached forever) — the desktop app can no longer hold a stale interface
   across restarts.
 
-- **Describe it, and Muse drafts the flow.** Type "평일 아침 8시 반에 오늘
-  첫 일정 알려줘" above the Flows list and Muse sketches the automation —
-  correct cron, cleaned-up prompt, live canvas preview — as a DRAFT you
-  review and confirm; nothing is created until you click 만들기. Runs on
-  your local model with strict validation (unknown fields stripped, one
-  bounded repair retry, honest errors), gated by a new eval:flow-draft
+- **Describe it, and Muse drafts the flow.** Type "on weekday mornings at
+  8:30, tell me today's first event" above the Flows list and Muse sketches
+  the automation — correct cron, cleaned-up prompt, live canvas preview — as
+  a DRAFT you review and confirm; nothing is created until you click Create.
+  Runs on your local model with strict validation (unknown fields stripped,
+  one bounded repair retry, honest errors), gated by a new eval:flow-draft
   battery.
-- **Every flow now shows its runs.** A 실행 기록 card lists recent
+- **Every flow now shows its runs.** A Run History card lists recent
   executions (status, duration, test badge, expandable result preview),
-  and a new 테스트 실행 button dry-runs the flow without waiting for the
+  and a new Test Run button dry-runs the flow without waiting for the
   schedule.
 
-- **Muse Work — one place for one goal.** `muse work start "생일 파티 준비"
-  --goal "..."` creates a Work that binds the automations (flows), board
-  tasks, and continuity thread serving that goal, records used/adjusted/
+- **Muse Work — one place for one goal.** `muse work start "birthday party
+  prep" --goal "..."` creates a Work that binds the automations (flows),
+  board tasks, and continuity thread serving that goal, records used/adjusted/
   ignored outcomes, and never executes anything itself — deleting a Work
   only severs references. Short ids round-trip everywhere, and deleting a
   scheduled job automatically prunes it from any Work. Ships with a
-  read-only 일 view and `/api/works`.
-- **The sidebar now names your automation surfaces.** New 자동화 group:
-  흐름 (build/edit automations), 예약 (what runs next + interruption
-  budget, promoted from the old 예정 tab), and 일 (Work). 자동 활동 under
+  read-only Work view and `/api/works`.
+- **The sidebar now names your automation surfaces.** New Automation group:
+  Flows (build/edit automations), Schedule (what runs next + interruption
+  budget, promoted from the old Upcoming tab), and Work. Auto Activity under
   System keeps the action log, standing objectives, and vetoes.
 
 ### Fixed
@@ -900,10 +900,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   canvas fits its nodes a little larger.
 
 - **Flows moved to the sidebar.** The automation builder is now its own
-  Workspace item (홈 · 대화 · 오늘 · 흐름 · 연동) instead of a tab inside
-  자동 활동, which keeps its 예정/액션 로그/목표/거부 tabs.
+  Workspace item (Home · Chat · Today · Flows · Integrations) instead of a
+  tab inside Auto Activity, which keeps its Upcoming/Action Log/Goals/Vetoes
+  tabs.
 
-- **The flow canvas is now a builder.** On the 흐름 tab you can create a new
+- **The flow canvas is now a builder.** On the Flows tab you can create a new
   automation from a form with a live canvas preview, click any node to edit
   its real settings (schedule presets or raw cron, prompt, model, notify
   channel), toggle a retry loop and watch the loop edge appear, rename,
@@ -911,7 +912,7 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   all through the same scheduler engine Muse itself uses, so flows you build
   and flows Muse creates from a prompt stay one and the same thing.
 
-- **See your automations as a flow.** 자동 활동 gains a "흐름" (Flows) tab
+- **See your automations as a flow.** Auto Activity gains a "Flows" tab
   that draws every scheduled automation as a node canvas — schedule trigger,
   what the agent does, where the result goes, and a visible retry loop when
   one is configured. Automations Muse creates from a prompt
@@ -933,18 +934,18 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   readiness. Live cross-surface execution, web UI, and external actions remain
   deliberately deferred.
 
-- **Automation now shows what comes NEXT.** The 자동 활동 view opens on a new
-  "예정" (Upcoming) tab: your next evening digest (and its daily hour), how
+- **Automation now shows what comes NEXT.** The Auto Activity view opens on a
+  new "Upcoming" tab: your next evening digest (and its daily hour), how
   much unasked-interruption budget is left this hour and today, the next
   scheduled agent jobs, and the next reminder — all read from real server
   state via a new read-only `GET /api/automation/upcoming` endpoint that
   degrades section-by-section instead of failing whole. The vetoes tab's
-  Korean label now reads 거부 to match its description.
+  Korean-language label now reads "Decline" to match its description.
 
-- **The sidebar now shows your life, not just chat.** A new "My Life" (내 삶)
+- **The sidebar now shows your life, not just chat.** A new "My Life"
   group surfaces Tasks, Calendar, and Reminders as first-class nav items,
   Today returns to the Workspace group (the Home link to it no longer points
-  at a hidden view), and Automation (자동 활동 — what Muse does on its own,
+  at a hidden view), and Automation (Auto Activity — what Muse does on its own,
   its standing goals, and your vetoes) is visible under System. 4 groups,
   12 items; the engine-room views stay behind the developer toggle.
 
@@ -1117,7 +1118,7 @@ mostly inert, and the reason your replies were slow was never Muse.
   kept writing.
 - **A fabricated phone number, email, handle or birthday can no longer reach your
   contacts.** An invented number "vouched for" by unrelated digits in the same
-  sentence ("회의실 1234번") is dropped; so is an email whose domain you never said.
+  sentence ("meeting room 1234") is dropped; so is an email whose domain you never said.
 - **Cross-source conflict warnings were inverted** — they fired on sources that
   *agreed* and stayed silent on ones that genuinely disagreed. Conflicts are now
   decided by comparing the actual values (amounts, times, dates — notation-aware,
@@ -1229,7 +1230,7 @@ gate, plus a day of self-diagnosis, agent-cockpit, and interface work below
   local model generates it — with the same fabrication gate intact: every
   in-flight `[from …]` citation is checked against this turn's real evidence
   before it can appear, and the gated final answer remains authoritative.
-- **The chat shows it's alive instantly.** The moment you send, a "생각 중…"
+- **The chat shows it's alive instantly.** The moment you send, a "Thinking…"
   indicator with an elapsed-seconds counter appears (the server's first stream
   frame leaves at 0.0s), replacing the dead spinner during long local-model turns.
 
@@ -1239,13 +1240,13 @@ gate, plus a day of self-diagnosis, agent-cockpit, and interface work below
   bug replaced the draft bubble by object identity, so only the first update
   ever rendered — exposed by real token streaming and fixed with a regression lock.
 - **Settings tells the truth now.** The setup-status card read fields the API
-  never returned (everything showed 미설정) and the active model read the wrong
+  never returned (everything showed Not Set) and the active model read the wrong
   key (showed —); both now follow the real contracts — gemma4 and five ready
   capabilities show correctly.
 - **Two console errors on every page are gone.** The web shell still requested
   Google Fonts (blocked by CSP, against the ships-offline rule) and a CSP-blocked
   inline style; fonts removed, pre-paint background moved into the stylesheet.
-- **Leftover test tasks swept.** Nineteen stale "테스트 …" items were removed
+- **Leftover test tasks swept.** Nineteen stale "Test …" items were removed
   from the real task list.
 
 ### Also in this wave (shipped continuously since v0.2.32)
@@ -1268,21 +1269,22 @@ gate, plus a day of self-diagnosis, agent-cockpit, and interface work below
   confirm the exact name, phone, and email. If you decline (or Muse can't ask
   you), nothing is written.
 
-- **Turn Bluetooth on or off by asking.** "turn on bluetooth" / "블루투스 꺼줘"
+- **Turn Bluetooth on or off by asking.** "turn on bluetooth" / "turn off bluetooth"
   now toggles Bluetooth. Because macOS has no built-in command for it, this runs
   a small Shortcut you set up once (Muse tells you exactly how if it's missing),
   and `muse doctor` flags whether it's ready.
 
-- **Set your Mac's screen brightness by asking.** "set brightness to 40" / "화면
-  밝기 60으로 해줘" now dims or brightens the display. Because macOS has no
+- **Set your Mac's screen brightness by asking.** "set brightness to 40" /
+  "set the screen brightness to 60" now dims or brightens the display. Because macOS has no
   built-in command for it, this runs a small Shortcut you set up once (Muse tells
   you exactly how if it's missing), and `muse doctor` flags whether it's ready.
 
 - **`muse setup cloud` now explains privacy routing.** After wiring a cloud
   model, the wizard tells you how to turn on privacy-tiered routing so only
   context-free questions use the cloud while anything personal stays on your
-  local model. Colloquial Korean possessives like "내꺼 일정", "제꺼 노트" are
-  now correctly treated as personal, so they stay local when routing is on.
+  local model. Colloquial Korean possessive phrasings — informal ways of
+  saying "my schedule" or "my notes" — are now correctly treated as personal,
+  so they stay local when routing is on.
 
 - **Background-job "done" notices no longer interrupt mid-answer.** When a
   background job finishes while Muse is generating a reply, its completion notice
@@ -1320,10 +1322,10 @@ gate, plus a day of self-diagnosis, agent-cockpit, and interface work below
   tool, you now get an explicit "this model can't call tools" message instead
   of a silent no-op. The default local model is unaffected — it supports tools.
 
-- **Toggle Mac Dark Mode by asking.** "turn on dark mode" / "다크모드 켜줘" now
-  switches macOS between dark and light appearance.
+- **Toggle Mac Dark Mode by asking.** "turn on dark mode," in English or
+  Korean, now switches macOS between dark and light appearance.
 
-- **Ask Muse to quit a Mac app.** "quit Safari", "사파리 종료해줘" now closes the
+- **Ask Muse to quit a Mac app.** "quit Safari," in English or Korean, now closes the
   named app (a normal quit — it can still prompt you to save). The app name is
   handled safely so a weird name can't run anything else.
 
@@ -1517,7 +1519,7 @@ gate, plus a day of self-diagnosis, agent-cockpit, and interface work below
 **The agents get a cockpit.** Everything the multi-agent engine could already
 do becomes manageable outside the terminal:
 
-- New 에이전트 view: run an orchestration (sequential/parallel, background),
+- New Agent view: run an orchestration (sequential/parallel, background),
   watch every live sub-agent run, and **stop one mid-flight** — cancellation
   now exists on every surface, takes the whole worker tree down, and can never
   be resurrected by a late-settling model call.
@@ -1540,7 +1542,7 @@ Settings page reorganized so every section explains itself in plain language
 
 ## [0.2.36] - 2026-07-12
 
-**One-click self-diagnosis.** The 연동 tab gained a 상태 진단 card that finds —
+**One-click self-diagnosis.** The Integrations tab gained a Status Diagnostics card that finds —
 and fixes with one click — the usual reasons Muse goes quiet (reply daemon off
 with a message backlog, multi-instance bot conflicts, Ollama down). Underneath:
 the desktop app now refuses to reuse a stale API server (build-id gate +
@@ -1550,7 +1552,7 @@ automatic replacement), and the full app window is draggable again.
 
 **Muse interrupts less, and you're in control.** Unasked notices share one
 budget (2/hour, 6/day) with the overflow delivered as an evening digest
-(`muse digest`); replying "그만" teaches per-source silence, and un-vetoing is
+(`muse digest`); replying "stop" teaches per-source silence, and un-vetoing is
 real — the latest decision wins.
 
 ## [0.2.34] - 2026-07-11
@@ -1581,7 +1583,7 @@ API, and the app.
   answer streams in word by word, every claim carries a citation chip you can
   tap to open the note it came from, and a confidence badge shows how sure Muse
   is. When your notes don't contain the answer, it says so honestly instead of
-  guessing. Bilingual (한국어/English).
+  guessing. Bilingual (Korean/English).
 - **The ask API streams.** `POST /api/ask` with `Accept: text/event-stream`
   now delivers the answer token by token over SSE — behind the exact same
   citation gate as the buffered response, so a fabricated citation can never
@@ -1595,7 +1597,7 @@ API, and the app.
 ### Fixed
 
 - **Corrections now beat stale facts in answers.** A note that marks itself
-  superseded ("예전에 …였는데 지금은 아니다", "used to …") no longer outranks
+  superseded ("that used to be true, but not anymore", "used to …") no longer outranks
   its current counterpart in what Muse answers and cites — on chat, `muse ask`,
   and the API alike. The stale note is demoted, never hidden.
 - **Opening and searching notes in the app actually works against a live
@@ -1622,12 +1624,12 @@ Three real bugs, found by running the app against a real store instead of an emp
 - **The sidebar subtitle could blurt a raw fact from memory.** It rendered "DR. KIM" —
   the name of a dentist stored in memory. A tagline was only checked for *grounding*
   ("is every word backed by a fact?"), which a bare echo of a fact trivially passes. It
-  must now also be *well-formed* — framed the way the templates are ("커피 담당", "On
+  must now also be *well-formed* — framed the way the templates are ("On
   coffee duty") — and clear person names are no longer used as material. Fabrication=0
   is unchanged; this composes on top of it.
-- **Overdue items said "now".** Every past due-time collapsed to "지금 / now", so a
+- **Overdue items said "now".** Every past due-time collapsed to "now", so a
   reminder a month late looked due this minute. Past times now read as overdue with the
-  elapsed magnitude ("31일 지남" / "31d overdue") and carry the warning tint; "now" is
+  elapsed magnitude ("31d overdue") and carry the warning tint; "now" is
   reserved for a genuine ±60-second window.
 - **The connection status badge appeared twice** (header and sidebar). It now shows
   once, in the sidebar, with the server address still available as a tooltip.
@@ -1637,9 +1639,9 @@ Three real bugs, found by running the app against a real store instead of an emp
 ### Added
 
 - **Chat starter prompts.** The empty chat now shows tappable starter chips grounded in
-  what Muse can actually do — "오늘 일정 정리 / Summarize my day", "이번 주 할 일 / Tasks
-  this week", "최근 노트 요약 / Summarize my notes", "뭘 도와줄 수 있어? / What can you
-  help with?". Tapping one fills the input and focuses it (never auto-sends, so you stay
+  what Muse can actually do (shown in Korean and English) — "Summarize my
+  day", "Tasks this week", "Summarize my notes", "What can you help with?".
+  Tapping one fills the input and focuses it (never auto-sends, so you stay
   in control); the chips disappear once a conversation starts.
 
 ## [0.2.29] - 2026-07-09
@@ -1648,16 +1650,16 @@ Web/desktop UI polish (real-browser verified).
 
 ### Changed
 
-- **Branding matches the product voice.** Dropped the "AI Conductor / AI 지휘자" framing
+- **Branding matches the product voice.** Dropped the "AI Conductor" framing
   from the web app — the sidebar fallback is now the identity line ("Learns you, not the
-  world" / "세상이 아니라, 당신을 배우는 AI") and the window title is just "Muse". (The live
+  world") and the window title is just "Muse". (The live
   sidebar subtitle remains the AI-generated, personalized tagline.)
 - **Connection status, not a raw address.** The header showed a bare `127.0.0.1:3030`;
   it's now a connection-status badge (connected / connecting / offline) with the URL kept
   as a tooltip and in Settings.
 - **Calmer load errors.** When the app can't reach the server, dashboard cards no longer
-  surface the raw browser "Failed to fetch" — they show a gentle "Couldn't load / 불러올
-  수 없어요" with a check-your-connection hint.
+  surface the raw browser "Failed to fetch" — they show a gentle "Couldn't load"
+  with a check-your-connection hint.
 
 ## [0.2.28] - 2026-07-09
 
@@ -1882,7 +1884,7 @@ screen — and the app's empty states now guide you to value instead of dead-end
   history, Reminders/Notes mirrors) so setup ends with real data — the "learns
   you" value starts on day one. Opt-in and skippable.
 - **A proof-of-value moment.** Setup finishes with a personalized, grounded line
-  ("Sam님, 연락처 12명 연결됐어요 — 이제 당신을 배울게요"); an empty install gets a warm
+  ("Sam, 12 contacts connected — now I'll get to know you"); an empty install gets a warm
   content-free welcome. Fabrication = 0 — it can never invent a trait.
 - **Codex (your ChatGPT subscription) as a setup option** — detects your own
   official `codex` CLI login and delegates to it (Muse never handles the token),
@@ -1922,8 +1924,8 @@ cloud allowed by default.
   empty states) moved from flat grey to a calm, precise dark design — a
   considered accent, soft depth, tabular numerals, refined typography.
 - **A personalized sidebar tagline.** Instead of a fixed "AI Conductor", the
-  sidebar shows a fun line personalized to what Muse knows about you ("개발자·커피
-  담당") — different each open, and grounded (never invented).
+  sidebar shows a fun line personalized to what Muse knows about you ("Developer ·
+  On coffee duty") — different each open, and grounded (never invented).
 - **Full-screen `muse` chat.** The terminal chat now fills the screen like a
   proper TUI: banner on top, a big canvas, the input pinned at the bottom, a
   one-line status bar — Korean (IME) input preserved.
@@ -2049,7 +2051,7 @@ macOS only.
 - **`muse contacts import --apple` imports your macOS Contacts** —
   names, phones, emails, and birthdays (year-less birthdays included) —
   into Muse's contact store, so birthday briefings, overdue-contact
-  nudges, and "send it to 민수" recipient resolution finally have data
+  nudges, and "send it to Minsu" recipient resolution finally have data
   to work with. The merge is additive-only: anything you've set by hand
   (relationships, notes) is never overwritten, and re-running the
   import converges instead of duplicating. If macOS hasn't granted
@@ -2057,17 +2059,18 @@ macOS only.
 
 ## [0.2.15] - 2026-07-07
 
-Korean voice input works out of the (opt-in) box, and "방해금지 켜줘"
-now actually turns on Do Not Disturb. Early / experimental, macOS only.
+Korean voice input works out of the (opt-in) box, and saying "turn on
+do-not-disturb" now actually turns on Do Not Disturb. Early / experimental,
+macOS only.
 
 ### Added
 
-- **Focus / Do-Not-Disturb control from chat.** "방해금지 켜줘" /
-  "집중모드 꺼줘" toggles Focus via Apple's own Shortcuts "Set Focus"
+- **Focus / Do-Not-Disturb control from chat.** "turn on do-not-disturb" /
+  "turn off focus mode" toggles Focus via Apple's own Shortcuts "Set Focus"
   action (you create two small shortcuts once — Muse tells you exactly
   how if they're missing, and `muse doctor` checks they exist).
   Verified live on the local model: correct tool choice 48/48 including
-  the "볼륨 꺼줘" confusable.
+  the "turn off the volume" confusable.
 - **`muse doctor` now guides voice setup.** It reports STT/TTS state
   and, when off, the exact steps to enable local voice — including the
   Korean TTS voice option (with its non-commercial license caveat
@@ -2174,7 +2177,7 @@ experimental, macOS only.
 
 - **A Korean question can now find an English feed headline.** Feed
   entry titles are embedded locally when a feed is added or refreshed,
-  so asking "지난주에 나온 러스트 릴리스 소식 있었어?" surfaces an
+  so asking "was there any Rust release news last week?" surfaces an
   older "Rust 1.80.0 released" headline from your subscriptions — even
   when it has fallen out of the recent-headlines window — cited
   `[feed: ...]` under the same citation gate as everything else. The
@@ -2205,8 +2208,8 @@ English-titled page. Early / experimental, macOS only.
   (the default), no background process ever touches the Chrome file, and
   a test pins that guarantee.
 - **Cross-language recall over your browsing history.** Page titles are
-  now embedded locally at sync time, so asking "지난주에 본 러스트
-  블로그 뭐였지?" finds "Announcing Rust 1.80.0" — a Korean question
+  now embedded locally at sync time, so asking "what was that Rust blog I
+  saw last week?" finds "Announcing Rust 1.80.0" — a Korean question
   reaching an English page, verified live on the local model. Everything
   stays on your machine (localhost embedder only), and if the local
   model is offline, syncing simply continues without embeddings.
@@ -2227,7 +2230,7 @@ until you explicitly ask. Early / experimental, macOS only.
   visits (http/https) are ingested; cookies and passwords are never
   touched. `muse browsing search` and `muse browsing recent` explore it.
 - **`muse ask` can now answer from pages you visited, with a real
-  citation.** "그 러스트 블로그 뭐였지?" gets a grounded answer marked
+  citation.** "what was that Rust blog?" gets a grounded answer marked
   `[browsing: blog.rust-lang.org]` plus a "🌐 from pages you visited"
   receipt — under the same deterministic citation gate as every other
   source, so a made-up page citation is stripped by code. Page titles are
@@ -2438,8 +2441,8 @@ phrasing. Early / experimental, macOS only.
   `muse status` also reads through the store API now (it previously
   re-parsed the raw file, which would also have broken on an encrypted
   store).
-- **Arithmetic answers regardless of phrasing.** "간단히 계산해줘: 3+4" and
-  "3+4는 얼마야?" now hit the deterministic calculator instantly instead of
+- **Arithmetic answers regardless of phrasing.** "quickly calculate: 3+4" and
+  "what's 3+4?" now hit the deterministic calculator instantly instead of
   reaching the grounded path and refusing grade-school math.
 - `muse --version` reports the right version (0.2.0 shipped reporting 0.1.2).
 
@@ -3042,7 +3045,7 @@ are retained here for history.
   (`voice-playback.ts`) ready for any future "speak this" surface.
 - **`muse.reminders.{add, due, clear}` MCP loopback** — agent
   surface for the reminder store. The LLM can now schedule its
-  own reminders ("내일 6시에 우유 사라고 알려줘" → `add` with
+  own reminders ("remind me to buy milk at 6 tomorrow" → `add` with
   parsed dueAt), check what the user should see right now (`due`
   status filter for overdue+now-or-earlier pending), and remove
   one by id (`clear`). Always-on at `~/.muse/reminders.json`
@@ -3188,7 +3191,7 @@ are retained here for history.
 ### Added (round 190)
 
 - **`muse.tasks.add` accepts `dueAt`**. Real bug surfaced via
-  dogfood: when a user said "Add a task: 우유 사기 — due
+  dogfood: when a user said "Add a task: buy milk — due
   tomorrow", the LLM responded with "I cannot set a due date" and
   asked to proceed without one — the tool's input schema only
   accepted `title` / `notes` / `tags`. Adds optional
@@ -3203,7 +3206,7 @@ are retained here for history.
   list → search; invalid timestamp errors with a clear message;
   legacy pre-`dueAt` entry still loads. **Live dogfood verified**:
   real Gemini call with the same Korean prompt that failed before
-  ("Add a task: 우유 사기 due 2026-05-15T18:00:00Z") now invokes
+  ("Add a task: buy milk due 2026-05-15T18:00:00Z") now invokes
   `muse.tasks.add` with both fields, the task persists with
   `dueAt: "2026-05-15T18:00:00.000Z"`, and `GET /api/tasks` shows
   it. Caveat: `dueAt` is currently a free-form ISO timestamp the

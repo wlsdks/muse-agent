@@ -532,7 +532,7 @@ existing authoritative Muse stores
 
 The AWG-070a3a0 portable-format foundation is `verified-current`. The Engine
 exposes its exact stored-projection normalizer only as a package-private Module seam, and
-[`PORTABLE-FORMAT.md`](../../../packages/attunement-graph/PORTABLE-FORMAT.md) fixes `.magx`
+[`../../../packages/attunement-graph/PORTABLE-FORMAT.md`](../../../packages/attunement-graph/PORTABLE-FORMAT.md) fixes `.magx`
 v1 as an implementation-pending normative contract. No codec, export/rebuild,
 filesystem/SQLite staging, Worker/admin runtime, or public `./admin` API ships in this
 slice. A fresh independent evaluator passed the exact validator, public-surface, and

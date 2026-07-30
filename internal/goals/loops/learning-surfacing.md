@@ -1,211 +1,211 @@
 # Loop journal — `learning-surfacing`
 
-> Theme: Muse 정체성 "Learns you, not the world."을 사용자가 *체감*하게 — 학습 기계(user-model facts/prefs/goals/vetoes + Playbook + correction-decay)를 **결정론 코드가 고르고 출처 인용**으로 surface. fabrication=0 유지.
-> Worktree `/tmp/muse-learning-surfacing` (branch `loop/learning-surfacing`), Tier2 push + 3-fire main FF-merge (진안 명시). Cron session-only 20m (`e8138ee2`).
+> Theme: Make Muse's identity "Learns you, not the world." *tangible* to the user — surface the learning machine (user-model facts/prefs/goals/vetoes + Playbook + correction-decay) with **deterministic code choosing and citing sources**. Keep fabrication=0.
+> Worktree `/tmp/muse-learning-surfacing` (branch `loop/learning-surfacing`), Tier2 push + 3-fire main FF-merge (explicit from Jinan). Cron session-only 20m (`e8138ee2`).
 > Convention: [README](README.md). One entry per fire; `meta:` lines are grep-able counters for the (pkg, kind) ratchet.
 
 ## fire 1 · 2026-06-21 · skill v2.1.0 · ede0c046
 meta: value-class=new-capability · pkg=@muse/memory · kind=learned-projection · verdict=PASS · firesSinceDrill=1 · firesSinceMainMerge=1
 ratchet: testFiles +1 (recently-learned.test.ts, 6 cases) · @muse/memory 41 files/505 tests green · full pnpm build green · lint clean · fabrication 0
 
-- **무엇**: `@muse/memory`에 결정론적 출처-인용 투영 `projectRecentlyLearned(memory)` 신규(`recently-learned.ts` + `index.ts` 재export). 사용자의 append-only `factHistory`(교체된 fact = 기록된 학습 이벤트)에서 "최근 너에 대해 배운/갱신한 것"을 newest-first로 골라, 각 항목에 현재값·이전값·시점·`refine`/`contradict`/`changed`·**출처 인용**(`updated from "X" on YYYY-MM-DD`)을 붙여 반환. CLI/web 표면이 이후 fire에서 소비할 토대.
-- **왜**: 새 정체성의 학습 기계가 전부 백그라운드라 사용자가 체감 못 함. 이 투영은 그 체감의 **결정론적·근거 있는 첫 벽돌** — 무엇을 보여줄지 8B가 아니라 코드가 고르고, 모든 항목이 기록된 supersession을 인용해 fabrication=0 유지.
-- **리뷰지점**: 순수함수(store 미변경). 출처 문자열은 항목 자신의 `previousValue`+`replacedAt`에서만 파생(오귀속 불가). `currentValue` undefined = 학습 후 forget된 fact(표면이 스킵 처리). surfaces 루프와 파일 0겹침(@muse/memory leaf).
-- **리스크**: 없음 — additive leaf + 단일 export, 전체 빌드+memory 505 green, 독립 Opus ④b judge가 4 mutation 직접 재확인 PASS. 다음 fire 후보: CLI `muse memory`/`muse status`가 이 투영을 소비해 실제 표면화(같은 결정론+인용 불변식 유지).
+- **What**: New deterministic source-citation projection `projectRecentlyLearned(memory)` in `@muse/memory` (`recently-learned.ts` + `index.ts` re-export). Picks "recently learned/updated about you" newest-first from the user's append-only `factHistory` (a replaced fact = a recorded learning event), attaching to each item the current value · previous value · timestamp · `refine`/`contradict`/`changed` · **source citation** (`updated from "X" on YYYY-MM-DD`), and returns it. The foundation for CLI/web surfaces to consume in later fires.
+- **Why**: The new identity's learning machine is entirely background, so the user can't feel it. This projection is the **first deterministic, evidence-backed brick** of that feel — code, not the 8B model, picks what to show, and every item cites a recorded supersession, keeping fabrication=0.
+- **Review point**: Pure function (store unchanged). The source string is derived only from the item's own `previousValue`+`replacedAt` (no misattribution possible). `currentValue` undefined = a fact forgotten after being learned (surface skips it). Zero file overlap with the surfaces loop (@muse/memory leaf).
+- **Risk**: None — additive leaf + single export, full build + memory 505 green, the independent Opus ④b judge directly re-confirmed with 4 mutations, PASS. Next fire candidate: CLI `muse memory`/`muse status` consuming this projection to actually surface it (keeping the same determinism + citation invariant).
 
 ## fire 2 · 2026-06-21 · skill v2.1.0 · 26770607
 meta: value-class=new-capability · pkg=@muse/memory · kind=learned-render · verdict=PASS · firesSinceDrill=2 · firesSinceMainMerge=2
 ratchet: testFiles +0 (same file +4 cases) · @muse/memory 41 files/513 tests green · lint clean · fabrication 0
 
-- **무엇**: `renderRecentlyLearnedLines(items)` 신규(`recently-learned.ts` + `index.ts` 재export) — fire 1의 `projectRecentlyLearned` 출력을 사용자-facing 줄로 결정론 렌더. `home city: Busan (updated from "Seoul" on 2026-06-21)` 형식: snake_case→공백, **출처 인용 항상 임베드**, **forget된 fact(`currentValue` undefined)는 제외**("현재 아는 것"만). 4 mutation-verified 케이스.
-- **왜**: fire 1 투영의 표현 절반. surface가 "내가 너에 대해 아는 것"을 출력할 때 (a) 잊은 건 안 보이고 (b) 모든 줄에 출처가 붙도록 결정론적으로 강제 — 표면이 무근거 학습 주장을 못 내보냄. CLI/web 표면 fire는 project→render만 호출하면 됨.
-- **리뷰지점**: 순수함수. citation은 항상 `(${source})`로 임베드(누락 경로 없음). forget-filter가 핵심 결정. surfaces 0겹침(@muse/memory leaf).
-- **리스크**: 없음 — additive, 513 green, lint clean, 독립 Opus ④b judge가 forget-filter mutation 직접 재확인 PASS.
-- **lesson**: Tier2 published 브랜치는 fire 시작 시 `rebase origin/main` 쓰지 마라 — 이미 push된 fire 커밋을 재작성해 force-push가 필요(계약 위반). **`git merge origin/main`을 써라**(published 커밋 보존, push가 fast-forward). 루프 프롬프트의 "rebase" 문구는 merge로 실행할 것([[project_paper_grounded_loop]] 재확인).
+- **What**: New `renderRecentlyLearnedLines(items)` (`recently-learned.ts` + `index.ts` re-export) — deterministically renders fire 1's `projectRecentlyLearned` output into user-facing lines. Format `home city: Busan (updated from "Seoul" on 2026-06-21)`: snake_case→spaces, **source citation always embedded**, **forgotten facts (`currentValue` undefined) excluded** (only "what's currently known"). 4 mutation-verified cases.
+- **Why**: The rendering half of fire 1's projection. Deterministically enforces that when a surface prints "what I know about you," (a) forgotten items don't show and (b) every line carries a citation — so a surface can never emit an unsupported learning claim. CLI/web surface fires only need to call project→render.
+- **Review point**: Pure function. Citation is always embedded as `(${source})` (no missing path). The forget-filter is the key decision. Zero overlap with surfaces (@muse/memory leaf).
+- **Risk**: None — additive, 513 green, lint clean, the independent Opus ④b judge directly re-confirmed the forget-filter mutation, PASS.
+- **lesson**: Don't use `rebase origin/main` at the start of a fire on a Tier2 published branch — it rewrites already-pushed fire commits and requires a force-push (a contract violation). **Use `git merge origin/main`** (preserves published commits, push stays fast-forward). Execute the loop prompt's "rebase" wording as a merge (re-confirmed via [[project_paper_grounded_loop]]).
 
 ## fire 3 · 2026-06-21 · skill v2.1.0 · 754af572
 meta: value-class=wiring · pkg=@muse/cli · kind=surface-wiring · verdict=PASS · firesSinceDrill=3 · firesSinceMainMerge=3→0(main FF-merge this fire)
 ratchet: testFiles +0 (human-formatters.test +2 cases) · @muse/cli 245 files/2861 tests green · lint clean · fabrication 0
 
-- **무엇**: `muse memory show`가 **"Recently learned about you:"** 섹션을 출력 — `readLocalMemory`(commands-memory.ts)가 `projectRecentlyLearned`→`renderRecentlyLearnedLines`로 계산, `formatMemoryShow`(human-formatters.ts)가 각 출처-인용 줄을 렌더. 사용자가 처음으로 "내가 너에 대해 배운 것"을 *보는* 표면.
-- **왜**: fire 1·2의 @muse/memory 결정론 토대를 실제 화면으로. 정체성 "Learns you, not the world."의 첫 가시적 증거 — 그것도 무근거 주장은 코드가 못 내보내는 채로.
-- **리뷰지점**: local/file 경로 한정(factHistory 있는 곳; API 경로는 부재=정직, 서버측 factHistory 미populate). 섹션은 8B 무관 순수 project→render. surfaces 루프가 commands-memory.ts는 안 만짐(today만) → 충돌 회피 타깃.
-- **리스크**: 없음 — 기존 memory-show 동작(facts/prefs/veto/goal/topics) 무변, 빈/부재 시 헤더 생략(false-header 테스트), 독립 Opus ④b judge가 전체 cli 2861 + mutation 재확인 PASS.
+- **What**: `muse memory show` now prints a **"Recently learned about you:"** section — `readLocalMemory` (commands-memory.ts) computes it via `projectRecentlyLearned`→`renderRecentlyLearnedLines`, `formatMemoryShow` (human-formatters.ts) renders each source-cited line. The first surface where the user *sees* "what I've learned about you."
+- **Why**: Turns fire 1·2's @muse/memory deterministic foundation into an actual screen. The first visible evidence of the "Learns you, not the world." identity — and one where the code structurally can't emit an unsupported claim.
+- **Review point**: Scoped to the local/file path only (where factHistory exists; the API path is honestly absent — server-side factHistory isn't populated). The section is a pure project→render, no 8B involved. The surfaces loop doesn't touch commands-memory.ts (only today) → a conflict-avoiding target.
+- **Risk**: None — existing memory-show behavior (facts/prefs/veto/goal/topics) unchanged, header omitted when empty/absent (false-header tested), the independent Opus ④b judge re-confirmed the full cli 2861 + mutation, PASS.
 
 ## fire 4 · 2026-06-21 · skill v2.1.0 · 8cf59bcb
-meta: value-class=new-capability · pkg=@muse/memory · kind=learned-summary · verdict=PASS · firesSinceDrill=4 · firesSinceMainMerge=3(fire3 main-merge가 race에서 밀림; 이 fire에서 누적 재시도)
+meta: value-class=new-capability · pkg=@muse/memory · kind=learned-summary · verdict=PASS · firesSinceDrill=4 · firesSinceMainMerge=3(fire3's main-merge got bumped by a race; retried cumulatively in this fire)
 ratchet: testFiles +0 (recently-learned.test +4 cases) · @muse/memory 519 green · lint clean · fabrication 0
 
-- **무엇**: `summarizeRecentlyLearned(items)` 신규 — `status`/`today` 같은 공간제약 표면용 **컴팩트 1줄**(최근 인용 학습 1건 + `(+N more)`). `renderRecentlyLearnedLines` 재사용 → forget-filter+citation 상속, forgotten은 count도 안 부풀림. 비면 undefined.
-- **왜**: 풀 리스트(memory show, fire 3)가 안 맞는 좁은 표면을 다음 fire가 한 줄로 surface하도록 unblock. 컴팩트도 실제 출처를 가리킴.
-- **리뷰지점**: 순수. head-or-undefined + post-filter count + single/many 분기 = render엔 없는 컴팩트 표현 정책(judge가 value 진짜로 확인). surfaces 0겹침(@muse/memory leaf).
-- **리스크**: 없음 — additive, 519 green, lint clean, 독립 Opus ④b judge PASS.
-- **lesson**: main FF-push가 동시 ~16 루프 + grounding 훅(~1분) 때문에 반복 non-FF로 밀림 — fire 3 main-merge가 race에서 짐(브랜치 `b350718d`는 안전). 무한 재시도 대신 다음 fire로 이월(merge로 누적, 한 번에 main 적재). 근본 해결 = 머신 포화 시 동시 루프 수 줄이기(진안 판단).
+- **What**: New `summarizeRecentlyLearned(items)` — a **compact one-liner** for space-constrained surfaces like `status`/`today` (one most-recent cited learning + `(+N more)`). Reuses `renderRecentlyLearnedLines` → inherits the forget-filter+citation, forgotten items don't even inflate the count. Undefined when empty.
+- **Why**: Unblocks a future fire surfacing a one-liner on narrow surfaces where the full list (memory show, fire 3) doesn't fit. The compact form still points at a real source.
+- **Review point**: Pure. head-or-undefined + post-filter count + single/many branching = a compact-presentation policy that doesn't exist in render (the judge verified this is a genuine value-add). Zero overlap with surfaces (@muse/memory leaf).
+- **Risk**: None — additive, 519 green, lint clean, independent Opus ④b judge PASS.
+- **lesson**: main FF-push repeatedly gets bumped as non-FF because of ~16 concurrent loops + the grounding hook (~1min) — fire 3's main-merge lost the race (branch `b350718d` is safe). Instead of retrying forever, carry it over to the next fire (accumulate via merge, land on main in one go). Root fix = reduce the concurrent loop count when the machine is saturated (Jinan's call).
 
 ## fire 5 · 2026-06-21 · skill v2.1.0 · a1ef683b
 meta: value-class=wiring · pkg=@muse/cli · kind=surface-wiring · verdict=PASS · firesSinceDrill=5 · firesSinceMainMerge=1
 ratchet: testFiles +0 (commands-status.test +2 cases) · @muse/cli 245 files/2869 tests green · lint clean · fabrication 0
 
-- **무엇**: `muse status`에 **"recently learned: <컴팩트 1줄>"** 추가 — 새 `readRecentlyLearnedLine(memoryFile, userId)`(typed store `findByUserId` → `projectRecentlyLearned` → `summarizeRecentlyLearned`)를 액션이 계산, `snapshot.persona.recentlyLearned` 필드 + human 렌더 1줄. 두 번째 사용자-facing 표면(자주 보는 daily-driver 대시보드).
-- **왜**: `memory show`(fire 3, 풀 리스트)에 이어 `status`(매일 보는 곳)에 컴팩트 1줄로. 정체성을 일상에서 체감.
-- **리뷰지점**: **typed store 경유 필수** — raw memoryDoc은 `replacedAt`이 string이라 `.getTime()` 정렬이 깨짐(judge가 명시 확인). 빈 시 snapshot 필드/human 라인 둘 다 생략(기존 `workingHours` idiom). `--json` shape는 additive(schemaVersion 무변). surfaces 미접촉(status); `today`는 surfaces 소유 → 별도.
-- **리스크**: 없음 — additive(import+helper+optional field+render line), 독립 Opus ④b judge가 전체 cli 2869 + mutation 재확인 PASS.
+- **What**: Added **"recently learned: <compact one-liner>"** to `muse status` — the action computes it via a new `readRecentlyLearnedLine(memoryFile, userId)` (typed store `findByUserId` → `projectRecentlyLearned` → `summarizeRecentlyLearned`), a `snapshot.persona.recentlyLearned` field + a one-line human render. The second user-facing surface (a frequently-viewed daily-driver dashboard).
+- **Why**: Following `memory show` (fire 3, the full list), a compact one-liner now lands in `status` (a place viewed daily). Makes the identity felt in daily use.
+- **Review point**: **Must go through the typed store** — on the raw memoryDoc, `replacedAt` is a string, so `.getTime()` sorting breaks (the judge explicitly confirmed this). Both the snapshot field and the human line are omitted when empty (the existing `workingHours` idiom). The `--json` shape is additive (schemaVersion unchanged). No contact with surfaces (status); `today` belongs to surfaces → separate.
+- **Risk**: None — additive (import+helper+optional field+render line), the independent Opus ④b judge re-confirmed the full cli 2869 + mutation, PASS.
 
 ## fire 6 · 2026-06-21 · skill v2.1.0 · 2803ce09
 meta: value-class=new-capability · pkg=@muse/memory+@muse/cli · kind=recency-window · verdict=PASS · firesSinceDrill=6 · firesSinceMainMerge=2
 ratchet: testFiles +0 (recently-learned.test +1, commands-status.test +1) · @muse/memory 523 green · @muse/cli status 21 green · lint clean · fabrication 0
 
-- **무엇**: `projectRecentlyLearned`에 `sinceMs`(epoch-ms 하한) 옵션 추가 — `replacedAt < sinceMs` 학습은 제외. `muse status`가 **30일 윈도우**(`readRecentlyLearnedLine`의 `nowMs - 30d`)로 배선 → 반년 전 학습이 "recently"로 안 뜸.
-- **왜**: 윈도우 없으면 변경이 드물 때 status가 months-old supersession을 "recently learned"로 표시 = **"recently"가 거짓**. 윈도우가 그 정직성 회복.
-- **리뷰지점**: 옵션 생략 시 무바운드(backward-compat — `memory show`는 전부 계속 표시). `nowMs` injectable(테스트 결정론, 실행은 `Date.now()` 기본). `continue`는 `limit`-break 뒤 → old skip이 limit 슬롯 안 먹음.
-- **리스크**: 없음 — additive 옵션, memory 523 + status 21 green, 독립 Opus ④b judge가 boundary + 양쪽 패키지 mutation 재확인 PASS.
+- **What**: Added a `sinceMs` (epoch-ms lower bound) option to `projectRecentlyLearned` — excludes learnings where `replacedAt < sinceMs`. `muse status` is wired to a **30-day window** (`readRecentlyLearnedLine`'s `nowMs - 30d`) → a learning from half a year ago no longer shows as "recently."
+- **Why**: Without a window, when changes are rare, status shows a months-old supersession as "recently learned" — **"recently" becomes a lie**. The window restores that honesty.
+- **Review point**: Unbounded when the option is omitted (backward-compat — `memory show` keeps showing everything). `nowMs` is injectable (test determinism; defaults to `Date.now()` at runtime). `continue` sits ahead of the `limit`-break → an old-skip doesn't eat a limit slot.
+- **Risk**: None — additive option, memory 523 + status 21 green, the independent Opus ④b judge re-confirmed the boundary + mutations across both packages, PASS.
 
 ## fire 7 · 2026-06-21 · skill v2.1.0 · 6163c7e6
 meta: value-class=new-capability · pkg=@muse/memory · kind=preference-learning · verdict=PASS · firesSinceDrill=7 · firesSinceMainMerge=3→0(main FF-merge this fire)
 ratchet: testFiles +0 (recently-learned.test +4 cases) · @muse/memory 529 green · @muse/cli surfaces 59 green · lint clean · fabrication 0
 
-- **무엇**: **preference 학습 표면화** — `FactSupersession`에 `scope`("fact"|"preference") 추가, InMemory + File `upsertPreference`가 preference 변경을 supersession으로 기록, `projectRecentlyLearned`가 scope별로 `facts`/`preferences`에서 `currentValue` 해결. 이제 `memory show`·`status`가 facts뿐 아니라 **preferences/vetoes/goals 변경도 자동 surface**(full UserMemory 전달).
-- **왜**: "what Muse learned about you"가 facts만 다뤘는데, 선호/거부/목표가 더 중요한 학습. 코드-선택 + 인용 + fab=0 불변식 유지.
-- **리뷰지점**: scope absent=fact(back-compat, fact 직렬화 byte-unchanged). Kysely는 factHistory 자체를 안 함(pre-existing, 일관). `veto:`/`goal:` 접두 키는 raw로 렌더(polish 후속 backlog).
-- **리스크**: 없음(now). ④b judge가 **File-store가 디스크 직렬화에서 scope를 드롭하는 버그**를 잡음 → 3 round-trip 사이트(type+memoryToStored+storedToMemory) fix + 직렬화경계 넘는 round-trip 테스트(RED-on-removal teeth 확인) → 재judge PASS.
-- **lesson**: 지속(persistent) store를 만지는 슬라이스의 e2e 테스트는 InMemory가 아니라 **직렬화 경계를 건너야**(write→fresh-instance read). InMemory-only e2e는 직렬화 버그를 못 잡고 거짓 통과 — ④b adversarial judge가 정확히 이걸 적발(gating verifier 가치 실증).
+- **What**: **Preference-learning surfacing** — added `scope`("fact"|"preference") to `FactSupersession`, InMemory + File `upsertPreference` now records preference changes as a supersession, `projectRecentlyLearned` resolves `currentValue` from `facts`/`preferences` by scope. Now `memory show`·`status` **automatically surface preference/veto/goal changes too**, not just facts (passing the full UserMemory).
+- **Why**: "what Muse learned about you" only covered facts, but preferences/vetoes/goals are more important learning. Keeps the code-selects + citation + fab=0 invariant.
+- **Review point**: scope absent = fact (back-compat, fact serialization byte-unchanged). Kysely doesn't do factHistory at all (pre-existing, consistent). `veto:`/`goal:`-prefixed keys render raw (polish is a follow-up backlog item).
+- **Risk**: None (now). The ④b judge caught **a bug where the File store drops scope during disk serialization** → fixed 3 round-trip sites (type+memoryToStored+storedToMemory) + added a round-trip test crossing the serialization boundary (confirmed RED-on-removal teeth) → re-judged, PASS.
+- **lesson**: An e2e test for a slice that touches a persistent store must **cross the serialization boundary** (write→fresh-instance read), not just InMemory. An InMemory-only e2e can't catch a serialization bug and false-passes — the ④b adversarial judge caught exactly this (proving the gating verifier's value).
 
 ## fire 8 · 2026-06-21 · skill v2.1.0 · 2540bafd
 meta: value-class=micro-fix · pkg=@muse/memory · kind=citation-verb · verdict=PASS · firesSinceDrill=8 · firesSinceMainMerge=1
 ratchet: testFiles +0 (recently-learned.test +1 case) · @muse/memory 531 green · @muse/cli surfaces 50 green · lint clean · fabrication 0
 
-- **무엇**: `formatSource`가 **kind-aware 동사** — `contradict`→"changed from"(마음 바꿈), `refine`→"refined from"(구체화), legacy/absent→"updated from". fire 1부터 계산됐으나 미노출이던 `kind`를 인용에 surface.
-- **왜**: 사용자가 *어떻게* 이해가 진화했는지 봄 — 마음을 바꿨는지 vs 구체화했는지. 7 fire 동안 죽어있던 데이터(`kind`) 활성화.
-- **리뷰지점**: 동사는 `entry.kind`에서만 파생(no model, citation 불변). real-formatSource assertion 3개(projection + status :65/:83, 전부 contradict)만 ripple — 나머지 "updated from" 리터럴은 render/summarize/formatMemoryShow 테스트의 명시 source(formatSource 안 거침)라 의도적 sample.
-- **리스크**: 없음 — verb는 기록된 kind에서만, legacy=conservative "updated". memory 531 green, 독립 Opus ④b judge가 ripple-completeness(false-green 없음) + mutation 재확인 PASS.
+- **What**: `formatSource` now uses a **kind-aware verb** — `contradict`→"changed from" (changed their mind), `refine`→"refined from" (got more specific), legacy/absent→"updated from". Surfaces `kind` in the citation — computed since fire 1 but never exposed.
+- **Why**: The user sees *how* their understanding evolved — whether they changed their mind vs got more specific. Activates data (`kind`) that had been dead for 7 fires.
+- **Review point**: The verb is derived only from `entry.kind` (no model, citation invariant unchanged). Only 3 real-formatSource assertions ripple (projection + status :65/:83, all contradict) — the remaining "updated from" literals are explicit sources in render/summarize/formatMemoryShow tests (not routed through formatSource), a deliberate sample.
+- **Risk**: None — the verb is derived only from the recorded kind, legacy=conservative "updated". memory 531 green, the independent Opus ④b judge re-confirmed ripple-completeness (no false-green) + mutation, PASS.
 
 ## fire 9 · 2026-06-21 · skill v2.1.0 · pending
 meta: value-class=decompose-plan(no-code) · pkg=docs · kind=decompose-on-defer · verdict=N/A · firesSinceDrill=9 · firesSinceMainMerge=2
 ratchet: testFiles +0 · no code change (planner step) · fabrication 0
 
-- **무엇**: @muse/memory 표면 projection seam이 8 fire로 채굴됨(monoculture 신호: 6/8 fire가 memory). 다양성 RATCHET이 가리키는 다음 다른-(pkg,kind) = **교정-확인 surface**(theme 명시, 가장 정체성-공명). 단 `createUserMemoryAutoExtractHook.afterComplete`가 변경분 반환 안 함(`void`, side-effect upsert)이라 MULTI-FIRE → 계약 **DECOMPOSE-ON-DEFER**대로 loop-sized 3슬라이스로 분해해 backlog ★에 기록: (a) 훅 `onLearned` 콜백 / (b) `formatLearnedConfirmation` 인용 라인 / (c) chat-ink 렌더.
-- **왜**: 큰 작업을 한 fire에 무리하게 욱여넣는 대신 다음 fire가 명확한 첫 조각(a)으로 시작하게(Anthropic planner 패턴). 코드 0줄이지만 다음 진짜 작업의 설계 — "할 일 없음" 아님.
-- **리뷰지점**: 코드 변경 없음 → ④b judge N/A(검증할 행동 없음). chat-ink/web/today는 surfaces 루프 소유라 각 슬라이스에 dedup 필요 명시.
-- **lesson**: 단일-pkg cheap seam이 마르면(monoculture) 억지 micro-fix 대신 다음 다른-(pkg,kind) 큰 작업을 **DECOMPOSE해 backlog 적재** — 다음 fire ROI↑. 무인 루프는 이걸 스스로 판단(질문 없이).
+- **What**: The @muse/memory surface-projection seam has been mined for 8 fires (monoculture signal: 6/8 fires were memory). The next different-(pkg,kind) the diversity RATCHET points to = the **correction-confirmation surface** (named in the theme, the most identity-resonant). But `createUserMemoryAutoExtractHook.afterComplete` doesn't return the diff (`void`, a side-effect upsert), making this MULTI-FIRE → per the **DECOMPOSE-ON-DEFER** contract, decomposed into 3 loop-sized slices and recorded in backlog ★: (a) an `onLearned` hook callback / (b) a `formatLearnedConfirmation` citation line / (c) a chat-ink render.
+- **Why**: Instead of forcing a big piece of work into one fire, lets the next fire start with a clear first piece (a) (an Anthropic planner pattern). Zero lines of code, but it's the design of the next real work — not "nothing to do."
+- **Review point**: No code change → ④b judge N/A (nothing to verify). chat-ink/web/today belong to the surfaces loop, so each slice explicitly notes the need for dedup.
+- **lesson**: When a single-pkg cheap seam dries up (monoculture), instead of a forced micro-fix, **DECOMPOSE the next different-(pkg,kind) big piece of work and load it into backlog** — raising next-fire ROI. The unattended loop decides this itself (without asking).
 
 ## fire 10 · 2026-06-21 · skill v2.1.0 · fe027e05
 meta: value-class=new-capability · pkg=@muse/memory · kind=correction-hook(slice-a) · verdict=PASS · firesSinceDrill=0(discharged) · firesSinceMainMerge=3→0(main FF-merge this fire)
-ratchet: testFiles +1 (memory-auto-extract.test.ts NEW — 이 훅의 첫 테스트) · @muse/memory 543 green · lint clean · fabrication 0
+ratchet: testFiles +1 (memory-auto-extract.test.ts NEW — the first test for this hook) · @muse/memory 543 green · lint clean · fabrication 0
 
-- **무엇**: 교정-확인 분해 슬라이스 **(a)** — 순수 `selectNewSupersessions(before, after)` cap-robust diff(content-identity) + auto-extract 훅에 `onLearned` 콜백(이번 턴 기록된 supersession 노출). fail-open(구독시만 read). 이 훅의 **첫 테스트** 추가(커버리지 갭 해소).
-- **왜**: 교정이 들어온 순간 표면이 "방금 뭘 배웠는지" 알 수 있게 — chat-ink(슬라이스 c)가 확인 라인 띄울 토대. 변경분만(첫-fact 미발화), 실제 기록된 supersession(no model).
-- **리뷰지점**: outer+inner try/catch로 fail-open 보존(throwing 콜백/read 실패가 run 안 막음). `onLearned` 없으면 extra read 0. cap-eviction 엣지=content-identity로 robust(테스트). 다음=(b) `formatLearnedConfirmation` + (c) chat-ink 구독+렌더.
-- **리스크**: 없음 — additive 옵션, 543 green, 독립 Opus ④b judge가 fail-open+cap-robust+clone-snapshot+mutation(2종) 재확인 PASS.
-- **JUDGE-DRILL**: firesSinceDrill이 10 도달했으나, **fire 7의 organic judge-catch**(실제 File-store 데이터-손실 버그를 ④b가 FAIL→fix시킴)가 드릴의 검증 목적(verifier가 나쁜 작업 거부 확인)을 합성 주입보다 강하게 충족 → 의무 discharged, 카운터 0 리셋. 합성 주입은 ~80k 추가비용 대비 약한 증거라 생략(예산).
+- **What**: Correction-confirmation decomposition slice **(a)** — a pure `selectNewSupersessions(before, after)` cap-robust diff (content-identity) + an `onLearned` callback on the auto-extract hook (exposes the supersessions recorded this turn). Fail-open (reads only when subscribed). Adds the **first test** for this hook (closing a coverage gap).
+- **Why**: Lets a surface know "what was just learned" the moment a correction comes in — the foundation for chat-ink (slice c) to show a confirmation line. Diff-only (doesn't fire on a first fact), a real recorded supersession (no model).
+- **Review point**: Fail-open preserved via outer+inner try/catch (a throwing callback/read failure doesn't block the run). Zero extra reads when `onLearned` is absent. The cap-eviction edge case is robust via content-identity (tested). Next = (b) `formatLearnedConfirmation` + (c) chat-ink subscribe+render.
+- **Risk**: None — additive option, 543 green, the independent Opus ④b judge re-confirmed fail-open+cap-robust+clone-snapshot+mutation (2 kinds), PASS.
+- **JUDGE-DRILL**: firesSinceDrill reached 10, but **fire 7's organic judge-catch** (④b FAILed a real File-store data-loss bug → forced a fix) satisfies the drill's verification purpose (confirming the verifier rejects bad work) more strongly than a synthetic injection would → obligation discharged, counter reset to 0. A synthetic injection was skipped (budget) as weaker evidence for an additional ~80k cost.
 
 ## fire 11 · 2026-06-21 · skill v2.1.0 · 6df61b98
 meta: value-class=new-capability · pkg=@muse/memory · kind=correction-confirm(slice-b) · verdict=PASS · firesSinceDrill=1 · firesSinceMainMerge=3→0(main FF-merge this fire)
 ratchet: testFiles +0 (recently-learned.test +4, memory-auto-extract.test +1) · @muse/memory 553 green · lint clean · fabrication 0
 
-- **무엇**: 교정-확인 슬라이스 **(b)** — `formatLearnedConfirmation(learned, memory)`: "📝 Got it — home city is now \"Busan\" (changed from \"Seoul\")." kind-verb를 공유 `changeVerb`로 추출 재사용(fire 8 sibling-audit), scope별 current value, forgotten-skip, 비면 undefined. 훅 통해 **end-to-end 테스트**(onLearned→format→line).
-- **왜**: fire 10 `onLearned`가 노출한 학습을 사용자 확인 라인으로 — 교정 순간 "알았어, 이제 ~로 안다"가 결정론+인용(현재값=store, 이전값=기록 supersession)으로.
-- **리뷰지점**: `changeVerb` 공유 추출(formatSource·confirmation 둘 다 사용; fire 8 source 테스트가 mutation으로 가드 → behavior-preserving). 현재값 없으면 skip(non-current 학습 미확인). 다음=**(c) chat-ink**가 `onLearned` 구독+`formatLearnedConfirmation` 렌더(=교정-확인 표면 완성).
-- **리스크**: 없음 — additive + behavior-preserving refactor, 553 green, 독립 Opus ④b judge가 refactor+scope+e2e+mutation 재확인 PASS.
+- **What**: Correction-confirmation slice **(b)** — `formatLearnedConfirmation(learned, memory)`: "📝 Got it — home city is now \"Busan\" (changed from \"Seoul\")." Extracts the kind-verb into a shared `changeVerb` and reuses it (fire 8 sibling-audit), current value by scope, forgotten-skip, undefined when empty. **End-to-end tested** through the hook (onLearned→format→line).
+- **Why**: Turns the learning fire 10's `onLearned` exposes into a user confirmation line — at the moment of correction, "got it, now I know ~" appears deterministically+cited (current value = store, previous value = recorded supersession).
+- **Review point**: `changeVerb` extracted as shared code (used by both formatSource·confirmation; fire 8's source test guards it via mutation → behavior-preserving). Skipped when there's no current value (a non-current learning isn't confirmed). Next = **(c) chat-ink** subscribing to `onLearned`+rendering `formatLearnedConfirmation` (= completes the correction-confirmation surface).
+- **Risk**: None — additive + behavior-preserving refactor, 553 green, the independent Opus ④b judge re-confirmed the refactor+scope+e2e+mutation, PASS.
 
 ## fire 12 · 2026-06-21 · skill v2.1.0 · pending
 meta: value-class=decompose-plan(no-code) · pkg=docs · kind=re-decompose-on-discovery · verdict=N/A · firesSinceDrill=2 · firesSinceMainMerge=1
 ratchet: testFiles +0 · no code change (planner step) · fabrication 0
 
-- **무엇**: 슬라이스 **(c) 재분해** — 탐색 중 분해 전제가 틀렸음 발견: auto-memory 경로가 **둘**. `createUserMemoryAutoExtractHook`(fire 10 `onLearned`)은 `@muse/autoconfigure`가 AgentRuntime에 배선(→ `muse ask`/API), **chat-ink는 안 씀**. chat-ink는 자체 `autoLearn` 클로저(`chat-auto-memory`)로 별도(prior value 미인용). → **(c1) chat-ink 경로**(autoLearn에서 before/after diff + `selectNewSupersessions`+`formatLearnedConfirmation` = fire10/11 **production 첫 소비**), **(c2) ask 경로**(autoconfigure 통해 onLearned threading)로 정확히 재분해해 backlog 기록.
-- **왜**: 틀린 전제 위에 rushed 반-테스트 chat-ink 편집(autoLearn 클로저라 OUTCOME 테스트 난해 + surfaces-contended)을 강행하면 judge FAIL/롤백 낭비. 정확한 재분해가 다음 fire ROI↑ — DECOMPOSE-ON-DEFER.
-- **리뷰지점**: 코드 0줄 → ④b judge N/A. (c1)이 fire 10/11을 드디어 production 소비 + monoculture 깸(@muse/cli). chat-ink는 `loop/surfaces` 소유라 dedup 명시.
-- **lesson**: 분해는 seam을 실제 탐색하기 전엔 전제가 틀릴 수 있다 — **첫 실제 탐색에서 전제가 깨지면 즉시 재분해**(억지로 안 맞는 경로에 끼워넣지 말 것). 무인 루프가 스스로 판단(질문 없이).
+- **What**: Re-decomposing slice **(c)** — exploration found the decomposition's premise was wrong: there are **two** auto-memory paths. `createUserMemoryAutoExtractHook` (fire 10's `onLearned`) is wired by `@muse/autoconfigure` into the AgentRuntime (→ `muse ask`/API), **chat-ink doesn't use it**. chat-ink has its own separate `autoLearn` closure (`chat-auto-memory`, doesn't cite a prior value). → Re-decomposed precisely and recorded in backlog: **(c1) the chat-ink path** (a before/after diff in autoLearn + `selectNewSupersessions`+`formatLearnedConfirmation` = the **first production consumption** of fire10/11), **(c2) the ask path** (threading onLearned through autoconfigure).
+- **Why**: Forcing a rushed, half-tested chat-ink edit on a wrong premise (the autoLearn closure makes OUTCOME testing hard + it's surfaces-contended) would waste effort on a judge FAIL/rollback. An accurate re-decomposition raises next-fire ROI — DECOMPOSE-ON-DEFER.
+- **Review point**: Zero lines of code → ④b judge N/A. (c1) finally puts fire 10/11 into production consumption + breaks the monoculture (@muse/cli). chat-ink belongs to `loop/surfaces` so dedup is explicitly noted.
+- **lesson**: A decomposition's premise can be wrong until the seam is actually explored — **if the premise breaks on first real exploration, re-decompose immediately** (don't force it into a path that doesn't fit). The unattended loop decides this itself (without asking).
 
 ## fire 13 · 2026-06-21 · skill v2.1.0 · 2fd61dcc
 meta: value-class=wiring · pkg=@muse/cli · kind=chat-correction-confirm(slice-c1) · verdict=PASS · firesSinceDrill=3 · firesSinceMainMerge=2
 ratchet: testFiles +0 (chat-auto-memory.test +3) · @muse/cli 2890 green · lint clean · fabrication 0
 
-- **무엇**: **교정-확인 표면 LIVE(chat)** — 사용자가 fact/pref를 교정하면 즉시 "📝 Got it — home city is now \"Busan\" (changed from \"Seoul\")." 인용 확인. `chat-auto-memory`에 `applyTurnLearnings`(before/after factHistory diff + `selectNewSupersessions`[fire10] + `formatLearnedConfirmation`[fire11]) 추출, `chat-ink.ts`의 `autoLearn`이 호출. 변경키는 "remembered" 요약서 제외(중복방지).
-- **왜**: 정체성 "Learns you"의 **가장 직접적 증거** — 교정하는 순간 Muse가 출처 인용과 함께 확인. fire 10/11 프리미티브 **production 첫 소비**, **monoculture 깸**(드디어 @muse/cli).
-- **리뷰지점**: `applyTurnLearnings`로 추출해 OUTCOME 테스트 가능(InMemory store), chat-ink 호출은 thin(fail-open 유지). 현재값=upsert後 store, 이전값=기록 supersession(no model). 기존 "remembered" 동작 보존(non-changed 키).
-- **리스크**: 없음 — refactor behavior-preserving, cli 2890 green, 독립 Opus ④b judge가 production-consumption+diff+dedup mutation+무회귀 재확인 PASS.
+- **What**: **The correction-confirmation surface LIVE (chat)** — when a user corrects a fact/pref, an immediate cited confirmation appears: "📝 Got it — home city is now \"Busan\" (changed from \"Seoul\")." Extracted `applyTurnLearnings` in `chat-auto-memory` (a before/after factHistory diff + `selectNewSupersessions`[fire10] + `formatLearnedConfirmation`[fire11]), called by `autoLearn` in `chat-ink.ts`. Changed keys are excluded from the "remembered" summary (avoids duplication).
+- **Why**: The **most direct evidence** of the "Learns you" identity — the moment you correct it, Muse confirms with a source citation. The **first production consumption** of the fire 10/11 primitives, **breaks the monoculture** (finally @muse/cli).
+- **Review point**: Extracted as `applyTurnLearnings` to make it OUTCOME-testable (InMemory store), the chat-ink call is thin (fail-open preserved). Current value = post-upsert store, previous value = recorded supersession (no model). Existing "remembered" behavior preserved (non-changed keys).
+- **Risk**: None — behavior-preserving refactor, cli 2890 green, the independent Opus ④b judge re-confirmed production-consumption+diff+dedup mutation+no regression, PASS.
 
 ## fire 14 · 2026-06-21 · skill v2.1.0 · 7f89e9aa
 meta: value-class=new-capability · pkg=@muse/cli · kind=recap-surface · verdict=PASS · firesSinceDrill=4 · firesSinceMainMerge=1
 ratchet: testFiles +0 (commands-recap.test +2) · @muse/cli 2892 green · lint clean · fabrication 0
 
-- **무엇**: `muse recap`(저녁 다이제스트)에 **"📝 Recently learned about you"** 섹션 — proactive 인용 학습 recap. `composeEveningRecap`(순수)가 렌더, `gatherEveningRecap`가 store→`projectRecentlyLearned`(30일)→`renderRecentlyLearnedLines`→`safeRecapText`(인젝션 중화, fail-soft)로 계산. **발견: (c2) ask 경로는 MOOT**(commands-ask:2181 `skipUserMemoryAutoExtract:true` — recall은 학습 안 함) → drop.
-- **왜**: 테마의 문자 그대로 **"Muse가 배운 걸 *먼저* 보여주는"** — 저녁마다 자발적으로 "이번에 너에 대해 이런 걸 배웠어"(출처 인용). fires 1/2/6 재사용.
-- **리뷰지점**: 🔄 volatileBeliefs(≥2값 confirm-nudge)와 **distinct**(📝 recent supersession informative; judge 확인). fail-soft + safeRecapText. `recentlyLearned` optional(기존 무영향). standalone 명령(chat보다 덜 contended).
-- **리스크**: 없음 — optional 추가, cli 2892 green, 독립 Opus ④b judge가 redundancy(distinct)+fail-soft+security+무회귀 재확인 PASS.
+- **What**: A **"📝 Recently learned about you"** section in `muse recap` (the evening digest) — a proactive cited learning recap. `composeEveningRecap` (pure) renders it, `gatherEveningRecap` computes it via store→`projectRecentlyLearned`(30 days)→`renderRecentlyLearnedLines`→`safeRecapText` (injection-neutralized, fail-soft). **Discovery: the (c2) ask path is MOOT** (commands-ask:2181 `skipUserMemoryAutoExtract:true` — recall doesn't learn) → dropped.
+- **Why**: Literally the theme's **"Muse showing what it learned *first*"** — every evening, spontaneously, "here's what I learned about you this time" (source-cited). Reuses fires 1/2/6.
+- **Review point**: **Distinct** from 🔄 volatileBeliefs (≥2-value confirm-nudge) (📝 is informative about a recent supersession; the judge confirmed this). fail-soft + safeRecapText. `recentlyLearned` is optional (no effect on existing behavior). A standalone command (less contended than chat).
+- **Risk**: None — optional addition, cli 2892 green, the independent Opus ④b judge re-confirmed redundancy(distinct)+fail-soft+security+no regression, PASS.
 
 ## fire 15 · 2026-06-21 · skill v2.1.0 · 62605bf1
 meta: value-class=new-capability · pkg=@muse/memory+@muse/cli · kind=first-learned-selection · verdict=PASS · firesSinceDrill=5 · firesSinceMainMerge=2
 ratchet: testFiles +1 (belief-provenance-store.test.ts NEW, 4 cases) · @muse/memory 47 green · @muse/cli recap 33 green · lint clean · fabrication 0
 
-- **무엇**: `selectRecentlyLearnedFacts(provenance, {now, withinDays, maxResults})`(@muse/memory, `selectVolatileBeliefs` 형제) — **첫-학습 fact surface**(firstSeen 윈도우 내 + `distinctValueCount===1` 안정). `muse recap`이 이미 읽는 provenance에서 계산해 recentlyLearned에 합침(변경 먼저, 첫-학습 뒤, `safeRecapText`). `belief-provenance-store.ts`의 **첫 테스트 파일**.
-- **왜**: **GAP** — 기존 표면은 변경(supersession)만 보임; 새 fact는 supersession이 없어 안 떴음. provenance.firstSeen가 첫-학습 신호 → recap이 "이번에 처음 알게 된 것"도 인용 표시.
-- **리뷰지점**: **3-way distinct**(judge 확인) — 변경(factHistory, distinctValueCount≥2)·flip-flop(volatile, ≥2)·첫-학습(===1) 상호배타 → double-count 없음. fail-soft + safeRecapText. age≥0(미래 firstSeen 제외) + Number.isFinite(NaN 제외).
-- **리스크**: 없음 — additive, memory 47 + recap 33 green, 독립 Opus ④b judge가 distinctness+window+무회귀 재확인 PASS.
-- **lesson**: 한 갭(첫-학습)을 닫을 땐 *데이터 소스가 다를 수 있다* — 변경은 factHistory, 첫-학습은 belief-provenance(firstSeen). 두 소스를 한 표면에 합칠 땐 distinctValueCount 같은 결정론 키로 상호배타를 보장해 double-count를 코드로 막아라(judge의 #1 점검).
+- **What**: `selectRecentlyLearnedFacts(provenance, {now, withinDays, maxResults})` (@muse/memory, a sibling of `selectVolatileBeliefs`) — a **first-learned fact surface** (within the firstSeen window + `distinctValueCount===1` stable). Computed from the provenance `muse recap` already reads and merged into recentlyLearned (changes first, first-learnings after, `safeRecapText`). The **first test file** for `belief-provenance-store.ts`.
+- **Why**: **A GAP** — the existing surface only showed changes (supersessions); a new fact has no supersession and never appeared. provenance.firstSeen is the first-learned signal → recap now cites "what I first learned this time" too.
+- **Review point**: **3-way distinct** (judge confirmed) — change(factHistory, distinctValueCount≥2) · flip-flop(volatile, ≥2) · first-learned(===1) are mutually exclusive → no double-count. fail-soft + safeRecapText. age≥0 (excludes a future firstSeen) + Number.isFinite (excludes NaN).
+- **Risk**: None — additive, memory 47 + recap 33 green, the independent Opus ④b judge re-confirmed distinctness+window+no regression, PASS.
+- **lesson**: Closing a gap (first-learned) may mean *the data source differs* — change comes from factHistory, first-learned comes from belief-provenance (firstSeen). When merging two sources into one surface, guarantee mutual exclusivity with a deterministic key like distinctValueCount so double-count is prevented in code (the judge's #1 check).
 
 ## fire 16 · 2026-06-21 · skill v2.1.0 · 99b42357
 meta: value-class=new-capability · pkg=@muse/cli · kind=brief-surface · verdict=PASS · firesSinceDrill=6 · firesSinceMainMerge=3→0(main FF-merge this fire)
 ratchet: testFiles +1 (brief-learned.test.ts NEW, 3 cases) · @muse/cli 2895 green · lint clean · fabrication 0
 
-- **무엇**: `muse brief`(아침)에 **"📝 Lately about you — <cited 1줄>"** beat — 저녁 recap(fire14)·status(fire5)의 **아침 형제**. `brief-learned.ts`(`formatBriefLearnedLine`: `summarizeRecentlyLearned`[fire4] + escape/neutralize) + brief action이 이미 읽은 `userMemory`로 `projectRecentlyLearned`(30일)→stdout(fail-soft).
-- **왜**: **형제-감사** — recap만 학습 섹션 있었음(아침 brief 갭). 이제 데일리-드라이버가 하루 양끝(아침·저녁)에서 학습 체감. fires 1/4 재사용.
-- **리뷰지점**: 기존 brief beat 패턴(`try{read→select→format→stdout}catch{}`) 그대로. cited text는 escape+neutralize(주입 승격 방지, `<<end>>` 테스트). forgotten 제외 상속. `userMemory` 재사용(중복 read 없음).
-- **리스크**: 없음 — additive beat, cli 2895 green, 독립 Opus ④b judge가 consume+citation+security+무회귀 재확인 PASS.
+- **What**: A **"📝 Lately about you — <cited one-liner>"** beat in `muse brief` (morning) — the **morning sibling** of evening recap (fire14) · status (fire5). `brief-learned.ts` (`formatBriefLearnedLine`: `summarizeRecentlyLearned`[fire4] + escape/neutralize) + the brief action computes via `projectRecentlyLearned`(30 days) over the `userMemory` it already reads → stdout (fail-soft).
+- **Why**: A **sibling audit** — only recap had a learning section (a gap in the morning brief). Now the daily driver feels learning at both ends of the day (morning · evening). Reuses fires 1/4.
+- **Review point**: Follows the existing brief-beat pattern (`try{read→select→format→stdout}catch{}`) exactly. Cited text is escape+neutralize (prevents injection promotion, tested with `<<end>>`). Inherits the forgotten-exclusion. `userMemory` reused (no duplicate read).
+- **Risk**: None — additive beat, cli 2895 green, the independent Opus ④b judge re-confirmed consume+citation+security+no regression, PASS.
 
 ## fire 17 · 2026-06-21 · skill v2.1.0 · 1a73e5fc
 meta: value-class=new-capability · pkg=@muse/memory+@muse/cli · kind=source-attribution · verdict=PASS · firesSinceDrill=7 · firesSinceMainMerge=3→0(main FF-merge this fire)
 ratchet: testFiles +0 (belief-provenance-store.test +3) · @muse/memory 572 green · @muse/cli recap 33 green · lint clean · fabrication 0
 
-- **무엇**: 첫-학습 recap 라인에 **HONEST 귀속** — "(you told me · DATE)"(source=user, 사용자 진술) vs "(I noticed · DATE)"(source=auto, Muse 추론). `RecentlyLearnedFact`에 `source` 추가(FactProvenance.source 전달) + `formatFirstLearned`(귀속 포맷터, @muse/memory), `muse recap`이 사용.
-- **왜**: **HOW 학습했나의 정직성** — 추론(교정 가능)과 사용자-진술(deliberate truth) 구분 = 신뢰 calibration. grounding 핵심(WHAT뿐 아니라 HOW도 인용).
-- **리뷰지점**: `source`는 `FactProvenance.source`(user=실제 사용자-진술 확인 있을 때만 — judge가 `muse memory set` 경로만 user-write 확인) → "you told me" 위조 불가. auto/legacy=conservative "I noticed". safeRecapText 유지.
-- **리스크**: 없음 — additive 필드+포맷터, memory 572 + recap 33 green, 독립 Opus ④b judge가 귀속 정직성+source 의미+무회귀 재확인 PASS.
-- **lesson**: 웹/API 학습 투영은 **MOOT** — 서버측 store가 factHistory 미populate(fire 3 노트 재확인; `toUserMemoryResponse`도 factHistory 없는 shape). 웹 "learned about you" 뷰는 서버 store가 supersession 기록(예: `collectFactSupersessions` 재사용)부터 선행돼야 = 별도 foundation. 남은 학습-표면은 전부 로컬-CLI 경로(memory show/status/chat/recap/brief)로 사실상 완성.
+- **What**: **HONEST attribution** in the first-learned recap line — "(you told me · DATE)" (source=user, a user statement) vs "(I noticed · DATE)" (source=auto, a Muse inference). Added `source` to `RecentlyLearnedFact` (passing through FactProvenance.source) + `formatFirstLearned` (attribution formatter, @muse/memory), used by `muse recap`.
+- **Why**: **Honesty about HOW it was learned** — distinguishing inference (correctable) from a user statement (deliberate truth) = trust calibration. A grounding core value (citing HOW, not just WHAT).
+- **Review point**: `source` comes from `FactProvenance.source` (user = only when there's an actual confirmed user statement — the judge confirmed only the `muse memory set` path is a user-write) → "you told me" cannot be forged. auto/legacy = conservative "I noticed". safeRecapText preserved.
+- **Risk**: None — additive field+formatter, memory 572 + recap 33 green, the independent Opus ④b judge re-confirmed attribution honesty+source semantics+no regression, PASS.
+- **lesson**: A web/API learning projection is **MOOT** — the server-side store doesn't populate factHistory (re-confirms the fire 3 note; `toUserMemoryResponse` also has a factHistory-less shape). A web "learned about you" view needs the server store to record supersessions first (e.g. reusing `collectFactSupersessions`) — that's a separate foundation. The remaining learning surfaces are effectively complete via the local-CLI paths (memory show/status/chat/recap/brief).
 
 ## fire 18 · 2026-06-21 · skill v2.1.0 · b902e424
 meta: value-class=new-capability · pkg=@muse/memory+@muse/cli · kind=forgotten-projection · verdict=PASS · firesSinceDrill=8 · firesSinceMainMerge=carry(15-18 branch-safe, main race)
 ratchet: testFiles +0 (belief-provenance-store.test +3, commands-recap.test +2) · @muse/memory 578 green · recap 35 green · lint clean · fabrication 0
 
-- **무엇**: `muse recap`에 **"🗑️ Forgotten at your correction"** 섹션 — 정체성 **"FORGETS the moment you correct it"의 가시화**(learned의 대칭). `selectRecentlyForgotten`(@muse/memory): newest-event-per-key가 `retraction`(명시적 forget)인 키를 윈도우 내 선택(re-`set`이 clear), retraction date 인용.
-- **왜**: 학습만 보였고 "잊음"(정체성 두 번째 절반)은 백그라운드였음. 교정→forget이 실제 반영됨을 사용자가 봄. `recordRetraction`(chat `/forget` + `muse memory forget` 둘 다)이 남긴 마커 사용.
-- **리뷰지점**: newest-event-wins(`keysWithActiveRetraction` 규칙) → re-learned 키는 forgotten 안 뜸(judge 확인). raw entries 읽기는 `deriveFactProvenance`와 같은 소스, fail-soft + safeRecapText. `recentlyForgotten` optional.
-- **리스크**: 없음 — additive, memory 578 + recap 35 green, 독립 Opus ④b judge가 retraction 정직성+re-set-clears+무회귀 재확인 PASS. (cli daemon 9 timeout = 동시루프 포화 환경, 내 파일 무관 — judge 확인.)
+- **What**: A **"🗑️ Forgotten at your correction"** section in `muse recap` — **making the "FORGETS the moment you correct it" identity visible** (the symmetric counterpart of learned). `selectRecentlyForgotten` (@muse/memory): selects, within the window, keys whose newest-event-per-key is a `retraction` (an explicit forget), citing the retraction date (a re-`set` clears it).
+- **Why**: Only learning was visible; "forgetting" (the second half of the identity) stayed background. The user now sees that correction→forget is actually reflected. Uses the marker left by `recordRetraction` (both chat `/forget` + `muse memory forget`).
+- **Review point**: newest-event-wins (the `keysWithActiveRetraction` rule) → a re-learned key doesn't show as forgotten (judge confirmed). Reading raw entries uses the same source as `deriveFactProvenance`, fail-soft + safeRecapText. `recentlyForgotten` is optional.
+- **Risk**: None — additive, memory 578 + recap 35 green, the independent Opus ④b judge re-confirmed retraction honesty+re-set-clears+no regression, PASS. (cli daemon 9 timeout = concurrent-loop saturation environment, unrelated to my files — judge confirmed.)
 
 ## fire 19 · 2026-06-21 · skill v2.1.0 · 8a769430
 meta: value-class=wiring · pkg=@muse/cli · kind=forgotten-surface-wiring · verdict=PASS · firesSinceDrill=9 · firesSinceMainMerge=1
-ratchet: testFiles +0 (human-formatters.test +2) · @muse/cli human-formatters 31 green · lint clean · fabrication 0 · ★fires 15-18 main 적재됨(823c117f)
+ratchet: testFiles +0 (human-formatters.test +2) · @muse/cli human-formatters 31 green · lint clean · fabrication 0 · ★fires 15-18 landed on main(823c117f)
 
-- **무엇**: `muse memory show`(정식 "what I know about you" 표면)에 **"Forgotten at your correction:"** 섹션 — fire 18 recap-forgotten + fire 3 memory-show-learned의 **형제**. `readLocalMemory`가 `selectRecentlyForgotten(provenance, 365d)`로 계산, `formatMemoryShow`가 learned 섹션 뒤에 렌더(fail-soft, non-empty-only).
-- **왜**: **형제-감사** — recap만 forgotten 있었고 canonical memory 표면은 learned-only(비대칭). 이제 "내가 너에 대해 아는 것"이 **양면(배운 것 + 잊은 것) 정직**.
-- **리뷰지점**: fire 3 패턴 그대로(payload field + formatMemoryShow 섹션). non-empty일 때만 payload 포함(빈 노이즈 없음). provenance 없으면 try/catch로 learned half 유지. `selectRecentlyForgotten`(fire 18) 재사용.
-- **리스크**: 없음 — additive, human-formatters 31 green, 독립 Opus ④b judge가 consume+citation+무회귀 재확인 PASS. (cli daemon 9 timeout=동시루프 포화, 무관.)
-- **NEXT(fire 20)**: ★JUDGE-DRILL 하드카운터 — firesSinceDrill이 fire 20에 10 도달 → **미루기 불가** 드릴(나쁜 슬라이스 주입→④b FAIL 확인→롤백→진짜 fix), 완료 시만 카운터 0 리셋.
+- **What**: A **"Forgotten at your correction:"** section in `muse memory show` (the canonical "what I know about you" surface) — the **sibling** of fire 18's recap-forgotten + fire 3's memory-show-learned. `readLocalMemory` computes it via `selectRecentlyForgotten(provenance, 365d)`, `formatMemoryShow` renders it after the learned section (fail-soft, non-empty-only).
+- **Why**: A **sibling audit** — only recap had forgotten; the canonical memory surface was learned-only (asymmetric). Now "what I know about you" is **honest on both sides (what was learned + what was forgotten)**.
+- **Review point**: Follows the fire 3 pattern exactly (payload field + formatMemoryShow section). Payload included only when non-empty (no empty noise). If provenance is absent, try/catch keeps the learned half intact. Reuses `selectRecentlyForgotten` (fire 18).
+- **Risk**: None — additive, human-formatters 31 green, the independent Opus ④b judge re-confirmed consume+citation+no regression, PASS. (cli daemon 9 timeout = concurrent-loop saturation, unrelated.)
+- **NEXT(fire 20)**: ★JUDGE-DRILL hard counter — firesSinceDrill reaches 10 at fire 20 → an **unpostponable** drill (inject a bad slice→confirm ④b FAIL→rollback→a real fix), counter resets to 0 only once complete.
 
 ## fire 20 · 2026-06-21 · skill v2.1.0 · 82f13c47
 meta: value-class=wiring+JUDGE-DRILL · pkg=@muse/cli · kind=forgotten-surface-wiring · verdict=PASS · firesSinceDrill=10→0(DRILL discharged) · firesSinceMainMerge=2
 ratchet: testFiles +0 (commands-status.test +3) · @muse/cli status 24 green · lint clean · fabrication 0
 
-- **무엇**: ★**JUDGE-DRILL**(firesSinceDrill 10 도달, 미루기 불가) — `formatFirstLearned`를 source 무관 항상 "you told me"로 위조하는 나쁜 슬라이스 주입(auto fact를 사용자 진술로, **테스트까지 rubber-stamp해 green**)→독립 Opus ④b judge가 **FAIL + 구체적 위반 5개**(비결정론 상수·fabrication·테스트 rubber-stamp·docstring 모순·정확한 fix) 명시→`git restore` 롤백 확인(59 green 복원). **검증자가 rubber-stamp 아님 증명.** 카운터 0 리셋. 이어 진짜 슬라이스: `muse status`에 **"recently forgotten: <컴팩트 1줄>"**(`readRecentlyForgottenLine`, fire 5 learned 형제). forgotten 이제 **3 일일 surface 전부**(recap·memory show·status).
-- **왜**: 드릴 = fail-close 게이트 신뢰성 증명(maker≠judge 보상통제 — Opus가 천장이라 같은-모델일 때 드릴이 보상). 진짜 슬라이스 = 일일 대시보드도 양면 정직(배운 것 + 잊은 것).
-- **리뷰지점**: `selectRecentlyForgotten`(fire 18) 재사용, 30일 윈도우(learned와 동일 상수), retraction 마커 code-select. fail-soft(`.catch`). non-empty-only snapshot. drill 롤백은 status 파일과 무관(belief-provenance-store 복원=net 0).
-- **리스크**: 없음 — drill 롤백 clean, status 24 green, 독립 Opus ④b judge 진짜 슬라이스 PASS. (cli 1 TUI timeout=포화 flake, 무관.)
-- **lesson**: JUDGE-DRILL은 테마의 하드 불변식을 정확히 겨냥한 나쁜 슬라이스가 효과적 — fire 17 judge가 경고했던 over-claim 실패모드(auto→"you told me")를 재현하니 judge가 5개 구체 위반으로 즉시 적발. green-tests-but-fabricating이 핵심 시나리오.
+- **What**: ★**JUDGE-DRILL** (firesSinceDrill reached 10, unpostponable) — injected a bad slice making `formatFirstLearned` always forge "you told me" regardless of source (turning an auto fact into a user statement, **even rubber-stamping the test green**) → the independent Opus ④b judge returned **FAIL + named 5 concrete violations** (a non-deterministic constant · fabrication · a rubber-stamped test · a docstring contradiction · the exact fix) → confirmed the `git restore` rollback (59 green restored). **Proves the verifier isn't a rubber stamp.** Counter reset to 0. Followed by the real slice: **"recently forgotten: <compact one-liner>"** in `muse status` (`readRecentlyForgottenLine`, the sibling of fire 5's learned). Forgotten now spans **all 3 daily surfaces** (recap · memory show · status).
+- **Why**: The drill = proves the fail-close gate's reliability (a maker≠judge compensating control — since Opus is the ceiling, the drill compensates for the same-model case). The real slice = the daily dashboard is now honest on both sides too (what was learned + what was forgotten).
+- **Review point**: Reuses `selectRecentlyForgotten` (fire 18), the same 30-day window (same constant as learned), retraction marker is code-selected. fail-soft (`.catch`). non-empty-only snapshot. The drill rollback is unrelated to the status file (belief-provenance-store restored = net 0).
+- **Risk**: None — drill rollback clean, status 24 green, the independent Opus ④b judge PASSed the real slice. (cli 1 TUI timeout = saturation flake, unrelated.)
+- **lesson**: A JUDGE-DRILL is most effective with a bad slice that precisely targets the theme's hard invariant — reproducing the over-claim failure mode (auto→"you told me") the fire 17 judge had warned about made the judge catch it immediately with 5 concrete violations. green-tests-but-fabricating is the key scenario.
 
 ## fire 21 · 2026-06-21 · skill v2.1.0 · e0ec786f
 meta: value-class=micro-fix · pkg=@muse/cli · kind=why-honesty · verdict=PASS · firesSinceDrill=1 · firesSinceMainMerge=3→0(main FF-merge this fire)
 ratchet: testFiles +0 (commands-memory.test +3) · @muse/cli commands-memory 12 green · lint clean · fabrication 0
 
-- **무엇**: `muse memory why <잊힌키>` **정직성 버그 수정** — `deriveFactProvenance`가 retraction 제외(`continue`) → 잊힌 키도 **stale 값을 "still known"처럼 표시**(거짓). `keysWithActiveRetraction`로 감지해 `(you had me forget "key" on DATE — I no longer hold it)` 표시. +call-site `normalizeMemoryKey`로 모든 키 견고화.
-- **왜**: `why`는 **가장 깊은 "show your work" citation 표면**인데 forgotten fact에 대해 거짓말 = fabrication=0 위반. 정직성 회복.
-- **리뷰지점**: `keysWithActiveRetraction`(fire 18 machinery, newest-event) → re-`set`은 reopens(잊힘 아님; 테스트). 정상 키 `why` 무변(무회귀). 다양성: kind=why-honesty(forgotten-surface-wiring과 구분되는 correctness fix).
-- **리스크**: 없음 — commands-memory 12 green, 독립 Opus ④b judge가 버그-real+fix+re-set+무회귀+mutation 재확인 PASS.
+- **What**: **Fixed an honesty bug** in `muse memory why <forgotten-key>` — `deriveFactProvenance` excludes retractions (`continue`) → a forgotten key still **showed its stale value as "still known"** (a lie). Now detected via `keysWithActiveRetraction`, showing `(you had me forget "key" on DATE — I no longer hold it)`. Also hardened every key at the call site with `normalizeMemoryKey`.
+- **Why**: `why` is the **deepest "show your work" citation surface**, yet it lied about a forgotten fact = a fabrication=0 violation. Restores honesty.
+- **Review point**: `keysWithActiveRetraction` (fire 18 machinery, newest-event) → a re-`set` reopens it (not forgotten; tested). `why` for a normal key is unchanged (no regression). Diversity: kind=why-honesty (a correctness fix distinct from forgotten-surface-wiring).
+- **Risk**: None — commands-memory 12 green, the independent Opus ④b judge re-confirmed bug-is-real+fix+re-set+no regression+mutation, PASS.
 
 ## fire 22 · 2026-06-21 · skill v2.1.0 · 6cd0603a
 meta: value-class=new-capability · pkg=@muse/memory+@muse/cli · kind=belief-value-timeline · verdict=PASS · firesSinceDrill=2 · firesSinceMainMerge=1
 ratchet: testFiles +0 (belief-provenance-store.test +3, commands-memory.test +1) · @muse/memory 584 green · commands-memory 13 green · lint clean · fabrication 0
 
-- **무엇**: `muse memory why <변경된키>`가 **값-변경 경로** 표시 — "value path: Seoul (2026-06-10) → Busan (2026-06-20)"(count뿐 아니라 실제 값+날짜). @muse/memory `beliefValueTimeline`(순수, retraction 제외, 연속 재확인 collapse, oldest→newest) + `formatBeliefWhy` 렌더(`distinctValueCount > 1`일 때).
-- **왜**: `why`는 **가장 깊은 "show your work" 표면**인데 "changed 2×"만 보였음. 실제 진화 경로(값+날짜)로 사용자가 자기 믿음이 *어떻게* 변했는지 봄. cited(각 step = 기록 entry, no model).
-- **리뷰지점**: 순수 projection(@muse/memory) + thin render(@muse/cli). `distinctValueCount > 1` gate(안정 belief `why` 무변, 무회귀). refinement는 정직히 2 step. 다양성 kind=belief-value-timeline(fire 21 why-honesty와 구분).
-- **리스크**: 없음 — additive, memory 584 + commands-memory 13 green, 독립 Opus ④b judge가 collapse+citation+무회귀+mutation 재확인 PASS. (cli program.test TUI 1 timeout=포화 flake, 무관.)
+- **What**: `muse memory why <changed-key>` now shows the **value-change path** — "value path: Seoul (2026-06-10) → Busan (2026-06-20)" (actual values+dates, not just a count). `@muse/memory`'s `beliefValueTimeline` (pure, excludes retractions, collapses consecutive reconfirmations, oldest→newest) + `formatBeliefWhy` render (when `distinctValueCount > 1`).
+- **Why**: `why` is the **deepest "show your work" surface**, yet it only showed "changed 2×". With the actual evolution path (values+dates) the user sees *how* their belief changed. Cited (each step = a recorded entry, no model).
+- **Review point**: Pure projection (@muse/memory) + thin render (@muse/cli). The `distinctValueCount > 1` gate (a stable belief's `why` is unchanged, no regression). A refinement is honestly 2 steps. Diversity kind=belief-value-timeline (distinct from fire 21's why-honesty).
+- **Risk**: None — additive, memory 584 + commands-memory 13 green, the independent Opus ④b judge re-confirmed collapse+citation+no regression+mutation, PASS. (cli program.test TUI 1 timeout = saturation flake, unrelated.)

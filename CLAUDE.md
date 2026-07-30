@@ -75,19 +75,19 @@ north-star gap → parity). One slice end-to-end; "nothing to do" is forbidden.
 - Tool output is untrusted; tool loops have explicit limits and timeouts.
 - Risky local execution flows through `crates/runner`; every surface shares one `agent-core` runtime.
 - Outbound to a third party (send, submit, book, post) is fail-close and draft-first per
-  [`outbound-safety.md`](.claude/rules/safety/outbound-safety.md) — never an autonomous send. Banking /
+  [`.claude/rules/safety/outbound-safety.md`](.claude/rules/safety/outbound-safety.md) — never an autonomous send. Banking /
   brokerage access and money movement are permanently out of scope.
 - No force-push, `--no-verify`, tags/releases, remote-ref deletion, or alternate remote/refspec
   without explicit approval; verified normal pushes follow the standing authorization in
-  [`commits.md`](.claude/rules/engineering/commits.md). Never commit live workspace credentials.
+  [`.claude/rules/engineering/commits.md`](.claude/rules/engineering/commits.md). Never commit live workspace credentials.
 - All documentation is English — every `.md`, new ones included (quoted UI strings excepted).
 
 ## Read further — `.claude/rules/` is auto-loaded, grouped by concern
 
-- **product/** — [`product-identity.md`](.claude/rules/product/product-identity.md): what Muse is and is not.
-- **safety/** — [`outbound-safety.md`](.claude/rules/safety/outbound-safety.md) the fail-close send gate · [`tool-calling.md`](.claude/rules/safety/tool-calling.md) one-shot tool choice on the local model.
-- **verification/** — [`testing.md`](.claude/rules/verification/testing.md) the gate ladder · [`agent-testing.md`](.claude/rules/verification/agent-testing.md) grading the AGENT (outcomes, `pass^k`) · [`self-eval.md`](.claude/rules/verification/self-eval.md) the scoreboard that fails closed on a drop.
-- **engineering/** — [`architecture.md`](.claude/rules/engineering/architecture.md) package layout + ModelProvider · [`commits.md`](.claude/rules/engineering/commits.md) push policy · [`code-style.md`](.claude/rules/engineering/code-style.md) lint and comments · [`cli-product.md`](.claude/rules/engineering/cli-product.md) CLI surface · [`codegraph.md`](.claude/rules/engineering/codegraph.md) index before grep · [`harness.md`](.claude/rules/engineering/harness.md) multi-step work.
+- **product/** — [`.claude/rules/product/product-identity.md`](.claude/rules/product/product-identity.md): what Muse is and is not.
+- **safety/** — [`.claude/rules/safety/outbound-safety.md`](.claude/rules/safety/outbound-safety.md) the fail-close send gate · [`.claude/rules/safety/tool-calling.md`](.claude/rules/safety/tool-calling.md) one-shot tool choice on the local model.
+- **verification/** — [`.claude/rules/verification/testing.md`](.claude/rules/verification/testing.md) the gate ladder · [`.claude/rules/verification/agent-testing.md`](.claude/rules/verification/agent-testing.md) grading the AGENT (outcomes, `pass^k`) · [`.claude/rules/verification/self-eval.md`](.claude/rules/verification/self-eval.md) the scoreboard that fails closed on a drop.
+- **engineering/** — [`.claude/rules/engineering/architecture.md`](.claude/rules/engineering/architecture.md) package layout + ModelProvider · [`.claude/rules/engineering/commits.md`](.claude/rules/engineering/commits.md) push policy · [`.claude/rules/engineering/code-style.md`](.claude/rules/engineering/code-style.md) lint and comments · [`.claude/rules/engineering/cli-product.md`](.claude/rules/engineering/cli-product.md) CLI surface · [`.claude/rules/engineering/codegraph.md`](.claude/rules/engineering/codegraph.md) index before grep · [`.claude/rules/engineering/harness.md`](.claude/rules/engineering/harness.md) multi-step work.
 
 This contract stays under 100 lines — depth goes in `.claude/rules/*.md`, and a recurring owner
 correction is absorbed as a rule there. Read the cross-session learning index first:

@@ -6,9 +6,9 @@ observedAt: 2026-07-30
 sourceBaseRevision: 4112d54def1d0d7452146ea1f4caa6fb8e0c7676
 sourceWorktree: dirty
 related:
-  - ../adr/0001-mag-product-module-boundary.md
-  - ../design/attunement-graph.md
-  - ../goals/attunement-wow-graph-roadmap.md
+  - ../architecture/adr/0001-mag-product-module-boundary.md
+  - ../design/attunement/attunement-graph.md
+  - ../../internal/goals/attunement-wow-graph-roadmap.md
 ---
 
 # MAG standalone readiness audit — 2026-07-30

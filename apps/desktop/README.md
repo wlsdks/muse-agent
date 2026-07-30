@@ -61,7 +61,7 @@ system voice so nothing is ever silent. Set `MUSE_DESKTOP_TTS=system` to force t
 old `AVSpeechSynthesizer` voice, or `MUSE_DESKTOP_SPEAK=0` to mute speech.
 
 All voice components are open-source and run locally; see
-[`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) for licenses (WhisperKit
+[`../../THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) for licenses (WhisperKit
 / TTSKit: MIT; Qwen3-TTS weights: Apache-2.0).
 
 You can hear the voice without the GUI:

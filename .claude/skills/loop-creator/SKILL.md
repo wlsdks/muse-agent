@@ -17,7 +17,7 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 
 One invocation goes all the way: **take a theme → fill the contract → generate a
 recursive fire-prompt → register the cron → report how to stop it.** The
-contract body is [`loop-engineering.md`](references/loop-engineering.md). This
+contract body is [`references/loop-engineering.md`](references/loop-engineering.md). This
 skill is that contract's *applicator* — it never builds a single slice itself
 (the loop does that as it runs).
 

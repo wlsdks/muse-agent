@@ -1,256 +1,372 @@
 # loop-creator — CHANGELOG
 
-스킬 + 번들된 `references/loop-engineering.md` 계약의 버전별 기록. 루프를 많이 돌린
-뒤 이 이력 ↔ per-loop 저널(`internal/goals/loops/<slug>.md`)의 fire 결과(각 엔트리에
-`skill vX.Y.Z` 스탬프)를 대조해 무엇이 산출을 좋게/나쁘게 했는지 보고 개선한다.
-(구 공유 `loop-digest.md`는 2026-07-18 삭제 — git history.)
+A version-by-version record of the skill + its bundled `references/loop-engineering.md`
+contract. After running loops extensively, cross-reference this history against the
+per-loop journal (`internal/goals/loops/<slug>.md`) fire results (each entry stamped
+`skill vX.Y.Z`) to see what made output good or bad, and improve accordingly.
+(The old shared `loop-digest.md` was deleted 2026-07-18 — see git history.)
 
-> SemVer 느슨하게: **major**=설계 골격 변경, **minor**=새 가드/행동, **patch**=문구/리팩터.
-> 변경 시 SKILL.md `version` 올리고 여기 한 항목 추가.
+> Loose SemVer: **major** = design-skeleton change, **minor** = new guard/behavior,
+> **patch** = wording/refactor.
+> On any change, bump SKILL.md's `version` and add one entry here.
 
 ---
 
 ## 3.1.0 — 2026-07-18
 
-fable 자체 적대검토(행동테스트 실측 포함) 6개 보강: ①티어 규칙 §3.4 원문 3종
-블록(placeholder가 즉흥 창작을 유발한 실측 — "로컬 main 자기머지" 사례 — 을 봉쇄)
-②자기-종료: 정지조건 전부 충족한 fire가 스스로 CronDelete+INDEX COMPLETE+최종 알림
-③등록 직후 2연속 무산출 fire=자동 해제(깨진 루프의 시간당 소각 방지) ④3-fire 알림에
-루프 건강 3지표(출하율·롤백수·(pkg,kind) 스프레드 — 저널 meta grep 산출, 무인
-루프의 "watch the loop" 대체) ⑤크래시 잔재 워크트리 remove --force 후 재생성
-⑥계약문서에 단일-소스 노트(골격은 SKILL.md가 이긴다 — 이중 소스 드리프트 차단).
+Six hardenings from fable's own adversarial review (including live behavioral-test
+measurement): ① blocks three literal-text blocks in the tier rule §3.4 (a measured case
+where a placeholder induced improvised ad-libbing — the "self-merge to local main" case)
+② self-termination: once a fire meets every stop condition, it CronDeletes itself + marks
+INDEX COMPLETE + sends a final notification ③ two consecutive no-output fires right after
+registration auto-unregisters the loop (prevents an hourly burn from a broken loop) ④ the
+3-fire notification now carries 3 loop-health metrics (ship rate, rollback count, (pkg,kind)
+spread — computed by grepping journal meta, replacing "watch the loop" for an unattended
+loop) ⑤ a crash-leftover worktree is removed with `--force` then recreated ⑥ a
+single-source note in the contract doc (the skeleton in SKILL.md wins — blocks dual-source
+drift).
 
 ## 3.0.0 — 2026-07-18
 
-진안 지시 재설계: 2026-07-17 기준 웹 재조사(실무자·기업·연구, haiku 스윕 → fable
-독립 검증) 후 스킬 전면 재작성. 유지: 결정론 게이트 1차·독립 Opus judge·(pkg,kind)
-래칫·mutation-first·worktree 위생·JUDGE-DRILL·무인 규칙·예산 캡. 신규: 오너-강조
-우선(하드 룰)·no-progress 브레이커·LLM-단독 완료판정 금지·fresh-context(Ralph)
-명문화·조사수치 독립검증 의무. 제거(과한 하네스): 논문-scout 블록, 3중 선택-규칙
-서술→단일 "선택 규율", 모델 티어링 중복, 실재하지 않는 /loop 의존→CronCreate.
-fire-프롬프트 골격 ~40% 축소(가드 손실 0). 근거 전부 references §7(검증 원전만;
-미검증 주장 격리). 기존 등록 루프(097e9e4f)는 영향 없음 — 다음 등록부터 적용.
+Redesign on Jinan's direction: a full skill rewrite after a fresh web survey as of
+2026-07-17 (practitioners, companies, research — a haiku sweep, then an independent
+fable verification pass). Kept: deterministic gate first, independent Opus judge,
+(pkg,kind) ratchet, mutation-first, worktree hygiene, JUDGE-DRILL, the unattended-loop
+rule, budget caps. New: owner-emphasis priority (a hard rule), a no-progress breaker,
+a ban on LLM-only completion verdicts, a codified fresh-context (Ralph) pattern, a
+mandatory independent-verification step for research numbers. Removed (excess harness):
+the paper-scout block, three overlapping selection-rule descriptions collapsed into a
+single "selection discipline", duplicated model tiering, and a dependency on a
+nonexistent `/loop` replaced with `CronCreate`. The fire-prompt skeleton shrank ~40%
+(zero guard loss). All rationale now lives in references §7 (verified primary sources
+only; unverified claims quarantined). The already-registered loop (`097e9e4f`) is
+unaffected — this applies starting with the next registration.
 
 ## 2.1.1 — 2026-07-18
 
-오너-강조 우선 가드(§1 + §3.5 체크리스트). builder-evolution fire 1 실측 미스에서:
-등록 프롬프트의 슬라이스 우선순위가 "가치 휴리스틱"(오늘 3번 문 결함)으로 오너의 명시
-강조("builder 고도화")를 이겨 서버 수퍼비전을 먼저 골랐고 오너 교정을 받음. 이제 테마의
-주 트랙이 ② 1순위로 그대로 박히고 보조 범주는 명시적으로 격하되어야 §3.5를 통과한다.
-(주: 당일 저널 2건이 v2.1.1로 선-스탬프됨 — 이 엔트리가 그 버전의 실체.)
+An owner-emphasis-priority guard (§1 + §3.5 checklist). From a measured miss on
+builder-evolution fire 1: the registration prompt's slice-priority logic let a "value
+heuristic" (a bug hit 3 times that day) outrank the owner's explicit emphasis
+("harden the builder"), so it picked server supervision first and drew an owner
+correction. Now the theme's primary track must be pinned as priority ② as-is, and
+secondary categories must be explicitly demoted, or §3.5 fails.
+(Note: two same-day journal entries were pre-stamped v2.1.1 — this entry is that
+version's actual substance.)
 
 ## 2.1.0 — 2026-06-20
-**무인 fire의 차단-질문 금지를 명시(⑥).** 진안 관측: 동시에 도는 6개 루프가 *전부* 방향 포크
-(vein thinning·테마 repoint·EXHAUSTION)에서 `AskUserQuestion`으로 진안을 막고 물어봄. 근본 원인 =
-생성 프롬프트(§3 골격)가 *정기 3-fire 리뷰*에 대해선 non-blocking을 반복했지만, *방향 포크*에서
-"묻지 말고 스스로 정해라"를 한 번도 금지조로 박지 않음 → SessionStart의 using-superpowers/clarify
-편향이 모델을 AskUserQuestion으로 밀어냄. `feedback_loop_self_decide` 메모리에 교정이 기록만 돼
-있고 스킬엔 반영 안 됨. 무인 cron엔 답할 사람이 없으니 차단 질문은 데드락.
-- **§3 골격에 ⑥ 무인 규칙 신설** — AskUserQuestion·EnterPlanMode 등 차단 도구 절대 금지, 방향
-  포크에서도 스스로 전환/종료+계속, 사람 검토는 §⑤b 비동기 표면으로만. 모호한-포크 1-질문은
-  *등록 단계*에만 허용으로 한정(§입력해석 line도 disambiguate).
-- **② EXHAUSTION 보강** — vein 고갈/테마 repoint 포크에서 AskUserQuestion 금지를 명시, repoint
-  후보는 저널+PushNotification으로 비동기 surface.
-- **loop-engineering.md §3-2 (c) 추가** — non-blocking이 방향 포크에도 적용됨을 계약 본체에 명문화.
-- **§3.5 자가검증에 ⑥ 체크 항목 추가** — 무인 규칙 누락 시 등록 FAIL.
-- 주의: *이미 등록된* cron 프롬프트엔 소급 적용 안 됨 — 활성 루프는 재등록해야 픽업.
+**Codifies a ban on blocking questions during an unattended fire (⑥).** Jinan's
+observation: all 6 concurrently-running loops blocked on Jinan with `AskUserQuestion` at
+a direction fork (vein thinning, theme repoint, EXHAUSTION). Root cause: the generation
+prompt (§3 skeleton) repeated non-blocking guidance for *regular 3-fire reviews*, but
+never once pinned "decide for yourself, don't ask" as a hard prohibition at a *direction
+fork* → SessionStart's using-superpowers/clarify bias pushed the model toward
+`AskUserQuestion`. The correction was only recorded in the `feedback_loop_self_decide`
+memory note, never reflected in the skill. An unattended cron has no one to answer, so a
+blocking question is a deadlock.
+- **New ⑥ unattended rule added to the §3 skeleton** — blocking tools (`AskUserQuestion`,
+  `EnterPlanMode`, etc.) are absolutely forbidden; even at a direction fork, decide the
+  pivot/stop-and-continue yourself; human review happens only via the §⑤b async surface.
+  A single clarifying question for an ambiguous fork is allowed only at *registration
+  time* (the §input-interpretation line also disambiguates this).
+- **② EXHAUSTION hardened** — explicitly bans `AskUserQuestion` at a vein-exhaustion/theme-
+  repoint fork; repoint candidates surface asynchronously via the journal + PushNotification.
+- **Added loop-engineering.md §3-2 (c)** — codifies in the contract body that non-blocking
+  also applies at a direction fork.
+- **Added a ⑥ check item to the §3.5 self-verification** — registration FAILs if the
+  unattended rule is missing.
+- Note: does *not* retroactively apply to *already-registered* cron prompts — an active
+  loop must be re-registered to pick this up.
 
 ## 2.0.0 — 2026-06-20
-**489-fire 실증 데이터 + 2026-06 1차 연구로 설계-골격 업그레이드**(진안 지시 "쌓인 기록·데이터 +
-웹 최신으로 싹"). v1.14.0 등록 후 8개 루프가 16~148 fire씩 일주일간 돌며 쌓은 저널(~1.1MB)을
-마이닝하고, 6/13 출처 이후 발표/심화된 1차 연구를 대조해 계약을 강화. 메커니즘 골격(maker≠judge·
-드릴·자율성 티어)은 보존, *가장자리*를 데이터가 가리킨 곳에서 날카롭게.
+**Design-skeleton upgrade from 489-fire empirical data + fresh 2026-06 primary research**
+(Jinan's direction: "sweep it clean with the accumulated record/data plus the latest from
+the web"). After the v1.14.0 registration, 8 loops ran 16–148 fires each over a week,
+accumulating a journal (~1.1MB); mined that plus primary research published/deepened
+since the 6/13 sources to strengthen the contract. The mechanism skeleton (maker≠judge,
+drills, autonomy tiers) is preserved; only the *edges* the data pointed to were sharpened.
 
-실증(저널 마이닝)發 가드:
-- **§4.5-11 동시-루프 운영 위생(기계적).** 489-fire #1 미가드 비용 = N 루프가 공유 main/한 박스에서
-  동시에 돌 때(타 루프 미커밋 쓸림·false-red check·conflict-marker 커밋·stranded). 운영자 기억→**기계적
-  가드**: 격리 worktree·`git add` 경로명시(`-A` 금지)·clean-main 전제(`git stash` 금지)·머신-포화 인식
-  (5000ms/OOM은 격리 단독 재실행)·커밋전 marker/byte 스캔. ⑤ 생성프롬프트에도 박음.
-- **§4.5-9 다양성 RATCHET을 value-class → (pkg, kind)로 교정.** 실측상 value-class는 테마상 상수
-  (codebase-quality 106 fire 전부 `refactor`)라 다양성 신호로 무용; 실제 ratchet이 걸린 축은 (pkg,kind)
-  (tool-hardening fire 47). 게이트를 (pkg,kind) 위에, value-class는 descriptive로 강등.
-- **§4.5-3 MUTATION-FIRST를 *모든* 슬라이스로.** judge 이빨이 드릴에서만 증명되고 "안전한" 슬라이스는
-  all-PASS로 무뎌 보임 → 매 슬라이스 새 테스트가 RED→GREEN(드릴과 같은 적대 압력).
-- **§4.5-12 형제-감사.** 한 콜사이트 고치고 형제 누락이 반복(date-rollover tasks→calendar→time; SSRF
-  IPv6→SIIT→NAT64) → 같은 클래스 형제를 *같은 fire*에 enumerate+패치 or backlog.
-- **§4.5-10 marginal-value floor.** 고갈-escalation을 "버그 0건"이 아니라 한계가치<검증비 신호에서 *먼저*
-  당김(tool-hardening 123–145 locale-utility ~8 fire 패딩 표류 교정).
+Guards from empirical (journal-mining) evidence:
+- **§4.5-11 Concurrent-loop operating hygiene (mechanical).** 489-fire finding #1: the
+  unguarded cost when N loops run concurrently on shared main/one box (another loop's
+  uncommitted changes getting swept in, false-red checks, conflict-marker commits,
+  strandedness). Moved from "the operator has to remember" to **mechanical guards**:
+  isolated worktrees, explicit `git add` paths (`-A` forbidden), a clean-main
+  precondition (`git stash` forbidden), machine-saturation awareness (a 5000ms
+  timeout/OOM triggers an isolated solo re-run), and a marker/byte scan before commit.
+  Also pinned into the ⑤ generation prompt.
+- **§4.5-9 Diversity RATCHET corrected from value-class to (pkg, kind).** Empirically,
+  value-class is a per-theme constant (all 106 codebase-quality fires were `refactor`),
+  so it's useless as a diversity signal; the axis that actually ratcheted was (pkg,kind)
+  (tool-hardening fire 47). The gate now sits on (pkg,kind); value-class is demoted to
+  descriptive only.
+- **§4.5-3 MUTATION-FIRST for *every* slice.** The judge's teeth were proven only in
+  drills, while "safe" slices looked dull under all-PASS → every slice's new test must
+  now go RED→GREEN (the same adversarial pressure as a drill).
+- **§4.5-12 Sibling audit.** Fixing one call site while a sibling instance recurs
+  (date-rollover: tasks→calendar→time; SSRF: IPv6→SIIT→NAT64) → siblings in the same
+  class must be enumerated + patched (or backlogged) in the *same* fire.
+- **§4.5-10 Marginal-value floor.** Pulls the exhaustion-escalation trigger not on "zero
+  bugs left" but on marginal-value < verification-cost as the *earlier* signal
+  (correcting the tool-hardening fires 123–145 locale-utility ~8-fire padding drift).
 
-1차 연구發 강화:
-- **§3.6 무인 루프 보안(신설 1급 섹션).** *루프를 모는 개발 에이전트*의 무인 보안. Agents Rule of Two
-  (Meta 2025-11, §3.5 티어 경계 결정규칙) · 신뢰불가 텍스트는 데이터로 격리(Snyk "Clinejection" 2026-02:
-  issue 제목 인젝션→악성 install→Actions 캐시 오염→릴리스 토큰 탈취 실사건) · install/build 훅 샌드박스 · auto-pull skill/config
-  hidden-Unicode 스캔(TrapDoor; skill 36% 결함). 출처: arXiv 2510.09023.
-- **§3-1 적응형 검증.** 정적 체크리스트는 적응형 공격에 >90%, 사람 100% 우회(2510.09023) → judge는 슬라이스
-  고유의 깨질-방식을 매번 새로 추론.
-- **§1.5-3 judge 보정 양방향.** self-preference로 실패 rubric을 만족으로 최대 50% 더 자주 표시·점수 ~10점 왜곡
-  (2604.06996), 능력 통제해도 잔존(2508.06709) → Opus-천장이라 같은-계열 판정 불가피, 드릴은 선택 아닌 필수.
-  under-confidence(맞은 작업 false-FAIL 44.4%→7.7%, 2606.14211) → FAIL은 *구체적 위반* 명시, 막연한 "불확실"은 사유 아님.
-- **§4.5-13 실패-증류(ReasoningBank, 2509.25140 +34.2%/−16%).** 롤백/no-ship에 재사용 교훈 `lesson:` 한 줄.
-- **§1 Sub-agent fan-out 규칙.** 단일 ≥ 멀티(동일 예산, 2604.02460), 핸드오프는 선형 > 수렴 DAG(2605.08647).
-- **§1 예산 = rot 트리거.** 유효 윈도우 ~300K(Chroma context-rot); 긴 fire는 디스크 state로 외부화
-  (Anthropic "Effective harnesses for long-running agents": compaction만으론 부족).
-- **§6 메타-루프(신설) — 계약이 데이터로 진화하는 규약**(진안 질문 "기록 꾸준히 남기게 해야하지").
-  v2.0이 가능했던 이유(저널 버전-스탬프 + grep-가능 meta)를 *반복 가능한 규약*으로 못박음: 재평가
-  트리거를 산문이 아닌 *세는* 조건(누적 ~100 fire / 새 1차연구 / 진안 지시 / 반복 실패 ≥3)으로,
-  레시피는 저널 마이닝 + 웹 대조 + **독립 maker≠judge 리뷰**(서브에이전트 수치 1차 검증 — v2.0에서
-  조작 self-preference 수치를 이 리뷰가 적발). SKILL.md versioning 노트가 §6을 가리킴.
-유지(과잉교정 경계): 드릴 하드-카운터(489-fire에서 단 한 번도 안 미끄러진 가장 건강한 메커니즘), 격리
-저널 규약, 정직-defer/exhaustion(honest 작동 확인), Tier1/2 + 하드 floor.
+Hardenings from primary research:
+- **§3.6 Unattended-loop security (new tier-1 section).** Unattended security for *the
+  dev agent driving the loop*. Agents Rule of Two (Meta 2025-11, §3.5's tier-boundary
+  decision rule) · untrusted text is quarantined as data (Snyk "Clinejection" 2026-02: a
+  real incident — issue-title injection → malicious install → Actions cache poisoning →
+  release-token theft) · install/build hooks are sandboxed · auto-pulled skill/config gets
+  a hidden-Unicode scan (TrapDoor; 36% of skills flawed). Source: arXiv 2510.09023.
+- **§3-1 Adaptive verification.** Static checklists are bypassed >90% by adaptive attacks
+  and 100% by humans (2510.09023) → the judge must re-reason THIS slice's specific
+  failure mode every time.
+- **§1.5-3 Judge calibration, both directions.** Self-preference marks a failing rubric
+  "satisfied" up to 50% more often and skews scores ~10 points (2604.06996), and this
+  persists even controlling for ability (2508.06709) → with an Opus ceiling, same-family
+  judging is unavoidable, so the drill is mandatory, not optional. Under-confidence
+  (false-FAILs correct work 44.4% of the time, dropping to 7.7% with calibration,
+  2606.14211) → a FAIL must name a *concrete* violation; a vague "not sure" is not
+  grounds.
+- **§4.5-13 Failure distillation (ReasoningBank, 2509.25140, +34.2%/−16%).** A one-line
+  reusable `lesson:` on every rollback/no-ship.
+- **§1 Sub-agent fan-out rule.** Single ≥ multi at equal budget (2604.02460); hand-offs
+  should be linear, not a converging DAG (2605.08647).
+- **§1 Budget = a rot trigger.** Effective window ~300K (Chroma context-rot); a long fire
+  externalizes state to disk (Anthropic "Effective harnesses for long-running agents":
+  compaction alone isn't enough).
+- **§6 Meta-loop (new) — the protocol by which the contract evolves from data** (from
+  Jinan's question, "shouldn't we keep a steady record?"). Pins down what made v2.0
+  possible (version-stamped journals + grep-able meta) as a *repeatable* protocol:
+  re-evaluation triggers on a *countable* condition, not prose (~100 cumulative fires /
+  new primary research / Jinan's direction / ≥3 repeated failures); the recipe is
+  journal-mining + web cross-check + **an independent maker≠judge review** (a
+  sub-agent's numbers get an independent first-pass verification — this review is what
+  caught fabricated self-preference numbers in v2.0). SKILL.md's versioning note points
+  to §6.
+Kept (guarding against over-correction): the drill hard-counter (the healthiest
+mechanism across 489 fires — it never slipped once), the isolated-journal protocol,
+honest-defer/exhaustion (verified to actually work), Tier1/2 + the hard floor.
 
-스킬 구조(진안 질문 "SKILL.md 길어지면 분리?"): 2026 Anthropic best-practice 확인 결과 **이미 모범 분리** —
-SKILL.md(207줄, <500 한도 여유)=public API, references/loop-engineering.md(345줄)=상세 계약(progressive
-disclosure). 지금 추가 분리 불요; SKILL.md가 ~300줄 넘으면 그때 골격을 references로.
+Skill structure (from Jinan's question, "should SKILL.md split once it gets long?"):
+checked against 2026 Anthropic best practice — **already a model split** — SKILL.md
+(207 lines, comfortably under the 500-line cap) is the public API, and
+references/loop-engineering.md (345 lines) is the detailed contract (progressive
+disclosure). No further split needed now; if SKILL.md passes ~300 lines, move the
+skeleton into references then.
 
 ## 1.14.0 — 2026-06-13
-**per-loop 로깅 규약 — 동시 4 루프 충돌·오염 제거**(진안 지시). 배경: 4개 루프가 하나의 공유
-`loop-digest.md`·`backlog.md`에 append → 매 fire 머지 충돌 + "버전↔산출 상관"이 다른 루프 항목에
-오염(TOOL fire의 RATCHET 집계가 cognition fire와 섞임). 2026 멀티에이전트 관측성 합의(agent-ID 박힌
-구조화 로그 + 격리 경로 = "실패 귀속 + 병렬 편집 무손상"의 fundamental control)를 적용.
-- **per-loop 저널** `internal/goals/loops/<slug>.md` — 루프 슬러그(테마)별 append-only. 날짜·fire·버전은
-  *엔트리 메타*(파일명 아님). 고정 스키마: `## fire N · 날짜 · skill vX.Y.Z · commit` + `meta:`
-  (value-class·pkg·kind·verdict·firesSinceDrill, **grep-가능 카운트**) + `ratchet:` + 무엇/왜/리뷰지점/리스크.
-- **backlog = 얇은 공유 큐**(open ◦ + `✓ Fixed` 한 줄 dedup 원장). per-fire Done 상세는 저널로 — backlog
-  비대·충돌의 원인이던 거대 Done 블록 제거(going-forward).
-- **INDEX.md** 얇은 aggregator(루프당 1줄, 자기 줄만 갱신) + **loops/README.md** 규약 문서.
-- 기존 공유 `loop-digest.md`(830줄, TOOL 68 + cognition 39 항목)를 per-loop 저널로 **이주**, 원본은
-  tombstone(미재등록 루프 안내). 출처: Augment "Git Worktrees / Debug Parallel Agents", MLflow
-  "Production AI Agents 2026", arXiv 2604.09409 "Do AI Coding Agents Log Like Humans?", 2603.29678.
+**Per-loop logging protocol — removes cross-contamination/collisions across 4 concurrent
+loops** (Jinan's direction). Background: 4 loops were appending to one shared
+`loop-digest.md`/`backlog.md` → a merge conflict on every fire, plus "version ↔ output"
+correlation contaminated by other loops' entries (a TOOL fire's RATCHET tally mixing with
+a cognition fire's). Applied the 2026 multi-agent-observability consensus (agent-ID-
+stamped structured logs + isolated paths as the fundamental control for "failure
+attribution + lossless parallel editing").
+- **Per-loop journal** `internal/goals/loops/<slug>.md` — append-only, one per loop
+  slug (theme). Date/fire/version live in *entry metadata* (not the filename). Fixed
+  schema: `## fire N · date · skill vX.Y.Z · commit` + `meta:` (value-class, pkg, kind,
+  verdict, firesSinceDrill — **grep-able counts**) + `ratchet:` + what/why/review-point/
+  risk.
+- **backlog = a thin shared queue** (open ◦ items + a `✓ Fixed` one-line dedup ledger).
+  Per-fire Done detail now lives in the journal — removes the giant Done blocks that were
+  causing backlog bloat/conflicts (going forward).
+- **INDEX.md** a thin aggregator (one line per loop, each loop updates only its own
+  line) + **loops/README.md** the protocol doc.
+- **Migrated** the old shared `loop-digest.md` (830 lines, 68 TOOL + 39 cognition
+  entries) into per-loop journals; the original is left as a tombstone (pointing an
+  un-re-registered loop to the new location). Sources: Augment "Git Worktrees / Debug
+  Parallel Agents", MLflow "Production AI Agents 2026", arXiv 2604.09409 "Do AI Coding
+  Agents Log Like Humans?", 2603.29678.
 
 ## 1.13.0 — 2026-06-13
-**복잡-코딩 escalation 티어링 + MD 본문 정리**(진안 지시).
-- **복잡한 비즈니스 코드 → Opus 4.8**(§1.5-2, 표). 정형·기계적(깨끗한 단일-파일)만 Sonnet; 여러
-  파일 수정·아키텍처·레이어드 의존성·낯설거나 얽힌 코드·red 테스트 디버깅은 Opus로 escalate.
-  *기계적 escalation 신호*(자기-난이도-판정보다 나음): **N개+ 파일을 만지거나 / 현재 red 테스트면 Opus.**
-  근거(2026 웹 합의): Sonnet이 대부분 코딩 기본(SWE-bench↑·토큰 30%↓)이나 복잡/고위험은 frontier로
-  escalate가 표준; 복잡한 작업에서 싼 모델 "almost right"의 재작업 비용이 frontier 1콜을 초과 →
-  escalation이 오히려 경제적. 출처: NxCode "Opus or Sonnet for Coding 2026"
-  (nxcode.io/resources/news/claude-opus-or-sonnet-for-coding-decision-guide-2026) · Unblocked "Model
-  Routing for Coding Agents" (getunblocked.com/blog/model-routing-coding-agents) · arXiv 2604.07494
-  "Triage: Routing SE Tasks to Cost-Effective LLM Tiers via Code Quality Signals".
-- **MD 본문 정리**(진안 지시 "뭐때문에 뭐 했다는 로그에만, 스킬은 깨끗"): SKILL.md·loop-engineering.md
-  §4.5에서 provenance(날짜 헤더·"라이브 dogfood/냉정 평가에서 추가"·fire-N 실측·incident 블로우)를 제거,
-  각 가드를 *crisp 규칙 + 짧은 why*만 남김. 이력/근거는 이 CHANGELOG에만.
+**Complex-coding escalation tiering + Markdown-body cleanup** (Jinan's direction).
+- **Complex business code → Opus 4.8** (§1.5-2, table). Only routine/mechanical work
+  (a clean single file) stays on Sonnet; multi-file edits, architecture, layered
+  dependencies, unfamiliar or tangled code, and red-test debugging escalate to Opus.
+  *Mechanical escalation signal* (better than self-assessed difficulty): **N+ files
+  touched, or a currently-red test, means Opus.** Rationale (2026 web consensus): Sonnet
+  handles most coding basics well (higher SWE-bench, 30% fewer tokens), but complex/
+  high-stakes work escalating to frontier is standard practice; on complex tasks, the
+  rework cost of a cheap model's "almost right" answer exceeds one frontier call — so
+  escalation is actually the economical choice. Sources: NxCode "Opus or Sonnet for
+  Coding 2026" (nxcode.io/resources/news/claude-opus-or-sonnet-for-coding-decision-
+  guide-2026) · Unblocked "Model Routing for Coding Agents"
+  (getunblocked.com/blog/model-routing-coding-agents) · arXiv 2604.07494 "Triage: Routing
+  SE Tasks to Cost-Effective LLM Tiers via Code Quality Signals".
+- **Markdown-body cleanup** (Jinan's direction: "the why-we-did-it log belongs in one
+  place, the skill itself should stay clean"): removed provenance (date headers, "added
+  from a live dogfood/cold-eval finding", fire-N measurement notes, incident write-ups)
+  from SKILL.md and loop-engineering.md §4.5, leaving each guard as *just a crisp rule +
+  a short why*. History/rationale now live only in this CHANGELOG.
 
 ## 1.12.0 — 2026-06-13
-**Fable-5 완전 제거 + 28-fire 냉정 평가 3대 개선**(진안 지시). 배경: 28 fire(v1.11.2) 실측 후 Opus
-적대 평가가 B(B-flat) — floor(안전)는 A급이나 ceiling(생성 가치)이 `@muse/mcp` micro-fix 모노컬처에
-수렴(EXPANSION 절반 0건). 그리고 Fable-5가 런타임에서 ~6 fire 연속 불가.
-- **Fable-5 제거 → Opus 4.8 강티어 고정.** scout/계획/설계/모호한 포크/④b 적대 검증 = Opus 4.8
-  (`claude-opus-4-8[1m]`). 모델-티어링 표·생성-프롬프트·§1.5·§4 체크리스트·레버 목록에서 `fable`
-  전부 제거. (W3 해소: Fable-5-다운→maker+judge가 조용히 Opus로 collapse하던 *기록 없는* 약화를,
-  티어를 Opus로 *안정화*하고 보상통제를 명시함으로써 제거.)
-- **maker≠judge 정직화(§1.5-3, 표).** Opus가 천장이라 Opus-빌드↔Opus-judge는 *같은 모델*이 됨 —
-  분리는 "다른 모델"이 아니라 **독립 서브에이전트(fresh context)+적대 프레이밍+judge-실패-드릴**이
-  지탱한다고 명시. judge는 항상 빌더와 별개 독립 인스턴스.
-- **W1 VALUE-CLASS RATCHET(§4.5-9 + ② + ④b + ⑤b).** KIND-다양성이 버그-KIND 회전으로 만족돼 value
-  단조를 못 막은 실패를 교정. 최근 8 fire를 (패키지×value-class{micro-fix·new-capability·wiring·
-  refactor})로 카운트; ≥6/8 same-package micro-fix면 다음 fire는 다른 value-class/패키지 강제, ④b judge가
-  위반 FAIL. "가치 우선"을 측정불가 산문에서 *세는 속성*으로. + §4.5-10 EXHAUSTION(scout 2회 고갈→3번째
-  안 태우고 value-class 전환/정직 종료).
-- **W2 JUDGE-DRILL 하드-카운터(§4.5-5 + ⑤b).** "~10 fire" 산문이 14-fire(드릴 10·21·31·45)로 미끄러진
-  실측 교정. RATCHET 줄에 `firesSinceDrill=N`, `≥10 OR 연속 allPASS≥8`이면 미루기-불가 드릴.
-유지(과잉교정 경계): maker≠judge 게이팅 verifier(실제 인접-구멍 적발), RATCHET/write-back/게이트-後
-byte-hygiene, 정직-defer, KIND 다양성 가드(문제는 한 층 위 value-class).
+**Full removal of Fable-5 + 3 hardenings from a 28-fire cold evaluation** (Jinan's
+direction). Background: after 28 fires (v1.11.2), an Opus adversarial review scored B
+(B-flat) — the floor (safety) was A-grade, but the ceiling (generative value) converged
+on a `@muse/mcp` micro-fix monoculture (half of all EXPANSION items were zero). Also,
+Fable-5 was unavailable at runtime for ~6 consecutive fires.
+- **Removed Fable-5 → hard-pinned to the Opus 4.8 strong tier.** Scout/plan/design/
+  ambiguous-fork/④b adversarial verification = Opus 4.8 (`claude-opus-4-8[1m]`). Removed
+  every `fable` reference from the model-tiering table, generation prompt, §1.5, §4
+  checklist, and lever list. (Resolves W3: when Fable-5 was down, maker+judge would
+  silently collapse onto Opus with *no record* of the weakening — this removes that by
+  *stabilizing* the tier on Opus and stating the compensating controls explicitly.)
+- **Honest maker≠judge (§1.5-3, table).** Since Opus is the ceiling, an Opus-build ↔
+  Opus-judge pair is *the same model* — states plainly that the separation is carried
+  not by "a different model" but by **an independent sub-agent (fresh context) +
+  adversarial framing + a judge-failure drill**. The judge is always a separate,
+  independent instance from the builder.
+- **W1 VALUE-CLASS RATCHET (§4.5-9 + ② + ④b + ⑤b).** Corrects a failure where
+  KIND-diversity was satisfied by rotating bug KINDs while value stayed monotonic. Counts
+  the last 8 fires by (package × value-class {micro-fix, new-capability, wiring,
+  refactor}); ≥6/8 same-package micro-fix forces a different value-class/package on the
+  next fire, and the ④b judge FAILs a violation. Turns "value first" from unmeasurable
+  prose into a *countable* property. + §4.5-10 EXHAUSTION (2 exhausted scouts → don't
+  burn a 3rd, switch value-class or end honestly).
+- **W2 JUDGE-DRILL hard-counter (§4.5-5 + ⑤b).** Corrects a measured drift where "~10
+  fires" in prose slipped to 14 fires (drills at 10, 21, 31, 45). The RATCHET line now
+  carries `firesSinceDrill=N`; `≥10 OR ≥8 consecutive allPASS` forces an undeferrable
+  drill.
+Kept (guarding against over-correction): the maker≠judge gating verifier (it has caught
+real adjacent gaps), RATCHET/write-back/post-gate byte-hygiene, honest-defer, the KIND
+diversity guard (the problem was one layer up, at value-class).
 
 ## 1.11.2 — 2026-06-13
-**논문-근거 우선 라인에 테마-스코프 절**(진안 확인): capability/method/research 테마에선 논문-우선이
-맞지만, hardening/correctness/security 테마에선 그 보안·correctness 작업 자체가 곧 가치 — "단순
-버그픽스"로 깎아 deprioritize하지 않는다(프로토타입 오염·계약 위반 수정은 하드닝 루프의 최고 산출이었음).
-모호함이 하드닝 루프로 하여금 자기 최고 산출을 건너뛰게 만드는 충돌을 제거. 함께: 진안이 추가한
-"공개/오픈 논문만" 라인(arXiv/오픈액세스 한정, 자체 재구현, proprietary 복사 아님) 보존.
+**Adds a theme-scope clause to the paper-grounding-first line** (confirmed by Jinan): for
+capability/method/research themes, paper-first is right, but for hardening/correctness/
+security themes, the security/correctness work itself IS the value — it must not be
+deprioritized by getting written off as a "mere bugfix" (fixing prototype-contamination
+or contract violations WAS the hardening loop's best output). Removes the conflict where
+ambiguity was letting the hardening loop skip its own best output. Also preserves the
+"open/public papers only" line Jinan added (arXiv/open-access only, reimplement in your
+own words, never copy proprietary content).
 
 ## 1.11.1 — 2026-06-13
-생성-프롬프트 ②에 **논문-근거 우선(가능할 때)** 라인 추가(작업트리에 있던 미커밋 편집을 보존) —
-강한-티어 scout가 WebSearch로 검증된 2024-2026 AI-agent 논문에서 *적용가능 메커니즘 + arXiv ID*를
-스펙해 단순 correctness 버그픽스보다 논문-기반 capability 적용을 우선. standing 디렉티브
-[[project_research_application]]와 일치하고 v1.11.0 평가의 "작은-버그 편향" 발견을 보완(가치-우선의 구체화).
+Added a **paper-grounding-first (when possible)** line to generation-prompt ② (preserving
+an uncommitted edit that was already sitting in the worktree) — the strong-tier scout
+specs an *applicable mechanism + arXiv ID* from a WebSearch-verified 2024-2026 AI-agent
+paper, prioritizing paper-grounded capability work over a plain correctness bugfix.
+Matches the standing directive [[project_research_application]] and closes the
+"small-bug bias" finding from the v1.11.0 evaluation (a concrete instance of
+value-first).
 
 ## 1.11.0 — 2026-06-13
-**라이브 평가發 5개 가드**(6 fire 실측 + Osmani/Cherny/Karpathy/Anthropic 2026-06 대조). 메커니즘은
-최상급이나 "게이트의 가장자리" 3곳이 약했음 — 전부 프롬프트/계약 한 줄급으로 수정:
-- **게이트가 최종 diff를 덮음**(§4.5-6, 생성프롬프트 ⑤): write-back/digest 後 staged diff에 lint+byte-hygiene
-  재확인. fire-1이 NUL 바이트를 게이트-後-편집 구멍으로 흘렸고 fire-2가 잡은 *증명된 사고*를 닫음.
-- **decompose-on-defer**(§4.5-7, ②): 큰 항목 defer 시 loop-sized로 쪼개 backlog 기록(Anthropic planner
-  패턴) 또는 "진안 필요" 명시; 2회 defer면 escalate. 작은-버그 편향(defer 일방 ratchet)을 파이프라인으로.
-- **RATCHET 지표**(§4.5-8, ⑤b): 매 fire digest에 스코어보드 델타 1줄, 알림은 추세(Karpathy immutable number).
-- **stale-dist 복구 인코딩**(④): 만진 패키지 빌드-먼저 + check 실패 시 첫 진단은 clean-rebuild 재실행
-  (2/6 fire에서 flake로 진단 사이클 낭비, 이미 MEMORY에 있던 교훈).
-- **judge 실패-드릴 CADENCE**(§4.5-5): 1회→N fire(10)/버전bump마다 재드릴 + digest에 judge PASS-rate.
-데이터 판정: 6 fire는 메커니즘 smoke test엔 충분, 스킬 판정엔 시기상조 — 계측 깔고 ~25–30 fire에 재평가.
+**5 guards from a live evaluation** (6-fire measurement + cross-checked against Osmani/
+Cherny/Karpathy/Anthropic, 2026-06). The mechanism itself was top-tier, but 3 "gate
+edges" were weak — all fixed at the prompt/contract one-liner level:
+- **The gate now covers the final diff** (§4.5-6, generation prompt ⑤): re-checks
+  lint + byte-hygiene on the staged diff after write-back/digest. Fire 1 leaked a NUL
+  byte through a post-gate-edit hole, which fire 2 caught — this closes that *proven
+  incident*.
+- **Decompose-on-defer** (§4.5-7, ②): when a large item is deferred, split it into
+  loop-sized pieces recorded in backlog (Anthropic's planner pattern) or explicitly mark
+  it "needs Jinan"; deferring twice forces an escalation. Turns the small-bug bias
+  (defer being a one-way ratchet) into a pipeline.
+- **RATCHET metric** (§4.5-8, ⑤b): one scoreboard-delta line in every fire's digest;
+  the notification is the trend (Karpathy's "immutable number").
+- **Codified stale-dist recovery** (④): build the touched package first, and if `check`
+  fails, the first diagnostic step is a clean-rebuild re-run (2 of 6 fires wasted a
+  diagnosis cycle on this exact flake, a lesson already sitting in MEMORY).
+- **Judge-failure-drill CADENCE** (§4.5-5): from a one-time drill to a re-drill every N
+  fires (10) / version bump, plus the judge PASS-rate in the digest.
+Data verdict: 6 fires is enough for a mechanism smoke test but premature for a skill
+verdict — instrument it and re-evaluate around 25–30 fires.
 
 ## 1.10.0 — 2026-06-13
-**계획 티어에 Fable 5**(진안 지시): 계획/설계/모호한 포크/적대적 검증(강한-reasoning 티어)은
-**Fable 5(`model:"fable"`)를 가능할 때** 쓰고, 불가하면 **Opus 4.8(1M, `claude-opus-4-8[1m]`)**로
-폴백. 개발/빌드는 Opus든 Sonnet이든 무관(정형은 여전히 Sonnet 위임이 토큰 절약). §1.5 + 생성
-프롬프트 모델-티어링 라인 + §4 체크리스트 갱신.
+**Fable 5 for the planning tier** (Jinan's direction): planning/design/ambiguous-fork/
+adversarial-verification (the strong-reasoning tier) uses **Fable 5 (`model:"fable"`)
+when available**, falling back to **Opus 4.8 (1M, `claude-opus-4-8[1m]`)** when it isn't.
+Dev/build stays Opus-or-Sonnet agnostic (routine work delegating to Sonnet still saves
+tokens). Updated §1.5 + the generation-prompt model-tiering line + the §4 checklist.
 
 ## 1.9.0 — 2026-06-12
-**이해 체크포인트를 "막는 STOP" → "비동기 non-blocking 알림"으로**(진안 지적 — 재검토 결과 내
-설계가 연구보다 과하게 보수적이었음). 블로그/실천가(Cherny: 무한 자율+PR 비동기 머지)는 검토를
-*루프 halt*가 아니라 *비동기 리뷰 표면*으로 처리. 이제 루프는 **절대 안 멈춤**: digest는 아무때나
-읽는 비동기 로그, N fire마다 막지 않고 PushNotification 알림만 + 계속 진행. comprehension debt는
-읽기 쉬운 digest로 처리하지 루프 정지로 처리하지 않음. (§3-2.)
+**Turned the comprehension checkpoint from a "blocking STOP" into an "async, non-blocking
+notification"** (flagged by Jinan — on review, my design was more conservative than the
+research warranted). Practitioner blogs (Cherny: unbounded autonomy + async PR merges)
+treat review as an *async review surface*, not a *loop halt*. The loop now **never
+stops**: the digest is an async log readable any time, and every N fires it no longer
+blocks — it just sends a PushNotification and keeps going. Comprehension debt is handled
+by a readable digest, not by halting the loop. (§3-2.)
 
 ## 1.8.1 — 2026-06-12
-신호 scout 하드닝(loop fire 6): 빈-답(non-answer) ungrounded를 실패로 안 셈 — scout의 첫 실
-발견이 dev 테스트 노이즈(빈 답)였음. `isFailureEvent`가 success===false는 먼저 카운트하고
-ungrounded+빈답만 제외. 실데이터 재실행 1→0 클러스터. (코어 `run-log-analysis.ts`.)
+Signal-scout hardening (loop fire 6): stops counting an ungrounded non-answer as a
+failure — the scout's first real finding turned out to be dev-test noise (an empty
+answer). `isFailureEvent` now counts `success===false` first, and excludes only the
+ungrounded+empty-answer case. Re-run on real data: 1 cluster → 0. (Core:
+`run-log-analysis.ts`.)
 
 ## 1.8.0 — 2026-06-12
-**신호 기반 gap-scout**(진안 지시 — 조사: 2026 주류는 신호-triage 발굴). 발굴(§1.3)을 3단
-사다리로: (a) **신호 먼저** `scripts/scout-signals.mjs`가 `.muse/runs/` 실패 트레이스
-(ungrounded/failed)를 빈도순 클러스터링 → 진짜 반복 실패가 일감, (b) 깨끗하면 코드 확장
-gap-scout, (c) 둘 다 마르면 **정직 보고 후 멈춤(가짜 일감 금지)**. 결정적 코어
-`apps/cli/src/run-log-analysis.ts`(`analyzeRunLogSignals`, 행동 단위테스트 8/8); 실데이터
-1133 트레이스에서 실 실패 클러스터(browser-read ungrounded ×7) 발굴 증명. improve-muse (e)도
-동일 사다리로 갱신.
+**Signal-based gap-scout** (Jinan's direction — research showed 2026 mainstream practice
+is signal-triage discovery). Turns discovery (§1.3) into a 3-rung ladder: (a) **signal
+first** — `scripts/scout-signals.mjs` frequency-clusters `.muse/runs/` failure traces
+(ungrounded/failed) → a genuinely-recurring failure becomes the work item, (b) if that's
+clean, fall back to code-expansion gap-scout, (c) if both are dry, **report honestly and
+stop (no manufactured work)**. Deterministic core:
+`apps/cli/src/run-log-analysis.ts` (`analyzeRunLogSignals`, 8/8 behavioral unit tests);
+proved on real data — 1,133 traces surfaced a genuine failure cluster
+(browser-read ungrounded ×7). improve-muse (e) also updated to the same ladder.
 
 ## 1.7.0 — 2026-06-12
-**§1을 "DECIDE THE WORK"로 재구성**(진안 지적): 스킬의 1번 작업 = *무엇을 할지 결정*하고,
-모르면 *능동 발굴*. 결정 순서(기준선 회귀 → 테마+backlog top → **테마 없음/얇음/부재면
-gap-scout를 *즉시* 돌려 발굴 후 backlog에 써넣고 진행**). 발굴을 "backlog 비었을 때만"이라는
-조건부에서 **"모를 때의 1번 동작"으로 승격** — "할 게 없다"는 금지(모르면 멈추지 말고 스카웃).
+**Restructured §1 as "DECIDE THE WORK"** (flagged by Jinan): the skill's job #1 is to
+*decide what to do*, and if that's unclear, *actively discover* it. Decision order
+(baseline regression → theme + backlog top → **if the theme is missing/thin/absent, run
+gap-scout *immediately*, write the discovery into backlog, and proceed**). Promoted
+discovery from a conditional ("only when backlog is empty") to **"the #1 move when
+unsure"** — "there's nothing to do" is forbidden (don't stop when unsure — scout).
 
 ## 1.6.1 — 2026-06-12
-ORIENT에 **backlog.md 부재 처리** 추가(진안 질문). backlog는 스킬이 *읽는* 기존 repo
-아티팩트지 만드는 게 아님을 명시하되, 파일이 없으면(fresh repo / doc-reset) 최소 스켈레톤
-생성 + gap-scout 시드 = "비면"과 동일 처리. "파일 없음 ≠ 일감 없음" — 멈추지 않는다.
+Added **handling for a missing backlog.md** to ORIENT (from Jinan's question). States
+that backlog is an existing repo artifact the skill *reads*, not one it creates — but if
+the file is missing (fresh repo / doc-reset), it creates a minimal skeleton + seeds it
+via gap-scout, treated the same as an "empty" backlog. "No file ≠ no work" — never stop.
 
 ## 1.6.0 — 2026-06-12 (`8895dae0`)
-라이브 dogfood 평가(fire 1–2)에서 드러난 4개 약점을 가드로(계약 §4.5):
-- **가치 우선** 슬라이스 선택(검증 쉬운 것 아님; defer는 digest에 사유 명시).
-- **다양성**(같은 KIND 3 fire 반복 금지).
-- **행동 acceptance**(선언/config-only 테스트 금지 → 게이팅 검증자가 FAIL).
-- **토큰 효율**(동종 변경 배칭 + 리스크-비례 검증 깊이).
-- **실패 드릴**: 고의 inert 슬라이스로 게이팅 검증자 FAIL→롤백 경로를 *실증*(가정 아님).
+Turned 4 weaknesses surfaced by a live dogfood evaluation (fires 1–2) into guards
+(contract §4.5):
+- **Value-first** slice selection (not "whatever's easiest to verify"; a deferral states
+  its reason in the digest).
+- **Diversity** (no repeating the same KIND 3 fires running).
+- **Behavioral acceptance** (declaration/config-only tests are banned → the gating
+  verifier FAILs them).
+- **Token efficiency** (batch same-kind changes + verification depth proportional to
+  risk).
+- **Failure drill**: *proves* — never assumes — the gating-verifier FAIL → rollback path
+  with a deliberately inert slice.
 
 ## 1.5.1 — 2026-06-12 (`1a7ac13e`)
-단일 소비자 계약 `loop-engineering.md`를 harness/에서 스킬 `references/`로 이동(결합도
-질문 반영). 스킬이 자기 계약을 번들로 들고 다님. "Muse-native 스킬"임을 정직히 명시.
+Moved the single-consumer contract `loop-engineering.md` from `harness/` into the
+skill's `references/` (reflecting a coupling question). The skill now bundles its own
+contract. States honestly that this is a "Muse-native skill".
 
 ## 1.5.0 — 2026-06-12 (`623c264e`)
-블로그 비교 격차 3개를 닫음:
-- **자율성 티어**(Tier1 로컬커밋 / Tier2 브랜치+draft PR, 하드 floor 불변).
-- **게이팅 검증자**(별개 강한-티어 Opus judge가 커밋을 GATE, FAIL=롤백).
-- **이해 체크포인트**(매 fire 다이제스트 + 3 fire마다 리뷰 관문).
+Closed 3 gaps found comparing against practitioner blogs:
+- **Autonomy tiers** (Tier1: local commit / Tier2: branch + draft PR, hard floor
+  unchanged).
+- **Gating verifier** (a separate, strong-tier Opus judge GATEs each commit;
+  FAIL = rollback).
+- **Comprehension checkpoint** (a digest every fire + a review gate every 3 fires).
 
 ## 1.4.0 — 2026-06-12 (`9c03fcbb`)
-ORIENT에 **연료 체크**(테마 열린 항목 ≤2면 경고+넓은 테마 제안) — 라이브 검증에서 발견.
+Added a **fuel check** to ORIENT (≤2 open items on the theme triggers a warning + a
+broader-theme suggestion) — found during live verification.
 
 ## 1.3.0 — 2026-06-12 (`024ff5ef`)
-독립 적대 리뷰로 하드닝: red-baseline 가드(self-eval non-zero면 등록 중단), 동시 main-루프
-경고, 예산 캡을 생성 프롬프트에, 중복 테마 cron CronList 체크, 'Done' 독립 판정,
-워크드 예시 번호 정렬, /loop 세션-id·즉시 첫-fire 명확화.
+Hardened via an independent adversarial review: a red-baseline guard (a non-zero
+self-eval blocks registration), a warning about concurrent main-loops, a budget cap in
+the generation prompt, a `CronList` check for a duplicate-theme cron, an independent
+'Done' verdict, aligned worked-example numbering, and clarified `/loop` session-id +
+immediate-first-fire behavior.
 
 ## 1.2.0 — 2026-06-12 (`07cf8ead`)
-2026-06 출처(Steinberger·Cherny·Osmani 등) 정식 반영 + 완성형으로: **등록 전 자가검증
-게이트**(체크리스트 PASS/FAIL), 워크드 예시, 계보 포인터.
+Formally incorporated 2026-06 sources (Steinberger, Cherny, Osmani, et al.) and rounded
+it out: a **pre-registration self-verification gate** (checklist PASS/FAIL), a worked
+example, and a lineage pointer.
 
 ## 1.1.0 — 2026-06-12 (`edd505c2`)
-**모델 티어링**(정형=Sonnet, 설계·검증=Opus, judge=worker보다 강한 티어) — 토큰 절약 레버.
+**Model tiering** (routine work = Sonnet, design/verification = Opus, judge = a tier
+stronger than the worker) — a token-saving lever.
 
 ## 1.0.0 — 2026-06-12 (`99c749f2`)
-초판: Addy Osmani "Loop Engineering"을 Muse 계약으로 증류(`loop-engineering.md` — 6
-프리미티브·검증가능 정지조건·maker≠judge·3대 실패모드) + 생성형 `loop-creator` 스킬
-(테마→계약 채움→프롬프트 생성→cron 등록).
+First edition: distilled Addy Osmani's "Loop Engineering" into a Muse contract
+(`loop-engineering.md` — 6 primitives, verifiable stop conditions, maker≠judge, 3 major
+failure modes) + the generative `loop-creator` skill (theme → fill contract → generate
+prompt → register cron).

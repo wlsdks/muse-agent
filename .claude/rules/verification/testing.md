@@ -192,4 +192,4 @@ back to ~300×150 and blow up the layout).
 
 The decision table, TS7 compatibility audit, performance measurements, and
 official sources behind these rules live in
-[`docs/development/testing-strategy.md`](../../../docs/development/testing-strategy.md).
+[`../../../docs/development/testing-strategy.md`](../../../docs/development/testing-strategy.md).

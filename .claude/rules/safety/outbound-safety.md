@@ -11,7 +11,7 @@ and tested checks — never as a prompt please-be-careful.
 ## What this governs
 
 Normal source-control publication to Muse's configured `origin` is governed by
-[`commits.md`](../engineering/commits.md), including its narrow standing authorization. It is
+[`../engineering/commits.md`](../engineering/commits.md), including its narrow standing authorization. It is
 not authorization for any human-facing send or external action below.
 
 Any action that:

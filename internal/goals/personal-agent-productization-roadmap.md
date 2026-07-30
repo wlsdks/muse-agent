@@ -9,10 +9,10 @@ related:
   - personal-agent-acceptance-plan.md
   - daily-use-hardening-plan.md
   - attunement-implementation-plan.md
-  - ../strategy/attunement.md
-  - ../development/personal-agent-qualification.md
-  - ../development/agent-capability-baseline.md
-  - ../development/ai-agent-testing-strategy.md
+  - ../../docs/strategy/attunement.md
+  - ../../docs/development/personal-agent-qualification.md
+  - ../../docs/development/agent-capability-baseline.md
+  - ../../docs/development/ai-agent-testing-strategy.md
   - competitor-teardown.md
 ---
 

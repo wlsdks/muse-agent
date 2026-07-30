@@ -1,7 +1,7 @@
 ---
 name: release
 version: 1.3.1
-description: Use when 진안 wants to cut/tag a Muse release or asks anything about the next version — "릴리스 찍어줘", "release 만들자", "버전 올려줘", "v0.2 내자", "patch 올려줘", "다음 버전 뭐야", "changelog/릴리스 노트 만들어줘", "GitHub release 올려줘", "이번엔 minor야 patch야". Reads the full commit history since the last tag, AUTO-DECIDES patch vs minor vs major (patch climbs by default, minor only on a breaking public-surface change or an explicit milestone — per docs/VERSIONING.md), writes curated user-facing release notes from those commits, then bumps + changelogs + commits + tags + pushes + creates the GitHub Release (pre-release while 0.x). Muse-specific.
+description: Use when Jinan wants to cut/tag a Muse release or asks anything about the next version — "릴리스 찍어줘" ("cut a release"), "release 만들자" ("let's make a release"), "버전 올려줘" ("bump the version"), "v0.2 내자" ("let's put out v0.2"), "patch 올려줘" ("bump the patch"), "다음 버전 뭐야" ("what's the next version"), "changelog/릴리스 노트 만들어줘" ("write the changelog/release notes"), "GitHub release 올려줘" ("put up the GitHub release"), "이번엔 minor야 patch야" ("is this one minor or patch"). Reads the full commit history since the last tag, AUTO-DECIDES patch vs minor vs major (patch climbs by default, minor only on a breaking public-surface change or an explicit milestone — per docs/VERSIONING.md), writes curated user-facing release notes from those commits, then bumps + changelogs + commits + tags + pushes + creates the GitHub Release (pre-release while 0.x). Muse-specific.
 ---
 
 > **Versioning.** This skill carries a `version` (above). Bump it (patch = wording,
@@ -29,7 +29,7 @@ every run.
 **Releases are deliberate, human-cut milestones — never automated per commit,
 but FREQUENT.** `main` iterates continuously (autonomous loops included), so a
 release is a snapshot of a chosen *known-good* commit, not a reaction to every
-push. Per `docs/VERSIONING.md §Release cadence` (진안, 2026-07-02): cut or
+push. Per `docs/VERSIONING.md §Release cadence` (Jinan, 2026-07-02): cut or
 propose a PATCH whenever a milestone wave completes, and never let ~30+
 user-facing commits pile up untagged — many small tags beat one huge one.
 
@@ -58,7 +58,7 @@ pre-release), **the default is always PATCH** and only two things escalate:
 | --- | --- | --- |
 | Routine work — `fix:` / `feat:` / `refactor:` / `chore:` / `docs:` (**the default, ~99%**) | **PATCH** — climbs, never resets | `0.1.7 → 0.1.8` |
 | A breaking change to a public surface (CLI / `MUSE_*` / `~/.muse` format), marked `!` or `BREAKING CHANGE:` | **MINOR** + loud note | `0.1.40 → 0.2.0` |
-| A milestone wave 진안 explicitly asks to mark | **MINOR** | `0.1.40 → 0.2.0` |
+| A milestone wave Jinan explicitly asks to mark | **MINOR** | `0.1.40 → 0.2.0` |
 
 **A `feat:` does NOT bump minor — it rides PATCH like everything else.** The
 patch number is meant to climb high (`0.1.200` is normal and expected, the same

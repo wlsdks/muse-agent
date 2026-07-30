@@ -1877,7 +1877,7 @@ excluded when scoring).
 
 ## Open — agent-performance levers (ranked research pass 2026-06-10)
 
-Full ranked list + sources: [`docs/strategy/competitor-analysis-and-a-plus-roadmap.md`](../../docs/strategy/positioning/competitor-analysis-and-a-plus-roadmap.md).
+Full ranked list + sources: [`../../docs/strategy/positioning/competitor-analysis-and-a-plus-roadmap.md`](../../docs/strategy/positioning/competitor-analysis-and-a-plus-roadmap.md).
 Levers #1 (multilingual embedder, SHIPPED — KO hit@1 50%->100%), #3 (KV posture + prefix
 ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from the list:
 

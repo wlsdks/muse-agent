@@ -15,9 +15,9 @@ real life/work returns produce reviewed outcomes across multiple dates.
 
 This plan does not replace the Attunement roadmap. It is the operational and
 evaluation gate around it. Product semantics remain in
-[`docs/strategy/attunement.md`](../../docs/strategy/attunement.md), and organic
+[`../../docs/strategy/attunement.md`](../../docs/strategy/attunement.md), and organic
 Continuity accounting remains in
-[`internal/goals/attunement-implementation-plan.md`](attunement-implementation-plan.md).
+[`attunement-implementation-plan.md`](attunement-implementation-plan.md).
 
 ## Working rules
 
