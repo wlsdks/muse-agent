@@ -17,7 +17,6 @@ import {
   createAgentRuntime,
   createCorrectionCaptureHook,
   createFollowupCaptureHook,
-  createModelDroppedContextSummarizer,
   InMemoryAgentInitiatedNoticeBroker,
   type ActiveContextProvider,
   type AgentInitiatedNoticeBroker,
@@ -47,6 +46,7 @@ import { createLoopbackMcpMuseTools, type LoopbackMcpServer, type McpManager, ty
 import { randomUUID } from "node:crypto";
 
 import { resolveLearningPauseFile } from "./provider-paths.js";
+import { createCompactionAuxiliary } from "./compaction-auxiliary.js";
 import { createScheduledTriggerAdmissionLifecycle } from "./scheduler-trigger-admission.js";
 import {
   appendActionLog,
@@ -1342,6 +1342,11 @@ function buildAgentRuntime(params: {
     personaRegister,
     responseCache
   } = params;
+  const compactionAuxiliary = modelProvider
+    && defaultModel
+    && parseBoolean(env.MUSE_AUX_COMPACTION, false)
+    ? createCompactionAuxiliary(modelProvider, defaultModel, env)
+    : undefined;
 
   return modelProvider && defaultModel
     ? createAgentRuntime({
@@ -1362,11 +1367,11 @@ function buildAgentRuntime(params: {
       contextReferenceStore,
       contextWindow: contextWindowOptions,
       // CMP-2 aux-model compaction (opt-in via MUSE_AUX_COMPACTION): summarize
-      // the compacted-away turns with the SAME local model and append the recap
-      // to the deterministic summary. Off by default (the extra local call adds
-      // latency on a compaction turn); fail-open + model-agnostic in the runtime.
-      ...(parseBoolean(env.MUSE_AUX_COMPACTION, false)
-        ? { contextSummarizer: createModelDroppedContextSummarizer(modelProvider, defaultModel) }
+      // the compacted-away turns with an admitted model on the wired provider
+      // and append the recap. Off by default (the extra call adds latency on a
+      // compaction turn); fail-open and provider-neutral in the runtime.
+      ...(compactionAuxiliary?.summarizer
+        ? { contextSummarizer: compactionAuxiliary.summarizer }
         : {}),
       historyStore,
       hooks: runtimeHooks,

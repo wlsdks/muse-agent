@@ -131,6 +131,25 @@ export interface AuxiliaryModelResolution {
   readonly keptLocalForPrivacy: boolean;
 }
 
+export type AuxiliaryModelAdmission =
+  | Readonly<{
+      readonly available: false;
+      readonly reason: "local-only-no-local-model";
+      readonly route: "cloud";
+      readonly task: AuxiliaryTask;
+    }>
+  | Readonly<{
+      readonly available: true;
+      readonly fallbackReason?:
+        | "local-only-cloud-override-blocked"
+        | "personal-context-cloud-override-blocked"
+        | "provider-adapter-unavailable";
+      readonly model: string;
+      readonly route: "local" | "cloud";
+      readonly source: AuxiliaryModelResolution["source"];
+      readonly task: AuxiliaryTask;
+    }>;
+
 const LEGACY_AUXILIARY_ENV_KEY: Record<AuxiliaryTask, keyof MuseEnvironment | undefined> = {
   compaction: undefined,
   "embedding-rescue": "MUSE_RECALL_EMBED_MODEL",
@@ -206,6 +225,62 @@ export function resolveAuxiliaryModel(params: {
   }
 
   return { keptLocalForPrivacy: false, model: chosen, route, source };
+}
+
+/**
+ * Turn auxiliary model selection into a dispatch capability for the currently
+ * wired provider. Resolution alone is not permission to call: local-only may
+ * make the selected/session model unavailable, and a different provider model
+ * cannot be sent through the current provider adapter.
+ */
+export function admitAuxiliaryModel(params: {
+  readonly task: AuxiliaryTask;
+  readonly env: MuseEnvironment;
+  readonly sessionModel: string;
+  readonly isPersonalContext?: boolean;
+}): AuxiliaryModelAdmission {
+  const resolution = resolveAuxiliaryModel(params);
+  if (parseBoolean(params.env.MUSE_LOCAL_ONLY, false) && resolution.route === "cloud") {
+    return Object.freeze({
+      available: false,
+      reason: "local-only-no-local-model",
+      route: "cloud",
+      task: params.task
+    });
+  }
+
+  const selectedProvider = modelProviderId(resolution.model);
+  const sessionProvider = modelProviderId(params.sessionModel);
+  if (selectedProvider !== sessionProvider) {
+    return Object.freeze({
+      available: true,
+      fallbackReason: "provider-adapter-unavailable",
+      model: params.sessionModel,
+      route: classifyModelRoute(params.sessionModel),
+      source: "session",
+      task: params.task
+    });
+  }
+
+  const fallbackReason = resolution.keptLocalForPrivacy
+    ? parseBoolean(params.env.MUSE_LOCAL_ONLY, false)
+      ? "local-only-cloud-override-blocked" as const
+      : "personal-context-cloud-override-blocked" as const
+    : undefined;
+  return Object.freeze({
+    available: true,
+    ...(fallbackReason ? { fallbackReason } : {}),
+    model: resolution.model,
+    route: resolution.route,
+    source: resolution.source,
+    task: params.task
+  });
+}
+
+function modelProviderId(model: string): string {
+  return parseModelName(model).providerId
+    ?? providerIdFromPrefix(model)
+    ?? "openai-compatible";
 }
 
 export interface ModelFallbackChainResolution {
