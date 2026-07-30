@@ -108,6 +108,11 @@ export type {
   ExperienceLearningSourceHeldReason,
   ExperienceLearningSourceProjection
 } from "./experience-learning-source.js";
+export { proposeExperienceLearningFromDelivery } from "./experience-learning-composer.js";
+export type {
+  ExperienceLearningProposalDraft,
+  ExperienceLearningProposalResult
+} from "./experience-learning-composer.js";
 export {
   EXPERIENCE_LEARNING_PROMOTION_MIN_CASES,
   ExperienceLearningPromotionError,
