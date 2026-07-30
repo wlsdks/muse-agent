@@ -27,6 +27,23 @@ Everything else falls through to this file. Note what a non-Claude agent does **
 half is not prose — the hooks in `scripts/githooks/` run from `core.hooksPath`, which is plain git
 config, so every commit and push faces the same 14 checks whichever agent produced it.
 
+## If you are not Claude Code, read these before you work
+
+They are auto-loaded for Claude Code and for nothing else, so for you they are an instruction,
+not a footnote. Read by what the task touches — not all of them, every time:
+
+| Before you… | Read |
+| --- | --- |
+| do any non-trivial multi-step work | [`.claude/harness/contract.md`](.claude/harness/contract.md) — risk tiers, the two mandatory roles, the fail-closed gates |
+| commit or push | [`.claude/rules/engineering/commits.md`](.claude/rules/engineering/commits.md) — what is and is not authorized |
+| write or change a test | [`.claude/rules/verification/testing.md`](.claude/rules/verification/testing.md) — which gate proves what |
+| add or change a tool | [`.claude/rules/safety/tool-calling.md`](.claude/rules/safety/tool-calling.md) |
+| touch a provider or the model layer | [`.claude/rules/engineering/architecture.md`](.claude/rules/engineering/architecture.md) |
+
+**You will be held to them either way.** The hooks in `scripts/githooks/` run from
+`core.hooksPath`, which is plain git config — every commit and push you make faces the same
+deterministic checks as any other agent, whether or not you read a line of this.
+
 ## The floor — restated here on purpose
 
 Everything else in this repository is a pointer. These are not, because they are the boundaries
