@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   admitTriggerControl,
   cancelTriggerControlWork,
@@ -13,7 +15,8 @@ import {
   TRIGGER_CONTROL_LINEAGE_PROJECTION_RULE_VERSION,
   TRIGGER_CONTROL_LINEAGE_SOURCE_NAMESPACES,
   TriggerControlLineageProjectionError,
-  projectTriggerControlLineage
+  projectTriggerControlLineage,
+  type TriggerSchedulerTerminalReceipt
 } from "./trigger-control-lineage-projection.js";
 
 const T0 = new Date("2026-07-31T00:00:00.000Z");
@@ -52,6 +55,23 @@ function admitted(
       ...options
     }
   ).state;
+}
+
+function legacyReminderEnvelope(generation: string) {
+  const sourceId = "legacy-reminder";
+  const current = createTriggerEnvelope({
+    generation,
+    occurredAt: T0,
+    receivedAt: T0,
+    source: "reminder",
+    sourceId
+  });
+  return {
+    ...current,
+    dedupKey: `reminder:${createHash("sha256")
+      .update(JSON.stringify([sourceId, generation]))
+      .digest("hex")}`
+  };
 }
 
 function claimed(generation: string): TriggerControlState {
@@ -98,15 +118,34 @@ function cancelled(generation = "cancelled"): TriggerControlState {
 
 function project(
   state: TriggerControlState,
-  generation: string
+  generation: string,
+  execution?: TriggerSchedulerTerminalReceipt
 ) {
   return projectTriggerControlLineage({
+    ...(execution ? { execution } : {}),
     scope: {
       dedupKey: envelope(generation).dedupKey,
       sourceId: SOURCE_ID
     },
     state
   });
+}
+
+function executionReceipt(
+  generation: string,
+  overrides: Partial<TriggerSchedulerTerminalReceipt> = {}
+): TriggerSchedulerTerminalReceipt {
+  return {
+    completedAt: T2.toISOString(),
+    dryRun: false,
+    executionId: `scheduled_execution_${generation}`,
+    jobId: "daily-brief",
+    schemaVersion: 1,
+    startedAt: T1.toISOString(),
+    status: "success",
+    triggerDedupKey: envelope(generation).dedupKey,
+    ...overrides
+  };
 }
 
 function assertDeepFrozen(value: unknown, seen = new WeakSet<object>()): void {
@@ -160,6 +199,75 @@ describe("trigger control lineage projection", () => {
     assertDeepFrozen(projection);
   });
 
+  it("correlates one exact scheduler terminal receipt without claiming an agent run or outcome", () => {
+    const receipt = executionReceipt("execution");
+    const projection = project(completed("execution"), "execution", receipt);
+    const correlation = projection.assertions.find((assertion) =>
+      assertion.predicate === "CORRELATES_WITH");
+
+    expect(projection.assertions).toHaveLength(4);
+    expect(correlation).toMatchObject({
+      epistemicClass: "source-observed",
+      object: { kind: "evidence" },
+      recordedAt: receipt.completedAt,
+      subject: { kind: "evidence" }
+    });
+    expect(correlation?.sourceRefs.map((sourceRef) => sourceRef.namespace))
+      .toEqual(expect.arrayContaining([
+        TRIGGER_CONTROL_LINEAGE_SOURCE_NAMESPACES.admission,
+        TRIGGER_CONTROL_LINEAGE_SOURCE_NAMESPACES.execution
+      ]));
+    expect(new Set(projection.assertions.map((assertion) => assertion.predicate)))
+      .toEqual(new Set(["CORRELATES_WITH", "PRECEDED"]));
+    expect(JSON.stringify(projection)).not.toContain(receipt.executionId);
+    expect(JSON.stringify(projection)).not.toContain(receipt.jobId);
+    assertDeepFrozen(projection);
+  });
+
+  it("records skipped rejection evidence without inventing work", () => {
+    const projection = project(
+      admitted("rejected-record", { permission: "denied" }),
+      "rejected-record",
+      executionReceipt("rejected-record", { status: "skipped" })
+    );
+
+    expect(projection.assertions).toHaveLength(2);
+    expect(projection.assertions.some((assertion) =>
+      assertion.predicate === "CORRELATES_WITH")).toBe(true);
+    expect(projection.assertions.some((assertion) =>
+      assertion.subject.kind === "action"
+      || assertion.object.kind === "action"
+    )).toBe(false);
+  });
+
+  it("accepts an exact legacy reminder occurrence key", () => {
+    const reminder = legacyReminderEnvelope("legacy");
+    const state = admitTriggerControl(
+      createTriggerControlState({ maxEntries: 8, maxPending: 4 }),
+      { envelope: reminder, now: T0 }
+    ).state;
+    const projection = projectTriggerControlLineage({
+      execution: {
+        completedAt: T2.toISOString(),
+        dryRun: false,
+        executionId: "scheduled_execution_legacy",
+        jobId: "legacy-reminder",
+        schemaVersion: 1,
+        startedAt: T1.toISOString(),
+        status: "success",
+        triggerDedupKey: reminder.dedupKey
+      },
+      scope: {
+        dedupKey: reminder.dedupKey,
+        sourceId: SOURCE_ID
+      },
+      state
+    });
+
+    expect(projection.assertions.some((assertion) =>
+      assertion.predicate === "CORRELATES_WITH")).toBe(true);
+  });
+
   it.each([
     ["rejected", { permission: "denied" as const }],
     ["shadowed", { quietHoursActive: true }]
@@ -208,7 +316,11 @@ describe("trigger control lineage projection", () => {
       "PROPOSES_POLICY"
     ]);
 
-    expect(project(deadLettered(), "dead").assertions.some((assertion) =>
+    expect(project(
+      deadLettered(),
+      "dead",
+      executionReceipt("dead", { status: "failed" })
+    ).assertions.some((assertion) =>
       forbidden.has(assertion.predicate))).toBe(false);
   });
 
@@ -225,8 +337,9 @@ describe("trigger control lineage projection", () => {
   });
 
   it("replays deterministically with sorted assertions", () => {
-    const first = project(completed("replay"), "replay");
-    const second = project(completed("replay"), "replay");
+    const receipt = executionReceipt("replay", { dryRun: true });
+    const first = project(completed("replay"), "replay", receipt);
+    const second = project(completed("replay"), "replay", receipt);
 
     expect(second).toEqual(first);
     expect(first.assertions.map((assertion) => assertion.id)).toEqual(
@@ -234,6 +347,69 @@ describe("trigger control lineage projection", () => {
         .map((assertion) => assertion.id)
         .sort((left, right) => left.localeCompare(right))
     );
+  });
+
+  it("content-binds terminal status while keeping statuses semantically opaque", () => {
+    const success = project(
+      completed("status"),
+      "status",
+      executionReceipt("status", { status: "success" })
+    );
+    const failed = project(
+      completed("status"),
+      "status",
+      executionReceipt("status", { status: "failed" })
+    );
+    const skipped = project(
+      completed("status"),
+      "status",
+      executionReceipt("status", { dryRun: true, status: "skipped" })
+    );
+    const dryRunSuccess = project(
+      completed("status"),
+      "status",
+      executionReceipt("status", { dryRun: true, status: "success" })
+    );
+
+    expect(new Set([
+      success.sourceVersion,
+      failed.sourceVersion,
+      skipped.sourceVersion,
+      dryRunSuccess.sourceVersion
+    ]).size).toBe(4);
+    expect(new Set([success, failed, skipped, dryRunSuccess].map((projection) =>
+      projection.assertions.find((assertion) =>
+        assertion.predicate === "CORRELATES_WITH")?.id
+    )).size).toBe(4);
+  });
+
+  it("fails closed on mismatched, malformed, or expanded scheduler receipts", () => {
+    const state = completed("receipt-invalid");
+    const base = executionReceipt("receipt-invalid");
+
+    expect(() => project(
+      state,
+      "receipt-invalid",
+      { ...base, triggerDedupKey: envelope("other").dedupKey }
+    )).toThrow(expect.objectContaining({ code: "SCOPE_NOT_FOUND" }));
+    expect(() => project(
+      state,
+      "receipt-invalid",
+      { ...base, completedAt: "not-an-instant" }
+    )).toThrow(expect.objectContaining({ code: "INVALID_SOURCE" }));
+    expect(() => project(
+      state,
+      "receipt-invalid",
+      { ...base, completedAt: T0.toISOString() }
+    )).toThrow(expect.objectContaining({ code: "INVALID_SOURCE" }));
+    expect(() => project(
+      state,
+      "receipt-invalid",
+      {
+        ...base,
+        payload: "private-payload"
+      } as unknown as TriggerSchedulerTerminalReceipt
+    )).toThrow(expect.objectContaining({ code: "INVALID_SOURCE" }));
   });
 
   it("fails closed on tampered state or an unknown occurrence", () => {

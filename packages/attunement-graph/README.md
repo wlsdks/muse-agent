@@ -31,7 +31,9 @@ creates truth, feedback, policy, permission, or authority.
   and governed-learning lineage projections, the "what changed since I stopped" query, and
   content-addressed observation receipts.
 - `./loop-lineage` — one-occurrence trigger admission/work/terminal evidence from a
-  verified shared control-state snapshot. It does not claim an exact agent execution ID.
+  verified shared control-state snapshot, plus optional exact correlation to a strict
+  scheduler terminal receipt. It does not claim an exact agent/tool run, user outcome,
+  performance, permission, or authority.
 - `./continuity-capsules` · `./continuity-resume-runtime` — Capsule render data, and the
   process-local resume compiler.
 - `./shadow-decision-receipt` — the Shadow Muse decision record.
