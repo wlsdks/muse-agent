@@ -813,13 +813,13 @@ export class AgentRuntime {
       pendingLoopControlReceipt
     );
 
-    const verificationFailed =
-      loopControlReceipt.terminal.status === "failed" &&
-      loopControlReceipt.terminal.reason === "verification-failed";
+    const completionFailed =
+      loopControlReceipt.terminal.reason === "verification-failed" ||
+      loopControlReceipt.terminal.reason === "no-progress";
     await this.recordRunComplete(context, {
       ...execution,
       finalResponse: interrupted ? { ...guarded, id: "interrupted" } : guarded
-    }, verificationFailed ? "failed" : undefined);
+    }, completionFailed ? "failed" : undefined);
     if (interrupted) {
       await this.recordCheckpoint(context, 100, "cancelled", context.input.messages, guarded.output);
       this.recordAgentRun(context, guarded.model, "cancelled", startedAtMs);
@@ -831,11 +831,11 @@ export class AgentRuntime {
     await this.recordCheckpoint(
       context,
       100,
-      verificationFailed ? "failed" : "complete",
+      completionFailed ? "failed" : "complete",
       context.input.messages,
       guarded.output
     );
-    if (!verificationFailed) {
+    if (!completionFailed) {
       await this.writeCache(cacheKey, guarded, execution.toolsUsed);
       if (preparedRequest.contextWindow?.summaryInserted) {
         await persistConversationSummaryFromRequestFn(
@@ -847,7 +847,7 @@ export class AgentRuntime {
       }
       await this.invokeHooks("afterComplete", context, guarded);
     }
-    this.recordAgentRun(context, guarded.model, verificationFailed ? "failed" : "completed", startedAtMs);
+    this.recordAgentRun(context, guarded.model, completionFailed ? "failed" : "completed", startedAtMs);
     // stamp wall-clock run latency on the trace span so a
     // trace-store consumer can correlate latency with the same ctx.*
     // span attrs without going through a separate query.
@@ -1233,7 +1233,9 @@ export class AgentRuntime {
           ? { reason: "deadline-exceeded", status: "failed" }
           : toolBudgetExhausted
             ? { reason: "budget-exhausted", status: "failed" }
-            : { reason: "verification-pending", status: "held" };
+            : execution.controlStopReason === "no-progress"
+              ? { reason: "no-progress", status: "failed" }
+              : { reason: "verification-pending", status: "held" };
     const retrySnapshot = retryBudget.snapshot();
 
     return createLoopControlReceipt({
@@ -1248,7 +1250,9 @@ export class AgentRuntime {
       runId: context.runId,
       startedAt: new Date(startedAtMs).toISOString(),
       terminal,
-      verification: { status: "pending" }
+      verification: execution.controlStopReason === "no-progress"
+        ? { status: "not-required" }
+        : { status: "pending" }
     });
   }
 

@@ -677,10 +677,11 @@ export async function executeModelLoop(
     // window observations near-identical) also disables tools → forces a clean
     // synthesis instead of burning the rest of the budget on spin.
     const wallclockExceeded = deadlineMs !== undefined && now() >= deadlineMs;
+    const noProgress = progress.stalled();
     // Tool-failure-streak circuit breaker (arXiv:2509.25370): a tool that has
     // failed N times in a row is withheld for the next turn (the model keeps its
     // OTHER tools) so a cascading tool failure can't burn the whole budget.
-    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !progress.stalled())
+    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !noProgress)
       ? request.tools?.filter((t) => !failureStreak.tripped(t.name) && !shellPhase.withholds(t.name))
       : [];
     // Budget-exhaustion notice: gated strictly on toolCallCount having hit
@@ -728,6 +729,9 @@ export async function executeModelLoop(
         continue;
       }
       return {
+        ...(!wallclockExceeded && toolCallCount < runner.maxToolCalls && noProgress
+          ? { controlStopReason: "no-progress" as const }
+          : {}),
         finalResponse: response,
         intermediateMessages,
         toolCallCount,
@@ -815,10 +819,11 @@ export async function* executeStreamingModelLoop(
     // No-progress early-exit (arXiv:2505.17616): a stalled read loop disables
     // tools for this turn → clean synthesis instead of spinning the budget.
     const wallclockExceeded = deadlineMs !== undefined && now() >= deadlineMs;
+    const noProgress = progress.stalled();
     // Tool-failure-streak circuit breaker (arXiv:2509.25370): a tool that has
     // failed N times in a row is withheld for the next turn (the model keeps its
     // OTHER tools) so a cascading tool failure can't burn the whole budget.
-    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !progress.stalled())
+    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !noProgress)
       ? request.tools?.filter((t) => !failureStreak.tripped(t.name) && !shellPhase.withholds(t.name))
       : [];
     // Budget-exhaustion notice — see executeModelLoop. Same one-shot gate,
@@ -865,6 +870,9 @@ export async function* executeStreamingModelLoop(
         continue;
       }
       return {
+        ...(!wallclockExceeded && toolCallCount < runner.maxToolCalls && noProgress
+          ? { controlStopReason: "no-progress" as const }
+          : {}),
         finalResponse: response,
         intermediateMessages,
         toolCallCount,

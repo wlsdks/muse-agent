@@ -24,6 +24,8 @@ export interface ExecutedToolResult {
 }
 
 export interface ModelLoopExecution {
+  /** Deterministic control stop emitted by the loop itself, independent of model response text. */
+  readonly controlStopReason?: "no-progress";
   readonly finalResponse: ModelResponse;
   readonly intermediateMessages: readonly ModelMessage[];
   /** Tool-call budget slots actually admitted by the loop; blocked calls do not consume it. */

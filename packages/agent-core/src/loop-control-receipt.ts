@@ -8,7 +8,7 @@ export type LoopTerminalState =
   | { readonly reason: "goal-verified"; readonly status: "completed" }
   | { readonly reason: "caller-cancelled"; readonly status: "cancelled" }
   | {
-      readonly reason: "budget-exhausted" | "deadline-exceeded" | "execution-error" | "verification-failed";
+      readonly reason: "budget-exhausted" | "deadline-exceeded" | "execution-error" | "no-progress" | "verification-failed";
       readonly status: "failed";
     }
   | {
@@ -79,7 +79,7 @@ const LOOP_KINDS = new Set<LoopKind>(["adaptation", "event", "plan-execute", "re
 const STATUS_REASONS = {
   cancelled: new Set(["caller-cancelled"]),
   completed: new Set(["goal-verified"]),
-  failed: new Set(["budget-exhausted", "deadline-exceeded", "execution-error", "verification-failed"]),
+  failed: new Set(["budget-exhausted", "deadline-exceeded", "execution-error", "no-progress", "verification-failed"]),
   held: new Set(["permission-required", "retry-deferred", "verification-pending"])
 } as const;
 

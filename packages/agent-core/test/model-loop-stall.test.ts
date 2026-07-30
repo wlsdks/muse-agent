@@ -59,6 +59,7 @@ describe("executeModelLoop — no-progress stall early-exit (arXiv:2505.17616)",
     // Executed only the 3 stalled reads, then withheld tools → clean synthesis.
     expect(ran.length).toBe(3);
     expect(result.finalResponse.output).toBe("synthesised final answer");
+    expect(result.controlStopReason).toBe("no-progress");
   });
 
   it("non-vacuity / no false stall: PROGRESSING reads run to the maxToolCalls cap", async () => {
@@ -72,5 +73,6 @@ describe("executeModelLoop — no-progress stall early-exit (arXiv:2505.17616)",
     );
     expect(ran.length).toBe(10); // ran to the cap — the stall gate did NOT fire on progressing reads
     expect(result.finalResponse.output).toBe("synthesised final answer");
+    expect(result.controlStopReason).toBeUndefined();
   });
 });

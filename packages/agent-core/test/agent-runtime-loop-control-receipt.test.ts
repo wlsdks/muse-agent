@@ -259,6 +259,66 @@ describe("AgentRuntime loop control receipt wiring", () => {
     expect(receipt.budget.tools).toEqual({ exhausted: true, limit: 1, used: 1 });
   });
 
+  it("records repeated-read no-progress as failed and never asks the outcome verifier to promote it", async () => {
+    const afterComplete = vi.fn();
+    const checkpointStore = new InMemoryCheckpointStore();
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    const responseCache = new InMemoryResponseCache();
+    const verify = vi.fn(() => ({ evidenceId: "must-not-run", status: "passed" as const }));
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Read a note",
+          inputSchema: { type: "object" },
+          name: "read_note",
+          risk: "read"
+        },
+        execute: async () => "results: alpha beta gamma delta"
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      checkpointStore,
+      historyStore,
+      hooks: [{ afterComplete, id: "no-progress-completion-observer" }],
+      loopOutcomeVerifier: verify,
+      maxToolCalls: 10,
+      modelProvider: sequenceProvider([
+        {
+          id: "call-1",
+          model: "test/model",
+          output: "",
+          toolCalls: [{ arguments: { page: 1 }, id: "tool-1", name: "read_note" }]
+        },
+        {
+          id: "call-2",
+          model: "test/model",
+          output: "",
+          toolCalls: [{ arguments: { page: 2 }, id: "tool-2", name: "read_note" }]
+        },
+        {
+          id: "call-3",
+          model: "test/model",
+          output: "",
+          toolCalls: [{ arguments: { page: 3 }, id: "tool-3", name: "read_note" }]
+        },
+        { id: "answer", model: "test/model", output: "synthesised final answer" }
+      ]),
+      responseCache,
+      toolRegistry
+    });
+
+    const result = await runtime.run({ ...input, runId: "run-no-progress-receipt" });
+    const receipt = parseLoopControlReceipt(result.loopControlReceipt);
+
+    expect(receipt.terminal).toEqual({ reason: "no-progress", status: "failed" });
+    expect(receipt.verification).toEqual({ status: "not-required" });
+    expect(verify).not.toHaveBeenCalled();
+    expect(await historyStore.findRun("run-no-progress-receipt")).toMatchObject({ status: "failed" });
+    expect((await checkpointStore.findLatestByRunId("run-no-progress-receipt"))?.state.phase).toBe("failed");
+    expect(responseCache.size()).toBe(0);
+    expect(afterComplete).not.toHaveBeenCalled();
+  });
+
   it("does not consume tool budget for a middleware-blocked synthetic result", async () => {
     const toolRegistry = new ToolRegistry([
       {

@@ -85,6 +85,26 @@ describe("executeStreamingModelLoop", () => {
     expect(execution.finalResponse.output).toBe("final");
   });
 
+  it("reports a repeated-read no-progress stop on the streaming path", async () => {
+    const ran: string[] = [];
+    const prov = provider([
+      [done("calling", [{ arguments: { page: 1 }, id: "t1", name: "echo" }])],
+      [done("calling", [{ arguments: { page: 2 }, id: "t2", name: "echo" }])],
+      [done("calling", [{ arguments: { page: 3 }, id: "t3", name: "echo" }])],
+      [done("synthesised final answer")]
+    ]);
+    const { execution } = await drive(
+      prov,
+      runner({ ran, toolOutput: "results: alpha beta gamma delta" }),
+      context(),
+      false
+    );
+
+    expect(ran).toEqual(["echo", "echo", "echo"]);
+    expect(execution.finalResponse.output).toBe("synthesised final answer");
+    expect(execution.controlStopReason).toBe("no-progress");
+  });
+
   it("compacts each streamed turn while preserving the current tool exchange and exact source", async () => {
     const physicalRequests: ModelRequest[] = [];
     const run: ModelLoopRunner = {
