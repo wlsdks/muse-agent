@@ -55,6 +55,94 @@ describe("createLoopSupervisorHealthSnapshot", () => {
     });
   });
 
+  it("keeps exact trigger-to-work correlation healthy", () => {
+    const admitted = journal("correlated");
+    const work = claimTriggerWork(admitted, {
+      at: NOW,
+      dedupKey: admitted.entries[0]!.envelope.dedupKey,
+      leaseDurationMs: 1_000,
+      leaseToken: "worker-a:correlated",
+      maxAttempts: 1
+    });
+
+    expect(createLoopSupervisorHealthSnapshot({
+      adaptation: { status: "idle" },
+      agent: agent({ runId: work.dedupKey }),
+      event: { journal: admitted, workStates: [work] },
+      generatedAt: NOW
+    })).toMatchObject({
+      agent: { level: "healthy", reasons: [] },
+      event: { level: "healthy" },
+      level: "healthy"
+    });
+  });
+
+  it("blocks trigger-claimed agent evidence without matching event work", () => {
+    const admitted = journal("missing-work");
+    const triggerRunId = admitted.entries[0]!.envelope.dedupKey;
+
+    expect(createLoopSupervisorHealthSnapshot({
+      agent: agent({ runId: triggerRunId }),
+      generatedAt: NOW
+    })).toMatchObject({
+      agent: {
+        level: "blocked",
+        reasons: ["agent-trigger-event-evidence-missing"]
+      },
+      level: "blocked"
+    });
+
+    expect(createLoopSupervisorHealthSnapshot({
+      agent: agent({ runId: triggerRunId }),
+      event: { journal: admitted, workStates: [] },
+      generatedAt: NOW
+    })).toMatchObject({
+      agent: {
+        level: "blocked",
+        reasons: ["agent-trigger-work-state-missing"]
+      },
+      level: "blocked"
+    });
+  });
+
+  it("preserves legacy and ordinary agent health without event correlation", () => {
+    expect(createLoopSupervisorHealthSnapshot({
+      agent: agent(),
+      generatedAt: NOW
+    }).agent).toEqual({ level: "healthy", reasons: [] });
+
+    expect(createLoopSupervisorHealthSnapshot({
+      agent: agent({ runId: "interactive-run-1" }),
+      generatedAt: NOW
+    }).agent).toEqual({ level: "healthy", reasons: [] });
+  });
+
+  it("captures agent evidence once so a changing accessor cannot bypass correlation", () => {
+    const admitted = journal("changing-agent");
+    const triggerAgent = agent({
+      runId: admitted.entries[0]!.envelope.dedupKey
+    });
+    let reads = 0;
+    const input = { generatedAt: NOW } as Parameters<
+      typeof createLoopSupervisorHealthSnapshot
+    >[0];
+    Object.defineProperty(input, "agent", {
+      enumerable: true,
+      get: () => {
+        reads += 1;
+        return reads === 1 ? undefined : triggerAgent;
+      }
+    });
+
+    expect(createLoopSupervisorHealthSnapshot(input)).toMatchObject({
+      agent: {
+        level: "unknown",
+        reasons: ["agent-evidence-missing"]
+      }
+    });
+    expect(reads).toBe(1);
+  });
+
   it("never treats pending or failed verification as healthy", () => {
     expect(createLoopSupervisorHealthSnapshot({
       agent: agent({

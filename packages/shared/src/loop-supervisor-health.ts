@@ -15,6 +15,7 @@ export type LoopHealthLevel = "blocked" | "degraded" | "healthy" | "unknown";
 
 export interface AgentLoopHealthInput {
   readonly endedAt: string;
+  readonly runId?: string;
   readonly terminalReason: string;
   readonly terminalStatus: "cancelled" | "completed" | "failed" | "held";
   readonly verificationEvidenceId?: string;
@@ -72,6 +73,7 @@ export interface LoopSupervisorHealthSnapshot {
 
 const SNAPSHOT_ID_PREFIX = "loop-health:";
 const DEFAULT_STALE_AFTER_MS = 15 * 60_000;
+const CANONICAL_TRIGGER_RUN_ID = /^trigger:[a-f0-9]{64}$/u;
 
 export function createLoopSupervisorHealthSnapshot(
   input: CreateLoopSupervisorHealthInput
@@ -81,8 +83,17 @@ export function createLoopSupervisorHealthSnapshot(
     input.staleAfterMs ?? DEFAULT_STALE_AFTER_MS,
     "staleAfterMs"
   );
-  const agent = agentHealth(input.agent, generatedAt, staleAfterMs);
-  const event = eventHealth(input.event, generatedAt);
+  const agentInput = input.agent;
+  const eventInput = input.event;
+  const agentRunId = agentInput?.runId;
+  const eventEvaluation = eventHealth(eventInput, generatedAt);
+  const event = eventEvaluation.health;
+  const agent = correlateAgentTrigger(
+    agentHealth(agentInput, agentRunId, generatedAt, staleAfterMs),
+    agentRunId,
+    eventInput !== undefined,
+    eventEvaluation.workKeys
+  );
   const adaptation = adaptationHealth(input.adaptation);
   const components = [agent, event, adaptation];
   const reasons = new Set<string>();
@@ -122,11 +133,14 @@ export function createLoopSupervisorHealthSnapshot(
 
 function agentHealth(
   input: AgentLoopHealthInput | undefined,
+  runId: string | undefined,
   generatedAt: string,
   staleAfterMs: number
 ): LoopComponentHealth {
   if (!input) return component("unknown", ["agent-evidence-missing"]);
   if (!isCanonicalTimestamp(input.endedAt)
+    || (runId !== undefined
+      && (typeof runId !== "string" || runId.trim() === ""))
     || !isTerminalStatus(input.terminalStatus)
     || typeof input.terminalReason !== "string"
     || input.terminalReason.trim() === ""
@@ -165,12 +179,19 @@ function agentHealth(
   return component("healthy", []);
 }
 
+interface EventHealthEvaluation {
+  readonly health: EventLoopComponentHealth;
+  readonly workKeys?: ReadonlySet<string>;
+}
+
 function eventHealth(
   input: EventLoopHealthInput | undefined,
   generatedAt: string
-): EventLoopComponentHealth {
+): EventHealthEvaluation {
   if (!input) {
-    return eventComponent("unknown", ["event-evidence-missing"], zeroEventCounts(), 0);
+    return {
+      health: eventComponent("unknown", ["event-evidence-missing"], zeroEventCounts(), 0)
+    };
   }
   const journal = normalizeTriggerAdmissionJournal(input.journal);
   const workStates = input.workStates.map((state) =>
@@ -268,7 +289,29 @@ function eventHealth(
     if (level !== "blocked") level = "degraded";
     reasons.add("event-backpressure");
   }
-  return eventComponent(level, [...reasons], counts, journal.overflowCount);
+  return {
+    health: eventComponent(level, [...reasons], counts, journal.overflowCount),
+    workKeys: new Set(workKeys)
+  };
+}
+
+function correlateAgentTrigger(
+  health: LoopComponentHealth,
+  runId: string | undefined,
+  hasEventEvidence: boolean,
+  workKeys: ReadonlySet<string> | undefined
+): LoopComponentHealth {
+  if (runId === undefined || !CANONICAL_TRIGGER_RUN_ID.test(runId)) {
+    return health;
+  }
+  const reason = !hasEventEvidence
+    ? "agent-trigger-event-evidence-missing"
+    : workKeys?.has(runId) !== true
+      ? "agent-trigger-work-state-missing"
+      : undefined;
+  return reason === undefined
+    ? health
+    : component("blocked", [...health.reasons, reason]);
 }
 
 function adaptationHealth(

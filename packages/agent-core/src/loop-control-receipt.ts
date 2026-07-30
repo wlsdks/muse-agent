@@ -337,6 +337,7 @@ export function projectLoopControlReceiptHealth(
         : undefined;
     return Object.freeze({
       endedAt: receipt.endedAt,
+      runId: receipt.runId,
       terminalReason: receipt.terminal.reason,
       terminalStatus: receipt.terminal.status,
       ...(verificationEvidenceId === undefined ? {} : { verificationEvidenceId }),

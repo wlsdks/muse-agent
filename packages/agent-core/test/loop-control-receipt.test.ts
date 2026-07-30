@@ -53,6 +53,7 @@ describe("LoopControlReceipt", () => {
     const projected = projectLoopControlReceiptHealth(receipt);
     expect(projected).toEqual({
       endedAt: "2026-07-30T00:00:03.000Z",
+      runId: "run-1",
       terminalReason: "goal-verified",
       terminalStatus: "completed",
       verificationEvidenceId: "eval:1",
