@@ -58,7 +58,10 @@ documents rather than here.
   the Engine never depends on Muse API/web/CLI/scheduler/autoconfigure/model/UI packages.
   Planned Markdown, Obsidian, and Notion integrations are Source Adapters, not Store
   Implementations; their MAG-specific contracts are not shipped. See
-  [ADR 0001](docs/adr/0001-mag-product-module-boundary.md).
+  [ADR 0001](docs/adr/0001-mag-product-module-boundary.md). The Engine remains
+  TypeScript-first, synchronous SQLite work is isolated from the application thread, and
+  only measured hot kernels may move behind a byte-stable Rust Implementation; see
+  [ADR 0002](docs/adr/0002-mag-language-runtime-boundary.md).
 - The long-term Observe target is a consented local 24-hour event stream over approved
   sources. It feeds Muse-owned append-oriented Graph storage with pause, retention, export,
   rebuild, and physical-forget controls; it is not indiscriminate screen capture.
@@ -121,4 +124,5 @@ Canonical contracts:
 - [Attunement strategy](docs/strategy/attunement.md)
 - [Attunement Graph design](docs/design/attunement-graph.md)
 - [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md)
+- [MAG language and runtime boundary](docs/adr/0002-mag-language-runtime-boundary.md)
 - [Wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)

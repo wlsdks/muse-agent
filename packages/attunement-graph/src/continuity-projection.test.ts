@@ -1,11 +1,14 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   AttunementStoreError,
+  fingerprintContinuityPolicy,
   readAttunementState,
-  type AttunementState
+  type AttunementState,
+  type ExperienceLearningPolicyAudit
 } from "@muse/attunement";
 import { describe, expect, it } from "vitest";
 
@@ -18,6 +21,9 @@ import {
   type ContinuityGraphProjection
 } from "./continuity-projection.js";
 import { InMemoryAttunementGraphStore } from "./index.js";
+import {
+  prepareContinuitySourceObservation
+} from "./continuity-source-observation.js";
 
 const TASK_FINGERPRINT_OPEN = "a".repeat(64);
 const TASK_FINGERPRINT_DONE = "b".repeat(64);
@@ -105,6 +111,7 @@ function fixture(): AttunementState {
         threadId: "thread_trip"
       }
     ],
+    experienceLearningPolicyAudits: [],
     interactionReceipts: [
       {
         artifactId: taskLink.artifactId,
@@ -139,7 +146,7 @@ function fixture(): AttunementState {
         threadId: "thread_trip"
       }
     ],
-    schemaVersion: 11,
+    schemaVersion: 12,
     threads: [
       {
         createdAt: "2026-07-29T00:00:00.000Z",
@@ -208,6 +215,78 @@ function canonicalJournal(
 }
 
 describe("Exact Continuity projection", () => {
+  it("admits learning policy generation without projecting audit authority", () => {
+    const policyBefore = {
+      detail: "standard" as const,
+      nextStep: "direct" as const,
+      suppression: "none" as const,
+      version: 0
+    };
+    const policyAfter = {
+      detail: "compact" as const,
+      nextStep: "contextual" as const,
+      suppression: "none" as const,
+      version: 1
+    };
+    const auditCore = {
+      activeBehaviorDigestAfter: fingerprintContinuityPolicy(policyAfter),
+      activeBehaviorDigestBefore: fingerprintContinuityPolicy(policyBefore),
+      authority: "owner-explicit",
+      candidateId: "candidate_private_learning",
+      kind: "promotion",
+      occurredAt: "2026-07-29T07:30:00.000Z",
+      policyAfter,
+      policyBefore,
+      sourceId: "candidate_private_learning",
+      threadId: "thread_learning"
+    } as const;
+    const audit: ExperienceLearningPolicyAudit = {
+      ...auditCore,
+      id: `learning_policy_audit_${createHash("sha256")
+        .update(JSON.stringify(auditCore))
+        .digest("hex")}`
+    };
+    const state: AttunementState = {
+      deliveries: [],
+      experienceLearningPolicyAudits: [audit],
+      interactionReceipts: [],
+      nextPolicyVersion: 2,
+      resetReceipts: [],
+      schemaVersion: 12,
+      threads: [{
+        createdAt: "2026-07-29T00:00:00.000Z",
+        id: "thread_learning",
+        kind: "work",
+        links: [],
+        policy: policyAfter,
+        title: "Private learning title"
+      }],
+      undoResetReceipts: []
+    };
+
+    const prepared = prepareContinuitySourceObservation({
+      scope: { sourceId: "default", threadId: "thread_learning" },
+      sourceObservedAt: SOURCE_OBSERVED_AT,
+      state
+    }, "current");
+
+    expect(prepared.diagnostics.sourceRecordsInspected).toBe(2);
+    expect(prepared.projection.assertions).toHaveLength(1);
+    expect(prepared.projection.assertions[0]).toMatchObject({
+      predicate: "SCOPED_TO",
+      recordedAt: audit.occurredAt,
+      sourceRefs: [
+        { namespace: CONTINUITY_SOURCE_NAMESPACES.threadPolicy }
+      ],
+      validFrom: audit.occurredAt
+    });
+    const serialized = JSON.stringify(prepared.projection);
+    expect(serialized).not.toContain(audit.id);
+    expect(serialized).not.toContain(audit.candidateId);
+    expect(serialized).not.toContain(audit.activeBehaviorDigestBefore);
+    expect(serialized).not.toContain(audit.activeBehaviorDigestAfter);
+  });
+
   it("projects one thread deterministically with exact provenance and no personal text", async () => {
     const first = project();
     const replay = project();
@@ -502,6 +581,10 @@ describe("Exact Continuity projection", () => {
     const directory = await mkdtemp(join(tmpdir(), "muse-graph-projection-"));
     const file = join(directory, "attunement.json");
     try {
+      const withoutPolicyAudits = {
+        ...fixture()
+      } as Record<string, unknown>;
+      delete withoutPolicyAudits.experienceLearningPolicyAudits;
       const invalidCases: unknown[] = [
         { schemaVersion: 11 },
         {
@@ -510,7 +593,7 @@ describe("Exact Continuity projection", () => {
             index === 0 ? { ...thread, kind: "invalid-kind" } : thread
           )
         },
-        { ...fixture(), schemaVersion: 12 },
+        withoutPolicyAudits,
         {
           ...fixture(),
           threads: fixture().threads.map((thread, index) =>
@@ -549,10 +632,10 @@ describe("Exact Continuity projection", () => {
         );
       }
 
-      const legacy = { ...fixture(), schemaVersion: 2 };
+      const legacy = { ...withoutPolicyAudits, schemaVersion: 2 };
       await writeFile(file, JSON.stringify(legacy), "utf8");
       const normalized = await readAttunementState(file);
-      expect(normalized.schemaVersion).toBe(11);
+      expect(normalized.schemaVersion).toBe(12);
       expect(project(legacy)).toEqual(project(normalized));
     } finally {
       await rm(directory, { force: true, recursive: true });

@@ -71,10 +71,11 @@ function sourceFixture(): AttunementState {
       runId: "continuity_run_first",
       threadId: RAW_THREAD_ID
     }],
+    experienceLearningPolicyAudits: [],
     interactionReceipts: [],
     nextPolicyVersion: 2,
     resetReceipts: [],
-    schemaVersion: 11,
+    schemaVersion: 12,
     threads: [{
       createdAt: "2026-07-29T00:00:00.000Z",
       id: RAW_THREAD_ID,

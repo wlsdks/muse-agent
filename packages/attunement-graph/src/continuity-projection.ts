@@ -8,6 +8,7 @@ import type {
   ContinuityInteractionReceipt,
   ContinuityOutcomeRecord,
   ContinuityPolicy,
+  ExperienceLearningPolicyAudit,
   PersonalThread,
   PolicyResetReceipt,
   UndoResetReceipt
@@ -114,8 +115,8 @@ interface AssertionInput {
 
 interface PolicyGeneration {
   readonly basis: TimestampBasis;
+  readonly additionalSourceRef?: GraphEvidenceRef;
   readonly recordedAt: string;
-  readonly sourceRef: GraphEvidenceRef;
   readonly validFrom?: string;
 }
 
@@ -421,6 +422,7 @@ function currentPolicyGeneration(
   sourceObservedAt: string,
   thread: PersonalThread,
   deliveries: readonly ContinuityDelivery[],
+  policyAudits: readonly ExperienceLearningPolicyAudit[],
   resets: readonly PolicyResetReceipt[],
   undos: readonly UndoResetReceipt[],
   threadSource: GraphEvidenceRef
@@ -429,9 +431,9 @@ function currentPolicyGeneration(
   if (version === 0) {
     const recordedAt = canonicalInstant(thread.createdAt, "thread.createdAt");
     return {
+      additionalSourceRef: threadSource,
       basis: "source-event",
       recordedAt,
-      sourceRef: threadSource,
       validFrom: recordedAt
     };
   }
@@ -443,14 +445,14 @@ function currentPolicyGeneration(
       "outcome.recordedAt"
     );
     return {
-      basis: "source-event",
-      recordedAt,
-      sourceRef: sourceRef(
+      additionalSourceRef: sourceRef(
         CONTINUITY_SOURCE_NAMESPACES.outcome,
         sourceId,
         { deliveryId: delivery.id },
         outcomeView(delivery.outcome)
       ),
+      basis: "source-event",
+      recordedAt,
       validFrom: recordedAt
     };
   }
@@ -459,14 +461,14 @@ function currentPolicyGeneration(
     if (undo.undoPolicyVersion !== version) continue;
     const recordedAt = canonicalInstant(undo.undoneAt, "undo.undoneAt");
     return {
-      basis: "source-event",
-      recordedAt,
-      sourceRef: sourceRef(
+      additionalSourceRef: sourceRef(
         CONTINUITY_SOURCE_NAMESPACES.policyUndo,
         sourceId,
         { undoId: undo.id },
         undoView(undo)
       ),
+      basis: "source-event",
+      recordedAt,
       validFrom: recordedAt
     };
   }
@@ -474,14 +476,33 @@ function currentPolicyGeneration(
   for (const reset of resets) {
     if (reset.resetPolicyVersion !== version) continue;
     return {
-      basis: "source-observation",
-      recordedAt: sourceObservedAt,
-      sourceRef: sourceRef(
+      additionalSourceRef: sourceRef(
         CONTINUITY_SOURCE_NAMESPACES.policyReset,
         sourceId,
         { resetId: reset.id },
         resetView(reset)
-      )
+      ),
+      basis: "source-observation",
+      recordedAt: sourceObservedAt
+    };
+  }
+
+  for (const audit of policyAudits) {
+    if (
+      audit.policyAfter.version !== version
+      || canonicalJson(policyView(audit.policyAfter))
+        !== canonicalJson(policyView(thread.policy))
+    ) {
+      continue;
+    }
+    const recordedAt = canonicalInstant(
+      audit.occurredAt,
+      "experienceLearningPolicyAudit.occurredAt"
+    );
+    return {
+      basis: "source-event",
+      recordedAt,
+      validFrom: recordedAt
     };
   }
 
@@ -495,6 +516,7 @@ function projectionSourceVersion(input: {
   readonly deliveries: readonly ContinuityDelivery[];
   readonly interactions: readonly ContinuityInteractionReceipt[];
   readonly links: readonly ArtifactLink[];
+  readonly policyAudits: readonly ExperienceLearningPolicyAudit[];
   readonly resets: readonly PolicyResetReceipt[];
   readonly thread: PersonalThread;
   readonly undos: readonly UndoResetReceipt[];
@@ -506,6 +528,18 @@ function projectionSourceVersion(input: {
     })),
     interactions: input.interactions.map(interactionView),
     links: input.links.map(linkView),
+    ...(input.policyAudits.length > 0
+      ? {
+          policyGenerations: input.policyAudits.map((audit) => ({
+            kind: audit.kind,
+            occurredAt: canonicalInstant(
+              audit.occurredAt,
+              "experienceLearningPolicyAudit.occurredAt"
+            ),
+            policyAfter: policyView(audit.policyAfter)
+          }))
+        }
+      : {}),
     policy: policyView(input.thread.policy),
     resets: input.resets.map(resetView),
     thread: threadView(input.thread),
@@ -551,6 +585,9 @@ export function projectContinuityState(
     .sort(compareById);
   const interactions = state.interactionReceipts
     .filter((receipt) => receipt.threadId === thread.id)
+    .sort(compareById);
+  const policyAudits = state.experienceLearningPolicyAudits
+    .filter((audit) => audit.threadId === thread.id)
     .sort(compareById);
   const resets = state.resetReceipts
     .filter((receipt) => receipt.threadId === thread.id)
@@ -763,6 +800,7 @@ export function projectContinuityState(
     sourceObservedAt,
     thread,
     deliveries,
+    policyAudits,
     resets,
     undos,
     threadSource
@@ -772,7 +810,12 @@ export function projectContinuityState(
     object: threadRef,
     predicate: "SCOPED_TO",
     recordedAt: generation.recordedAt,
-    sourceRefs: [currentPolicySource, generation.sourceRef],
+    sourceRefs: [
+      currentPolicySource,
+      ...(generation.additionalSourceRef
+        ? [generation.additionalSourceRef]
+        : [])
+    ],
     subject: deriveContinuityPolicyGraphRef(
       sourceId,
       thread.id,
@@ -844,6 +887,7 @@ export function projectContinuityState(
     deliveries,
     interactions,
     links,
+    policyAudits,
     resets,
     thread,
     undos

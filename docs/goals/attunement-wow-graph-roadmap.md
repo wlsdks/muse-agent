@@ -36,7 +36,9 @@ repository is intentionally deferred until clean-room package, dependency-isolat
 conformance, packed-artifact, export/rebuild, and license/documentation gates pass. Focused
 MAG and Muse-integration commits preserve history for that later split without imposing
 dual-repository version churn during rapid development. The accepted boundary is
-[ADR 0001](../adr/0001-mag-product-module-boundary.md).
+[ADR 0001](../adr/0001-mag-product-module-boundary.md). The TypeScript-first Engine,
+worker-isolated SQLite Store, and benchmark-gated Rust hot-kernel policy are fixed in
+[ADR 0002](../adr/0002-mag-language-runtime-boundary.md).
 
 ## Program boundary
 
@@ -82,8 +84,8 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3d3b` independently verified; explicit Pack Preview now dogfoods process-local `resumeContext`, while durable/current-world semantics remain pending) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | partial (`AWG-050b1` binds fresh timing-policy snapshots to exact process-local Source/Graph comparison evidence; return/card/durability pending) |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
-| **AWG-065** | Neutral MAG product boundary | Closed `Mag*` Interface, forbidden-import gate, and Muse Attunement bridge remove private store types from the standalone Engine without copying validation | pending |
-| **AWG-070** | SQLite MAG Store v1 | Implement the selected `node:sqlite` default behind the MAG Store contract with version-gated physical profile, journal replay, indexes, restart/crash/corruption tests, and portable export; PostgreSQL remains optional | pending |
+| **AWG-065** | Neutral MAG product boundary | Closed `Mag*` Interface, forbidden-import gate, and Muse Attunement bridge remove private store types from the standalone Engine without copying validation | partial (`AWG-065a` neutral lifecycle and in-memory oracle independently verified; full Attunement bridge/package decoupling pending) |
+| **AWG-070** | SQLite MAG Store v1 | Implement the selected worker-isolated `node:sqlite` default behind the MAG Store contract with version-gated physical profile, journal replay, indexes, restart/crash/corruption tests, portable export, and 10K/100K/1M operator benchmarks; record measured TS/SQLite optimization and activate a Rust kernel only when end-to-end evidence justifies it | pending |
 | **AWG-080** | Durable local graph adapter | Selected adapter passes conformance, export/rebuild, corruption, migration, forget, and crash-recovery gates | pending |
 | **AWG-085** | Standalone MAG qualification | Clean-room build/test, forbidden-import audit, packed install, non-Muse example, license/security/contribution docs, and history-preserving repository split rehearsal pass without workspace dependencies | pending |
 | **AWG-090** | Dogfood qualification | Controlled scenarios plus repeated organic use; reconstruction-cost and policy-correction evidence remain separately reported | pending |
@@ -96,6 +98,35 @@ Engineering completeness and evidence maturity are reported separately. AWG-090 
 dogfood does not block building the product path to engineering-complete status; it does
 block claims that Muse has proved usefulness, saved reconstruction time, or learned better
 timing in real life.
+
+## Current 065 activation
+
+- **Classification:** AWG-065 is `partial`. AWG-065a is `verified-current`; removing the
+  remaining `@muse/attunement` compatibility dependency and building the narrow Muse
+  Attunement bridge remain pending.
+- **Shipped neutral delta:** the package root exports canonical `Mag*` contracts,
+  `MagError`, `openMag`, and `createMagEngine`. One instance binds exactly one
+  `(sourceId, threadId)`, accepts only `canonical-projection@1`, executes only the bounded
+  `working-graph@1`, and closes through an idempotent drain.
+- **Store seam:** root `MagStore` is an opaque WeakMap capability. The expert `/backend`
+  subpath exposes `createMagStore` and Adapter types without an extractor; `/testing`
+  exposes the explicit in-memory semantic oracle and backend-neutral conformance corpus.
+  No Store is selected implicitly.
+- **Fail-closed behavior:** Store output is treated as hostile, canonicalized,
+  scope/snapshot/content verified, detached, and deeply frozen. Corrupt/future state,
+  cross-scope snapshots, stale CAS, post-close calls, and unsupported operators use typed
+  `MagError`. Concurrent identical projections converge on one snapshot; different
+  projections retain one CAS winner.
+- **Independent gate:** Terra/high implemented the bounded slice. Fresh Sol/high EVAL
+  cycle 1 found six capability, conformance, traversal, detachment, replay, and close-race
+  blockers; cycle 2 found one remaining concurrent-replay blocker. After correction, a
+  third fresh Sol/high evaluator passed all nine acceptance items. The final evidence was
+  325/325 package tests, 11/11 focused lifecycle tests, build, package/root typechecks,
+  `test:changed` (380), focused lint, diff check, forbidden source/dist import scans, and
+  public/private subpath probes.
+- **Scope truth:** this is a neutral TypeScript lifecycle and in-memory semantic oracle,
+  not SQLite durability, a clean-room package, a Source Adapter, a standalone release, or
+  evidence of user-visible usefulness.
 
 ## Current 050b activation
 

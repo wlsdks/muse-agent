@@ -73,10 +73,11 @@ function sourceFixture(): AttunementState {
         threadId: "thread_trip"
       }
     ],
+    experienceLearningPolicyAudits: [],
     interactionReceipts: [],
     nextPolicyVersion: 2,
     resetReceipts: [],
-    schemaVersion: 11,
+    schemaVersion: 12,
     threads: [{
       createdAt: "2026-07-29T00:00:00.000Z",
       id: "thread_trip",

@@ -8,6 +8,44 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified neutral **MAG lifecycle**. A non-Muse caller can now
+  open one exact scope over an explicit opaque Store capability, commit a bounded
+  `canonical-projection@1` through atomic compare-and-swap, execute a pinned
+  `working-graph@1`, and idempotently close after accepted work drains. Store output is
+  hostile-validated, content-verified, scope-checked, detached, and deeply frozen;
+  duplicate/depth/token truncation is explicit; identical concurrent projections converge
+  while different projections retain one winner. The `/backend` seam exposes Adapter
+  construction without an extractor, and `/testing` exposes the in-memory semantic oracle
+  plus strengthened backend-neutral conformance. Three fresh independent evaluation
+  cycles found and closed capability, concurrency, completeness, detachment, collision,
+  and lifecycle defects before the final PASS. Final evidence: 325/325 package tests,
+  11/11 focused lifecycle tests, build, package/root typechecks, `test:changed` (380),
+  focused lint, diff check, forbidden source/dist dependency scans, and public/private
+  subpath probes. After Attunement schema v12 landed on `main`, MAG source accounting was
+  rebaselined to accept and count `experienceLearningPolicyAudits` without projecting
+  those audits as policy evidence; legacy v1-v11 inputs still normalize through the
+  authoritative parser. Eight stale v11 Attunement test fixtures were mechanically
+  migrated to the required v12 empty-audit shape so the repository gate remained green.
+  A non-empty audit now supplies only its validated occurrence time to the current policy
+  generation boundary; audit IDs, candidates, behavior digests, and authority are not
+  projected into graph evidence.
+  This is not SQLite durability or standalone qualification.
+
+- Fixed MAG's language/runtime boundary as **TypeScript-first, worker-isolated SQLite,
+  benchmark-gated Rust**. ADR 0002 keeps semantics and the public Interface in TypeScript,
+  requires synchronous SQLite work to stay off the application thread, and permits only
+  measured proof-closure, canonical-hash, compression, export/rebuild, or physical-forget
+  kernels to move behind Node-API/WASM after boundary cost and byte-stable conformance are
+  included. A dedicated native-kernel decision ledger records exact 10K/100K/1M benchmark
+  units, activation evidence, and select/reject/defer decisions. No Rust kernel is
+  currently activated or claimed faster.
+
+- Reworked the package-owned MAG README into a standalone-repository-ready product and
+  engineering guide: differentiation from RAG/general Graph DBs, minimal lifecycle
+  example, Engine/Store/Source Adapter boundaries, language and performance policy,
+  invariants, conformance, extraction gates, and honest shipped/roadmap status now live
+  with the Module rather than depending on Muse application knowledge.
+
 - Defined **Muse Attunement Graph (MAG)** as an independently extractable product Module.
   Muse remains its first consumer and dogfood environment while one monorepo owns rapid
   development. ADR 0001 fixes the future standalone repository boundary, a closed

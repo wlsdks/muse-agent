@@ -40,10 +40,11 @@ function state(): AttunementState {
         threadId: "thread_work"
       }
     ],
+    experienceLearningPolicyAudits: [],
     interactionReceipts: [],
     nextPolicyVersion: 1,
     resetReceipts: [],
-    schemaVersion: 11,
+    schemaVersion: 12,
     threads: [{
       createdAt: "2026-07-17T07:00:00.000Z",
       id: "thread_work",

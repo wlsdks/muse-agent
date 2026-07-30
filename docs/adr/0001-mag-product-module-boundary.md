@@ -6,6 +6,7 @@
 - Related:
   [Muse Attunement Graph](../design/attunement-graph.md),
   [Agent-Native Graph Core](../design/agent-native-graph-core.md),
+  [language and runtime boundary](0002-mag-language-runtime-boundary.md),
   [wow + graph roadmap](../goals/attunement-wow-graph-roadmap.md),
   [standalone readiness audit](../evaluations/mag-standalone-readiness-2026-07-30.md)
 
@@ -73,12 +74,12 @@ The Interface is intentionally closed:
 
 | Module | Package or subpath | Status | Responsibility |
 | --- | --- | --- | --- |
-| MAG Engine | `@muse/attunement-graph` | current partial kernel; target Interface unshipped | Canonical values, projections, versioned operators, proof closure, completeness, errors |
+| MAG Engine | `@muse/attunement-graph` | neutral lifecycle shipped; standalone package remains partial | Canonical values, projections, versioned operators, proof closure, completeness, errors |
 | Local MAG | `@muse/attunement-graph/local` | target | Opinionated `openLocalMag()` composition with the selected SQLite Store hidden as Implementation |
 | Source Kit | `@muse/attunement-graph/source` | target | Bounded Source Adapter pages, exact source identity, opaque restart cursors |
 | Store Kit | `@muse/attunement-graph/backend` | target | Expert-only transactional journal/snapshot Adapter seam |
 | Maintenance | `@muse/attunement-graph/admin` | target | Verify, export, rebuild, migrate, compact, preview/perform physical forget |
-| Conformance | `@muse/attunement-graph/testing` | current partial | In-memory semantic oracle and current Store conformance; Source/operator expansion is target |
+| Conformance | `@muse/attunement-graph/testing` | current neutral Store lifecycle + legacy graph contract | In-memory semantic oracle and Store conformance; durable/source/operator expansion is target |
 | Markdown source | `@muse/mag-source-markdown` | target | Portable Markdown/frontmatter/link observations |
 | Obsidian source | `@muse/mag-source-obsidian` | target | Vault-relative wiki-link, embed, heading, and stable block-ref observations |
 | Notion source | `@muse/mag-source-notion` | target | Opt-in sync preserving workspace/database/page/block identities |

@@ -881,7 +881,7 @@ describe("canonical immutable envelope", () => {
     expect(error.details.actual).toBe(fullLimit + 1);
   });
 
-  it("keeps root runtime exports and the package export map unchanged", async () => {
+  it("keeps legacy root exports while adding the neutral MAG lifecycle", async () => {
     const root = await import("@muse/attunement-graph");
     expect(Object.keys(root).sort()).toEqual([
       "ACTIVATION_PREDICATES",
@@ -901,7 +901,10 @@ describe("canonical immutable envelope", () => {
       "MAX_GRAPH_QUERY_DEPTH",
       "MAX_GRAPH_QUERY_SEEDS",
       "MAX_GRAPH_QUERY_VISITED_REFS",
-      "compileActivationSubgraph"
+      "MagError",
+      "compileActivationSubgraph",
+      "createMagEngine",
+      "openMag"
     ]);
     const privateSubpath = "@muse/attunement-graph/canonical-immutable-envelope";
     await expect(import(privateSubpath)).rejects.toThrow(/not exported/u);
