@@ -37,7 +37,7 @@ extracted out of the CLI's `commands-ask.ts` to keep the CLI a thin command laye
 
 - [`../../CLAUDE.md`](../../CLAUDE.md) — grounded personal-data paths here must cite their sources, lower weak
   matches, and drop invalid citations; the per-surface grounding ratchets must stay intact.
-- [`../../.claude/rules/agent-testing.md`](../../.claude/rules/agent-testing.md) — grounding correctness here is evaluated (`pass^k`,
+- [`../../.claude/rules/verification/agent-testing.md`](../../.claude/rules/verification/agent-testing.md) — grounding correctness here is evaluated (`pass^k`,
   citation precision/recall floors), not proven by a passing unit test alone.
 
 ## Tests

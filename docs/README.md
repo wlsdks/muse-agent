@@ -26,7 +26,7 @@ Every document lives in exactly one topic folder, and the folder name says which
 | [`setup/`](setup/) | Getting it running — [local LLM](setup/setup-local-llm.md), [env inventory](setup/ENV.md), [remote access](setup/remote-access.md) |
 | [`architecture/`](architecture/README.md) | How it is built, and the decisions behind it — plus [`adr/`](architecture/adr/) |
 | [`design/`](design/) | Per-feature design rationale, grouped `attunement/` · `memory/` · `proactive/` · `channels/` · `platform/` |
-| [`strategy/`](strategy/) | Product direction and positioning |
+| [`strategy/`](strategy/) | Product direction — the [Attunement contract](strategy/attunement.md) at the top, with [`positioning/`](strategy/positioning/) (differentiation, competitive reads) and [`research/`](strategy/research/) (agent principles, context doctrine, prompt architecture) |
 | [`development/`](development/) | How we verify and release |
 | [`evaluations/`](evaluations/) · [`benchmarks/`](benchmarks/) · [`feature-catalog/`](feature-catalog/) | Dated evidence, kept as records rather than rewritten |
 

@@ -33,7 +33,7 @@ Inbound A2A payloads are untrusted tool/network input per
 [`../../CLAUDE.md`](../../CLAUDE.md)'s "tool output is untrusted" rule — `receiveAndQuarantine`
 exists so a peer's message is quarantined before it can influence agent state, and every envelope
 must pass `verifySignature` before it is trusted. `agent-core` stays model-agnostic per
-[`../../.claude/rules/architecture.md`](../../.claude/rules/architecture.md); this package must
+[`../../.claude/rules/engineering/architecture.md`](../../.claude/rules/engineering/architecture.md); this package must
 not assume a specific model provider is on the other end of a peer connection.
 
 ## Tests

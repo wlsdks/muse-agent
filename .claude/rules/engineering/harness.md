@@ -1,7 +1,7 @@
 # Agent operating harness
 
 This repo ships a **portable, vendor-neutral agent harness** in the
-top-level [`harness/`](../../harness/) folder. It is the operating system
+top-level [`harness/`](../../../harness/) folder. It is the operating system
 for multi-step agent work: roles, handoff, fail-closed gates, and
 verification. For any non-trivial, multi-step task, operate under it.
 
@@ -14,7 +14,7 @@ verification. For any non-trivial, multi-step task, operate under it.
 
 ## The contract (entrypoint: `harness/AGENTS.md`)
 
-Read [`harness/AGENTS.md`](../../harness/AGENTS.md) first, then follow it:
+Read [`harness/AGENTS.md`](../../../harness/AGENTS.md) first, then follow it:
 
 1. **Two mandatory roles: worker (build) → independent evaluator
    (PASS/FAIL)**. Planner/curator are inline fields the worker or
@@ -24,7 +24,7 @@ Read [`harness/AGENTS.md`](../../harness/AGENTS.md) first, then follow it:
    security-critical slices (`harness/core/team-roles.md` §1). **Maker ≠
    judge** always: the evaluator is a different instance from the worker.
 2. **Hand off via one artifact** — the
-   [`handoff-template`](../../harness/core/handoff-template.md) (5 fields:
+   [`handoff-template`](../../../harness/core/handoff-template.md) (5 fields:
    header, acceptance criteria, verification method, worker notes,
    evaluator verdict); each role fills only its section, the next role
    reads only that (context reset).
@@ -32,12 +32,12 @@ Read [`harness/AGENTS.md`](../../harness/AGENTS.md) first, then follow it:
    criteria → no BUILD), completion gate (no evaluator PASS → not done),
    permission gate (outbound = draft-first + human confirm; banking =
    refused). Uncertain ⇒ stop, don't pass. See
-   [`verification-and-guardrails`](../../harness/core/verification-and-guardrails.md)
-   and [`permission-matrix`](../../harness/core/permission-matrix.md).
+   [`verification-and-guardrails`](../../../harness/core/verification-and-guardrails.md)
+   and [`permission-matrix`](../../../harness/core/permission-matrix.md).
 4. **Respect the foundations** — loop budget caps (2 retry passes by default), memory
    write rules, compaction that preserves decisions+sources.
 5. **Verify or it didn't happen** — golden-set + pass^k
-   ([`harness-acceptance`](../../harness/reference/harness-acceptance.md)).
+   ([`harness-acceptance`](../../../harness/reference/harness-acceptance.md)).
 
 ### Evaluator risk-tiering (when the independent evaluator is MANDATORY)
 
@@ -56,9 +56,9 @@ bug) — exactly the class a green test suite does not surface.
 ## Project mapping
 
 How the abstract roles map to Muse's real runtime lives in
-[`harness/host/muse-mapping.md`](../../harness/host/muse-mapping.md). When reusing
+[`harness/host/muse-mapping.md`](../../../harness/host/muse-mapping.md). When reusing
 the harness in another project, that mapping file is the one thing you
 rewrite; the rest of `harness/` is copied as-is
-([`harness/INSTALL.md`](../../harness/INSTALL.md)).
+([`harness/INSTALL.md`](../../../harness/INSTALL.md)).
 
 This rule is a pointer; `harness/AGENTS.md` is the authority.

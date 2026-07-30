@@ -28,7 +28,7 @@ only package permitted to hold a vendor SDK.
 
 ## Rules that bind this package
 
-- [`../../.claude/rules/architecture.md`](../../.claude/rules/architecture.md) — this is the ONLY place a vendor SDK/HTTP client may
+- [`../../.claude/rules/engineering/architecture.md`](../../.claude/rules/engineering/architecture.md) — this is the ONLY place a vendor SDK/HTTP client may
   appear; the required provider families, fallback rules (no hidden retry magic), retry
   classification, and `MUSE_LOCAL_ONLY` gate are all defined and enforced here.
 

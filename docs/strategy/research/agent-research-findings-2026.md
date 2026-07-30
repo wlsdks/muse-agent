@@ -3,7 +3,7 @@
 Paper-grounded survey (two research passes: prompt-engineering techniques +
 LLM-as-agent pitfalls), cross-referenced against what Muse already encodes.
 Companion to `agent-principles-2026.md` (vendor guidance) and
-`.claude/rules/agent-testing.md` (the method). Every row cites a real arXiv id.
+`../../../.claude/rules/verification/agent-testing.md` (the method). Every row cites a real arXiv id.
 
 ## What the papers CONFIRM Muse already bet on (keep doing it)
 

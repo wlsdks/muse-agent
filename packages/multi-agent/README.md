@@ -31,10 +31,10 @@ one termination discipline is why this is a package, not a folder.
 ## Rules that bind this package
 
 Multi-agent hand-offs are a first-class evaluation surface under
-[`../../.claude/rules/agent-testing.md`](../../.claude/rules/agent-testing.md): schema-validated
+[`../../.claude/rules/verification/agent-testing.md`](../../.claude/rules/verification/agent-testing.md): schema-validated
 hand-offs, bounded/verification-backed termination, and non-overlapping sub-tasks —
 `detectSubtaskConflicts`/`detectSubtaskRedundancies` catch the MAST failures it names. `agent-core`
-is model-agnostic per [`../../.claude/rules/architecture.md`](../../.claude/rules/architecture.md);
+is model-agnostic per [`../../.claude/rules/engineering/architecture.md`](../../.claude/rules/engineering/architecture.md);
 worker code here must not hard-wire a provider SDK.
 
 ## Tests

@@ -38,7 +38,7 @@ turns raw personal-store evidence into the policy Muse actually acts on.
 - [`../../docs/strategy/attunement.md`](../../docs/strategy/attunement.md) — the product contract this package implements: Shadow
   Muse → Continuity Capsule → visible Policy Card, with existing stores remaining
   authoritative and the graph/policy layer staying rebuildable.
-- [`../../.claude/rules/outbound-safety.md`](../../.claude/rules/outbound-safety.md) — Observe must stay visible, pausable, inspectable,
+- [`../../.claude/rules/safety/outbound-safety.md`](../../.claude/rules/safety/outbound-safety.md) — Observe must stay visible, pausable, inspectable,
   and forgettable, and must not persist raw keystrokes or continuous screen capture by default.
 
 ## Tests

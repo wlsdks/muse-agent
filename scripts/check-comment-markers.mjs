@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Comment-marker guard (.claude/rules/code-style.md): iteration/goal/round/
+ * Comment-marker guard (.claude/rules/engineering/code-style.md): iteration/goal/round/
  * fire history markers are forbidden in source comments — history belongs in
  * git and CHANGELOG.md. This locks in the 2026-07 sweep so the class can't
  * silently regrow.
@@ -74,7 +74,7 @@ for (const root of ROOTS) {
 if (hits.length > 0) {
   console.error(`[check-comment-markers] ${hits.length.toString()} forbidden history marker(s) in source comments:`);
   for (const hit of hits) console.error(`  ${hit}`);
-  console.error("History belongs in git/CHANGELOG.md, not source comments (.claude/rules/code-style.md).");
+  console.error("History belongs in git/CHANGELOG.md, not source comments (.claude/rules/engineering/code-style.md).");
   process.exit(1);
 }
 console.log("[check-comment-markers] clean — no iteration/goal/round/fire markers in source comments.");

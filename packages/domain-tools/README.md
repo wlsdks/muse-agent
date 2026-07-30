@@ -41,11 +41,11 @@ the generic `@muse/tools` runtime.
 
 ## Rules that bind this package
 
-- [`../../.claude/rules/outbound-safety.md`](../../.claude/rules/outbound-safety.md) — every send/act-toward-a-third-party tool here
+- [`../../.claude/rules/safety/outbound-safety.md`](../../.claude/rules/safety/outbound-safety.md) — every send/act-toward-a-third-party tool here
   (`sendEmailWithApproval`, `performWebActionWithApproval`, `performHomeActionWithApproval`,
   `sendMessageWithApproval`) is draft-first and approval-gated per this contract; none of them
   auto-send on the agent's own judgement.
-- [`../../.claude/rules/tool-calling.md`](../../.claude/rules/tool-calling.md) — each `createXTool` factory follows the verb_noun
+- [`../../.claude/rules/safety/tool-calling.md`](../../.claude/rules/safety/tool-calling.md) — each `createXTool` factory follows the verb_noun
   naming, `required`-args, and "use when / not when" description contract.
 
 ## Tests

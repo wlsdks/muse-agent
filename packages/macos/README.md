@@ -32,7 +32,7 @@ content must not be able to terminate the string context and inject statements, 
 mirrors are opt-in and fail-soft: gated by an env flag (e.g. `MUSE_APPLE_REMINDERS_MIRROR`,
 default off), and a mirror failure never rolls back or blocks the underlying Muse-store write. The
 outbound iMessage tool takes its approval gate and action logger by injection, so the
-[`../../.claude/rules/outbound-safety.md`](../../.claude/rules/outbound-safety.md) wiring lives at
+[`../../.claude/rules/safety/outbound-safety.md`](../../.claude/rules/safety/outbound-safety.md) wiring lives at
 the CLI boundary. The `./system-resource-observation` subpath is the one part of this package that
 self-disables on a non-macOS `process.platform`; the rest assumes a macOS host and relies on the
 caller to gate registration by platform.

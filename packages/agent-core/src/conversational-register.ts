@@ -1,7 +1,7 @@
 /**
  * Deterministic Korean register (반말/존댓말) detection + casual-turn
  * brevity classification — the inputs to the "personalization/register-
- * brevity" dynamic PromptLayer (docs/strategy/prompt-architecture.md §4,
+ * brevity" dynamic PromptLayer (docs/strategy/research/prompt-architecture.md §4,
  * D2 tone-hints). Lives beside `casual-prompt.ts` rather than in
  * `@muse/prompts`: `classifyCasualTurn` reuses `classifyCasualPrompt`
  * directly, and `@muse/prompts` has zero package dependencies while
@@ -131,7 +131,7 @@ export function classifyCasualTurn(text: string): boolean {
 }
 
 export const REGISTER_BREVITY_LAYER_ID = "personalization/register-brevity";
-// Dynamic-section D2 tone-hint (docs/strategy/prompt-architecture.md
+// Dynamic-section D2 tone-hint (docs/strategy/research/prompt-architecture.md
 // canonical stack) — after the cache boundary, ahead of D3/D4/D5.
 export const REGISTER_BREVITY_LAYER_PRIORITY = 50;
 

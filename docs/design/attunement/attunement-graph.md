@@ -82,7 +82,7 @@ completeness/abstention, and local export/rebuild/physical-forget behavior. Unti
 contract is implemented and independently qualified, it is a design advantage under
 construction rather than a competitor-superiority claim.
 The broader primary-source comparison is in the
-[MAG open-source competitive landscape](../../strategy/mag-competitive-landscape-2026-07-30.md).
+[MAG open-source competitive landscape](../../strategy/positioning/mag-competitive-landscape-2026-07-30.md).
 
 The decision-level semantic, snapshot, operator, journal, local-storage, recovery, and
 staged-delivery blueprint is maintained separately in

@@ -3,7 +3,7 @@
 Generates and validates large synthetic evaluation corpora under a fixed provenance contract:
 every record is tagged `dataOrigin: "synthetic"`, `organicEvidence: false`, and
 `personalLearningEligible: false`, so a generated corpus can never be silently promoted to
-"organic" or "personal-learning" evidence downstream (see `../../.claude/rules/agent-testing.md`'s
+"organic" or "personal-learning" evidence downstream (see `../../.claude/rules/verification/agent-testing.md`'s
 evaluation-accounting vocabulary).
 
 ## Public surface
@@ -25,7 +25,7 @@ evaluation-accounting vocabulary).
 ## Rules that bind this package
 
 - Generated/validated/sampled corpus artifacts prove corpus integrity, not agent PASS — per
-  `../../.claude/rules/agent-testing.md`'s evaluation-accounting vocabulary, never relabel a
+  `../../.claude/rules/verification/agent-testing.md`'s evaluation-accounting vocabulary, never relabel a
   generated count as executed or agent-passed signal.
 - Output paths are hard-confined to `.muse-dev/eval-data/` and every write is size/RSS/time
   capped (`resolveSafeEvalPath`, the 1.5 GiB/512 MiB/five-minute ceilings in `generateTier`) —

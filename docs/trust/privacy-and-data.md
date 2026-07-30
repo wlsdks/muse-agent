@@ -3,7 +3,7 @@ title: Where your data lives — privacy summary
 audience: [users, product, developers, AI agents]
 purpose: One place for "what is stored where, and what each privacy posture blocks"
 updated: 2026-07-30
-related: [../design/attunement/README.md, ../product/SYSTEM-MAP.md, ../product/FEATURES.md, ../strategy/differentiation.md, ../README.md]
+related: [../design/attunement/README.md, ../product/SYSTEM-MAP.md, ../product/FEATURES.md, ../strategy/positioning/differentiation.md, ../README.md]
 ---
 
 # Where your data lives (privacy summary)
@@ -15,7 +15,7 @@ covered remote model, voice, image, indexing, and Home Assistant paths, set
 `MUSE_LOCAL_ONLY=true`.
 
 For behaviour details see the [system map](../product/SYSTEM-MAP.md) and the [feature definitions](../product/FEATURES.md);
-for "why it was designed this way" see the [differentiation doc](../strategy/differentiation.md).
+for "why it was designed this way" see the [differentiation doc](../strategy/positioning/differentiation.md).
 
 ## Where your data is stored
 

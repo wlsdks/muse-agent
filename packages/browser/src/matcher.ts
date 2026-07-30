@@ -4,7 +4,7 @@
  * 50-element snapshot and juggle numeric refs across turns, the model
  * names what it wants ("Sign in button", "search box") and THIS code maps
  * that description to the right element. Grounding lives in deterministic
- * code, not in the model (per `.claude/rules/tool-calling.md`: make the
+ * code, not in the model (per `.claude/rules/safety/tool-calling.md`: make the
  * first call correct; don't make the small model chain/observe-then-pick).
  *
  * Scoring (highest wins), case-insensitive:

@@ -24,7 +24,7 @@ cost/health metrics.
 
 - `AnthropicPromptCache` is provider-specific by design (Anthropic's native prompt-caching
   header shape) but stays behind the vendor-neutral `PromptCache` interface, per
-  `../../.claude/rules/architecture.md` — no vendor SDK belongs in this package.
+  `../../.claude/rules/engineering/architecture.md` — no vendor SDK belongs in this package.
 - Cache keys fold in identity/session scope (`resolveIdentityScope`, `stringMetadata`) so a
   cached response for one user/session is never served to another.
 

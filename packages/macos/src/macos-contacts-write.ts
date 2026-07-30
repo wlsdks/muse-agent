@@ -2,7 +2,7 @@
  * Tier 2: `mac_contacts_write` — adds a new person to Apple Contacts.app.
  * A write to the user's own address book is not trivially undoable, so it
  * follows the SAME draft-first, fail-closed contract as `mac_message_send`
- * (`.claude/rules/outbound-safety.md`): the exact contact is shown to the
+ * (`.claude/rules/safety/outbound-safety.md`): the exact contact is shown to the
  * user and NOTHING is created — no osascript runs at all — until the
  * approval gate returns `approved: true`. A denied, timed-out, or throwing
  * gate is indistinguishable from "no write happened".

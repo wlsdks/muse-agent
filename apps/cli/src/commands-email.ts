@@ -2,7 +2,7 @@
  * `muse email send` — draft-first, fail-closed outbound email.
  * Resolves the recipient via the contacts graph, shows the EXACT
  * draft, and only sends on explicit confirmation (per
- * `.claude/rules/outbound-safety.md`). All gating lives in
+ * `.claude/rules/safety/outbound-safety.md`). All gating lives in
  * `sendEmailWithApproval` (@muse/mcp); this is the CLI surface.
  */
 

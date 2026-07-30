@@ -35,7 +35,7 @@ Time is always an absolute `Date` (UTC instant); the agent decides timezone for 
 provider must not silently localize. Providers throw `CalendarProviderError` for upstream
 failures and `CalendarValidationError` for input rejections, matching the deterministic
 error-classification discipline in
-[`../../.claude/rules/architecture.md`](../../.claude/rules/architecture.md) (`retryable` is the
+[`../../.claude/rules/engineering/architecture.md`](../../.claude/rules/engineering/architecture.md) (`retryable` is the
 source of truth, never a hidden retry).
 
 ## Tests

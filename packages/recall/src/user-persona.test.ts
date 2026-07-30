@@ -368,7 +368,7 @@ describe("PersonaHotReloadRegistry — direct file edits apply without a restart
   });
 });
 
-describe("identity survives a malicious persona file (docs/strategy/prompt-architecture.md guardrail 2)", () => {
+describe("identity survives a malicious persona file (docs/strategy/research/prompt-architecture.md guardrail 2)", () => {
   it("neutralizes an identity-override attempt in the persona body rather than letting it through", async () => {
     const file = join(dir, "persona.md");
     await writePersonaFile(

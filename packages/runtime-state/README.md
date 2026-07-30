@@ -23,9 +23,9 @@ execution state.
 ## Rules that bind this package
 
 - Every Kysely-backed store here has an in-memory or file-backed counterpart, per
-  `../../.claude/rules/architecture.md`'s database rules — a caller without PostgreSQL still runs.
+  `../../.claude/rules/engineering/architecture.md`'s database rules — a caller without PostgreSQL still runs.
 - Checkpoint/run-history state is queryable agent state, not an opaque blob, per
-  `../../.claude/rules/architecture.md`'s database rules.
+  `../../.claude/rules/engineering/architecture.md`'s database rules.
 
 ## Tests
 

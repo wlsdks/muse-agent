@@ -4,7 +4,7 @@
  *
  * P13: a JARVIS knows who people are. Equally, this is the
  * recipient-resolution backbone for outbound safety
- * (`.claude/rules/outbound-safety.md` rule 3: "Recipient is resolved,
+ * (`.claude/rules/safety/outbound-safety.md` rule 3: "Recipient is resolved,
  * never guessed"): `resolveContact` returns `ambiguous` / `unknown`
  * rather than picking a best guess, so the caller asks a clarifying
  * question instead of mailing the wrong person.

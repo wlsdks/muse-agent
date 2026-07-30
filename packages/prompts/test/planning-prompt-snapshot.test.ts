@@ -11,7 +11,7 @@ import { SURFACE_ROLES } from "../src/compose.js";
 // full rendered prompt; an intentional change must update it (visible in review),
 // an accidental one fails. Paired with structural invariants that MUST hold.
 //
-// Phase 2+3 (docs/strategy/prompt-architecture.md): the planner now composes
+// Phase 2+3 (docs/strategy/research/prompt-architecture.md): the planner now composes
 // through `composeSurfacePrompt("planning", …)` — identity-core + SURFACE_ROLES.planning
 // lead the prompt, followed by the cache boundary marker, then the same
 // [Available Tools]/[Output Format]/[Constraints]/[User Request] sections as before.

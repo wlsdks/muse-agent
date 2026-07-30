@@ -92,7 +92,7 @@ Muse picks a test technique by the failure it must detect, never by a target tes
 | A critical end-to-end journey | Playwright |
 
 Keep the edit loop narrow with `pnpm test:changed`; run the full cross-platform gate before merge.
-Operational rules: [`.claude/rules/testing.md`](.claude/rules/testing.md). Stack decision and
+Operational rules: [`.claude/rules/verification/testing.md`](.claude/rules/verification/testing.md). Stack decision and
 rationale: [`docs/development/testing-strategy.md`](docs/development/testing-strategy.md).
 
 **Agent behaviour is graded separately, outcome-first**: isolated trials, deterministic
@@ -107,7 +107,7 @@ task branch (or verified local `main`) to its configured `origin` upstream, afte
 risk-tier completion gate and required checks pass. The full contract — what is *not* authorized
 (alternate remotes/refspecs, remote deletion, tags/releases, force-push, `--no-verify`, credentials,
 branch-protection), the retry-once-then-stop rule on failure, and the loop tiers — lives in
-[`.claude/rules/commits.md`](.claude/rules/commits.md) and is not restated here.
+[`.claude/rules/engineering/commits.md`](.claude/rules/engineering/commits.md) and is not restated here.
 
 **Commit boundary = product-behavior change**, not every roadmap checkbox. A completed slice that
 changes runtime/source code, tests, executable scripts, build/package configuration,

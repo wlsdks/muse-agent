@@ -33,12 +33,12 @@ It is a package because every surface (CLI, server, MCP projection) needs the id
 
 ## Rules that bind this package
 
-- [`../../.claude/rules/tool-calling.md`](../../.claude/rules/tool-calling.md) — `MuseToolDefinition`'s name/description/schema shape
+- [`../../.claude/rules/safety/tool-calling.md`](../../.claude/rules/safety/tool-calling.md) — `MuseToolDefinition`'s name/description/schema shape
   and the exposure-policy filtering exist specifically to make the local model's first tool
   call correct in one shot.
-- [`../../.claude/rules/outbound-safety.md`](../../.claude/rules/outbound-safety.md) — a tool's `risk` classification (read/write/execute)
+- [`../../.claude/rules/safety/outbound-safety.md`](../../.claude/rules/safety/outbound-safety.md) — a tool's `risk` classification (read/write/execute)
   and `authorizeEgress` are the fail-close gate for any state-changing or outbound action.
-- [`../../.claude/rules/architecture.md`](../../.claude/rules/architecture.md) — risky local execution flows through `crates/runner`
+- [`../../.claude/rules/engineering/architecture.md`](../../.claude/rules/engineering/architecture.md) — risky local execution flows through `crates/runner`
   via `createRustRunnerTool`, never a direct shell call from this package.
 
 ## Tests

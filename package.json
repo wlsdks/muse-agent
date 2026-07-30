@@ -31,6 +31,7 @@
     "guard:core": "node scripts/guard-immutable.mjs",
     "check:api-boot": "node --import tsx scripts/check-api-boot.mjs",
     "check:capabilities": "node scripts/check-capabilities-drift.mjs",
+    "check:doc-links": "node scripts/check-doc-links.mjs",
     "check:prompt-seam": "node scripts/check-prompt-seam.mjs",
     "check:secret-guard-coverage": "node scripts/check-secret-guard-coverage.mjs",
     "install:hooks": "bash scripts/install-git-hooks.sh",

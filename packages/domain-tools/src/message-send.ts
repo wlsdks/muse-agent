@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 /**
  * Draft-first, fail-closed outbound chat message — the messaging-tool
  * analogue of `sendEmailWithApproval`, governed by
- * `.claude/rules/outbound-safety.md`:
+ * `.claude/rules/safety/outbound-safety.md`:
  *
  *   1. Draft-first: the exact `{ providerId, destination, text }` is
  *      what the (optional) approval gate sees and what leaves.

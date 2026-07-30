@@ -28,7 +28,7 @@ Browser control drives a real, logged-in Chrome session and is not part of the C
 set — it is registered only when the caller opts in via `--with-tools`
 (`apps/cli/src/actuator-tools.ts`). The state-changing acts (`browser_click`, `browser_type`, form
 submission, dialog accept) are outbound-adjacent actions in someone else's system and therefore
-fall under [`../../.claude/rules/outbound-safety.md`](../../.claude/rules/outbound-safety.md): this
+fall under [`../../.claude/rules/safety/outbound-safety.md`](../../.claude/rules/safety/outbound-safety.md): this
 package intentionally does not embed the approval gate — the controller and gate are injected by
 the caller (`apps/cli`), so the outbound-safety wiring lives at the CLI boundary, not here. Reads
 and navigation are free; only the state-changing acts carry the draft-first approval requirement.

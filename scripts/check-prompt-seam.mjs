@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Prompt-seam drift lint (docs/strategy/prompt-architecture.md §5, guardrail
+ * Prompt-seam drift lint (docs/strategy/research/prompt-architecture.md §5, guardrail
  * 4): every surface's identity/system-prompt text is meant to funnel through
  * packages/prompts/src/identity-core.ts + compose.ts (composeSurfacePrompt).
  * A hardcoded "You are Muse" / "너는 뮤즈" string, or a direct
@@ -34,7 +34,7 @@ import {
 const ROOT = process.cwd();
 const ROOTS = ["packages", "apps"];
 
-// Phase 2/3 (docs/strategy/prompt-architecture.md migration plan) is complete
+// Phase 2/3 (docs/strategy/research/prompt-architecture.md migration plan) is complete
 // as of the "every surface composes through the seam" slice — every file that
 // used to hand-assemble an identity string or call `buildSystemPrompt(`
 // directly now routes through `composeSurfacePrompt` / `identity-core.ts`.
@@ -158,7 +158,7 @@ if (violations.length > 0) {
   }
   console.error(
     "\nEvery surface's identity/role text goes through composeSurfacePrompt() / "
-    + "identity-core.ts (docs/strategy/prompt-architecture.md). A new hardcoded "
+    + "identity-core.ts (docs/strategy/research/prompt-architecture.md). A new hardcoded "
     + "string or direct buildSystemPrompt( call outside packages/prompts is not "
     + "allowed — either migrate the call site or (only for an already-tracked "
     + "Phase 2/3 file) add it to the LEGACY_* list in this script."

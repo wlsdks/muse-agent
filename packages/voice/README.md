@@ -34,7 +34,7 @@ This package ships both cloud and local STT/TTS adapters side by side and does n
 which one is active. Under `MUSE_LOCAL_ONLY=true`, the consumer — `@muse/autoconfigure`'s
 `buildVoiceRegistry` (`packages/autoconfigure/src/registry-builders/voice.ts`) — treats an OpenAI
 key as absent so only `WhisperCppSttProvider`/`PiperTtsProvider` can register, per the local-only
-posture in [`../../.claude/rules/architecture.md`](../../.claude/rules/architecture.md); this
+posture in [`../../.claude/rules/engineering/architecture.md`](../../.claude/rules/engineering/architecture.md); this
 package's job is to keep the local adapters fully substitutable for the cloud ones, not to enforce
 the gate itself.
 

@@ -35,11 +35,11 @@ which is why it is a package and not a folder inside a provider adapter.
 
 ## Rules that bind this package
 
-- [`../../.claude/rules/architecture.md`](../../.claude/rules/architecture.md) — this package is the model-agnostic core: it must
+- [`../../.claude/rules/engineering/architecture.md`](../../.claude/rules/engineering/architecture.md) — this package is the model-agnostic core: it must
   never import a vendor SDK directly, only `ModelProvider` from `@muse/model`.
-- [`../../.claude/rules/outbound-safety.md`](../../.claude/rules/outbound-safety.md) — `actuator-provenance-gate.ts` and `a2a-safety.ts`
+- [`../../.claude/rules/safety/outbound-safety.md`](../../.claude/rules/safety/outbound-safety.md) — `actuator-provenance-gate.ts` and `a2a-safety.ts`
   enforce the fail-close gate for any argument or payload reaching a third-party send.
-- [`../../.claude/rules/agent-testing.md`](../../.claude/rules/agent-testing.md) — grounding, playbook, and council code here is
+- [`../../.claude/rules/verification/agent-testing.md`](../../.claude/rules/verification/agent-testing.md) — grounding, playbook, and council code here is
   evaluated as agent behavior (`pass^k`, terminal-state grading), not just unit-tested.
 
 ## Tests

@@ -22,8 +22,8 @@ package.
 ## Rules that bind this package
 
 - Credential-handling: a resolved secret is never persisted in plaintext and this package never
-  queries a non-local source, per `../../.claude/rules/architecture.md` and
-  `../../.claude/rules/commits.md` (never commit live credentials). See `resolve.ts`'s
+  queries a non-local source, per `../../.claude/rules/engineering/architecture.md` and
+  `../../.claude/rules/engineering/commits.md` (never commit live credentials). See `resolve.ts`'s
   header comment for the exact fail-closed-against-egress invariant.
 - `SecretScope` denies-by-default: a `get` for a name/service pair outside the caller's declared
   scope returns `undefined`, never the value, and never even queries a source.

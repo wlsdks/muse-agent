@@ -33,7 +33,7 @@ Re-exported flat from per-loop modules (`export *`); the notable ones:
 ## Rules that bind this package
 
 Any loop here that ends in a message or action toward a third party is governed by
-[`../../.claude/rules/outbound-safety.md`](../../.claude/rules/outbound-safety.md): draft-first,
+[`../../.claude/rules/safety/outbound-safety.md`](../../.claude/rules/safety/outbound-safety.md): draft-first,
 fail-closed approval via `@muse/messaging`'s gate, and — for standing-objective actions —
 recorded scoped consent via `performConsentedAction` (`consented-action.ts`), fail-closed on a
 veto, missing consent, or scope mismatch.

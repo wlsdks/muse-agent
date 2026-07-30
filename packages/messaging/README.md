@@ -31,7 +31,7 @@ contract before a message can leave the process.
 ## Rules that bind this package
 
 This package sits on the outbound-to-human safety boundary in
-[`../../.claude/rules/outbound-safety.md`](../../.claude/rules/outbound-safety.md): every send is
+[`../../.claude/rules/safety/outbound-safety.md`](../../.claude/rules/safety/outbound-safety.md): every send is
 draft-first (`channel-approval-gate.ts` confirms before `outbound-effect-dispatch.ts` fires),
 fail-closed on a denied/timed-out approval, and every provider ships its link-preview/unfurl
 suppression wired at the send call site — `link_preview_options.is_disabled` (Telegram), `flags: 4`

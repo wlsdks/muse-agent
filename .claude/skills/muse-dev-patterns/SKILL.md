@@ -60,7 +60,7 @@ probe, not code reading. The repo's standing pattern:
 
 - Per edit run `pnpm test:changed` (vitest `related`), not a package suite.
   Escalate only to the single rung that exposes YOUR change
-  (`.claude/rules/testing.md` has the ladder).
+  (`../../rules/verification/testing.md` has the ladder).
 - **Mutation-RED or it proves nothing.** After writing the test, revert the
   fix (or inject the inverse mutation) and confirm the test goes RED, then
   restore. A test that passes with the fix removed is vacuous — the loop
@@ -71,7 +71,7 @@ probe, not code reading. The repo's standing pattern:
   acceptable — say so explicitly instead of claiming a run.
 - Grade OUTCOMES (terminal state, store contents, final answer), not the
   exact tool path; assert order only where a step truly depends on a prior
-  one (`.claude/rules/agent-testing.md`).
+  one (`../../rules/verification/agent-testing.md`).
 - A failed/denied/invalid action asserts an UNCHANGED store — no partial
   side-effects.
 
@@ -171,7 +171,7 @@ gate that would have caught the next regression.
   and its numbers ("battery 13/13 live; agent-core 3124/3124; probe 5/5"),
   plus the WHY of any expectation change. Conventional Commits, one
   coherent goal per commit, then the allowlisted verified normal push under the
-  standing authorization (`.claude/rules/commits.md`).
+  standing authorization (`../../rules/engineering/commits.md`).
 - **Writeback**: when a slice resolves a backlog/journal entry, update THAT
   entry in place (✓ + commit hash + one-line resolution). Respect the
   ledger's "재제안 금지 / do NOT re-scout" markers — re-proposing a closed

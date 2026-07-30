@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createMuseRuntimeAssembly } from "../src/index.js";
 
 // Proves the S3 wiring end-to-end through the REAL composition root
-// (docs/strategy/prompt-architecture.md §S3 step 1): a persona.md on disk
+// (docs/strategy/research/prompt-architecture.md §S3 step 1): a persona.md on disk
 // at startup seeds the SAME InMemoryPromptLayerRegistry instance the
 // assembled agentRuntime resolves its L1 personality layer from, and the
 // registry stays live-mutable afterward (the PUT persona route hot-applies

@@ -1,7 +1,7 @@
 /**
  * Draft-first, fail-closed agentic web action — submitting a
  * form, booking, or any state-changing HTTP request to a third party.
- * Governed by `.claude/rules/outbound-safety.md`: the action is
+ * Governed by `.claude/rules/safety/outbound-safety.md`: the action is
  * approval-gated and NEVER autonomous; absent an explicit confirm the
  * request is blocked and no HTTP is ever made; every outcome (performed
  * / refused / failed) is action-logged.

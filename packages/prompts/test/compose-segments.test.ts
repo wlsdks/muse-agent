@@ -8,7 +8,7 @@ import {
 } from "../src/index.js";
 
 // Structured twin of composeSurfacePrompt for the S3 admin preview
-// (docs/strategy/prompt-architecture.md, S3 §2) — the web console renders
+// (docs/strategy/research/prompt-architecture.md, S3 §2) — the web console renders
 // one colored block per segment instead of parsing the flat string.
 describe("composeSurfacePromptSegments", () => {
   it("puts identity first, flagged read-only, verbatim MUSE_IDENTITY_CORE", () => {

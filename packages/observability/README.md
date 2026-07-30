@@ -27,9 +27,9 @@ token-cost recording, the startup doctor, and drift/budget/SLO detectors.
 ## Rules that bind this package
 
 - Every Kysely-backed sink has an in-memory counterpart so a caller without PostgreSQL still
-  runs, per `../../.claude/rules/architecture.md`'s database rules.
+  runs, per `../../.claude/rules/engineering/architecture.md`'s database rules.
 - No provider-specific assumptions belong here — `MuseTracer`/`AgentMetrics` stay
-  vendor-neutral per `../../.claude/rules/architecture.md`.
+  vendor-neutral per `../../.claude/rules/engineering/architecture.md`.
 
 ## Tests
 

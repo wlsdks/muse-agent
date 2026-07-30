@@ -112,7 +112,7 @@ writes/sends through a human, egress blocked by default.
 
 ## Sources (verified basis)
 
-- Host rules (e.g. Muse) — `.claude/rules/architecture.md` (two-stage MCP allowlist enforcement: at register + re-check at connect, fail-soft, empty list=opt-in)
+- Host rules (e.g. Muse) — `../../.claude/rules/engineering/architecture.md` (two-stage MCP allowlist enforcement: at register + re-check at connect, fail-soft, empty list=opt-in)
 - Host rules (e.g. Muse) — `.claude/rules/iteration-loop.md` (external MCP is open-source · local · allowlisted · read-default; state changes are draft-first)
 - [MCP Security Best Practices 2026](https://www.digitalapplied.com/blog/mcp-server-security-best-practices-2026-engineering-guide) (allowlist deny-precedence · exact hosts · auth/secrets/egress)
 - OWASP — [Secure MCP Server Development](https://genai.owasp.org/resource/a-practical-guide-for-secure-mcp-server-development/) (trusted/untrusted separation · write HITL)

@@ -24,8 +24,8 @@ callers can choose an in-memory or Kysely-backed user store.
   falling through to an empty-buffer comparison bypass — see the guard comment in
   `PasswordHasher.verify`.
 - `KyselyUserStore` has an in-memory counterpart (`InMemoryUserStore`) so a caller without
-  PostgreSQL still runs, per `../../.claude/rules/architecture.md`'s database rules.
-- No plaintext credential persistence, per `../../.claude/rules/commits.md` (never commit live
+  PostgreSQL still runs, per `../../.claude/rules/engineering/architecture.md`'s database rules.
+- No plaintext credential persistence, per `../../.claude/rules/engineering/commits.md` (never commit live
   credentials) and the architecture rules' credential-handling posture.
 
 ## Tests

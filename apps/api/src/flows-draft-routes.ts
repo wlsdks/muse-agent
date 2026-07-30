@@ -2,7 +2,7 @@
  * `POST /api/flows/draft` — "코파일럿 초안": turns a one-line description
  * ("매일 아침 9시에 일정 요약해서 알려줘") into a scheduled-job DRAFT the user
  * still reviews before creating anything. Draft-first per
- * `.claude/rules/outbound-safety.md`'s spirit: this route NEVER creates a
+ * `.claude/rules/safety/outbound-safety.md`'s spirit: this route NEVER creates a
  * job — it returns `{ draft }` only, and the web's create panel still
  * requires the user to click 만들기.
  *

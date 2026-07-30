@@ -21,10 +21,10 @@ strategy. No hidden retry magic — every policy here is an explicit, testable f
 ## Rules that bind this package
 
 - Retry classification is `ModelProviderError.retryable`-driven: a 4xx (model-not-found, bad key)
-  fails fast, 5xx/unknown MAY retry, per `../../.claude/rules/architecture.md`'s fallback rules —
+  fails fast, 5xx/unknown MAY retry, per `../../.claude/rules/engineering/architecture.md`'s fallback rules —
   see the comment above the classifier call inside `retry()` before changing default behavior.
 - Provider fallback goes through the explicit `FallbackStrategy` seam here, never an ad hoc
-  retry loop inside an adapter, per `../../.claude/rules/architecture.md`.
+  retry loop inside an adapter, per `../../.claude/rules/engineering/architecture.md`.
 
 ## Tests
 

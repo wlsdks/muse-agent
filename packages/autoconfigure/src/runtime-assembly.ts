@@ -307,7 +307,7 @@ export interface MuseRuntimeAssembly {
   readonly toolRegistry: ToolRegistry;
   /**
    * The SAME registry instance `agentRuntime` resolves its L1 personality
-   * layer from (docs/strategy/prompt-architecture.md, decision D2 + S3).
+   * layer from (docs/strategy/research/prompt-architecture.md, decision D2 + S3).
    * A `PersonaHotReloadRegistry` over `~/.config/muse/PERSONA.md` (or
    * `MUSE_PERSONA_MD_FILE`): the prompt-persona API routes mutate THIS
    * instance on save, and a direct file edit is picked up by a stat check

@@ -112,7 +112,7 @@ We gave the gate role to a real agent and confirmed both risk tiers were handled
 
 - Muse runtime — tool approval gate / classification into risk tiers (read·write·execute); execute
   needs the trust list, the denylist refuses (SYSTEM-MAP #3/#12)
-- Host convention (e.g. Muse) — `.claude/rules/outbound-safety.md` (outbound draft-first ·
+- Host convention (e.g. Muse) — `../../.claude/rules/safety/outbound-safety.md` (outbound draft-first ·
   fail-closed; banking/payments permanently forbidden)
 - 2026 — least-privilege agent: map tools to risk tiers and gate via a matrix, runtime enforcement
   + audit trail

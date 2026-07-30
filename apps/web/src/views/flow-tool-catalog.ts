@@ -15,7 +15,7 @@ import type { LoopbackCatalogResponse } from "../api/types.js";
 // Write tools on these servers can transmit toward arbitrary third parties
 // (messaging.send takes any platform destination) — scheduling one
 // unattended would be an autonomous outbound send, which stays draft-first
-// per .claude/rules/outbound-safety.md regardless of the write ruling.
+// per .claude/rules/safety/outbound-safety.md regardless of the write ruling.
 const OUTBOUND_WRITE_SERVERS: ReadonlySet<string> = new Set(["muse.messaging"]);
 
 export interface SchedulableToolOption {

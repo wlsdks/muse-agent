@@ -8,7 +8,7 @@ updated: 2026-06-13
 # Judge Calibration
 
 > Note: in the Muse project, a more detailed and current version of this topic lives in
-> [`.claude/rules/agent-testing.md`](../../.claude/rules/agent-testing.md) (meta-evaluation,
+> [`../../.claude/rules/verification/agent-testing.md`](../../.claude/rules/verification/agent-testing.md) (meta-evaluation,
 > fault-injection drills, calibration evidence) — this file is the harness's portable condensed
 > version.
 

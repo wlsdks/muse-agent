@@ -42,10 +42,10 @@ build the runtime" that every entry point (`apps/cli`, `apps/api`) calls into id
 
 ## Rules that bind this package
 
-- [`../../.claude/rules/architecture.md`](../../.claude/rules/architecture.md) — `createModelProvider`'s fallback chain and the
+- [`../../.claude/rules/engineering/architecture.md`](../../.claude/rules/engineering/architecture.md) — `createModelProvider`'s fallback chain and the
   `MUSE_LOCAL_ONLY` gate are resolved here; the model-router throws `LocalOnlyViolationError`
   before ever instantiating a cloud provider.
-- [`../../.claude/rules/cli-product.md`](../../.claude/rules/cli-product.md) — the `resolve*File` functions are the canonical
+- [`../../.claude/rules/engineering/cli-product.md`](../../.claude/rules/engineering/cli-product.md) — the `resolve*File` functions are the canonical
   `~/.config/muse/config.json` / `.muse/runs/*.jsonl` storage-path contract for both surfaces.
 
 ## Tests

@@ -5,7 +5,7 @@
  * plumbing are cleanly separated, and it depends only on `@muse/tools` +
  * `@muse/shared`.
  *
- * Ten tools across three risk tiers (per `.claude/rules/tool-calling.md`:
+ * Ten tools across three risk tiers (per `.claude/rules/safety/tool-calling.md`:
  * small, single-purpose, non-confusable):
  *
  *   - Tier 0 (read): `mac_app_read` (clipboard / Music / frontmost window /
@@ -15,7 +15,7 @@
  *     `mac_screenshot`, `mac_clipboard_set`.
  *   - Tier 2 (execute, outbound): `mac_message_send` (iMessage) and
  *     `mac_contacts_write` (add a person to Contacts), governed by
- *     `.claude/rules/outbound-safety.md`: draft-first approval gate, fail-closed
+ *     `.claude/rules/safety/outbound-safety.md`: draft-first approval gate, fail-closed
  *     (deny / timeout / throw ⇒ no send/write), action-logged. The gate + logger are
  *     INJECTED so the outbound-safety wiring lives at the CLI boundary and the
  *     contract test asserts the gate WITHOUT firing a real message/write.

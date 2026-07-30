@@ -2982,7 +2982,7 @@ describe("AgentRuntime", () => {
       userId: "user-1"
     });
     // "system" now leads every recorded run — applyPromptLayers always injects
-    // the chat base/identity prompt (docs/strategy/prompt-architecture.md Phase 1).
+    // the chat base/identity prompt (docs/strategy/research/prompt-architecture.md Phase 1).
     expect(historyStore.listMessages("run-history").map((message) => message.role)).toEqual([
       "system",
       "user",

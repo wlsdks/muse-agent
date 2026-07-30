@@ -31,7 +31,7 @@ Don't mix unrelated work into one commit.
   destructive bypass.
 - Scheduled/autonomous loops keep their declared Tier. A Tier that forbids push
   stays forbidden until separately opted in. Git publication does not weaken
-  `.claude/rules/outbound-safety.md`: sending/submitting/booking/posting toward a
+  `../safety/outbound-safety.md`: sending/submitting/booking/posting toward a
   third party remains draft-first and explicitly confirmed.
 - Don't commit live Jira / Confluence / Bitbucket / Slack-workspace credentials.
 - Don't commit `.claude/scheduled_tasks.lock` or other transient session-state files.

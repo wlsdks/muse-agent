@@ -20,12 +20,12 @@ self-contained (only `node:crypto`).
 ## Rules that bind this package
 
 - Every result carries `promotionState: "PROMOTION_DISABLED"` unconditionally — this package
-  never emits a promotable verdict, matching `../../.claude/rules/agent-testing.md`'s promotion
+  never emits a promotable verdict, matching `../../.claude/rules/verification/agent-testing.md`'s promotion
   discipline (promotion requires an exact candidate-bound human review, never an automated
   verdict alone).
 - Parses JSON with a hand-written, resource-bounded parser (nesting depth, object/array member
   caps, string/number length caps, a 64 KiB input ceiling) rather than `JSON.parse`, because the
-  input is an untrusted external artifact, per `../../.claude/rules/architecture.md`'s "tool
+  input is an untrusted external artifact, per `../../.claude/rules/engineering/architecture.md`'s "tool
   output is untrusted" posture.
 - Canonicalization rejects non-finite numbers, `-0`, and unpaired surrogates before hashing, so a
   hash comparison can't be defeated by a value that doesn't round-trip through JSON.

@@ -151,7 +151,7 @@ export interface GroundedRecallExtras {
    * reuse the seam's retrieval/dedup/context-block work without inheriting
    * this module's generic wording. Absent ⇒ the built-in
    * `composeDefaultRecallSystemPrompt`, which now composes through
-   * `composeSurfacePrompt("recall", …)` (docs/strategy/prompt-architecture.md).
+   * `composeSurfacePrompt("recall", …)` (docs/strategy/research/prompt-architecture.md).
    */
   readonly composeSystemPrompt?: (args: {
     readonly framing: { readonly header: string; readonly guidance?: string };
@@ -242,7 +242,7 @@ async function resolveIndexForModel(
 }
 
 /**
- * The DEFAULT system-prompt composition (docs/strategy/prompt-architecture.md
+ * The DEFAULT system-prompt composition (docs/strategy/research/prompt-architecture.md
  * Phase 2) — routed through the seam: identity-core + `SURFACE_ROLES.recall`
  * lead the stable prefix, then the stable citation contract
  * (`CITATION_INSTRUCTION_LINES`), then a single cache boundary, then the

@@ -2,7 +2,7 @@
 
 The deterministic security/privacy policy layer: injection and PII detection, tool-output
 sanitization, approval receipts, progressive-autonomy capability profiles, and privacy
-routing. It is a package because these are exactly the checks that `.claude/rules/architecture.md`
+routing. It is a package because these are exactly the checks that `../../.claude/rules/engineering/architecture.md`
 requires stay deterministic code — never a prompt instruction — and every runtime surface
 (agent-core, tools, mcp) needs to depend on the same policy types without depending on
 each other.
@@ -30,9 +30,9 @@ each other.
 
 ## Rules that bind this package
 
-- [`../../.claude/rules/architecture.md`](../../.claude/rules/architecture.md) — "Deterministic code for policy, permissions,
+- [`../../.claude/rules/engineering/architecture.md`](../../.claude/rules/engineering/architecture.md) — "Deterministic code for policy, permissions,
   budgets, and stop conditions" is this package's charter; it must never become an LLM prompt.
-- [`../../.claude/rules/outbound-safety.md`](../../.claude/rules/outbound-safety.md) — `approval-receipt.js` and `progressive-autonomy.js`
+- [`../../.claude/rules/safety/outbound-safety.md`](../../.claude/rules/safety/outbound-safety.md) — `approval-receipt.js` and `progressive-autonomy.js`
   back the recorded-consent and approval-gate requirements for any outbound action.
 
 ## Tests

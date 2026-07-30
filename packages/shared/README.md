@@ -23,13 +23,13 @@ workspace package may depend on it, but it depends on nothing in-repo.
 
 ## Rules that bind this package
 
-- Model-agnostic and framework-independent, per `../../.claude/rules/architecture.md` — no
+- Model-agnostic and framework-independent, per `../../.claude/rules/engineering/architecture.md` — no
   vendor SDK or UI framework import belongs here.
 - `redactSecretsInText` / `registerSecretValue` / `guardSecretPersistence` are the shared
   redaction seam every other package's persistence and terminal output funnels through; changing
   their behavior changes what can leak into logs or disk across the whole monorepo.
 - `stripUntrustedTerminalChars` / `formatErrorForTerminal` treat all tool/model/HTTP output as
-  untrusted per `../../.claude/rules/architecture.md`'s "tool output is untrusted" rule.
+  untrusted per `../../.claude/rules/engineering/architecture.md`'s "tool output is untrusted" rule.
 
 ## Tests
 

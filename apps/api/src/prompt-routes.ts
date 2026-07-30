@@ -1,5 +1,5 @@
 /**
- * The S3 user-manageable prompt surface (docs/strategy/prompt-architecture.md
+ * The S3 user-manageable prompt surface (docs/strategy/research/prompt-architecture.md
  * §S3): a persona editor, a read-only composed-prompt preview, and a local
  * A/B experiment runner over `~/.config/muse/PERSONA.md`.
  *

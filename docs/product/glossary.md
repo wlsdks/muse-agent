@@ -169,7 +169,7 @@ it.)
   party requires *recorded scoped consent* (`performConsentedAction`); absent or scope-mismatched
   consent fails closed.
 - **Outbound safety** — the fail-close contract for anything sent to, or done to, a third party.
-  Details in [outbound-safety.md](../../.claude/rules/outbound-safety.md).
+  Details in [outbound-safety.md](../../.claude/rules/safety/outbound-safety.md).
 - **Draft-first** — generated content never reaches a third party until *the user explicitly
   confirms that content*. No autonomous sends. Banking and transfers are permanently out of scope.
 - **Action log / hash chain** — the tamper-evident chain every autonomous action (sent **or**

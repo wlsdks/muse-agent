@@ -1697,7 +1697,7 @@ _11 opportunities_
 
 - **Based on (openclaw):** `$HOME/ai/openclaw/src/link-understanding/detect.ts` — openclaw extractLinksFromMessage: markdown stripping + regex + SSRF filtering + CLI processors
 - **Muse today:** none — $HOME/side-project/Muse/packages/domain-tools/src/web-url-guard.ts (SSRF guard exists, no link extraction from text)
-- **Proposal:** Add to @muse/web: extractBareLinks(message: string, opts: {maxLinks?: 10, skipMarkdownLinks?: true}) → URL[] doing: strip [text](url) markdown syntax (don't fetch display cites), regex /https?://\S+/gi for bare URLs, dedupe via Set, SSRF gate via web-url-guard isPrivateAddress(), limit to maxLinks. Return the deduplicated URL list for a batch fetch or display.
+- **Proposal:** Add to @muse/web: extractBareLinks(message: string, opts: {maxLinks?: 10, skipMarkdownLinks?: true}) → URL[] doing: strip [text] (url) markdown syntax (don't fetch display cites), regex /https?://\S+/gi for bare URLs, dedupe via Set, SSRF gate via web-url-guard isPrivateAddress(), limit to maxLinks. Return the deduplicated URL list for a batch fetch or display.
 - **Value:** In-message URLs are attack surface. Prompt-injected pages can steer fetch at loopback/metadata. Markdown stripping prevents legitimate citations from becoming fetch targets. Hostname-level SSRF (not just IPs) blocks localhost / 169.254.x.x.
 - **Verify:** Extract links from 'Check this page: https://example.com and [read more](https://evil.com → 127.0.0.1) — only https://example.com is fetched, markdown link blocked. Link to 127.0.0.1 is filtered.
 

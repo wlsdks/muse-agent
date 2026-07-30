@@ -132,7 +132,7 @@ permission-gate composition. **6/6** (runner suite cumulative **56/56**).
 
 ## Sources (verified basis)
 
-- Host rules (e.g. Muse) — `.claude/rules/tool-calling.md` (small-model one-shot selection: ≤5–7 exposed · verb_noun · example-bearing schemas · use-when/not-when · code validation)
+- Host rules (e.g. Muse) — `../../.claude/rules/safety/tool-calling.md` (small-model one-shot selection: ≤5–7 exposed · verb_noun · example-bearing schemas · use-when/not-when · code validation)
 - Anthropic — [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (ACI: design tool interfaces to HCI standards)
 - Anthropic — [Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (tool descriptions steer behavior — bad descriptions send agents astray)
 - [awesome-harness-engineering](https://github.com/ai-boost/awesome-harness-engineering) (tool design category)

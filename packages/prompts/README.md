@@ -25,7 +25,7 @@ layers (`agent-core`, `recall`, `autoconfigure`) depend on, never the reverse.
 
 ## Rules that bind this package
 
-- [`../../.claude/rules/code-style.md`](../../.claude/rules/code-style.md) — this barrel is deliberately logic-free (re-exports
+- [`../../.claude/rules/engineering/code-style.md`](../../.claude/rules/engineering/code-style.md) — this barrel is deliberately logic-free (re-exports
   only) so `compose.js` cannot import back through it and re-form a runtime import cycle.
 
 ## Tests

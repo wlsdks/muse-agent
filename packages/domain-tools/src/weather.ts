@@ -1,7 +1,7 @@
 /**
  * Weather provider behind a model-neutral abstraction (the way
  * calendar did). Read-only world-sensing via Open-Meteo (free, no API
- * key) — `.claude/rules/outbound-safety.md` governs only actions
+ * key) — `.claude/rules/safety/outbound-safety.md` governs only actions
  * toward a third party, so weather needs no approval gate. Lives in
  * @muse/mcp so both the CLI (`muse weather`) and the proactive
  * briefing daemon can reuse it.

@@ -33,10 +33,10 @@ mutation-queue primitives, and callers must not reach past that shared contract 
 
 ## Rules that bind this package
 
-- [`../../.claude/rules/outbound-safety.md`](../../.claude/rules/outbound-safety.md) — `personal-consent-store.js` is the persistence
+- [`../../.claude/rules/safety/outbound-safety.md`](../../.claude/rules/safety/outbound-safety.md) — `personal-consent-store.js` is the persistence
   layer for the "standing objectives need recorded scoped consent" rule (`performConsentedAction`);
   `personal-veto-store.js` backs the record/veto side of every autonomous action.
-- [`../../.claude/rules/architecture.md`](../../.claude/rules/architecture.md) — PostgreSQL is the source of truth for *server* state;
+- [`../../.claude/rules/engineering/architecture.md`](../../.claude/rules/engineering/architecture.md) — PostgreSQL is the source of truth for *server* state;
   this package is deliberately the local file-backed counterpart for the CLI/daily-driver path.
 
 ## Tests

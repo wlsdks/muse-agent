@@ -49,7 +49,7 @@ All cross-verified against primary sources (§4). On conflict, [`CLAUDE.md`](../
    over tools; capability = tools × planner (Weng · Willison · Huyen · Ng; Ng's "GPT-3.5 loop >
    GPT-4 zero-shot"). The weaker the model, the more performance swings on harness quality
    (METR ~23.8pt). But get the first action right — an 8B's coherence collapses at 3+ steps of
-   reasoning ([`tool-calling.md`](../../.claude/rules/tool-calling.md)).
+   reasoning ([`tool-calling.md`](../../.claude/rules/safety/tool-calling.md)).
 3. **Improve by subtraction.** Ablate tools and remove the ones contributing nothing (Huyen); the
    CLAUDE.md 100-line cap; subtractive correction-decay. Contracts, skills, and backlog become
    noise an 8B ignores if they only ever grow — add a line, prune a line.

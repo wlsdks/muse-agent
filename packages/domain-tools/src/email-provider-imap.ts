@@ -10,7 +10,7 @@ import { errorMessage } from "@muse/shared";
  * Each call opens a fresh IMAP/SMTP connection, does its work, and
  * closes it (no long-lived socket held by a short-running CLI process),
  * bounded by a hard timeout per the tool-loop rule
- * (`.claude/rules/architecture.md`: "Tool loops have explicit limits and
+ * (`.claude/rules/engineering/architecture.md`: "Tool loops have explicit limits and
  * timeouts"). Client construction is factory-injected so tests never
  * touch a real socket — the default factories refuse to run under
  * vitest even if a test forgets to inject a fake, mirroring the

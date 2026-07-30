@@ -4,7 +4,7 @@
  * as tools so a real `muse ask` conversation can trigger them. Each
  * tool carries a clack confirm as its fail-closed gate: the exact draft
  * is shown and nothing fires without explicit confirmation (per
- * `.claude/rules/outbound-safety.md`). Off by default; opt-in per
+ * `.claude/rules/safety/outbound-safety.md`). Off by default; opt-in per
  * invocation. Providers resolve from env — email needs MUSE_GMAIL_TOKEN,
  * smart-home needs MUSE_HOMEASSISTANT_URL + _TOKEN; web action is always
  * available. NOT for payments / money movement (out of scope).

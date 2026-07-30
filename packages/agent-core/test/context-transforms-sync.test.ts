@@ -98,7 +98,7 @@ describe("applyPromptLayers", () => {
     expect(result.input.metadata?.promptLayerIds).toEqual(["L1", "L2"]);
   });
 
-  describe("register-mirroring + brevity layer (docs/strategy/prompt-architecture.md §4 D2)", () => {
+  describe("register-mirroring + brevity layer (docs/strategy/research/prompt-architecture.md §4 D2)", () => {
     it("a 반말 turn produces a system prompt mirroring 반말, with identity still first", () => {
       const result = applyPromptLayers(
         context([{ role: "user", content: "야 오늘 뭐하지" }]),

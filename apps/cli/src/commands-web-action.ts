@@ -1,7 +1,7 @@
 /**
  * `muse web-action` — perform a state-changing web request (submit a
  * form, book) only after you confirm the EXACT action
- * (`.claude/rules/outbound-safety.md`). Never autonomous; absent
+ * (`.claude/rules/safety/outbound-safety.md`). Never autonomous; absent
  * confirmation nothing fires. Gating lives in
  * `performWebActionWithApproval` (@muse/mcp); this is the surface.
  *

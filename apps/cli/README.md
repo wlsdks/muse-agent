@@ -2,7 +2,7 @@
 
 The `muse` command-line surface (`@muse/cli`, published as the `muse` bin). It runs
 `packages/agent-core` locally in-process or connects to a remote `@muse/api` server over SSE —
-same runtime, same guard/approval contracts either way, per `../../.claude/rules/cli-product.md`.
+same runtime, same guard/approval contracts either way, per `../../.claude/rules/engineering/cli-product.md`.
 
 ## Public surface
 
@@ -39,19 +39,19 @@ pnpm --filter @muse/cli build               # tsc -b, produces the ./dist bin
 autoconfigure, browser, calendar, domain-tools, fs, macos, mascot, mcp, mcp-shared, memory,
 messaging, model, multi-agent, policy, proactivity, prompts, recall, runtime-state, auth,
 scheduler, shared, skills, stores, tools, voice, windows) — it is the local-execution surface
-that assembles the whole runtime, per `../../.claude/rules/cli-product.md`.
+that assembles the whole runtime, per `../../.claude/rules/engineering/cli-product.md`.
 
 ## Rules that bind this package
 
 - Local mode runs `packages/agent-core` in-process; remote mode connects to `@muse/api` over
   SSE; both share the same guard semantics — never fork agent behavior between the two, per
-  `../../.claude/rules/cli-product.md`.
+  `../../.claude/rules/engineering/cli-product.md`.
 - Risky local execution goes through `crates/runner` as a child process, never inline.
 - Credentials use the OS keychain or the encrypted auth store, never plaintext
-  (`credential-store.ts`), per `../../.claude/rules/cli-product.md` and
-  `../../.claude/rules/commits.md`.
+  (`credential-store.ts`), per `../../.claude/rules/engineering/cli-product.md` and
+  `../../.claude/rules/engineering/commits.md`.
 - A new command ships with a unit test for its parser plus a smoke test for its run path, per
-  `../../.claude/rules/cli-product.md`.
+  `../../.claude/rules/engineering/cli-product.md`.
 
 ## Tests
 

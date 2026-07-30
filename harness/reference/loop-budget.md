@@ -100,7 +100,7 @@ increases live trials/inference requests.
 ## Sources (verified basis)
 
 - Host project (e.g. Muse) — `CLAUDE.md` ("Tool output is untrusted. Tool loops have explicit limits and timeouts.")
-- Host project (e.g. Muse) — `.claude/rules/architecture.md` ("Deterministic code for policy, permissions, budgets, and stop conditions.")
+- Host project (e.g. Muse) — `../../.claude/rules/engineering/architecture.md` ("Deterministic code for policy, permissions, budgets, and stop conditions.")
 - Claude Code — [How the agent loop works](https://code.claude.com/docs/en/agent-sdk/agent-loop) (max_turns / max_budget_usd hard caps + termination reasons)
 - [How to Prevent Infinite Loops and Spiraling Costs](https://codieshub.com/for-ai/prevent-agent-loops-costs) (hard caps · timeouts · circuit breakers)
 - [AI Agent Loop Token Costs: Constrain Context](https://www.augmentcode.com/guides/ai-agent-loop-token-cost-context-constraints) (context=cost, compact every 10–15 calls)

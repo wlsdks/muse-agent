@@ -6,7 +6,7 @@ it should, and reaches the real goal state *reliably*. That is
 **evaluation (evals)** — ship it with every agent-facing capability. Full
 method and sources: [Appendix](#appendix-sources--rationale). The dated
 Muse inventory, gaps, library decisions, and implementation order live in
-[`docs/development/ai-agent-testing-strategy.md`](../../docs/development/ai-agent-testing-strategy.md).
+[`docs/development/ai-agent-testing-strategy.md`](../../../docs/development/ai-agent-testing-strategy.md).
 
 **Three principles, if you read nothing else:** (1) **Error-analysis
 FIRST, imagination never** — evals GROW from real misses. (2)

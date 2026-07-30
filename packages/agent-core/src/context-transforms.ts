@@ -491,7 +491,7 @@ export async function persistConversationSummaryFromRequest(
  *
  * `personaRegister` is the explicit `PERSONA.md` `register` setting
  * (undefined when unconfigured) — it and the current turn's user text feed
- * `buildRegisterBrevityLayer` (docs/strategy/prompt-architecture.md §4 D2),
+ * `buildRegisterBrevityLayer` (docs/strategy/research/prompt-architecture.md §4 D2),
  * a dynamic layer that mirrors the user's 반말/존댓말 register and, on a
  * casual turn, caps the reply to 1-2 sentences. This layer is composed into
  * the system prompt but deliberately kept OUT of `promptLayerIds` metadata,

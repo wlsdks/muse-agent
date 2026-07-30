@@ -52,7 +52,7 @@ ratchet: testFiles 913 · fabrication 0 · groundedSurfaces 27 · cli goal-id ma
   P37-20/36, P34-11, P41-32/33, P43-4, "iter 38" …) from source comments across 6
   apps/cli files (commands-ask/daemon/recap/calendar/today/telemetry), preserving each
   comment's WHY. Diff is comments-only (0 code lines).
-- **Why:** .claude/rules/code-style.md forbids round/goal/iteration markers in source
+- **Why:** .claude/rules/engineering/code-style.md forbids round/goal/iteration markers in source
   (history belongs in git/CHANGELOG). Diversity: fire1 recall/cohere, fire2 api/dead-code,
   this cli/comment-hygiene — 3 distinct KINDs.
 - **Review point:** independent Opus adversarial judge PASS — comments-only confirmed

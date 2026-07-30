@@ -7,7 +7,7 @@ import {
   SURFACE_ROLES
 } from "../src/index.js";
 
-// Guardrails from docs/strategy/prompt-architecture.md §5, pinned for the two
+// Guardrails from docs/strategy/research/prompt-architecture.md §5, pinned for the two
 // surfaces Phase 1 actually wires through the seam (context-transforms.ts's
 // "chat", apps/cli/src/ask-system-prompt.ts's "ask"). A silent reorder here
 // silently re-opens the divergent-identity-strings bug the seam exists to
@@ -115,7 +115,7 @@ describe("composeSurfacePrompt — ask", () => {
   });
 });
 
-// Phase 2+3 (docs/strategy/prompt-architecture.md §Migration): every remaining
+// Phase 2+3 (docs/strategy/research/prompt-architecture.md §Migration): every remaining
 // surface (brief/recall/council/reflect/pattern-suggestion/proactive/companion/
 // tagline/planning, plus the council-synthesizer and the live in-chat
 // reflection role added this slice) now composes through the same seam.

@@ -8,7 +8,7 @@ status_legend:
   "⚙️": needs external integration or configuration
   "⚠️": known gap (not yet trustworthy)
 updated: 2026-07-30
-related: [../strategy/attunement.md, ../design/attunement/README.md, FEATURES.md, ../README.md, ../feature-catalog/INDEX.md, ../strategy/differentiation.md]
+related: [../strategy/attunement.md, ../design/attunement/README.md, FEATURES.md, ../README.md, ../feature-catalog/INDEX.md, ../strategy/positioning/differentiation.md]
 ---
 
 # Muse at a glance (system map)
@@ -20,7 +20,7 @@ related: [../strategy/attunement.md, ../design/attunement/README.md, FEATURES.md
 >
 > - Deeper per-feature descriptions: [`FEATURES.md`](FEATURES.md) · **the verified full inventory
 >   with evidence (audited 2026-06-14): [`feature-catalog/INDEX.md`](../feature-catalog/INDEX.md)** ·
->   product identity and strategy: [`strategy/differentiation.md`](../strategy/differentiation.md) ·
+>   product identity and strategy: [`../strategy/positioning/differentiation.md`](../strategy/positioning/differentiation.md) ·
 >   documentation index: [`README.md`](../README.md)
 >
 > **Reading convention (for humans and agents alike):** each area starts with a `## number. name`

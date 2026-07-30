@@ -34,7 +34,7 @@ triaged.
 
 Muse is designed to run **as a single user, on the user's own
 machine or trusted server**. Multi-tenant isolation is explicitly
-not a goal (see `.claude/rules/product-identity.md` — a personal agent for
+not a goal (see `.claude/rules/product/product-identity.md` — a personal agent for
 one person, not a workspace). With that scope:
 
 In scope for security reports:

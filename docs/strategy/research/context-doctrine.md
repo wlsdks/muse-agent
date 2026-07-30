@@ -107,4 +107,4 @@ is the moat — not any single mechanism.
 - Security — OWASP Agentic AI Top 10 (2026) **ASI06 Memory & Context Poisoning**; A Survey on the Security of Long-Term Memory in LLM Agents (arXiv:2604.16548).
 - Positional — Lost in the Middle (arXiv:2307.03172), Attention Basin (arXiv:2508.05128); budget — AdaGReS (arXiv:2512.25052), ContextBudget (arXiv:2604.01664); history compaction — The Complexity Trap (arXiv:2508.21433), ACON (arXiv:2510.00615).
 
-Loop journal: [`internal/goals/loops/context-strategy.md`](../../internal/goals/loops/context-strategy.md).
+Loop journal: [`internal/goals/loops/context-strategy.md`](../../../internal/goals/loops/context-strategy.md).

@@ -725,7 +725,7 @@ export function shadowTrialScorer(provider, model) {
  * tool SELECTION, while long CoT degrades it back below no-CoT). Muse's
  * production default keeps thinking fully OFF (tool-calling.md rule 6); this
  * is eval-only measurement scaffolding for the P3 A/B
- * (docs/strategy/agent-research-findings-2026.md), never a production prompt.
+ * (docs/strategy/research/agent-research-findings-2026.md), never a production prompt.
  * Returns `undefined` when disabled so a caller can `if (section)` it away —
  * that is what keeps the OFF path byte-identical to no-brief-CoT today.
  * @param {boolean} enabled

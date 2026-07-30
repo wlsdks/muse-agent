@@ -10,7 +10,7 @@ import { errorMessage } from "@muse/shared";
 /**
  * Draft-first, fail-closed outbound email — the send half, the
  * first capability that *transmits content to a third party*, governed
- * by `.claude/rules/outbound-safety.md`:
+ * by `.claude/rules/safety/outbound-safety.md`:
  *
  *   1. Draft-first: the agent produces the exact content; nothing
  *      leaves without the user confirming THAT content (the approval

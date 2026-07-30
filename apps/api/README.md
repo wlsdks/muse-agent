@@ -2,7 +2,7 @@
 
 The Fastify HTTP/SSE server (`@muse/api`) that runs `packages/agent-core` as a remote-mode
 backend for the CLI, web, and desktop surfaces — same runtime and guard contracts as CLI local
-mode, per `../../.claude/rules/cli-product.md`.
+mode, per `../../.claude/rules/engineering/cli-product.md`.
 
 ## Public surface
 
@@ -48,10 +48,10 @@ runtime-state, scheduler, shared, skills, stores, tools, voice, plus `fastify` a
 ## Rules that bind this package
 
 - Server and CLI share the same `agent-core` runtime, guard semantics, and approval gates — no
-  behavior fork, per `../../.claude/rules/cli-product.md`.
+  behavior fork, per `../../.claude/rules/engineering/cli-product.md`.
 - Outbound sends toward a third party (messaging routes, webhook triggers) are draft-first and
-  fail-close per `../../.claude/rules/outbound-safety.md` — never an autonomous send.
-- Tool output reaching a route handler is untrusted per `../../.claude/rules/architecture.md`.
+  fail-close per `../../.claude/rules/safety/outbound-safety.md` — never an autonomous send.
+- Tool output reaching a route handler is untrusted per `../../.claude/rules/engineering/architecture.md`.
 
 ## Tests
 

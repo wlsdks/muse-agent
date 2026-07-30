@@ -18,14 +18,14 @@ it does not own connection lifecycle or query logic for any one domain.
 
 ## Rules that bind this package
 
-- Kysely with explicit SQL migrations, per `../../.claude/rules/architecture.md` — prefer an
+- Kysely with explicit SQL migrations, per `../../.claude/rules/engineering/architecture.md` — prefer an
   explicit migration in `migrations.ts` over ORM-managed schema mutation.
 - PostgreSQL is optional: every consuming store (checkpoints, run history, runtime settings,
   observability sinks, auth) ships an in-memory fallback, so this package's absence at runtime
   does not stop Muse from running.
 - Run, message, tool-call, approval, checkpoint, and trace tables stay queryable — don't hide
   critical agent state in an opaque blob unless it's an append-only event payload, per
-  `../../.claude/rules/architecture.md`.
+  `../../.claude/rules/engineering/architecture.md`.
 
 ## Tests
 

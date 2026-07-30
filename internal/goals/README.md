@@ -60,7 +60,7 @@ rival-watch가 다음 정찰의 시작점을 기억한다.**
 | `docs/strategy/competitor-analysis-and-a-plus-roadmap.md` | **활성** — §10.3 실행 체크리스트 + §11 append-only 검증 큐 (a-plus-roadmap 스레드의 원장) |
 | `docs/strategy/assistant-value-master-plan.md` | 활성 상태판 (T2-③/④ open) |
 | `docs/strategy/agent-research-findings-2026.md` | 연구 원장 (in-place 편집) |
-| `docs/strategy/differentiation.md` · `security-sweep-2-plan.md` | 마감된 원장 (상단 상태 스탬프 참조) |
+| `../../docs/strategy/positioning/differentiation.md` · `security-sweep-2-plan.md` | 마감된 원장 (상단 상태 스탬프 참조) |
 | `CHANGELOG.md` (루트) | 릴리스 로그 — Keep-a-Changelog, release 스킬이 큐레이션 |
 | `.claude/skills/loop-creator/CHANGELOG.md` | 스킬 버전 원장 |
 

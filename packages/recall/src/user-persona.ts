@@ -1,5 +1,5 @@
 /**
- * User-manageable personality layer (docs/strategy/prompt-architecture.md,
+ * User-manageable personality layer (docs/strategy/research/prompt-architecture.md,
  * decision D2 + the S3 admin surface). `~/.config/muse/PERSONA.md` (override
  * `MUSE_PERSONA_MD_FILE`; a pre-rename lowercase `persona.md` is still
  * honored) carries tone/personality ONLY — optional YAML-lite frontmatter
@@ -113,7 +113,7 @@ export function sanitizePersonaBody(body: string): PersonaBodySanitizeResult {
 export const PERSONALITY_LAYER_ID = "personality";
 // Between identity-core's IDENTITY_LAYER_PRIORITY (-1000) and
 // composeSurfacePrompt's SURFACE_ROLE_LAYER_PRIORITY (500) — the L1 slot in
-// the canonical stack (docs/strategy/prompt-architecture.md).
+// the canonical stack (docs/strategy/research/prompt-architecture.md).
 export const PERSONALITY_LAYER_PRIORITY = 0;
 
 export const DEFAULT_PERSONALITY_TEXT = [

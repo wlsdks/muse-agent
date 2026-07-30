@@ -57,7 +57,7 @@ export class ModelProviderError extends Error {
  * Anything else (400, 401, 403, 404, 422 …) is the caller's
  * problem — bad key, bad model, malformed payload — and MUST
  * fail fast so the agent loop doesn't burn budget retrying a
- * permanent error. Documented in `.claude/rules/architecture.md`.
+ * permanent error. Documented in `.claude/rules/engineering/architecture.md`.
  *
  * Pure, side-effect-free — used by every adapter so the
  * classification stays consistent across providers.

@@ -20,7 +20,7 @@ front of the store. Distinct from `@muse/runtime-state`, which owns execution-li
 ## Rules that bind this package
 
 - `KyselyRuntimeSettingsStore` has an in-memory counterpart (`InMemoryRuntimeSettingsStore`) so a
-  caller without PostgreSQL still runs, per `../../.claude/rules/architecture.md`'s database
+  caller without PostgreSQL still runs, per `../../.claude/rules/engineering/architecture.md`'s database
   rules.
 - `RuntimeSettings`'s cache invalidation is generation-and-epoch-guarded so a write from a
   sibling process can't leave a stale in-flight read cached past the write — see the constructor

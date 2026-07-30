@@ -35,9 +35,9 @@ Muse-as-server) share.
 
 ## Rules that bind this package
 
-- [`../../.claude/rules/architecture.md`](../../.claude/rules/architecture.md) — `McpSecurityPolicy.allowedServerNames` is the
+- [`../../.claude/rules/engineering/architecture.md`](../../.claude/rules/engineering/architecture.md) — `McpSecurityPolicy.allowedServerNames` is the
   allowlist gate this package enforces at both register and connect time (goal 032).
-- [`../../.claude/rules/outbound-safety.md`](../../.claude/rules/outbound-safety.md) — a loopback tool that sends/acts toward a third
+- [`../../.claude/rules/safety/outbound-safety.md`](../../.claude/rules/safety/outbound-safety.md) — a loopback tool that sends/acts toward a third
   party still goes through the same draft-first, approval-gated contract as any other tool.
 
 ## Tests

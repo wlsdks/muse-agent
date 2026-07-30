@@ -4,7 +4,7 @@
  * the Gmail REST API (HTTP, Bearer access token) — no SDK, no new dep.
  *
  * READ ONLY. Reading the inbox is world-sensing, so no outbound-safety
- * gate applies (`.claude/rules/outbound-safety.md` governs only
+ * gate applies (`.claude/rules/safety/outbound-safety.md` governs only
  * actions toward a third party). Sending / replying is a separate,
  * draft-first + gated capability and lives elsewhere.
  *

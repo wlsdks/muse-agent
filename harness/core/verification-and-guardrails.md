@@ -83,7 +83,7 @@ If evaluation is "grade when finished", guardrails are "block immediately, mid-f
   works (CRITIC: fixes made while holding code-execution or search results). So a BUILD↔EVAL
   iteration must always return carrying the evaluator's concrete feedback (which criterion was
   violated, and how); a bare retry without feedback is treated as loop waste and cut. (Muse-side
-  enforcement: the reflection-schedule guard in `.claude/rules/agent-testing.md` — every retry
+  enforcement: the reflection-schedule guard in `../../.claude/rules/verification/agent-testing.md` — every retry
   surface registers its verifier.)
 - **PLAN FAIL is not blocker-count accounting.** Never `BLOCKED` on the raw `PLAN FAIL` count
   alone. PLAN review distinguishes **material progress** — closing a previous blocker or making

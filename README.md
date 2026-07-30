@@ -292,7 +292,7 @@ Sources: [grounding manifest](docs/benchmarks/readme-qualified-evidence-v1.json)
 | 📊 | **Promote evidence.** Tests, synthetic replays, diagnostics, agent trials and real outcomes stay separate ledgers. |
 
 Enforced as deterministic code, never as a prompt instruction:
-[outbound safety](.claude/rules/outbound-safety.md) · [Attunement design](docs/design/attunement/README.md).
+[outbound safety](.claude/rules/safety/outbound-safety.md) · [Attunement design](docs/design/attunement/README.md).
 
 ---
 

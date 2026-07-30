@@ -7,7 +7,7 @@ status_legend:
   "⚙️": needs external integration/setup
   "⚠️": known gap (not yet trustworthy enough)
 updated: 2026-07-13
-related: [../strategy/attunement.md, ../design/attunement/README.md, SYSTEM-MAP.md, ../README.md, ../feature-catalog/INDEX.md, ../strategy/differentiation.md]
+related: [../strategy/attunement.md, ../design/attunement/README.md, SYSTEM-MAP.md, ../README.md, ../feature-catalog/INDEX.md, ../strategy/positioning/differentiation.md]
 ---
 
 # Muse feature definitions (for planners)
@@ -185,7 +185,7 @@ device/account.
   insights then ride into `muse ask` answers as context, so reflection comes back as "answers that
   know me better" (dreaming closes the loop). After recall and proactivity, reflection passes the
   same grounding + citation gate — one more surface of the "shows its work" differentiator
-  ([differentiation](../strategy/differentiation.md)).
+  ([differentiation](../strategy/positioning/differentiation.md)).
 - **Duplicate-memory consolidation** ✅ — finds nearly identical past-session summaries and tidies
   them (`muse episode consolidate`). Default is a preview (read-only); on apply it keeps only the
   richer one and cleans up duplicates (taking a backup first). Prevents the memory store from

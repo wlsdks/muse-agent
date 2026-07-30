@@ -20,7 +20,7 @@ type PreviewSurface = (typeof PREVIEW_SURFACES)[number];
 const EMPTY_FIELDS: PersonaFieldValues = { language: "", maxWords: "", register: "" };
 
 /**
- * S3 admin surface (docs/strategy/prompt-architecture.md §S3): edit the
+ * S3 admin surface (docs/strategy/research/prompt-architecture.md §S3): edit the
  * user-manageable personality layer, preview the EFFECTIVE composed system
  * prompt per surface, and A/B a draft against the saved version before
  * committing to it. Every write goes through the server's own

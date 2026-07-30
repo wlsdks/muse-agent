@@ -1,5 +1,5 @@
 /**
- * The ONE compose seam (docs/strategy/prompt-architecture.md, decision D1).
+ * The ONE compose seam (docs/strategy/research/prompt-architecture.md, decision D1).
  * Every user-facing surface builds its system prompt by calling
  * `composeSurfacePrompt(surface, parts, ctx)` instead of hand-assembling its
  * own identity sentence — this is what collapses the historically divergent
@@ -43,7 +43,7 @@ export type MuseSurface =
 /**
  * One role text per surface — the L2 layer in the canonical stack. Copied
  * verbatim from each surface's EXISTING role text (never rewritten). Phase 1
- * (docs/strategy/prompt-architecture.md) wires only `chat` and `ask` through
+ * (docs/strategy/research/prompt-architecture.md) wires only `chat` and `ask` through
  * `composeSurfacePrompt` at their real call sites; the rest are populated
  * here so Phase 2/3 has one place to move their call sites to — until then
  * their owning module keeps its own copy of the same text.
@@ -264,7 +264,7 @@ const CALLER_LAYER_SEGMENT: Readonly<Record<string, ComposedPromptSegmentLayer>>
 
 /**
  * Structured twin of `composeSurfacePrompt` for the S3 admin preview
- * (docs/strategy/prompt-architecture.md) — the same layer set, same order,
+ * (docs/strategy/research/prompt-architecture.md) — the same layer set, same order,
  * but returned as labeled segments instead of one flat string so a UI can
  * color-code each block. The dynamic section is a single explanatory
  * placeholder (a preview has no live turn to fill retrieved/tool-result

@@ -33,9 +33,9 @@ API server (Kysely-backed) need the same trim/compaction contract over the same 
 
 ## Rules that bind this package
 
-- [`../../.claude/rules/architecture.md`](../../.claude/rules/architecture.md) — PostgreSQL/Kysely is the server source of truth; the
+- [`../../.claude/rules/engineering/architecture.md`](../../.claude/rules/engineering/architecture.md) — PostgreSQL/Kysely is the server source of truth; the
   `Kysely*Store` implementations here use typed SQL access per the Database rules.
-- [`../../.claude/rules/testing.md`](../../.claude/rules/testing.md) — factual memory evidence (exact source binding, unchanged
+- [`../../.claude/rules/verification/testing.md`](../../.claude/rules/verification/testing.md) — factual memory evidence (exact source binding, unchanged
   bytes on a rejected/replayed receipt) is a separate test dimension from user judgment.
 
 ## Tests

@@ -4,7 +4,7 @@
 > openclaw (MIT) and widen it with a verifiable code slice each fire. Worktree
 > `/tmp/muse-differentiation` (branch `loop/differentiation`, Tier1 — local
 > commits only, no push). Cited research lands in
-> [`docs/strategy/differentiation.md`](../../../docs/strategy/differentiation.md).
+> [`../../../docs/strategy/positioning/differentiation.md`](../../../docs/strategy/positioning/differentiation.md).
 
 ## fire 1 · 2026-06-13 · skill v1.14.0 · `2d1662df`
 meta: value-class=new-capability · pkg=scripts/self-eval · kind=release-gate-ratchet · verdict=PASS · firesSinceDrill=1
