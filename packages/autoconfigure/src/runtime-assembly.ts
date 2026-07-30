@@ -219,6 +219,7 @@ import {
   resolveLocalModelContextAdmissionOptions,
   type LocalModelContextAdmissionSnapshot
 } from "./local-model-context-admission.js";
+import { createLatestAgentLoopHealthObserver } from "./agent-loop-health-observer.js";
 import { mintProgressiveAutonomyOrganicAuthority } from "./progressive-autonomy-organic-authority.js";
 import { createTrustedProgressiveAutonomyToolOpportunityObserver } from "./progressive-autonomy-runtime-observer.js";
 import { resolveDefaultUserId } from "./user-id.js";
@@ -262,6 +263,7 @@ export interface MuseRuntimeAssembly {
   readonly taskMemoryStore: TaskMemoryStore & TaskMemoryMaintenance;
   readonly userMemoryStore: UserMemoryStore;
   readonly observability: {
+    readonly agentLoopHealthSnapshot: () => import("@muse/shared").AgentLoopHealthInput | undefined;
     readonly budgetTracker: MonthlyBudgetTracker;
     readonly driftDetector: PromptDriftDetector;
     readonly followupSuggestionStore: InMemoryFollowupSuggestionStore;
@@ -536,6 +538,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   } = hooksAndProviders;
   contextReferenceLoopbackTools = hooksAndProviders.contextReferenceLoopbackTools;
 
+  const agentLoopHealthObserver = createLatestAgentLoopHealthObserver();
   const agentRuntime = buildAgentRuntime({
     activeContextProvider,
     agentSpecResolver,
@@ -550,6 +553,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     env,
     historyStore,
     hookTraceStore,
+    loopControlReceiptObserver: agentLoopHealthObserver.observe,
     modelProvider,
     personaRegister,
     playbookProvider,
@@ -631,6 +635,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     taskMemoryStore,
     userMemoryStore,
     observability: {
+      agentLoopHealthSnapshot: agentLoopHealthObserver.snapshot,
       budgetTracker,
       driftDetector,
       followupSuggestionStore,
@@ -1258,6 +1263,9 @@ function buildAgentRuntime(params: {
   readonly historyStore: AgentRunHistoryStore;
   readonly runtimeHooks: readonly HookStage[];
   readonly hookTraceStore: HookTraceStore;
+  readonly loopControlReceiptObserver: NonNullable<
+    import("@muse/agent-core").AgentRuntimeOptions["loopControlReceiptObserver"]
+  >;
   readonly tokenUsageSink: TokenUsageSink;
   readonly runtimeAgentMetrics: AgentMetrics;
   readonly tracer: MuseTracer;
@@ -1289,6 +1297,7 @@ function buildAgentRuntime(params: {
     historyStore,
     runtimeHooks,
     hookTraceStore,
+    loopControlReceiptObserver,
     tokenUsageSink,
     runtimeAgentMetrics,
     tracer,
@@ -1336,6 +1345,7 @@ function buildAgentRuntime(params: {
       historyStore,
       hooks: runtimeHooks,
       hookTraceStore,
+      loopControlReceiptObserver,
       // per-tool-result character cap. Default 8_000
       // chars (~2_000 tokens at the rough 1-token-per-4-chars
       // approximation) — large enough for small file reads and
