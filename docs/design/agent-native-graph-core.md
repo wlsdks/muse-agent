@@ -630,9 +630,14 @@ Do not build the database first.
    bounded pre-settlement pool, including capacity-excluded and lane-undetermined
    witnesses, without changing public serialization or old IDs. Focus digests bind the
    canonical assertion body, and the registry reuses the already verified frozen
-   document/assertion instances. Continuity `resumeContext` still must verify a previous
-   stopping boundary and a current source/Graph pair, then settle this pool exactly once
-   under a caller budget. Pure and in-memory until those semantics pass.
+   document/assertion instances. **AWG-050a3d3a/b are independently verified:** one
+   bounded coordinator now verifies a previous boundary and current Source/Graph pair,
+   settles this pool exactly once under a fixed caller budget, and dogfoods the semantic
+   result through the existing explicit Pack Preview. Baselines remain assembly-local,
+   process-memory only; the tool exposes no raw receipts/audits, keeps its digest Pack-only,
+   and leaves open/delivery isolated. A strict optional request can present the verified
+   bilingual Capsule render-data contract only when the exact result also owns its Pack and
+   Capsule receipt evidence; this is not automatic delivery or a product UI.
 4. **AWG-050b — Shadow decision receipt:** `silent | digest | offer`, bounded reason and
    counterfactual, later return timing; no sending, action, or chain-of-thought storage.
 5. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
@@ -648,16 +653,19 @@ Do not build the database first.
    usefulness, reconstruction cost, policy correction, and silence quality stay separate.
 
 AWG-045a, AWG-045b, AWG-050a1, AWG-050a2a, AWG-050a2b1, AWG-050a2b2, AWG-050a2c,
-AWG-050a3a, AWG-050a3b, AWG-050a3c, and AWG-050a3d1 are independently verified bounded
-kernels or trusted-host seams. All retain no Provider-bound graph root export or existing
-v1 codec expansion.
+AWG-050a3a, AWG-050a3b, AWG-050a3c, AWG-050a3d1, AWG-050a3d3a, AWG-050a3d3b, and
+AWG-040d are
+independently verified bounded kernels, trusted-host seams, or the explicit read-only
+application dogfood path. They retain no Provider-bound graph root export or existing v1
+codec expansion.
 Together they now prove deterministic hostile admission → exact thread-rooted witness
 traversal → local proof validation → focus-derived lane → fair opportunity order → bounded
 subset feasibility → complete bounded witness retention → exact context bytes → verified
 process-local Provider ownership → bounded two-endpoint assessment → observation and
-receipt-bound graph evidence. This is an end-to-end claim only over one configured-local
-subject, one bounded head assessment, and its finite process-local evidence pool; it is not
-continuous or current freshness, a verified previous stopping boundary, causality,
+receipt-bound graph evidence → exact previous boundary/current-pair settlement → semantic
+Pack Preview resume facts. This is an end-to-end claim only over one configured-local
+subject, bounded head assessments, and an assembly-local finite evidence pool; it is not
+continuous or current freshness, an automatically observed stopping point, causality,
 completeness, persistence, or user value. The Provider-bound paths make no authoritative
 absence, permission, or action claim.
 Persistence remains explicitly out of scope until freshness, Shadow, and Policy workloads

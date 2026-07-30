@@ -1,4 +1,7 @@
 import {
+  ARTIFACT_ROLES,
+  ARTIFACT_TYPES,
+  isCoherentArtifactProvider,
   prepareContinuityPack,
   type ContinuityPack,
   type ExactArtifactResolver
@@ -38,8 +41,15 @@ import {
   isProcessMintedProviderHeadRevalidatedGraphEvidence,
   type ProviderHeadRevalidatedGraphEvidenceV1
 } from "./provider-head-revalidated-graph-evidence.js";
+import {
+  presentContinuityCapsule,
+  type ContinuityCapsulePresentation
+} from "./continuity-capsule-presentation.js";
+import { CONTINUITY_CAPSULE_MANIFEST_LIMITS } from "./continuity-capsule-manifest.js";
 
 const SOURCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const PREPARED_TITLE_CONTROL = /[\u0000-\u001F\u007F]/u;
+const PREPARED_CONTENT_CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u;
 
 export const CONTINUITY_RESUME_RUNTIME_LIMITS = Object.freeze({
   maxBaselines: 16,
@@ -134,6 +144,27 @@ export interface ContinuityResumeRuntimeCoordinator {
   ): Promise<ContinuityResumeRuntimeResultV1>;
 }
 
+/**
+ * Caller-declared preparation for an explicit, display-only Capsule preview.
+ * This intentionally excludes all receipt and graph fields: those are held in
+ * a private identity sidecar after the runtime has compared them.
+ */
+export type ContinuityResumeRuntimeCapsuleRequestV1 = Readonly<{
+  readonly locale: "en" | "ko";
+  readonly preparedWork: Readonly<{
+    readonly kind: "draft" | "action-preview";
+    readonly title: string;
+    readonly content: string;
+    readonly expectedMinutes: number;
+  }>;
+  readonly supportingEvidenceRefs?: readonly Readonly<{
+    readonly artifactId: string;
+    readonly artifactType: string;
+    readonly providerId: string;
+    readonly role: string;
+  }>[];
+}>;
+
 export interface ContinuityResumeRuntimeCoordinatorDependencies {
   readonly captureCurrent: (
     scope: Readonly<ContinuityScopedSourceObservationScope>
@@ -150,10 +181,19 @@ type Baseline = Readonly<{
 
 type BusyToken = { active: boolean };
 
+type ContinuityResumeRuntimeCapsuleEvidence = Readonly<{
+  readonly previousSourceObservationReceipt: ContinuityScopedSourceObservationReceipt;
+  readonly previousGraphObservationReceipt: ContinuityObservationReceipt;
+  readonly currentSourceObservationReceipt: ContinuityScopedSourceObservationReceipt;
+  readonly currentGraphObservationReceipt: ContinuityObservationReceipt;
+}>;
+
 const CONTINUITY_RESUME_RUNTIME_CAPTURE_PACKS =
   new WeakMap<object, ContinuityPack>();
 const CONTINUITY_RESUME_RUNTIME_RESULT_PACKS =
   new WeakMap<object, ContinuityPack>();
+const CONTINUITY_RESUME_RUNTIME_RESULT_CAPSULE_EVIDENCE =
+  new WeakMap<object, ContinuityResumeRuntimeCapsuleEvidence>();
 
 function frozenRecord<T extends Record<string, unknown>>(value: T): Readonly<T> {
   return Object.freeze(
@@ -201,6 +241,225 @@ export function getContinuityResumeRuntimePack(
 ): ContinuityPack | undefined {
   if (typeof result !== "object" || result === null) return undefined;
   return CONTINUITY_RESUME_RUNTIME_RESULT_PACKS.get(result);
+}
+
+function ownDataRecord(
+  value: unknown,
+  keys: readonly string[]
+): Readonly<Record<string, unknown>> | undefined {
+  try {
+    if (typeof value !== "object" || value === null) return undefined;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return undefined;
+    const descriptors: Record<PropertyKey, PropertyDescriptor | undefined> =
+      Object.getOwnPropertyDescriptors(value) as unknown as Record<
+        PropertyKey,
+        PropertyDescriptor | undefined
+      >;
+    if (
+      Reflect.ownKeys(descriptors).length !== keys.length
+      || keys.some((key) => !(key in descriptors))
+    ) {
+      return undefined;
+    }
+    const output: Record<string, unknown> = Object.create(null);
+    for (const key of keys) {
+      const descriptor = descriptors[key];
+      if (descriptor === undefined || !("value" in descriptor)) return undefined;
+      output[key] = descriptor.value;
+    }
+    return Object.freeze(output);
+  } catch {
+    return undefined;
+  }
+}
+
+function ownDataArray(value: unknown): readonly unknown[] | undefined {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
+      return undefined;
+    }
+    const descriptors: Record<PropertyKey, PropertyDescriptor | undefined> =
+      Object.getOwnPropertyDescriptors(value) as unknown as Record<
+        PropertyKey,
+        PropertyDescriptor | undefined
+      >;
+    const length = descriptors["length"];
+    if (length === undefined || !("value" in length) || typeof length.value !== "number") {
+      return undefined;
+    }
+    const items: unknown[] = [];
+    for (let index = 0; index < length.value; index++) {
+      const descriptor = descriptors[String(index)];
+      if (descriptor === undefined || !("value" in descriptor)) return undefined;
+      items.push(descriptor.value);
+    }
+    if (Reflect.ownKeys(descriptors).length !== length.value + 1) return undefined;
+    return Object.freeze(items);
+  } catch {
+    return undefined;
+  }
+}
+
+function utf8Bytes(value: string): number {
+  return Buffer.byteLength(value, "utf8");
+}
+
+export function validateContinuityResumeRuntimeCapsuleRequest(
+  value: unknown
+): ContinuityResumeRuntimeCapsuleRequestV1 | undefined {
+  const record = ownDataRecord(value, ["locale", "preparedWork", "supportingEvidenceRefs"])
+    ?? ownDataRecord(value, ["locale", "preparedWork"]);
+  if (record === undefined || (record.locale !== "en" && record.locale !== "ko")) {
+    return undefined;
+  }
+  const preparedWork = ownDataRecord(record.preparedWork, [
+    "kind", "title", "content", "expectedMinutes"
+  ]);
+  if (
+    preparedWork === undefined
+    || (preparedWork.kind !== "draft" && preparedWork.kind !== "action-preview")
+    || typeof preparedWork.title !== "string"
+    || typeof preparedWork.content !== "string"
+    || typeof preparedWork.expectedMinutes !== "number"
+    || preparedWork.title.length === 0
+    || preparedWork.content.length === 0
+    || Array.from(preparedWork.title).length
+      > CONTINUITY_CAPSULE_MANIFEST_LIMITS.maxPreparedTitleScalars
+    || utf8Bytes(preparedWork.title)
+      > CONTINUITY_CAPSULE_MANIFEST_LIMITS.maxPreparedTitleBytes
+    || utf8Bytes(preparedWork.content)
+      > CONTINUITY_CAPSULE_MANIFEST_LIMITS.maxPreparedContentBytes
+    || PREPARED_TITLE_CONTROL.test(preparedWork.title)
+    || PREPARED_CONTENT_CONTROL.test(preparedWork.content)
+    || !Number.isSafeInteger(preparedWork.expectedMinutes)
+    || preparedWork.expectedMinutes < 1
+    || preparedWork.expectedMinutes
+      > CONTINUITY_CAPSULE_MANIFEST_LIMITS.maxExpectedMinutes
+  ) {
+    return undefined;
+  }
+  const rawReferences = record.supportingEvidenceRefs === undefined
+    ? undefined
+    : ownDataArray(record.supportingEvidenceRefs);
+  if (record.supportingEvidenceRefs !== undefined && rawReferences === undefined) {
+    return undefined;
+  }
+  if (
+    rawReferences !== undefined
+    && rawReferences.length
+      > CONTINUITY_CAPSULE_MANIFEST_LIMITS.maxSupportingEvidence
+  ) {
+    return undefined;
+  }
+  const supportingEvidenceRefs = rawReferences?.map((entry) => {
+    const reference = ownDataRecord(entry, [
+      "artifactId", "artifactType", "providerId", "role"
+    ]);
+    if (
+      reference === undefined
+      || typeof reference.artifactId !== "string"
+      || typeof reference.artifactType !== "string"
+      || typeof reference.providerId !== "string"
+      || typeof reference.role !== "string"
+      || reference.artifactId.length === 0
+      || reference.artifactType.length === 0
+      || reference.providerId.length === 0
+      || reference.role.length === 0
+      || utf8Bytes(reference.artifactId)
+        > CONTINUITY_CAPSULE_MANIFEST_LIMITS.maxSourceDisplayBytes
+      || utf8Bytes(reference.providerId)
+        > CONTINUITY_CAPSULE_MANIFEST_LIMITS.maxSourceDisplayBytes
+    ) {
+      return undefined;
+    }
+    const artifactType = ARTIFACT_TYPES.find((candidate) =>
+      candidate === reference.artifactType
+    );
+    const role = ARTIFACT_ROLES.find((candidate) => candidate === reference.role);
+    if (
+      artifactType === undefined
+      || role === undefined
+      || !isCoherentArtifactProvider(artifactType, reference.providerId)
+    ) {
+      return undefined;
+    }
+    return Object.freeze({
+      artifactId: reference.artifactId,
+      artifactType,
+      providerId: reference.providerId,
+      role
+    });
+  });
+  if (supportingEvidenceRefs?.some((reference) => reference === undefined)) {
+    return undefined;
+  }
+  const referenceKeys = new Set(supportingEvidenceRefs?.map((reference) =>
+    reference === undefined ? "" : JSON.stringify([
+      reference.artifactId,
+      reference.artifactType,
+      reference.providerId,
+      reference.role
+    ])
+  ));
+  if (referenceKeys.size !== (supportingEvidenceRefs?.length ?? 0)) return undefined;
+  return Object.freeze({
+    locale: record.locale,
+    preparedWork: Object.freeze({
+      kind: preparedWork.kind,
+      title: preparedWork.title,
+      content: preparedWork.content,
+      expectedMinutes: preparedWork.expectedMinutes
+    }),
+    ...(supportingEvidenceRefs === undefined
+      ? {}
+      : { supportingEvidenceRefs: Object.freeze(supportingEvidenceRefs) })
+  }) as ContinuityResumeRuntimeCapsuleRequestV1;
+}
+
+/**
+ * Produces a Capsule only for this exact compared result object. Receipts stay
+ * process-local in a WeakMap, so copied, spread, cloned, wrapped, seeded, and
+ * unavailable results cannot recover them or manufacture a presentation.
+ */
+export function presentContinuityResumeRuntimeCapsule(
+  result: unknown,
+  rawRequest: unknown
+): ContinuityCapsulePresentation | undefined {
+  if (typeof result !== "object" || result === null) return undefined;
+  const pack = CONTINUITY_RESUME_RUNTIME_RESULT_PACKS.get(result);
+  const evidence = CONTINUITY_RESUME_RUNTIME_RESULT_CAPSULE_EVIDENCE.get(result);
+  if (pack === undefined || evidence === undefined) return undefined;
+  const request = validateContinuityResumeRuntimeCapsuleRequest(rawRequest);
+  if (request === undefined) return undefined;
+  try {
+    return presentContinuityCapsule({
+      schemaVersion: 1,
+      locale: request.locale,
+      invocation: { authority: "caller-declared-owner-request" },
+      ...evidence,
+      preparation: {
+        preparedAt: evidence.currentSourceObservationReceipt.observation.observedAt,
+        supportingEvidenceRefs: request.supportingEvidenceRefs ?? [],
+        preparedWork: {
+          ...request.preparedWork,
+          actionMode: request.preparedWork.kind === "draft"
+            ? "display-only"
+            : "requires-new-approval"
+        }
+      }
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+function bindResultCapsuleEvidence<T extends ContinuityResumeRuntimeComparedV1>(
+  result: T,
+  evidence: ContinuityResumeRuntimeCapsuleEvidence
+): T {
+  CONTINUITY_RESUME_RUNTIME_RESULT_CAPSULE_EVIDENCE.set(result, evidence);
+  return result;
 }
 
 function safeScope(
@@ -563,9 +822,17 @@ export function createContinuityResumeRuntimeCoordinator(
 
       if (currentAt === previousAt) {
         retain(key, capturedBaseline);
-        return bindResultPack(
-          compared("compared-with-baseline-reused", result),
-          capture
+        return bindResultCapsuleEvidence(
+          bindResultPack(
+            compared("compared-with-baseline-reused", result),
+            capture
+          ),
+          frozenRecord({
+            previousSourceObservationReceipt: capturedBaseline.source,
+            previousGraphObservationReceipt: capturedBaseline.graph,
+            currentSourceObservationReceipt: current.source,
+            currentGraphObservationReceipt: current.graph
+          }) as ContinuityResumeRuntimeCapsuleEvidence
         );
       }
       let next: Baseline;
@@ -578,9 +845,17 @@ export function createContinuityResumeRuntimeCoordinator(
         return unavailable("runtime-generation-changed");
       }
       retain(key, next);
-      return bindResultPack(
-        compared("compared-and-advanced", result),
-        capture
+      return bindResultCapsuleEvidence(
+        bindResultPack(
+          compared("compared-and-advanced", result),
+          capture
+        ),
+        frozenRecord({
+          previousSourceObservationReceipt: capturedBaseline.source,
+          previousGraphObservationReceipt: capturedBaseline.graph,
+          currentSourceObservationReceipt: current.source,
+          currentGraphObservationReceipt: current.graph
+        }) as ContinuityResumeRuntimeCapsuleEvidence
       );
     } finally {
       if (timeout !== undefined) clearTimeout(timeout);

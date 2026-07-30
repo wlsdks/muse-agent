@@ -18,8 +18,12 @@ bounded deterministic thread path, and returns typed abstentions instead of inve
 removal time or incomplete explanations. Unknown-input parsing, projection, diff,
 traversal, output, model calls, and embedding calls are all explicitly bounded/accounted.
 
-Future operators—resumption context, policy evidence, forget impact, and bounded decision
-counterfactuals—remain roadmap work. They must follow the same content-addressed source
+The verified resumption-context operator and its bounded process-local coordinator are now
+implemented behind the dedicated `continuity-resume-runtime` subpath and dogfooded by
+explicit Pack Preview. The same subpath validates an optional strict preparation request
+and presents the existing bilingual Capsule contract only for the exact compared result
+that owns both its Pack and receipt evidence. Policy evidence, forget impact, and bounded decision
+counterfactuals remain roadmap work. They must follow the same content-addressed source
 path plus completeness-or-abstention contract, not arbitrary model-generated graph queries.
 
 It does **not** own authoritative personal data, durable persistence, LLM extraction,
@@ -48,9 +52,11 @@ manifest preserve the complete pre-settlement pool, fair/lane-undetermined parti
 body-bound focus digests while reusing the existing frozen document/assertion instances.
 The inventory is available only to the exact in-process compilation object; cloning,
 spreading, JSON serialization, and proxies do not carry it, and existing receipt IDs,
-enumerable fields, JSON, settlement behavior, and package exports are unchanged. This is a
-private prerequisite for a later caller-budgeted resumption operator, not a shipped
-`resumeContext`, persistence layer, or runtime feature.
+enumerable fields, JSON, settlement behavior, and package exports are unchanged. The
+caller-budgeted resumption compiler now settles this inventory, while the coordinator keeps
+only exact previous boundaries plus Source/Graph receipts in a 16-entry process-local LRU
+and returns semantic-only partial or unavailable results. This is not a persistence layer,
+automatic timing system, Capsule product UI, or action path.
 The adapter is exposed from `@muse/attunement-graph/continuity`, so importing the kernel
 root does not eagerly load Attunement validation or personal-store dependencies.
 

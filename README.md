@@ -58,8 +58,14 @@ The [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md) 
 proposed next architecture: scope-safe snapshots, proof-closed Working Graphs, typed
 completeness, an immutable logical journal, and a lightweight local storage Adapter with no
 external Graph DB requirement.
-The first `changesSince`-style operator is shipped as an I/O-free library contract; no
-Capsule UI, automatic timing, durable graph, or action authority is implied.
+The first `changesSince`-style operator is shipped as an I/O-free library contract. A
+separate process-local runtime now also applies the verified Graph path to explicit
+`muse.continuity.pack.preview` calls: the first qualifying call seeds one exact per-thread
+baseline and later calls return a bounded semantic `resume` comparison while keeping Pack
+open/delivery separate. A caller may also explicitly request the verified English/Korean
+Continuity Capsule render-data presentation on that same preview; copied or unrelated
+Pack/result pairs fail closed to a bounded unavailable response. This is an API/tool
+presentation, not a Capsule UI, automatic timing, durable graph, or action authority.
 Muse can now also seal one exact caller-declared projected observation as a bounded,
 content-addressed **Observation Receipt** without copying its personal source text. This
 preserves the previous observation's recorded next step; it does not prove the user's exact
@@ -70,8 +76,10 @@ The existing state-to-state query now delegates to one reusable internal prepare
 comparison core. The observation subpath can also verify that receipt, derive its exact
 boundary, project one caller-supplied current snapshot, and return the same explained-change
 result as the raw state-to-state query.
-That receipt is caller-declared integrity input for the future Capsule—not proof of an
-external observation, automatic stop-point detection, persistence, or the Capsule itself.
+That receipt remains caller-declared integrity evidence—not proof of an external
+observation, automatic stop-point detection, or persistence. The runtime uses verified
+Source/Graph pairs without exposing their raw receipts in the ordinary Pack Preview
+response.
 Muse now also has a bounded trusted-host Provider that reads one configured local
 Attunement file and mints a process-local, content-addressed snapshot capture. Its
 serializable receipt proves integrity only; exact Provider provenance belongs to the
@@ -84,8 +92,9 @@ Observation Receipt, and compile receipt-bound graph evidence with truthful Prov
 snapshot provenance. It never fabricates a graph commit or generation: a single read is
 explicitly `unassessed`, which forces downstream settlement to abstain while still
 preserving exact evidence links and bounded nomination accounting. This is process-local
-engine substrate, not a public API, durable graph, current-freshness proof, Capsule/runtime
-wiring, action authority, or user-visible behavior.
+engine substrate. The later bounded-head path, rather than this single-read seam, now feeds
+the explicit Pack Preview runtime; neither path is a durable graph, continuous/current
+freshness proof, action authority, or automatic user-visible behavior.
 Muse now also has an independently verified, Provider-owned **bounded head
 revalidation** seam. The same configured Provider instance captures the subject and then
 its head under an explicit span bound; only exact endpoint equality can become
@@ -94,14 +103,16 @@ mint-before-hidden-state verification, five scope guards, and a closed binding-r
 parser prevent cross-owner, cross-scope, forged-authority, and forged-seed reuse. This is
 still private process-local substrate: it does not prove uninterrupted or current
 freshness, add persistence, or ship the Capsule/Shadow/Policy experience.
-The thread-rooted compiler now also retains its complete bounded pre-settlement witness
-pool behind the exact in-process compilation object. Small content-addressed entries and a
-compact manifest preserve fair order, lane-undetermined evidence, and body-bound focus
-digests without changing the compilation's keys, JSON, receipts, or package exports. This
-prevents a future `resumeContext` from losing valid witnesses merely because an earlier
-settlement did not admit them. It remains private and process-local: previous stopping
-boundary verification, caller-budgeted context compilation, runtime delivery, persistence,
-and the user-visible Capsule are still pending.
+The thread-rooted compiler retains its complete bounded pre-settlement witness pool behind
+the exact in-process compilation object. The verified resume compiler and runtime now
+consume that pool under a fixed six-axis budget, verify an exact previous boundary plus
+current Source/Graph pair, and expose only frozen semantic facts. Runtime baselines are
+per-instance, process-local, limited to 16 threads, and guarded by bounded concurrency,
+capture span, timeout, generation, and monotonic-observation checks. This is real
+Graph-backed Pack Preview dogfooding. An optional explicit request now turns only the exact
+compared result into a verified bilingual Capsule presentation with source-drawer receipt
+IDs and caller-declared prepared work. It is not persistence, an exact observed stopping
+point, automatic surfacing, organic usefulness evidence, or the Capsule product UI.
 See the separate [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md).
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse console home — model chip, integrations, and what Muse has learned" width="860" /></p>

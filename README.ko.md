@@ -53,6 +53,12 @@ context compiler인 [Attunement Graph Engine](docs/design/attunement-graph.md)�
 scope-safe snapshot, proof-closed Working Graph, 명시적 완전성, 내장형 로컬 저장
 경계는 [Agent-Native Graph Core 청사진](docs/design/agent-native-graph-core.md)에
 기록되어 있습니다.
+현재는 명시적인 `muse.continuity.pack.preview`가 이 그래프의 검증된
+process-local 기준선을 실제로 dogfood합니다. 첫 호출은 기준선을 만들고 이후 호출은
+제한된 의미적 resume 비교를 돌려줍니다. 같은 Preview에서 명시적으로 요청하면
+정확히 결합된 Pack/Graph 결과만 검증된 한국어·영어 Continuity Capsule 렌더 데이터를
+반환합니다. 이는 영속 그래프·자동 타이밍·Capsule 제품 UI·행동 권한을 뜻하지는
+않습니다.
 별도 실행 순서는 [wow + graph 로드맵](docs/goals/attunement-wow-graph-roadmap.md)에 있습니다.
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse 콘솔 홈 화면" width="860" /></p>

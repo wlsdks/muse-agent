@@ -21,6 +21,8 @@ import {
   createContinuityResumeRuntimeCaptureAdapter,
   createContinuityResumeRuntimeCoordinator,
   getContinuityResumeRuntimePack,
+  presentContinuityResumeRuntimeCapsule,
+  validateContinuityResumeRuntimeCapsuleRequest,
   type ContinuityResumeRuntimeCaptureV1
 } from "./continuity-resume-runtime.js";
 import {
@@ -403,6 +405,98 @@ describe("continuity resume runtime coordinator", () => {
       state: "compared-and-advanced",
       comparisonStatus: "no-change"
     });
+  });
+
+  it("presents a Capsule only for an exact compared result and observation-bound preparation", async () => {
+    const threadId = "thread_capsule";
+    let at = BASE_AT;
+    const evidenceOnlyCoordinator = createContinuityResumeRuntimeCoordinator({
+      captureCurrent: () => capture(threadId, at)
+    });
+    const scope = { sourceId: SOURCE_ID, threadId };
+    const request = {
+      locale: "ko" as const,
+      preparedWork: {
+        content: "다음 초안을 검토합니다.",
+        expectedMinutes: 15,
+        kind: "action-preview" as const,
+        title: "초안 준비"
+      },
+      supportingEvidenceRefs: [reference(threadId)]
+    };
+    await evidenceOnlyCoordinator.preview(scope);
+    at += 60_000;
+    const evidenceOnlyCompared =
+      await evidenceOnlyCoordinator.preview(scope);
+    expect(
+      presentContinuityResumeRuntimeCapsule(evidenceOnlyCompared, request)
+    ).toBeUndefined();
+
+    at = BASE_AT;
+    const revalidations = [
+      await headRevalidation(threadId, at),
+      await headRevalidation(threadId, at + 60_000)
+    ];
+    let revalidationIndex = 0;
+    const adapter = createContinuityResumeRuntimeCaptureAdapter({
+      captureHeadRevalidation: async () =>
+        revalidations[revalidationIndex++]!,
+      resolveExactArtifact: async (link) => ({
+        artifactId: link.artifactId,
+        artifactType: link.artifactType,
+        providerId: link.providerId,
+        role: link.role,
+        taskStatus: "open" as const,
+        title: `Task ${threadId}`
+      })
+    });
+    const runtimeCaptures = [
+      await adapter(scope),
+      await adapter(scope)
+    ];
+    let captureIndex = 0;
+    const coordinator = createContinuityResumeRuntimeCoordinator({
+      captureCurrent: async () => runtimeCaptures[captureIndex++]!
+    });
+    const seeded = await coordinator.preview(scope);
+    expect(presentContinuityResumeRuntimeCapsule(seeded, request)).toBeUndefined();
+    at += 60_000;
+    const compared = await coordinator.preview(scope);
+    expect(compared).toMatchObject({ status: "partial" });
+    expect(getContinuityResumeRuntimePack(compared)).toBeDefined();
+    expect(validateContinuityResumeRuntimeCapsuleRequest(request)).toBeDefined();
+    const capsule = presentContinuityResumeRuntimeCapsule(compared, request);
+    expect(capsule).toMatchObject({
+      locale: "ko",
+      preparedWork: {
+        actionMode: "requires-new-approval",
+        kind: "action-preview",
+        title: "초안 준비"
+      },
+      sourceDrawer: { preparedAt: new Date(at).toISOString() }
+    });
+    expect(Object.isFrozen(capsule)).toBe(true);
+    expect(presentContinuityResumeRuntimeCapsule({ ...compared }, request)).toBeUndefined();
+    expect(presentContinuityResumeRuntimeCapsule(structuredClone(compared), request)).toBeUndefined();
+    expect(presentContinuityResumeRuntimeCapsule({ result: compared }, request)).toBeUndefined();
+
+    const traps = { get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 };
+    const wrapped = new Proxy(compared, {
+      get() {
+        traps.get += 1;
+        throw new Error("capsule helper must not inspect wrapped results");
+      },
+      getOwnPropertyDescriptor() {
+        traps.getOwnPropertyDescriptor += 1;
+        throw new Error("capsule helper must not inspect wrapped results");
+      },
+      ownKeys() {
+        traps.ownKeys += 1;
+        throw new Error("capsule helper must not inspect wrapped results");
+      }
+    });
+    expect(presentContinuityResumeRuntimeCapsule(wrapped, request)).toBeUndefined();
+    expect(traps).toEqual({ get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 });
   });
 
   it("returns bounded semantic change context without raw evidence", async () => {

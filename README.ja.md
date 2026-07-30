@@ -43,6 +43,12 @@ Muse は仕事専用のアシスタントではなく、一人の生活と仕事
 [Attunement Graph Engine](docs/design/attunement-graph.md) です。
 [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md) が
 scope-safe snapshot、proof-closed Working Graph、完全性、ローカル保存境界を定義し、
+現在は明示的な `muse.continuity.pack.preview` が、検証済みの process-local
+Graph 基準線を実際に dogfood します。最初の呼び出しで基準線を作り、以降は
+制限された semantic resume 比較を返します。同じ Preview で明示的に要求すると、
+正確に結合された Pack/Graph 結果だけが検証済みの英韓二言語 Continuity Capsule
+render data を返します。永続 Graph、自動タイミング、Capsule 製品 UI、
+実行権限を意味しません。
 実行順序は [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md) に記録されています。
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse コンソールのホーム画面" width="860" /></p>

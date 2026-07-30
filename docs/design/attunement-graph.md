@@ -77,15 +77,20 @@ receipts still bind the exact source scope, observation, evidence, budget, retai
 nominations, and digest-counted overflow. The module is private and process-local. No
 runtime, Capsule, durable store, continuous/current freshness claim, or action path
 consumes it yet.
-The independently verified thread-rooted retained-witness seam now conserves the complete
+The independently verified thread-rooted retained-witness seam conserves the complete
 bounded pre-settlement pool behind the exact compilation object. It uses separate
 content-addressed core/optional entries, body-bound focus digests, and a compact manifest
 for fair-ranked versus lane-undetermined evidence while reusing the already frozen
 document/assertion instances. The side inventory is process-local and absent from
-enumeration, JSON, receipt IDs, package exports, and settlement semantics. It prevents a
-later resumption compiler from being limited to an earlier admitted subset, but it is not
-itself `resumeContext`: previous-boundary verification, current source resolution,
-caller-budget settlement, and runtime/Capsule delivery remain pending.
+enumeration, JSON, receipt IDs, package exports, and settlement semantics. The later
+independently verified resume compiler and coordinator now verify an exact previous
+boundary plus current Source/Graph pair, settle that inventory under one fixed six-axis
+budget, and dogfood frozen semantic facts through explicit Pack Preview. The coordinator
+is assembly-local and process-memory only; its 16-entry baseline LRU, bounded concurrency,
+capture span, timeout, generation, and monotonicity rules do not establish durable or
+current-world truth. A strict optional preparation request can now produce the verified
+English/Korean Capsule render-data presentation, but only when both the private Pack sidecar
+and four receipt dependencies belong to that exact compared result object.
 AWG-030 adds the first verified personal-temporal operator: an isolated
 `/continuity-changes` query over two immutable observations and one caller-declared,
 version-bound boundary. It normalizes identical-source re-observation, classifies
@@ -142,9 +147,11 @@ independent observation. It adds no automatic delivery, UI, persistence, source/
 policy mutation, or action authority. AWG-040b/c do not implement core-roadmap onboarding
 103 or session-handoff 211.
 
-It has no application/runtime composition, durable adapter, LLM extraction, Shadow
-delivery, Capsule UI, Policy Card UI, or action authority. The Attunement Graph Engine and
-three signature experiences therefore remain roadmap claims.
+The Graph-backed resume path now has one narrow application/runtime composition point in
+the existing read-only Pack Preview, including an explicit verified Capsule render-data
+option. It still has no durable adapter, LLM extraction, automatic Shadow delivery,
+Capsule product UI, Policy Card UI, or action authority. The complete three-part signature
+experience therefore remains a roadmap claim.
 
 ## Why a graph, and where it must beat flat or vector memory
 

@@ -43,6 +43,11 @@ Muse 不只是办公助手，而是面向一个人的生活与工作的持续型
 [Attunement Graph Engine](docs/design/attunement-graph.md)。
 [Agent-Native Graph Core blueprint](docs/design/agent-native-graph-core.md)
 定义 scope-safe snapshot、proof-closed Working Graph、完整性与本地存储边界。
+目前，显式 `muse.continuity.pack.preview` 已开始实际 dogfood 经过验证的
+process-local Graph 基线：首次调用建立基线，后续调用返回受限的语义 resume
+比较。在同一个 Preview 中显式请求时，只有精确绑定的 Pack/Graph 结果才会返回
+经过验证的英韩双语 Continuity Capsule 渲染数据。这并不代表持久化 Graph、
+自动时机判断、Capsule 产品 UI 或行动权限已经交付。
 执行顺序见 [wow + graph roadmap](docs/goals/attunement-wow-graph-roadmap.md)。
 
 <p align="center"><img src="docs/images/web-home.png" alt="Muse 控制台首页" width="860" /></p>

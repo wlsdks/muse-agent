@@ -35,6 +35,13 @@ documents rather than here.
   verification establishes canonical self-consistency, not authenticated observation,
   source freshness, or proof that the caller request occurred. It has no UI, delivery,
   persistence, source/store join, policy mutation, or action authority.
+- A **Continuity Resume Runtime** is the bounded, assembly-local process-memory bridge from
+  one exact previous Source/Graph boundary to a current Provider-revalidated pair. The
+  existing explicit Pack Preview dogfoods its semantic result. Its LRU and side registries
+  are not a durable graph, and its successful or unavailable result grants no source
+  completeness, current-world, timing, policy, or action authority. An optional explicit
+  request may present a verified bilingual Capsule only when the exact result owns both its
+  Pack and four receipt-bound Capsule dependencies; it adds no automatic delivery or UI.
 - A **Temporal Rule** is the versioned deterministic Module that derives task, reminder,
   and calendar display state at one declared observation time. Producers and receipt
   verification use the same Implementation; old receipts are never silently reinterpreted
@@ -70,9 +77,10 @@ authoritative stores
 - `@muse/attunement` owns Personal Continuity and `ResolvedArtifact` semantics, including
   the internal all-source projection contract.
 - `@muse/attunement-graph` owns storage-neutral graph invariants, projections, bounded
-  operators, explanations, backend conformance, the internal AWG-040b Capsule compiler, and
-  the AWG-040c pure render-data presentation Module—not personal-store adapters, UI, or
-  application composition.
+  operators, explanations, backend conformance, the internal AWG-040b Capsule compiler,
+  the AWG-040c pure render-data presentation Module, and the bounded process-local resume
+  coordinator. `@muse/autoconfigure` owns the narrow explicit Preview composition—not
+  personal-store authority, UI, or a second application composition root.
 - Muse's own local graph default must support the complete flagship experience. External
   Graph DBs and hosted graph services are optional, removable storage/interoperability
   Adapters; no Capsule, Shadow Muse, Policy Card, or qualification gate may require one.

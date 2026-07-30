@@ -6,7 +6,12 @@ import type {
   ContinuityPack
 } from "@muse/attunement";
 import type {
+  ContinuityResumeRuntimeCapsuleRequestV1,
   ContinuityResumeRuntimeResultV1
+} from "@muse/attunement-graph/continuity-resume-runtime";
+import {
+  presentContinuityResumeRuntimeCapsule,
+  validateContinuityResumeRuntimeCapsuleRequest
 } from "@muse/attunement-graph/continuity-resume-runtime";
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
@@ -37,7 +42,7 @@ export interface ContinuityPackPreviewToolDeps {
 function parseInput(
   args: JsonObject,
   open: false
-): { readonly threadId: string };
+): { readonly threadId: string; readonly capsule?: ContinuityResumeRuntimeCapsuleRequestV1 };
 function parseInput(
   args: JsonObject,
   open: true
@@ -45,7 +50,11 @@ function parseInput(
 function parseInput(
   args: JsonObject,
   open: boolean
-): { readonly previewDigest?: string; readonly threadId: string } {
+): {
+  readonly capsule?: ContinuityResumeRuntimeCapsuleRequestV1;
+  readonly previewDigest?: string;
+  readonly threadId: string;
+} {
   const prototype = Object.getPrototypeOf(args);
   if (prototype !== Object.prototype && prototype !== null) {
     throw new Error("continuity Pack input must be a plain object");
@@ -55,9 +64,12 @@ function parseInput(
     : ["threadId"] as const;
   const keys = Reflect.ownKeys(args);
   if (
-    keys.length !== required.length
+    (open
+      ? keys.length !== required.length
+      : keys.length !== 1 && keys.length !== 2)
     || keys.some((key) => typeof key !== "string")
     || required.some((key) => !keys.includes(key))
+    || (!open && keys.length === 2 && !keys.includes("capsule"))
   ) {
     throw new Error(`continuity Pack requires exactly ${required.join(", ")}`);
   }
@@ -70,7 +82,20 @@ function parseInput(
   if (typeof threadId !== "string" || !THREAD_ID_PATTERN.test(threadId)) {
     throw new Error("continuity Pack requires a full exact threadId");
   }
-  if (!open) return { threadId };
+  if (!open) {
+    const capsuleDescriptor = descriptors.capsule;
+    if (capsuleDescriptor === undefined) return { threadId };
+    if (!("value" in capsuleDescriptor)) {
+      throw new Error("continuity Capsule must be a plain data property");
+    }
+    const capsule = validateContinuityResumeRuntimeCapsuleRequest(
+      capsuleDescriptor.value
+    );
+    if (capsule === undefined) {
+      throw new Error("continuity Capsule request must use strict plain data");
+    }
+    return { capsule, threadId };
+  }
   const digestDescriptor = descriptors["previewDigest"];
   if (!digestDescriptor || !("value" in digestDescriptor)) {
     throw new Error("continuity Pack previewDigest must be a plain data property");
@@ -158,20 +183,29 @@ async function inspectPack(
 
 async function inspectPackPreview(
   deps: ContinuityPackPreviewToolDeps,
-  threadId: string
+  threadId: string,
+  capsuleRequest?: ContinuityResumeRuntimeCapsuleRequestV1
 ): Promise<{
   readonly digest: string;
   readonly pack: JsonObject;
   readonly resume: ContinuityResumeRuntimeResultV1;
+  readonly capsule?: JsonObject;
 }> {
   const enriched = await deps.previewResume(threadId);
   const pack = projectPack(
     enriched.pack ?? await deps.previewPack(threadId)
   );
+  const capsule = capsuleRequest === undefined
+    ? undefined
+    : presentContinuityResumeRuntimeCapsule(enriched.resume, capsuleRequest)
+      ?? { reason: "exact-compared-evidence-unavailable", status: "unavailable" };
   return {
     digest: packDigest(pack),
     pack,
-    resume: enriched.resume
+    resume: enriched.resume,
+    ...(capsule === undefined
+      ? {}
+      : { capsule: JSON.parse(JSON.stringify(capsule)) as JsonObject })
   };
 }
 
@@ -179,6 +213,75 @@ function inputSchema(open: boolean): JsonObject {
   return {
     additionalProperties: false,
     properties: {
+      ...(!open ? { capsule: {
+        additionalProperties: false,
+        description:
+          "Optional explicit English or Korean Continuity Capsule render-data request; it never grants timing or action authority.",
+        properties: {
+          locale: {
+            description: "Capsule presentation locale.",
+            enum: ["en", "ko"],
+            type: "string"
+          },
+          preparedWork: {
+            additionalProperties: false,
+            description: "Caller-declared work to display in the Capsule.",
+            properties: {
+              content: {
+                description: "Prepared work content for display.",
+                type: "string"
+              },
+              expectedMinutes: {
+                description: "Positive estimated minutes for the prepared work.",
+                type: "integer",
+                minimum: 1
+              },
+              kind: {
+                description:
+                  "Drafts are display-only; action previews require a new approval.",
+                enum: ["draft", "action-preview"],
+                type: "string"
+              },
+              title: {
+                description: "Short prepared work title.",
+                type: "string"
+              }
+            },
+            required: ["kind", "title", "content", "expectedMinutes"],
+            type: "object"
+          },
+          supportingEvidenceRefs: {
+            description:
+              "Optional exact current-evidence references already linked to the thread.",
+            items: {
+              additionalProperties: false,
+              properties: {
+                artifactId: {
+                  description: "Exact artifact identifier.",
+                  type: "string"
+                },
+                artifactType: {
+                  description: "Canonical Muse artifact type.",
+                  type: "string"
+                },
+                providerId: {
+                  description: "Canonical coherent artifact provider identifier.",
+                  type: "string"
+                },
+                role: {
+                  description: "Artifact role in the thread.",
+                  type: "string"
+                }
+              },
+              required: ["artifactId", "artifactType", "providerId", "role"],
+              type: "object"
+            },
+            type: "array"
+          }
+        },
+        required: ["locale", "preparedWork"],
+        type: "object"
+      } } : {}),
       ...(open ? { previewDigest: {
         description: "Exact SHA-256 digest returned by the matching Pack preview.",
         maxLength: 64,
@@ -218,13 +321,14 @@ export function createContinuityPackPreviewTool(
       risk: "read"
     },
     execute: async (args): Promise<JsonObject> => {
-      const { threadId } = parseInput(args, false);
-      const preview = await inspectPackPreview(deps, threadId);
+      const { capsule, threadId } = parseInput(args, false);
+      const preview = await inspectPackPreview(deps, threadId, capsule);
       return {
         mutation: false,
         pack: preview.pack,
         previewDigest: preview.digest,
-        resume: projectResume(preview.resume)
+        resume: projectResume(preview.resume),
+        ...(preview.capsule === undefined ? {} : { capsule: preview.capsule })
       };
     }
   };

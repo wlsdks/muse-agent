@@ -8,6 +8,26 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added an independently verified, bounded **Continuity resume runtime** and connected it
+  only to the existing read-only `muse.continuity.pack.preview` path. One runtime assembly
+  now keeps at most 16 exact per-thread process-local baselines, admits at most four
+  captures globally, rejects same-scope overlap, caps Provider head revalidation at one
+  second and the operation at five seconds, and prevents timed-out or superseded
+  generations from writing late. The first qualifying Preview seeds a baseline; later
+  Previews verify the exact previous boundary and current Source/Graph pair, settle the
+  retained witness inventory under the fixed six-axis budget, and return only frozen
+  semantic resume facts. An exact-identity sidecar reuses the same immutable Pack for the
+  response. An optional strict Capsule request now turns only a result owning both that
+  exact Pack sidecar and its four verified Source/Graph receipts into a frozen bilingual
+  render-data presentation; copied, cloned, wrapped, forged, seeded, and unavailable
+  results return a bounded Capsule-unavailable value.
+  `previewDigest` remains Pack-only and `pack.open` never invokes or advances the Graph
+  runtime. Graph tests `312/312`, autoconfigure tests `1087/1087`, changed tests, both
+  package builds/typechecks, built-output verification, lint, full workspace checks before
+  and after rebase, and fresh independent completion gates passed. This is controlled
+  process-local dogfooding—not durability, automatic stop capture/timing, Capsule product UI,
+  Shadow Muse, Policy Card, action authority, or organic usefulness evidence.
+
 - Added an independently verified, package-private **retained witness inventory** as the
   final evidence-retention prerequisite for a future `resumeContext`. The thread-rooted
   compiler now keeps its complete bounded pre-settlement witness pool in a process-local

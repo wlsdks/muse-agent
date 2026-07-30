@@ -10,6 +10,7 @@ import {
   type ContinuityPack
 } from "@muse/attunement";
 import type {
+  ContinuityResumeRuntimeResultV1,
   ContinuityResumeRuntimeUnavailableReason
 } from "@muse/attunement-graph/continuity-resume-runtime";
 import { afterEach, describe, expect, it } from "vitest";
@@ -36,6 +37,16 @@ const UNAVAILABLE_REASONS = [
   "resume-context-unavailable",
   "runtime-generation-changed"
 ] as const satisfies readonly ContinuityResumeRuntimeUnavailableReason[];
+
+const CAPSULE_REQUEST = {
+  locale: "en" as const,
+  preparedWork: {
+    content: "Prepare the next review draft.",
+    expectedMinutes: 15,
+    kind: "draft" as const,
+    title: "Review draft"
+  }
+};
 
 afterEach(async () => {
   if (directory) await rm(directory, { force: true, recursive: true });
@@ -130,6 +141,34 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
     });
     expect(JSON.stringify(second)).not.toMatch(
       /receiptId|boundaryId|graphEvidence|reservation|combinedCost|inventory|frontier|ledger|contextStream/
+    );
+
+    const withCapsule = await previews[0]!.execute({
+      capsule: CAPSULE_REQUEST,
+      threadId: thread.id
+    }, { runId: "preview_capsule" });
+    expect(withCapsule).toMatchObject({
+      capsule: {
+        locale: "en",
+        preparedWork: {
+          actionMode: "display-only",
+          kind: "draft",
+          title: "Review draft"
+        },
+        sourceDrawer: {
+          currentObservedAt: expect.any(String),
+          preparedAt: expect.any(String)
+        }
+      },
+      mutation: false,
+      previewDigest: (first as { readonly previewDigest: string }).previewDigest
+    });
+    const capsule = (withCapsule as { readonly capsule: {
+      readonly sourceDrawer: { readonly currentObservedAt: string; readonly preparedAt: string };
+    } }).capsule;
+    expect(capsule.sourceDrawer.preparedAt).toBe(capsule.sourceDrawer.currentObservedAt);
+    expect(JSON.stringify(withCapsule)).not.toMatch(
+      /runtimeAudit|providerArtifact|reservation|retainedInventory|hiddenSideRegistry/
     );
     expect(await readFile(attunementFile)).toEqual(before);
     expect((await readAttunementState(attunementFile)).deliveries).toEqual([]);
@@ -248,6 +287,52 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
     expect(opens).toBe(1);
   });
 
+  it("does not present a Capsule from a forged compared result plus an unrelated Pack", async () => {
+    const threadId = "thread_forged_capsule";
+    const pack: ContinuityPack = {
+      deliveryPolicyVersion: 0,
+      evidence: [],
+      evidenceRefs: [],
+      policy: {
+        detail: "compact",
+        nextStep: "direct",
+        suppression: "none",
+        version: 0
+      },
+      thread: { id: threadId, kind: "work", title: "Forged Capsule" }
+    };
+    const forgedCompared = Object.freeze({
+      schemaVersion: 1,
+      status: "partial",
+      state: "compared-and-advanced",
+      comparisonStatus: "no-change",
+      witnessStatus: "partial",
+      resumeContextFacts: { changes: [], status: "no-change" },
+      supportingFacts: { changes: [], status: "no-change" },
+      authority: {
+        canAssertCurrentWorldTruth: false,
+        canAssertSourceCompleteness: false,
+        canGrantActionAuthority: false
+      }
+    }) as unknown as ContinuityResumeRuntimeResultV1;
+    const preview = createContinuityPackPreviewTool({
+      previewPack: async () => pack,
+      previewResume: async () => ({ pack, resume: forgedCompared })
+    });
+
+    await expect(preview.execute(
+      { capsule: CAPSULE_REQUEST, threadId },
+      { runId: "forged_capsule" }
+    )).resolves.toMatchObject({
+      capsule: {
+        reason: "exact-compared-evidence-unavailable",
+        status: "unavailable"
+      },
+      pack: { thread: { id: threadId } },
+      resume: { state: "compared-and-advanced", status: "partial" }
+    });
+  });
+
   it.each(UNAVAILABLE_REASONS)(
     "falls back to the ordinary Pack for unavailable reason %s",
     async (reason) => {
@@ -288,9 +373,13 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
         })
       });
       await expect(preview.execute(
-        { threadId },
+        { capsule: CAPSULE_REQUEST, threadId },
         { runId: `fallback_${reason}` }
       )).resolves.toMatchObject({
+        capsule: {
+          reason: "exact-compared-evidence-unavailable",
+          status: "unavailable"
+        },
         mutation: false,
         pack: { thread: { id: threadId } },
         previewDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
@@ -318,6 +407,30 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
     const custom = Object.assign(Object.create({ inherited: true }), {
       threadId: "thread_exact"
     });
+    let nestedGetterReads = 0;
+    const nestedAccessor = {
+      capsule: {
+        locale: "en",
+        preparedWork: Object.defineProperty({}, "kind", {
+          enumerable: true,
+          get: () => {
+            nestedGetterReads += 1;
+            return "draft";
+          }
+        })
+      },
+      threadId: "thread_exact"
+    };
+    let resumeReads = 0;
+    const preflight = createContinuityPackPreviewTool({
+      previewPack: async () => {
+        throw new Error("invalid Capsule must not read the Pack");
+      },
+      previewResume: async () => {
+        resumeReads += 1;
+        throw new Error("invalid Capsule must not invoke the coordinator");
+      }
+    });
 
     await expect(preview.execute(
       { threadId: "thread_exact", open: true },
@@ -327,6 +440,18 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
       .rejects.toThrow(/plain data property/u);
     await expect(preview.execute(custom, { runId: "custom" }))
       .rejects.toThrow(/plain object/u);
+    await expect(preview.execute(nestedAccessor, { runId: "nested_accessor" }))
+      .rejects.toThrow(/Capsule request must use strict plain data/u);
+    await expect(preflight.execute({
+      capsule: {
+        ...CAPSULE_REQUEST,
+        preparedWork: { ...CAPSULE_REQUEST.preparedWork, expectedMinutes: 0 }
+      },
+      threadId: "thread_exact"
+    }, { runId: "nested_semantic" })).rejects
+      .toThrow(/Capsule request must use strict plain data/u);
     expect(getterReads).toBe(0);
+    expect(nestedGetterReads).toBe(0);
+    expect(resumeReads).toBe(0);
   });
 });
