@@ -1,4 +1,4 @@
-import type { JsonObject, TriggerEnvelope } from "@muse/shared";
+import type { JsonObject, TriggerAdmissionDecision, TriggerEnvelope } from "@muse/shared";
 
 import type {
   ScheduledJobDispatcher,
@@ -245,6 +245,11 @@ export interface DynamicSchedulerOptions {
   readonly cronScheduler?: CronScheduler;
   readonly now?: () => Date;
   readonly lockTtlBufferMs?: number;
+  /**
+   * Optional deterministic event admission. `shadow` and `reject` are both
+   * recorded as skipped and never reach the dispatcher or notification sink.
+   */
+  readonly triggerAdmission?: (trigger: TriggerEnvelope) => Awaitable<TriggerAdmissionDecision>;
   /**
    * Optional user kill-switch: when it resolves true, AUTOMATIC firings are
    * skipped (a manual `trigger` still runs). Wire `() =>

@@ -65,6 +65,13 @@ export {
   type TriggerSource
 } from "./trigger-envelope.js";
 export {
+  admitTrigger,
+  type TriggerAdmissionAction,
+  type TriggerAdmissionDecision,
+  type TriggerAdmissionInput,
+  type TriggerAdmissionReason
+} from "./trigger-admission.js";
+export {
   runCommandWithTimeout,
   type RunCommandOptions,
   type RunCommandResult

@@ -60,6 +60,7 @@ export class DynamicScheduler {
   // each tick. Tracks job ids with an automatic run in flight.
   private readonly runningJobIds = new Set<string>();
   private readonly isPaused?: () => Promise<boolean>;
+  private readonly triggerAdmission?: DynamicSchedulerOptions["triggerAdmission"];
 
   constructor(options: DynamicSchedulerOptions) {
     this.store = options.store;
@@ -78,6 +79,7 @@ export class DynamicScheduler {
     }
     this.lockTtlBufferMs = lockTtlBufferMs;
     this.isPaused = options.isPaused;
+    this.triggerAdmission = options.triggerAdmission;
   }
 
   async loadEnabledJobs(): Promise<number> {
@@ -242,30 +244,44 @@ export class DynamicScheduler {
       await this.store.updateExecutionResult(job.id, "skipped", "skipped: scheduler paused by user");
       return "skipped: scheduler paused by user";
     }
-    const lockTtlMs = Math.max(minLockTtlMs, resolveJobTimeout(job, defaultExecutionTimeoutMs) + this.lockTtlBufferMs);
+    const startedAt = this.now();
+    const trigger = invocation?.trigger ?? createTriggerEnvelope({
+      generation: startedAt.toISOString(),
+      occurredAt: startedAt,
+      provenance: {
+        kind: automatic ? "local-scheduler" : "owner-command",
+        ref: job.id
+      },
+      receivedAt: startedAt,
+      source: automatic ? "cron" : "manual",
+      sourceId: job.id
+    });
+    const resolvedInvocation: TriggerInvocation = { ...invocation, trigger };
+    const admission = this.triggerAdmission
+      ? await this.triggerAdmission(trigger)
+      : undefined;
+    if (admission && admission.action !== "execute") {
+      const result = `${admission.action}: ${admission.reasons.join(",")}`;
+      if (!dryRun) {
+        await this.store.updateExecutionResult(job.id, "skipped", result);
+      }
+      await this.executionRecorder.recordExecution({
+        dryRun,
+        durationMs: this.now().getTime() - startedAt.getTime(),
+        job,
+        result,
+        startedAt,
+        status: "skipped",
+        ...triggerRecordFields(resolvedInvocation)
+      });
+      return result;
+    }
 
+    const lockTtlMs = Math.max(minLockTtlMs, resolveJobTimeout(job, defaultExecutionTimeoutMs) + this.lockTtlBufferMs);
     if (!dryRun && !(await this.distributedLock.tryAcquire(job.id, lockTtlMs))) {
       await this.store.updateExecutionResult(job.id, "skipped", "skipped: another instance holds lock");
       return "skipped: another instance holds lock";
     }
-
-    const startedAt = this.now();
-    const resolvedInvocation = invocation?.trigger
-      ? invocation
-      : {
-          ...invocation,
-          trigger: createTriggerEnvelope({
-            generation: startedAt.toISOString(),
-            occurredAt: startedAt,
-            provenance: {
-              kind: automatic ? "local-scheduler" : "owner-command",
-              ref: job.id
-            },
-            receivedAt: startedAt,
-            source: automatic ? "cron" : "manual",
-            sourceId: job.id
-          })
-        };
 
     try {
       if (!dryRun) {

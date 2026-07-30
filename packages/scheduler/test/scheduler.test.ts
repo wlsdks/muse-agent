@@ -603,6 +603,50 @@ describe("DynamicScheduler", () => {
     expect(store.findById(saved.id)?.lastStatus).toBeUndefined();
     expect(executions.findByJobId(saved.id)[0]?.dryRun).toBe(true);
   });
+
+  it("records a shadow admission without dispatch, lock acquisition, or notification", async () => {
+    const store = new InMemoryScheduledJobStore({ idFactory: () => "job-shadow" });
+    const executions = new InMemoryScheduledJobExecutionStore({ idFactory: () => "exec-shadow" });
+    const execute = vi.fn(async () => "must not run");
+    const tryAcquire = vi.fn(async () => true);
+    const sendMessage = vi.fn(async () => undefined);
+    const service = new DynamicScheduler({
+      dispatcher: new ScheduledJobDispatcher({
+        agentExecutor: { execute },
+        mcpInvoker: createUnusedMcpInvoker()
+      }),
+      distributedLock: {
+        release: async () => undefined,
+        tryAcquire
+      },
+      executionStore: executions,
+      messagingService: new SchedulerMessaging({ sendMessage }),
+      store,
+      triggerAdmission: async (trigger) => ({
+        action: "shadow",
+        dedupKey: trigger.dedupKey,
+        reasons: ["delivery-brake"]
+      })
+    });
+    const saved = await service.create({
+      agentPrompt: "Run",
+      cronExpression: "0 * * * * *",
+      jobType: "agent",
+      name: "Shadowed job",
+      notificationChannelId: "owner"
+    });
+
+    await expect(service.trigger(saved.id)).resolves.toBe("shadow: delivery-brake");
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(tryAcquire).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(store.findById(saved.id)?.lastStatus).toBe("skipped");
+    expect(executions.findByJobId(saved.id)[0]).toMatchObject({
+      result: "shadow: delivery-brake",
+      status: "skipped"
+    });
+  });
 });
 
 describe("DynamicScheduler.loadEnabledJobs — restart re-arm (AC3)", () => {
