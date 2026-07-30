@@ -33,6 +33,10 @@
     "./continuity-resume-runtime": {
       "types": "./dist/continuity-resume-runtime.d.ts",
       "import": "./dist/continuity-resume-runtime.js"
+    },
+    "./shadow-decision-receipt": {
+      "types": "./dist/shadow-decision-receipt.d.ts",
+      "import": "./dist/shadow-decision-receipt.js"
     }
   },
   "scripts": {

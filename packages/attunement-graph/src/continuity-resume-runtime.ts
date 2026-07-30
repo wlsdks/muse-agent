@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   ARTIFACT_ROLES,
   ARTIFACT_TYPES,
@@ -46,6 +48,10 @@ import {
   type ContinuityCapsulePresentation
 } from "./continuity-capsule-presentation.js";
 import { CONTINUITY_CAPSULE_MANIFEST_LIMITS } from "./continuity-capsule-manifest.js";
+import {
+  bindMagShadowDecisionCoordinator,
+  bindMagShadowDecisionRuntimeEvidence
+} from "./shadow-decision-receipt-internal.js";
 
 const SOURCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const PREPARED_TITLE_CONTROL = /[\u0000-\u001F\u007F]/u;
@@ -234,6 +240,10 @@ function bindResultPack<T extends ContinuityResumeRuntimeResultV1>(
     CONTINUITY_RESUME_RUNTIME_RESULT_PACKS.set(result, pack);
   }
   return result;
+}
+
+function digestRuntimeEvidence(value: object): string {
+  return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 }
 
 export function getContinuityResumeRuntimePack(
@@ -642,6 +652,7 @@ export function createContinuityResumeRuntimeCoordinator(
   const baselines = new Map<string, Baseline>();
   const busy = new Map<string, BusyToken>();
   const now = dependencies.monotonicNowMs ?? Date.now;
+  const coordinatorIdentity = Object.freeze({});
   let inFlight = 0;
 
   function retain(key: string, baseline: Baseline): void {
@@ -822,7 +833,7 @@ export function createContinuityResumeRuntimeCoordinator(
 
       if (currentAt === previousAt) {
         retain(key, capturedBaseline);
-        return bindResultCapsuleEvidence(
+        const comparedResult = bindResultCapsuleEvidence(
           bindResultPack(
             compared("compared-with-baseline-reused", result),
             capture
@@ -834,6 +845,18 @@ export function createContinuityResumeRuntimeCoordinator(
             currentGraphObservationReceipt: current.graph
           }) as ContinuityResumeRuntimeCapsuleEvidence
         );
+        const pack = CONTINUITY_RESUME_RUNTIME_RESULT_PACKS.get(comparedResult);
+        if (pack === undefined) return comparedResult;
+        return bindMagShadowDecisionRuntimeEvidence(comparedResult, {
+          coordinator: coordinatorIdentity,
+          pack,
+          packDigest: digestRuntimeEvidence(pack),
+          resumeResultDigest: digestRuntimeEvidence(comparedResult),
+          previousSourceObservationReceipt: capturedBaseline.source,
+          previousGraphObservationReceipt: capturedBaseline.graph,
+          currentSourceObservationReceipt: current.source,
+          currentGraphObservationReceipt: current.graph
+        });
       }
       let next: Baseline;
       try {
@@ -845,7 +868,7 @@ export function createContinuityResumeRuntimeCoordinator(
         return unavailable("runtime-generation-changed");
       }
       retain(key, next);
-      return bindResultCapsuleEvidence(
+      const comparedResult = bindResultCapsuleEvidence(
         bindResultPack(
           compared("compared-and-advanced", result),
           capture
@@ -857,6 +880,18 @@ export function createContinuityResumeRuntimeCoordinator(
           currentGraphObservationReceipt: current.graph
         }) as ContinuityResumeRuntimeCapsuleEvidence
       );
+      const pack = CONTINUITY_RESUME_RUNTIME_RESULT_PACKS.get(comparedResult);
+      if (pack === undefined) return comparedResult;
+      return bindMagShadowDecisionRuntimeEvidence(comparedResult, {
+        coordinator: coordinatorIdentity,
+        pack,
+        packDigest: digestRuntimeEvidence(pack),
+        resumeResultDigest: digestRuntimeEvidence(comparedResult),
+        previousSourceObservationReceipt: capturedBaseline.source,
+        previousGraphObservationReceipt: capturedBaseline.graph,
+        currentSourceObservationReceipt: current.source,
+        currentGraphObservationReceipt: current.graph
+      });
     } finally {
       if (timeout !== undefined) clearTimeout(timeout);
       if (!settled) token.active = false;
@@ -864,5 +899,8 @@ export function createContinuityResumeRuntimeCoordinator(
     }
   }
 
-  return frozenRecord({ preview }) as ContinuityResumeRuntimeCoordinator;
+  return bindMagShadowDecisionCoordinator(
+    frozenRecord({ preview }) as ContinuityResumeRuntimeCoordinator,
+    coordinatorIdentity
+  );
 }

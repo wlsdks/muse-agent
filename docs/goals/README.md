@@ -41,7 +41,7 @@ rival-watch가 다음 정찰의 시작점을 기억한다.**
   사람-지시 설계/계획 문서 (마감된 계획 문서는 삭제한다 — 잔여 항목은 backlog 레코드로)
 - `attunement-wow-graph-roadmap.md` — **별도 활성 장기 프로그램.** Core100/legacy 300의
   일반 기반 작업을 복제하지 않고 Shadow Muse·Continuity Capsule·Policy Card와
-  agent-native Attunement Graph Engine만 단계적으로 연구·구축·dogfood한다.
+  agent-native **Muse Attunement Graph (MAG)**만 단계적으로 연구·구축·dogfood한다.
 - `personal-agent-core-100-roadmap.md` — **현재 권위 실행 문서.** 2026-07-28 source reconciliation
   기준으로 이미 닫힌 작업을 제외하고, daily provider-neutral personal agent에 필요한 남은 핵심을
   100개의 active-wall-clock 20분 이하 slice로 재구성했다. 다음 task, lane, gate, 모델 선택은 이

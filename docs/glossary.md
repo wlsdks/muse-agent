@@ -2,7 +2,7 @@
 title: Muse 용어집 (Glossary)
 audience: [AI 에이전트, 개발자, 기획자]
 purpose: Muse 전용 용어의 단일 정의 — 처음 보는 에이전트가 grep 없이 이해하도록
-updated: 2026-07-29
+updated: 2026-07-30
 related: [strategy/attunement.md, design/attunement-graph.md, SYSTEM-MAP.md, grounding-gate.md, feature-catalog/INDEX.md]
 ---
 
@@ -22,8 +22,26 @@ Muse 문서·코드·커밋에서 반복되는 **Muse-고유 용어**의 정의.
   이후 변경점, 정확한 근거, 다음 단계, 준비된 작업, 예상 시간을 한 번에 보여준다(**roadmap**).
 - **Policy Card (정책 카드)** — Muse가 이 사람과 협업하는 방식을 어떻게 바꾸려는지 근거·범위와
   함께 보여 주고 시험 적용·수정·거절·되돌리기를 제공하는 **roadmap** 표면.
-- **Attunement Graph Engine** — 기존 개인 store를 대체하지 않는 재생성 가능한 시간·출처 그래프.
-  한 turn에 필요한 관계만 Activation Subgraph로 컴파일하는 에이전트 전용 모듈(**proposed**).
+- **Muse Attunement Graph (MAG)** — Muse 자체의 agent-native graph architecture와 향후
+  독립 오픈소스 제품의 공식 명칭. 기존 개인 store를 대체하지 않고
+  시간·관계·출처·변경·복귀·정책을 연결하며, 한 turn에 필요한 관계만 Working Graph로
+  컴파일한다. 현재 라이브러리 코어는 **partial**이고 durable MAG Store와 standalone package
+  gate는 **roadmap**이다.
+- **MAG Engine** — MAG의 ontology, receipt projection, temporal/relationship indexes, bounded
+  operators, completeness/abstention, Working Graph compiler를 합친 실행 계층.
+- **MAG Store** — `node:sqlite`를 기본 물리 저장소로 선택한 Muse 내장 영속 계층. Muse 소유 append
+  journal, 재시작 복구, 인덱스, migration, export/rebuild, physical forget을 제공할 **roadmap**
+  기능이다. PostgreSQL은 optional Adapter이며 외부 Graph DB·Redis·MySQL은 필수가 아니다.
+- **MAG Source Adapter** — 권위 source를 읽어 bounded observation과 exact identity를 만드는
+  교체 가능한 Module. Markdown/Obsidian/Notion Adapter는 계획된 source 연결이고 MAG Store가
+  아니다. 기존 Markdown notes/Notion provider가 곧 MAG round-trip Adapter가 완성됐다는 뜻은
+  아니다.
+- **Receipt (증거 영수증)** — 특정 시점의 source observation·결정·상호작용을 bounded immutable
+  envelope와 content ID로 묶은 입력 증거. Receipt 자체가 Graph DB는 아니며 MAG가 검증된 receipt를
+  Evidence Graph의 node/relation으로 투영한다.
+- **Evidence Graph** — receipt와 권위 source에서 재생성 가능한 장기 사실·시간·출처·관계 계층.
+- **Working Graph** — 한 agent 판단을 위해 Evidence Graph에서 token budget 안으로 컴파일한
+  짧은 수명 계층. 전체 개인 그래프나 chain-of-thought가 아니다.
 - **Activation Subgraph** — 현재 thread, 변경점, 근거, 정책, 권한 경계만 token budget 안에 담아
   에이전트에 전달하는 짧은 수명 그래프. 전체 개인 그래프나 chain-of-thought가 아니다.
 - **Observe (관찰 설정)** — 무엇을 수집하는지 보고, 멈추고, 확인하고, 지울 수 있게 하는 화면과

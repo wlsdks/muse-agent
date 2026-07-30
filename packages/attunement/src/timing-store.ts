@@ -7,7 +7,7 @@
  * text, screenshots, or model-generated interpretations.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import { atomicWriteFile } from "@muse/stores";
@@ -111,7 +111,65 @@ export interface ShadowTimingCandidate extends TimingCandidateBase {
   readonly ruleVersion: 2;
 }
 
-export type TimingCandidate = LegacyTimingCandidate | ShadowTimingCandidate;
+export interface TimingPolicySnapshot {
+  readonly offerCooldownMs: number;
+  readonly stableFocusMs: number;
+  readonly version: number;
+}
+
+/**
+ * Schema-v3 timing decisions retain the exact, bounded policy values used by
+ * the existing reducer. They add provenance only; delivery remains elsewhere.
+ */
+export interface MagShadowTimingCandidate extends TimingCandidateBase {
+  readonly counterfactual: TimingCounterfactual;
+  readonly policySnapshot: TimingPolicySnapshot;
+  readonly reason: TimingDecisionReason;
+  readonly ruleVersion: 3;
+}
+
+export type TimingCandidate =
+  | LegacyTimingCandidate
+  | ShadowTimingCandidate
+  | MagShadowTimingCandidate;
+
+export const MAG_SHADOW_TIMING_PROJECTION_VERSION =
+  "muse.mag-shadow-timing-projection.v1" as const;
+
+/** Safe, content-addressed timing input for Graph receipt capture. */
+export type MagShadowTimingProjectionV1 = Readonly<{
+  readonly candidate: Readonly<{
+    readonly counterfactual: TimingCounterfactual;
+    readonly createdAt: string;
+    readonly decision: TimingDecision;
+    readonly evidenceObservationIds: readonly string[];
+    readonly id: string;
+    readonly policySnapshot: TimingPolicySnapshot;
+    readonly reason: TimingDecisionReason;
+    readonly ruleVersion: 3;
+    readonly sessionId: string;
+    readonly threadId: string;
+  }>;
+  readonly observationDigest: string;
+  readonly observations: readonly Readonly<{
+    readonly id: string;
+    readonly sessionId: string;
+    readonly threadId: string;
+  }>[];
+  readonly projectionVersion: typeof MAG_SHADOW_TIMING_PROJECTION_VERSION;
+  readonly schemaVersion: 1;
+  readonly sessionConsentVersion: number;
+}>;
+
+type PersistedTimingStateStamp = Readonly<{
+  readonly digest: string;
+}>;
+
+type MagShadowTimingProjectionStamp = Readonly<{
+  readonly candidateId: string;
+  readonly state: TimingState;
+  readonly stateDigest: string;
+}>;
 
 export interface TimingFeedback {
   readonly candidateId: string;
@@ -176,13 +234,17 @@ const MAX_FEEDBACK = 200;
 const MAX_COOLDOWN_MS = 24 * 60 * 60_000;
 const MIN_COOLDOWN_MS = 30 * 60_000;
 
-const EMPTY_STATE: TimingState = {
+const PERSISTED_TIMING_STATES = new WeakMap<object, PersistedTimingStateStamp>();
+const MAG_SHADOW_TIMING_PROJECTIONS =
+  new WeakMap<object, MagShadowTimingProjectionStamp>();
+
+const EMPTY_STATE: TimingState = freezeTimingState({
   candidates: [],
   feedback: [],
   observations: [],
   schemaVersion: 2,
   sessions: []
-};
+});
 
 export function emptyTimingState(): TimingState {
   return EMPTY_STATE;
@@ -190,9 +252,11 @@ export function emptyTimingState(): TimingState {
 
 export async function readTimingState(file: string): Promise<TimingState> {
   try {
-    return parseTimingState(JSON.parse(await readFile(file, "utf8")));
+    return markPersistedTimingState(
+      parseTimingState(JSON.parse(await readFile(file, "utf8")))
+    );
   } catch (cause) {
-    if (isMissingFile(cause)) return EMPTY_STATE;
+    if (isMissingFile(cause)) return markPersistedTimingState(EMPTY_STATE);
     if (cause instanceof AttunementStoreError) throw cause;
     throw new AttunementStoreError(`cannot read timing state: ${describe(cause)}`);
   }
@@ -419,6 +483,133 @@ export function inspectTimingSession(state: TimingState, sessionId: string): {
   };
 }
 
+/**
+ * Projects an already-persisted v3 timing candidate into the minimal Graph
+ * capture input. The source state remains authoritative; callers receive no
+ * raw desktop content and older candidates deliberately cannot opt in.
+ */
+export function projectMagShadowTimingDecision(
+  state: TimingState,
+  candidateId: string
+): MagShadowTimingProjectionV1 | undefined {
+  if (typeof state !== "object" || state === null || typeof candidateId !== "string") {
+    return undefined;
+  }
+  const stamp = PERSISTED_TIMING_STATES.get(state);
+  if (stamp === undefined || timingStateDigest(state) !== stamp.digest) return undefined;
+  const projection = projectMagShadowTimingDecisionFromState(state, candidateId);
+  if (projection === undefined) return undefined;
+  MAG_SHADOW_TIMING_PROJECTIONS.set(projection, Object.freeze({
+    candidateId,
+    state,
+    stateDigest: stamp.digest
+  }));
+  return projection;
+}
+
+/**
+ * Accepts only the exact projection minted from an unchanged validated read.
+ * This is intentionally identity-bound: structural lookalikes cannot become
+ * provenance for a graph receipt.
+ */
+export function verifyMagShadowTimingProjection(
+  value: unknown
+): MagShadowTimingProjectionV1 | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const stamp = MAG_SHADOW_TIMING_PROJECTIONS.get(value);
+  if (
+    stamp === undefined
+    || PERSISTED_TIMING_STATES.get(stamp.state)?.digest !== stamp.stateDigest
+    || timingStateDigest(stamp.state) !== stamp.stateDigest
+  ) {
+    return undefined;
+  }
+  const recomputed = projectMagShadowTimingDecisionFromState(
+    stamp.state,
+    stamp.candidateId
+  );
+  if (
+    recomputed === undefined
+    || JSON.stringify(recomputed) !== JSON.stringify(value)
+  ) {
+    return undefined;
+  }
+  return value as MagShadowTimingProjectionV1;
+}
+
+function projectMagShadowTimingDecisionFromState(
+  state: TimingState,
+  candidateId: string
+): MagShadowTimingProjectionV1 | undefined {
+  const candidate = state.candidates.find((entry) => entry.id === candidateId);
+  if (candidate === undefined) return undefined;
+  const session = state.sessions.find((entry) => entry.id === candidate.sessionId);
+  if (
+    candidate.ruleVersion !== 3
+    || session === undefined
+    || session.threadId !== candidate.threadId
+    || !isCanonicalInstant(candidate.createdAt)
+    || candidate.counterfactual.evaluatedAt !== candidate.createdAt
+    || !isTimingPolicySnapshot(candidate.policySnapshot)
+    || candidate.evidenceObservationIds.length > 2
+    || candidate.policySnapshot.offerCooldownMs !== session.policy.offerCooldownMs
+    || candidate.policySnapshot.stableFocusMs !== session.policy.stableFocusMs
+    || candidate.policySnapshot.version !== session.policy.version
+  ) {
+    return undefined;
+  }
+  const observationById = new Map(state.observations.map((observation) => [
+    observation.id,
+    observation
+  ]));
+  const exactObservations: TimingObservation[] = [];
+  for (const id of candidate.evidenceObservationIds) {
+    const observation = observationById.get(id);
+    if (
+      observation === undefined
+      || !isCanonicalTimingObservation(observation)
+      || observation.sessionId !== candidate.sessionId
+      || observation.threadId !== candidate.threadId
+    ) {
+      return undefined;
+    }
+    if (exactObservations.some((entry) => entry.id === id)) return undefined;
+    exactObservations.push(observation);
+  }
+  const projectedObservations = exactObservations.map((observation) =>
+    Object.freeze({
+      id: observation.id,
+      sessionId: observation.sessionId,
+      threadId: observation.threadId
+    })
+  );
+  const policySnapshot = Object.freeze({
+    offerCooldownMs: candidate.policySnapshot.offerCooldownMs,
+    stableFocusMs: candidate.policySnapshot.stableFocusMs,
+    version: candidate.policySnapshot.version
+  });
+  const projectedCandidate = Object.freeze({
+    counterfactual: Object.freeze({ ...candidate.counterfactual }),
+    createdAt: candidate.createdAt,
+    decision: candidate.decision,
+    evidenceObservationIds: Object.freeze([...candidate.evidenceObservationIds]),
+    id: candidate.id,
+    policySnapshot,
+    reason: candidate.reason,
+    ruleVersion: 3 as const,
+    sessionId: candidate.sessionId,
+    threadId: candidate.threadId
+  });
+  return Object.freeze({
+    candidate: projectedCandidate,
+    observationDigest: timingObservationDigest(exactObservations),
+    observations: Object.freeze(projectedObservations),
+    projectionVersion: MAG_SHADOW_TIMING_PROJECTION_VERSION,
+    schemaVersion: 1 as const,
+    sessionConsentVersion: session.consentVersion
+  });
+}
+
 function decideTiming(
   session: ThreadTimingSession,
   observations: readonly TimingObservation[],
@@ -429,7 +620,7 @@ function decideTiming(
   const latest = observations.at(-1);
   const prior = observations.at(-2);
   const evidenceObservationIds = latest ? prior ? [prior.id, latest.id] : [latest.id] : [];
-  const decision = (decision: TimingDecision, reason: TimingDecisionReason): ShadowTimingCandidate => ({
+  const decision = (decision: TimingDecision, reason: TimingDecisionReason): MagShadowTimingCandidate => ({
     counterfactual: {
       action: counterfactualActionForDecision(decision),
       evaluatedAt: createdAt
@@ -438,8 +629,13 @@ function decideTiming(
     decision,
     evidenceObservationIds,
     id,
+    policySnapshot: Object.freeze({
+      offerCooldownMs: session.policy.offerCooldownMs,
+      stableFocusMs: session.policy.stableFocusMs,
+      version: session.policy.version
+    }),
     reason,
-    ruleVersion: 2,
+    ruleVersion: 3,
     sessionId: session.id,
     threadId: session.threadId
   });
@@ -633,7 +829,8 @@ function isObservation(value: unknown): value is TimingObservation {
 function isCandidate(value: unknown): value is TimingCandidate {
   const baseKeys = ["createdAt", "decision", "evidenceObservationIds", "id", "reason", "ruleVersion", "sessionId", "threadId"];
   const exact = isExactRecord(value, baseKeys)
-    || isExactRecord(value, [...baseKeys, "counterfactual"]);
+    || isExactRecord(value, [...baseKeys, "counterfactual"])
+    || isExactRecord(value, [...baseKeys, "counterfactual", "policySnapshot"]);
   if (!exact || !isNonEmptyString(value.id) || !isNonEmptyString(value.sessionId) || !isNonEmptyString(value.threadId)
     || !isNonEmptyString(value.createdAt) || !isIso(value.createdAt) || !isNonEmptyString(value.reason)
     || !TIMING_DECISIONS.includes(value.decision as TimingDecision)
@@ -641,12 +838,72 @@ function isCandidate(value: unknown): value is TimingCandidate {
     return false;
   }
   if (value.ruleVersion === 1) return !("counterfactual" in value);
-  return value.ruleVersion === 2
+  if (value.ruleVersion === 2) return (
+    TIMING_DECISION_REASONS.includes(value.reason as TimingDecisionReason)
+    && "counterfactual" in value
+    && isTimingCounterfactual(value.counterfactual)
+    && value.counterfactual.action === counterfactualActionForDecision(value.decision as TimingDecision)
+    && value.counterfactual.evaluatedAt === value.createdAt
+  );
+  return value.ruleVersion === 3
     && TIMING_DECISION_REASONS.includes(value.reason as TimingDecisionReason)
     && "counterfactual" in value
     && isTimingCounterfactual(value.counterfactual)
     && value.counterfactual.action === counterfactualActionForDecision(value.decision as TimingDecision)
-    && value.counterfactual.evaluatedAt === value.createdAt;
+    && value.counterfactual.evaluatedAt === value.createdAt
+    && "policySnapshot" in value
+    && isTimingPolicySnapshot(value.policySnapshot);
+}
+
+function isTimingPolicySnapshot(value: unknown): value is TimingPolicySnapshot {
+  return isExactRecord(value, ["offerCooldownMs", "stableFocusMs", "version"])
+    && isPositiveSafeInteger(value.offerCooldownMs)
+    && isPositiveSafeInteger(value.stableFocusMs)
+    && isNonNegativeSafeInteger(value.version);
+}
+
+function isCanonicalTimingObservation(observation: TimingObservation): boolean {
+  return isCanonicalInstant(observation.startedAt)
+    && isCanonicalInstant(observation.endedAt)
+    && Date.parse(observation.endedAt) >= Date.parse(observation.startedAt);
+}
+
+function isCanonicalInstant(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value)
+    && Number.isFinite(Date.parse(value));
+}
+
+function timingObservationDigest(observations: readonly TimingObservation[]): string {
+  return createHash("sha256").update(JSON.stringify(observations.map((observation) => ({
+    appCategory: observation.appCategory,
+    durationMs: observation.durationMs,
+    endedAt: observation.endedAt,
+    id: observation.id,
+    sessionId: observation.sessionId,
+    startedAt: observation.startedAt,
+    threadId: observation.threadId
+  }))), "utf8").digest("hex");
+}
+
+function timingStateDigest(state: TimingState): string {
+  return createHash("sha256").update(JSON.stringify(state), "utf8").digest("hex");
+}
+
+function markPersistedTimingState(state: TimingState): TimingState {
+  const frozen = freezeTimingState(state);
+  PERSISTED_TIMING_STATES.set(frozen, Object.freeze({
+    digest: timingStateDigest(frozen)
+  }));
+  return frozen;
+}
+
+function freezeTimingState<T>(value: T, seen = new WeakSet<object>()): T {
+  if (typeof value !== "object" || value === null || seen.has(value)) return value;
+  seen.add(value);
+  for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
+    if ("value" in descriptor) freezeTimingState(descriptor.value, seen);
+  }
+  return Object.freeze(value);
 }
 
 function isTimingCounterfactual(value: unknown): value is TimingCounterfactual {

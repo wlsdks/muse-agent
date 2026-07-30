@@ -295,8 +295,9 @@ Muse가 지시 없이 스스로 움직이는, 가장 자비스다운 영역입�
 - **Shadow Muse** — 먼저 개입하지 않고 제안·침묵 후보와 실제 복귀를 비교합니다.
 - **Continuity Capsule** — 멈춘 지점·변경점·근거·다음 단계·준비된 작업·예상 시간을 복원합니다.
 - **Policy Card** — 배운 협업 규칙의 근거와 범위를 보여 주고 시험·수정·거절·되돌리기를 제공합니다.
-- **Attunement Graph Engine** — 기존 store 위에서 시간·관계·출처·정책을 연결하고, 한 turn에 필요한
-  작은 Activation Subgraph만 만드는 proposed 에이전트 전용 모듈입니다.
+- **Muse Attunement Graph (MAG)** — 기존 store 위에서 시간·관계·출처·정책을 연결하고, 한 turn에
+  필요한 작은 Working Graph만 만드는 proposed 에이전트 전용 모듈입니다. 현재 private
+  library substrate는 partial이고 SQLite MAG Store와 standalone release는 roadmap입니다.
 
 핵심 문장: **Muse는 앱을 기억하지 않고, 내가 이어가려던 상태를 기억합니다.**
 세부 제품 계약과 모듈 설계는 [Attunement](strategy/attunement.md),
