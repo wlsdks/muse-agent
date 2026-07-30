@@ -80,6 +80,12 @@ lifecycle. The staging boundary pins directory/file device and inode identities,
 native close outcome monotonically, deletes only capability-recorded files, and requires
 parent-directory fsync before `cleanup-complete`.
 
+The Admin foundation also includes a package-private, descriptor-safe 64 KiB protocol and
+one-in-flight parent fail-stop spine. It validates exact typed messages, correlates one
+monotonic request ID, discards untrusted Worker error text, pins the first terminal failure,
+and performs timer/listener cleanup before a non-authoritative termination attempt. Its
+qualification uses a fake transport and clock; it is not a real Worker or database reader.
+
 These surfaces remain validated-but-unpublished infrastructure. They do not ship a public
 decoder, serving or separate Admin Worker command, destination generation activation, or
 public `./admin` API. Unknown close outcomes and unexpected artifacts remain toxic; native

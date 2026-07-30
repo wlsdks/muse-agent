@@ -8,6 +8,21 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a4e1 package-private Admin protocol
+  and parent fail-stop spine. A descriptor-safe JSON helper admits at most
+  65,536 serialized UTF-8 bytes without widening the closed production schemas;
+  exact typed requests and pending-request-specific responses use one monotonic
+  ID and one in-flight operation. Worker-provided messages are discarded in
+  favor of fixed code-mapped parent errors, and the first terminal failure is
+  authoritative: it pins and rejects the pending operation, clears its timer,
+  removes listeners, and starts at most one non-authoritative termination attempt
+  in that order. Independent evaluation
+  found and repaired missing cleanup-order/count evidence. This slice uses a
+  deterministic fake transport and clock for qualification; the production spine
+  accepts an e2-supplied package-private transport and uses the system clock. No
+  real Admin Worker, SQLite/path access, public export, CLI/API/UI, or
+  production-scale proof ships yet.
+
 - Added the independently verified AWG-070a3a1a4d package-private POSIX Admin
   staging lifecycle. It creates an owner-private, exclusive, no-follow SQLite
   target, pins directory/file device and inode identities across the path-open
