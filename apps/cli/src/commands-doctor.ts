@@ -1104,7 +1104,7 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
     }
     if (!health_ok) {
       checks.push({
-        detail: `${base} not reachable (container down? stop with 'docker stop muse-searxng' or restart per docs/setup-local-llm.md)`,
+        detail: `${base} not reachable (container down? stop with 'docker stop muse-searxng' or restart per docs/setup/setup-local-llm.md)`,
         name: "searxng",
         status: "fail"
       });
@@ -1117,7 +1117,7 @@ export async function runLocalDoctor(runtimeOptions: DoctorLocalRuntimeOptions =
         });
         if (!r.ok) {
           checks.push({
-            detail: `${base} up but /search?format=json returned ${r.status.toString()} — enable JSON in settings.yml (see docs/setup-local-llm.md)`,
+            detail: `${base} up but /search?format=json returned ${r.status.toString()} — enable JSON in settings.yml (see docs/setup/setup-local-llm.md)`,
             name: "searxng",
             status: "fail"
           });

@@ -4,7 +4,7 @@ audience: [product, engineering, agents]
 purpose: Run the signature Muse experience and Attunement Graph as a separate long-lived program
 status: active
 updated: 2026-07-30
-related: [../strategy/attunement.md, ../design/attunement-graph.md, ../design/agent-native-graph-core.md, attunement-implementation-plan.md]
+related: [../../docs/strategy/attunement.md, ../../docs/design/attunement-graph.md, ../../docs/design/agent-native-graph-core.md, attunement-implementation-plan.md]
 ---
 
 # Attunement wow + graph roadmap
@@ -36,9 +36,9 @@ repository is intentionally deferred until clean-room package, dependency-isolat
 conformance, packed-artifact, export/rebuild, and license/documentation gates pass. Focused
 MAG and Muse-integration commits preserve history for that later split without imposing
 dual-repository version churn during rapid development. The accepted boundary is
-[ADR 0001](../../docs/adr/0001-mag-product-module-boundary.md). The TypeScript-first Engine,
+[ADR 0001](../../docs/architecture/adr/0001-mag-product-module-boundary.md). The TypeScript-first Engine,
 worker-isolated SQLite Store, and benchmark-gated Rust hot-kernel policy are fixed in
-[ADR 0002](../../docs/adr/0002-mag-language-runtime-boundary.md).
+[ADR 0002](../../docs/architecture/adr/0002-mag-language-runtime-boundary.md).
 
 ## Program boundary
 

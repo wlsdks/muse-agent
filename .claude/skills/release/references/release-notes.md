@@ -22,7 +22,7 @@ Then apply the rules **top to bottom; first match wins**:
 1. **Empty?** No commits (or only `chore(release):` / `docs(loops)` journal
    churn) → **STOP, nothing to release.** Don't cut an empty tag.
 2. **Going to `1.0.0`?** Only if 진안 asked AND the five-point gate in
-   `docs/VERSIONING.md` is met. Otherwise never auto-jump to `1.0.0`.
+   `../../../../docs/development/VERSIONING.md` is met. Otherwise never auto-jump to `1.0.0`.
 3. **Breaking change?** Any commit whose subject has a `!` before the colon
    (`feat!:`, `fix!:`, `refactor!:`) OR any body/footer line matching
    `BREAKING CHANGE:` →

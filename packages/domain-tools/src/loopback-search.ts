@@ -192,7 +192,7 @@ export function createSearchMcpServer(options: SearchMcpServerOptions = {}): Loo
           if (!response.ok) {
             if (response.status === 429) {
               return {
-                error: "search backend rate-limited (429) — back off for a minute, or self-host SearXNG (see docs/setup-local-llm.md)",
+                error: "search backend rate-limited (429) — back off for a minute, or self-host SearXNG (see docs/setup/setup-local-llm.md)",
                 rateLimited: true,
                 status: 429
               };

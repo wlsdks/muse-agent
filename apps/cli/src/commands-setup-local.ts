@@ -59,7 +59,7 @@ export interface LocalModelPreset {
  * The CLI's default picker walks this list and prefers the highest
  * tier that is *already pulled*; the user always wins by passing
  * `--model <tag>` explicitly. License notes live in
- * `docs/setup-local-llm.md`.
+ * `docs/setup/setup-local-llm.md`.
  */
 export const LOCAL_MODEL_PRESETS: readonly LocalModelPreset[] = [
   {

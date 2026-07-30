@@ -4,7 +4,7 @@ audience: [product, engineering, evaluation]
 purpose: Make Muse safe, useful, resource-bounded, and honestly measurable before widening autonomy
 status: active
 updated: 2026-07-22
-related: [../strategy/attunement.md, attunement-implementation-plan.md, personal-agent-acceptance-plan.md, ../development/personal-agent-qualification.md]
+related: [../../docs/strategy/attunement.md, attunement-implementation-plan.md, personal-agent-acceptance-plan.md, ../../docs/development/personal-agent-qualification.md]
 ---
 
 # Daily-use hardening plan

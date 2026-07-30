@@ -150,7 +150,7 @@ grounded paths, retrieval is not a suggestion to the model — it is a gate in f
 | **Correct** | You can contradict it. The correction is stored and decays the belief it replaced. |
 
 **The honest limit:** this covers the supported grounded paths. Fast uncited chat is a documented
-gap, not a solved problem — see [the grounding gate](docs/grounding-gate.md).
+gap, not a solved problem — see [the grounding gate](docs/trust/grounding-gate.md).
 
 ---
 
@@ -211,8 +211,8 @@ SQLite store behind an isolated worker, with no external graph server required
 
 It is deliberately built as an independently extractable module — Muse is its first consumer and
 dogfood environment. The public interface, adapter boundaries and repository-split plan are fixed in
-[ADR 0001](docs/adr/0001-mag-product-module-boundary.md); TypeScript-first with Rust only for
-benchmark-proven hot kernels in [ADR 0002](docs/adr/0002-mag-language-runtime-boundary.md).
+[ADR 0001](docs/architecture/adr/0001-mag-product-module-boundary.md); TypeScript-first with Rust only for
+benchmark-proven hot kernels in [ADR 0002](docs/architecture/adr/0002-mag-language-runtime-boundary.md).
 
 What is verified today, and what those words do **not** mean:
 
@@ -308,7 +308,7 @@ are identical on every surface; risky local execution goes through the Rust `run
 process. MCP works both directions — external servers behind an allowlist, and `muse mcp serve`
 exposing read-only grounded recall to other agents.
 
-**Full detail:** [architecture and repository layout](docs/architecture.md) — the provider contract,
+**Full detail:** [architecture and repository layout](docs/architecture/README.md) — the provider contract,
 where every file lives on disk, the one-runtime rule, and a map of the 39 workspace packages.
 
 ---
@@ -343,10 +343,10 @@ are not proof of agent effect.
 
 | | |
 | --- | --- |
-| **Start here** | [System map](docs/SYSTEM-MAP.md) · [Local model setup](docs/setup-local-llm.md) · [Environment variables](docs/ENV.md) |
+| **Start here** | [System map](docs/product/SYSTEM-MAP.md) · [Local model setup](docs/setup/setup-local-llm.md) · [Environment variables](docs/setup/ENV.md) |
 | **The product** | [Attunement contract](docs/strategy/attunement.md) · [Architecture and gaps](docs/design/attunement.md) · [Implementation plan](internal/goals/attunement-implementation-plan.md) |
 | **The graph** | [Attunement Graph](docs/design/attunement-graph.md) · [Agent-native core blueprint](docs/design/agent-native-graph-core.md) · [Roadmap](internal/goals/attunement-wow-graph-roadmap.md) |
-| **Trust** | [Grounding gate](docs/grounding-gate.md) · [Privacy and data](docs/privacy-and-data.md) · [Evidence index](docs/benchmarks/EVIDENCE.md) · [Security](SECURITY.md) |
+| **Trust** | [Grounding gate](docs/trust/grounding-gate.md) · [Privacy and data](docs/trust/privacy-and-data.md) · [Evidence index](docs/benchmarks/EVIDENCE.md) · [Security](SECURITY.md) |
 | **Audits** | [Full feature audit](docs/feature-catalog/INDEX.md) — a dated 2026-06-14 snapshot, written in Korean · [Personal-agent qualification](docs/development/personal-agent-qualification.md) |
 
 ## Contributing

@@ -3,7 +3,7 @@ title: Muse glossary
 audience: [AI agents, developers, product]
 purpose: One definition per Muse-specific term, so a new agent understands without grepping
 updated: 2026-07-30
-related: [strategy/attunement.md, design/attunement-graph.md, SYSTEM-MAP.md, grounding-gate.md, feature-catalog/INDEX.md]
+related: [../strategy/attunement.md, ../design/attunement-graph.md, SYSTEM-MAP.md, ../trust/grounding-gate.md, ../feature-catalog/INDEX.md]
 ---
 
 # Muse glossary
@@ -11,8 +11,8 @@ related: [strategy/attunement.md, design/attunement-graph.md, SYSTEM-MAP.md, gro
 Definitions for the **Muse-specific terms** that recur across the docs, code and commits. Generic
 terms (RAG, embedding …) are left out; this collects only what carries *a particular meaning inside
 Muse*. Each entry is one definition plus where it lives. Exact verification evidence is in the
-[feature catalog](feature-catalog/INDEX.md); the end-to-end flow is in
-[grounding-gate](grounding-gate.md).
+[feature catalog](../feature-catalog/INDEX.md); the end-to-end flow is in
+[grounding-gate](../trust/grounding-gate.md).
 
 ## 1. Identity — what Muse is
 
@@ -90,7 +90,7 @@ Muse*. Each entry is one definition plus where it lives. Exact verification evid
 
 ## 2. Grounding and recall — the trust floor
 
-The full flow is in [grounding-gate.md](grounding-gate.md); this section is terms only.
+The full flow is in [grounding-gate.md](../trust/grounding-gate.md); this section is terms only.
 
 - **Grounding gate** — `verifyGrounding` in `packages/agent-core/src/grounding-verifier.ts` (re-exported
   through `knowledge-recall.ts`; called from `recall-verdict.ts` and `chat-answer-gate.ts`), which takes an answer plus its evidence and returns a deterministic
@@ -169,7 +169,7 @@ it.)
   party requires *recorded scoped consent* (`performConsentedAction`); absent or scope-mismatched
   consent fails closed.
 - **Outbound safety** — the fail-close contract for anything sent to, or done to, a third party.
-  Details in [outbound-safety.md](../.claude/rules/outbound-safety.md).
+  Details in [outbound-safety.md](../../.claude/rules/outbound-safety.md).
 - **Draft-first** — generated content never reaches a third party until *the user explicitly
   confirms that content*. No autonomous sends. Banking and transfers are permanently out of scope.
 - **Action log / hash chain** — the tamper-evident chain every autonomous action (sent **or**

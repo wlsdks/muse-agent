@@ -4,11 +4,11 @@
 - Date: 2026-07-30
 - Decision owners: Muse architecture
 - Related:
-  [Muse Attunement Graph](../design/attunement-graph.md),
-  [Agent-Native Graph Core](../design/agent-native-graph-core.md),
+  [Muse Attunement Graph](../../design/attunement-graph.md),
+  [Agent-Native Graph Core](../../design/agent-native-graph-core.md),
   [language and runtime boundary](0002-mag-language-runtime-boundary.md),
-  [wow + graph roadmap](../../internal/goals/attunement-wow-graph-roadmap.md),
-  [standalone readiness audit](../evaluations/mag-standalone-readiness-2026-07-30.md)
+  [wow + graph roadmap](../../../internal/goals/attunement-wow-graph-roadmap.md),
+  [standalone readiness audit](../../evaluations/mag-standalone-readiness-2026-07-30.md)
 
 ## Context
 

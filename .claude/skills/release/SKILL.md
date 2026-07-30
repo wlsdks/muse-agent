@@ -6,7 +6,7 @@ description: Use when 진안 wants to cut/tag a Muse release or asks anything ab
 
 > **Versioning.** This skill carries a `version` (above). Bump it (patch = wording,
 > minor = a new step/rule, major = a changed gate) whenever you edit this file or
-> the policy it enforces ([`docs/VERSIONING.md`](../../../docs/VERSIONING.md)).
+> the policy it enforces ([`../../../docs/development/VERSIONING.md`](../../../docs/development/VERSIONING.md)).
 
 # release — cut a Muse version the same way every time
 
@@ -15,7 +15,7 @@ description: Use when 진안 wants to cut/tag a Muse release or asks anything ab
 One invocation cuts **one** release: decide the number → prove it's releasable →
 bump, changelog, commit, tag, push → create the GitHub Release. The single
 source of truth for *what a number means* is
-[`docs/VERSIONING.md`](../../../docs/VERSIONING.md) — this skill is its
+[`../../../docs/development/VERSIONING.md`](../../../docs/development/VERSIONING.md) — this skill is its
 executable form. If the two ever disagree, the doc wins; fix this skill.
 
 **Two jobs must be A+ every time — follow the bundled rubric, don't improvise:**
@@ -41,7 +41,7 @@ git describe --tags --abbrev=0 2>/dev/null || echo "(no tag yet — first releas
 gh release list 2>&1 | head
 ```
 
-Read the last tag. The current series is decided by `docs/VERSIONING.md`.
+Read the last tag. The current series is decided by `../../../docs/development/VERSIONING.md`.
 
 ## Step 1 — decide the next number (per docs/VERSIONING.md)
 
@@ -168,7 +168,7 @@ what was a known local flake), the tag + release URL, and anything deferred.
 - **Don't fake the gate.** If a fresh clone won't build/test, fix that first —
   a release whose install is broken is worse than no release.
 - **Don't bump to `1.0.0` casually** — it's a stability promise; meet the gate.
-- The policy lives in `docs/VERSIONING.md`. Change the rule there first, then
+- The policy lives in `../../../docs/development/VERSIONING.md`. Change the rule there first, then
   mirror it here and bump this skill's `version`.
 - **Hit the A+ bar** in [`references/release-notes.md` §Quality bar](references/release-notes.md#quality-bar-what-a-means-here)
   before finishing: number correct per §A, every user-facing commit since the

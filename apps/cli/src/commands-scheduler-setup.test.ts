@@ -311,11 +311,11 @@ describe("formatSetupStatusLines — email/remote rows (R2-3)", () => {
   it("tailscale not found points at the remote-access guide", () => {
     const snap: SetupStatusSnapshot = {
       ...baseSnap(),
-      remote: { nextStep: "docs/guides/remote-access.md", status: "info", tailscaleFound: false }
+      remote: { nextStep: "docs/setup/remote-access.md", status: "info", tailscaleFound: false }
     };
     const out = formatSetupStatusLines(snap).join("\n");
     expect(out).toContain("remote — not found");
-    expect(out).toContain("→ docs/guides/remote-access.md");
+    expect(out).toContain("→ docs/setup/remote-access.md");
   });
 });
 

@@ -4,7 +4,7 @@ audience: [product, design, engineering, agents]
 purpose: Define Muse's product wedge without claiming roadmap capabilities are shipped
 status: north-star
 updated: 2026-07-30
-related: [../design/attunement.md, ../design/attunement-graph.md, ../../internal/goals/attunement-implementation-plan.md, ../../internal/goals/attunement-wow-graph-roadmap.md, ../privacy-and-data.md]
+related: [../design/attunement.md, ../design/attunement-graph.md, ../../internal/goals/attunement-implementation-plan.md, ../../internal/goals/attunement-wow-graph-roadmap.md, ../trust/privacy-and-data.md]
 ---
 
 # Muse Attunement

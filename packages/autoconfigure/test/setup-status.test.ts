@@ -689,7 +689,7 @@ describe("resolveRemoteSetupStatus — R2-3", () => {
   });
 
   it("not found → info, next step points at the remote-access guide", () => {
-    expect(resolveRemoteSetupStatus(false)).toEqual({ nextStep: "docs/guides/remote-access.md", status: "info", tailscaleFound: false });
+    expect(resolveRemoteSetupStatus(false)).toEqual({ nextStep: "docs/setup/remote-access.md", status: "info", tailscaleFound: false });
   });
 });
 
@@ -743,7 +743,7 @@ describe("collectSetupStatusJson — email/remote rows (R2-3)", () => {
     if (snapshot.remote.tailscaleFound) {
       expect(snapshot.remote).toEqual({ nextStep: "muse remote enable", status: "ok", tailscaleFound: true });
     } else {
-      expect(snapshot.remote).toEqual({ nextStep: "docs/guides/remote-access.md", status: "info", tailscaleFound: false });
+      expect(snapshot.remote).toEqual({ nextStep: "docs/setup/remote-access.md", status: "info", tailscaleFound: false });
     }
   });
 });

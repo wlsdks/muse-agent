@@ -3,7 +3,7 @@ title: Muse full feature verification & inventory (2026-06-14)
 audience: [planners, developers, AI agents]
 purpose: Master document that actually verified every Muse feature after thousands of commits, recording each feature with evidence
 updated: 2026-06-14
-related: [../FEATURES.md, ../SYSTEM-MAP.md, ../../README.md]
+related: [../product/FEATURES.md, ../product/SYSTEM-MAP.md, ../../README.md]
 ---
 
 # Muse full feature verification & inventory — 2026-06-14

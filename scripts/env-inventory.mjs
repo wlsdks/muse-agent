@@ -5,12 +5,12 @@
 // workspace with no central registry — undiscoverable for a user and free to
 // drift for a developer. This script makes the surface ENUMERATED and GUARDED:
 // it extracts every MUSE_* referenced in product source (packages/ + apps/,
-// tests excluded), renders docs/ENV.md from that ground truth, and in --check
+// tests excluded), renders docs/setup/ENV.md from that ground truth, and in --check
 // mode fails when the doc no longer matches the source — so a new (or removed)
 // variable cannot land without the inventory following it.
 //
-//   node scripts/env-inventory.mjs --write   # regenerate docs/ENV.md
-//   node scripts/env-inventory.mjs --check   # exit 1 when docs/ENV.md is stale
+//   node scripts/env-inventory.mjs --write   # regenerate docs/setup/ENV.md
+//   node scripts/env-inventory.mjs --check   # exit 1 when docs/setup/ENV.md is stale
 //
 // Zero deps. Pure helpers exported for scripts/env-inventory.test.mjs.
 
@@ -18,7 +18,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
 const ROOT = process.cwd();
-const DOC = join(ROOT, "docs/ENV.md");
+const DOC = join(ROOT, "docs/setup/ENV.md");
 const SOURCE_ROOTS = ["packages", "apps"];
 
 const ENV_RE = /\bMUSE_[A-Z0-9_]+\b/g;
@@ -91,15 +91,15 @@ if (mode === "--write" || mode === "--check") {
   const rendered = renderEnvDoc(collectInventory());
   if (mode === "--write") {
     writeFileSync(DOC, rendered);
-    console.log(`✓ docs/ENV.md written (${rendered.split("\n").length} lines).`);
+    console.log(`✓ docs/setup/ENV.md written (${rendered.split("\n").length} lines).`);
     process.exit(0);
   }
   const current = existsSync(DOC) ? readFileSync(DOC, "utf8") : "";
   if (current === rendered) {
-    console.log("✓ docs/ENV.md matches the source-of-truth inventory.");
+    console.log("✓ docs/setup/ENV.md matches the source-of-truth inventory.");
     process.exit(0);
   }
-  console.error("✗ docs/ENV.md is stale — the MUSE_* surface changed without the inventory following.");
+  console.error("✗ docs/setup/ENV.md is stale — the MUSE_* surface changed without the inventory following.");
   console.error("  Regenerate with: pnpm docs:env");
   process.exit(1);
 }

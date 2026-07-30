@@ -10,7 +10,7 @@ Legend: ✅ ran (read-only live) · 🧪 tests as evidence · ⬜ code-only · �
 
 The outbound-safety contract is **fully implemented AND contract-faithfully tested** — deny/timeout/ambiguous-recipient/absent-consent all proven to produce no external effect by deterministic (no-Ollama) eval batteries that PASS live. Voice is local-by-construction (OpenAI key forced `undefined` under `MUSE_LOCAL_ONLY`, default ON). A2A swarm is opt-in, HMAC-signed, PII-redacted, inbound-quarantined. Multi-agent orchestration runs sequential/parallel/tiered.
 
-**One stale test found AND FIXED (2026-06-14):** the `smoke:broad` "race mode" failure was a **STALE TEST**, not a product regression. `race` mode was deliberately PARKED (2026-06) and resolves to `sequential`, which returns one result PER worker (2 with 2 workers). The smoke assertion had expected exactly 1; it has since been updated to expect 2 (`smoke:broad` now 51 pass / 0 fail). The matching `docs/FEATURES.md`/`SYSTEM-MAP.md` race wording was also corrected to "parked → sequential".
+**One stale test found AND FIXED (2026-06-14):** the `smoke:broad` "race mode" failure was a **STALE TEST**, not a product regression. `race` mode was deliberately PARKED (2026-06) and resolves to `sequential`, which returns one result PER worker (2 with 2 workers). The smoke assertion had expected exactly 1; it has since been updated to expect 2 (`smoke:broad` now 51 pass / 0 fail). The matching `../product/FEATURES.md`/`../product/SYSTEM-MAP.md` race wording was also corrected to "parked → sequential".
 
 ---
 
@@ -118,7 +118,7 @@ The outbound-safety contract is **fully implemented AND contract-faithfully test
 
 ## DOC DRIFT (record)
 
-1. ✅ FIXED 2026-06-14 — `docs/FEATURES.md` race-mode claim (was at :194, now :208) corrected from "경쟁(가장 먼저 끝난 것 채택)" to "parked → sequential"; `SYSTEM-MAP.md` likewise. README.md was already correct ("Sequential or parallel").
+1. ✅ FIXED 2026-06-14 — `../product/FEATURES.md` race-mode claim (was at :194, now :208) corrected from "경쟁(가장 먼저 끝난 것 채택)" to "parked → sequential"; `../product/SYSTEM-MAP.md` likewise. README.md was already correct ("Sequential or parallel").
 2. ✅ FIXED 2026-06-14 — `scripts/smoke-broad-http.mjs` race assertion updated (1→2 results); smoke:broad now 51 pass / 0 fail.
 3. **Minor: command-name drift in task spec** — there is no `muse setup-voice`; it is `muse setup voice`. (Docs/FEATURES use `setup` correctly; flag only because the catalog brief used `setup-voice`.)
 4. **SYSTEM-MAP coverage** — SYSTEM-MAP.md covers outbound safety prose (draft-first / fail-closed at lines 162-163) but does NOT name the policy/messaging/multi-agent/a2a/voice packages or orchestration modes explicitly; lighter than README's package map. Not wrong, just thin for this domain.

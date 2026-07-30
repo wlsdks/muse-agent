@@ -8,7 +8,7 @@ status_legend:
   "⚙️": needs external integration or configuration
   "⚠️": known gap (not yet trustworthy)
 updated: 2026-07-30
-related: [strategy/attunement.md, design/attunement.md, FEATURES.md, README.md, feature-catalog/INDEX.md, strategy/differentiation.md]
+related: [../strategy/attunement.md, ../design/attunement.md, FEATURES.md, ../README.md, ../feature-catalog/INDEX.md, ../strategy/differentiation.md]
 ---
 
 # Muse at a glance (system map)
@@ -19,9 +19,9 @@ related: [strategy/attunement.md, design/attunement.md, FEATURES.md, README.md, 
 > outline of "what Muse can do" from this one page.
 >
 > - Deeper per-feature descriptions: [`FEATURES.md`](FEATURES.md) · **the verified full inventory
->   with evidence (audited 2026-06-14): [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md)** ·
->   product identity and strategy: [`strategy/differentiation.md`](strategy/differentiation.md) ·
->   documentation index: [`README.md`](README.md)
+>   with evidence (audited 2026-06-14): [`feature-catalog/INDEX.md`](../feature-catalog/INDEX.md)** ·
+>   product identity and strategy: [`strategy/differentiation.md`](../strategy/differentiation.md) ·
+>   documentation index: [`README.md`](../README.md)
 >
 > **Reading convention (for humans and agents alike):** each area starts with a `## number. name`
 > heading, and every capability inside it is one line of the form
@@ -46,7 +46,7 @@ paused, inspected and forgotten. Personal Continuity Slice A hands back the life
 user picked together with the exact local task/note through `muse continue`, and an explicit outcome
 changes only what the next pack shows. Interpreting Observe O1 collection as rhythm or friction,
 using it for pack delivery, automatic linking, and timing improvements are all still **roadmap**
-([product direction](strategy/attunement.md) · [technical design](design/attunement.md)).
+([product direction](../strategy/attunement.md) · [technical design](../design/attunement.md)).
 
 The signature roadmap experience is **Shadow Muse → Continuity Capsule → Policy Card**: Muse first
 learns in silence, then restores the state the user meant to continue along with what changed since,
@@ -54,8 +54,8 @@ then shows the next collaboration rule with its evidence, scope and rollback. Th
 Attunement Graph (MAG)** behind it is not a heavy server duplicating existing stores; it is an
 agent-native personal context compiler that links time, relationships and provenance as a
 regenerable projection and builds only the small Working Graph each turn needs
-([graph design](design/attunement-graph.md) ·
-[separate execution roadmap](../internal/goals/attunement-wow-graph-roadmap.md)).
+([graph design](../design/attunement-graph.md) ·
+[separate execution roadmap](../../internal/goals/attunement-wow-graph-roadmap.md)).
 
 ## The big picture — what layers Muse is made of
 
@@ -340,7 +340,7 @@ Capabilities that send something to a third party or change external system stat
 - **Multi-agent collaboration** — specialist agents run **sequentially or in parallel**, and each
   collaboration's mode, duration and success/failure counts are kept in a history. (Race mode is
   currently parked deliberately and falls back to sequential — details in
-  [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md).)
+  [`feature-catalog/INDEX.md`](../feature-catalog/INDEX.md).)
 - **Model tiering** — within one task, simple lookups go to a fast model and deep reasoning to a
   strong one, automatically.
 - **Agent specs** — agents with a role, tools and instructions can be registered, and the right one

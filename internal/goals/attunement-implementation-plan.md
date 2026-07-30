@@ -4,7 +4,7 @@ audience: [product, engineering, evaluation]
 purpose: Deliver and falsify the first Attunement closed loop through dependency-ordered slices
 status: proposed
 updated: 2026-07-22
-related: [../strategy/attunement.md, ../design/attunement.md, ../privacy-and-data.md]
+related: [../../docs/strategy/attunement.md, ../../docs/design/attunement.md, ../../docs/trust/privacy-and-data.md]
 ---
 
 # Attunement implementation plan

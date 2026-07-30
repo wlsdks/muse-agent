@@ -5,9 +5,9 @@
 - Decision owners: Muse architecture
 - Related:
   [MAG product Module boundary](0001-mag-product-module-boundary.md),
-  [Muse Attunement Graph](../design/attunement-graph.md),
-  [Agent-Native Graph Core](../design/agent-native-graph-core.md),
-  [native-kernel decision ledger](../benchmarks/mag-native-kernel-candidates.md)
+  [Muse Attunement Graph](../../design/attunement-graph.md),
+  [Agent-Native Graph Core](../../design/agent-native-graph-core.md),
+  [native-kernel decision ledger](../../benchmarks/mag-native-kernel-candidates.md)
 
 ## Context
 
@@ -92,7 +92,7 @@ a material end-to-end improvement after serialization/binding overhead, and pass
 semantic corpus. The candidate operation, exact benchmark unit, possible data-plane
 algorithm, activation evidence, and every select/reject/defer decision are maintained in
 the
-[native-kernel decision ledger](../benchmarks/mag-native-kernel-candidates.md).
+[native-kernel decision ledger](../../benchmarks/mag-native-kernel-candidates.md).
 
 ## Evidence
 

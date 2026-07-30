@@ -3,7 +3,7 @@ title: Architecture and repository layout
 audience: [developers, AI agents]
 purpose: The provider contract, where data lives on disk, the one-runtime rule, and the package map
 updated: 2026-07-30
-related: [SYSTEM-MAP.md, ../AGENTS.md, ../.claude/rules/architecture.md]
+related: [../product/SYSTEM-MAP.md, ../../AGENTS.md, ../../.claude/rules/architecture.md]
 ---
 
 # Architecture
@@ -73,8 +73,8 @@ grounded recall, search and user-model access to other agents.
 | `crates/runner` | Sandboxed local execution |
 | `harness/` | The vendor-neutral agent operating harness used to build Muse |
 
-39 workspace packages in total; [the system map](SYSTEM-MAP.md) is the guided tour.
+39 workspace packages in total; [the system map](../product/SYSTEM-MAP.md) is the guided tour.
 
 For the enforced rules behind these boundaries see
-[`.claude/rules/architecture.md`](../.claude/rules/architecture.md); for what each capability does,
-see [the system map](SYSTEM-MAP.md).
+[`.claude/rules/architecture.md`](../../.claude/rules/architecture.md); for what each capability does,
+see [the system map](../product/SYSTEM-MAP.md).

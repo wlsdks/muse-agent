@@ -3,20 +3,20 @@ title: The grounding gate — Muse's trust floor, as one flow
 audience: [AI agents, developers]
 purpose: How the grounding + citation gate handles a single question, end to end — a mental model
 updated: 2026-06-20
-related: [feature-catalog/02-knowledge-rag.md, glossary.md, SYSTEM-MAP.md]
+related: [../feature-catalog/02-knowledge-rag.md, ../product/glossary.md, ../product/SYSTEM-MAP.md]
 ---
 
 # The grounding gate — as one flow
 
 > Grounding is Attunement's **trust floor**. Claims about work rhythm, friction and resumption
 > context must follow the same evidence discipline. For product direction, see
-> [Attunement](strategy/attunement.md).
+> [Attunement](../strategy/attunement.md).
 
 Muse's product identity is Attunement, but the deterministic trust floor that stops it inventing
 claims about a person — and reasons to intervene — is the **grounding gate**. This document shows
 *how a single question passes through that gate*, as one flow, for the mental model. Symbol- and
-test-level evidence lives in [feature-catalog/02](feature-catalog/02-knowledge-rag.md); terms live
-in the [glossary](glossary.md).
+test-level evidence lives in [feature-catalog/02](../feature-catalog/02-knowledge-rag.md); terms live
+in the [glossary](../product/glossary.md).
 
 > The key point: on this path the gate is **deterministic code, not a model call**:
 > `verifyGrounding` in `packages/agent-core/src/grounding-verifier.ts` (re-exported through
@@ -91,7 +91,7 @@ question ─▶ ① retrieve ─▶ ② confidence ─▶ ③ draft ─▶ ④ f
 
 The gate checks *claim against source* — **not whether the source is true.** A poisoned note makes a
 "confident grounded lie" possible (a known limit; see `grounded ≠ true` in the
-[glossary](glossary.md)). That is why Muse *additionally* flags source trust (`trusted:false`),
+[glossary](../product/glossary.md)). That is why Muse *additionally* flags source trust (`trusted:false`),
 contradictions between notes (`semanticConflict`) and value drift. Every new surface (recall,
 proactivity, reflection, vision) has to pass under this gate, and the number of grounded surfaces
 never decreases (release gate: `precheck:grounding`).

@@ -3,17 +3,35 @@ title: Muse documentation guide (index)
 audience: [planners, developers, AI agents]
 purpose: Single entry point to the Muse documentation set — which document holds what
 updated: 2026-07-30
-related: [strategy/attunement.md, design/attunement-graph.md, ../internal/goals/attunement-wow-graph-roadmap.md, SYSTEM-MAP.md, FEATURES.md]
+related: [strategy/attunement.md, design/attunement-graph.md, ../internal/goals/attunement-wow-graph-roadmap.md, product/SYSTEM-MAP.md, product/FEATURES.md]
 ---
 
 # Muse documentation guide
 
 The Muse docs are kept "only what's needed, short, well separated." If you're new, reading just
-**[SYSTEM-MAP](SYSTEM-MAP.md)** gives you the whole outline.
+**[SYSTEM-MAP](product/SYSTEM-MAP.md)** gives you the whole outline.
 
 > **Language rule:** every document in this repository is written in **English**. The only
 > exception is quoted material — UI strings, CLI output samples, and user utterances may stay in
 > their original language, marked as quotes.
+
+## How this folder is organised
+
+Every document lives in exactly one topic folder, and the folder name says which question it answers:
+
+| Folder | Answers |
+|---|---|
+| [`product/`](product/) | What Muse is and does — [SYSTEM-MAP](product/SYSTEM-MAP.md), [FEATURES](product/FEATURES.md), [glossary](product/glossary.md) |
+| [`trust/`](trust/) | Why you can believe the output — [grounding-gate](trust/grounding-gate.md), [privacy-and-data](trust/privacy-and-data.md) |
+| [`setup/`](setup/) | Getting it running — [local LLM](setup/setup-local-llm.md), [env inventory](setup/ENV.md), [remote access](setup/remote-access.md) |
+| [`architecture/`](architecture/README.md) | How it is built, and the decisions behind it — plus [`adr/`](architecture/adr/) |
+| [`design/`](design/) | Per-feature design rationale: why a shipped thing is shaped that way |
+| [`strategy/`](strategy/) | Product direction and positioning |
+| [`development/`](development/) | How we verify and release |
+| [`evaluations/`](evaluations/) · [`benchmarks/`](benchmarks/) · [`feature-catalog/`](feature-catalog/) | Dated evidence, kept as records rather than rewritten |
+
+Work ledgers and autonomous-loop journals are not documentation and live outside this tree, in
+[`../internal/goals/`](../internal/goals/).
 
 ## If you are an AI agent (Claude Code · Codex) — read in this order
 
@@ -23,10 +41,10 @@ from docs alone**:
 1. [`../README.md`](../README.md) — what Muse is (identity, Continuity, current status boundary)
 2. [`../CLAUDE.md`](../CLAUDE.md) — the contract every agent reads first (non-negotiable rules)
 3. [`strategy/attunement.md`](strategy/attunement.md) — the product promise and the current/roadmap boundary
-4. [`glossary.md`](glossary.md) — Muse-specific terms (Attunement, Observe, grounding floor… without grep)
-5. [`SYSTEM-MAP.md`](SYSTEM-MAP.md) — the feature structure on one page
-6. [`grounding-gate.md`](grounding-gate.md) — the trust floor (grounding gate) as one flow
-7. [`FEATURES.md`](FEATURES.md) → [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md) — feature detail + exhaustive verification evidence
+4. [`product/glossary.md`](product/glossary.md) — Muse-specific terms (Attunement, Observe, grounding floor… without grep)
+5. [`product/SYSTEM-MAP.md`](product/SYSTEM-MAP.md) — the feature structure on one page
+6. [`trust/grounding-gate.md`](trust/grounding-gate.md) — the trust floor (grounding gate) as one flow
+7. [`product/FEATURES.md`](product/FEATURES.md) → [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md) — feature detail + exhaustive verification evidence
 8. Then go deeper: [`design/attunement.md`](design/attunement.md) · [`design/attunement-graph.md`](design/attunement-graph.md) · [`goals/attunement-implementation-plan.md`](../internal/goals/attunement-implementation-plan.md) · [`goals/attunement-wow-graph-roadmap.md`](../internal/goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
 
 ## To understand the product
@@ -38,19 +56,19 @@ from docs alone**:
 | **[design/attunement-graph.md](design/attunement-graph.md)** | Module contract and research basis of the agent-native time/provenance graph and personal context compiler | Product, dev, security |
 | **[goals/attunement-implementation-plan.md](../internal/goals/attunement-implementation-plan.md)** | Dependency-ordered vertical slices, gates, kill criterion | Execution and evaluation owners |
 | **[goals/attunement-wow-graph-roadmap.md](../internal/goals/attunement-wow-graph-roadmap.md)** | The separate long-horizon execution order for Shadow Muse, Capsule, Policy Card, Graph Engine | Execution and evaluation owners |
-| **[SYSTEM-MAP.md](SYSTEM-MAP.md)** | Structural map of Muse's features at a glance (words only, for quick orientation) | Planners and devs / first-time readers |
-| **[glossary.md](glossary.md)** | Single definition of Muse-specific terms (one line per term + where it lives) | First-time readers / AI agents |
-| **[grounding-gate.md](grounding-gate.md)** | How the grounding gate — the trust floor — handles one question: flow + worked example | Anyone who wants the core behavior / AI agents |
-| **[FEATURES.md](FEATURES.md)** | Per-feature detailed definitions (what, and how it behaves from the user's perspective) | Product and design decisions |
+| **[SYSTEM-MAP.md](product/SYSTEM-MAP.md)** | Structural map of Muse's features at a glance (words only, for quick orientation) | Planners and devs / first-time readers |
+| **[glossary.md](product/glossary.md)** | Single definition of Muse-specific terms (one line per term + where it lives) | First-time readers / AI agents |
+| **[grounding-gate.md](trust/grounding-gate.md)** | How the grounding gate — the trust floor — handles one question: flow + worked example | Anyone who wants the core behavior / AI agents |
+| **[FEATURES.md](product/FEATURES.md)** | Per-feature detailed definitions (what, and how it behaves from the user's perspective) | Product and design decisions |
 | **[feature-catalog/INDEX.md](feature-catalog/INDEX.md)** | Exhaustively verified full feature inventory (run/test/source evidence per feature; 2026-06-14) | Anyone who needs exact facts / AI agents |
-| **[privacy-and-data.md](privacy-and-data.md)** | Where data lives and what each privacy posture blocks | People checking before adopting |
+| **[privacy-and-data.md](trust/privacy-and-data.md)** | Where data lives and what each privacy posture blocks | People checking before adopting |
 
 ## To run it yourself
 
 | Document | What |
 |---|---|
-| **[setup-local-llm.md](setup-local-llm.md)** | Installation guide for running Muse on a local LLM (Ollama etc.) |
-| **[guides/remote-access.md](guides/remote-access.md)** | `muse remote enable` — open the Muse web UI from your phone via Tailscale (tailnet-only) |
+| **[setup-local-llm.md](setup/setup-local-llm.md)** | Installation guide for running Muse on a local LLM (Ollama etc.) |
+| **[guides/remote-access.md](setup/remote-access.md)** | `muse remote enable` — open the Muse web UI from your phone via Tailscale (tailnet-only) |
 
 ## Deeper — design notes
 
@@ -64,21 +82,6 @@ progress. For a feature's "what," see the product docs above; for the "why," loo
 - Proactivity and follow-up: [agent-self-followup](design/agent-self-followup.md), [reminder-firing](design/reminder-firing.md), [background-review-engine](design/background-review-engine.md), [progressive-autonomy-p0](design/progressive-autonomy-p0.md)
 - Channels and voice: [messaging](design/messaging.md), [line-webhook](design/line-webhook.md), [voice-mode](design/voice-mode.md), [phase-d-chat-stream-routing](design/phase-d-chat-stream-routing.md)
 - Action and platform: [actuator-modes](design/actuator-modes.md), [macos-control](design/macos-control.md), [a2a-swarm](design/a2a-swarm.md), [mascot](design/mascot.md)
-
-## Strategy, development and evidence
-
-| Folder | What is in it |
-|---|---|
-| [`strategy/`](strategy/) | Product direction and positioning: the [Attunement contract](strategy/attunement.md), [differentiation](strategy/differentiation.md), [agent-principles-2026](strategy/agent-principles-2026.md), [context-doctrine](strategy/context-doctrine.md), [prompt-architecture](strategy/prompt-architecture.md), [secret-source](strategy/secret-source.md), plus dated competitive reads |
-| [`architecture.md`](architecture.md) | The provider contract, on-disk data locations, the one-runtime rule and the package map (moved out of the README to keep it a landing page) |
-| [`development/`](development/) | How we verify: [testing-strategy](development/testing-strategy.md), [ai-agent-testing-strategy](development/ai-agent-testing-strategy.md), [typescript-7](development/typescript-7.md), [personal-agent-qualification](development/personal-agent-qualification.md), [agent-capability-baseline](development/agent-capability-baseline.md), [verification-command-catalog](development/verification-command-catalog.md) |
-| [`evaluations/`](evaluations/) | Dated evaluation records — one file per run, kept as evidence rather than rewritten |
-| [`benchmarks/`](benchmarks/) | Published charts and the [evidence index](benchmarks/EVIDENCE.md) that keeps failed and unchanged results visible |
-| [`adr/`](adr/) | Architecture decision records (the MAG module and language/runtime boundaries) |
-| Generated | [`ENV.md`](ENV.md) is the generated `MUSE_*` inventory — regenerate with `pnpm docs:env`, and `pnpm check:env` fails when it drifts. Do not hand-edit it. |
-
-One record sits outside those groups: [security-sweep-2-plan](strategy/security-sweep-2-plan.md),
-kept because finding #4 is still open.
 
 ## Agent harness (operating structure)
 

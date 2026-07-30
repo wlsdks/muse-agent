@@ -595,7 +595,7 @@ export function detectTailscaleBinaryPresent(
 export function resolveRemoteSetupStatus(tailscaleFound: boolean): SetupStatusSnapshot["remote"] {
   return tailscaleFound
     ? { nextStep: "muse remote enable", status: "ok", tailscaleFound: true }
-    : { nextStep: "docs/guides/remote-access.md", status: "info", tailscaleFound: false };
+    : { nextStep: "docs/setup/remote-access.md", status: "info", tailscaleFound: false };
 }
 
 /**

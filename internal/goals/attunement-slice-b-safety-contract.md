@@ -4,7 +4,7 @@ audience: [product, engineering, evaluation]
 purpose: Prevent partial Observe work from collecting data or sending notices before user control and focus gates exist
 status: superseded-by-collection-policy-split
 updated: 2026-07-22
-related: [attunement-implementation-plan.md, ../strategy/attunement.md]
+related: [attunement-implementation-plan.md, ../../docs/strategy/attunement.md]
 ---
 
 # Attunement Slice B safety contract

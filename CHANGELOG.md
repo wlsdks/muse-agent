@@ -4,7 +4,7 @@ All notable changes to Muse are recorded here. The format is loosely based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project is in
 continuous iteration on `main`; once a tagged release exists, sections will
 move from `Unreleased` to dated/versioned headings. Version policy:
-[`docs/VERSIONING.md`](docs/VERSIONING.md).
+[`docs/development/VERSIONING.md`](docs/development/VERSIONING.md).
 
 ## [Unreleased]
 
@@ -1101,7 +1101,7 @@ mostly inert, and the reason your replies were slow was never Muse.
   turn re-pays the whole cost. Measured on a 12B model: an identical prompt costs
   2402ms, 2406ms, 2425ms, 2427ms on the default config; with
   `OLLAMA_NUM_PARALLEL=1` it costs 3163ms then **75ms, 69ms, 66ms**. Doctor names
-  the fix; `docs/setup-local-llm.md` explains the trade-off.
+  the fix; `docs/setup/setup-local-llm.md` explains the trade-off.
 - **Unattended learning is ON by default** — but only now that it demonstrably
   works. Every learned strategy still sits on probation until you reinforce it,
   retiring is subtractive-only, the pause switch is honoured, and Muse tells you on
@@ -2641,7 +2641,7 @@ longer launder into a confident "your own data" answer on any surface).
 
 First tagged release — **early / experimental, macOS only**. While the major
 version is `0`, every release is a pre-release and the public surface may still
-change (see [`docs/VERSIONING.md`](docs/VERSIONING.md)).
+change (see [`docs/development/VERSIONING.md`](docs/development/VERSIONING.md)).
 
 ### Added
 

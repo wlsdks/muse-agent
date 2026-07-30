@@ -76,7 +76,7 @@ is the user currently on?" signal that doesn't exist yet.
   `MUSE_PROACTIVE_DESTINATION` are set. Boot is fail-open; missing config = no
   daemon (same posture as the reminder tick). (The design's separate
   `MUSE_PROACTIVE_ENABLED` flag was not implemented — a configured destination
-  is the enable signal. See the generated [ENV inventory](../ENV.md).)
+  is the enable signal. See the generated [ENV inventory](../setup/ENV.md).)
 - Phase A scope is *calendar events only*. Tasks come in Phase B once
   the calendar version has been dogfooded.
 

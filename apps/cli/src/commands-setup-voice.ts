@@ -204,7 +204,7 @@ export function registerSetupVoiceCommand(program: Command, io: ProgramIO): void
         io.stdout(`All ${results.length.toString()} checks green — \`muse listen\` and \`/api/voice/tts\` should work end-to-end.\n`);
       } else {
         io.stdout(`${todoCount.toString()} of ${results.length.toString()} steps still missing. Follow the → hints above.\n`);
-        io.stdout("Full docs: docs/setup-local-llm.md → \"Voice mode\" (when added) or docs/design/voice-mode.md.\n");
+        io.stdout("Full docs: docs/setup/setup-local-llm.md → \"Voice mode\" (when added) or docs/design/voice-mode.md.\n");
       }
     });
 }

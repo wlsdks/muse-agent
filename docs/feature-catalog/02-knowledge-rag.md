@@ -94,7 +94,7 @@ The "notes/fetch/fs servers" are loopback MCP servers (`McpManager`-managed, loc
 
 ## D. Doc drift (README ↔ FEATURES.md ↔ SYSTEM-MAP.md ↔ reality)
 
-1. ✅ PARTLY FIXED 2026-06-14 — the deterministic data/text tools (`csv`/`summarize`/`keywords`/`benford`/`trend`/`diversity`/`on-this-day`) now have a dedicated section in `docs/FEATURES.md` (### Deterministic data-analysis tools). They are still NOT enumerated as commands in `docs/SYSTEM-MAP.md` — remaining gap there. (`muse weather`/`muse time` likewise only in SYSTEM-MAP prose.)
+1. ✅ PARTLY FIXED 2026-06-14 — the deterministic data/text tools (`csv`/`summarize`/`keywords`/`benford`/`trend`/`diversity`/`on-this-day`) now have a dedicated section in `../product/FEATURES.md` (### Deterministic data-analysis tools). They are still NOT enumerated as commands in `../product/SYSTEM-MAP.md` — remaining gap there. (`muse weather`/`muse time` likewise only in SYSTEM-MAP prose.)
 
 2. **CORRECTED (was overstated) — NOT a quality bug.** `recall` resolves an omitted `--embed-model` to `DEFAULT_EMBED_MODEL` = `nomic-embed-text-v2-moe` at runtime (`commands-recall.ts:381-383`) — identical to `ask`/`note`. Only the `.option(...)` help-description string (`:357`) is stale (`default 'nomic-embed-text'`), and recall warns on index-model mismatch (`:313-326`). So results are NOT silently degraded; this is a cosmetic help-text fix only.
 

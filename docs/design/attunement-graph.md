@@ -32,7 +32,7 @@ monorepo until its clean-room build, packed-artifact, conformance, export/rebuil
 dependency-isolation gates pass. Muse is the first consumer, not a dependency that may
 leak into MAG Engine semantics. The accepted Module topology and repository extraction
 strategy are in
-[ADR 0001](../adr/0001-mag-product-module-boundary.md).
+[ADR 0001](../architecture/adr/0001-mag-product-module-boundary.md).
 
 Markdown is MAG's planned portable document interchange/export format. Obsidian is a
 planned first-class local vault Adapter over Markdown, frontmatter, wiki links, and stable
@@ -592,7 +592,7 @@ rebuild, or physical forget may move to a Rust Node-API/WASM kernel only after
 workload-specific measurement includes boundary/serialization overhead and proves a
 material end-to-end gain. The accepted performance ladder, corpus matrix, and initial
 targets live in
-[ADR 0002](../adr/0002-mag-language-runtime-boundary.md).
+[ADR 0002](../architecture/adr/0002-mag-language-runtime-boundary.md).
 
 The flagship Muse experience must remain complete with Muse's own local default graph
 Module. Neo4j, Graphiti, a hosted graph service, or any other external Graph DB may later

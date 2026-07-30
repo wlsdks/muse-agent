@@ -3,7 +3,7 @@ title: Where your data lives — privacy summary
 audience: [users, product, developers, AI agents]
 purpose: One place for "what is stored where, and what each privacy posture blocks"
 updated: 2026-07-30
-related: [design/attunement.md, SYSTEM-MAP.md, FEATURES.md, strategy/differentiation.md, README.md]
+related: [../design/attunement.md, ../product/SYSTEM-MAP.md, ../product/FEATURES.md, ../strategy/differentiation.md, ../README.md]
 ---
 
 # Where your data lives (privacy summary)
@@ -14,8 +14,8 @@ default today, and the model provider is your choice. If you need fail-closed pr
 covered remote model, voice, image, indexing, and Home Assistant paths, set
 `MUSE_LOCAL_ONLY=true`.
 
-For behaviour details see the [system map](SYSTEM-MAP.md) and the [feature definitions](FEATURES.md);
-for "why it was designed this way" see the [differentiation doc](strategy/differentiation.md).
+For behaviour details see the [system map](../product/SYSTEM-MAP.md) and the [feature definitions](../product/FEATURES.md);
+for "why it was designed this way" see the [differentiation doc](../strategy/differentiation.md).
 
 ## Where your data is stored
 
@@ -100,7 +100,7 @@ The default storage target is minimal metadata such as app-session transitions a
 titles is forbidden in the default profile.** Browser history remains, as today, a separate
 explicitly opt-in source that is not combined with the O1 collector. Adding browser observation to
 Observe later must separately clear private-window exclusion and per-source controls. The detailed
-contract is in the [Attunement design](design/attunement.md).
+contract is in the [Attunement design](../design/attunement.md).
 
 ## Privacy-graded routing — sending only personal-data-free turns to the cloud (opt-in, off by default)
 
@@ -152,7 +152,7 @@ submissions) pass through separate safeguards:
   irreversible risk, so a permanent product boundary).
 - **No hosted/cloud personal-memory store is shipped.** Shipping one would first require the
   encryption, identity, conflict, deletion, export, and recovery gates in the
-  [Attunement product contract](strategy/attunement.md). Autonomous outbound sends remain
+  [Attunement product contract](../strategy/attunement.md). Autonomous outbound sends remain
   permanently out of scope.
 
 ---

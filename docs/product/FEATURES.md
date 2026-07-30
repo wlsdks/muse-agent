@@ -7,7 +7,7 @@ status_legend:
   "⚙️": needs external integration/setup
   "⚠️": known gap (not yet trustworthy enough)
 updated: 2026-07-13
-related: [strategy/attunement.md, design/attunement.md, SYSTEM-MAP.md, README.md, feature-catalog/INDEX.md, strategy/differentiation.md]
+related: [../strategy/attunement.md, ../design/attunement.md, SYSTEM-MAP.md, ../README.md, ../feature-catalog/INDEX.md, ../strategy/differentiation.md]
 ---
 
 # Muse feature definitions (for planners)
@@ -19,9 +19,9 @@ related: [strategy/attunement.md, design/attunement.md, SYSTEM-MAP.md, README.md
 >
 > Status legend: ✅ usable right away · ⚙️ needs external integration/setup · ⚠️ known gap (not yet trustworthy enough)
 >
-> **Related documents:** product direction is [`strategy/attunement.md`](strategy/attunement.md) ·
+> **Related documents:** product direction is [`strategy/attunement.md`](../strategy/attunement.md) ·
 > **the verified full feature inventory (with evidence) is
-> [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md)** (exhaustive verification, 2026-06-14).
+> [`feature-catalog/INDEX.md`](../feature-catalog/INDEX.md)** (exhaustive verification, 2026-06-14).
 >
 > ⚠️ This document is a high-level narrative and does not enumerate every CLI command 1:1.
 > Additional command surfaces — `anomaly` · `recap` · `week` · `daemon` · `watch-folder` ·
@@ -52,7 +52,7 @@ The full product picture is a continuing companion that connects calendar, notes
 environment, and work. Getting better and better at when to stay quiet and when to offer which
 help is what we call `Attunement`. You can choose among multiple companies' models and local
 models, but the full Attunement learning loop is still roadmap
-([product direction](strategy/attunement.md)).
+([product direction](../strategy/attunement.md)).
 
 Two traits run through every feature:
 
@@ -185,7 +185,7 @@ device/account.
   insights then ride into `muse ask` answers as context, so reflection comes back as "answers that
   know me better" (dreaming closes the loop). After recall and proactivity, reflection passes the
   same grounding + citation gate — one more surface of the "shows its work" differentiator
-  ([differentiation](strategy/differentiation.md)).
+  ([differentiation](../strategy/differentiation.md)).
 - **Duplicate-memory consolidation** ✅ — finds nearly identical past-session summaries and tidies
   them (`muse episode consolidate`). Default is a preview (read-only); on apply it keeps only the
   richer one and cleans up duplicates (taking a backup first). Prevents the memory store from
@@ -509,7 +509,7 @@ Mostly operator-facing screens, but used directly for cost and quality decisions
   Observe O1 collects app category, time, and duration for the exact thread, opt-in and locally,
   with inspect/pause/resume/forget. But rhythm/friction hypotheses, automatic linking, more data
   sources, usefulness/rhythm/timing improvement, and proactive delivery are still roadmap in the
-  [implementation plan](../internal/goals/attunement-implementation-plan.md).
+  [implementation plan](../../internal/goals/attunement-implementation-plan.md).
 - **Generic desktop computer use is not implemented** — the real Chrome is operated via semantic
   snapshots and fail-close target matching, but action trees for arbitrary apps outside the
   browser, state restoration, and cross-app workflow compilation are not provided.
@@ -560,9 +560,9 @@ thread, not a hidden global preference.
   release are roadmap.
 
 The key sentence: **Muse doesn't remember apps; it remembers the state I meant to continue.**
-The detailed product contract and module design follow [Attunement](strategy/attunement.md),
-[Attunement Graph](design/attunement-graph.md), and the
-[separate execution roadmap](../internal/goals/attunement-wow-graph-roadmap.md). These items are not shipped
+The detailed product contract and module design follow [Attunement](../strategy/attunement.md),
+[Attunement Graph](../design/attunement-graph.md), and the
+[separate execution roadmap](../../internal/goals/attunement-wow-graph-roadmap.md). These items are not shipped
 features yet.
 
 The first flow: **user picks a life thread → context pack prepared → usage recorded → next pack
@@ -571,8 +571,8 @@ that improve timing after this flow's value is confirmed.
 
 Today's memory, pattern, proactivity, browser, and trace are the substrate of this loop, not the
 whole loop. The concrete privacy contract and per-stage gates/kill criteria follow the
-[Attunement design](design/attunement.md) and the
-[implementation plan](../internal/goals/attunement-implementation-plan.md).
+[Attunement design](../design/attunement.md) and the
+[implementation plan](../../internal/goals/attunement-implementation-plan.md).
 
 ### The foundation already in place
 

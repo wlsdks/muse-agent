@@ -4,7 +4,7 @@
 - Started: 2026-07-30
 - Decision owner: MAG architecture
 - Governing ADR:
-  [ADR 0002](../adr/0002-mag-language-runtime-boundary.md)
+  [ADR 0002](../architecture/adr/0002-mag-language-runtime-boundary.md)
 
 This ledger records which Muse Attunement Graph operations may move from TypeScript to
 Rust, which measurements activate that work, and why a candidate was selected or rejected.

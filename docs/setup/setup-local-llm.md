@@ -3,7 +3,7 @@ title: Local LLM setup guide
 audience: [users, developers]
 purpose: How to run Muse on a local open-source model (Ollama) with no cloud cost
 updated: 2026-06-14
-related: [README.md, SYSTEM-MAP.md]
+related: [../README.md, ../product/SYSTEM-MAP.md]
 ---
 
 # Local LLM setup
@@ -15,7 +15,7 @@ calls is to point it at a local open-source model via **Ollama**.
 > New here? Start the model, then run `muse onboard` — it walks you through
 > pointing at a notes folder, ingesting material and asking a first question,
 > which gets you to **a private, cited first answer**. For the whole feature
-> map, see [SYSTEM-MAP](SYSTEM-MAP.md).
+> map, see [SYSTEM-MAP](../product/SYSTEM-MAP.md).
 
 **Default: `gemma4:12b`** *(~16 GB unified memory / VRAM)* — Muse's zero-config
 local model. It's natively **multimodal** (the agent can SEE images — receipts,
