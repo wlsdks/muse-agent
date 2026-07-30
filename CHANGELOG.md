@@ -8,6 +8,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a3a0a clean-room `.magx` v1
+  compatibility corpus and package-local oracle. Trusted stored-projection inputs
+  cover empty, two-generation, raw UTF-8 Unicode ordering, and normalization-distinct
+  scopes. The Node-built-ins-only verifier independently derives store/record/state
+  identities, exact bytes, final heads, and a per-line byte ledger without importing
+  production MAG code or claiming to verify Engine admission. A fresh evaluator
+  recomputed every artifact and manifest field, exercised framing/path/mutation
+  failures, and found no P0/P1 blocker. Runtime behavior, public exports, and
+  portable-format status are unchanged.
+
 - Documented the required standalone MAG Admin surface. A shared future `./admin` core
   will back CLI and local UI/API surfaces, remain read-only by default, expose health,
   scope/head/provenance/integrity/storage state, and control verify, export, rebuild,

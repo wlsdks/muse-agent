@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "corpus": "muse-mag-portable-fixtures",
+  "corpusVersion": 1,
+  "cases": [
+    {
+      "case": "empty",
+      "file": "empty.magx",
+      "input": "empty.input.json",
+      "artifactBytes": 778,
+      "artifactSha256": "f5989c6b2e4a3be2a95f44559cbd2abbdda686dfe0674fb6d1eb7da90e30cc26",
+      "stateId": "mag-state:3b5a2ce8b3402475e673a1beedb328cd7395fcf0048b1a623fea414b96a154eb",
+      "exportId": "mag-portable-record:7970b7f66371c704028384f13fd79d5c0edeecf8ae14271d366e7c3c1ff2abb8",
+      "scopeCount": 0,
+      "projectionCount": 0,
+      "headCount": 0,
+      "recordCount": 2,
+      "lines": [
+        {
+          "kind": "manifest",
+          "sequence": 0,
+          "unsignedBodyBytes": 253,
+          "envelopeBytes": 351,
+          "lineBytes": 352,
+          "recordId": "mag-portable-record:4060320ccb5452a5e660a834fe99790f3f42df11b6d60c3fd44b543e7181c26a"
+        },
+        {
+          "kind": "footer",
+          "sequence": 1,
+          "unsignedBodyBytes": 327,
+          "envelopeBytes": 425,
+          "lineBytes": 426,
+          "recordId": "mag-portable-record:7970b7f66371c704028384f13fd79d5c0edeecf8ae14271d366e7c3c1ff2abb8"
+        }
+      ]
+    },
+    {
+      "case": "one-scope-two-generations",
+      "file": "one-scope-two-generations.magx",
+      "input": "one-scope-two-generations.input.json",
+      "artifactBytes": 5068,
+      "artifactSha256": "d729084bb6b1c3c7c839bae86fa57cba8f277eb3e470ed557e36cd52203d915d",
+      "stateId": "mag-state:902d79a4879c595336081b39f319f2d869a80017defe75c1641d1c05907f27db",
+      "exportId": "mag-portable-record:53780ad520cfb9cf2689d8916a210cf5bdc499d6e1655a45ca37c7acdddaa5c7",
+      "scopeCount": 1,
+      "projectionCount": 2,
+      "headCount": 1,
+      "recordCount": 5,
+      "lines": [
+        {
+          "kind": "manifest",
+          "sequence": 0,
+          "unsignedBodyBytes": 253,
+          "envelopeBytes": 351,
+          "lineBytes": 352,
+          "recordId": "mag-portable-record:4060320ccb5452a5e660a834fe99790f3f42df11b6d60c3fd44b543e7181c26a"
+        },
+        {
+          "kind": "projection",
+          "sequence": 1,
+          "unsignedBodyBytes": 1840,
+          "envelopeBytes": 1938,
+          "lineBytes": 1939,
+          "recordId": "mag-portable-record:3f00a7bcb2ecaaac759ce5cdc3d53fe847540799b71bab626e8520b9e4f95cfc"
+        },
+        {
+          "kind": "projection",
+          "sequence": 2,
+          "unsignedBodyBytes": 1840,
+          "envelopeBytes": 1938,
+          "lineBytes": 1939,
+          "recordId": "mag-portable-record:d148e417e2e3c30d4cfb7aea4b1a14ad4759c4c488fe41c9d085b6acbe0c9052"
+        },
+        {
+          "kind": "head",
+          "sequence": 3,
+          "unsignedBodyBytes": 312,
+          "envelopeBytes": 410,
+          "lineBytes": 411,
+          "recordId": "mag-portable-record:e3592948bdc5ec3eb733069745346ac6bace466a35e00c66b3ccdd1b67602fff"
+        },
+        {
+          "kind": "footer",
+          "sequence": 4,
+          "unsignedBodyBytes": 328,
+          "envelopeBytes": 426,
+          "lineBytes": 427,
+          "recordId": "mag-portable-record:53780ad520cfb9cf2689d8916a210cf5bdc499d6e1655a45ca37c7acdddaa5c7"
+        }
+      ]
+    },
+    {
+      "case": "unicode-multi-scope",
+      "file": "unicode-multi-scope.magx",
+      "input": "unicode-multi-scope.input.json",
+      "artifactBytes": 15098,
+      "artifactSha256": "b3c3f53b27727e93cf52431ab7c0976ee17697d2d5de6cc6efac59284ac55e19",
+      "stateId": "mag-state:fdb68bd43dc0d34a81e21bcf0836e5e659d659c612bf5ae25877b18a8483d5f2",
+      "exportId": "mag-portable-record:8fc4c775fde4bdeee786c90285eb27c6c157b88020da8e20e99099252bad6c2b",
+      "scopeCount": 6,
+      "projectionCount": 6,
+      "headCount": 6,
+      "recordCount": 14,
+      "lines": [
+        {
+          "kind": "manifest",
+          "sequence": 0,
+          "unsignedBodyBytes": 253,
+          "envelopeBytes": 351,
+          "lineBytes": 352,
+          "recordId": "mag-portable-record:4060320ccb5452a5e660a834fe99790f3f42df11b6d60c3fd44b543e7181c26a"
+        },
+        {
+          "kind": "projection",
+          "sequence": 1,
+          "unsignedBodyBytes": 1892,
+          "envelopeBytes": 1990,
+          "lineBytes": 1991,
+          "recordId": "mag-portable-record:2a7e7ac90e763fb730857d2ac80cca659d0e0eed0f2ce757c4e43693d5f5b2e8"
+        },
+        {
+          "kind": "projection",
+          "sequence": 2,
+          "unsignedBodyBytes": 1854,
+          "envelopeBytes": 1952,
+          "lineBytes": 1953,
+          "recordId": "mag-portable-record:f1f1e64297349b0d3d32b7252fc4ce8ded50045451cccb29f9f920328b9dba13"
+        },
+        {
+          "kind": "projection",
+          "sequence": 3,
+          "unsignedBodyBytes": 1858,
+          "envelopeBytes": 1956,
+          "lineBytes": 1957,
+          "recordId": "mag-portable-record:d4e01c56f9f44aba3e0c37e58971c5e807b8ff9f67a5ffb40e2394a0885ca18e"
+        },
+        {
+          "kind": "projection",
+          "sequence": 4,
+          "unsignedBodyBytes": 1890,
+          "envelopeBytes": 1988,
+          "lineBytes": 1989,
+          "recordId": "mag-portable-record:0f9f9a6133acb3bd4683e27ca34d41d005a190f13a443ab943bd63820fa6ecf4"
+        },
+        {
+          "kind": "projection",
+          "sequence": 5,
+          "unsignedBodyBytes": 1888,
+          "envelopeBytes": 1986,
+          "lineBytes": 1987,
+          "recordId": "mag-portable-record:7ad2e7bd91e35af1a9f6c83da3675e3c6e34f2e93598014ad3a9408f2c57abb4"
+        },
+        {
+          "kind": "projection",
+          "sequence": 6,
+          "unsignedBodyBytes": 1890,
+          "envelopeBytes": 1988,
+          "lineBytes": 1989,
+          "recordId": "mag-portable-record:2d8bb4b24a06b115c1c0e00a68160c9d6af7038722d1285134b72263f4465df8"
+        },
+        {
+          "kind": "head",
+          "sequence": 7,
+          "unsignedBodyBytes": 312,
+          "envelopeBytes": 410,
+          "lineBytes": 411,
+          "recordId": "mag-portable-record:e3894db523ca6c661be7cfc10f804ba16d6cf69fddc40954e5ca774ef4a849d2"
+        },
+        {
+          "kind": "head",
+          "sequence": 8,
+          "unsignedBodyBytes": 303,
+          "envelopeBytes": 401,
+          "lineBytes": 402,
+          "recordId": "mag-portable-record:35acec1faefdfbc4b76c9e1932cd40b0f485a73aecb22075fb3338f421001925"
+        },
+        {
+          "kind": "head",
+          "sequence": 9,
+          "unsignedBodyBytes": 304,
+          "envelopeBytes": 402,
+          "lineBytes": 403,
+          "recordId": "mag-portable-record:3929d2ba025f5868b19ea8cfffa911c9f69ce2b8d3298aa04e70e8a4e36acbf2"
+        },
+        {
+          "kind": "head",
+          "sequence": 10,
+          "unsignedBodyBytes": 312,
+          "envelopeBytes": 410,
+          "lineBytes": 411,
+          "recordId": "mag-portable-record:1df3bfe8129b07a9d4943433504958d8d9325c23a40f781a5aee13046c4d3af8"
+        },
+        {
+          "kind": "head",
+          "sequence": 11,
+          "unsignedBodyBytes": 312,
+          "envelopeBytes": 410,
+          "lineBytes": 411,
+          "recordId": "mag-portable-record:ddc06b0e92b6c49773e1d5d38066969a53bd65bfb0936a76fd6d11691c04e929"
+        },
+        {
+          "kind": "head",
+          "sequence": 12,
+          "unsignedBodyBytes": 313,
+          "envelopeBytes": 411,
+          "lineBytes": 412,
+          "recordId": "mag-portable-record:5a813be87b7ce88d1278f08446f8693f5115e86ed4216801d44b5430264ae0f4"
+        },
+        {
+          "kind": "footer",
+          "sequence": 13,
+          "unsignedBodyBytes": 331,
+          "envelopeBytes": 429,
+          "lineBytes": 430,
+          "recordId": "mag-portable-record:8fc4c775fde4bdeee786c90285eb27c6c157b88020da8e20e99099252bad6c2b"
+        }
+      ]
+    }
+  ]
+}

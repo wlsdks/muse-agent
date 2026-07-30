@@ -53,6 +53,7 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify:local-mag": "pnpm build && node scripts/verify-local-mag.mjs",
+    "verify:portable-fixtures": "node scripts/verify-mag-portable-fixtures.mjs",
     "verify:continuity-capsules": "pnpm build && node scripts/verify-continuity-capsules.mjs",
     "verify:continuity-resume-runtime": "pnpm build && node scripts/verify-continuity-resume-runtime.mjs"
   },
