@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 
 import {
   CONTINUITY_RESUME_RUNTIME_LIMITS,
-  createContinuityResumeRuntimeCoordinator
+  createContinuityResumeRuntimeCaptureAdapter,
+  createContinuityResumeRuntimeCoordinator,
+  getContinuityResumeRuntimePack
 } from "@muse/attunement-graph/continuity-resume-runtime";
 import * as root from "../dist/index.js";
 
@@ -17,6 +19,8 @@ assert.equal(
   false,
   "runtime coordinator must stay out of the package root"
 );
+assert.equal(typeof createContinuityResumeRuntimeCaptureAdapter, "function");
+assert.equal(typeof getContinuityResumeRuntimePack, "function");
 
 let dependencyCalls = 0;
 const coordinator = createContinuityResumeRuntimeCoordinator({
@@ -38,5 +42,19 @@ assert.deepEqual(invalid.authority, {
   canAssertSourceCompleteness: false,
   canGrantActionAuthority: false
 });
+
+const traps = { get: 0, ownKeys: 0 };
+const hostile = new Proxy({}, {
+  get() {
+    traps.get += 1;
+    throw new Error("Pack sidecar getter must not read properties");
+  },
+  ownKeys() {
+    traps.ownKeys += 1;
+    throw new Error("Pack sidecar getter must not enumerate");
+  }
+});
+assert.equal(getContinuityResumeRuntimePack(hostile), undefined);
+assert.deepEqual(traps, { get: 0, ownKeys: 0 });
 
 console.log("continuity resume runtime built-output verification passed");

@@ -23,6 +23,9 @@
       "path": "../attunement"
     },
     {
+      "path": "../attunement-graph"
+    },
+    {
       "path": "../auth"
     },
     {

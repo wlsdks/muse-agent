@@ -10,12 +10,17 @@ import {
 import {
   captureScopedContinuitySourceObservation
 } from "@muse/attunement/continuity-source-observations";
+import type {
+  LocalAttunementSnapshotHeadRevalidation
+} from "@muse/attunement/continuity-snapshots";
 import { parseAttunementState } from "@muse/attunement/state-validation";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CONTINUITY_RESUME_RUNTIME_LIMITS,
+  createContinuityResumeRuntimeCaptureAdapter,
   createContinuityResumeRuntimeCoordinator,
+  getContinuityResumeRuntimePack,
   type ContinuityResumeRuntimeCaptureV1
 } from "./continuity-resume-runtime.js";
 import {
@@ -188,6 +193,32 @@ async function capture(
   });
 }
 
+async function headRevalidation(
+  threadId: string,
+  observedAtMs = BASE_AT
+): Promise<LocalAttunementSnapshotHeadRevalidation> {
+  let clockCalls = 0;
+  const provider = createLocalAttunementSnapshotProviderForTesting(
+    {
+      attunementFile: "/configured/attunement.json",
+      sourceId: SOURCE_ID
+    },
+    {
+      readState: async () => ({
+        state: state(threadId),
+        status: "available" as const
+      }),
+      clock: () => new Date(
+        observedAtMs + (clockCalls++ === 0 ? 0 : 25)
+      )
+    }
+  );
+  return provider.captureHeadRevalidation(
+    { sourceId: SOURCE_ID, threadId },
+    { maxCaptureSpanMs: 1_000 }
+  );
+}
+
 async function staleCapture(
   threadId: string
 ): Promise<ContinuityResumeRuntimeCaptureV1> {
@@ -251,6 +282,96 @@ afterEach(() => {
 });
 
 describe("continuity resume runtime coordinator", () => {
+  it("binds out-of-order exact Packs by identity without freezing resolver objects", async () => {
+    const threadIds = ["thread_adapter_a", "thread_adapter_b"] as const;
+    const artifacts = new Map(threadIds.map((threadId) => [
+      reference(threadId).artifactId,
+      {
+        ...reference(threadId),
+        taskStatus: "open" as const,
+        title: `Mutable resolver artifact ${threadId}`
+      }
+    ]));
+    const revalidations = await Promise.all(
+      threadIds.map((threadId, index) =>
+        headRevalidation(threadId, BASE_AT + index * 60_000)
+      )
+    );
+    const pending = revalidations.map(() =>
+      deferred<LocalAttunementSnapshotHeadRevalidation>()
+    );
+    const providerBounds: number[] = [];
+    const adapter = createContinuityResumeRuntimeCaptureAdapter({
+      captureHeadRevalidation: async (scope, options) => {
+        providerBounds.push(options.maxCaptureSpanMs);
+        const index = threadIds.indexOf(
+          scope.threadId as typeof threadIds[number]
+        );
+        if (index < 0) throw new Error("unexpected adapter scope");
+        return pending[index]!.promise;
+      },
+      resolveExactArtifact: async (link) =>
+        artifacts.get(link.artifactId)
+    });
+    const coordinator =
+      createContinuityResumeRuntimeCoordinator({
+        captureCurrent: adapter
+      });
+    const first = coordinator.preview({
+      sourceId: SOURCE_ID,
+      threadId: threadIds[0]
+    });
+    const second = coordinator.preview({
+      sourceId: SOURCE_ID,
+      threadId: threadIds[1]
+    });
+    pending[1]!.resolve(revalidations[1]!);
+    const secondResult = await second;
+    pending[0]!.resolve(revalidations[0]!);
+    const firstResult = await first;
+
+    for (const [result, threadId] of [
+      [firstResult, threadIds[0]],
+      [secondResult, threadIds[1]]
+    ] as const) {
+      expect(result).toMatchObject({
+        status: "partial",
+        state: "process-local-baseline-seeded"
+      });
+      const sidecar = getContinuityResumeRuntimePack(result);
+      expect(sidecar?.thread.id).toBe(threadId);
+      expectFrozenTree(sidecar);
+      expect(Object.hasOwn(result, "pack")).toBe(false);
+      expect(getContinuityResumeRuntimePack({ ...result })).toBeUndefined();
+      expect(getContinuityResumeRuntimePack(
+        structuredClone(result)
+      )).toBeUndefined();
+      expect(getContinuityResumeRuntimePack({ result })).toBeUndefined();
+    }
+    expect(providerBounds).toEqual([1_000, 1_000]);
+    for (const artifact of artifacts.values()) {
+      expect(Object.isFrozen(artifact)).toBe(false);
+    }
+
+    const traps = { get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 };
+    const hostile = new Proxy(firstResult, {
+      get() {
+        traps.get += 1;
+        throw new Error("sidecar getter must not reflect");
+      },
+      getOwnPropertyDescriptor() {
+        traps.getOwnPropertyDescriptor += 1;
+        throw new Error("sidecar getter must not inspect descriptors");
+      },
+      ownKeys() {
+        traps.ownKeys += 1;
+        throw new Error("sidecar getter must not inspect keys");
+      }
+    });
+    expect(getContinuityResumeRuntimePack(hostile)).toBeUndefined();
+    expect(traps).toEqual({ get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 });
+  });
+
   it("truthfully seeds, reuses an identical baseline, then advances", async () => {
     const threadId = "thread_lifecycle";
     let at = BASE_AT;

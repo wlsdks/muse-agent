@@ -1,8 +1,21 @@
 import {
+  prepareContinuityPack,
+  type ContinuityPack,
+  type ExactArtifactResolver
+} from "@muse/attunement";
+import {
+  captureScopedContinuitySourceObservation,
   verifyScopedContinuitySourceObservation,
   type ContinuityScopedSourceObservationReceipt,
   type ContinuityScopedSourceObservationScope
 } from "@muse/attunement/continuity-source-observations";
+import {
+  verifyMintedLocalAttunementSnapshotHeadRevalidation,
+  type LocalAttunementSnapshotHeadRevalidation
+} from "@muse/attunement/continuity-snapshots";
+import {
+  parseAttunementState
+} from "@muse/attunement/state-validation";
 
 import {
   compileContinuityResumeContext,
@@ -21,6 +34,7 @@ import {
   continuitySourceGraphPairMatches
 } from "./continuity-source-graph-binding.js";
 import {
+  compileHeadRevalidatedProviderBoundGraphEvidence,
   isProcessMintedProviderHeadRevalidatedGraphEvidence,
   type ProviderHeadRevalidatedGraphEvidenceV1
 } from "./provider-head-revalidated-graph-evidence.js";
@@ -50,10 +64,18 @@ const AUTHORITY = Object.freeze({
 });
 
 export type ContinuityResumeRuntimeCaptureV1 = Readonly<{
-  readonly currentSourceObservationReceipt:
+  readonly currentSourceObservationReceipt?:
     ContinuityScopedSourceObservationReceipt;
   readonly currentProviderResult: ProviderHeadRevalidatedGraphEvidenceV1;
 }>;
+
+export interface ContinuityResumeRuntimeCaptureAdapterDependencies {
+  readonly captureHeadRevalidation: (
+    scope: Readonly<ContinuityScopedSourceObservationScope>,
+    options: Readonly<{ readonly maxCaptureSpanMs: number }>
+  ) => Promise<LocalAttunementSnapshotHeadRevalidation>;
+  readonly resolveExactArtifact: ExactArtifactResolver;
+}
 
 export type ContinuityResumeRuntimeUnavailableReason =
   | "invalid-scope"
@@ -128,10 +150,28 @@ type Baseline = Readonly<{
 
 type BusyToken = { active: boolean };
 
+const CONTINUITY_RESUME_RUNTIME_CAPTURE_PACKS =
+  new WeakMap<object, ContinuityPack>();
+const CONTINUITY_RESUME_RUNTIME_RESULT_PACKS =
+  new WeakMap<object, ContinuityPack>();
+
 function frozenRecord<T extends Record<string, unknown>>(value: T): Readonly<T> {
   return Object.freeze(
     Object.assign(Object.create(null) as Record<string, unknown>, value)
   ) as Readonly<T>;
+}
+
+function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
+  if (typeof value !== "object" || value === null || seen.has(value)) {
+    return value;
+  }
+  seen.add(value);
+  for (const descriptor of Object.values(
+    Object.getOwnPropertyDescriptors(value)
+  )) {
+    if ("value" in descriptor) deepFreeze(descriptor.value, seen);
+  }
+  return Object.freeze(value);
 }
 
 function unavailable(
@@ -143,6 +183,24 @@ function unavailable(
     reason,
     authority: AUTHORITY
   }) as ContinuityResumeRuntimeUnavailableV1;
+}
+
+function bindResultPack<T extends ContinuityResumeRuntimeResultV1>(
+  result: T,
+  capture: ContinuityResumeRuntimeCaptureV1
+): T {
+  const pack = CONTINUITY_RESUME_RUNTIME_CAPTURE_PACKS.get(capture);
+  if (pack !== undefined) {
+    CONTINUITY_RESUME_RUNTIME_RESULT_PACKS.set(result, pack);
+  }
+  return result;
+}
+
+export function getContinuityResumeRuntimePack(
+  result: unknown
+): ContinuityPack | undefined {
+  if (typeof result !== "object" || result === null) return undefined;
+  return CONTINUITY_RESUME_RUNTIME_RESULT_PACKS.get(result);
 }
 
 function safeScope(
@@ -227,6 +285,63 @@ function exactCurrentEvidence(
     }>;
     graph: ContinuityObservationReceipt;
   }>;
+}
+
+export function createContinuityResumeRuntimeCaptureAdapter(
+  dependencies: ContinuityResumeRuntimeCaptureAdapterDependencies
+): ContinuityResumeRuntimeCoordinatorDependencies["captureCurrent"] {
+  return async (scope) => {
+    const artifact = await dependencies.captureHeadRevalidation(scope, {
+      maxCaptureSpanMs:
+        CONTINUITY_RESUME_RUNTIME_LIMITS.maxCaptureSpanMs
+    });
+    const verified =
+      verifyMintedLocalAttunementSnapshotHeadRevalidation(artifact);
+    const currentProviderResult =
+      await compileHeadRevalidatedProviderBoundGraphEvidence(artifact);
+    if (currentProviderResult.status !== "partial") {
+      return frozenRecord({
+        currentProviderResult
+      }) as ContinuityResumeRuntimeCaptureV1;
+    }
+    if (verified.subjectCapture.status !== "available") {
+      throw new Error("fresh Provider subject capture is unavailable");
+    }
+    const currentObservedAt =
+      currentProviderResult.graphObservationReceipt.observedAt;
+    const nowMs = Date.parse(currentObservedAt);
+    if (!Number.isFinite(nowMs)) {
+      throw new Error("Provider Graph observation time is invalid");
+    }
+    const state = parseAttunementState(
+      JSON.parse(verified.subjectCapture.normalizedStateJson) as unknown
+    );
+    const preparedPack = await prepareContinuityPack(
+      state,
+      scope.threadId,
+      dependencies.resolveExactArtifact,
+      { now: () => nowMs }
+    );
+    // This Pack evaluates external exact-artifact reads at graph.observedAt, but
+    // those reads are not an atomic snapshot with the Attunement subject state.
+    // Clone away resolver ownership and freeze the bounded evidence snapshot;
+    // downstream authority remains explicitly partial and non-actuating.
+    const pack = deepFreeze(
+      structuredClone(preparedPack) as ContinuityPack
+    );
+    const currentSourceObservationReceipt =
+      captureScopedContinuitySourceObservation({
+        observedAt: currentObservedAt,
+        pack,
+        scope
+      });
+    const capture = frozenRecord({
+      currentProviderResult,
+      currentSourceObservationReceipt
+    }) as ContinuityResumeRuntimeCaptureV1;
+    CONTINUITY_RESUME_RUNTIME_CAPTURE_PACKS.set(capture, pack);
+    return capture;
+  };
 }
 
 function baselineFrom(
@@ -388,13 +503,13 @@ export function createContinuityResumeRuntimeCoordinator(
           return unavailable("runtime-generation-changed");
         }
         retain(key, next);
-        return frozenRecord({
+        return bindResultPack(frozenRecord({
           schemaVersion: 1 as const,
           status: "partial" as const,
           state: "process-local-baseline-seeded" as const,
           reason: "no-prior-process-local-baseline" as const,
           authority: AUTHORITY
-        }) as ContinuityResumeRuntimeSeededV1;
+        }) as ContinuityResumeRuntimeSeededV1, capture);
       }
 
       const previousAt = capturedBaseline.graph.observedAt;
@@ -448,7 +563,10 @@ export function createContinuityResumeRuntimeCoordinator(
 
       if (currentAt === previousAt) {
         retain(key, capturedBaseline);
-        return compared("compared-with-baseline-reused", result);
+        return bindResultPack(
+          compared("compared-with-baseline-reused", result),
+          capture
+        );
       }
       let next: Baseline;
       try {
@@ -460,7 +578,10 @@ export function createContinuityResumeRuntimeCoordinator(
         return unavailable("runtime-generation-changed");
       }
       retain(key, next);
-      return compared("compared-and-advanced", result);
+      return bindResultPack(
+        compared("compared-and-advanced", result),
+        capture
+      );
     } finally {
       if (timeout !== undefined) clearTimeout(timeout);
       if (!settled) token.active = false;

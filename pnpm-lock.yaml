@@ -389,6 +389,9 @@ importers:
       '@muse/attunement':
         specifier: workspace:*
         version: link:../attunement
+      '@muse/attunement-graph':
+        specifier: workspace:*
+        version: link:../attunement-graph
       '@muse/auth':
         specifier: workspace:*
         version: link:../auth

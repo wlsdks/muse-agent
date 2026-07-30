@@ -6,13 +6,36 @@ import {
   createLocalArtifactValidator,
   createPersonalThread,
   linkArtifact,
-  readAttunementState
+  readAttunementState,
+  type ContinuityPack
 } from "@muse/attunement";
+import type {
+  ContinuityResumeRuntimeUnavailableReason
+} from "@muse/attunement-graph/continuity-resume-runtime";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createMuseRuntimeAssembly } from "../src/index.js";
+import {
+  createContinuityPackOpenTool,
+  createContinuityPackPreviewTool
+} from "../src/continuity-pack-tools.js";
 
 let directory: string | undefined;
+
+const UNAVAILABLE_REASONS = [
+  "invalid-scope",
+  "runtime-busy",
+  "runtime-capacity",
+  "operation-timeout",
+  "capture-span-exceeded",
+  "capture-failed",
+  "provider-not-partial",
+  "current-evidence-invalid",
+  "observation-regressed",
+  "observation-conflict",
+  "resume-context-unavailable",
+  "runtime-generation-changed"
+] as const satisfies readonly ContinuityResumeRuntimeUnavailableReason[];
 
 afterEach(async () => {
   if (directory) await rm(directory, { force: true, recursive: true });
@@ -74,7 +97,17 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
       { threadId: thread.id },
       { runId: "preview_2" }
     );
-    expect(second).toEqual(first);
+    expect(second).toMatchObject({
+      mutation: false,
+      pack: (first as { readonly pack: unknown }).pack,
+      previewDigest:
+        (first as { readonly previewDigest: string }).previewDigest,
+      resume: {
+        status: "partial",
+        state: "compared-and-advanced",
+        comparisonStatus: "no-change"
+      }
+    });
     expect(first).toMatchObject({
       mutation: false,
       pack: {
@@ -83,8 +116,21 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
         totalEvidence: 1,
         truncated: false
       },
-      previewDigest: expect.stringMatching(/^[a-f0-9]{64}$/u)
+      previewDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      resume: {
+        status: "partial",
+        state: "process-local-baseline-seeded",
+        reason: "no-prior-process-local-baseline",
+        authority: {
+          canAssertCurrentWorldTruth: false,
+          canAssertSourceCompleteness: false,
+          canGrantActionAuthority: false
+        }
+      }
     });
+    expect(JSON.stringify(second)).not.toMatch(
+      /receiptId|boundaryId|graphEvidence|reservation|combinedCost|inventory|frontier|ledger|contextStream/
+    );
     expect(await readFile(attunementFile)).toEqual(before);
     expect((await readAttunementState(attunementFile)).deliveries).toEqual([]);
 
@@ -121,6 +167,138 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
       threadId: thread.id
     });
   });
+
+  it("keeps open on the ordinary Pack dependency and never invokes resume", async () => {
+    const threadId = "thread_dependency_split";
+    const pack: ContinuityPack = {
+      deliveryPolicyVersion: 0,
+      evidence: [],
+      evidenceRefs: [],
+      policy: {
+        detail: "compact",
+        nextStep: "direct",
+        suppression: "none",
+        version: 0
+      },
+      thread: {
+        id: threadId,
+        kind: "work",
+        title: "Dependency split"
+      }
+    };
+    let ordinaryReads = 0;
+    let resumeReads = 0;
+    let opens = 0;
+    const preview = createContinuityPackPreviewTool({
+      previewPack: async () => {
+        ordinaryReads += 1;
+        return pack;
+      },
+      previewResume: async () => {
+        resumeReads += 1;
+        return {
+          pack,
+          resume: {
+            schemaVersion: 1,
+            status: "partial",
+            state: "process-local-baseline-seeded",
+            reason: "no-prior-process-local-baseline",
+            authority: {
+              canAssertCurrentWorldTruth: false,
+              canAssertSourceCompleteness: false,
+              canGrantActionAuthority: false
+            }
+          }
+        };
+      }
+    });
+    const open = createContinuityPackOpenTool({
+      previewPack: async () => {
+        ordinaryReads += 1;
+        return pack;
+      },
+      openPack: async () => {
+        opens += 1;
+        return {
+          delivery: {
+            evidenceClass: "organic",
+            evidenceRefs: [],
+            id: "delivery_dependency_split",
+            openedAt: "2026-07-30T00:00:00.000Z",
+            policyVersion: 0,
+            threadId
+          },
+          pack
+        };
+      }
+    });
+    const previewed = await preview.execute(
+      { threadId },
+      { runId: "dependency_preview" }
+    );
+    expect(resumeReads).toBe(1);
+    expect(ordinaryReads).toBe(0);
+    await open.execute({
+      previewDigest:
+        (previewed as { readonly previewDigest: string }).previewDigest,
+      threadId
+    }, { runId: "dependency_open" });
+    expect(resumeReads).toBe(1);
+    expect(ordinaryReads).toBe(1);
+    expect(opens).toBe(1);
+  });
+
+  it.each(UNAVAILABLE_REASONS)(
+    "falls back to the ordinary Pack for unavailable reason %s",
+    async (reason) => {
+      const threadId = "thread_resume_fallback";
+      const pack: ContinuityPack = {
+        deliveryPolicyVersion: 0,
+        evidence: [],
+        evidenceRefs: [],
+        policy: {
+          detail: "compact",
+          nextStep: "direct",
+          suppression: "none",
+          version: 0
+        },
+        thread: {
+          id: threadId,
+          kind: "work",
+          title: "Fallback Pack"
+        }
+      };
+      let ordinaryReads = 0;
+      const preview = createContinuityPackPreviewTool({
+        previewPack: async () => {
+          ordinaryReads += 1;
+          return pack;
+        },
+        previewResume: async () => ({
+          resume: {
+            schemaVersion: 1,
+            status: "unavailable",
+            reason,
+            authority: {
+              canAssertCurrentWorldTruth: false,
+              canAssertSourceCompleteness: false,
+              canGrantActionAuthority: false
+            }
+          }
+        })
+      });
+      await expect(preview.execute(
+        { threadId },
+        { runId: `fallback_${reason}` }
+      )).resolves.toMatchObject({
+        mutation: false,
+        pack: { thread: { id: threadId } },
+        previewDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        resume: { status: "unavailable", reason }
+      });
+      expect(ordinaryReads).toBe(1);
+    }
+  );
 
   it("rejects extra, accessor, and custom-prototype input before reading a Pack", async () => {
     directory = await mkdtemp(join(tmpdir(), "muse-continuity-pack-shape-"));

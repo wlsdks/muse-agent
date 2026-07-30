@@ -5,6 +5,9 @@ import type {
   ContinuityEvidence,
   ContinuityPack
 } from "@muse/attunement";
+import type {
+  ContinuityResumeRuntimeResultV1
+} from "@muse/attunement-graph/continuity-resume-runtime";
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
@@ -14,11 +17,21 @@ const MAX_EVIDENCE = 50;
 const MAX_TITLE_CHARACTERS = 300;
 const MAX_SUMMARY_CHARACTERS = 240;
 
-export interface ContinuityPackToolDeps {
+export interface ContinuityPackOpenToolDeps {
   readonly openPack: (
     threadId: string
   ) => Promise<{ readonly delivery: ContinuityDelivery; readonly pack: ContinuityPack }>;
   readonly previewPack: (threadId: string) => Promise<ContinuityPack>;
+}
+
+export interface ContinuityPackPreviewToolDeps {
+  readonly previewPack: (threadId: string) => Promise<ContinuityPack>;
+  readonly previewResume: (
+    threadId: string
+  ) => Promise<{
+    readonly pack?: ContinuityPack;
+    readonly resume: ContinuityResumeRuntimeResultV1;
+  }>;
 }
 
 function parseInput(
@@ -123,6 +136,12 @@ function packDigest(pack: JsonObject): string {
   ])).digest("hex");
 }
 
+function projectResume(
+  result: ContinuityResumeRuntimeResultV1
+): JsonObject {
+  return JSON.parse(JSON.stringify(result)) as JsonObject;
+}
+
 function digestMatches(left: string, right: string): boolean {
   const leftBytes = Buffer.from(left, "hex");
   const rightBytes = Buffer.from(right, "hex");
@@ -130,11 +149,30 @@ function digestMatches(left: string, right: string): boolean {
 }
 
 async function inspectPack(
-  deps: ContinuityPackToolDeps,
+  deps: ContinuityPackOpenToolDeps,
   threadId: string
 ): Promise<{ readonly digest: string; readonly pack: JsonObject }> {
   const pack = projectPack(await deps.previewPack(threadId));
   return { digest: packDigest(pack), pack };
+}
+
+async function inspectPackPreview(
+  deps: ContinuityPackPreviewToolDeps,
+  threadId: string
+): Promise<{
+  readonly digest: string;
+  readonly pack: JsonObject;
+  readonly resume: ContinuityResumeRuntimeResultV1;
+}> {
+  const enriched = await deps.previewResume(threadId);
+  const pack = projectPack(
+    enriched.pack ?? await deps.previewPack(threadId)
+  );
+  return {
+    digest: packDigest(pack),
+    pack,
+    resume: enriched.resume
+  };
 }
 
 function inputSchema(open: boolean): JsonObject {
@@ -161,12 +199,12 @@ function inputSchema(open: boolean): JsonObject {
 }
 
 export function createContinuityPackPreviewTool(
-  deps: ContinuityPackToolDeps
+  deps: ContinuityPackPreviewToolDeps
 ): MuseTool {
   return {
     definition: {
       description:
-        "Preview a bounded Personal Continuity Pack for one exact thread. Read-only: it resolves current exact linked evidence and returns a digest, but never opens the Pack, creates a delivery receipt, records an outcome, or grants later authority.",
+        "Preview a bounded Personal Continuity Pack for one exact thread. Read-only: it resolves current exact linked evidence and may seed or advance a bounded process-local resume baseline, but never opens the Pack, creates a delivery receipt, changes a source or policy, records an outcome, persists the baseline, or grants later authority.",
       domain: "core",
       inputSchema: inputSchema(false),
       keywords: [
@@ -181,18 +219,19 @@ export function createContinuityPackPreviewTool(
     },
     execute: async (args): Promise<JsonObject> => {
       const { threadId } = parseInput(args, false);
-      const preview = await inspectPack(deps, threadId);
+      const preview = await inspectPackPreview(deps, threadId);
       return {
         mutation: false,
         pack: preview.pack,
-        previewDigest: preview.digest
+        previewDigest: preview.digest,
+        resume: projectResume(preview.resume)
       };
     }
   };
 }
 
 export function createContinuityPackOpenTool(
-  deps: ContinuityPackToolDeps
+  deps: ContinuityPackOpenToolDeps
 ): MuseTool {
   return {
     definition: {

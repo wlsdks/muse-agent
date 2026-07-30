@@ -19,10 +19,16 @@ import {
   retryContinuityTaskCompletionInteractions
 } from "@muse/attunement";
 import {
+  createLocalAttunementSnapshotProvider,
   openProductionAuthorizedContinuityPack,
   prepareProductionAuthorizedContinuityTaskCompletionInteraction,
   recordProductionAuthorizedContinuityOutcome
 } from "@muse/attunement/host";
+import {
+  createContinuityResumeRuntimeCaptureAdapter,
+  createContinuityResumeRuntimeCoordinator,
+  getContinuityResumeRuntimePack
+} from "@muse/attunement-graph/continuity-resume-runtime";
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { createCalendarMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createHistoryMcpServer, createMathMcpServer, createMessagingMcpServer, createNotesMcpServer, createNotesRegistryMcpServer, createPatternsMcpServer, createProactiveMcpServer, createRemindersMcpServer, createStatusMcpServer, createTasksMcpServer, createTasksRegistryMcpServer, createSearchMcpServer, createWebReadMcpServer, type MessageApprovalGate } from "@muse/domain-tools";
 import { mirrorNoteToApple, mirrorReminderToApple } from "@muse/macos";
@@ -37,12 +43,15 @@ import { parseBoolean, parseInteger } from "./env-parsers.js";
 import {
   createContinuityPackOpenTool,
   createContinuityPackPreviewTool,
-  type ContinuityPackToolDeps
+  type ContinuityPackOpenToolDeps,
+  type ContinuityPackPreviewToolDeps
 } from "./continuity-pack-tools.js";
 import { createContinuityOutcomeTool } from "./continuity-outcome-tool.js";
 import { createQualificationLearningWriteGate } from "./qualification-learning-active-skill-write-gate.js";
 import { resolveWeaknessesFile } from "./provider-paths.js";
 import type { MuseEnvironment } from "./index.js";
+
+const CONTINUITY_RUNTIME_SOURCE_ID = "muse.local-attunement";
 
 export interface LoopbackToolsDeps {
   readonly attunementFile?: string;
@@ -133,7 +142,20 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
           remindersFile: deps.remindersFile,
           tasksFile: deps.tasksFile
         });
-        const packDeps: ContinuityPackToolDeps = {
+        const snapshotProvider = createLocalAttunementSnapshotProvider({
+          attunementFile: deps.attunementFile!,
+          sourceId: CONTINUITY_RUNTIME_SOURCE_ID
+        });
+        const resumeCoordinator =
+          createContinuityResumeRuntimeCoordinator({
+            captureCurrent:
+              createContinuityResumeRuntimeCaptureAdapter({
+                captureHeadRevalidation:
+                  snapshotProvider.captureHeadRevalidation,
+                resolveExactArtifact
+              })
+          });
+        const openPackDeps: ContinuityPackOpenToolDeps = {
           openPack: (threadId) => openProductionAuthorizedContinuityPack(
             deps.attunementFile!,
             threadId,
@@ -145,10 +167,28 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
             resolveExactArtifact
           )
         };
+        const previewPackDeps: ContinuityPackPreviewToolDeps = {
+          previewPack: (threadId) => readPreparedContinuityPack(
+            deps.attunementFile!,
+            threadId,
+            resolveExactArtifact
+          ),
+          previewResume: async (threadId) => {
+            const resume = await resumeCoordinator.preview({
+              sourceId: CONTINUITY_RUNTIME_SOURCE_ID,
+              threadId
+            });
+            const pack = getContinuityResumeRuntimePack(resume);
+            return {
+              ...(pack === undefined ? {} : { pack }),
+              resume
+            };
+          }
+        };
         const policyWriteGate = createQualificationLearningWriteGate(env);
         return [
-          createContinuityPackPreviewTool(packDeps),
-          createContinuityPackOpenTool(packDeps),
+          createContinuityPackPreviewTool(previewPackDeps),
+          createContinuityPackOpenTool(openPackDeps),
           createContinuityOutcomeTool({
             recordOutcome: (deliveryId, outcome, ownerNote) =>
               recordProductionAuthorizedContinuityOutcome(
