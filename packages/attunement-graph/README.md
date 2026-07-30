@@ -36,6 +36,9 @@ The current implementation includes:
 - an AWG-070a1 worker-isolated SQLite Adapter with an append-only projection journal,
   exact per-scope heads, compare-and-swap writes, restart recovery, and fail-stop Worker
   lifecycle;
+- an AWG-070a2 checked-JSDoc runtime boundary that separates the closed protocol,
+  filesystem/runtime profile, single SQLite execution Implementation, and thin Worker
+  dispatch while preserving the AWG-070a1 physical profile;
 - exact Continuity observation, change, Capsule-presentation, resume-runtime, and Shadow
   decision-receipt compatibility Modules used by Muse.
 
@@ -303,8 +306,11 @@ atomicity, and lifecycle races. Durable Implementations additionally require res
 crash, migration, export/rebuild, and physical-forget qualification.
 
 AWG-070a1 covers the durable projection-journal subset, including restart, same-file
-writer races, bounded close/checkpoint behavior, and fail-stop crash boundaries. It does
-not claim the remaining migration, export/rebuild, backup, physical-forget, or complete
+writer races, bounded close/checkpoint behavior, and fail-stop crash boundaries.
+AWG-070a2 hardens that same v1 profile with a typed internal protocol, explicit runtime
+artifact manifest, source-to-dist declaration checks, and a pre-refactor SQLite reopen
+fixture. It changes neither the public Interface nor the physical schema and does not
+claim the remaining migration, export/rebuild, backup, physical-forget, or complete
 cross-backend corpus gates.
 
 The existing Continuity comparison benchmark is a deterministic capability baseline, not

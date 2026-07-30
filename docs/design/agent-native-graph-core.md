@@ -670,8 +670,11 @@ Do not build the database first.
    Worker-isolated durable projection-journal foundation: exact scoped heads,
    compare-and-swap, restart/replay, same-file writer races, corruption/future-state
    rejection, crash-boundary fail-stop behavior, and a bounded byte-identical command
-   corpus. AWG-070a remains partial until physical-forget fixtures and the complete
-   byte-identical conformance corpus pass.
+   corpus. AWG-070a2 keeps that physical profile and public Interface unchanged while
+   replacing the blanket-untyped Worker with checked protocol, profile, SQLite execution,
+   and dispatch Seams; an explicit runtime manifest and a pre-refactor SQLite fixture
+   guard source/dist and reopen compatibility. AWG-070a remains partial until
+   physical-forget fixtures and the complete byte-identical conformance corpus pass.
 7. **AWG-070b — SQLite physical profile (`partial`):** AWG-070a1 ships the safe-version
    gate, local-filesystem allowlist, owner-only files, defensive SQLite profile, verified
    WAL, `synchronous=FULL`, bounded busy/checkpoint behavior, and Worker isolation.
@@ -699,10 +702,11 @@ subject, bounded head assessments, and an assembly-local finite evidence pool; i
 continuous or current freshness, an automatically observed stopping point, causality,
 completeness, persistence, or user value. The Provider-bound paths make no authoritative
 absence, permission, or action claim.
-The durable projection-journal foundation is now shipped. Muse default-path composition,
+The durable projection-journal foundation and its typed Worker boundary are independently
+verified. Muse default-path composition,
 portable export/rebuild, destructive migration, backup, physical forget/compaction, the
 complete cross-backend corpus, and the 10K/100K/1M performance matrix remain out of scope
-for AWG-070a1.
+for AWG-070a1/AWG-070a2.
 
 Core semantic and persistence PLAN work uses `gpt-5.6-sol` at `ultra` or `xhigh`;
 implementation begins only from a bounded accepted handoff, and completion uses a fresh

@@ -2,27 +2,17 @@ import { Worker } from "node:worker_threads";
 
 import type { MagStoreBackend, MagStoredProjection } from "./mag-backend.js";
 import type { MagScope, MagSnapshot } from "./mag-contracts.js";
-import { MagError, type MagErrorCode } from "./mag-error.js";
+import { MagError } from "./mag-error.js";
+import {
+  PROTOCOL_VERSION,
+  createWorkerRequest,
+  parseWorkerResponse,
+  type WorkerRequestType
+} from "./mag-local-protocol.mjs";
 
-const PROTOCOL_VERSION = 1;
-const MAX_ENVELOPE_BYTES = 2_097_152;
 const REQUEST_TIMEOUT_MS = 5_000;
 const CLOSE_TIMEOUT_MS = 5_000;
-const SERIALIZED_ERROR_CODES: ReadonlySet<MagErrorCode> = new Set([
-  "CORRUPT_STORE",
-  "FUTURE_STORE_STATE",
-  "STORE_FAILURE",
-  "UNSUPPORTED_STORE_PROFILE"
-]);
 
-type WorkerRequestType =
-  | "initialize"
-  | "read"
-  | "compareAndSwap"
-  | "holdWriteLockForTesting"
-  | "inspectForTesting"
-  | "mutateForTesting"
-  | "close";
 export type SqliteMagTestFault =
   | "before-commit"
   | "after-commit-before-ack"
@@ -42,13 +32,6 @@ export interface SqliteMagTestInspection {
   readonly headRows: number;
   readonly journalRows: number;
   readonly maxGeneration: number;
-}
-
-interface WorkerRequest {
-  readonly protocolVersion: 1;
-  readonly id: number;
-  readonly type: WorkerRequestType;
-  readonly payload: unknown;
 }
 
 interface PendingRequest {
@@ -88,14 +71,6 @@ function storeFailure(message: string, cause?: unknown): MagError {
   return new MagError("STORE_FAILURE", message, cause === undefined ? undefined : { cause });
 }
 
-function serializedSize(value: unknown): number {
-  try {
-    return Buffer.byteLength(JSON.stringify(value), "utf8");
-  } catch (cause) {
-    throw storeFailure("local MAG protocol value is not serializable", cause);
-  }
-}
-
 function plainRecord(
   value: unknown,
   label: string,
@@ -117,20 +92,6 @@ function plainRecord(
     throw storeFailure(`${label} has missing fields`);
   }
   return value as Record<string, unknown>;
-}
-
-function errorFromEnvelope(value: unknown): MagError {
-  const input = plainRecord(value, "worker error", ["code", "message"]);
-  if (
-    typeof input.code !== "string"
-    || !SERIALIZED_ERROR_CODES.has(input.code as MagErrorCode)
-    || typeof input.message !== "string"
-    || input.message.length === 0
-    || input.message.length > 1_024
-  ) {
-    throw storeFailure("local MAG worker returned an invalid error envelope");
-  }
-  return new MagError(input.code as MagErrorCode, input.message);
 }
 
 function detachedProjection(value: unknown): MagStoredProjection {
@@ -292,45 +253,36 @@ export async function openSqliteMagStore(
   const onMessage = (message: unknown): void => {
     if (failure) return;
     try {
-      if (serializedSize(message) > MAX_ENVELOPE_BYTES) {
-        throw storeFailure("local MAG worker returned an oversized response");
-      }
-      const response = plainRecord(
+      const header = plainRecord(
         message,
         "worker response",
         ["protocolVersion", "id", "ok", "result", "error"],
         ["protocolVersion", "id", "ok"]
       );
       if (
-        response.protocolVersion !== PROTOCOL_VERSION
-        || !Number.isSafeInteger(response.id)
-        || (response.id as number) < 1
-        || typeof response.ok !== "boolean"
+        header.protocolVersion !== PROTOCOL_VERSION
+        || !Number.isSafeInteger(header.id)
+        || (header.id as number) < 1
       ) {
         throw storeFailure("local MAG worker returned an invalid response");
       }
-      const request = pending.get(response.id as number);
+      const request = pending.get(header.id as number);
       if (!request) {
         throw storeFailure("local MAG worker returned a duplicate or unknown response");
       }
+      const response = parseWorkerResponse(message, request.type);
       if (response.ok) {
-        if (!Object.hasOwn(response, "result") || Object.hasOwn(response, "error")) {
-          throw storeFailure("local MAG success response is malformed");
-        }
-        pending.delete(response.id as number);
+        pending.delete(response.id);
         clearTimeout(request.timeout);
         if (request.type === "close") closeAcknowledged = true;
         request.resolve(response.result);
       } else {
-        if (!Object.hasOwn(response, "error") || Object.hasOwn(response, "result")) {
-          throw storeFailure("local MAG error response is malformed");
-        }
-        const typedError = errorFromEnvelope(response.error);
+        const typedError = new MagError(response.error.code, response.error.message);
         if (request.type === "initialize" || request.type === "close") {
           failStop(typedError);
           return;
         }
-        pending.delete(response.id as number);
+        pending.delete(response.id);
         clearTimeout(request.timeout);
         request.reject(typedError);
       }
@@ -385,14 +337,11 @@ export async function openSqliteMagStore(
     }
     const id = nextRequestId;
     nextRequestId += 1;
-    const envelope: WorkerRequest = {
-      protocolVersion: PROTOCOL_VERSION,
-      id,
-      type,
-      payload
-    };
-    if (serializedSize(envelope) > MAX_ENVELOPE_BYTES) {
-      return rejectAfterFailStop(storeFailure("local MAG request is oversized"));
+    let envelope;
+    try {
+      envelope = createWorkerRequest(id, type, payload);
+    } catch (cause) {
+      return rejectAfterFailStop(storeFailure("local MAG request is invalid", cause));
     }
     return new Promise<unknown>((resolve, reject) => {
       const timeout = setTimeout(() => {

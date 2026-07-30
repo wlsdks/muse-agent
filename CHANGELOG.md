@@ -8,6 +8,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Hardened the AWG-070a1 local MAG Store with AWG-070a2 typed runtime boundaries.
+  The former 976-line blanket-untyped Worker is now a thin dispatch over a closed
+  checked-JSDoc protocol, reviewed filesystem/runtime profile, and one Worker-only SQLite
+  execution Implementation. A fail-closed manifest verifies source/dist runtime and
+  declaration parity, suppression absence, exact `node:sqlite` containment, and the
+  unchanged `./local` public surface. A frozen pre-refactor SQLite fixture proves that
+  the new runtime can reopen, read, compare-and-swap, and close physical-profile v1 data.
+  This is a maintainability and compatibility hardening slice, not export, backup,
+  physical forget, Source Adapters, default Muse composition, or user-value evidence.
+
 - Added the AWG-070a1 **durable projection-journal foundation** for MAG. The public
   `@muse/attunement-graph/local` subpath now opens an explicit absolute database path and
   exact scope, then exposes the same closed `project | execute | close` Interface as the

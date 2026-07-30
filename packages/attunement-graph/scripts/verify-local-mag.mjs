@@ -1,12 +1,117 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { access, mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const workerArtifact = new URL("../dist/mag-local-worker.mjs", import.meta.url);
-await access(workerArtifact);
+const packageRoot = new URL("../", import.meta.url);
+const sourceRoot = new URL("../src/", import.meta.url);
+const distRoot = new URL("../dist/", import.meta.url);
+const manifest = JSON.parse(await readFile(
+  new URL("../local-mag-runtime-manifest.json", import.meta.url),
+  "utf8"
+));
+assert.equal(manifest.schemaVersion, 1);
+assert.deepEqual(
+  [...manifest.sourceModules].sort(),
+  [
+    "mag-local-profile.mjs",
+    "mag-local-projection.mjs",
+    "mag-local-protocol.mjs",
+    "mag-local-sqlite.mjs",
+    "mag-local-worker.mjs"
+  ]
+);
+
+const sourceRuntimeModules = (await readdir(sourceRoot))
+  .filter((name) => /^mag-local-.*\.mjs$/u.test(name))
+  .sort();
+assert.deepEqual(sourceRuntimeModules, [...manifest.sourceModules].sort());
+
+const distEntries = await readdir(distRoot);
+const emittedRuntimeModules = distEntries
+  .filter((name) => /^mag-local-.*\.mjs$/u.test(name))
+  .sort();
+const emittedDeclarations = distEntries
+  .filter((name) => /^mag-local-.*\.d\.mts$/u.test(name))
+  .sort();
+assert.deepEqual(emittedRuntimeModules, sourceRuntimeModules);
+assert.deepEqual(
+  emittedDeclarations,
+  sourceRuntimeModules.map((name) => name.replace(/\.mjs$/u, ".d.mts"))
+);
+
+const sourceBodies = new Map(await Promise.all(sourceRuntimeModules.map(async (name) => [
+  name,
+  await readFile(new URL(name, sourceRoot), "utf8")
+])));
+const emittedBodies = new Map(await Promise.all(emittedRuntimeModules.map(async (name) => [
+  name,
+  await readFile(new URL(name, distRoot), "utf8")
+])));
+for (const [name, body] of sourceBodies) {
+  assert.doesNotMatch(
+    body,
+    /@ts-(?:nocheck|ignore)|eslint-disable(?:-next-line)?/u,
+    `${name} contains a forbidden type or lint suppression`
+  );
+}
+assert.deepEqual(
+  [...sourceBodies].filter(([, body]) => body.includes('"node:sqlite"')).map(([name]) => name),
+  [manifest.sqliteExecutionModule]
+);
+assert.deepEqual(
+  [...emittedBodies].filter(([, body]) => body.includes('"node:sqlite"')).map(([name]) => name),
+  [manifest.sqliteExecutionModule]
+);
+assert.deepEqual(
+  [...sourceBodies].filter(([, body]) =>
+    body.includes(`"./${manifest.sqliteExecutionModule}"`)
+  ).map(([name]) => name),
+  [manifest.workerEntryModule]
+);
+assert.deepEqual(
+  [...emittedBodies].filter(([, body]) =>
+    body.includes(`"./${manifest.sqliteExecutionModule}"`)
+  ).map(([name]) => name),
+  [manifest.workerEntryModule]
+);
+for (const declaration of emittedDeclarations) {
+  const body = await readFile(new URL(declaration, distRoot), "utf8");
+  assert.doesNotMatch(
+    body,
+    /\bany\b/u,
+    `${declaration} exposes an untyped runtime seam`
+  );
+}
+
+const packageJson = JSON.parse(await readFile(new URL("package.json", packageRoot), "utf8"));
+assert.deepEqual(packageJson.exports["./local"], {
+  types: "./dist/local.d.ts",
+  import: "./dist/local.js"
+});
+for (const target of Object.values(packageJson.exports)) {
+  assert.equal(
+    JSON.stringify(target).includes("mag-local-"),
+    false,
+    "internal local worker modules must not be package exports"
+  );
+}
+
 const { openLocalMag } = await import(new URL("../dist/local.js", import.meta.url).href);
+const localRuntime = await import(new URL("../dist/local.js", import.meta.url).href);
+assert.deepEqual(Object.keys(localRuntime).sort(), manifest.publicLocalRuntimeExports);
+const localDeclaration = await readFile(new URL("../dist/local.d.ts", import.meta.url), "utf8");
+assert.doesNotMatch(
+  localDeclaration,
+  /^export\s+(?:type\s+)?(?:\*|\{)/gmu,
+  "local declaration must not hide public names behind export-star or export-list forms"
+);
+const declaredLocalExports = [...localDeclaration.matchAll(
+  /^export (?:declare )?(?:interface|function|class|const|type) ([A-Za-z0-9_]+)/gmu
+)].map((match) => match[1]).sort();
+assert.deepEqual(declaredLocalExports, [...manifest.publicLocalTypeExports].sort());
+process.stdout.write("local MAG runtime manifest and public-surface verification passed\n");
 
 const directory = await realpath(
   await mkdtemp(join(tmpdir(), "muse-mag-built-"))

@@ -2,6 +2,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  readFile,
   realpath,
   rm,
   symlink,
@@ -9,6 +10,8 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 
 import { afterEach, expect, it } from "vitest";
 
@@ -133,6 +136,30 @@ it("persists and reopens byte-identical Engine snapshots and results", async () 
   await reopened.close();
   await expect(reopened.project(input)).rejects.toMatchObject({ code: "CLOSED" });
   await expect(reopened.execute(execute())).rejects.toMatchObject({ code: "CLOSED" });
+});
+
+it("reopens the pre-refactor AWG-070a1 physical-profile fixture", async () => {
+  const databasePath = await temporaryDatabase("awg070a1-compat.sqlite");
+  const encoded = await readFile(
+    new URL("./fixtures/awg-070a1-sqlite-v1.base64", import.meta.url),
+    "utf8"
+  );
+  const fixture = gunzipSync(Buffer.from(encoded.trim(), "base64"));
+  expect(createHash("sha256").update(fixture).digest("hex")).toBe(
+    "0b44d5cf634fbbed3c38125613250727739bb4e014a2846bc0d343521da63504"
+  );
+  await writeFile(databasePath, fixture, { mode: 0o600 });
+
+  const scope = { sourceId: "compat-source", threadId: "compat-thread" };
+  const reopened = await openLocalMag({ databasePath, scope });
+  const before = await reopened.execute(execute(scope));
+  expect(before.snapshot).toMatchObject({ generation: 1, scope });
+  const after = await reopened.project({
+    ...command("awg070a2-compatible-cas", scope),
+    expectedSnapshot: before.snapshot
+  });
+  expect(after.generation).toBe(2);
+  await reopened.close();
 });
 
 it("linearizes two independent Worker connections on one file", async () => {
