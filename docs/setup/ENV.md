@@ -7,7 +7,7 @@ source. Every `MUSE_*` or `ATTUNEGRAPH_*` referenced in product source
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **654** variables.
+Total: **655** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -58,6 +58,7 @@ Total: **654** variables.
 | `MUSE_APPROVAL_VERIFY_MODEL` | apps/cli |
 | `MUSE_APP_NAME` | packages/autoconfigure |
 | `MUSE_ASK_REASONING_PRINCIPLES` | apps/cli |
+| `MUSE_ATTUNEGRAPH_DATABASE` | packages/autoconfigure |
 | `MUSE_ATTUNEMENT_FILE` | apps/web, packages/autoconfigure |
 | `MUSE_AUTHORED_SKILLS_DIR` | apps/cli, packages/autoconfigure |
 | `MUSE_AUTH_JWT_EXPIRATION_MS` | packages/autoconfigure |

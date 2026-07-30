@@ -189,7 +189,7 @@ None of the three is finished. The next section says exactly how far each one go
 
 | Area | Where it actually stands |
 | --- | --- |
-| AttuneGraph engine | Exact projection, *"what changed since I stopped"*, content-addressed receipts, bounded resume compilation, canonical `.atgx`, a worker-isolated SQLite journal, and the offline read-only `muse attunegraph inspect` Lens — verified engine substrate; write/repair/live-web Admin and default automatic delivery remain roadmap |
+| AttuneGraph engine | Exact projection, *"what changed since I stopped"*, content-addressed receipts, bounded resume compilation, canonical `.atgx`, a worker-isolated SQLite journal, an explicit opt-in Continuity Preview writer, and the offline read-only `muse attunegraph inspect` Lens — verified engine substrate; write/repair/live-web Admin and default automatic ingestion/delivery remain roadmap |
 | Continuity Capsule | Render data returned from an explicit API call. No product UI, no automatic timing |
 | Shadow Muse | The ledger records the decision. It does not surface anything on its own yet |
 
@@ -219,9 +219,14 @@ Muse's Continuity, Shadow, Capsule, evidence, and lineage integration.
 
 What is verified today, and what those words do **not** mean:
 
-- The neutral lifecycle `openAttuneGraph({ scope, store }) → project → execute → close`, plus a durable
+- The neutral lifecycle `openAttuneGraph({ scope, store }) → head/project → execute → close`, plus a durable
   projection journal and typed worker boundary. Portable export/rebuild, backup, physical forget and
   the 10K/100K/1M benchmarks are still pending.
+- `MUSE_ATTUNEGRAPH_DATABASE=/absolute/path/attunegraph.sqlite` explicitly connects the existing
+  provider-revalidated Continuity Pack Preview path to
+  `@muse/attunegraph/continuity-durable-projection`. It serializes writes, recovers the exact
+  expected head after restart, treats receipt replay as idempotent, and records source freshness as
+  `unknown`. The variable has no default; an invalid non-empty value fails assembly creation closed.
 - The public `@attunegraph/core/admin` Interface and `muse attunegraph inspect` Lens can inspect
   summary, integrity, and one exact scope head from an explicitly attested closed/quiescent store.
   They do not inspect a live writer, repair data, expose raw SQL, or provide the future web Admin.
@@ -230,8 +235,10 @@ What is verified today, and what those words do **not** mean:
 - Freshness is honest by construction: only exact endpoint equality under a bounded head
   revalidation becomes `fresh-at-assessment`. A single read stays `unassessed` and forces downstream
   abstention rather than a guess.
-- Resume baselines are per-process, capped at 16 threads, and not persisted. None of this is action
-  authority, automatic behaviour, or evidence that it is useful in real life.
+- Resume baselines are still per-process, capped at 16 threads, and not persisted. The optional
+  AttuneGraph projection is durable but remains a rebuildable graph projection, not a durable
+  current-world or timing claim. None of this is action authority, automatic behaviour, or evidence
+  that it is useful in real life.
 
 Sequenced in the [wow + graph roadmap](internal/goals/attunegraph-roadmap.md).
 

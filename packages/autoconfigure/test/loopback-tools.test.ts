@@ -15,7 +15,7 @@ import {
 import { CalendarProviderRegistry } from "@muse/calendar";
 import { MessagingProviderRegistry } from "@muse/messaging";
 import { readTasks, writeTasks } from "@muse/stores";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { buildLoopbackTools, type LoopbackToolsBundle, type LoopbackToolsDeps } from "../src/loopback-tools.js";
 
@@ -178,6 +178,51 @@ describe("buildLoopbackTools — gating", () => {
     const state = await readAttunementState(attunementFile);
     expect(state.interactionReceipts).toHaveLength(1);
     expect(state.deliveries[0]?.outcome).toBeUndefined();
+  });
+
+  it("wires explicit Continuity Preview receipts into the configured fail-closed projector", async () => {
+    const testDir = mkdtempSync(
+      join(tmpdir(), "muse-loopback-attunegraph-projection-")
+    );
+    const attunementFile = join(testDir, "attunement.json");
+    const notesDir = join(testDir, "notes");
+    const tasksFile = join(testDir, "tasks.json");
+    const thread = await createPersonalThread(attunementFile, {
+      kind: "work",
+      title: "AttuneGraph runtime projection"
+    });
+    const projectCurrentGraphObservation = vi.fn(async () => {
+      throw new Error("private durable projection failure");
+    });
+    const bundle = buildLoopbackTools(baseDeps({
+      attunementFile,
+      notesDir,
+      projectCurrentGraphObservation,
+      tasksFile
+    }));
+    const preview = bundle.continuity.find((tool) =>
+      tool.definition.name === "muse.continuity.pack.preview"
+    );
+    expect(preview).toBeDefined();
+
+    const failed = await preview!.execute(
+      { threadId: thread.id },
+      {} as never
+    ) as { readonly resume: { readonly reason?: string; readonly state?: string } };
+    expect(failed.resume).toEqual(expect.objectContaining({
+      reason: "graph-projection-failed",
+      status: "unavailable"
+    }));
+    expect(projectCurrentGraphObservation).toHaveBeenCalledOnce();
+    expect(projectCurrentGraphObservation.mock.calls[0]?.[0]).toMatchObject({
+      authority: "caller-declared-observation",
+      projection: {
+        scope: {
+          sourceId: "muse.local-attunement",
+          threadId: thread.id
+        }
+      }
+    });
   });
 
   it("retries a pending loopback completion without rewriting the already-done task timestamp", async () => {

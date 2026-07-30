@@ -464,6 +464,51 @@ describe("continuity resume runtime coordinator", () => {
     });
   });
 
+  it("projects verified current Graph receipts before and without advancing a failed baseline", async () => {
+    const threadId = "thread_durable_projection_order";
+    let at = BASE_AT;
+    let failProjection = true;
+    const projectedReceiptIds: string[] = [];
+    const coordinator = createContinuityResumeRuntimeCoordinator({
+      captureCurrent: () => capture(threadId, at),
+      projectCurrentGraphObservation: async (receipt) => {
+        projectedReceiptIds.push(receipt.receiptId);
+        if (failProjection) throw new Error("private projection failure");
+      }
+    });
+    const scope = { sourceId: SOURCE_ID, threadId };
+
+    expect(await coordinator.preview(scope)).toEqual({
+      schemaVersion: 1,
+      status: "unavailable",
+      reason: "graph-projection-failed",
+      authority: {
+        canAssertCurrentWorldTruth: false,
+        canAssertSourceCompleteness: false,
+        canGrantActionAuthority: false
+      }
+    });
+    failProjection = false;
+    expect(await coordinator.preview(scope)).toMatchObject({
+      status: "partial",
+      state: "process-local-baseline-seeded"
+    });
+    expect(projectedReceiptIds[1]).toBe(projectedReceiptIds[0]);
+
+    at += 60_000;
+    failProjection = true;
+    expect(await coordinator.preview(scope)).toMatchObject({
+      status: "unavailable",
+      reason: "graph-projection-failed"
+    });
+    failProjection = false;
+    expect(await coordinator.preview(scope)).toMatchObject({
+      status: "partial",
+      state: "compared-and-advanced"
+    });
+    expect(projectedReceiptIds[3]).toBe(projectedReceiptIds[2]);
+  });
+
   it("presents a Capsule only for an exact compared result and observation-bound preparation", async () => {
     const threadId = "thread_capsule";
     let at = BASE_AT;

@@ -102,6 +102,7 @@ export type ContinuityResumeRuntimeUnavailableReason =
   | "capture-failed"
   | "provider-not-partial"
   | "current-evidence-invalid"
+  | "graph-projection-failed"
   | "observation-regressed"
   | "observation-conflict"
   | "resume-context-unavailable"
@@ -175,6 +176,14 @@ export interface ContinuityResumeRuntimeCoordinatorDependencies {
   readonly captureCurrent: (
     scope: Readonly<ContinuityScopedSourceObservationScope>
   ) => Promise<ContinuityResumeRuntimeCaptureV1>;
+  /**
+   * Optional application-owned durable projection. The coordinator invokes it
+   * only after current Provider/Source/Graph cross-links are verified and
+   * before advancing its process-local baseline.
+   */
+  readonly projectCurrentGraphObservation?: (
+    observation: ContinuityObservationReceipt
+  ) => Promise<unknown>;
   /** @internal deterministic-test seam */
   readonly monotonicNowMs?: () => number;
 }
@@ -762,6 +771,32 @@ export function createContinuityResumeRuntimeCoordinator(
         return unavailable("runtime-generation-changed");
       }
 
+      if (capturedBaseline !== undefined) {
+        const previousAt = capturedBaseline.graph.observedAt;
+        const currentAt = current.graph.observedAt;
+        if (currentAt < previousAt) {
+          return unavailable("observation-regressed");
+        }
+        const sameSource =
+          current.source.receiptId === capturedBaseline.source.receiptId;
+        const sameGraph =
+          current.graph.receiptId === capturedBaseline.graph.receiptId;
+        if (currentAt === previousAt && (!sameSource || !sameGraph)) {
+          return unavailable("observation-conflict");
+        }
+      }
+
+      if (dependencies.projectCurrentGraphObservation !== undefined) {
+        try {
+          await dependencies.projectCurrentGraphObservation(current.graph);
+        } catch {
+          return unavailable("graph-projection-failed");
+        }
+      }
+      if (!token.active || baselines.get(key) !== capturedBaseline) {
+        return unavailable("runtime-generation-changed");
+      }
+
       if (capturedBaseline === undefined) {
         let next: Baseline;
         try {
@@ -784,14 +819,6 @@ export function createContinuityResumeRuntimeCoordinator(
 
       const previousAt = capturedBaseline.graph.observedAt;
       const currentAt = current.graph.observedAt;
-      if (currentAt < previousAt) return unavailable("observation-regressed");
-      const sameSource =
-        current.source.receiptId === capturedBaseline.source.receiptId;
-      const sameGraph =
-        current.graph.receiptId === capturedBaseline.graph.receiptId;
-      if (currentAt === previousAt && (!sameSource || !sameGraph)) {
-        return unavailable("observation-conflict");
-      }
 
       let result: ReturnType<typeof compileContinuityResumeContext>;
       try {

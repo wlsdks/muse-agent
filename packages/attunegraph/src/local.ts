@@ -136,6 +136,11 @@ export async function openLocalAttuneGraph(options: OpenLocalAttuneGraphOptions)
     Promise.reject(new AttuneGraphError("CLOSED", "local AttuneGraph instance is closing or closed"));
 
   return Object.freeze({
+    head() {
+      return lifecycle === "open"
+        ? engine.head()
+        : rejectClosed<AttuneGraphSnapshot | undefined>();
+    },
     project(command: AttuneGraphProjectCommand) {
       return lifecycle === "open"
         ? engine.project(command)

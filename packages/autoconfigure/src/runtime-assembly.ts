@@ -145,6 +145,9 @@ import { createResponseFilters } from "./response-filters.js";
 import { createMessagingPollDispatchers } from "./messaging-poll-dispatchers.js";
 import { createSkillRuntime } from "./skills-runtime.js";
 import { buildLoopbackTools } from "./loopback-tools.js";
+import {
+  createConfiguredContinuityAttuneGraphProjector
+} from "./continuity-attunegraph-composition.js";
 import { buildBackgroundReviewHooks } from "./context-engineering-builders.js";
 
 import {
@@ -909,6 +912,8 @@ function buildPersonalStoreStack(
   modelProvider: ModelProvider | undefined,
   defaultModel: string | undefined
 ) {
+  const continuityAttuneGraphProjector =
+    createConfiguredContinuityAttuneGraphProjector(env);
   const notesDir = resolveNotesDir(env);
   ensureNotesDir(notesDir);
   const notesRegistry = parseBoolean(env.MUSE_NOTES_ENABLED, true) ? buildNotesRegistry(env) : undefined;
@@ -923,13 +928,18 @@ function buildPersonalStoreStack(
   const followupsFile = resolveFollowupsFile(env);
   const episodesFile = resolveEpisodesFile(env);
   const patternsFiredFile = resolvePatternsFiredFile(env);
-
   // 11 loopback-tool bundles in one call. `buildLoopbackTools`
   // owns the env-gate + LLM-judge-opt-in logic that used to live
   // inline as 95 LOC of repeated scaffolding.
   const loopback = buildLoopbackTools({
     actionLogFile: resolveActionLogFile(env),
     attunementFile: resolveAttunementFile(env),
+    ...(continuityAttuneGraphProjector
+      ? {
+          projectCurrentGraphObservation:
+            continuityAttuneGraphProjector.project
+        }
+      : {}),
     ...(options.messagingApprovalGate ? { messagingApprovalGate: options.messagingApprovalGate } : {}),
     calendarRegistry,
     defaultModel,

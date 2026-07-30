@@ -352,6 +352,14 @@ export async function openAttuneGraph(options: OpenAttuneGraphOptions): Promise<
     }
   };
   return Object.freeze({
+    head(): Promise<AttuneGraphSnapshot | undefined> {
+      return begin(async () => {
+        const current = await read();
+        return current === undefined
+          ? undefined
+          : freezeSnapshot(current.snapshot);
+      });
+    },
     project(command: AttuneGraphProjectCommand): Promise<AttuneGraphSnapshot> {
       return begin(async () => {
         const normalized = normalizeProject(command, openedScope);

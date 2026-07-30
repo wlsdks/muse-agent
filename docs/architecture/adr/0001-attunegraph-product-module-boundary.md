@@ -79,6 +79,7 @@ The Interface is intentionally closed:
 | Conformance | `@attunegraph/core/testing` | shipped | In-memory semantic oracle and store conformance |
 | Extension Kit | `@attunegraph/core/extension-kit` | shipped narrow seam | Canonical envelopes, settlement, normalization, and witness-path helpers |
 | Muse integration | `@muse/attunegraph/*` | shipped explicit subpaths | Continuity, Shadow, Capsule, evidence, and lineage composition |
+| Muse durable projection | `@muse/attunegraph/continuity-durable-projection` | shipped explicit opt-in | Verified Continuity Graph receipts to the embedded Store; serialized writer, restart head recovery, unknown freshness, no source authority |
 | Markdown source | future standalone adapter | target | Portable Markdown/frontmatter/link observations |
 | Obsidian source | future standalone adapter | target | Vault-relative wiki-link, embed, heading, and stable block-ref observations |
 | Notion source | future standalone adapter | target | Opt-in sync preserving workspace/database/page/block identities |
@@ -92,6 +93,17 @@ durability fallback. Redis, MySQL, and an external property-graph service are no
 Markdown, Obsidian, and Notion are Source Adapters, not graph storage Adapters. Source
 documents remain authoritative; AttuneGraph stores exact references, immutable evidence, and
 rebuildable relations rather than becoming a second document database.
+
+Muse's first write composition is shipped but deliberately has no default:
+`MUSE_ATTUNEGRAPH_DATABASE` must name an absolute normalized database path.
+The existing provider-revalidated Continuity Preview supplies a verified Graph
+Observation Receipt to the Muse durable-projection Module. The Module reads the
+current snapshot through the public Engine Interface, supplies that exact
+optimistic token to the Engine's atomic compare-and-swap, serializes in-process
+calls, and closes each Local AttuneGraph instance. An external-writer race
+rejects without retry or overwrite; an identical receipt replay does not
+advance the generation. Receipt integrity does not prove freshness, so the
+stored source-freshness state remains `unknown`.
 
 ## Dependency direction
 
@@ -123,6 +135,8 @@ Attunement bridge. The split must not copy or fork Attunement validation.
 - Evidence Graph state is rebuildable and never outranks its authoritative source.
 - Every ordinary projection and operator is confined to one `(sourceId, threadId)`.
 - Every operator pins one generation and commit snapshot.
+- `head()` exposes only the detached snapshot needed for optimistic
+  concurrency; it exposes no assertions, source authority, or permission.
 - Published Working Graphs are proof-closed; a mandatory source, policy, freshness, scope,
   or authority branch is never silently truncated.
 - Absence is claimable only for a complete pinned snapshot; current-world absence also

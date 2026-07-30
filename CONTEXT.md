@@ -54,8 +54,10 @@ invariants and adds the dependency direction that code must not violate.
   architecture. **AttuneGraph Engine** is the semantics/operators/compiler; **AttuneGraph Store** is the
   built-in durable journal and index layer whose selected default is capability-gated
   `node:sqlite`. The AWG-070a1 worker-isolated projection-journal foundation exists;
-  export/rebuild, backup, physical forget, complete benchmarks, and default Muse composition
-  remain. PostgreSQL is optional; Redis/MySQL/external Graph DBs are not required. A
+  the explicit `MUSE_ATTUNEGRAPH_DATABASE` Continuity Preview writer now performs restart-safe
+  optimistic projection through the public Engine Interface. Export/rebuild, backup, physical
+  forget, complete benchmarks, and automatic/default Muse composition remain. PostgreSQL is
+  optional; Redis/MySQL/external Graph DBs are not required. A
   receipt is evidence projected into AttuneGraph, not a database.
 - AttuneGraph is an independently extractable product Module developed inside Muse until its
   clean-room package gate passes. Muse applications depend on the AttuneGraph public Interface;

@@ -198,9 +198,12 @@ policy mutation, or action authority. AWG-040b/c do not implement core-roadmap o
 
 The AttuneGraph-backed resume path now has one narrow application/runtime composition point in
 the existing read-only Pack Preview, including an explicit verified Capsule render-data
-option. It still has no durable adapter, LLM extraction, automatic Shadow delivery,
-Capsule product UI, Policy Card UI, or action authority. The complete three-part signature
-experience therefore remains a roadmap claim.
+option. Its verified current Graph Observation Receipt can now enter the embedded durable
+Store only through the explicit `MUSE_ATTUNEGRAPH_DATABASE` opt-in writer. The resume
+baseline itself remains process-local, and the path still has no continuous/current-world
+ingestion, LLM extraction, automatic Shadow delivery, Capsule product UI, Policy Card UI,
+or action authority. The complete three-part signature experience therefore remains a
+roadmap claim.
 
 Fresh Shadow timing decisions now retain their exact bounded policy snapshot, and a
 dedicated Graph receipt can bind one such decision only to the original process-local
@@ -569,6 +572,7 @@ The package ships one neutral, closed `AttuneGraph*` lifecycle:
 
 ```ts
 interface AttuneGraph {
+  head(): Promise<AttuneGraphSnapshot | undefined>;
   project(command: AttuneGraphProjectCommand): Promise<AttuneGraphSnapshot>;
   execute(command: AttuneGraphExecuteCommand): Promise<AttuneGraphOperatorResult>;
   close(): Promise<void>;
@@ -592,6 +596,20 @@ exact-scope-head reads through a dedicated Worker. Muse's first Adapter is
 It emits no source path or scope IDs. Live-store inspection, write/repair,
 backup/restore, export/rebuild activation, and a web Admin remain roadmap work.
 
+The first real Muse writer is the explicit
+`@muse/attunegraph/continuity-durable-projection` Module. When
+`MUSE_ATTUNEGRAPH_DATABASE` is a non-empty absolute normalized path, the
+existing provider-revalidated Continuity Preview composition projects its
+verified current Graph Observation Receipt into Local AttuneGraph. The Module
+serializes calls, reads the restart-safe current head, supplies that exact
+optimistic token to the Engine's atomic compare-and-swap, and always closes the
+local instance. An external-writer race fails with no retry or overwrite; an
+identical receipt replays without advancing generation. It records freshness as
+`unknown` because receipt integrity cannot prove current-world freshness.
+Absent or exactly empty configuration preserves the old Preview path; invalid
+non-empty configuration fails assembly creation closed. This is not continuous
+Observe, a persisted resume baseline, or default ingestion.
+
 AttuneGraph consumes explicit verified source observations. It must not import every personal store
 and create a second composition root. `AttuneGraph*` and Activation Subgraph v1 exports
 are the canonical public vocabulary.
@@ -600,8 +618,9 @@ are the canonical public vocabulary.
 
 **SQLite via capability-gated `node:sqlite` is the selected default AttuneGraph Store.** The
 physical v1 profile uses the `ATG1` application identity (`0x41544731`). The
-durable projection journal and offline read-only Admin ship; migration, full
-recovery, default runtime composition, backup, physical forget, and scale qualification remain
+durable projection journal, explicit opt-in Continuity Preview writer, and
+offline read-only Admin ship; migration, full recovery, automatic/default
+runtime composition, backup, physical forget, and scale qualification remain
 roadmap work. AttuneGraph owns the logical journal and
 domain operators; SQLite owns local transactions, indexes, locking, and crash recovery.
 

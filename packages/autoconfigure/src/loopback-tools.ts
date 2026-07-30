@@ -39,6 +39,9 @@ import {
   createContinuityResumeRuntimeCoordinator,
   getContinuityResumeRuntimePack
 } from "@muse/attunegraph/continuity-resume-runtime";
+import type {
+  ContinuityObservationReceipt
+} from "@muse/attunegraph/continuity-observations";
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { createCalendarMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createHistoryMcpServer, createMathMcpServer, createMessagingMcpServer, createNotesMcpServer, createNotesRegistryMcpServer, createPatternsMcpServer, createProactiveMcpServer, createRemindersMcpServer, createStatusMcpServer, createTasksMcpServer, createTasksRegistryMcpServer, createSearchMcpServer, createWebReadMcpServer, type MessageApprovalGate } from "@muse/domain-tools";
 import { mirrorNoteToApple, mirrorReminderToApple } from "@muse/macos";
@@ -71,6 +74,9 @@ const CONTINUITY_RUNTIME_SOURCE_ID = "muse.local-attunement";
 export interface LoopbackToolsDeps {
   readonly attunementFile?: string;
   readonly env: MuseEnvironment;
+  readonly projectCurrentGraphObservation?: (
+    observation: ContinuityObservationReceipt
+  ) => Promise<unknown>;
   /** Optional LLM provider for `mode: "llm-judge"` paths on notes / episodes search. */
   readonly modelProvider?: ModelProvider;
   readonly defaultModel?: string;
@@ -168,7 +174,13 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
                 captureHeadRevalidation:
                   snapshotProvider.captureHeadRevalidation,
                 resolveExactArtifact
-              })
+              }),
+            ...(deps.projectCurrentGraphObservation === undefined
+              ? {}
+              : {
+                  projectCurrentGraphObservation:
+                    deps.projectCurrentGraphObservation
+                })
           });
         const openPackDeps: ContinuityPackOpenToolDeps = {
           openPack: (threadId, runId) => openProductionAuthorizedContinuityPack(

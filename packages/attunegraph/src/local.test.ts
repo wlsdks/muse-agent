@@ -119,6 +119,8 @@ it("persists and reopens byte-identical Engine snapshots and results", async () 
     local.project(input),
     memory.project(input)
   ]);
+  await expect(local.head()).resolves.toEqual(localSnapshot);
+  await expect(memory.head()).resolves.toEqual(memorySnapshot);
   const [localResult, memoryResult] = await Promise.all([
     local.execute(execute()),
     memory.execute(execute())
@@ -128,6 +130,7 @@ it("persists and reopens byte-identical Engine snapshots and results", async () 
   await Promise.all([local.close(), memory.close()]);
 
   const reopened = await openLocalAttuneGraph({ databasePath, scope: SCOPE });
+  await expect(reopened.head()).resolves.toEqual(localSnapshot);
   expect(JSON.stringify(await reopened.project(input))).toBe(
     JSON.stringify(localSnapshot)
   );
@@ -136,6 +139,7 @@ it("persists and reopens byte-identical Engine snapshots and results", async () 
   );
   await reopened.close();
   await reopened.close();
+  await expect(reopened.head()).rejects.toMatchObject({ code: "CLOSED" });
   await expect(reopened.project(input)).rejects.toMatchObject({ code: "CLOSED" });
   await expect(reopened.execute(execute())).rejects.toMatchObject({ code: "CLOSED" });
 });

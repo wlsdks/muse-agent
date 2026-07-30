@@ -117,7 +117,10 @@ const attuneGraph = await openLocalAttuneGraph({
   }
 });
 
-// project and execute use the same contracts as the root engine.
+// Recover the exact optimistic token after a process restart.
+const current = await attuneGraph.head();
+// A distinct projection supplies `current` as expectedSnapshot; an identical
+// observation is replay-safe and returns the same generation.
 await attuneGraph.close();
 ```
 

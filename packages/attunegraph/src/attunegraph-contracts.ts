@@ -79,6 +79,12 @@ export interface AttuneGraphOperatorResult {
 }
 
 export interface AttuneGraph {
+  /**
+   * Reads the exact current projection head for this opened scope.
+   * The returned snapshot is an optimistic-concurrency token only; it carries
+   * no assertions, source authority, or permission.
+   */
+  head(): Promise<AttuneGraphSnapshot | undefined>;
   project(command: AttuneGraphProjectCommand): Promise<AttuneGraphSnapshot>;
   execute(command: AttuneGraphExecuteCommand): Promise<AttuneGraphOperatorResult>;
   close(): Promise<void>;

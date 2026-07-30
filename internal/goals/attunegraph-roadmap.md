@@ -86,7 +86,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | pending |
 | **AWG-065** | Neutral AttuneGraph product boundary | Closed `AttuneGraph*` interface, forbidden-import gate, and Muse integration package keep private Continuity types outside the standalone Engine without copying validation | completed (dependency-free `@attunegraph/core` plus explicit `@muse/attunegraph` integration; no compatibility alias) |
 | **AWG-070** | SQLite AttuneGraph Store v1 | Implement the selected worker-isolated `node:sqlite` default behind the AttuneGraph Store contract with version-gated physical profile, journal replay, indexes, restart/crash/corruption tests, portable export, and 10K/100K/1M operator benchmarks; record measured TS/SQLite optimization and activate a Rust kernel only when end-to-end evidence justifies it | partial (`AWG-070a1` durable projection journal, `AWG-070a2` typed Worker boundary, the `.atgx` encoder/decoder/order/budget/non-retention chain through `AWG-070a3a1a4b`, indexed validation `a4c`, POSIX staging lifecycle `a4d`, Admin protocol/fail-stop spine `a4e1`, shared physical-schema/read-only inspector core `a4e2a`, parent-owned closed-store offline snapshot lease `a4e2b1`, dedicated read-only Admin Worker/application `a4e2b2`, and public offline `./admin` plus Muse Lens CLI `a4e2b3` independently verified; export/rebuild/activation, write/repair/live-web Admin, backup, physical forget, complete profile/corpus, and 10K/100K/1M benchmarks pending) |
-| **AWG-080** | Durable local graph adapter | Selected adapter passes conformance, export/rebuild, corruption, migration, forget, and crash-recovery gates | pending |
+| **AWG-080** | Durable local graph adapter | Selected adapter passes conformance, export/rebuild, corruption, migration, forget, and crash-recovery gates | partial (`AWG-080a` explicit restart-safe Continuity Preview writer implemented; export/rebuild activation, migration, physical forget, backup/recovery, default ingestion, and remaining qualification pending) |
 | **AWG-085** | Standalone AttuneGraph qualification | Clean-room build/test, forbidden-import audit, packed install, non-Muse example, license/security/contribution docs, and history-preserving repository split rehearsal pass without workspace dependencies | pending |
 | **AWG-090** | Dogfood qualification | Controlled scenarios plus repeated organic use; reconstruction-cost and policy-correction evidence remain separately reported | pending |
 
@@ -154,6 +154,37 @@ timing in real life.
   real closed-store built CLI smoke, 19/19 Module/naming gates, 391/391 changed-scope
   tests, TS7 typecheck, and lint. Full `pnpm check` also passed across all 43 tested
   workspace projects, including AttuneGraph 330/330 and CLI 4,970/4,970.
+
+## Completed slice: AWG-080a
+
+- **Classification at activation:** the embedded Store and verified Continuity Graph
+  Observation Receipt were `verified-current`; their application/runtime composition
+  was `missing`.
+- **Maker / evaluator:** `gpt-5.6-sol` / `high` implemented the persistence-facing
+  public Interface and Muse composition. A separate Sol/high PLAN context forced
+  explicit stale-head, replay, configuration, cleanup, and verification contracts;
+  a fresh Sol/high completion context independently passed all seven criteria.
+- **Shipped neutral delta:** `AttuneGraph.head()` returns only the detached exact
+  scope snapshot needed for optimistic concurrency. It exposes no assertions, source
+  authority, permission, or Store implementation.
+- **Muse Module and composition:** the public
+  `@muse/attunegraph/continuity-durable-projection` Module re-verifies a current
+  Continuity Graph receipt, preserves its scope/assertions/time, records freshness as
+  `unknown`, and performs serialized open → head → atomic project → close operations.
+  `MUSE_ATTUNEGRAPH_DATABASE` enables it only for a non-empty absolute normalized path;
+  absent or exactly empty configuration keeps the previous Preview path, while invalid
+  non-empty configuration fails assembly creation closed.
+- **Concurrency and recovery truth:** identical replay does not advance generation,
+  including after restart. A stale external writer loses the existing atomic CAS and
+  is never retried, rebased, or allowed to overwrite the winner. Cleanup is always
+  attempted after open, and cannot mask the primary operation failure.
+- **Scope truth:** this is one explicit application writer, not default or continuous
+  ingestion, persisted resume timing/current-world state, portable export/rebuild,
+  migration, backup/repair/physical forget, write-enabled Admin, or Source Adapters.
+- **Independent gate:** focused core 23/23, Muse integration 21/21, autoconfigure
+  35/35, real SQLite restart/replay verification, boundary and environment gates,
+  changed-scope 704/704, TS7 typecheck, targeted lint, and full `pnpm check` passed.
+  The full gate included API 1,576/1,576 and CLI 4,970/4,970.
 
 ## Current 050b activation
 

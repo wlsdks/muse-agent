@@ -8,6 +8,19 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the AWG-080a explicit durable Muse composition. The public
+  `@muse/attunegraph/continuity-durable-projection` Module verifies current
+  Continuity Graph Observation Receipts, preserves exact scope/assertions/time,
+  records freshness as `unknown`, serializes calls, recovers the persisted head
+  after restart, and uses the Engine's atomic expected-snapshot CAS. Identical
+  receipt replay does not advance generation; external-writer races reject
+  without retry or overwrite; cleanup cannot mask a primary operation failure.
+  `MUSE_ATTUNEGRAPH_DATABASE` activates this writer in the existing
+  provider-revalidated Continuity Preview composition. It has no default, and
+  invalid non-empty configuration fails assembly creation closed. This does not
+  add continuous Observe, a persisted resume baseline, portable export/rebuild,
+  default ingestion, or current-world/timing/action authority.
+
 - Added the independently verified AWG-070a4e2b3 AttuneGraph Lens vertical slice. The neutral
   `@attunegraph/core/admin` subpath now exposes the production read-only Admin
   Interface without qualification, filesystem, SQLite, snapshot, Worker transport,

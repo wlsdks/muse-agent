@@ -72,7 +72,13 @@ function command(
 
 it("binds one exact scope and has replay-safe content-addressed projection", async () => {
   const attuneGraph = await openAttuneGraph({ scope: SCOPE, store: createInMemoryAttuneGraphStore() });
+  await expect(attuneGraph.head()).resolves.toBeUndefined();
   const first = await attuneGraph.project(command("one"));
+  const head = await attuneGraph.head();
+  expect(head).toEqual(first);
+  expect(head).not.toBe(first);
+  expect(Object.isFrozen(head)).toBe(true);
+  expect(Object.isFrozen(head?.scope)).toBe(true);
   const replay = await attuneGraph.project(command("one"));
   expect(replay).toEqual(first);
   await expect(attuneGraph.project(command("foreign", { scope: OTHER_SCOPE }))).rejects.toMatchObject({ code: "INVALID_SCOPE" });
@@ -248,10 +254,11 @@ it("rejects proxies and accessors without invoking them", async () => {
   await expect(attuneGraph.project(accessor as never)).rejects.toMatchObject({ code: "INVALID_INPUT" });
 });
 
-it("close is idempotent and permanently closes project and execute", async () => {
+it("close is idempotent and permanently closes head, project, and execute", async () => {
   const attuneGraph = await openAttuneGraph({ scope: SCOPE, store: createInMemoryAttuneGraphStore() });
   await attuneGraph.close();
   await attuneGraph.close();
+  await expect(attuneGraph.head()).rejects.toMatchObject({ code: "CLOSED" });
   await expect(attuneGraph.project(command("after-close"))).rejects.toMatchObject({ code: "CLOSED" } satisfies Pick<AttuneGraphError, "code">);
   await expect(attuneGraph.execute({ operator: "working-graph@1", seed: { id: SCOPE.threadId, kind: "thread" }, now: NOW, maxEstimatedTokens: 10 })).rejects.toMatchObject({ code: "CLOSED" });
 });

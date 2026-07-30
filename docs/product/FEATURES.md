@@ -555,10 +555,11 @@ thread, not a hidden global preference.
   work, and estimated time.
 - **Policy Card** — shows the grounds and scope of a learned collaboration rule, with
   try/edit/reject/undo.
-- **AttuneGraph** — a proposed agent-only module that links time, relations,
+- **AttuneGraph** — an agent-native module that links time, relations,
   provenance, and policy on top of existing stores, building only the small Working Graph a turn
-  needs. The current private library substrate is partial; the SQLite AttuneGraph Store and a standalone
-  release are roadmap.
+  needs. The Engine, SQLite journal, offline Lens, and explicit opt-in Continuity Preview writer
+  are implemented substrates; automatic/default ingestion, the complete Admin, and a standalone
+  release remain roadmap.
 
 The key sentence: **Muse doesn't remember apps; it remembers the state I meant to continue.**
 The detailed product contract and module design follow [Attunement](../strategy/attunement.md),
