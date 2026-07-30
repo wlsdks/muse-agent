@@ -55,6 +55,16 @@ export {
 
 export { sleep } from "./sleep.js";
 export {
+  TRIGGER_ENVELOPE_SCHEMA_VERSION,
+  createTriggerEnvelope,
+  isTriggerEnvelope,
+  type CreateTriggerEnvelopeInput,
+  type TriggerEnvelope,
+  type TriggerProvenance,
+  type TriggerProvenanceKind,
+  type TriggerSource
+} from "./trigger-envelope.js";
+export {
   runCommandWithTimeout,
   type RunCommandOptions,
   type RunCommandResult

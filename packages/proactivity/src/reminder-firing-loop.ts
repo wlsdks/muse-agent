@@ -9,7 +9,13 @@ import {
   type OutboundEffectView
 } from "@muse/messaging";
 import { composeIdentityPrompt } from "@muse/prompts";
-import { errorMessage, redactSecretsInText, sha256Hex } from "@muse/shared";
+import {
+  createTriggerEnvelope,
+  errorMessage,
+  redactSecretsInText,
+  sha256Hex,
+  type TriggerEnvelope
+} from "@muse/shared";
 
 import { appendReminderHistoryStrictOnce, readReminderHistoryStrict, withRequiredProcessLock } from "@muse/stores";
 import {
@@ -101,13 +107,8 @@ export interface RunDueRemindersSummary {
  * occurrence generation: recurrence advances it and therefore creates a new
  * dedup key, while replay of the same occurrence remains byte-identical.
  */
-export interface ReminderTriggerEnvelope {
-  readonly dedupKey: string;
-  readonly generation: string;
-  readonly occurredAt: string;
-  readonly schemaVersion: 1;
+export interface ReminderTriggerEnvelope extends TriggerEnvelope {
   readonly source: "reminder";
-  readonly sourceId: string;
 }
 
 export async function runDueReminders(options: RunDueRemindersOptions): Promise<RunDueRemindersSummary> {
@@ -154,7 +155,7 @@ async function runDueRemindersUnderLock(options: RunDueRemindersOptions): Promis
     for (const reminder of due) {
       const providerId = reminder.via?.providerId ?? options.providerId;
       const destination = reminder.via?.destination ?? options.destination;
-      const trigger = buildReminderTriggerEnvelope(reminder);
+      const trigger = buildReminderTriggerEnvelope(reminder, now());
       const effectId = trigger.dedupKey;
       if (
         providerId.trim().length === 0
@@ -267,15 +268,23 @@ export function reminderOccurrenceEffectId(reminderId: string, dueAt: string): s
 }
 
 export function buildReminderTriggerEnvelope(
-  reminder: Pick<PersistedReminder, "dueAt" | "id">
+  reminder: Pick<PersistedReminder, "dueAt" | "id">,
+  receivedAt: Date | string = reminder.dueAt
 ): ReminderTriggerEnvelope {
-  return {
-    dedupKey: reminderOccurrenceEffectId(reminder.id, reminder.dueAt),
+  const envelope = createTriggerEnvelope({
     generation: reminder.dueAt,
     occurredAt: reminder.dueAt,
-    schemaVersion: 1,
+    provenance: { kind: "local-store", ref: "reminders" },
+    receivedAt,
     source: "reminder",
     sourceId: reminder.id
+  });
+  return {
+    ...envelope,
+    // Preserve the durable outbound-effect identity already deployed for
+    // reminder occurrences while adopting the shared trigger contract.
+    dedupKey: reminderOccurrenceEffectId(reminder.id, reminder.dueAt),
+    source: "reminder"
   };
 }
 

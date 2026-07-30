@@ -1,4 +1,4 @@
-import type { JsonObject } from "@muse/shared";
+import type { JsonObject, TriggerEnvelope } from "@muse/shared";
 
 import type {
   ScheduledJobDispatcher,
@@ -146,6 +146,7 @@ export interface ScheduledJobExecutionInput {
  * the execution record for the owner's run history.
  */
 export interface TriggerInvocation {
+  readonly trigger?: TriggerEnvelope;
   readonly webhookPayload?: string;
   readonly payloadPreview?: string;
 }

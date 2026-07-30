@@ -1,6 +1,5 @@
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { createTriggerEnvelope, errorMessage, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
-import { errorMessage } from "@muse/shared";
 
 import { ActiveRunTracker } from "./active-run-tracker.js";
 import { NoOpDistributedSchedulerLock } from "./scheduler-locks.js";
@@ -251,18 +250,34 @@ export class DynamicScheduler {
     }
 
     const startedAt = this.now();
+    const resolvedInvocation = invocation?.trigger
+      ? invocation
+      : {
+          ...invocation,
+          trigger: createTriggerEnvelope({
+            generation: startedAt.toISOString(),
+            occurredAt: startedAt,
+            provenance: {
+              kind: automatic ? "local-scheduler" : "owner-command",
+              ref: job.id
+            },
+            receivedAt: startedAt,
+            source: automatic ? "cron" : "manual",
+            sourceId: job.id
+          })
+        };
 
     try {
       if (!dryRun) {
         await this.store.updateExecutionResult(job.id, "running", undefined);
       }
 
-      const result = await this.dispatcher.runWithTimeoutAndRetry(job, invocation);
-      await this.handleSuccess(job, result, startedAt, dryRun, invocation);
+      const result = await this.dispatcher.runWithTimeoutAndRetry(job, resolvedInvocation);
+      await this.handleSuccess(job, result, startedAt, dryRun, resolvedInvocation);
       return result;
     } catch (error) {
       const message = `Job '${job.name}' failed: ${errorMessage(error, "unknown")}`;
-      await this.handleFailure(job, message, startedAt, dryRun, invocation);
+      await this.handleFailure(job, message, startedAt, dryRun, resolvedInvocation);
       return message;
     } finally {
       if (!dryRun) {

@@ -1037,7 +1037,7 @@ describe("webhook trigger invocation — isolation of the untrusted payload", ()
     expect(plainRun?.payloadPreview).toBeUndefined();
   });
 
-  it("an AUTOMATIC (cron) fire passes NO invocation and records no trigger source", async () => {
+  it("an AUTOMATIC (cron) fire carries a canonical trigger and records no webhook source", async () => {
     const store = new InMemoryScheduledJobStore({ idFactory: () => "job-auto" });
     const executions = new InMemoryScheduledJobExecutionStore({ idFactory: () => "exec-auto" });
     let seen: TriggerInvocation | undefined = { webhookPayload: "SENTINEL" };
@@ -1058,7 +1058,13 @@ describe("webhook trigger invocation — isolation of the untrusted payload", ()
 
     fire?.();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(seen).toBeUndefined();
+    expect(seen?.trigger).toMatchObject({
+      provenance: { kind: "local-scheduler", ref: "job-auto" },
+      schemaVersion: 1,
+      source: "cron",
+      sourceId: "job-auto"
+    });
+    expect(seen?.trigger?.dedupKey).toMatch(/^trigger:[a-f0-9]{64}$/u);
     const [autoRun] = executions.findByJobId("job-auto");
     expect(autoRun?.triggeredBy).toBeUndefined();
   });

@@ -74,7 +74,13 @@ describe("POST /api/hooks/flows/:token — the inbound trigger", () => {
     expect(JSON.parse(res.body)).toEqual({ fired: true, jobId: "job_a" });
     expect(res.body).not.toContain("ok");
     expect(service.trigger).toHaveBeenCalledTimes(1);
-    expect(service.trigger).toHaveBeenCalledWith("job_a");
+    expect(service.trigger).toHaveBeenCalledWith("job_a", expect.objectContaining({
+      trigger: expect.objectContaining({
+        provenance: { kind: "capability-token", ref: "job_a" },
+        source: "webhook",
+        sourceId: "job_a"
+      })
+    }));
     await server.close();
   });
 
@@ -133,8 +139,18 @@ describe("POST /api/hooks/flows/:token — inbound payload isolation", () => {
     expect(service.trigger).toHaveBeenCalledTimes(1);
     const [id, invocation] = service.trigger.mock.calls[0]!;
     expect(id).toBe("job_p");
-    expect(invocation).toEqual({
+    expect(invocation).toMatchObject({
       payloadPreview: JSON.stringify({ note: "내일 오전 우유 배달 취소" }),
+      trigger: {
+        dedupKey: expect.stringMatching(/^trigger:[a-f0-9]{64}$/u),
+        generation: expect.stringContaining(":req-"),
+        occurredAt: expect.any(String),
+        provenance: { kind: "capability-token", ref: "job_p" },
+        receivedAt: expect.any(String),
+        schemaVersion: 1,
+        source: "webhook",
+        sourceId: "job_p"
+      },
       webhookPayload: JSON.stringify({ note: "내일 오전 우유 배달 취소" })
     });
     await server.close();
@@ -163,12 +179,15 @@ describe("POST /api/hooks/flows/:token — inbound payload isolation", () => {
     await server.close();
   });
 
-  it("an empty body with NO content-type fires unchanged — trigger called with the job id only, no invocation", async () => {
+  it("an empty body with NO content-type still carries identity but no payload", async () => {
     const { server, service } = serverWithPayload();
     const res = await server.inject({ method: "POST", url: `/api/hooks/flows/${TOKEN}` });
     expect(res.statusCode).toBe(200);
     expect(service.trigger).toHaveBeenCalledTimes(1);
-    expect(service.trigger).toHaveBeenCalledWith("job_p");
+    const invocation = service.trigger.mock.calls[0]![1]!;
+    expect(invocation).toMatchObject({ trigger: { source: "webhook", sourceId: "job_p" } });
+    expect(invocation.webhookPayload).toBeUndefined();
+    expect(invocation.payloadPreview).toBeUndefined();
     await server.close();
   });
 
@@ -181,7 +200,10 @@ describe("POST /api/hooks/flows/:token — inbound payload isolation", () => {
       url: `/api/hooks/flows/${TOKEN}`
     });
     expect(res.statusCode).toBe(200);
-    expect(service.trigger).toHaveBeenCalledWith("job_p");
+    const invocation = service.trigger.mock.calls[0]![1]!;
+    expect(invocation).toMatchObject({ trigger: { source: "webhook", sourceId: "job_p" } });
+    expect(invocation.webhookPayload).toBeUndefined();
+    expect(invocation.payloadPreview).toBeUndefined();
     await server.close();
   });
 

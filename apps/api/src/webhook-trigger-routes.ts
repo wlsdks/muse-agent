@@ -21,6 +21,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 
 import { escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/agent-core";
 import type { ScheduledJob, ScheduledJobUpdateInput, TriggerInvocation } from "@muse/scheduler";
+import { createTriggerEnvelope } from "@muse/shared";
 import type { ServerOptions } from "./server.js";
 
 interface WebhookTriggerRouteOptions {
@@ -159,15 +160,20 @@ export function registerWebhookTriggerRoutes(server: FastifyInstance, options: W
     // result here would turn a leaked trigger URL (third-party scheduler
     // logs, proxies) into an on-demand personal-data read channel; the
     // output flows solely to the owner's configured notification channel.
-    const invocation = buildWebhookInvocation(request);
-    // Call with the invocation ONLY when there is a payload, so a payload-less
-    // fire (empty body / non-JSON) is byte-identical to the pre-existing
-    // single-argument trigger.
-    if (invocation) {
-      await service.trigger(matched.id, invocation);
-    } else {
-      await service.trigger(matched.id);
-    }
+    const payloadInvocation = buildWebhookInvocation(request);
+    const occurredAt = new Date(at);
+    const invocation: TriggerInvocation = {
+      ...payloadInvocation,
+      trigger: createTriggerEnvelope({
+        generation: `${occurredAt.toISOString()}:${request.id}`,
+        occurredAt,
+        provenance: { kind: "capability-token", ref: matched.id },
+        receivedAt: occurredAt,
+        source: "webhook",
+        sourceId: matched.id
+      })
+    };
+    await service.trigger(matched.id, invocation);
     return { fired: true, jobId: matched.id };
   });
 }

@@ -105,6 +105,8 @@ describe("runDueReminders durable occurrence effect", () => {
       dedupKey: reminderOccurrenceEffectId("rem-effect-1", DUE_AT),
       generation: DUE_AT,
       occurredAt: DUE_AT,
+      provenance: { kind: "local-store", ref: "reminders" },
+      receivedAt: DUE_AT,
       schemaVersion: 1,
       source: "reminder",
       sourceId: "rem-effect-1"
