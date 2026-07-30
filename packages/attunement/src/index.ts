@@ -103,6 +103,17 @@ export type {
   ExperienceReplayCase,
   ExperienceReplayObservation
 } from "./experience-learning-replay.js";
+export {
+  buildExperienceLearningReplayBundle,
+  createExperienceReplayEvidenceReceipt,
+  parseExperienceReplayEvidenceCases
+} from "./experience-learning-replay-evidence.js";
+export type {
+  CreateExperienceReplayEvidenceInput,
+  ExperienceLearningReplayBundle,
+  ExperienceReplayEvidenceCase,
+  ExperienceReplayEvidenceReceipt
+} from "./experience-learning-replay-evidence.js";
 export { projectExperienceLearningSource } from "./experience-learning-source.js";
 export type {
   ExperienceLearningSourceHeldReason,
