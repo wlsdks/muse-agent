@@ -65,6 +65,17 @@ export {
   inspectGoalCheckpointResume,
   type GoalCheckpointInspection
 } from "./goal-checkpoint-inspection.js";
+export {
+  archiveProjectExecution,
+  createProjectExecutionReadModel,
+  PROJECT_EXECUTION_STATUSES,
+  setProjectExecutionStatus,
+  type ProjectExecutionLinks,
+  type ProjectExecutionReadModel,
+  type ProjectExecutionReadModelInput,
+  type ProjectExecutionSource,
+  type ProjectExecutionStatus
+} from "./project-execution-read-model.js";
 export { defaultBoardFile, FileAgentTaskBoard, readBoard, writeBoard } from "./board-store.js";
 export { dispatchNextTask, resolveReview, type DispatchResult, type TaskExecutionResult, type TaskExecutor } from "./dispatch-board.js";
 export type { HandoffPart, ParsedHandoffPart, ParsedWorkerResult, WorkerHandoff } from "./worker-result.js";
