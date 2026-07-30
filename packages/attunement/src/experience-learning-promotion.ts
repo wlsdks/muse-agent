@@ -21,6 +21,10 @@ import {
 } from "./active-policy-write-gate.js";
 import { reduceExperienceLearningContinuityPolicy } from "./experience-learning-policy-reducer.js";
 import { buildExperienceLearningPolicyAudit } from "./experience-learning-policy-audit.js";
+import {
+  createExperienceLearningPromotionHandle,
+  type ExperienceLearningPromotionHandle
+} from "./experience-learning-promotion-handle.js";
 import { fingerprintContinuityPolicy } from "./policy-digest.js";
 import type { ContinuityPolicy, ExperienceLearningPolicyAudit } from "./types.js";
 
@@ -66,6 +70,7 @@ export type ExperienceLearningPolicyCompareAndSwap = (
     nextDigest: string;
     policyAfter: ContinuityPolicy;
     policyBefore: ContinuityPolicy;
+    promotionHandle?: ExperienceLearningPromotionHandle;
     threadId: string;
   }>
 ) => Promise<boolean>;
@@ -139,12 +144,29 @@ export async function promoteExperienceLearningCandidate(
     schemaVersion: 2
   });
   return runActiveAttunementPolicyMutation(activePolicyWriteGate, async () => {
+    const audit = promotionAudit(receipt);
+    const promotionHandle = createExperienceLearningPromotionHandle({
+      activeBehaviorDigestAfter: receipt.activeBehaviorDigestAfter,
+      activeBehaviorDigestBefore: receipt.activeBehaviorDigestBefore,
+      appliedAt: receipt.appliedAt,
+      authority: receipt.authority,
+      candidateId: receipt.candidateId,
+      policyAfter: receipt.policyAfter,
+      policyBefore: receipt.policyBefore,
+      promotionAuditId: audit.id,
+      promotionId: receipt.promotionId,
+      threadId: receipt.scope.threadId
+    });
+    if (!promotionHandle) {
+      throw new ExperienceLearningPromotionError("invalid-input");
+    }
     const applied = await compareAndSwap(Object.freeze({
-      audit: promotionAudit(receipt),
+      audit,
       expectedDigest: transition.activeBehaviorDigestBefore,
       nextDigest: transition.activeBehaviorDigestAfter,
       policyAfter: transition.policyAfter,
       policyBefore: transition.policyBefore,
+      promotionHandle,
       threadId: transition.scope.threadId
     }));
     if (!applied) throw new ExperienceLearningPromotionError("stale-active-policy");

@@ -114,6 +114,15 @@ describe("experience learning continuity policy store", () => {
     expect(state.threads.find((entry) => entry.id === thread.id)?.policy).toEqual(receipt.policyAfter);
     expect(state.nextPolicyVersion).toBe(2);
     expect(receipt.activeBehaviorDigestAfter).toBe(fingerprintContinuityPolicy(receipt.policyAfter));
+    expect(state.experienceLearningPromotionHandles).toMatchObject([{
+      activeBehaviorDigestAfter: receipt.activeBehaviorDigestAfter,
+      activeBehaviorDigestBefore: receipt.activeBehaviorDigestBefore,
+      appliedAt: receipt.appliedAt,
+      candidateId: receipt.candidateId,
+      promotionAuditId: state.experienceLearningPolicyAudits?.[0]?.id,
+      promotionId: receipt.promotionId,
+      threadId: receipt.scope.threadId
+    }]);
   });
 
   it("fails closed without the write gate or after a concurrent policy change", async () => {
@@ -123,14 +132,19 @@ describe("experience learning continuity policy store", () => {
       missingGate.input,
       undefined
     )).rejects.toMatchObject({ name: "ActiveAttunementPolicyWriteBlockedError" });
-    expect((await readAttunementState(missingGate.file)).nextPolicyVersion).toBe(1);
+    const missingGateState = await readAttunementState(missingGate.file);
+    expect(missingGateState.nextPolicyVersion).toBe(1);
+    expect(missingGateState.experienceLearningPromotionHandles).toEqual([]);
 
     const stale = await fixture();
     const first = await promoteApprovedExperienceLearningContinuityPolicy(stale.file, stale.input, gate);
     await expect(promoteApprovedExperienceLearningContinuityPolicy(stale.file, stale.input, gate))
       .rejects.toMatchObject({ code: "stale-active-policy" });
-    expect((await readAttunementState(stale.file)).threads
+    const staleState = await readAttunementState(stale.file);
+    expect(staleState.threads
       .find((entry) => entry.id === stale.thread.id)?.policy).toEqual(first.policyAfter);
+    expect(staleState.experienceLearningPolicyAudits).toHaveLength(1);
+    expect(staleState.experienceLearningPromotionHandles).toHaveLength(1);
 
     const expired = await fixture();
     const before = await readFile(expired.file, "utf8");
@@ -165,6 +179,8 @@ describe("experience learning continuity policy store", () => {
     expect(rollback.policyAfter).toEqual(restored);
     expect(rollback.activeBehaviorDigestAfter).toBe(fingerprintContinuityPolicy(rollback.policyAfter));
     expect(state.nextPolicyVersion).toBe(3);
+    expect(state.experienceLearningPromotionHandles?.map((handle) =>
+      handle.promotionId)).toEqual([promotion.promotionId]);
 
     await expect(rollbackExperienceLearningContinuityPolicy(
       file,

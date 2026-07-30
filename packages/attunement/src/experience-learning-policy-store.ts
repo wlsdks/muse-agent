@@ -115,7 +115,12 @@ function createStoreCompareAndSwap(file: string): ExperienceLearningPolicyCompar
     writeAttunementState,
     (state) => {
       const thread = state.threads.find((entry) => entry.id === transition.threadId);
+      const promotionHandle = transition.promotionHandle;
       if (!thread
+        || (transition.audit.kind === "promotion"
+          ? promotionHandle === undefined
+            || promotionHandle.promotionAuditId !== transition.audit.id
+          : promotionHandle !== undefined)
         || state.nextPolicyVersion !== transition.policyAfter.version
         || !samePolicy(thread.policy, transition.policyBefore)
         || fingerprintContinuityPolicy(thread.policy) !== transition.expectedDigest
@@ -128,6 +133,10 @@ function createStoreCompareAndSwap(file: string): ExperienceLearningPolicyCompar
         experienceLearningPolicyAudits: [
           ...(state.experienceLearningPolicyAudits ?? []),
           transition.audit
+        ],
+        experienceLearningPromotionHandles: [
+          ...(state.experienceLearningPromotionHandles ?? []),
+          ...(promotionHandle ? [promotionHandle] : [])
         ],
         nextPolicyVersion: state.nextPolicyVersion + 1,
         threads: state.threads.map((entry) =>

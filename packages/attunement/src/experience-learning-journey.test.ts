@@ -151,6 +151,8 @@ describe("deterministic experience learning journey", () => {
     let restarted = await readAttunementState(file);
     expect(restarted.experienceLearningPolicyAudits?.map((audit) => audit.kind))
       .toEqual(["promotion"]);
+    expect(restarted.experienceLearningPromotionHandles?.map((handle) =>
+      handle.promotionId)).toEqual([promotion.promotionId]);
     expect(restarted.threads[0]?.policy).toEqual(promotion.policyAfter);
 
     const rollback = await rollbackExperienceLearningContinuityPolicy(
@@ -162,6 +164,8 @@ describe("deterministic experience learning journey", () => {
     restarted = await readAttunementState(file);
     expect(restarted.experienceLearningPolicyAudits?.map((audit) => audit.kind))
       .toEqual(["promotion", "rollback"]);
+    expect(restarted.experienceLearningPromotionHandles?.map((handle) =>
+      handle.promotionId)).toEqual([promotion.promotionId]);
     expect(restarted.threads[0]?.policy).toEqual({
       ...thread.policy,
       version: 2
