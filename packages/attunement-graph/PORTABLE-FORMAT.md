@@ -1,7 +1,7 @@
 # MAG portable format (`.magx`) v1
 
-Status: **encoder core, golden integration, and streaming/order qualification
-verified-current**. This document fixes
+Status: **encoder core, golden integration, streaming/order qualification, and
+shared-path reduced-budget qualification verified-current**. This document fixes
 the portable wire contract. AWG-070a3a1a2 implements its independently verified
 package-private transactional encoder core and mandatory exact-head identity-sink
 boundary. AWG-070a3a1a3a0b adds an independently verified production generator and
@@ -9,9 +9,8 @@ production/clean-room/checked-in byte/report integration with recoverable refres
 rollback. AWG-070a3a1a3a1 adds an independently verified qualification for exact raw
 UTF-8 negative ordering, terminal failure-object identity after sink engagement, and a
 deterministic 4,096-generation × two-run streaming non-retention smoke. Broad limits
-and reduced-budget qualification remain pending. No decoder, runtime filesystem
-publisher, SQLite staging sink, Worker command, public administration API, or public
-export exists.
+at production-scale execution remain pending. No decoder, runtime filesystem publisher,
+SQLite staging sink, Worker command, public administration API, or public export exists.
 
 ## 1. Purpose and boundary
 
@@ -221,6 +220,15 @@ These are independent axes and MUST be checked independently:
 The unsigned-body limit, minted-ID full-envelope limit, and portable-line limit are three
 different measurements. An implementation MUST NOT use one as a substitute for another.
 The transport chunk size is a recommendation, not permission to split or relax a line.
+
+The encoder's package-internal qualification seam exercises this same production implementation
+path with an immutable reduced seven-axis budget snapshot. Those tests qualify exact boundary,
+precedence, retry, and terminal-abort behavior without allocating production-scale artifacts.
+Synthetic head/count sinks in those tests are boundary-only and are not format-valid corpus
+claims; the unchanged checked-in golden suite remains the authority for exact-head integration.
+The qualification does **not** claim 100,000- or 1,000,000-record execution, execution at the
+1 TiB artifact ceiling, empirical memory or event-loop behavior, decoder compatibility, or
+compatibility with a second runtime.
 
 ## 6. Streaming decoder and validation sink
 

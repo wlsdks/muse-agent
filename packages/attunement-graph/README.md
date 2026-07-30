@@ -58,6 +58,10 @@ The current implementation includes:
   projection/head ordering and a deterministic 4,096-generation × two-run streaming
   non-retention smoke over a current-only producer, including exact terminal failure
   object identity after sink engagement;
+- an independently verified AWG-070a3a1a3b shared-path reduced-budget qualification:
+  production and qualification use one private encoder implementation while seven
+  independent budget axes retain exact boundary, precedence, retry, and terminal-abort
+  behavior without changing the public surface or golden corpus;
 - exact Continuity observation, change, Capsule-presentation, resume-runtime, and Shadow
   decision-receipt compatibility Modules used by Muse.
 
@@ -66,9 +70,10 @@ program. AWG-070a remains `partial` until physical-forget fixtures and the compl
 byte-identical conformance corpus pass. AWG-070b remains `partial` until backup, portable
 export, and the complete physical-profile program pass.
 
-The AWG-070a3a0, AWG-070a3a1a0, AWG-070a3a1a2, AWG-070a3a1a3a0b, and
-AWG-070a3a1a3a1 foundations and qualifications are `verified-current`. Broad limits
-and reduced-budget qualification remain pending. The package still ships no decoder, runtime
+The AWG-070a3a0, AWG-070a3a1a0, AWG-070a3a1a2, AWG-070a3a1a3a0b,
+AWG-070a3a1a3a1, and AWG-070a3a1a3b foundations and qualifications are
+`verified-current`. Production-scale 100K/1M/1 TiB execution remains pending. The
+package still ships no decoder, runtime
 export/rebuild, filesystem or SQLite staging, Worker/admin runtime, or public `./admin`
 subpath.
 

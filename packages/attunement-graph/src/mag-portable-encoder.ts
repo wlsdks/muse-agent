@@ -2,6 +2,7 @@ import { createHash, type Hash } from "node:crypto";
 import { TextEncoder, types as nodeTypes } from "node:util";
 
 import {
+  CanonicalImmutableEnvelopeError,
   mintCanonicalImmutableEnvelopeFromFrozenUnsignedForInternalUse
 } from "./canonical-immutable-envelope.js";
 import type { MagScope } from "./mag-contracts.js";
@@ -10,26 +11,40 @@ import {
   admitPortableProjection
 } from "./mag-portable-admission.js";
 
-const MAX_PROJECTIONS = 1_000_000;
-const MAX_HEADS = 1_000_000;
-const MAX_TOTAL_RECORDS = 2_000_002;
-const MAX_PORTABLE_LINE_BYTES = 1_114_112;
-const MAX_EDGE_LINE_BYTES = 16_384;
-const MAX_ARTIFACT_BYTES = 1_099_511_627_776;
+interface MagPortableEncoderBudgets {
+  readonly maxProjections: number;
+  readonly maxHeads: number;
+  readonly maxScopes: number;
+  readonly maxTotalRecords: number;
+  readonly maxPortableLineBytes: number;
+  readonly maxEdgeLineBytes: number;
+  readonly maxArtifactBytes: number;
+}
+
+const BUDGET_KEYS = Object.freeze([
+  "maxProjections",
+  "maxHeads",
+  "maxScopes",
+  "maxTotalRecords",
+  "maxPortableLineBytes",
+  "maxEdgeLineBytes",
+  "maxArtifactBytes"
+] as const);
+const PRODUCTION_MAG_PORTABLE_BUDGETS = Object.freeze({
+  maxProjections: 1_000_000,
+  maxHeads: 1_000_000,
+  maxScopes: 1_000_000,
+  maxTotalRecords: 2_000_002,
+  maxPortableLineBytes: 1_114_112,
+  maxEdgeLineBytes: 16_384,
+  maxArtifactBytes: 1_099_511_627_776
+});
 
 const RECORD_SPEC = Object.freeze({
   hashDomain: "muse.mag.portable-record.v1",
   idField: "recordId",
   idPrefix: "mag-portable-record:"
 } as const);
-const RECORD_LIMITS = Object.freeze({
-  maxCanonicalBodyBytes: MAX_PORTABLE_LINE_BYTES,
-  maxEnvelopeBytes: MAX_PORTABLE_LINE_BYTES
-});
-const EDGE_RECORD_LIMITS = Object.freeze({
-  maxCanonicalBodyBytes: MAX_EDGE_LINE_BYTES,
-  maxEnvelopeBytes: MAX_EDGE_LINE_BYTES
-});
 const STATE_HASH_DOMAIN = "muse.mag.portable-state.v1\0";
 const STORE_ID = /^mag-store:[0-9a-f]{64}$/u;
 
@@ -184,18 +199,92 @@ function captureSink(value: unknown): {
   });
 }
 
+function normalizeBudgets(value: unknown): MagPortableEncoderBudgets {
+  if (
+    value === null
+    || typeof value !== "object"
+    || nodeTypes.isProxy(value)
+    || Array.isArray(value)
+  ) {
+    formatError("INVALID_INPUT", "portable encoder budgets must be a non-proxy record");
+  }
+  const prototype = reflectGetPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    formatError("INVALID_INPUT", "portable encoder budgets must be a plain record");
+  }
+  const keys = reflectOwnKeys(value);
+  if (
+    keys.length !== BUDGET_KEYS.length
+    || keys.some((key) => typeof key !== "string" || !BUDGET_KEYS.includes(
+      key as (typeof BUDGET_KEYS)[number]
+    ))
+  ) {
+    formatError(
+      "INVALID_INPUT",
+      "portable encoder budgets must have exactly the required fields"
+    );
+  }
+  const normalized = Object.create(null) as {
+    -readonly [Key in keyof MagPortableEncoderBudgets]: number;
+  };
+  for (const key of BUDGET_KEYS) {
+    const descriptor = objectGetOwnPropertyDescriptor(value, key);
+    if (
+      descriptor === undefined
+      || !descriptor.enumerable
+      || !("value" in descriptor)
+    ) {
+      formatError(
+        "INVALID_INPUT",
+        `portable encoder budgets.${key} must be an enumerable data property`
+      );
+    }
+    normalized[key] = positiveSafeInteger(
+      descriptor.value,
+      `portable encoder budgets.${key}`
+    );
+  }
+  if (normalized.maxTotalRecords < 2) {
+    formatError(
+      "INVALID_INPUT",
+      "portable encoder budgets.maxTotalRecords must be at least 2"
+    );
+  }
+  return objectFreeze(normalized);
+}
+
 function line(
   unsignedRecord: Readonly<Record<string, unknown>>,
-  edge: boolean
+  edge: boolean,
+  budgets: MagPortableEncoderBudgets
 ): PreparedLine {
-  const minted =
-    mintCanonicalImmutableEnvelopeFromFrozenUnsignedForInternalUse(
+  const max = edge
+    ? budgets.maxEdgeLineBytes
+    : budgets.maxPortableLineBytes;
+  let minted;
+  try {
+    minted = mintCanonicalImmutableEnvelopeFromFrozenUnsignedForInternalUse(
       unsignedRecord,
       RECORD_SPEC,
-      edge ? EDGE_RECORD_LIMITS : RECORD_LIMITS
+      objectFreeze({
+        maxCanonicalBodyBytes: max,
+        maxEnvelopeBytes: max
+      })
     );
+  } catch (cause) {
+    if (
+      cause instanceof CanonicalImmutableEnvelopeError
+      && cause.code === "BUDGET_EXCEEDED"
+      && (
+        cause.details.axis === "canonical-body-bytes"
+        || cause.details.axis === "full-envelope-bytes"
+      )
+    ) {
+      formatError("LIMIT_EXCEEDED", "portable record line exceeds its byte limit");
+    }
+    throw cause;
+  }
   const bytes = textEncoder.encode(`${minted.canonicalJson}\n`);
-  const max = edge ? MAX_EDGE_LINE_BYTES : MAX_PORTABLE_LINE_BYTES;
   if (bytes.byteLength - 1 > max) {
     formatError("LIMIT_EXCEEDED", "portable record line exceeds its byte limit");
   }
@@ -254,9 +343,13 @@ function projectionId(value: unknown): `mag-store:${string}` {
   return value as `mag-store:${string}`;
 }
 
-function checkedTotal(current: number, added: number): number {
+function checkedTotal(
+  current: number,
+  added: number,
+  maxArtifactBytes: number
+): number {
   const total = current + added;
-  if (!Number.isSafeInteger(total) || total > MAX_ARTIFACT_BYTES) {
+  if (!Number.isSafeInteger(total) || total > maxArtifactBytes) {
     formatError("LIMIT_EXCEEDED", "portable artifact exceeds its byte limit");
   }
   return total;
@@ -266,9 +359,9 @@ function stateHashWith(lineBytes: Uint8Array): Hash {
   return createHash("sha256").update(STATE_HASH_DOMAIN, "utf8").update(lineBytes);
 }
 
-export function createMagPortableEncoder(options: {
+function createMagPortableEncoderWithBudgets(options: {
   readonly identitySink: MagPortableEncoderIdentitySink;
-}): MagPortableEncoder {
+}, budgets: MagPortableEncoderBudgets): MagPortableEncoder {
   const normalizedOptions = closedDataRecord(
     options,
     "portable encoder options",
@@ -365,9 +458,13 @@ export function createMagPortableEncoder(options: {
           schemaVersion: 1,
           sequence: 0,
           stateModel: "projection-journal-head@1"
-        }), true);
+        }), true, budgets);
         const nextHash = stateHashWith(prepared.bytes);
-        const nextByteLength = checkedTotal(0, prepared.bytes.byteLength);
+        const nextByteLength = checkedTotal(
+          0,
+          prepared.bytes.byteLength,
+          budgets.maxArtifactBytes
+        );
 
         phase = "projections";
         sequence = 1;
@@ -383,7 +480,7 @@ export function createMagPortableEncoder(options: {
         if (phase !== "projections") {
           formatError("INVALID_STATE", "projection phase is not active");
         }
-        if (projectionCount >= MAX_PROJECTIONS) {
+        if (projectionCount >= budgets.maxProjections) {
           formatError("LIMIT_EXCEEDED", "portable projection count exceeds its limit");
         }
         const admitted = admitPortableProjection(projection, expectedScope);
@@ -419,12 +516,16 @@ export function createMagPortableEncoder(options: {
           projectionId: identity.projectionId,
           schemaVersion: 1,
           sequence
-        }), false);
+        }), false, budgets);
         const nextProjectionCount = projectionCount + 1;
         const nextSequence = sequence + 1;
-        const nextByteLength = checkedTotal(byteLength, prepared.bytes.byteLength);
+        const nextByteLength = checkedTotal(
+          byteLength,
+          prepared.bytes.byteLength,
+          budgets.maxArtifactBytes
+        );
         const nextHash = stateHash!.copy().update(prepared.bytes);
-        if (2 + nextProjectionCount + headCount > MAX_TOTAL_RECORDS) {
+        if (2 + nextProjectionCount + headCount > budgets.maxTotalRecords) {
           formatError("LIMIT_EXCEEDED", "portable record count exceeds its limit");
         }
         const result = objectFreeze({
@@ -463,8 +564,11 @@ export function createMagPortableEncoder(options: {
         if (phase !== "heads") {
           formatError("INVALID_STATE", "head phase is not active");
         }
-        if (headCount >= MAX_HEADS) {
+        if (headCount >= budgets.maxHeads) {
           formatError("LIMIT_EXCEEDED", "portable head count exceeds its limit");
+        }
+        if (headCount >= budgets.maxScopes) {
+          formatError("LIMIT_EXCEEDED", "portable scope count exceeds its limit");
         }
         const normalizedScope = normalizeMagScope(scope, "portable head scope");
         const normalizedGeneration = positiveSafeInteger(
@@ -497,12 +601,16 @@ export function createMagPortableEncoder(options: {
           schemaVersion: 1,
           scope: detachedScope,
           sequence
-        }), false);
+        }), false, budgets);
         const nextHeadCount = headCount + 1;
         const nextSequence = sequence + 1;
-        const nextByteLength = checkedTotal(byteLength, prepared.bytes.byteLength);
+        const nextByteLength = checkedTotal(
+          byteLength,
+          prepared.bytes.byteLength,
+          budgets.maxArtifactBytes
+        );
         const nextHash = stateHash!.copy().update(prepared.bytes);
-        if (2 + projectionCount + nextHeadCount > MAX_TOTAL_RECORDS) {
+        if (2 + projectionCount + nextHeadCount > budgets.maxTotalRecords) {
           formatError("LIMIT_EXCEEDED", "portable record count exceeds its limit");
         }
 
@@ -525,7 +633,7 @@ export function createMagPortableEncoder(options: {
         const stateId =
           `mag-state:${stateHash!.copy().digest("hex")}` as const;
         const priorRecordCount = 1 + projectionCount + headCount;
-        if (priorRecordCount + 1 > MAX_TOTAL_RECORDS) {
+        if (priorRecordCount + 1 > budgets.maxTotalRecords) {
           formatError("LIMIT_EXCEEDED", "portable record count exceeds its limit");
         }
         const prepared = line(objectFreeze({
@@ -539,8 +647,12 @@ export function createMagPortableEncoder(options: {
           scopeCount: headCount,
           sequence,
           stateId
-        }), true);
-        const finalByteLength = checkedTotal(byteLength, prepared.bytes.byteLength);
+        }), true, budgets);
+        const finalByteLength = checkedTotal(
+          byteLength,
+          prepared.bytes.byteLength,
+          budgets.maxArtifactBytes
+        );
         const report: MagPortableSummary = objectFreeze({
           format: "muse-mag-portable",
           formatVersion: 1,
@@ -562,4 +674,25 @@ export function createMagPortableEncoder(options: {
       });
     }
   });
+}
+
+export function createMagPortableEncoder(options: {
+  readonly identitySink: MagPortableEncoderIdentitySink;
+}): MagPortableEncoder {
+  return createMagPortableEncoderWithBudgets(
+    options,
+    PRODUCTION_MAG_PORTABLE_BUDGETS
+  );
+}
+
+export function createMagPortableEncoderForQualification(
+  options: {
+    readonly identitySink: MagPortableEncoderIdentitySink;
+  },
+  budgets: MagPortableEncoderBudgets
+): MagPortableEncoder {
+  return createMagPortableEncoderWithBudgets(
+    options,
+    normalizeBudgets(budgets)
+  );
 }

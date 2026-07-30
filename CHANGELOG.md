@@ -8,6 +8,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a3b shared-path reduced-budget
+  qualification for the `.magx` encoder. Production and qualification wrappers now
+  share one private implementation factory; a hostile immutable seven-axis budget
+  snapshot proves exact projection, head, scope, total-record, portable-line, edge-line,
+  and artifact-byte boundaries plus precedence, retry, and terminal-abort behavior.
+  Independent evaluation found and repaired non-isolated count axes, a retained search
+  array, and missing claim caveats. Golden bytes and public exports remain unchanged;
+  100K/1M/1 TiB execution, empirical runtime behavior, decoder, Admin, export, and
+  rebuild remain pending.
+
 - Added the independently verified AWG-070a3a1a3a1 qualification for
   portable raw UTF-8 projection/head ordering and a deterministic
   4,096-generation × two-run streaming non-retention smoke. The test uses the
