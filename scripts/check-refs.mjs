@@ -29,6 +29,30 @@ for (const manifest of manifests) {
   if (name) nameOfDir.set(dirname(manifest), name);
 }
 
+// A reference graph must stay acyclic (architecture.md), and that outranks the
+// both-places rule. `packages/mcp` devDepends on `@muse/domain-tools`, which depends back
+// on mcp, so demanding that reference makes `tsc -b` fail with TS6202. The cycle is a
+// deterministic fact of the manifests, so the gate proves it rather than keeping a
+// hand-maintained exception list — but it reports the count, because the stale-dist risk
+// for such a pair is real and must not become invisible.
+const dependsOn = new Map();
+for (const manifest of manifests) {
+  const pkg = readJson(join(ROOT, manifest));
+  dependsOn.set(dirname(manifest), new Set(
+    [...Object.keys(pkg.dependencies ?? {}), ...Object.keys(pkg.devDependencies ?? {})]
+      .filter((dep) => dep.startsWith("@muse/")),
+  ));
+}
+const dirOfName = new Map([...nameOfDir].map(([dir, name]) => [name, dir]));
+const reaches = (fromDir, targetName, seen = new Set()) => {
+  if (!fromDir || seen.has(fromDir)) return false;
+  seen.add(fromDir);
+  const edges = dependsOn.get(fromDir) ?? new Set();
+  if (edges.has(targetName)) return true;
+  return [...edges].some((dep) => reaches(dirOfName.get(dep), targetName, seen));
+};
+
+let cycleExempt = 0;
 const problems = [];
 for (const manifest of manifests) {
   const dir = dirname(manifest);
@@ -53,8 +77,8 @@ for (const manifest of manifests) {
 
   for (const dep of [...declared].sort()) {
     if (referenced.has(dep)) continue;
-    const depDir = [...nameOfDir].find(([, name]) => name === dep)?.[0];
-    const hint = depDir ? relative(dir, depDir) : dep;
+    if (reaches(dirOfName.get(dep), nameOfDir.get(dir))) { cycleExempt += 1; continue; }
+    const hint = dirOfName.has(dep) ? relative(dir, dirOfName.get(dep)) : dep;
     problems.push(`${dir}: depends on ${dep} but tsconfig.json has no reference — add { "path": "${hint}" }`);
   }
 }
@@ -65,4 +89,4 @@ if (problems.length > 0) {
   process.stdout.write(`\nA missing reference means \`tsc -b\` will not rebuild that dependency: stale dist.\n`);
   process.exit(1);
 }
-process.stdout.write(`[check-refs] clean — every internal dependency of a composite project is referenced.\n`);
+process.stdout.write(`[check-refs] clean — every internal dependency of a composite project is referenced (${cycleExempt} exempt: referencing them would cycle).\n`);

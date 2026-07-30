@@ -85,3 +85,26 @@ test("a reference pointing at no workspace package fails", () => {
   assert.equal(result.status, 1);
   assert.match(result.stdout, /reference \.\.\/ghost resolves to no workspace package/u);
 });
+
+// The acyclic invariant outranks the both-places rule. packages/mcp devDepends on
+// @muse/domain-tools, which depends back on mcp; adding that reference makes `tsc -b`
+// fail with TS6202 — which is exactly how this gate's first version broke the build.
+// The cycle is a deterministic fact of the manifests, so it is proven, not allowlisted.
+test("a reference that would cycle is exempt, not demanded", () => {
+  const dir = repoWith({
+    "packages/a": { pkg: { name: "@muse/a", devDependencies: { "@muse/b": "workspace:*" } }, tsconfig: composite() },
+    "packages/b": { pkg: { name: "@muse/b", dependencies: { "@muse/a": "workspace:*" } }, tsconfig: composite([{ path: "../a" }]) },
+  });
+  const result = run(dir);
+  assert.equal(result.status, 0, result.stdout);
+  assert.match(result.stdout, /1 exempt: referencing them would cycle/u);
+});
+
+test("an indirect cycle is exempt too", () => {
+  const dir = repoWith({
+    "packages/a": { pkg: { name: "@muse/a", devDependencies: { "@muse/c": "workspace:*" } }, tsconfig: composite() },
+    "packages/b": { pkg: { name: "@muse/b", dependencies: { "@muse/a": "workspace:*" } }, tsconfig: composite([{ path: "../a" }]) },
+    "packages/c": { pkg: { name: "@muse/c", dependencies: { "@muse/b": "workspace:*" } }, tsconfig: composite([{ path: "../b" }]) },
+  });
+  assert.equal(run(dir).status, 0, run(dir).stdout);
+});
