@@ -1,9 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { AgentRunInput, AgentRuntime } from "@muse/agent-core";
+import {
+  createLoopControlReceipt,
+  type AgentRunInput,
+  type AgentRuntime,
+  type LoopControlReceipt,
+  type LoopTerminalState
+} from "@muse/agent-core";
 import { createSearchMcpServer, createWebReadMcpServer } from "@muse/domain-tools";
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { resolveToolExposureAuthority } from "@muse/policy";
+import { classifyError } from "@muse/resilience";
 import type { ScheduledJob, TriggerInvocation } from "@muse/scheduler";
 import { createTriggerEnvelope } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
@@ -59,12 +66,48 @@ function job(overrides: Partial<ScheduledJob> = {}): ScheduledJob {
   } as ScheduledJob;
 }
 
-function fakeRuntime(): { runtime: AgentRuntime; lastInput: () => AgentRunInput } {
+function loopReceipt(terminal: LoopTerminalState = {
+  reason: "goal-verified",
+  status: "completed"
+}): LoopControlReceipt {
+  const isBudgetExhausted = terminal.reason === "budget-exhausted";
+  const isDeadlineExceeded = terminal.reason === "deadline-exceeded";
+  return createLoopControlReceipt({
+    budget: {
+      retries: { limit: 6, used: 0 },
+      steps: null,
+      tools: { limit: 10, used: isBudgetExhausted ? 10 : 0 },
+      wallclockLimitMs: 5_000
+    },
+    endedAt: isDeadlineExceeded
+      ? "2026-07-31T00:00:06.000Z"
+      : "2026-07-31T00:00:01.000Z",
+    loopKind: "react",
+    runId: "run_1",
+    startedAt: "2026-07-31T00:00:00.000Z",
+    terminal,
+    verification: terminal.reason === "goal-verified"
+      ? { evidenceId: "terminal-eval:pass", status: "passed" }
+      : terminal.reason === "verification-failed"
+        ? { evidenceId: "terminal-eval:fail", status: "failed" }
+        : terminal.reason === "no-progress"
+          ? { status: "not-required" }
+          : { status: "pending" }
+  });
+}
+
+function fakeRuntime(
+  receipt: LoopControlReceipt | null = loopReceipt()
+): { runtime: AgentRuntime; lastInput: () => AgentRunInput } {
   let captured: AgentRunInput | undefined;
   const runtime = {
     run: vi.fn(async (input: AgentRunInput) => {
       captured = input;
-      return { response: { output: "done" }, runId: "run_1" };
+      return {
+        ...(receipt ? { loopControlReceipt: receipt } : {}),
+        response: { output: "done" },
+        runId: "run_1"
+      };
     })
   } as unknown as AgentRuntime;
   return { lastInput: () => captured!, runtime };
@@ -138,6 +181,55 @@ describe("createScheduledAgentExecutor — no payload (byte-identical to before)
       trigger: { ...trigger, dedupKey: `trigger:${"f".repeat(64)}` }
     })).rejects.toThrow(/trigger envelope is invalid/u);
     expect(runtime.run).not.toHaveBeenCalled();
+  });
+
+  it("returns output only for a completed goal-verified terminal", async () => {
+    const { runtime } = fakeRuntime();
+    const executor = createScheduledAgentExecutor(() => runtime, "gemma4:12b");
+
+    await expect(executor.execute(job())).resolves.toBe("done");
+    expect(runtime.run).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { reason: "verification-failed", status: "failed" },
+    { reason: "no-progress", status: "failed" },
+    { reason: "budget-exhausted", status: "failed" },
+    { reason: "deadline-exceeded", status: "failed" },
+    { reason: "execution-error", status: "failed" },
+    { reason: "verification-pending", status: "held" },
+    { reason: "permission-required", status: "held" },
+    { reason: "retry-deferred", status: "held" },
+    { reason: "caller-cancelled", status: "cancelled" }
+  ] as const)("rejects $status/$reason as a non-retryable terminal", async (terminal) => {
+    const { runtime } = fakeRuntime(loopReceipt(terminal));
+    const executor = createScheduledAgentExecutor(() => runtime, "gemma4:12b");
+
+    const error = await Promise.resolve(executor.execute(job())).then(
+      () => undefined,
+      (caught: unknown) => caught
+    );
+
+    expect(error).toBeInstanceOf(Error);
+    expect(classifyError(error).recovery.retryable).toBe(false);
+    expect(String(error)).toContain(`${terminal.status}/${terminal.reason}`);
+    expect(String(error)).not.toContain("done");
+    expect(String(error)).not.toContain("terminal-eval");
+    expect(runtime.run).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a missing terminal receipt as non-retryable", async () => {
+    const { runtime } = fakeRuntime(null);
+    const executor = createScheduledAgentExecutor(() => runtime, "gemma4:12b");
+
+    const error = await Promise.resolve(executor.execute(job())).then(
+      () => undefined,
+      (caught: unknown) => caught
+    );
+
+    expect(classifyError(error).recovery.retryable).toBe(false);
+    expect(String(error)).toContain("missing");
+    expect(String(error)).not.toContain("done");
   });
 });
 

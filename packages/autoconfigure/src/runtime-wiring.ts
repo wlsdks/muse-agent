@@ -139,9 +139,30 @@ export function createScheduledAgentExecutor(
         ...(payload === undefined ? {} : { toolExposureAuthority: toolLessWebhookAuthority() })
       });
 
+      const receipt = result.loopControlReceipt;
+      if (
+        receipt?.terminal.status !== "completed" ||
+        receipt.terminal.reason !== "goal-verified" ||
+        receipt.verification.status !== "passed"
+      ) {
+        throw new ScheduledAgentOutcomeNotVerifiedError(
+          receipt
+            ? `${receipt.terminal.status}/${receipt.terminal.reason}`
+            : "missing"
+        );
+      }
       return result.response.output;
     }
   };
+}
+
+class ScheduledAgentOutcomeNotVerifiedError extends Error {
+  readonly retryable = false;
+
+  constructor(terminal: string) {
+    super(`Scheduled agent outcome is not verified: ${terminal}`);
+    this.name = "ScheduledAgentOutcomeNotVerifiedError";
+  }
 }
 
 /**
