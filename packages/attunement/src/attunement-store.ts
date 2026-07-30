@@ -6,6 +6,7 @@ import { decodeLocalCheckpointReference, decodeLocalRunReference, parseJson } fr
 
 import { baselinePolicy, isBaselinePolicy, policyForOutcome } from "./policy-reducer.js";
 import { fingerprintContinuityPolicy } from "./policy-digest.js";
+import { continuityOutcomeId } from "./outcome-id.js";
 import {
   runActiveAttunementPolicyMutation,
   type ActiveAttunementPolicyWriteGate
@@ -490,14 +491,26 @@ export async function recordContinuityOutcome(
       }
       const version = state.nextPolicyVersion;
       const policy = policyForOutcome(outcome, version);
+      const evidenceClass = resolveContinuityEvidenceClass(options);
+      const recordedAt = nowIso(options);
+      const outcomeId = continuityOutcomeId({
+        deliveryId: delivery.id,
+        evidenceClass,
+        outcome,
+        ...(options.ownerNote ? { ownerNote: options.ownerNote } : {}),
+        recordedAt,
+        ...(delivery.runId ? { runId: delivery.runId } : {})
+      });
       const updatedDelivery: ContinuityDelivery = {
         ...delivery,
         outcome: {
-          evidenceClass: resolveContinuityEvidenceClass(options),
+          authority: "owner-explicit",
+          evidenceClass,
+          id: outcomeId,
           ...(options.ownerNote ? { ownerNote: options.ownerNote } : {}),
           outcome,
           policyVersion: version,
-          recordedAt: nowIso(options)
+          recordedAt
         }
       };
       const deliveries = [...state.deliveries];

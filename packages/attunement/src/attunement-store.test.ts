@@ -248,9 +248,48 @@ describe("Personal Continuity store", () => {
     const applied = await recordContinuityOutcome(file, delivery.id, "ignored", options);
     const replay = await recordContinuityOutcome(file, delivery.id, "ignored", options);
     expect(applied.applied).toBe(true);
+    expect(applied.delivery.outcome).toMatchObject({
+      authority: "owner-explicit",
+      id: expect.stringMatching(/^continuity_outcome_[a-f0-9]{64}$/u)
+    });
     expect(applied.policy).toMatchObject({ detail: "compact", nextStep: "direct", suppression: "acknowledge-previous", version: 1 });
     expect(replay).toEqual({ applied: false, delivery: applied.delivery, policy: applied.policy });
     await expect(recordContinuityOutcome(file, delivery.id, "used", options)).rejects.toThrow("cannot be overwritten");
+  });
+
+  it("loads legacy outcomes without inventing owner authority and rejects partial provenance", async () => {
+    const file = stateFile();
+    const options = deterministicOptions();
+    const thread = await createPersonalThread(file, { kind: "life", title: "Preserve explicit feedback" }, options);
+    const delivery = await openContinuityDelivery(file, {
+      evidenceRefs: [],
+      expectedPolicyVersion: 0,
+      threadId: thread.id
+    }, options);
+    await recordContinuityOutcome(file, delivery.id, "used", options);
+
+    const current = JSON.parse(readFileSync(file, "utf8")) as Mutable<AttunementState>;
+    delete current.deliveries[0]!.outcome!.authority;
+    delete current.deliveries[0]!.outcome!.id;
+    const legacy = `${JSON.stringify(current, null, 2)}\n`;
+    writeFileSync(file, legacy, "utf8");
+
+    const loaded = await readAttunementState(file);
+    expect(loaded.deliveries[0]!.outcome?.authority).toBeUndefined();
+    expect(loaded.deliveries[0]!.outcome?.id).toBeUndefined();
+    expect(readFileSync(file, "utf8")).toBe(legacy);
+
+    current.deliveries[0]!.outcome!.authority = "owner-explicit";
+    const malformed = `${JSON.stringify(current, null, 2)}\n`;
+    writeFileSync(file, malformed, "utf8");
+    await expect(readAttunementState(file)).rejects.toThrow("attunement store is invalid");
+    expect(readFileSync(file, "utf8")).toBe(malformed);
+
+    current.deliveries[0]!.outcome!.id = `continuity_outcome_${"f".repeat(64)}`;
+    const tampered = `${JSON.stringify(current, null, 2)}\n`;
+    writeFileSync(file, tampered, "utf8");
+    await expect(readAttunementState(file)).rejects.toThrow("attunement store is invalid");
+    expect(readFileSync(file, "utf8")).toBe(tampered);
   });
 
   it("loads legacy deliveries without inventing a policy digest and rejects malformed new provenance", async () => {

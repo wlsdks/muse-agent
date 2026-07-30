@@ -10,6 +10,7 @@ import {
 } from "@muse/shared";
 
 import { CONTINUITY_EVIDENCE_CLASSES } from "./evidence-provenance.js";
+import { continuityOutcomeId } from "./outcome-id.js";
 import {
   ARTIFACT_ROLES,
   ARTIFACT_TYPES,
@@ -164,16 +165,36 @@ function isDelivery(
     return false;
   }
   if (value.outcome === undefined) return true;
-  return isRecord(value.outcome)
-    && isOneOf(value.outcome.outcome, OUTCOMES)
-    && (requireEvidenceClass
-      ? isEvidenceClass(value.outcome.evidenceClass)
-      : value.outcome.evidenceClass === undefined
-        || isEvidenceClass(value.outcome.evidenceClass))
-    && (value.outcome.ownerNote === undefined
-      || isContinuityOwnerNote(value.outcome.ownerNote))
-    && isSafeVersion(value.outcome.policyVersion)
-    && isNonEmptyString(value.outcome.recordedAt);
+  if (!isRecord(value.outcome)) return false;
+  const ownerNote = value.outcome.ownerNote;
+  if (!isOneOf(value.outcome.outcome, OUTCOMES)
+    || (requireEvidenceClass
+      ? !isEvidenceClass(value.outcome.evidenceClass)
+      : value.outcome.evidenceClass !== undefined
+        && !isEvidenceClass(value.outcome.evidenceClass))
+    || (ownerNote === undefined
+      ? false
+      : !isContinuityOwnerNote(ownerNote))
+    || !isSafeVersion(value.outcome.policyVersion)
+    || !isNonEmptyString(value.outcome.recordedAt)) {
+    return false;
+  }
+  const hasOwnerAuthority = value.outcome.authority !== undefined
+    || value.outcome.id !== undefined;
+  if (!hasOwnerAuthority) return true;
+  if (value.outcome.authority !== "owner-explicit"
+    || typeof value.outcome.id !== "string"
+    || !isEvidenceClass(value.outcome.evidenceClass)) {
+    return false;
+  }
+  return value.outcome.id === continuityOutcomeId({
+    deliveryId: value.id,
+    evidenceClass: value.outcome.evidenceClass as ContinuityDelivery["evidenceClass"],
+    outcome: value.outcome.outcome,
+    ...(typeof ownerNote === "string" ? { ownerNote } : {}),
+    recordedAt: value.outcome.recordedAt,
+    ...(typeof value.runId === "string" ? { runId: value.runId } : {})
+  });
 }
 
 function isInteractionReceipt(

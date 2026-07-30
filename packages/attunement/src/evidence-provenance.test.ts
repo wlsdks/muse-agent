@@ -101,6 +101,8 @@ describe("Continuity evidence provenance", () => {
     });
     delete delivery.evidenceClass;
     delete outcome.evidenceClass;
+    delete outcome.authority;
+    delete outcome.id;
     // `openedAt` comes from the real clock inside openPreparedContinuityPack, and
     // validateStateRelations requires completedAt > openedAt. Derive it rather
     // than hardcoding an instant: a literal only satisfies that ordering until
@@ -165,6 +167,8 @@ describe("Continuity evidence provenance", () => {
     const outcome = delivery.outcome as Record<string, unknown>;
     delete delivery.evidenceClass;
     delete outcome.evidenceClass;
+    delete outcome.authority;
+    delete outcome.id;
     delete legacy.interactionReceipts;
     legacy.schemaVersion = 1;
     const legacyBytes = `${JSON.stringify(legacy)}\n`;

@@ -109,7 +109,11 @@ export interface PersonalThread {
 }
 
 export interface ContinuityOutcomeRecord {
+  /** Present on newly recorded explicit owner feedback; absent only on legacy records. */
+  readonly authority?: "owner-explicit";
   readonly evidenceClass: ContinuityEvidenceClass;
+  /** Content-bound identity for newly recorded feedback; absent only on legacy records. */
+  readonly id?: string;
   /** Optional exact owner-authored context; never inferred from behavior or sentiment. */
   readonly ownerNote?: string;
   readonly outcome: ContinuityOutcome;
