@@ -24,6 +24,7 @@ import {
   type ScheduledJobType,
   type ScheduledJobUpdateInput,
   type ScheduledTaskHandle,
+  type ScheduledTriggerSettlement,
   type TriggerInvocation
 } from "./index.js";
 
@@ -61,6 +62,7 @@ export class DynamicScheduler {
   private readonly runningJobIds = new Set<string>();
   private readonly isPaused?: () => Promise<boolean>;
   private readonly triggerAdmission?: DynamicSchedulerOptions["triggerAdmission"];
+  private readonly triggerAdmissionLifecycle?: DynamicSchedulerOptions["triggerAdmissionLifecycle"];
 
   constructor(options: DynamicSchedulerOptions) {
     this.store = options.store;
@@ -79,7 +81,11 @@ export class DynamicScheduler {
     }
     this.lockTtlBufferMs = lockTtlBufferMs;
     this.isPaused = options.isPaused;
+    if (options.triggerAdmission && options.triggerAdmissionLifecycle) {
+      throw new TypeError("triggerAdmission and triggerAdmissionLifecycle are mutually exclusive");
+    }
     this.triggerAdmission = options.triggerAdmission;
+    this.triggerAdmissionLifecycle = options.triggerAdmissionLifecycle;
   }
 
   async loadEnabledJobs(): Promise<number> {
@@ -257,9 +263,17 @@ export class DynamicScheduler {
       sourceId: job.id
     });
     const resolvedInvocation: TriggerInvocation = { ...invocation, trigger };
-    const admission = this.triggerAdmission
-      ? await this.triggerAdmission(trigger)
+    const admissionTicket = this.triggerAdmissionLifecycle
+      ? await this.triggerAdmissionLifecycle({ automatic, dryRun, trigger })
       : undefined;
+    const admission = admissionTicket?.decision
+      ?? (this.triggerAdmission ? await this.triggerAdmission(trigger) : undefined);
+    let settlementStarted = false;
+    const settleAdmission = async (settlement: ScheduledTriggerSettlement): Promise<void> => {
+      if (!admissionTicket || admission?.action !== "execute" || settlementStarted) return;
+      settlementStarted = true;
+      await admissionTicket.settle(settlement);
+    };
     if (admission && admission.action !== "execute") {
       const result = `${admission.action}: ${admission.reasons.join(",")}`;
       if (!dryRun) {
@@ -279,22 +293,51 @@ export class DynamicScheduler {
 
     const lockTtlMs = Math.max(minLockTtlMs, resolveJobTimeout(job, defaultExecutionTimeoutMs) + this.lockTtlBufferMs);
     if (!dryRun && !(await this.distributedLock.tryAcquire(job.id, lockTtlMs))) {
-      await this.store.updateExecutionResult(job.id, "skipped", "skipped: another instance holds lock");
+      let recordFailed = false;
+      let recordError: unknown;
+      try {
+        await this.store.updateExecutionResult(job.id, "skipped", "skipped: another instance holds lock");
+      } catch (error) {
+        recordFailed = true;
+        recordError = error;
+      }
+      await settleAdmission({
+        outcome: "cancelled",
+        reason: "lock-unavailable",
+        settledAt: this.now()
+      });
+      if (recordFailed) throw recordError;
       return "skipped: another instance holds lock";
     }
 
     try {
-      if (!dryRun) {
-        await this.store.updateExecutionResult(job.id, "running", undefined);
-      }
+      try {
+        if (!dryRun) {
+          await this.store.updateExecutionResult(job.id, "running", undefined);
+        }
 
-      const result = await this.dispatcher.runWithTimeoutAndRetry(job, resolvedInvocation);
-      await this.handleSuccess(job, result, startedAt, dryRun, resolvedInvocation);
-      return result;
-    } catch (error) {
-      const message = `Job '${job.name}' failed: ${errorMessage(error, "unknown")}`;
-      await this.handleFailure(job, message, startedAt, dryRun, resolvedInvocation);
-      return message;
+        const result = await this.dispatcher.runWithTimeoutAndRetry(job, resolvedInvocation);
+        await this.handleSuccess(job, result, startedAt, dryRun, resolvedInvocation);
+        await settleAdmission(dryRun
+          ? { outcome: "cancelled", reason: "dry-run", settledAt: this.now() }
+          : { outcome: "completed", settledAt: this.now() });
+        return result;
+      } catch (error) {
+        const message = `Job '${job.name}' failed: ${errorMessage(error, "unknown")}`;
+        let handlingFailed = false;
+        let handlingError: unknown;
+        try {
+          await this.handleFailure(job, message, startedAt, dryRun, resolvedInvocation);
+        } catch (failure) {
+          handlingFailed = true;
+          handlingError = failure;
+        }
+        await settleAdmission(dryRun
+          ? { outcome: "cancelled", reason: "dry-run", settledAt: this.now() }
+          : { outcome: "dead-lettered", reason: "execution-failed", settledAt: this.now() });
+        if (handlingFailed) throw handlingError;
+        return message;
+      }
     } finally {
       if (!dryRun) {
         await this.distributedLock.release(job.id);

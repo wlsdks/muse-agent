@@ -151,6 +151,33 @@ export interface TriggerInvocation {
   readonly payloadPreview?: string;
 }
 
+export type ScheduledTriggerSettlement =
+  | Readonly<{
+      outcome: "completed";
+      settledAt: Date;
+    }>
+  | Readonly<{
+      outcome: "cancelled" | "dead-lettered";
+      reason: "dry-run" | "execution-failed" | "lock-unavailable";
+      settledAt: Date;
+    }>;
+
+/**
+ * One admission-scoped settlement capability. The controller that admitted the
+ * trigger owns this closure, so the scheduler cannot accidentally settle a
+ * different dedup key or mutate admission state without a matching ticket.
+ */
+export interface ScheduledTriggerAdmissionTicket {
+  readonly decision: TriggerAdmissionDecision;
+  settle(settlement: ScheduledTriggerSettlement): Awaitable<void>;
+}
+
+export interface ScheduledTriggerAdmissionInput {
+  readonly automatic: boolean;
+  readonly dryRun: boolean;
+  readonly trigger: TriggerEnvelope;
+}
+
 export interface ScheduledJobStore {
   list(): Awaitable<readonly ScheduledJob[]>;
   findById(id: string): Awaitable<ScheduledJob | undefined>;
@@ -250,6 +277,14 @@ export interface DynamicSchedulerOptions {
    * recorded as skipped and never reach the dispatcher or notification sink.
    */
   readonly triggerAdmission?: (trigger: TriggerEnvelope) => Awaitable<TriggerAdmissionDecision>;
+  /**
+   * Admission-scoped lifecycle for durable controllers. Mutually exclusive with
+   * `triggerAdmission`. An execute decision is settled exactly once after the
+   * scheduler reaches a terminal outcome; held decisions are never settled.
+   */
+  readonly triggerAdmissionLifecycle?: (
+    input: ScheduledTriggerAdmissionInput
+  ) => Awaitable<ScheduledTriggerAdmissionTicket>;
   /**
    * Optional user kill-switch: when it resolves true, AUTOMATIC firings are
    * skipped (a manual `trigger` still runs). Wire `() =>
