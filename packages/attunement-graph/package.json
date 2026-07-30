@@ -29,6 +29,10 @@
     "./continuity-capsules": {
       "types": "./dist/continuity-capsule-presentation.d.ts",
       "import": "./dist/continuity-capsule-presentation.js"
+    },
+    "./continuity-resume-runtime": {
+      "types": "./dist/continuity-resume-runtime.d.ts",
+      "import": "./dist/continuity-resume-runtime.js"
     }
   },
   "scripts": {
@@ -36,7 +40,8 @@
     "build": "tsc -b",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "verify:continuity-capsules": "pnpm build && node scripts/verify-continuity-capsules.mjs"
+    "verify:continuity-capsules": "pnpm build && node scripts/verify-continuity-capsules.mjs",
+    "verify:continuity-resume-runtime": "pnpm build && node scripts/verify-continuity-resume-runtime.mjs"
   },
   "dependencies": {
     "@muse/attunement": "workspace:*"
