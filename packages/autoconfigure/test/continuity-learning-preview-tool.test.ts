@@ -6,9 +6,12 @@ import {
   createLocalArtifactValidator,
   createExperienceReplayEvidenceReceipt,
   createPersonalThread,
+  fingerprintContinuityPolicy,
   linkArtifact,
-  readAttunementState
+  readAttunementState,
+  type ExperienceLearningPromotionReceipt
 } from "@muse/attunement";
+import { sha256Hex } from "@muse/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -20,6 +23,9 @@ import {
 import {
   createContinuityLearningApplyTool
 } from "../src/continuity-learning-apply-tool.js";
+import {
+  createContinuityLearningRollbackTool
+} from "../src/continuity-learning-rollback-tool.js";
 import { createMuseRuntimeAssembly } from "../src/index.js";
 
 let directory: string | undefined;
@@ -228,6 +234,70 @@ describe("continuity learning preview tool", () => {
     }, { runId: "replay-apply" })).rejects.toThrow(/held/u);
     expect(await readFile(attunementFile)).toEqual(afterApply);
 
+    const rollbackTool = tool("muse.continuity.learning.rollback");
+    expect(rollbackTool.definition.risk).toBe("write");
+    const promotion = (
+      applied as { readonly promotion: ExperienceLearningPromotionReceipt }
+    ).promotion;
+    const forgedPolicyBefore = {
+      detail: "standard" as const,
+      nextStep: "direct" as const,
+      suppression: "none" as const,
+      version: promotion.policyBefore.version
+    };
+    const forgedDigestBefore = fingerprintContinuityPolicy(forgedPolicyBefore);
+    const forgedPromotionCore = [
+      promotion.candidateId,
+      promotion.replayInputHash,
+      forgedDigestBefore,
+      promotion.activeBehaviorDigestAfter,
+      promotion.scope.kind,
+      promotion.scope.threadId,
+      promotion.proposedBehavior,
+      promotion.proposedChange,
+      promotion.approvedAt,
+      promotion.appliedAt
+    ];
+    const forgedPromotion: ExperienceLearningPromotionReceipt = {
+      ...promotion,
+      activeBehaviorDigestBefore: forgedDigestBefore,
+      policyBefore: forgedPolicyBefore,
+      promotionId: `learning_promotion_${sha256Hex(JSON.stringify(forgedPromotionCore))}`
+    };
+    const beforeForgedRollback = await readFile(attunementFile);
+    await expect(rollbackTool.execute(
+      { promotion: forgedPromotion },
+      { runId: "forged-self-consistent-rollback" }
+    )).rejects.toThrow(/held/u);
+    expect(await readFile(attunementFile)).toEqual(beforeForgedRollback);
+    const rolledBack = await rollbackTool.execute(
+      { promotion },
+      { runId: "rollback-learning" }
+    );
+    expect(rolledBack).toMatchObject({
+      policyAuditId: expect.stringMatching(/^learning_policy_audit_[a-f0-9]{64}$/u),
+      rollback: {
+        policyAfter: {
+          detail: "standard",
+          nextStep: "contextual"
+        },
+        rollbackApplied: true
+      }
+    });
+    const rolledBackState = await readAttunementState(attunementFile);
+    expect(rolledBackState.experienceLearningPolicyAudits).toHaveLength(2);
+    expect(rolledBackState.threads.find((entry) => entry.id === thread.id)?.policy)
+      .toMatchObject({ detail: "standard", nextStep: "contextual" });
+    const afterRollback = await readFile(attunementFile);
+    await expect(rollbackTool.execute(
+      { promotion },
+      { runId: "replay-rollback" }
+    )).rejects.toThrow();
+    await expect(rollbackTool.execute({
+      promotion: { ...promotion, candidateId: "forged-candidate" }
+    }, { runId: "tampered-rollback" })).rejects.toThrow();
+    expect(await readFile(attunementFile)).toEqual(afterRollback);
+
     await expect(tool("muse.continuity.learning.preview").execute({
       draft: {
         expectedBenefit: "Wrong scope.",
@@ -247,7 +317,7 @@ describe("continuity learning preview tool", () => {
       },
       opportunityId
     }, { runId: "held-scope" })).rejects.toThrow(/held/u);
-    expect(await readFile(attunementFile)).toEqual(afterApply);
+    expect(await readFile(attunementFile)).toEqual(afterRollback);
   });
 
   it("rejects non-plain, extra, stale, and malformed input before producing a preview", async () => {
@@ -370,5 +440,27 @@ describe("continuity learning preview tool", () => {
       { runId: "proxy" }
     )).rejects.toThrow();
     expect(apply).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires one plain promotion receipt before the rollback dependency", async () => {
+    const rollback = vi.fn(async () => undefined);
+    const tool = createContinuityLearningRollbackTool({ rollback });
+    expect(tool.definition.risk).toBe("write");
+    await expect(tool.execute({
+      promotion: { candidateId: "candidate" }
+    }, { runId: "held" })).rejects.toThrow(/held/u);
+    expect(rollback).toHaveBeenCalledTimes(1);
+    for (const input of [
+      {},
+      { promotion: [] },
+      { extra: true, promotion: {} }
+    ]) {
+      await expect(tool.execute(input as never, { runId: "invalid" })).rejects.toThrow();
+    }
+    await expect(tool.execute(
+      new Proxy({ promotion: {} }, {}),
+      { runId: "proxy" }
+    )).rejects.toThrow();
+    expect(rollback).toHaveBeenCalledTimes(1);
   });
 });

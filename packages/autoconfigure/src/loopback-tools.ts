@@ -21,6 +21,7 @@ import {
   createLocalExactArtifactResolver,
   fingerprintContinuityPolicy,
   promoteApprovedExperienceLearningContinuityPolicy,
+  rollbackExperienceLearningContinuityPolicy,
   proposeExperienceLearningFromDelivery,
   readAttunementState,
   readPreparedContinuityPack,
@@ -60,6 +61,7 @@ import { createContinuityLearningOpportunityTool } from "./continuity-learning-o
 import { createContinuityLearningPreviewTool } from "./continuity-learning-preview-tool.js";
 import { createContinuityLearningReplayPreviewTool } from "./continuity-learning-replay-preview-tool.js";
 import { createContinuityLearningApplyTool } from "./continuity-learning-apply-tool.js";
+import { createContinuityLearningRollbackTool } from "./continuity-learning-rollback-tool.js";
 import { createQualificationLearningWriteGate } from "./qualification-learning-active-skill-write-gate.js";
 import { resolveWeaknessesFile } from "./provider-paths.js";
 import type { MuseEnvironment } from "./index.js";
@@ -319,6 +321,53 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
                   && audit.policyAfter.version === promotion.policyAfter.version
                 )?.id;
               return policyAuditId ? { approval, policyAuditId, promotion } : undefined;
+            }
+          }),
+          createContinuityLearningRollbackTool({
+            rollback: async (promotion) => {
+              const stateBefore = await readAttunementState(deps.attunementFile!);
+              const samePolicy = (
+                left: typeof promotion.policyBefore,
+                right: typeof promotion.policyBefore
+              ) => left.detail === right.detail
+                && left.nextStep === right.nextStep
+                && left.suppression === right.suppression
+                && left.version === right.version;
+              const promotionAudits = (stateBefore.experienceLearningPolicyAudits ?? [])
+                .filter((audit) =>
+                  audit.kind === "promotion"
+                  && audit.authority === promotion.authority
+                  && audit.candidateId === promotion.candidateId
+                  && audit.threadId === promotion.scope.threadId
+                  && audit.sourceId === promotion.candidateId
+                  && audit.occurredAt === promotion.appliedAt
+                  && audit.activeBehaviorDigestBefore === promotion.activeBehaviorDigestBefore
+                  && audit.activeBehaviorDigestAfter === promotion.activeBehaviorDigestAfter
+                  && samePolicy(audit.policyBefore, promotion.policyBefore)
+                  && samePolicy(audit.policyAfter, promotion.policyAfter)
+                );
+              if (promotionAudits.length !== 1) return undefined;
+              const promotionAudit = promotionAudits[0]!;
+              if ((stateBefore.experienceLearningPolicyAudits ?? []).some((audit) =>
+                audit.kind === "rollback" && audit.sourceId === promotionAudit.id
+              )) {
+                return undefined;
+              }
+              const rolledBackAt = new Date().toISOString();
+              const rollback = await rollbackExperienceLearningContinuityPolicy(
+                deps.attunementFile!,
+                promotion,
+                rolledBackAt,
+                policyWriteGate
+              );
+              const policyAuditId = (await readAttunementState(deps.attunementFile!))
+                .experienceLearningPolicyAudits
+                ?.find((audit) =>
+                  audit.kind === "rollback"
+                  && audit.candidateId === promotion.candidateId
+                  && audit.policyAfter.version === rollback.policyAfter.version
+                )?.id;
+              return policyAuditId ? { policyAuditId, rollback } : undefined;
             }
           }),
           createContinuityOutcomeTool({
