@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createLoopControlReceipt,
   parseLoopControlReceipt,
+  projectLoopControlReceiptHealth,
   settleLoopControlReceipt
 } from "../src/loop-control-receipt.js";
 
@@ -44,6 +45,47 @@ describe("LoopControlReceipt", () => {
     expect(parseLoopControlReceipt(JSON.parse(JSON.stringify(receipt)))).toEqual(receipt);
     expect(() => parseLoopControlReceipt({ ...receipt, runId: "tampered" })).toThrow(/receiptId/);
     expect(() => parseLoopControlReceipt({ ...receipt, extra: true })).toThrow(/exactly/);
+  });
+
+  it("projects supervisor health only from a validated content-bound receipt", () => {
+    const receipt = base();
+
+    const projected = projectLoopControlReceiptHealth(receipt);
+    expect(projected).toEqual({
+      endedAt: "2026-07-30T00:00:03.000Z",
+      terminalReason: "goal-verified",
+      terminalStatus: "completed",
+      verificationEvidenceId: "eval:1",
+      verificationStatus: "passed"
+    });
+    expect(Object.isFrozen(projected)).toBe(true);
+    expect(projectLoopControlReceiptHealth({ ...receipt, runId: "tampered" })).toBeUndefined();
+  });
+
+  it("does not execute hostile accessors while projecting health", () => {
+    const receipt = base();
+    let getterCalls = 0;
+    const hostile = { ...receipt } as Record<string, unknown>;
+    Object.defineProperty(hostile, "verification", {
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return receipt.verification;
+      }
+    });
+
+    expect(projectLoopControlReceiptHealth(hostile)).toBeUndefined();
+    expect(getterCalls).toBe(0);
+
+    let proxyTrapCalls = 0;
+    const proxy = new Proxy(receipt, {
+      getPrototypeOf: () => {
+        proxyTrapCalls += 1;
+        return Object.prototype;
+      }
+    });
+    expect(projectLoopControlReceiptHealth(proxy)).toBeUndefined();
+    expect(proxyTrapCalls).toBe(0);
   });
 
   it("rejects completion before verification reaches a terminal verdict", () => {

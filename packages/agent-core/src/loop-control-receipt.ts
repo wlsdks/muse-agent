@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { assertPlainDataTree, type AgentLoopHealthInput } from "@muse/shared";
+
 export type LoopKind = "adaptation" | "event" | "plan-execute" | "react" | "verification";
 
 export type LoopTerminalState =
@@ -317,6 +319,32 @@ export function parseLoopControlReceipt(value: unknown): LoopControlReceipt {
   }
   if (value.receiptId !== candidate.receiptId) throw new Error("receiptId does not match receipt content");
   return candidate;
+}
+
+/**
+ * Converts only a fully validated, content-bound receipt into supervisor input.
+ * Invalid or hostile evidence is treated as absent instead of becoming health.
+ */
+export function projectLoopControlReceiptHealth(
+  value: unknown
+): AgentLoopHealthInput | undefined {
+  try {
+    assertPlainDataTree(value, "loop control receipt health evidence");
+    const receipt = parseLoopControlReceipt(value);
+    const verificationEvidenceId =
+      receipt.verification.status === "passed" || receipt.verification.status === "failed"
+        ? receipt.verification.evidenceId
+        : undefined;
+    return Object.freeze({
+      endedAt: receipt.endedAt,
+      terminalReason: receipt.terminal.reason,
+      terminalStatus: receipt.terminal.status,
+      ...(verificationEvidenceId === undefined ? {} : { verificationEvidenceId }),
+      verificationStatus: receipt.verification.status
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 export function settleLoopControlReceipt(

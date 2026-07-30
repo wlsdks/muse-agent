@@ -130,6 +130,7 @@ export { DEFAULT_STREAM_IDLE_TIMEOUT_MS } from "./model-loop.js";
 export {
   createLoopControlReceipt,
   parseLoopControlReceipt,
+  projectLoopControlReceiptHealth,
   settleLoopControlReceipt,
   type CreateLoopControlReceiptInput,
   type LoopBudgetCounter,
