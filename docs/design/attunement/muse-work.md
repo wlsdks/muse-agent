@@ -16,7 +16,7 @@ exist in the system.
 Work is not a new runtime — it is a **binding**: a one-line goal plus the flows, board tasks and
 continuity thread that belong to it, plus its outcome record. Within Personal Continuity's
 "thread → pack → outcome → adaptation" loop, Work is the work-specialised extension of a thread: one
-mode, not the product boundary (see `product-identity.md`).
+mode, not the product boundary (see [`CLAUDE.md`](../../../CLAUDE.md)).
 
 ## Data contract (one new store)
 

@@ -39,9 +39,19 @@ semantic recall. After dogfooding on the personal-agent scale
 (≤ a few hundred episodes lifetime), we decided in-context
 expansion + LLM-judge retrieval beats vector RAG: zero
 infrastructure cost, no manual input UX, paraphrase recall via
-the model's native synonymy. The original RAG plan was scrapped;
+the model's native synonymy. The original pgvector plan was scrapped;
 the `mode: "llm-judge"` path closed the same gap with one extra
 generate call per query.
+
+**Superseded again, 2026-07-30.** The decision above rejected *pgvector*, not
+embeddings as such. Episodic recall now embeds by default through a local
+Ollama embedder (`context-engineering-builders.ts:245`,
+`nomic-embed-text-v2-moe`), and fails open to Jaccard token overlap when no
+embedder is reachable — no pgvector, no external index, so the
+zero-infrastructure reasoning above still holds. `mode: "llm-judge"` remains
+the explicit CLI/MCP search mode. For how retrieval works today, the owner is
+[`context-engineering-roadmap.md`](context-engineering-roadmap.md); this
+section is the record of why it did not start out embedded.
 
 The original "Generation" / "Storage" / etc. sections below
 preserve the design rationale and are kept for reference.

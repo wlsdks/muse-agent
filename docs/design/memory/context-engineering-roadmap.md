@@ -195,7 +195,9 @@ request path). Phase 4/5 are gated by unit + integration tests.
 
 ## Carrying notes / open decisions
 
-- **Embedding path — superseded 2026-07-30.** This was written when the
+- **Embedding path — superseded 2026-07-30.** (This file is the owner for how
+  episodic retrieval works today; [`episodic-memory.md`](episodic-memory.md)
+  records why it did not start out embedded.) This was written when the
   token-overlap baseline was the plan. Episodic recall now embeds by default
   (`context-engineering-builders.ts:245`, local Ollama, `nomic-embed-text-v2-moe`)
   and falls back to Jaccard token overlap when no embedder is reachable. The

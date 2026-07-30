@@ -22,91 +22,82 @@ creates truth, feedback, policy, permission, or authority.
 > RAG can nominate likely context. MAG proves the exact scope, time, change, provenance,
 > completeness, and authority boundary.
 
+## Public surface
+
+- `.` — the neutral engine lifecycle: `openMag({ scope, store }) → project → execute → close`,
+  its domain types and invariants.
+- `./backend` · `./local` — the store contract, and the worker-isolated local SQLite adapter.
+- `./continuity` · `./continuity-changes` · `./continuity-observations` — exact Continuity
+  projection, the "what changed since I stopped" query, and content-addressed observation
+  receipts.
+- `./continuity-capsules` · `./continuity-resume-runtime` — Capsule render data, and the
+  process-local resume compiler.
+- `./shadow-decision-receipt` — the Shadow Muse decision record.
+- `./testing` — the in-memory semantic oracle and the backend conformance harness.
+
+## Depends on
+
+- `@muse/attunement` — the Continuity threads, links and receipts this graph projects. It is
+  the only internal dependency, deliberately: MAG is being kept extractable.
+
+## Rules that bind this package
+
+- [`architecture.md`](../../.claude/rules/engineering/architecture.md) — storage stays behind
+  the adapter boundary; no external graph server is required.
+- [ADR 0001](../../docs/architecture/adr/0001-mag-product-module-boundary.md) fixes the closed
+  interface and the repository-split plan; [ADR 0002](../../docs/architecture/adr/0002-mag-language-runtime-boundary.md)
+  fixes TypeScript-first with Rust only for benchmark-proven kernels.
+
+## Tests
+
+```bash
+pnpm --filter @muse/attunement-graph test
+pnpm --filter @muse/attunement-graph verify:local-mag
+pnpm --filter @muse/attunement-graph verify:portable-fixtures
+pnpm --filter @muse/attunement-graph verify:continuity-capsules
+pnpm --filter @muse/attunement-graph verify:continuity-resume-runtime
+```
+
 ## Project status
 
 MAG is currently developed as the private `@muse/attunement-graph` workspace package
 inside Muse. Muse is its first consumer and dogfood environment. The package is **not
 published or standalone-qualified yet**.
 
-The current implementation includes:
+The current implementation includes validated temporal/provenance assertions over an
+immutable logical journal; bounded traversal and Activation Subgraph compilation; the neutral
+`open → project → execute → close` lifecycle; an in-memory semantic oracle plus a backend
+conformance harness; a worker-isolated SQLite adapter with an append-only projection journal,
+exact per-scope heads, compare-and-swap writes and restart recovery; a checked runtime
+boundary separating protocol, physical profile, execution and worker dispatch; and a
+transactional portable encoder against the normative `.magx` v1 contract in
+[`PORTABLE-FORMAT.md`](PORTABLE-FORMAT.md), with a checked-in golden corpus and a streaming
+non-retention qualification.
 
-- validated temporal/provenance assertions and an immutable logical journal;
-- bounded graph traversal and Activation Subgraph compilation;
-- a neutral `open → project → execute → close` lifecycle;
-- an explicit in-memory semantic oracle and backend conformance harness;
-- an AWG-070a1 worker-isolated SQLite Adapter with an append-only projection journal,
-  exact per-scope heads, compare-and-swap writes, restart recovery, and fail-stop Worker
-  lifecycle;
-- an AWG-070a2 checked-JSDoc runtime boundary that separates the closed protocol,
-  filesystem/runtime profile, single SQLite execution Implementation, and thin Worker
-  dispatch while preserving the AWG-070a1 physical profile;
-- an independently verified AWG-070a3a0 foundation: the Engine's exact stored-projection
-  normalizer is available through a package-private seam, and
-  [`PORTABLE-FORMAT.md`](PORTABLE-FORMAT.md) fixes the normative `.magx` v1 contract;
-- an independently verified AWG-070a3a1a0 package-private foundation: canonical admission can
-  override only its body/envelope byte ceilings, and portable code can obtain one exact
-  normalized projection plus its detached scope/head/store-envelope identity;
-- an independently verified AWG-070a3a1a2 package-private transactional encoder core
-  with a mandatory exact-head identity sink, prospective byte/hash/count preparation,
-  non-throwing post-sink state commits, and exactly-once abort with original-failure
-  pinning;
-- an independently verified AWG-070a3a1a3a0b production golden-corpus generator with
-  read-only comparison modes, isolated external generation, clean-room-gated
-  transactional checked-in refresh, recoverable rollback states, and exact
-  pending-cleanup reporting;
-- an independently verified AWG-070a3a1a3a1 qualification for exact raw UTF-8
-  projection/head ordering and a deterministic 4,096-generation × two-run streaming
-  non-retention smoke over a current-only producer, including exact terminal failure
-  object identity after sink engagement;
-- an independently verified AWG-070a3a1a3b shared-path reduced-budget qualification:
-  production and qualification use one private encoder implementation while seven
-  independent budget axes retain exact boundary, precedence, retry, and terminal-abort
-  behavior without changing the public surface or golden corpus;
-- an independently verified AWG-070a3a1a4a package-private streaming decoder with fatal
-  UTF-8/canonical record validation, exact shared projection admission, async
-  transactional sink abort pinning, and essential fixture, corruption, reduced-limit,
-  and hostile sink-failure tests;
-- an independently verified AWG-070a3a1a4b structural streaming qualification with
-  exhaustive valid/invalid chunk families, exact closed retained-state ledgers, and two
-  deterministic 4,096-generation current-only runs;
-- an independently verified AWG-070a3a1a4c package-private SQLite indexed validation
-  sink that takes ownership of a caller-opened empty `DatabaseSync`, retains one
-  raw-UTF-8-BLOB-keyed final identity per scope, and validates exact heads in
-  transactional staging intended for a future separate Admin Worker;
-- exact Continuity observation, change, Capsule-presentation, resume-runtime, and Shadow
-  decision-receipt compatibility Modules used by Muse.
+The current implementation includes validated temporal/provenance assertions over an
+immutable logical journal; bounded traversal and Activation Subgraph compilation; the neutral
+`open → project → execute → close` lifecycle; an in-memory semantic oracle plus a backend
+conformance harness; a worker-isolated SQLite adapter with an append-only projection journal,
+exact per-scope heads, compare-and-swap writes and restart recovery; a checked runtime
+boundary separating protocol, physical profile, execution and worker dispatch; and a
+transactional portable encoder against the normative `.magx` v1 contract in
+[`PORTABLE-FORMAT.md`](PORTABLE-FORMAT.md), with a checked-in golden corpus and a streaming
+non-retention qualification.
 
-This is the **durable projection-journal foundation**, not completion of the SQLite
-program. AWG-070a remains `partial` until physical-forget fixtures and the complete
-byte-identical conformance corpus pass. AWG-070b remains `partial` until backup, portable
-export, and the complete physical-profile program pass.
+Still roadmap:
 
-The AWG-070a3a0, AWG-070a3a1a0, AWG-070a3a1a2, AWG-070a3a1a3a0b,
-AWG-070a3a1a3a1, AWG-070a3a1a3b, and AWG-070a3a1a4a foundations,
-qualifications, decoder implementation, structural decoder non-retention evidence, and
-indexed validation substrate through AWG-070a3a1a4c are `verified-current`. This is a
-structural JavaScript-heap
-qualification with 4,096-run corroboration, not RSS or empirical asymptotic proof.
-Production-scale 100K/1M/1 TiB execution remains pending. The package
-still ships no public decoder, runtime export/rebuild, filesystem staging ownership,
-serving/Admin Worker runtime, Admin API, or public `./admin` subpath.
-
-AWG-070a3a1a4c's evidence is a structural JavaScript-heap claim: scope/projection
-growth lands in the caller-owned SQLite staging database while JavaScript retains fixed
-database/statement references, lifecycle flags and counters, plus only the current
-identity. SQLite native allocator, page-cache, and statement memory are excluded; RSS,
-empirical asymptotics, 1M execution, destination publication, filesystem cleanup,
-serving-Worker reuse, and Admin API behavior remain unverified.
-
-Still required before a standalone release:
-
-- portable export/rebuild, destructive migration, backup, and physical forget/compaction
-  with their complete fixture matrices;
+- portable export/rebuild end to end, backup, and physical forget;
+- the complete physical profile and corpus;
 - the 10K/100K/1M performance and event-loop-delay benchmark matrix;
 - Markdown, Obsidian, and Notion Source Adapters;
 - Muse default-path composition and unsupported-platform profile work where needed;
 - a clean-room build and packed-install gate with no Muse workspace dependency;
 - a minimal non-Muse example agent and complete public release metadata.
+
+Per-task status — the `AWG-` identifiers and what each one verified — lives in the program
+that owns it, [the wow + graph roadmap](../../internal/goals/attunement-wow-graph-roadmap.md),
+rather than here: a package README that tracks ticket numbers goes stale the week it is
+written.
 
 Passing library tests proves deterministic software contracts. It does not prove that MAG
 has learned a person, improved timing, or saved reconstruction time in real use.
@@ -234,7 +225,7 @@ and shared-memory files must belong to the current effective user and remain own
 
 ## Target architecture
 
-The neutral Engine, in-memory oracle, and AWG-070a1 SQLite projection-journal foundation
+The neutral Engine, in-memory oracle, and the SQLite projection-journal foundation
 shown below exist. The three Source Adapters and the remaining SQLite maintenance and
 qualification work are planned, not current package Implementations.
 
@@ -243,7 +234,7 @@ Agent or Muse product
   → MAG Interface
     → MAG Engine
       → MagStore capability
-        → SQLite Store [AWG-070a1 foundation]
+        → SQLite Store [durable projection journal]
         → in-memory semantic oracle
 
 Markdown / Obsidian / Notion [planned]
@@ -375,9 +366,9 @@ scope isolation, immutable snapshots, detached reads, bounded execution, failure
 atomicity, and lifecycle races. Durable Implementations additionally require restart,
 crash, migration, export/rebuild, and physical-forget qualification.
 
-AWG-070a1 covers the durable projection-journal subset, including restart, same-file
+The durable projection-journal subset covers restart, same-file
 writer races, bounded close/checkpoint behavior, and fail-stop crash boundaries.
-AWG-070a2 hardens that same v1 profile with a typed internal protocol, explicit runtime
+The typed worker boundary hardens that same v1 profile with an internal protocol, explicit runtime
 artifact manifest, source-to-dist declaration checks, and a pre-refactor SQLite reopen
 fixture. It changes neither the public Interface nor the physical schema and does not
 claim the remaining migration, export/rebuild, backup, physical-forget, or complete

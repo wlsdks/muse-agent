@@ -8,7 +8,10 @@ related: [../strategy/attunement.md, ../design/attunement/attunement-graph.md, S
 
 # Muse glossary
 
-Definitions for the **Muse-specific terms** that recur across the docs, code and commits. Generic
+Definitions for the **Muse-specific terms** that recur across the docs, code and commits.
+For the architecture-grade register — the same domain language stated as invariants, plus the
+one-way dependency direction between modules — see [`CONTEXT.md`](../../CONTEXT.md); this file is
+the plain-English entry point, that one is the precise one. Generic
 terms (RAG, embedding …) are left out; this collects only what carries *a particular meaning inside
 Muse*. Each entry is one definition plus where it lives. Exact verification evidence is in the
 [feature catalog](../feature-catalog/INDEX.md); the end-to-end flow is in

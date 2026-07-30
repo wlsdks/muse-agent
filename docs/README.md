@@ -42,10 +42,11 @@ from docs alone**:
 2. [`../CLAUDE.md`](../CLAUDE.md) — the contract every agent reads first (non-negotiable rules)
 3. [`strategy/attunement.md`](strategy/attunement.md) — the product promise and the current/roadmap boundary
 4. [`product/glossary.md`](product/glossary.md) — Muse-specific terms (Attunement, Observe, grounding floor… without grep)
-5. [`product/SYSTEM-MAP.md`](product/SYSTEM-MAP.md) — the feature structure on one page
-6. [`trust/grounding-gate.md`](trust/grounding-gate.md) — the trust floor (grounding gate) as one flow
-7. [`product/FEATURES.md`](product/FEATURES.md) → [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md) — feature detail + exhaustive verification evidence
-8. Then go deeper: [`design/attunement/README.md`](design/attunement/README.md) · [`design/attunement/attunement-graph.md`](design/attunement/attunement-graph.md) · [`../internal/goals/attunement-implementation-plan.md`](../internal/goals/attunement-implementation-plan.md) · [`../internal/goals/attunement-wow-graph-roadmap.md`](../internal/goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
+5. [`../CONTEXT.md`](../CONTEXT.md) — the same domain language as architecture invariants, plus the one-way dependency direction between modules
+6. [`product/SYSTEM-MAP.md`](product/SYSTEM-MAP.md) — the feature structure on one page
+7. [`trust/grounding-gate.md`](trust/grounding-gate.md) — the trust floor (grounding gate) as one flow
+8. [`product/FEATURES.md`](product/FEATURES.md) → [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md) — feature detail + exhaustive verification evidence
+9. Then go deeper: [`design/attunement/README.md`](design/attunement/README.md) · [`design/attunement/attunement-graph.md`](design/attunement/attunement-graph.md) · [`../internal/goals/attunement-implementation-plan.md`](../internal/goals/attunement-implementation-plan.md) · [`../internal/goals/attunement-wow-graph-roadmap.md`](../internal/goals/attunement-wow-graph-roadmap.md) · [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
 
 ## To understand the product
 

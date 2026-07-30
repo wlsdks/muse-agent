@@ -8,7 +8,8 @@ Attunement: Shadow Muse → Continuity Capsule → visible Policy Card. Product 
 - **The complete loop is ROADMAP, not a shipped claim** — memory, pattern, proactivity, browser,
   trace and checkpoint are its substrates. First vertical: user-chosen Personal Continuity over
   exact Muse-local artifacts plus optional browser history; Work Resumption is one mode, not the
-  product boundary.
+  product boundary. Never reduce the whole product to a work assistant, a productivity tracker or a
+  computer-use agent, and never make Observe a prerequisite for the user-invoked Continuity Pack.
 - **The Attunement Graph is a rebuildable temporal/provenance projection** and personal context
   compiler; existing stores stay authoritative.
 
@@ -84,7 +85,6 @@ north-star gap → parity). One slice end-to-end; "nothing to do" is forbidden.
 
 ## Read further — `.claude/rules/` is auto-loaded, grouped by concern
 
-- **product/** — [`.claude/rules/product/product-identity.md`](.claude/rules/product/product-identity.md): what Muse is and is not.
 - **safety/** — [`.claude/rules/safety/outbound-safety.md`](.claude/rules/safety/outbound-safety.md) the fail-close send gate · [`.claude/rules/safety/tool-calling.md`](.claude/rules/safety/tool-calling.md) one-shot tool choice on the local model.
 - **verification/** — [`.claude/rules/verification/testing.md`](.claude/rules/verification/testing.md) the gate ladder · [`.claude/rules/verification/agent-testing.md`](.claude/rules/verification/agent-testing.md) grading the AGENT (outcomes, `pass^k`) · [`.claude/rules/verification/self-eval.md`](.claude/rules/verification/self-eval.md) the scoreboard that fails closed on a drop.
 - **engineering/** — [`.claude/rules/engineering/architecture.md`](.claude/rules/engineering/architecture.md) package layout + ModelProvider · [`.claude/rules/engineering/commits.md`](.claude/rules/engineering/commits.md) push policy · [`.claude/rules/engineering/code-style.md`](.claude/rules/engineering/code-style.md) lint and comments · [`.claude/rules/engineering/cli-product.md`](.claude/rules/engineering/cli-product.md) CLI surface · [`.claude/rules/engineering/codegraph.md`](.claude/rules/engineering/codegraph.md) index before grep · [`.claude/rules/engineering/harness.md`](.claude/rules/engineering/harness.md) multi-step work.

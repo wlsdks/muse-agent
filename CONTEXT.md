@@ -2,7 +2,9 @@
 
 This file names the durable domain language and dependency direction for architectural
 work. Product status and execution history belong in the linked strategy, design, and goal
-documents rather than here.
+documents rather than here. For a plain-English definition of each term first, read
+[`docs/product/glossary.md`](docs/product/glossary.md); this file states the same language as
+invariants and adds the dependency direction that code must not violate.
 
 ## Domain language
 
