@@ -47,6 +47,7 @@ import { randomUUID } from "node:crypto";
 
 import { resolveLearningPauseFile } from "./provider-paths.js";
 import { createCompactionAuxiliary } from "./compaction-auxiliary.js";
+import { configuredModelLoopOutcomeVerifier } from "./model-loop-outcome-verifier.js";
 import { createScheduledTriggerAdmissionLifecycle } from "./scheduler-trigger-admission.js";
 import {
   appendActionLog,
@@ -1385,6 +1386,14 @@ function buildAgentRuntime(params: {
       hooks: runtimeHooks,
       hookTraceStore,
       loopControlReceiptObserver,
+      ...(() => {
+        const loopOutcomeVerifier = configuredModelLoopOutcomeVerifier(
+          env,
+          modelProvider,
+          defaultModel
+        );
+        return loopOutcomeVerifier ? { loopOutcomeVerifier } : {};
+      })(),
       // per-tool-result character cap. Default 8_000
       // chars (~2_000 tokens at the rough 1-token-per-4-chars
       // approximation) — large enough for small file reads and
