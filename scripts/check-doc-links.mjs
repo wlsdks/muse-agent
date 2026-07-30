@@ -63,7 +63,10 @@ for (const file of files) {
   // dead path is often CORRECT: a CHANGELOG names a file as it was at the time, and a
   // corpus fixture names files that only exist inside the fixture.
   if (isAgentInstruction(file)) {
-    for (const m of raw.replace(/```[\s\S]*?```/g, "").matchAll(/`([\w./-]+\.md)`/gu)) {
+    // The path need not be the WHOLE span: `docs/VERSIONING.md §Release cadence` is still
+    // a claim, and requiring an exact-match span let three stale ones through.
+    for (const span of raw.replace(/```[\s\S]*?```/g, "").matchAll(/`([^`\n]+)`/gu))
+    for (const m of span[1].matchAll(/(?:^|[\s(])([\w.-]+(?:\/[\w.-]+)+\.md)(?=$|[\s),:;§])/gu)) {
       const cited = m[1];
       if (!cited.includes("/")) continue;
       if (existsSync(join(ROOT, normalize(cited)))) continue;

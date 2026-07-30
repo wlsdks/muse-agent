@@ -1,7 +1,7 @@
 ---
 name: release
 version: 1.3.1
-description: Use when Jinan wants to cut/tag a Muse release or asks anything about the next version — "릴리스 찍어줘" ("cut a release"), "release 만들자" ("let's make a release"), "버전 올려줘" ("bump the version"), "v0.2 내자" ("let's put out v0.2"), "patch 올려줘" ("bump the patch"), "다음 버전 뭐야" ("what's the next version"), "changelog/릴리스 노트 만들어줘" ("write the changelog/release notes"), "GitHub release 올려줘" ("put up the GitHub release"), "이번엔 minor야 patch야" ("is this one minor or patch"). Reads the full commit history since the last tag, AUTO-DECIDES patch vs minor vs major (patch climbs by default, minor only on a breaking public-surface change or an explicit milestone — per docs/VERSIONING.md), writes curated user-facing release notes from those commits, then bumps + changelogs + commits + tags + pushes + creates the GitHub Release (pre-release while 0.x). Muse-specific.
+description: Use when Jinan wants to cut/tag a Muse release or asks anything about the next version — "릴리스 찍어줘" ("cut a release"), "release 만들자" ("let's make a release"), "버전 올려줘" ("bump the version"), "v0.2 내자" ("let's put out v0.2"), "patch 올려줘" ("bump the patch"), "다음 버전 뭐야" ("what's the next version"), "changelog/릴리스 노트 만들어줘" ("write the changelog/release notes"), "GitHub release 올려줘" ("put up the GitHub release"), "이번엔 minor야 patch야" ("is this one minor or patch"). Reads the full commit history since the last tag, AUTO-DECIDES patch vs minor vs major (patch climbs by default, minor only on a breaking public-surface change or an explicit milestone — per docs/development/VERSIONING.md), writes curated user-facing release notes from those commits, then bumps + changelogs + commits + tags + pushes + creates the GitHub Release (pre-release while 0.x). Muse-specific.
 ---
 
 > **Versioning.** This skill carries a `version` (above). Bump it (patch = wording,
@@ -29,7 +29,7 @@ every run.
 **Releases are deliberate, human-cut milestones — never automated per commit,
 but FREQUENT.** `main` iterates continuously (autonomous loops included), so a
 release is a snapshot of a chosen *known-good* commit, not a reaction to every
-push. Per `docs/VERSIONING.md §Release cadence` (Jinan, 2026-07-02): cut or
+push. Per `docs/development/VERSIONING.md §Release cadence` (Jinan, 2026-07-02): cut or
 propose a PATCH whenever a milestone wave completes, and never let ~30+
 user-facing commits pile up untagged — many small tags beat one huge one.
 
@@ -43,7 +43,7 @@ gh release list 2>&1 | head
 
 Read the last tag. The current series is decided by `../../../docs/development/VERSIONING.md`.
 
-## Step 1 — decide the next number (per docs/VERSIONING.md)
+## Step 1 — decide the next number (per docs/development/VERSIONING.md)
 
 List the commits since the last tag and classify them:
 
@@ -71,7 +71,7 @@ Mechanical default: `next = patch+1` on the last tag. Override to
 `minor+1, patch=0` only when an escalator above fires.
 
 For the jump to **`1.0.0`**, do NOT just bump — verify the five-point stability
-gate in `docs/VERSIONING.md §The 1.0.0 gate` is fully met first; if a QA window
+gate in `docs/development/VERSIONING.md §The 1.0.0 gate` is fully met first; if a QA window
 is wanted, cut `v1.0.0-rc.1` instead. `alpha`/`beta`/`rc` suffixes are ONLY for
 the runway into a specific major, never during `0.x`.
 

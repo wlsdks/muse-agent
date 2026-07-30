@@ -118,3 +118,23 @@ test("a dead cited path outside the agent-instruction files is not flagged", () 
   });
   assert.equal(run(dir).status, 0, run(dir).stdout);
 });
+
+// The path need not be the whole code span. Requiring an exact match let
+// `docs/VERSIONING.md §Release cadence` through in three places while the same file's
+// markdown links were correct — the prose was wrong and only the prose.
+test("a path inside a longer code span is checked", () => {
+  const result = run(repoWith({ ".claude/a.md": "per `gone/nope.md §Some heading` do the thing\n" }));
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /missing cited path `gone\/nope\.md`/u);
+});
+
+test("a real path inside a longer code span passes", () => {
+  const dir = repoWith({ ".claude/a.md": "per `top/real.md §Heading` do it\n", "top/real.md": "# Heading\n" });
+  assert.equal(run(dir).status, 0, run(dir).stdout);
+});
+
+test("a command containing a path is still a path claim", () => {
+  const result = run(repoWith({ ".claude/a.md": "run `cat gone/nope.md | head`\n" }));
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /gone\/nope\.md/u);
+});

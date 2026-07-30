@@ -1,56 +1,80 @@
-# .claude/
+# `.claude/`
 
-Claude-Code-specific configuration, checked into git so it scales
-with the team.
+**How the repository splits its two documentation roots.**
+
+- **`.claude/` is instruction** — how to work here. Some of it the agent runtime
+  resolves at a fixed path; the rest is the operating contract those files point into.
+- **`docs/` is knowledge** — what is true about the product and why the engineering
+  decisions were made. Nothing loads it; an agent opens it when the task needs it.
+
+The test for a new file is not its topic but its role: *does it tell an agent how to
+work, or does it tell an agent what is true?* Both roots are read by agents; only this
+one changes behavior on every task.
 
 ## Layout
 
 ```
-rules/      domain-specific rules auto-loaded next to CLAUDE.md
-commands/   reusable slash commands (invoke via /<name>)
-agents/     subagent definitions (invoke via the Task tool)
+rules/     auto-loaded into EVERY session alongside CLAUDE.md, recursively,
+           grouped by concern: engineering/ safety/ verification/
+harness/   the operating contract — read on demand, linked from rules/engineering
+agents/    subagent definitions, resolved by the `name:` in each file's frontmatter
+skills/    invocable skills, resolved by directory name via SKILL.md
 ```
 
-## Adding a new rule
+`rules/` is the only directory that costs tokens on every request. Everything else is
+paid for only when it is used. That difference decides where a fact belongs.
 
-1. Create `.claude/rules/<topic>.md` with a clear one-line summary at the top.
-2. Reference it from `CLAUDE.md`'s "Domain rules" section.
-3. Keep `CLAUDE.md` itself under 100 lines. The whole point of this
-   directory is so the contract file can stay lean.
+## The rule/rationale split
 
-## Adding a new slash command
+A binding rule lives in `rules/`; the evidence behind it lives in `docs/`. So
+`rules/verification/testing.md` states which gate proves what, and
+`docs/development/testing-strategy.md` holds the decision table and the benchmark
+numbers. Keep doing this — it is what lets the always-loaded set stay small without
+losing the reasoning.
 
-`commands/<name>.md` with frontmatter:
+## One owner per fact
+
+If a fact appears in two files, one of them is wrong eventually. Pick the owner by
+where the fact is *needed*: a decision made before opening the contract belongs in
+`rules/`; a detail needed only while doing the work belongs in `harness/` or `docs/`.
+The other becomes a pointer, or dies.
+
+## Adding a rule
+
+1. Put it in the matching `rules/<concern>/` file. A new file needs a new line in
+   CLAUDE.md's "Read further" index.
+2. Prefer promoting it to a gate. A rule stored away from the request survives
+   multi-step work poorly (`.claude/harness/contract.md` §4 has the measurements), so a
+   check that fails closed is worth more than a paragraph.
+3. Keep CLAUDE.md under 100 lines — that cap is the reason this directory exists.
+
+## Adding a subagent
+
+`agents/<name>.md`, where `<name>` matches the frontmatter `name:` exactly — the host
+resolves `subagent_type` against the frontmatter, not the filename, and
+`pnpm check:agent-registry` fails closed on drift.
 
 ```markdown
 ---
 name: <name>
-description: <one-line summary, shown in Claude's command picker>
+description: <when to use it — the picker chooses on this line alone>
+tools: <the narrowest set that does the job>
 ---
-<the body of the command — what should happen when invoked>
+<the agent's prompt>
 ```
 
-## Adding a new subagent
+Only add one when the behavior cannot come from the contract the session already has.
+Three agents were deleted on 2026-07-30 after never being invoked once, and one of them
+had drifted into instructing a policy violation that no gate could see.
 
-`agents/<name>.md` with frontmatter:
+## Gates that keep this directory honest
 
-```markdown
----
-name: <name>
-description: <when to use this agent (the picker uses this to choose)>
----
-<the agent's prompt — its role, process, and rules>
-```
-
-## After-correction protocol
-
-When the user corrects Claude on a recurring mistake, end the
-iteration by adding the rule to the matching `.claude/rules/*.md` (or
-open a new rules file). The goal is for the rule set to absorb every
-correction so the same mistake doesn't recur. Reference:
-[Boris Cherny's CLAUDE.md best practices](https://howborisusesclaudecode.com/).
+`check:doc-links` (references and cited paths resolve) · `check:doc-claims` (every
+documented `pnpm` command exists) · `check:agent-registry` (agent names resolve) ·
+`check:refs` (project references match dependencies). All run in the pre-push hook.
 
 ## What stays out of git
 
-- `.claude/scheduled_tasks.lock` — transient session state, listed in `.gitignore`.
-- Anything written by the runtime at session start (auto-memory state, plan files, monitor output).
+- `.claude/scheduled_tasks.lock` — transient session state, in `.gitignore`.
+- Anything the runtime writes at session start (auto-memory state, plan files, monitor
+  output).
