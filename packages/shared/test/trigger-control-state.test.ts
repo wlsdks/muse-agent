@@ -291,6 +291,7 @@ describe("trigger control state", () => {
     const cancelled = cancelTriggerControlWork(claimed(), {
       at: T250,
       dedupKey: envelope().dedupKey,
+      leaseToken: "worker-a:1",
       reason: "owner-stop"
     });
     expect(cancelled).toMatchObject({

@@ -4,12 +4,13 @@ import { join } from "node:path";
 
 import {
   createTriggerEnvelope,
-  parseTriggerAdmissionJournal
+  parseTriggerControlState
 } from "@muse/shared";
 import {
   DynamicScheduler,
   InMemoryScheduledJobStore,
-  ScheduledJobDispatcher
+  ScheduledJobDispatcher,
+  TriggerControlFileStore
 } from "@muse/scheduler";
 import {
   FileTriggerAdmissionJournalStore,
@@ -48,8 +49,9 @@ afterEach(async () => {
 describe("scheduled trigger admission runtime wiring", () => {
   it("persists admission before returning an execute ticket and maps settlement", async () => {
     const file = await journalFile();
-    const store = new FileTriggerAdmissionJournalStore({ file, maxPending: 2 });
+    const store = new TriggerControlFileStore(file, { maxPending: 2 });
     const lifecycle = createScheduledTriggerAdmissionLifecycle({
+      leaseToken: () => "lease-g1",
       now: () => NOW,
       store
     });
@@ -57,31 +59,91 @@ describe("scheduled trigger admission runtime wiring", () => {
     const ticket = await lifecycle({
       automatic: true,
       dryRun: false,
+      leaseDurationMs: 5_000,
       trigger: envelope("g1")
     });
     expect(ticket.decision.action).toBe("execute");
-    expect(parseTriggerAdmissionJournal(await fs.readFile(file, "utf8")).entries)
-      .toMatchObject([{ state: "queued" }]);
+    expect(parseTriggerControlState(await fs.readFile(file, "utf8"))).toMatchObject({
+      journal: { entries: [{ state: "queued" }] },
+      workStates: [{ leaseToken: "lease-g1", status: "leased" }]
+    });
 
     await ticket.settle({
       outcome: "dead-lettered",
       reason: "execution-failed",
       settledAt: new Date("2026-07-30T12:00:01.000Z")
     });
-    expect((await store.read()).entries).toMatchObject([{
-      state: "dead-lettered",
-      terminalReason: "execution-failed"
-    }]);
+    expect(await store.snapshot()).toMatchObject({
+      journal: {
+        entries: [{
+          state: "dead-lettered",
+          terminalReason: "execution-failed"
+        }]
+      },
+      workStates: [{
+        status: "dead-lettered",
+        terminalReason: "execution-failed"
+      }]
+    });
+  });
+
+  it.each([
+    {
+      expectedStatus: "completed",
+      label: "successful execution",
+      settlement: {
+        outcome: "completed",
+        settledAt: new Date("2026-07-30T12:00:01.000Z")
+      } as const
+    },
+    {
+      expectedStatus: "cancelled",
+      label: "dry-run cancellation",
+      settlement: {
+        outcome: "cancelled",
+        reason: "dry-run",
+        settledAt: new Date("2026-07-30T12:00:01.000Z")
+      } as const
+    }
+  ])("maps $label to matching journal and work terminal state", async ({
+    expectedStatus,
+    settlement
+  }) => {
+    const file = await journalFile();
+    const store = new TriggerControlFileStore(file, { maxPending: 2 });
+    const lifecycle = createScheduledTriggerAdmissionLifecycle({
+      leaseToken: () => "lease-terminal",
+      now: () => NOW,
+      store
+    });
+    const ticket = await lifecycle({
+      automatic: true,
+      dryRun: settlement.outcome === "cancelled",
+      leaseDurationMs: 5_000,
+      trigger: envelope(`terminal-${expectedStatus}`)
+    });
+
+    await ticket.settle(settlement);
+    expect(await store.snapshot()).toMatchObject({
+      journal: { entries: [{ state: expectedStatus }] },
+      workStates: [{ status: expectedStatus }]
+    });
   });
 
   it("does not let a duplicate held ticket settle the original queued entry", async () => {
     const file = await journalFile();
-    const store = new FileTriggerAdmissionJournalStore({ file, maxPending: 2 });
+    const store = new TriggerControlFileStore(file, { maxPending: 2 });
     const lifecycle = createScheduledTriggerAdmissionLifecycle({
+      leaseToken: () => "lease-g1",
       now: () => NOW,
       store
     });
-    const input = { automatic: true, dryRun: false, trigger: envelope("g1") };
+    const input = {
+      automatic: true,
+      dryRun: false,
+      leaseDurationMs: 5_000,
+      trigger: envelope("g1")
+    };
     await lifecycle(input);
     const duplicate = await lifecycle(input);
 
@@ -93,12 +155,16 @@ describe("scheduled trigger admission runtime wiring", () => {
       outcome: "completed",
       settledAt: new Date("2026-07-30T12:00:01.000Z")
     })).rejects.toThrow(/only execute/u);
-    expect((await store.read()).entries).toMatchObject([{ state: "queued" }]);
+    expect(await store.snapshot()).toMatchObject({
+      journal: { entries: [{ state: "queued" }] },
+      workStates: [{ leaseToken: "lease-g1", status: "leased" }]
+    });
   });
 
   it("blocks dispatch when durable admission state is corrupt", async () => {
-    const file = await journalFile();
-    await fs.writeFile(file, "{\"broken\":true}", "utf8");
+    const legacyFile = await journalFile();
+    const controlFile = `${legacyFile}.control`;
+    await fs.writeFile(legacyFile, "{\"broken\":true}", { mode: 0o600 });
     const execute = vi.fn(async () => "must not run");
     const store = new InMemoryScheduledJobStore({ idFactory: () => "job-1" });
     const service = new DynamicScheduler({
@@ -110,7 +176,11 @@ describe("scheduled trigger admission runtime wiring", () => {
       store,
       triggerAdmissionLifecycle: createScheduledTriggerAdmissionLifecycle({
         now: () => NOW,
-        store: new FileTriggerAdmissionJournalStore({ file, maxPending: 2 })
+        store: new TriggerControlFileStore(
+          controlFile,
+          { maxPending: 2 },
+          { legacyJournalFile: legacyFile }
+        )
       })
     });
     const job = await service.create({
@@ -120,18 +190,63 @@ describe("scheduled trigger admission runtime wiring", () => {
       name: "Durable admission"
     });
 
-    await expect(service.trigger(job.id)).rejects.toThrow(/invalid trigger admission journal/u);
+    await expect(service.trigger(job.id)).rejects.toMatchObject({ code: "corrupt-state" });
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("blocks dispatch when durable claim fails after admission", async () => {
+    const file = await journalFile();
+    const execute = vi.fn(async () => "must not run");
+    const control = new TriggerControlFileStore(file, { maxPending: 2 });
+    vi.spyOn(control, "claim").mockRejectedValueOnce(new Error("claim unavailable"));
+    const store = new InMemoryScheduledJobStore({ idFactory: () => "job-claim-failure" });
+    const service = new DynamicScheduler({
+      dispatcher: new ScheduledJobDispatcher({
+        agentExecutor: { execute },
+        mcpInvoker: { invoke: async () => "unused" }
+      }),
+      now: () => NOW,
+      store,
+      triggerAdmissionLifecycle: createScheduledTriggerAdmissionLifecycle({
+        leaseToken: () => "lease-claim-failure",
+        now: () => NOW,
+        store: control
+      })
+    });
+    const job = await service.create({
+      agentPrompt: "Run",
+      cronExpression: "0 * * * * *",
+      jobType: "agent",
+      name: "Claim failure"
+    });
+
+    await expect(service.trigger(job.id)).rejects.toThrow("claim unavailable");
+    expect(execute).not.toHaveBeenCalled();
+    expect(await control.snapshot()).toMatchObject({
+      journal: { entries: [{ state: "queued" }] },
+      workStates: []
+    });
   });
 
   it("passes the configured durable lifecycle into the production assembly", async () => {
     const file = await journalFile();
+    const legacyFile = `${file}.legacy`;
+    const legacyStore = new FileTriggerAdmissionJournalStore({
+      file: legacyFile,
+      maxPending: 256
+    });
+    await legacyStore.admit({
+      envelope: envelope("legacy-production"),
+      now: NOW
+    });
+    const legacyBytes = await fs.readFile(legacyFile);
     const assembly = createMuseRuntimeAssembly({
       env: {
         MUSE_SCHEDULER_CRON_ENABLED: "false",
         MUSE_SCHEDULER_PERSIST: "false",
         MUSE_TASK_MEMORY_PERSIST: "false",
-        MUSE_TRIGGER_ADMISSION_JOURNAL_FILE: file
+        MUSE_TRIGGER_ADMISSION_JOURNAL_FILE: legacyFile,
+        MUSE_TRIGGER_CONTROL_FILE: file
       }
     });
     const lifecycle = (assembly.scheduler.service as unknown as {
@@ -143,6 +258,7 @@ describe("scheduled trigger admission runtime wiring", () => {
     const ticket = await lifecycle!({
       automatic: false,
       dryRun: false,
+      leaseDurationMs: 5_000,
       trigger: createTriggerEnvelope({
         generation: "assembly",
         occurredAt: assemblyNow,
@@ -152,10 +268,17 @@ describe("scheduled trigger admission runtime wiring", () => {
       })
     });
     expect(ticket.decision.action).toBe("execute");
-    expect((await new FileTriggerAdmissionJournalStore({
-      file,
+    expect(await fs.readFile(legacyFile)).toEqual(legacyBytes);
+    expect(await new TriggerControlFileStore(file, {
       maxPending: 256
-    }).read()).entries).toHaveLength(1);
+    }).snapshot()).toMatchObject({
+      journal: { entries: [{ state: "queued" }, { state: "queued" }] },
+      workStates: [{ status: "leased" }]
+    });
+    await expect(assembly.observability.eventLoopHealthSnapshot()).resolves.toMatchObject({
+      journal: { entries: [{ state: "queued" }, { state: "queued" }] },
+      workStates: [{ status: "leased" }]
+    });
   });
 
   it("uses an explicit env override without touching the filesystem", async () => {

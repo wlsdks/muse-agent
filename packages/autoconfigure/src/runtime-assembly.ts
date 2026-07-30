@@ -44,6 +44,7 @@ import {
 } from "@muse/cache";
 import { createLoopbackMcpMuseTools, type LoopbackMcpServer, type McpManager, type McpTransportConnector, type McpSecurityPolicyProvider, type McpSecurityPolicyStore, type McpServerInput, type McpServerStore } from "@muse/mcp";
 import { randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
 
 import { resolveLearningPauseFile } from "./provider-paths.js";
 import { createCompactionAuxiliary } from "./compaction-auxiliary.js";
@@ -55,7 +56,6 @@ import {
   defaultSchedulerPauseFile,
   defaultTriggerAdmissionJournalFile,
   enqueueLearnEvent,
-  FileTriggerAdmissionJournalStore,
   isLearningPaused,
   isSchedulerPaused,
   resolveLearnQueueFile,
@@ -114,6 +114,7 @@ import {
   ScheduledJobDispatcher,
   ScheduledMcpToolInvoker,
   SchedulerMessaging,
+  TriggerControlFileStore,
   type ScheduledJobExecutionStore,
   type ScheduledJobStore
 } from "@muse/scheduler";
@@ -594,10 +595,17 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const schedulerExecutionStore = createSchedulerExecutionStore(db, env);
   const schedulerLock = createSchedulerLock(db, env);
   const schedulerCronEnabled = parseBoolean(env.MUSE_SCHEDULER_CRON_ENABLED, true);
-  const triggerAdmissionJournalStore = new FileTriggerAdmissionJournalStore({
-    file: defaultTriggerAdmissionJournalFile(env),
-    maxPending: DEFAULT_TRIGGER_ADMISSION_MAX_PENDING
-  });
+  const legacyTriggerAdmissionJournalFile = defaultTriggerAdmissionJournalFile(env);
+  const triggerControlStore = new TriggerControlFileStore(
+    env.MUSE_TRIGGER_CONTROL_FILE
+      ?? join(dirname(legacyTriggerAdmissionJournalFile), "trigger-control.json"),
+    {
+      maxPending: DEFAULT_TRIGGER_ADMISSION_MAX_PENDING
+    },
+    {
+      legacyJournalFile: legacyTriggerAdmissionJournalFile
+    }
+  );
   const schedulerService = new DynamicScheduler({
     dispatcher: new ScheduledJobDispatcher({
       agentExecutor: createScheduledAgentExecutor(() => agentRuntime, defaultModel),
@@ -621,7 +629,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     messagingService: new SchedulerMessaging(createSchedulerMessagingSender(messagingRegistry)),
     store: schedulerStore,
     triggerAdmissionLifecycle: createScheduledTriggerAdmissionLifecycle({
-      store: triggerAdmissionJournalStore
+      store: triggerControlStore
     })
   });
   schedulerHandle.current = schedulerService;
@@ -663,13 +671,13 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     observability: {
       adaptationLoopHealthSnapshot: adaptationLoopHealthObserver.snapshot,
       agentLoopHealthSnapshot: agentLoopHealthObserver.snapshot,
-      eventLoopHealthSnapshot: async () => Object.freeze({
-        journal: await triggerAdmissionJournalStore.read(),
-        // The current scheduler lifecycle owns durable admission/settlement
-        // state only. Lease/retry work-state integration is a separate
-        // controller contract and must not be fabricated here.
-        workStates: Object.freeze([])
-      }),
+      eventLoopHealthSnapshot: async () => {
+        const state = await triggerControlStore.snapshot();
+        return Object.freeze({
+          journal: state.journal,
+          workStates: state.workStates
+        });
+      },
       experienceLearningPromotionObserver: adaptationLoopHealthObserver.observe,
       budgetTracker,
       driftDetector,

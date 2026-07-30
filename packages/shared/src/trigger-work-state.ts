@@ -56,6 +56,7 @@ export interface SettleTriggerWorkInput {
 
 export interface CancelTriggerWorkInput {
   readonly at: Date;
+  readonly leaseToken: string;
   readonly reason: string;
 }
 
@@ -216,6 +217,12 @@ export function cancelTriggerWork(
   const current = normalizeTriggerWorkState(state);
   if (current.status !== "leased" && current.status !== "retry-wait") {
     throw new TypeError("only active trigger work can be cancelled");
+  }
+  const currentLeaseToken = current.status === "leased"
+    ? current.leaseToken
+    : current.lastLeaseToken;
+  if (nonEmpty(input.leaseToken, "leaseToken") !== currentLeaseToken) {
+    throw new TypeError("stale trigger work lease token");
   }
   const at = canonicalTimestamp(input.at, "at");
   if (Date.parse(at) < Date.parse(current.updatedAt)) {

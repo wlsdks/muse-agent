@@ -110,6 +110,7 @@ describe("trigger control crash and replay", () => {
     const admitted = admit();
     const cancelled = cancelTriggerWork(claim(), {
       at: T250,
+      leaseToken: "worker-a:1",
       reason: "owner-stop"
     });
     expect(cancelled).toMatchObject({

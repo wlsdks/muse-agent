@@ -163,6 +163,7 @@ describe("trigger work state", () => {
   it("cancels active work and fences a late completion", () => {
     const cancelled = cancelTriggerWork(lease(), {
       at: new Date("2026-07-30T12:00:00.250Z"),
+      leaseToken: "worker-a:1",
       reason: "owner-stop"
     });
     expect(cancelled).toMatchObject({ status: "cancelled", terminalReason: "owner-stop" });
@@ -171,6 +172,14 @@ describe("trigger work state", () => {
       leaseToken: "worker-a:1",
       outcome: "succeeded"
     })).toThrow(/only leased/u);
+  });
+
+  it("rejects cancellation from a stale lease owner", () => {
+    expect(() => cancelTriggerWork(lease(), {
+      at: new Date("2026-07-30T12:00:00.250Z"),
+      leaseToken: "worker-b:stale",
+      reason: "owner-stop"
+    })).toThrow(/stale trigger work lease token/u);
   });
 
   it("preserves fencing state across strict JSON restore", () => {

@@ -253,6 +253,7 @@ describe("createLoopSupervisorHealthSnapshot", () => {
     });
     const cancelledWork = cancelTriggerWork(leased, {
       at: new Date("2026-07-30T12:00:00.250Z"),
+      leaseToken: "worker-a:1",
       reason: "owner-stop"
     });
     const cancelledJournal = settleTriggerAdmission(admitted, {

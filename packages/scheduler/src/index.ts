@@ -175,6 +175,9 @@ export interface ScheduledTriggerAdmissionTicket {
 export interface ScheduledTriggerAdmissionInput {
   readonly automatic: boolean;
   readonly dryRun: boolean;
+  /** Bound for the exact execution lease, derived from the validated job
+   * timeout plus the scheduler's lock-settlement buffer. */
+  readonly leaseDurationMs: number;
   readonly trigger: TriggerEnvelope;
 }
 

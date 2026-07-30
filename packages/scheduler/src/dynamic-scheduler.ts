@@ -263,8 +263,17 @@ export class DynamicScheduler {
       sourceId: job.id
     });
     const resolvedInvocation: TriggerInvocation = { ...invocation, trigger };
+    const lockTtlMs = Math.max(
+      minLockTtlMs,
+      resolveJobTimeout(job, defaultExecutionTimeoutMs) + this.lockTtlBufferMs
+    );
     const admissionTicket = this.triggerAdmissionLifecycle
-      ? await this.triggerAdmissionLifecycle({ automatic, dryRun, trigger })
+      ? await this.triggerAdmissionLifecycle({
+        automatic,
+        dryRun,
+        leaseDurationMs: lockTtlMs,
+        trigger
+      })
       : undefined;
     const admission = admissionTicket?.decision
       ?? (this.triggerAdmission ? await this.triggerAdmission(trigger) : undefined);
@@ -291,7 +300,6 @@ export class DynamicScheduler {
       return result;
     }
 
-    const lockTtlMs = Math.max(minLockTtlMs, resolveJobTimeout(job, defaultExecutionTimeoutMs) + this.lockTtlBufferMs);
     if (!dryRun && !(await this.distributedLock.tryAcquire(job.id, lockTtlMs))) {
       let recordFailed = false;
       let recordError: unknown;

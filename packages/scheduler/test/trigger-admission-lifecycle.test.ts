@@ -59,6 +59,31 @@ function executeTicket(
 }
 
 describe("DynamicScheduler trigger admission lifecycle", () => {
+  it("bounds the durable work lease to the validated execution timeout plus lock buffer", async () => {
+    const store = new InMemoryScheduledJobStore({ idFactory: () => "job-lease-bound" });
+    const observedLeaseDurations: number[] = [];
+    const service = new DynamicScheduler({
+      dispatcher: dispatcher(async () => "done"),
+      lockTtlBufferMs: 1_000,
+      now: () => NOW,
+      store,
+      triggerAdmissionLifecycle: async ({ leaseDurationMs, trigger }) => {
+        observedLeaseDurations.push(leaseDurationMs);
+        return executeTicket(trigger.dedupKey, async () => undefined);
+      }
+    });
+    const job = await service.create({
+      agentPrompt: "Run",
+      cronExpression: "0 * * * * *",
+      executionTimeoutMs: 20_000,
+      jobType: "agent",
+      name: "Lease bound"
+    });
+
+    await expect(service.trigger(job.id)).resolves.toBe("done");
+    expect(observedLeaseDurations).toEqual([21_000]);
+  });
+
   it("settles a successful execution exactly once as completed", async () => {
     const settle = vi.fn(async () => undefined);
     const { job, service } = await setup({
