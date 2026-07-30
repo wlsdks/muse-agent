@@ -365,6 +365,9 @@ importers:
       '@muse/attunement':
         specifier: workspace:*
         version: link:../attunement
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/auth:
     dependencies:

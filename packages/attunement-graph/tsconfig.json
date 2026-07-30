@@ -18,6 +18,9 @@
   "references": [
     {
       "path": "../attunement"
+    },
+    {
+      "path": "../shared"
     }
   ]
 }

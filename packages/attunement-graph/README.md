@@ -30,6 +30,8 @@ creates truth, feedback, policy, permission, or authority.
 - `./continuity` · `./continuity-changes` · `./continuity-observations` — exact Continuity
   and governed-learning lineage projections, the "what changed since I stopped" query, and
   content-addressed observation receipts.
+- `./loop-lineage` — one-occurrence trigger admission/work/terminal evidence from a
+  verified shared control-state snapshot. It does not claim an exact agent execution ID.
 - `./continuity-capsules` · `./continuity-resume-runtime` — Capsule render data, and the
   process-local resume compiler.
 - `./shadow-decision-receipt` — the Shadow Muse decision record.
@@ -37,8 +39,10 @@ creates truth, feedback, policy, permission, or authority.
 
 ## Depends on
 
-- `@muse/attunement` — the Continuity threads, links and receipts this graph projects. It is
-  the only internal dependency, deliberately: MAG is being kept extractable.
+- `@muse/attunement` — the Continuity threads, links and receipts this graph projects.
+- `@muse/shared` — provider-neutral trigger envelopes and strict control-state validation.
+  These source-domain compatibility dependencies remain extraction debt; neither Store nor
+  scheduler runtime behavior is imported into the neutral MAG lifecycle.
 
 ## Rules that bind this package
 
