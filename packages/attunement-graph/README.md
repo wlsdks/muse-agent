@@ -93,9 +93,19 @@ metadata, and returns only detached Admin summary, exact-head, or integrity resu
 does not open a path, acquire a live snapshot, construct a Worker, close the caller's
 connection, or expose projection bodies.
 
+The package-private Admin path now also has a parent-owned offline snapshot lease for an
+explicitly closed, quiescent SQLite store. It admits owner-private local filesystems,
+copies the exact main/journal/WAL/SHM set into a private temporary directory, re-reads and
+hashes completed copies, revalidates the source before returning, and publishes the
+capability only after an exclusive marker is written and identity-pinned. Release is
+cached and marker-last;
+construction failures are removed or fail closed as recorded quarantine rather than
+granting the future Worker cleanup authority.
+
 These surfaces remain validated-but-unpublished infrastructure. They do not ship a public
-decoder, separate Admin Worker command, offline snapshot acquisition, destination generation
-activation, or public `./admin` API. Unknown close outcomes and unexpected artifacts remain
+decoder, separate Admin Worker/application, destination generation activation, or public
+`./admin` API. The snapshot lease is not live-store snapshotting and is not yet connected
+to an inspection command. Unknown close outcomes and unexpected artifacts remain
 toxic; native directory-FD/`openat` same-UID race closure, non-POSIX profiles,
 crash-residue discovery, and production-scale proof remain unverified.
 

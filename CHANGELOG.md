@@ -8,6 +8,18 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a4e2b1 package-private,
+  parent-owned offline MAG snapshot lease for explicitly closed, quiescent SQLite
+  stores. The lease admits owner-private local POSIX profiles, copies the exact
+  main/journal/WAL/SHM set into a private directory, verifies completed destination
+  bytes independently, rechecks source identity and content before publication, and
+  uses an exclusive marker with cached marker-last cleanup. Qualification covers
+  hostile option admission, construction failures immediately after temporary-directory
+  creation, source changes, deadline and I/O failures, cleanup interruption, and
+  quarantine without giving a future Worker deletion authority. This slice does not
+  add a real Admin Worker/application, live-store snapshotting, public export,
+  CLI/API/UI, generation activation, or production-scale proof.
+
 - Added the independently verified AWG-070a3a1a4e2a package-private MAG v1
   physical-schema manifest, classifier, and caller-owned read-only snapshot inspector
   core. Serving and Admin inspection now share exact DDL, identity, object, and
