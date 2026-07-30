@@ -23,6 +23,7 @@ import { reduceExperienceLearningContinuityPolicy } from "./experience-learning-
 import { buildExperienceLearningPolicyAudit } from "./experience-learning-policy-audit.js";
 import {
   createExperienceLearningPromotionHandle,
+  parseExperienceLearningPromotionHandle,
   type ExperienceLearningPromotionHandle
 } from "./experience-learning-promotion-handle.js";
 import { fingerprintContinuityPolicy } from "./policy-digest.js";
@@ -230,6 +231,62 @@ export async function rollbackExperienceLearningPromotion(
 }
 
 /**
+ * Restart-safe equivalent of receipt rollback. The durable promotion handle
+ * contains only the exact policy/digest/audit linkage needed for rollback and
+ * grants no authority by itself; the active-policy write gate remains required.
+ */
+export async function rollbackExperienceLearningPromotionHandle(
+  handleValue: unknown,
+  rolledBackAt: string,
+  rollbackPolicyVersion: number,
+  activePolicyWriteGate: ActiveAttunementPolicyWriteGate | undefined,
+  compareAndSwap: ExperienceLearningPolicyCompareAndSwap
+): Promise<ExperienceLearningRollbackReceipt> {
+  const handle = parseExperienceLearningPromotionHandle(handleValue);
+  if (!handle
+    || !isIso(rolledBackAt)
+    || !Number.isSafeInteger(rollbackPolicyVersion)
+    || rollbackPolicyVersion <= handle.policyAfter.version
+    || Date.parse(rolledBackAt) < Date.parse(handle.appliedAt)) {
+    throw new ExperienceLearningPromotionError("invalid-input");
+  }
+  const restoredPolicy = Object.freeze({
+    ...handle.policyBefore,
+    version: rollbackPolicyVersion
+  });
+  const restoredDigest = fingerprintContinuityPolicy(restoredPolicy);
+  const rollbackId = `learning_rollback_${sha256Hex(JSON.stringify([
+    handle.promotionId,
+    handle.activeBehaviorDigestAfter,
+    restoredDigest,
+    rolledBackAt
+  ]))}`;
+  const rollbackReceipt: ExperienceLearningRollbackReceipt = Object.freeze({
+    activeBehaviorDigestAfter: restoredDigest,
+    activeBehaviorDigestBefore: handle.activeBehaviorDigestAfter,
+    policyAfter: restoredPolicy,
+    policyBefore: handle.policyAfter,
+    promotionId: handle.promotionId,
+    rollbackApplied: true,
+    rollbackId,
+    rolledBackAt,
+    schemaVersion: 2
+  });
+  return runActiveAttunementPolicyMutation(activePolicyWriteGate, async () => {
+    const applied = await compareAndSwap(Object.freeze({
+      audit: rollbackHandleAudit(handle, rollbackReceipt),
+      expectedDigest: handle.activeBehaviorDigestAfter,
+      nextDigest: restoredDigest,
+      policyAfter: restoredPolicy,
+      policyBefore: handle.policyAfter,
+      threadId: handle.threadId
+    }));
+    if (!applied) throw new ExperienceLearningPromotionError("stale-active-policy");
+    return rollbackReceipt;
+  });
+}
+
+/**
  * Projects only a fully recomputed promotion receipt into the cross-loop health
  * contract. This grants no mutation authority and never creates approval.
  */
@@ -285,6 +342,24 @@ function rollbackAudit(
     policyBefore: rollback.policyBefore,
     sourceId: promotedAudit.id,
     threadId: promotion.scope.threadId
+  });
+}
+
+function rollbackHandleAudit(
+  handle: ExperienceLearningPromotionHandle,
+  rollback: ExperienceLearningRollbackReceipt
+): ExperienceLearningPolicyAudit {
+  return buildExperienceLearningPolicyAudit({
+    activeBehaviorDigestAfter: rollback.activeBehaviorDigestAfter,
+    activeBehaviorDigestBefore: rollback.activeBehaviorDigestBefore,
+    authority: "owner-explicit",
+    candidateId: handle.candidateId,
+    kind: "rollback",
+    occurredAt: rollback.rolledBackAt,
+    policyAfter: rollback.policyAfter,
+    policyBefore: rollback.policyBefore,
+    sourceId: handle.promotionAuditId,
+    threadId: handle.threadId
   });
 }
 

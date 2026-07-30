@@ -15,6 +15,7 @@ import {
   proposeExperienceLearningCandidate,
   readAttunementState,
   rollbackExperienceLearningContinuityPolicy,
+  rollbackExperienceLearningContinuityPolicyByHandleId,
   type ActiveAttunementPolicyWriteGate,
   type ApprovedExperienceLearningPromotionInput
 } from "./index.js";
@@ -188,6 +189,102 @@ describe("experience learning continuity policy store", () => {
       "2026-07-29T03:10:00.000Z",
       gate
     )).rejects.toMatchObject({ code: "stale-active-policy" });
+  });
+
+  it("rolls back after restart from one exact persisted promotion handle", async () => {
+    const { file, input, thread } = await fixture();
+    const promotion = await promoteApprovedExperienceLearningContinuityPolicy(file, input, gate);
+    const promotedState = await readAttunementState(file);
+    const handle = promotedState.experienceLearningPromotionHandles?.[0];
+    expect(handle).toBeDefined();
+
+    // Resolve from a freshly reloaded file state using only the durable id;
+    // the transient promotion receipt is intentionally not passed.
+    const rollback = await rollbackExperienceLearningContinuityPolicyByHandleId(
+      file,
+      handle!.handleId,
+      "2026-07-29T03:09:00.000Z",
+      gate
+    );
+    const state = await readAttunementState(file);
+    const restored = state.threads.find((entry) => entry.id === thread.id)?.policy;
+    const rollbackAudit = state.experienceLearningPolicyAudits?.find((audit) =>
+      audit.kind === "rollback"
+    );
+
+    expect(restored).toEqual({ ...thread.policy, version: 2 });
+    expect(rollback.policyAfter).toEqual(restored);
+    expect(rollback.promotionId).toBe(promotion.promotionId);
+    expect(rollbackAudit?.sourceId).toBe(handle!.promotionAuditId);
+    expect(state.experienceLearningPromotionHandles).toEqual([handle]);
+
+    await expect(rollbackExperienceLearningContinuityPolicyByHandleId(
+      file,
+      handle!.handleId,
+      "2026-07-29T03:10:00.000Z",
+      gate
+    )).rejects.toMatchObject({ code: "stale-active-policy" });
+  });
+
+  it("fails handle rollback closed for missing identity or missing write authority", async () => {
+    const missing = await fixture();
+    await promoteApprovedExperienceLearningContinuityPolicy(missing.file, missing.input, gate);
+    const missingBefore = await readFile(missing.file, "utf8");
+    await expect(rollbackExperienceLearningContinuityPolicyByHandleId(
+      missing.file,
+      "learning_promotion_handle_missing",
+      "2026-07-29T03:09:00.000Z",
+      gate
+    )).rejects.toMatchObject({ code: "invalid-input" });
+    expect(await readFile(missing.file, "utf8")).toBe(missingBefore);
+
+    const gated = await fixture();
+    await promoteApprovedExperienceLearningContinuityPolicy(gated.file, gated.input, gate);
+    const gatedState = await readAttunementState(gated.file);
+    const gatedBefore = await readFile(gated.file, "utf8");
+    await expect(rollbackExperienceLearningContinuityPolicyByHandleId(
+      gated.file,
+      gatedState.experienceLearningPromotionHandles![0]!.handleId,
+      "2026-07-29T03:09:00.000Z",
+      undefined
+    )).rejects.toMatchObject({ name: "ActiveAttunementPolicyWriteBlockedError" });
+    expect(await readFile(gated.file, "utf8")).toBe(gatedBefore);
+  });
+
+  it("fails closed on duplicated or tampered persisted handles", async () => {
+    const duplicate = await fixture();
+    await promoteApprovedExperienceLearningContinuityPolicy(duplicate.file, duplicate.input, gate);
+    const duplicateJson = JSON.parse(await readFile(duplicate.file, "utf8")) as {
+      experienceLearningPromotionHandles: Array<Record<string, unknown>>;
+    };
+    const duplicateHandle = duplicateJson.experienceLearningPromotionHandles[0]!;
+    duplicateJson.experienceLearningPromotionHandles.push({ ...duplicateHandle });
+    await writeFile(duplicate.file, JSON.stringify(duplicateJson), "utf8");
+    const duplicateBefore = await readFile(duplicate.file, "utf8");
+    await expect(rollbackExperienceLearningContinuityPolicyByHandleId(
+      duplicate.file,
+      duplicateHandle.handleId as string,
+      "2026-07-29T03:09:00.000Z",
+      gate
+    )).rejects.toThrow(/duplicate experience learning promotion handle ids/u);
+    expect(await readFile(duplicate.file, "utf8")).toBe(duplicateBefore);
+
+    const tampered = await fixture();
+    await promoteApprovedExperienceLearningContinuityPolicy(tampered.file, tampered.input, gate);
+    const tamperedJson = JSON.parse(await readFile(tampered.file, "utf8")) as {
+      experienceLearningPromotionHandles: Array<Record<string, unknown>>;
+    };
+    const originalHandleId = tamperedJson.experienceLearningPromotionHandles[0]!.handleId as string;
+    tamperedJson.experienceLearningPromotionHandles[0]!.activeBehaviorDigestAfter = digest("f");
+    await writeFile(tampered.file, JSON.stringify(tamperedJson), "utf8");
+    const tamperedBefore = await readFile(tampered.file, "utf8");
+    await expect(rollbackExperienceLearningContinuityPolicyByHandleId(
+      tampered.file,
+      originalHandleId,
+      "2026-07-29T03:09:00.000Z",
+      gate
+    )).rejects.toThrow();
+    expect(await readFile(tampered.file, "utf8")).toBe(tamperedBefore);
   });
 
   it("rejects content or linkage tampering when persisted audits are reloaded", async () => {

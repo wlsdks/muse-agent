@@ -4,6 +4,7 @@ import {
   ExperienceLearningPromotionError,
   promoteExperienceLearningCandidate,
   rollbackExperienceLearningPromotion,
+  rollbackExperienceLearningPromotionHandle,
   type ExperienceLearningPolicyCompareAndSwap,
   type ExperienceLearningPromotionInput,
   type ExperienceLearningPromotionReceipt,
@@ -101,6 +102,36 @@ export async function rollbackExperienceLearningContinuityPolicy(
   const snapshot = await readAttunementState(file);
   return rollbackExperienceLearningPromotion(
     receipt,
+    rolledBackAt,
+    snapshot.nextPolicyVersion,
+    activePolicyWriteGate,
+    createStoreCompareAndSwap(file)
+  );
+}
+
+export async function rollbackExperienceLearningContinuityPolicyByHandleId(
+  file: string,
+  handleId: string,
+  rolledBackAt: string,
+  activePolicyWriteGate: ActiveAttunementPolicyWriteGate | undefined
+): Promise<ExperienceLearningRollbackReceipt> {
+  if (typeof handleId !== "string" || handleId.trim() !== handleId || handleId.length === 0) {
+    throw new ExperienceLearningPromotionError("invalid-input");
+  }
+  const snapshot = await readAttunementState(file);
+  const matches = (snapshot.experienceLearningPromotionHandles ?? [])
+    .filter((handle) => handle.handleId === handleId);
+  if (matches.length !== 1) {
+    throw new ExperienceLearningPromotionError("invalid-input");
+  }
+  const handle = matches[0]!;
+  if ((snapshot.experienceLearningPolicyAudits ?? []).some((audit) =>
+    audit.kind === "rollback" && audit.sourceId === handle.promotionAuditId
+  )) {
+    throw new ExperienceLearningPromotionError("stale-active-policy");
+  }
+  return rollbackExperienceLearningPromotionHandle(
+    handle,
     rolledBackAt,
     snapshot.nextPolicyVersion,
     activePolicyWriteGate,
