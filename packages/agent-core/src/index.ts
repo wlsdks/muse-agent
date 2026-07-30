@@ -651,6 +651,8 @@ export {
   type EgressAdvisory,
   type EgressAdvisorySink,
   type LoopOutcomeToolEvidence,
+  type LoopOutcomeRepairInput,
+  type LoopOutcomeRepairer,
   type LoopOutcomeVerificationInput,
   type LoopOutcomeVerifier,
   type ToolApprovalGate,

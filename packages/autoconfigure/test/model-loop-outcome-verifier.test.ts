@@ -7,7 +7,9 @@ import type { ModelRequest } from "@muse/model";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  configuredModelLoopOutcomeRepairer,
   configuredModelLoopOutcomeVerifier,
+  createModelLoopOutcomeRepairer,
   createModelLoopOutcomeVerifier
 } from "../src/model-loop-outcome-verifier.js";
 
@@ -48,6 +50,50 @@ function tool(overrides: Partial<LoopOutcomeToolEvidence> = {}): LoopOutcomeTool
 }
 
 describe("model loop outcome verifier", () => {
+  it("builds a bounded text-only repair request and rejects tool-call output", async () => {
+    const requests: ModelRequest[] = [];
+    const repairer = createModelLoopOutcomeRepairer({
+      model: "repair/model",
+      modelProvider: {
+        generate: async (request) => {
+          requests.push(request);
+          return { id: "repair", model: request.model, output: "Fixed answer." };
+        }
+      }
+    });
+    const repairInput = {
+      failureEvidenceId: "terminal-eval:fail",
+      model: "primary/model",
+      output: "Wrong answer.",
+      runId: "repair-run",
+      signal: new AbortController().signal,
+      userMessages: ["Create the brief."]
+    };
+
+    await expect(repairer(repairInput)).resolves.toBe("Fixed answer.");
+    expect(requests[0]).toMatchObject({
+      maxOutputTokens: 1_000,
+      model: "repair/model",
+      reasoning: false,
+      temperature: 0
+    });
+    expect(requests[0]!.signal).toBe(repairInput.signal);
+    expect("tools" in requests[0]!).toBe(false);
+
+    const toolCallingRepairer = createModelLoopOutcomeRepairer({
+      model: "repair/model",
+      modelProvider: {
+        generate: async () => ({
+          id: "unsafe-repair",
+          model: "repair/model",
+          output: "",
+          toolCalls: [{ arguments: {}, id: "call-1", name: "write_note" }]
+        })
+      }
+    });
+    await expect(toolCallingRepairer(repairInput)).rejects.toThrow(/must not emit tool calls/u);
+  });
+
   it("fails objective tool/effect violations before a judge model call", async () => {
     const generate = vi.fn(async () => ({
       id: "must-not-run",
@@ -181,5 +227,34 @@ describe("model loop outcome verifier", () => {
 
     await expect(verifier!(input())).resolves.toMatchObject({ status: "passed" });
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({ model: "judge/independent" }));
+  });
+
+  it("enables one repair with the verifier and allows an explicit opt-out/model override", async () => {
+    const generate = vi.fn(async (request: ModelRequest) => ({
+      id: "configured-repair",
+      model: request.model,
+      output: "Fixed."
+    }));
+    const repairInput = {
+      failureEvidenceId: "terminal-eval:fail",
+      model: "primary/model",
+      output: "Wrong.",
+      runId: "repair-run",
+      signal: new AbortController().signal,
+      userMessages: ["Fix this."]
+    };
+
+    expect(configuredModelLoopOutcomeRepairer({}, { generate }, "primary/model")).toBeUndefined();
+    expect(configuredModelLoopOutcomeRepairer({
+      MUSE_LOOP_OUTCOME_REPAIR_ENABLED: "false",
+      MUSE_LOOP_OUTCOME_VERIFIER_ENABLED: "true"
+    }, { generate }, "primary/model")).toBeUndefined();
+    const repairer = configuredModelLoopOutcomeRepairer({
+      MUSE_LOOP_OUTCOME_REPAIR_MODEL: "repair/independent",
+      MUSE_LOOP_OUTCOME_VERIFIER_ENABLED: "true"
+    }, { generate }, "primary/model");
+
+    await expect(repairer!(repairInput)).resolves.toBe("Fixed.");
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({ model: "repair/independent" }));
   });
 });

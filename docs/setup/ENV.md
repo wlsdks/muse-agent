@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **649** variables.
+Total: **651** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -324,6 +324,8 @@ Total: **649** variables.
 | `MUSE_LOOPBACK_FETCH_HOSTS` | packages/autoconfigure |
 | `MUSE_LOOPBACK_FS_ROOTS` | packages/autoconfigure |
 | `MUSE_LOOPBACK_MCP_ENABLED` | packages/autoconfigure |
+| `MUSE_LOOP_OUTCOME_REPAIR_ENABLED` | packages/autoconfigure |
+| `MUSE_LOOP_OUTCOME_REPAIR_MODEL` | packages/autoconfigure |
 | `MUSE_LOOP_OUTCOME_VERIFIER_ENABLED` | packages/autoconfigure |
 | `MUSE_LOOP_OUTCOME_VERIFIER_MODEL` | packages/autoconfigure |
 | `MUSE_MACOS_ACTUATORS` | apps/cli, packages/prompts |

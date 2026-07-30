@@ -48,7 +48,10 @@ import { dirname, join } from "node:path";
 
 import { resolveLearningPauseFile } from "./provider-paths.js";
 import { createCompactionAuxiliary } from "./compaction-auxiliary.js";
-import { configuredModelLoopOutcomeVerifier } from "./model-loop-outcome-verifier.js";
+import {
+  configuredModelLoopOutcomeRepairer,
+  configuredModelLoopOutcomeVerifier
+} from "./model-loop-outcome-verifier.js";
 import { createScheduledTriggerAdmissionLifecycle } from "./scheduler-trigger-admission.js";
 import {
   appendActionLog,
@@ -1406,7 +1409,15 @@ function buildAgentRuntime(params: {
           modelProvider,
           defaultModel
         );
-        return loopOutcomeVerifier ? { loopOutcomeVerifier } : {};
+        const loopOutcomeRepairer = configuredModelLoopOutcomeRepairer(
+          env,
+          modelProvider,
+          defaultModel
+        );
+        return {
+          ...(loopOutcomeRepairer ? { loopOutcomeRepairer } : {}),
+          ...(loopOutcomeVerifier ? { loopOutcomeVerifier } : {})
+        };
       })(),
       // per-tool-result character cap. Default 8_000
       // chars (~2_000 tokens at the rough 1-token-per-4-chars

@@ -23,6 +23,27 @@ function sequenceProvider(responses: readonly ModelResponse[]): ModelProvider {
   };
 }
 
+function streamingProvider(response: ModelResponse): ModelProvider {
+  return {
+    id: "loop-receipt-stream-test",
+    async generate() {
+      throw new Error("generate should not be called");
+    },
+    async listModels() {
+      return [];
+    },
+    async *stream(request) {
+      if (response.output.length > 0) {
+        yield { text: response.output, type: "text-delta" };
+      }
+      yield {
+        response: { ...response, model: request.model },
+        type: "done"
+      };
+    }
+  };
+}
+
 const input = {
   messages: [{ content: "help me", role: "user" as const }],
   metadata: {},
@@ -153,6 +174,277 @@ describe("AgentRuntime loop control receipt wiring", () => {
     );
 
     expect(pending.terminal).toEqual({ reason: "verification-pending", status: "held" });
+  });
+
+  it("repairs one tool-free failed candidate once and ships it only after re-verification", async () => {
+    const repair = vi.fn((repairInput) => {
+      expect(Object.isFrozen(repairInput)).toBe(true);
+      expect(Object.isFrozen(repairInput.userMessages)).toBe(true);
+      expect(repairInput).toMatchObject({
+        failureEvidenceId: "terminal-eval:first-fail",
+        model: "test/model",
+        output: "wrong",
+        runId: "verified-repair-run",
+        userMessages: ["help me"]
+      });
+      return "fixed";
+    });
+    const verify = vi.fn(({ output }) => output === "fixed"
+      ? { evidenceId: "terminal-eval:repair-pass", status: "passed" as const }
+      : { evidenceId: "terminal-eval:first-fail", status: "failed" as const });
+    const runtime = createAgentRuntime({
+      loopOutcomeRepairer: repair,
+      loopOutcomeVerifier: verify,
+      modelProvider: sequenceProvider([{ id: "answer", model: "test/model", output: "wrong" }])
+    });
+
+    const result = await runtime.run({ ...input, runId: "verified-repair-run" });
+    const receipt = parseLoopControlReceipt(result.loopControlReceipt);
+
+    expect(result.response.output).toBe("fixed");
+    expect(result.response.id).toBe("answer:verification-repair");
+    expect(receipt.terminal).toEqual({ reason: "goal-verified", status: "completed" });
+    expect(receipt.verification).toEqual({
+      evidenceId: "terminal-eval:repair-pass",
+      status: "passed"
+    });
+    expect(receipt.budget.retries).toEqual({ exhausted: false, limit: 6, used: 1 });
+    expect(repair).toHaveBeenCalledOnce();
+    expect(verify).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds and minimizes the text-only repair boundary", async () => {
+    const repair = vi.fn(() => "fixed");
+    const verify = vi.fn(({ output }) => output === "fixed"
+      ? { evidenceId: "terminal-eval:repair-pass", status: "passed" as const }
+      : { evidenceId: "terminal-eval:first-fail", status: "failed" as const });
+    const runtime = createAgentRuntime({
+      loopOutcomeRepairer: repair,
+      loopOutcomeVerifier: verify,
+      modelProvider: sequenceProvider([{
+        id: "answer",
+        model: "test/model",
+        output: "x".repeat(9_000)
+      }])
+    });
+
+    await runtime.run({
+      ...input,
+      messages: Array.from({ length: 6 }, (_, index) => ({
+        content: `${index}:${"u".repeat(3_000)}`,
+        role: "user" as const
+      })),
+      runId: "bounded-repair-run"
+    });
+
+    const repairInput = repair.mock.calls[0]![0];
+    expect(repairInput.output).toHaveLength(8_000);
+    expect(repairInput.output).toMatch(/truncated for bounded verification repair\]$/u);
+    expect(repairInput.userMessages).toHaveLength(4);
+    expect(repairInput.userMessages.every((message: string) => message.length === 2_000)).toBe(true);
+    expect(JSON.stringify(repairInput)).not.toContain("toolEvidence");
+    expect(JSON.stringify(repairInput)).not.toContain("toolsUsed");
+  });
+
+  it("keeps the original failed response when the one repair does not pass", async () => {
+    const repair = vi.fn(() => "still wrong");
+    const verify = vi.fn(({ output }) => ({
+      evidenceId: output === "wrong" ? "terminal-eval:first-fail" : "terminal-eval:second-fail",
+      status: "failed" as const
+    }));
+    const runtime = createAgentRuntime({
+      loopOutcomeRepairer: repair,
+      loopOutcomeVerifier: verify,
+      modelProvider: sequenceProvider([{ id: "answer", model: "test/model", output: "wrong" }])
+    });
+
+    const result = await runtime.run({ ...input, runId: "failed-repair-run" });
+    const receipt = parseLoopControlReceipt(result.loopControlReceipt);
+
+    expect(result.response.output).toBe("wrong");
+    expect(receipt.terminal).toEqual({ reason: "verification-failed", status: "failed" });
+    expect(receipt.verification).toEqual({
+      evidenceId: "terminal-eval:first-fail",
+      status: "failed"
+    });
+    expect(repair).toHaveBeenCalledOnce();
+    expect(verify).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves verifier-only raw streaming when no repairer can replace the candidate", async () => {
+    let verified = false;
+    const runtime = createAgentRuntime({
+      loopOutcomeVerifier: () => {
+        verified = true;
+        return { evidenceId: "stream-eval:pass", status: "passed" };
+      },
+      modelProvider: streamingProvider({ id: "answer", model: "test/model", output: "done" })
+    });
+    const deliveries: Array<{ readonly text: string; readonly verifiedAtDelivery: boolean }> = [];
+
+    for await (const event of runtime.stream({
+      ...input,
+      runId: "verifier-only-raw-stream",
+      streamRawDeltas: true
+    })) {
+      if (event.type === "text-delta") {
+        deliveries.push({ text: event.text, verifiedAtDelivery: verified });
+      }
+    }
+
+    expect(deliveries).toEqual([{ text: "done", verifiedAtDelivery: false }]);
+    expect(verified).toBe(true);
+  });
+
+  it("keeps the first failure and records the admitted attempt when repair throws", async () => {
+    const repair = vi.fn(() => {
+      throw new Error("repair unavailable");
+    });
+    const verify = vi.fn(() => ({
+      evidenceId: "terminal-eval:first-fail",
+      status: "failed" as const
+    }));
+    const runtime = createAgentRuntime({
+      loopOutcomeRepairer: repair,
+      loopOutcomeVerifier: verify,
+      modelProvider: sequenceProvider([{ id: "answer", model: "test/model", output: "wrong" }])
+    });
+
+    const result = await runtime.run({ ...input, runId: "broken-repair-run" });
+    const receipt = parseLoopControlReceipt(result.loopControlReceipt);
+
+    expect(result.response.output).toBe("wrong");
+    expect(receipt.terminal).toEqual({ reason: "verification-failed", status: "failed" });
+    expect(receipt.verification).toEqual({
+      evidenceId: "terminal-eval:first-fail",
+      status: "failed"
+    });
+    expect(receipt.budget.retries).toEqual({ exhausted: false, limit: 6, used: 1 });
+    expect(repair).toHaveBeenCalledOnce();
+    expect(verify).toHaveBeenCalledOnce();
+  });
+
+  it("bounds a hung repair and preserves the first verified failure", async () => {
+    vi.useFakeTimers();
+    let aborted = false;
+    const runtime = createAgentRuntime({
+      loopOutcomeRepairer: ({ signal }) => new Promise((_resolve) => {
+        signal.addEventListener("abort", () => {
+          aborted = true;
+        }, { once: true });
+      }),
+      loopOutcomeRepairerTimeoutMs: 5,
+      loopOutcomeVerifier: () => ({
+        evidenceId: "terminal-eval:first-fail",
+        status: "failed"
+      }),
+      modelProvider: sequenceProvider([{ id: "answer", model: "test/model", output: "wrong" }])
+    });
+
+    const resultPromise = runtime.run({ ...input, runId: "hung-repair-run" });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5);
+    const result = await resultPromise;
+    const receipt = parseLoopControlReceipt(result.loopControlReceipt);
+
+    expect(aborted).toBe(true);
+    expect(result.response.output).toBe("wrong");
+    expect(receipt.terminal).toEqual({ reason: "verification-failed", status: "failed" });
+    expect(receipt.budget.retries).toEqual({ exhausted: false, limit: 6, used: 1 });
+  });
+
+  it("re-applies response filters and output guards before verifying a repair", async () => {
+    const filter = vi.fn((response: ModelResponse) => ({
+      ...response,
+      output: `${response.output}:filtered`
+    }));
+    const guard = vi.fn((content: string) => ({
+      action: "modify" as const,
+      content: `${content}:guarded`,
+      reason: "test"
+    }));
+    const verify = vi.fn(({ output }) => output === "fixed:filtered:guarded"
+      ? { evidenceId: "terminal-eval:repair-pass", status: "passed" as const }
+      : { evidenceId: "terminal-eval:first-fail", status: "failed" as const });
+    const runtime = createAgentRuntime({
+      loopOutcomeRepairer: () => "fixed",
+      loopOutcomeVerifier: verify,
+      modelProvider: sequenceProvider([{ id: "answer", model: "test/model", output: "wrong" }]),
+      outputGuards: [{ check: guard, id: "test-guard" }],
+      responseFilters: [{ apply: filter, id: "test-filter" }]
+    });
+
+    const result = await runtime.run({ ...input, runId: "filtered-repair-run" });
+
+    expect(result.response.output).toBe("fixed:filtered:guarded");
+    expect(filter).toHaveBeenCalledTimes(2);
+    expect(guard).toHaveBeenCalledTimes(2);
+    expect(verify).toHaveBeenCalledTimes(2);
+  });
+
+  it("never repairs a verifier failure after any admitted tool execution", async () => {
+    const repair = vi.fn(() => "must not run");
+    const toolRegistry = new ToolRegistry([{
+      definition: {
+        description: "Read a note",
+        inputSchema: { type: "object" },
+        name: "read_note",
+        risk: "read"
+      },
+      execute: async () => "note"
+    }]);
+    const runtime = createAgentRuntime({
+      loopOutcomeRepairer: repair,
+      loopOutcomeVerifier: () => ({ evidenceId: "terminal-eval:fail", status: "failed" }),
+      maxToolCalls: 2,
+      modelProvider: sequenceProvider([
+        {
+          id: "call",
+          model: "test/model",
+          output: "",
+          toolCalls: [{ arguments: {}, id: "tool-1", name: "read_note" }]
+        },
+        { id: "answer", model: "test/model", output: "wrong" }
+      ]),
+      toolRegistry
+    });
+
+    const result = await runtime.run({ ...input, runId: "tool-failure-no-repair" });
+
+    expect(parseLoopControlReceipt(result.loopControlReceipt).terminal.reason).toBe("verification-failed");
+    expect(repair).not.toHaveBeenCalled();
+  });
+
+  it("uses the same bounded repair path for a streamed completion", async () => {
+    const repair = vi.fn(() => "stream fixed");
+    const verify = vi.fn(({ output }) => output === "stream fixed"
+      ? { evidenceId: "stream-eval:repair-pass", status: "passed" as const }
+      : { evidenceId: "stream-eval:first-fail", status: "failed" as const });
+    const runtime = createAgentRuntime({
+      loopOutcomeRepairer: repair,
+      loopOutcomeVerifier: verify,
+      modelProvider: sequenceProvider([{ id: "answer", model: "test/model", output: "wrong" }])
+    });
+    const events = [];
+
+    for await (const event of runtime.stream({
+      ...input,
+      runId: "stream-repair-run",
+      streamRawDeltas: true
+    })) {
+      events.push(event);
+    }
+    const done = events.find((event) => event.type === "done");
+    if (!done || done.type !== "done") throw new Error("missing done event");
+
+    expect(done.response.output).toBe("stream fixed");
+    expect(events
+      .filter((event) => event.type === "text-delta")
+      .map((event) => event.type === "text-delta" ? event.text : "")).toEqual(["stream fixed"]);
+    expect(JSON.stringify(events)).not.toContain("\"text\":\"wrong\"");
+    expect(parseLoopControlReceipt(done.loopControlReceipt).terminal.reason).toBe("goal-verified");
+    expect(repair).toHaveBeenCalledOnce();
+    expect(verify).toHaveBeenCalledTimes(2);
   });
 
   it("bounds a hung verifier and leaves completion pending", async () => {

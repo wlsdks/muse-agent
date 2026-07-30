@@ -176,6 +176,7 @@ import type {
   AgentRuntimeOptions,
   AgentRuntimeStreamEvent,
   EgressAdvisorySink,
+  LoopOutcomeRepairer,
   LoopOutcomeVerifier,
   ToolApprovalGate,
 } from "./agent-runtime-types.js";
@@ -208,6 +209,8 @@ export type {
   EgressAdvisory,
   EgressAdvisorySink,
   LoopOutcomeToolEvidence,
+  LoopOutcomeRepairInput,
+  LoopOutcomeRepairer,
   LoopOutcomeVerificationInput,
   LoopOutcomeVerifier,
   ToolApprovalGate,
@@ -246,11 +249,35 @@ function recordRetryBudgetSpanAttributes(span: SpanHandle, budget: RetryBudget):
   span.setAttribute("retry.budget.used_backoff_ms", snapshot.usedBackoffMs);
 }
 
+function boundedLoopRepairText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  const marker = "\n[truncated for bounded verification repair]";
+  return `${value.slice(0, Math.max(0, maxChars - marker.length))}${marker.slice(0, maxChars)}`;
+}
+
+function failedReceiptFromPending(
+  pendingReceipt: LoopControlReceipt,
+  evidenceId: string
+): LoopControlReceipt {
+  if (
+    pendingReceipt.terminal.reason !== "verification-pending" ||
+    pendingReceipt.verification.status !== "pending"
+  ) {
+    return pendingReceipt;
+  }
+  return settleLoopControlReceipt(pendingReceipt, {
+    evidenceId,
+    status: "failed"
+  });
+}
+
 export class AgentRuntime {
   private readonly modelProvider?: ModelProvider;
   private readonly modelRegistry?: ModelProviderRegistry;
   private readonly loopOutcomeVerifier?: LoopOutcomeVerifier;
   private readonly loopOutcomeVerifierTimeoutMs: number;
+  private readonly loopOutcomeRepairer?: LoopOutcomeRepairer;
+  private readonly loopOutcomeRepairerTimeoutMs: number;
   private readonly loopControlReceiptObserver?: AgentRuntimeOptions["loopControlReceiptObserver"];
   private readonly agentSpecResolver?: AgentSpecResolver;
   private readonly historyStore?: AgentRunHistoryStore;
@@ -318,6 +345,8 @@ export class AgentRuntime {
     this.modelRegistry = options.modelRegistry;
     this.loopOutcomeVerifier = options.loopOutcomeVerifier;
     this.loopOutcomeVerifierTimeoutMs = clampRunLimit(options.loopOutcomeVerifierTimeoutMs, 5_000);
+    this.loopOutcomeRepairer = options.loopOutcomeRepairer;
+    this.loopOutcomeRepairerTimeoutMs = clampRunLimit(options.loopOutcomeRepairerTimeoutMs, 5_000);
     this.loopControlReceiptObserver = options.loopControlReceiptObserver;
     this.agentSpecResolver = options.agentSpecResolver;
     this.historyStore = options.historyStore;
@@ -486,6 +515,7 @@ export class AgentRuntime {
         pendingLoopControlReceipt,
         preparedRequest,
         promptBudget,
+        retryBudget,
         runSpan,
         selected,
         startedAtMs,
@@ -551,7 +581,13 @@ export class AgentRuntime {
         return;
       }
 
-      const forwardTextDeltas = this.canForwardRawStreamText() || input.streamRawDeltas === true;
+      // A verifier may replace a failed candidate through the bounded repair
+      // path. Do not leak the pre-verification candidate as raw deltas: once
+      // emitted, a failed answer cannot be retracted when the repair passes.
+      const repairMayReplaceCandidate =
+        this.loopOutcomeVerifier !== undefined && this.loopOutcomeRepairer !== undefined;
+      const forwardTextDeltas = !repairMayReplaceCandidate
+        && (this.canForwardRawStreamText() || input.streamRawDeltas === true);
       const streamLoopRequest: ModelRequest = {
         ...preparedRequest.request,
         maxOutputTokens: this.defaults?.maxOutputTokens,
@@ -602,6 +638,7 @@ export class AgentRuntime {
         pendingLoopControlReceipt,
         preparedRequest,
         promptBudget,
+        retryBudget,
         runSpan,
         selected,
         startedAtMs,
@@ -785,6 +822,7 @@ export class AgentRuntime {
     readonly pendingLoopControlReceipt: LoopControlReceipt;
     readonly preparedRequest: ReturnType<typeof prepareModelRequest>;
     readonly promptBudget: ReturnType<typeof measureSystemPromptBudget>;
+    readonly retryBudget: RetryBudget;
     readonly runSpan: SpanHandle;
     readonly selected: { readonly provider: ModelProvider; readonly model: string };
     readonly startedAtMs: number;
@@ -797,6 +835,7 @@ export class AgentRuntime {
       pendingLoopControlReceipt,
       preparedRequest,
       promptBudget,
+      retryBudget,
       runSpan,
       selected,
       startedAtMs,
@@ -814,13 +853,68 @@ export class AgentRuntime {
       this.tracer,
       responseFilterEvidenceFromExecution(execution)
     );
-    const guarded = await applyOutputGuardsFn(context, filtered, this.outputGuards, this.tracer, this.metrics);
-    const loopControlReceipt = await this.settleLoopOutcome(
+    let guarded = await applyOutputGuardsFn(context, filtered, this.outputGuards, this.tracer, this.metrics);
+    let loopControlReceipt = await this.settleLoopOutcome(
       context,
       execution,
       guarded,
       pendingLoopControlReceipt
     );
+    if (
+      loopControlReceipt.terminal.reason === "verification-failed" &&
+      loopControlReceipt.verification.status === "failed"
+    ) {
+      const failedEvidenceId = loopControlReceipt.verification.evidenceId;
+      const repair = await this.repairLoopOutcome(
+        context,
+        execution,
+        guarded,
+        failedEvidenceId,
+        retryBudget
+      );
+      if (repair.attempted) {
+        const refreshedPendingReceipt = this.createLoopControlReceipt(
+          context,
+          execution,
+          pendingLoopControlReceipt.loopKind,
+          retryBudget,
+          Date.parse(pendingLoopControlReceipt.startedAt),
+          Date.now()
+        );
+        loopControlReceipt = failedReceiptFromPending(refreshedPendingReceipt, failedEvidenceId);
+        if (repair.response) {
+          try {
+            const repairedFiltered = await applyResponseFiltersFn(
+              context,
+              repair.response,
+              this.responseFilters,
+              this.tracer,
+              responseFilterEvidenceFromExecution(execution)
+            );
+            const repairedGuarded = await applyOutputGuardsFn(
+              context,
+              repairedFiltered,
+              this.outputGuards,
+              this.tracer,
+              this.metrics
+            );
+            const repairedReceipt = await this.settleLoopOutcome(
+              context,
+              execution,
+              repairedGuarded,
+              refreshedPendingReceipt
+            );
+            if (repairedReceipt.terminal.reason === "goal-verified") {
+              guarded = repairedGuarded;
+              loopControlReceipt = repairedReceipt;
+            }
+          } catch {
+            // A repair is optional and never allowed to erase the first
+            // content-bound verifier failure or the already-guarded response.
+          }
+        }
+      }
+    }
 
     const completionFailed =
       loopControlReceipt.terminal.reason === "verification-failed" ||
@@ -1310,6 +1404,63 @@ export class AgentRuntime {
       // user's response: a broken verifier cannot manufacture PASS and does
       // not erase the already-produced answer. The receipt remains pending.
       return pendingReceipt;
+    }
+  }
+
+  private async repairLoopOutcome(
+    context: AgentRunContext,
+    execution: ModelLoopExecution,
+    response: ModelResponse,
+    failureEvidenceId: string,
+    retryBudget: RetryBudget
+  ): Promise<{ readonly attempted: boolean; readonly response?: ModelResponse }> {
+    if (
+      !this.loopOutcomeRepairer ||
+      execution.toolsUsed.length > 0 ||
+      execution.toolResults.length > 0
+    ) {
+      return { attempted: false };
+    }
+
+    let attempted = false;
+    try {
+      const reservation = retryBudget.reserve({
+        backoffMs: 0,
+        cause: new Error("loop outcome verification repair")
+      });
+      reservation.commit();
+      attempted = true;
+      const repairedOutput = await withTimeout(
+        (signal) => this.loopOutcomeRepairer!(Object.freeze({
+          failureEvidenceId,
+          model: response.model,
+          output: boundedLoopRepairText(response.output, 8_000),
+          runId: context.runId,
+          signal,
+          userMessages: Object.freeze(context.input.messages
+            .filter((message) => message.role === "user")
+            .slice(-4)
+            .map((message) => boundedLoopRepairText(message.content, 2_000)))
+        })),
+        this.loopOutcomeRepairerTimeoutMs
+      );
+      if (
+        typeof repairedOutput !== "string" ||
+        repairedOutput.trim().length === 0 ||
+        repairedOutput.length > 32_000
+      ) {
+        return { attempted: true };
+      }
+      return {
+        attempted: true,
+        response: {
+          ...response,
+          id: `${response.id}:verification-repair`,
+          output: repairedOutput
+        }
+      };
+    } catch {
+      return { attempted };
     }
   }
 

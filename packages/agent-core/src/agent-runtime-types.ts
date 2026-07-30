@@ -81,6 +81,14 @@ export interface AgentRuntimeOptions {
   /** Hard timeout for one outcome-verifier call. Default 5_000 ms. */
   readonly loopOutcomeVerifierTimeoutMs?: number;
   /**
+   * Optional text-only repair seam used once after an explicit verifier
+   * failure. It receives bounded user text and the failed candidate only;
+   * tools, tool arguments/results, and effect authority are never exposed.
+   */
+  readonly loopOutcomeRepairer?: LoopOutcomeRepairer;
+  /** Hard timeout for the one admitted outcome-repair call. Default 5_000 ms. */
+  readonly loopOutcomeRepairerTimeoutMs?: number;
+  /**
    * Fail-open, synchronous observation of a finalized non-cache loop receipt.
    * Exceptions are ignored and cannot change the run result or grant authority.
    */
@@ -340,6 +348,19 @@ export interface LoopOutcomeToolEvidence {
 export type LoopOutcomeVerifier = (
   input: LoopOutcomeVerificationInput
 ) => LoopOutcomeVerificationVerdict | Promise<LoopOutcomeVerificationVerdict>;
+
+export interface LoopOutcomeRepairInput {
+  readonly failureEvidenceId: string;
+  readonly model: string;
+  readonly output: string;
+  readonly runId: string;
+  readonly signal: AbortSignal;
+  readonly userMessages: readonly string[];
+}
+
+export type LoopOutcomeRepairer = (
+  input: LoopOutcomeRepairInput
+) => string | Promise<string>;
 
 export type ToolRiskLevel = "read" | "write" | "execute";
 
