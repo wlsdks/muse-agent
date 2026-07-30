@@ -228,7 +228,7 @@ describe("background model execution budget", () => {
     });
   });
 
-  it("does not pump queued background until all overlapping foreground calls settle", async () => {
+  it("records background as deferred with zero claims until all foreground calls settle", async () => {
     const foregroundOne = deferred<ModelResponse>();
     const foregroundTwo = deferred<ModelResponse>();
     const starts: string[] = [];
@@ -244,10 +244,22 @@ describe("background model execution budget", () => {
     const queued = views.background.generate(request("background"));
     await flush();
     expect(starts).toEqual(["fg-one", "fg-two"]);
+    expect(views.snapshot()).toMatchObject({
+      activeBackground: 0,
+      activeForeground: 2,
+      queuedBackground: 1,
+      started: 0
+    });
     foregroundOne.resolve(response("fg-one"));
     await one;
     await flush();
     expect(starts).toEqual(["fg-one", "fg-two"]);
+    expect(views.snapshot()).toMatchObject({
+      activeBackground: 0,
+      activeForeground: 1,
+      queuedBackground: 1,
+      started: 0
+    });
     foregroundTwo.resolve(response("fg-two"));
     await two;
     await queued;
