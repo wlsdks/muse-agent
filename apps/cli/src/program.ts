@@ -61,6 +61,7 @@ import { setCliTerminalState } from "./cli-terminal-state.js";
 class UnknownSubcommandAbort extends Error {}
 
 interface CliPromptAdapter {
+  confirm?(options: { readonly initialValue?: boolean; readonly message: string }): Promise<boolean>;
   text(options: { readonly message: string; readonly placeholder?: string }): Promise<string>;
   password(options: { readonly message: string }): Promise<string>;
 }

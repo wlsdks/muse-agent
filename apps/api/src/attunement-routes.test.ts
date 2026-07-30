@@ -5,6 +5,8 @@ import { join } from "node:path";
 import {
   AttunementStoreError,
   computeContinuityEvaluation,
+  createExperienceLearningApprovalReceipt,
+  createExperienceReplayEvidenceReceipt,
   createLocalArtifactValidator,
   createLocalExactArtifactResolver,
   createPersonalThread,
@@ -14,6 +16,8 @@ import {
   prepareContinuityReview,
   readAttunementState,
   setWorkContinuityThread,
+  type ExperienceLearningProposalPreview,
+  type ExperienceLearningReplayBundle,
   type OpenPreparedContinuityPack
 } from "@muse/attunement";
 import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
@@ -643,7 +647,6 @@ describe("POST /api/attunement/deliveries/:deliveryId/learning-preview", () => {
 
 describe("POST /api/attunement/deliveries/:deliveryId/learning-replay-preview", () => {
   it("returns a frozen replay preview without mutating policy or delivery state", async () => {
-    const { createExperienceReplayEvidenceReceipt } = await import("@muse/attunement");
     const app = server();
     const opened = await app.inject({
       method: "POST",
@@ -733,6 +736,112 @@ describe("POST /api/attunement/deliveries/:deliveryId/learning-replay-preview", 
       status: "held"
     });
     expect(await readFile(attunementFile)).toEqual(before);
+    await app.close();
+  });
+});
+
+describe("POST /api/attunement/deliveries/:deliveryId/learning-apply", () => {
+  it("applies only the exact owner-reviewed preview and replay once", async () => {
+    let currentNow = Date.parse("2026-07-17T00:00:00.000Z");
+    const app = server({ now: () => currentNow });
+    const opened = await app.inject({
+      method: "POST",
+      url: `/api/attunement/threads/${threadId}/continue`
+    });
+    const deliveryId = opened.json().delivery.id as string;
+    expect((await app.inject({
+      method: "POST",
+      payload: { outcome: "adjusted" },
+      url: `/api/attunement/deliveries/${deliveryId}/outcome`
+    })).statusCode).toBe(200);
+    const common = {
+      evaluator: { id: "continuity-terminal-grader", version: "1.0.0" },
+      inputHash: "f".repeat(64),
+      observedAt: "2026-07-17T00:01:30.000Z"
+    };
+    const evidenceCases = Array.from({ length: 10 }, (_, index) => {
+      const caseId = `apply-case-${index}`;
+      return {
+        baseline: createExperienceReplayEvidenceReceipt({
+          ...common,
+          caseId,
+          passed: index !== 0,
+          variant: "baseline"
+        })!,
+        caseId,
+        challenger: createExperienceReplayEvidenceReceipt({
+          ...common,
+          caseId,
+          passed: true,
+          variant: "challenger"
+        })!
+      };
+    });
+    const draft = {
+      expectedBenefit: "Use a more compact review.",
+      expiresAt: "2026-07-20T00:00:00.000Z",
+      experienceId: "experience-api-apply-1",
+      proposedAt: "2026-07-17T00:01:00.000Z",
+      proposedBehavior: "Use compact contextual presentation.",
+      proposedChange: {
+        detail: "compact",
+        kind: "thread-display",
+        nextStep: "contextual"
+      },
+      scope: {
+        kind: "thread-display",
+        threadId
+      }
+    };
+    const replayPreview = await app.inject({
+      method: "POST",
+      payload: { draft, evidenceCases },
+      url: `/api/attunement/deliveries/${deliveryId}/learning-replay-preview`
+    });
+    expect(replayPreview.statusCode).toBe(200);
+    const previewBody = replayPreview.json() as {
+      preview: ExperienceLearningProposalPreview;
+      replayBundle: ExperienceLearningReplayBundle;
+    };
+    const approval = createExperienceLearningApprovalReceipt(
+      previewBody.preview,
+      previewBody.replayBundle,
+      "2026-07-17T00:02:00.000Z"
+    )!;
+    currentNow = Date.parse("2026-07-17T00:03:00.000Z");
+
+    const response = await app.inject({
+      method: "POST",
+      payload: { approval, draft, evidenceCases },
+      url: `/api/attunement/deliveries/${deliveryId}/learning-apply`
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      approval: { approvalId: approval.approvalId },
+      promotion: {
+        authority: "owner-explicit",
+        policyAfter: {
+          detail: "compact",
+          nextStep: "contextual"
+        },
+        promotionApplied: true,
+        schemaVersion: 2
+      }
+    });
+    const applied = await readAttunementState(attunementFile);
+    expect(applied.experienceLearningPolicyAudits).toHaveLength(1);
+    expect(applied.threads.find((thread) => thread.id === threadId)?.policy)
+      .toMatchObject({ detail: "compact", nextStep: "contextual" });
+
+    const repeated = await app.inject({
+      method: "POST",
+      payload: { approval, draft, evidenceCases },
+      url: `/api/attunement/deliveries/${deliveryId}/learning-apply`
+    });
+    expect(repeated.statusCode).toBe(422);
+    expect((await readAttunementState(attunementFile)).experienceLearningPolicyAudits)
+      .toHaveLength(1);
     await app.close();
   });
 });

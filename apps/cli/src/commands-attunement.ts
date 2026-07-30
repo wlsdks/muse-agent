@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 
 import { errorMessage } from "@muse/shared";
 /**
@@ -7,11 +7,13 @@ import { errorMessage } from "@muse/shared";
  * asks a model to infer affiliation, timing, permission, or an external action.
  */
 
-import { isCancel, select } from "@clack/prompts";
+import { confirm, isCancel, select } from "@clack/prompts";
 import {
   AttunementStoreError,
   CONTINUITY_KILL_CRITERION_FIRST_PACKS,
   buildContinuityInteractionReport,
+  buildExperienceLearningProposalPreview,
+  buildExperienceLearningReplayBundle,
   calendarProviderId,
   computeContinuityEvaluation,
   createCalendarArtifactValidator,
@@ -20,6 +22,7 @@ import {
   createBrowsingVisitExactArtifactResolver,
   createContactArtifactValidator,
   createContactExactArtifactResolver,
+  createExperienceLearningApprovalReceipt,
   createConversationArtifactValidator,
   createConversationExactArtifactResolver,
   createCheckpointArtifactValidator,
@@ -33,12 +36,15 @@ import {
   createWorkArtifactValidator,
   createWorkExactArtifactResolver,
   deletePersonalThreadContinuitySafe,
+  fingerprintContinuityPolicy,
   inspectThread,
   linkArtifact,
   linkWorkContinuity,
   mcpProviderId,
   prepareContinuityPack,
   prepareContinuityReview,
+  promoteExperienceLearningContinuityPolicy,
+  proposeExperienceLearningFromDelivery,
   readAttunementState,
   resetThreadPolicy,
   undoThreadReset,
@@ -54,6 +60,7 @@ import {
   type ContinuityLongitudinalKindCoverage,
   type ContinuityReview,
   type ContinuityReviewItem,
+  type ExperienceLearningProposalDraft,
   type ContinuityOutcome,
   type ContinuityPack,
   type ExactArtifactResolver,
@@ -73,6 +80,7 @@ import {
   validateMcpResource,
   type McpToolCaller
 } from "./attunement-mcp-resource.js";
+import { isNoInput } from "./cli-context.js";
 import type { ProgramIO } from "./program.js";
 
 const THREAD_KINDS = ["life", "work"] as const;
@@ -788,6 +796,128 @@ Examples:
           { now: () => new Date(now()) }
         );
         io.stdout(`${recorded.applied ? "Recorded" : "Already recorded"} ${canonicalOutcome} for ${deliveryId}; policy v${recorded.policy.version.toString()}\n`);
+      });
+    });
+
+  thread
+    .command("learning-review <delivery-id>")
+    .description("Preview a governed learning proposal; --apply still requires an explicit default-no confirmation")
+    .requiredOption("--draft-file <path>", "JSON file containing the bounded learning draft")
+    .requiredOption("--evidence-file <path>", "JSON file containing strict frozen replay evidence cases")
+    .option("--apply", "Ask for explicit confirmation and apply the reviewed Continuity policy")
+    .option("--json", "Print the exact preview and replay bundle")
+    .action(async (
+      deliveryId: string,
+      options: {
+        readonly apply?: boolean;
+        readonly draftFile: string;
+        readonly evidenceFile: string;
+        readonly json?: boolean;
+      },
+      command: Command
+    ) => {
+      await commandAction(command, io, "thread learning-review", async () => {
+        const [draftRaw, evidenceRaw, state] = await Promise.all([
+          readFile(options.draftFile, "utf8"),
+          readFile(options.evidenceFile, "utf8"),
+          readAttunementState(attunementFile())
+        ]);
+        const delivery = state.deliveries.find((entry) => entry.id === deliveryId.trim());
+        if (!delivery) throw new AttunementStoreError(`no continuity delivery with id '${deliveryId}'`);
+        const ownerThread = state.threads.find((entry) => entry.id === delivery.threadId);
+        if (!ownerThread) throw new AttunementStoreError("learning delivery references a missing thread");
+        const draft = JSON.parse(draftRaw) as ExperienceLearningProposalDraft;
+        const evidenceCases = JSON.parse(evidenceRaw) as unknown;
+        const proposal = proposeExperienceLearningFromDelivery({
+          activeBehaviorDigest: fingerprintContinuityPolicy(ownerThread.policy),
+          delivery,
+          draft
+        });
+        if (proposal.status === "held") {
+          throw new AttunementStoreError(`learning proposal held: ${proposal.reason}`);
+        }
+        const preview = buildExperienceLearningProposalPreview(proposal.candidate);
+        const replayBundle = buildExperienceLearningReplayBundle(proposal.candidate, evidenceCases);
+        if (!preview || !replayBundle) {
+          throw new AttunementStoreError("learning review evidence is invalid");
+        }
+        if (options.json) {
+          io.stdout(`${JSON.stringify({ preview, replayBundle }, null, 2)}\n`);
+          return;
+        } else {
+          io.stdout([
+            `Learning preview ${preview.previewId}`,
+            `  behavior: ${preview.proposedBehavior}`,
+            `  change: ${JSON.stringify(preview.proposedChange)}`,
+            `  replay: ${replayBundle.replay.aggregate.challengerPassed.toString()}/${replayBundle.replay.aggregate.total.toString()} challenger passed; ${replayBundle.replay.aggregate.regressions.toString()} regressions`,
+            `  recommendation: ${replayBundle.replay.recommendation}`,
+            "  authority: no policy change has occurred"
+          ].join("\n") + "\n");
+        }
+        if (!options.apply) return;
+        if (isNoInput()) {
+          io.stdout("Learning policy unchanged (--no-input disables approval prompts).\n");
+          return;
+        }
+        const answer = io.prompts?.confirm
+          ? await io.prompts.confirm({
+              initialValue: false,
+              message: "Apply this exact reviewed Continuity policy change?"
+            })
+          : await confirm({
+              initialValue: false,
+              message: "Apply this exact reviewed Continuity policy change?"
+            });
+        if (isCancel(answer) || answer !== true) {
+          io.stdout("Learning policy unchanged.\n");
+          return;
+        }
+        const approvedAt = new Date(now()).toISOString();
+        const approval = createExperienceLearningApprovalReceipt(
+          preview,
+          replayBundle,
+          approvedAt
+        );
+        if (!approval) throw new AttunementStoreError("learning approval window is invalid");
+        const promotion = await promoteExperienceLearningContinuityPolicy(
+          attunementFile(),
+          {
+            approval: {
+              approvedAt: approval.approvedAt,
+              authority: approval.authority,
+              candidateId: approval.candidateId,
+              replayInputHash: approval.replayInputHash
+            },
+            appliedAt: approvedAt,
+            candidate: proposal.candidate,
+            currentPolicy: ownerThread.policy,
+            nextPolicyVersion: state.nextPolicyVersion,
+            replay: replayBundle.replay,
+            replayCases: replayBundle.cases.map((entry) => ({
+              baseline: {
+                evidenceHash: entry.baseline.evidenceHash,
+                passed: entry.baseline.passed
+              },
+              caseId: entry.caseId,
+              challenger: {
+                evidenceHash: entry.challenger.evidenceHash,
+                passed: entry.challenger.passed
+              }
+            }))
+          },
+          createQualificationLearningWriteGate(process.env)
+        );
+        const policyAuditId = (await readAttunementState(attunementFile()))
+          .experienceLearningPolicyAudits
+          ?.find((audit) =>
+            audit.kind === "promotion"
+            && audit.candidateId === promotion.candidateId
+            && audit.policyAfter.version === promotion.policyAfter.version
+          )?.id;
+        if (!policyAuditId) {
+          throw new AttunementStoreError("learning promotion applied without a readable policy audit");
+        }
+        io.stdout(`Learning application receipt:\n${JSON.stringify({ approval, policyAuditId, promotion }, null, 2)}\n`);
       });
     });
 

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlin
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { computeContinuityEvaluation, createLocalExactArtifactResolver, prepareContinuityReview, readAttunementState } from "@muse/attunement";
+import { computeContinuityEvaluation, createExperienceReplayEvidenceReceipt, createLocalExactArtifactResolver, prepareContinuityReview, readAttunementState } from "@muse/attunement";
 import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
 import { writeBrowsingStore } from "@muse/recall";
 import { FileCheckpointStore } from "@muse/runtime-state";
@@ -41,7 +41,12 @@ function fixture(): Fixture {
   };
 }
 
-async function run(fixture: Fixture, args: string[], deps?: AttunementCommandDeps): Promise<{ readonly exitCode: number | undefined; readonly stderr: string; readonly stdout: string }> {
+async function run(
+  fixture: Fixture,
+  args: string[],
+  deps?: AttunementCommandDeps,
+  confirmAnswer?: boolean
+): Promise<{ readonly exitCode: number | undefined; readonly stderr: string; readonly stdout: string }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
   const previous = {
@@ -72,7 +77,20 @@ async function run(fixture: Fixture, args: string[], deps?: AttunementCommandDep
   try {
     const program = new Command();
     program.exitOverride();
-    registerAttunementCommands(program, { stderr: (line: string) => stderr.push(line), stdout: (line: string) => stdout.push(line), workspaceDir: fixture.root }, deps ?? {});
+    registerAttunementCommands(program, {
+      stderr: (line: string) => stderr.push(line),
+      stdout: (line: string) => stdout.push(line),
+      workspaceDir: fixture.root,
+      ...(confirmAnswer === undefined
+        ? {}
+        : {
+            prompts: {
+              confirm: async () => confirmAnswer,
+              password: async () => "",
+              text: async () => ""
+            }
+          })
+    }, deps ?? {});
     await program.parseAsync(["node", "muse", ...args]);
   } catch (cause) {
     exitCode = (cause as { exitCode?: number }).exitCode ?? 1;
@@ -832,5 +850,131 @@ describe("muse thread review — real first-20 feedback queue", () => {
 
     const stats = JSON.parse((await run(f, ["thread", "stats", "--json"])).stdout) as { withOutcome: number };
     expect(stats.withOutcome).toBe(1);
+  });
+
+  it("previews learning by default and applies only after an explicit default-no confirmation", async () => {
+    const f = fixture();
+    const timestamp = Date.parse("2026-07-17T00:03:00.000Z");
+    const deps = { now: () => timestamp };
+    const started = await run(f, ["thread", "start", "Learning review", "--kind", "work"], deps);
+    const id = threadId(started.stdout);
+    await writeTasks(f.taskFile, [TASK]);
+    expect((await run(
+      f,
+      ["thread", "link", id, "task", TASK.id, "--role", "next-step"],
+      deps
+    )).exitCode).toBeUndefined();
+    const continued = await run(f, ["thread", "continue", id], deps);
+    const deliveryId = continued.stdout.match(/delivery_[A-Za-z0-9_-]+/u)?.[0];
+    expect(deliveryId).toBeTruthy();
+    expect((await run(f, ["thread", "outcome", deliveryId!, "adjusted"], deps)).exitCode)
+      .toBeUndefined();
+    const draftFile = join(f.root, "learning-draft.json");
+    const evidenceFile = join(f.root, "learning-evidence.json");
+    writeFileSync(draftFile, JSON.stringify({
+      expectedBenefit: "Use a compact review.",
+      expiresAt: "2026-07-20T00:00:00.000Z",
+      experienceId: "experience-cli-1",
+      proposedAt: "2026-07-17T00:03:00.000Z",
+      proposedBehavior: "Use compact contextual presentation.",
+      proposedChange: {
+        detail: "compact",
+        kind: "thread-display",
+        nextStep: "contextual"
+      },
+      scope: { kind: "thread-display", threadId: id }
+    }));
+    const common = {
+      evaluator: { id: "continuity-terminal-grader", version: "1.0.0" },
+      inputHash: "f".repeat(64),
+      observedAt: "2026-07-17T00:03:00.000Z"
+    };
+    writeFileSync(evidenceFile, JSON.stringify(Array.from({ length: 10 }, (_, index) => {
+      const caseId = `cli-case-${index}`;
+      return {
+        baseline: createExperienceReplayEvidenceReceipt({
+          ...common,
+          caseId,
+          passed: index !== 0,
+          variant: "baseline"
+        }),
+        caseId,
+        challenger: createExperienceReplayEvidenceReceipt({
+          ...common,
+          caseId,
+          passed: true,
+          variant: "challenger"
+        })
+      };
+    })));
+
+    const preview = await run(f, [
+      "thread",
+      "learning-review",
+      deliveryId!,
+      "--draft-file",
+      draftFile,
+      "--evidence-file",
+      evidenceFile
+    ], deps);
+    expect(preview.stdout).toContain("authority: no policy change has occurred");
+    expect((await readAttunementState(f.attunementFile)).experienceLearningPolicyAudits)
+      .toHaveLength(0);
+
+    const jsonApply = await run(f, [
+      "thread",
+      "learning-review",
+      deliveryId!,
+      "--draft-file",
+      draftFile,
+      "--evidence-file",
+      evidenceFile,
+      "--json",
+      "--apply"
+    ], deps, true);
+    expect(JSON.parse(jsonApply.stdout)).toMatchObject({
+      preview: { candidateId: expect.any(String) },
+      replayBundle: { status: "frozen" }
+    });
+    expect((await readAttunementState(f.attunementFile)).experienceLearningPolicyAudits)
+      .toHaveLength(0);
+
+    const declined = await run(f, [
+      "thread",
+      "learning-review",
+      deliveryId!,
+      "--draft-file",
+      draftFile,
+      "--evidence-file",
+      evidenceFile,
+      "--apply"
+    ], deps, false);
+    expect(declined.stdout).toContain("Learning policy unchanged.");
+    expect((await readAttunementState(f.attunementFile)).experienceLearningPolicyAudits)
+      .toHaveLength(0);
+
+    const applied = await run(f, [
+      "thread",
+      "learning-review",
+      deliveryId!,
+      "--draft-file",
+      draftFile,
+      "--evidence-file",
+      evidenceFile,
+      "--apply"
+    ], deps, true);
+    const receiptJson = applied.stdout.split("Learning application receipt:\n")[1];
+    expect(receiptJson).toBeTruthy();
+    expect(JSON.parse(receiptJson!)).toMatchObject({
+      policyAuditId: expect.stringMatching(/^learning_policy_audit_/u),
+      promotion: {
+        promotionApplied: true,
+        promotionId: expect.stringMatching(/^learning_promotion_/u)
+      }
+    });
+    const state = await readAttunementState(f.attunementFile);
+    expect(state.experienceLearningPolicyAudits).toHaveLength(1);
+    expect(state.threads.find((thread) => thread.id === id)?.policy)
+      .toMatchObject({ detail: "compact", nextStep: "contextual" });
   });
 });

@@ -139,6 +139,13 @@ export {
   promoteExperienceLearningContinuityPolicy,
   rollbackExperienceLearningContinuityPolicy
 } from "./experience-learning-policy-store.js";
+export {
+  createExperienceLearningApprovalReceipt,
+  verifyExperienceLearningApprovalReceipt
+} from "./experience-learning-approval.js";
+export type {
+  ExperienceLearningApprovalReceipt
+} from "./experience-learning-approval.js";
 export type {
   ExperienceLearningPolicyCompareAndSwap,
   ExperienceLearningPolicyTransition,

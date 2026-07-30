@@ -1,6 +1,6 @@
 import { realpath } from "node:fs/promises";
 
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, buildExperienceLearningProposalPreview, buildExperienceLearningReplayBundle, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TEMPLATE, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, proposeExperienceLearningFromDelivery, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, type ArtifactLinkValidator, type ExactArtifactResolver } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, buildExperienceLearningProposalPreview, buildExperienceLearningReplayBundle, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, ExperienceLearningPromotionError, fingerprintContinuityPolicy, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TEMPLATE, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, promoteExperienceLearningContinuityPolicy, proposeExperienceLearningFromDelivery, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, verifyExperienceLearningApprovalReceipt, type ArtifactLinkValidator, type ExactArtifactResolver } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
 import type { ContinuityOutcome, ExperienceLearningProposalDraft, ObserveConsentGrant, OpenPreparedContinuityPack } from "@muse/attunement";
 import { createQualificationLearningWriteGate } from "@muse/autoconfigure";
@@ -484,6 +484,9 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
       return reply.code(404).send({ errorMessage: "continuity delivery not found" });
     }
     const proposal = proposeExperienceLearningFromDelivery({
+      activeBehaviorDigest: fingerprintContinuityPolicy(
+        state.threads.find((thread) => thread.id === delivery.threadId)!.policy
+      ),
       delivery,
       draft: request.body as ExperienceLearningProposalDraft
     });
@@ -516,6 +519,9 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
       });
     }
     const proposal = proposeExperienceLearningFromDelivery({
+      activeBehaviorDigest: fingerprintContinuityPolicy(
+        state.threads.find((thread) => thread.id === delivery.threadId)!.policy
+      ),
       delivery,
       draft: request.body.draft as ExperienceLearningProposalDraft
     });
@@ -534,6 +540,85 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
       });
     }
     return { preview, replayBundle };
+  });
+
+  server.post<{ Params: { readonly deliveryId: string }; Body: unknown }>("/api/attunement/deliveries/:deliveryId/learning-apply", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    if (!isExactLearningApplyBody(request.body)) {
+      return reply.code(422).send({ reason: "invalid-learning-apply", status: "held" });
+    }
+    const state = await readAttunementState(gate.attunementFile);
+    const delivery = state.deliveries.find((entry) =>
+      entry.id === request.params.deliveryId
+    );
+    if (!delivery) {
+      return reply.code(404).send({ errorMessage: "continuity delivery not found" });
+    }
+    const thread = state.threads.find((entry) => entry.id === delivery.threadId);
+    if (!thread) {
+      return reply.code(409).send({ reason: "stale-active-policy", status: "held" });
+    }
+    const proposal = proposeExperienceLearningFromDelivery({
+      activeBehaviorDigest: fingerprintContinuityPolicy(thread.policy),
+      delivery,
+      draft: request.body.draft as ExperienceLearningProposalDraft
+    });
+    if (proposal.status === "held") return reply.code(422).send(proposal);
+    const preview = buildExperienceLearningProposalPreview(proposal.candidate);
+    const replayBundle = buildExperienceLearningReplayBundle(
+      proposal.candidate,
+      request.body.evidenceCases
+    );
+    const appliedAt = new Date(gate.now?.() ?? Date.now()).toISOString();
+    if (!preview || !replayBundle) {
+      return reply.code(422).send({ reason: "invalid-learning-apply", status: "held" });
+    }
+    const approval = verifyExperienceLearningApprovalReceipt(
+      request.body.approval,
+      preview,
+      replayBundle,
+      appliedAt
+    );
+    if (!approval) {
+      return reply.code(422).send({ reason: "invalid-approval", status: "held" });
+    }
+    try {
+      const promotion = await promoteExperienceLearningContinuityPolicy(
+        gate.attunementFile,
+        {
+          approval: {
+            approvedAt: approval.approvedAt,
+            authority: approval.authority,
+            candidateId: approval.candidateId,
+            replayInputHash: approval.replayInputHash
+          },
+          appliedAt,
+          candidate: proposal.candidate,
+          currentPolicy: thread.policy,
+          nextPolicyVersion: state.nextPolicyVersion,
+          replay: replayBundle.replay,
+          replayCases: replayBundle.cases.map((entry) => ({
+            baseline: {
+              evidenceHash: entry.baseline.evidenceHash,
+              passed: entry.baseline.passed
+            },
+            caseId: entry.caseId,
+            challenger: {
+              evidenceHash: entry.challenger.evidenceHash,
+              passed: entry.challenger.passed
+            }
+          }))
+        },
+        createQualificationLearningWriteGate(gate.env ?? process.env)
+      );
+      return { approval, promotion };
+    } catch (cause) {
+      if (cause instanceof ExperienceLearningPromotionError) {
+        const status = cause.code === "stale-active-policy" ? 409 : 422;
+        return reply.code(status).send({ reason: cause.code, status: "held" });
+      }
+      throw cause;
+    }
   });
 
   server.get<{ Params: { readonly runId: string } }>("/api/attunement/runs/:runId", async (request, reply) => {
@@ -555,6 +640,30 @@ function isExactReplayPreviewBody(
   return keys.length === 2
     && keys.every((key) => key === "draft" || key === "evidenceCases")
     && ["draft", "evidenceCases"].every((field) => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, field);
+      return descriptor !== undefined
+        && Object.hasOwn(descriptor, "value")
+        && descriptor.get === undefined
+        && descriptor.set === undefined
+        && descriptor.enumerable === true;
+    });
+}
+
+function isExactLearningApplyBody(
+  value: unknown
+): value is {
+  readonly approval: unknown;
+  readonly draft: unknown;
+  readonly evidenceCases: unknown;
+} {
+  if (typeof value !== "object" || value === null || Object.getPrototypeOf(value) !== Object.prototype) {
+    return false;
+  }
+  const fields = ["approval", "draft", "evidenceCases"];
+  const keys = Reflect.ownKeys(value);
+  return keys.length === fields.length
+    && keys.every((key) => typeof key === "string" && fields.includes(key))
+    && fields.every((field) => {
       const descriptor = Object.getOwnPropertyDescriptor(value, field);
       return descriptor !== undefined
         && Object.hasOwn(descriptor, "value")

@@ -58,7 +58,7 @@ function createStoreCompareAndSwap(file: string): ExperienceLearningPolicyCompar
       const nextState: AttunementState = {
         ...state,
         experienceLearningPolicyAudits: [
-          ...state.experienceLearningPolicyAudits,
+          ...(state.experienceLearningPolicyAudits ?? []),
           transition.audit
         ],
         nextPolicyVersion: state.nextPolicyVersion + 1,

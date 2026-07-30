@@ -270,6 +270,7 @@ function assertUnique(values: readonly string[], label: string): void {
 }
 
 function validateStateRelations(state: AttunementState): void {
+  const experienceLearningPolicyAudits = state.experienceLearningPolicyAudits ?? [];
   assertUnique(state.threads.map((thread) => thread.id), "thread ids");
   assertUnique(state.deliveries.map((delivery) => delivery.id), "delivery ids");
   assertUnique(
@@ -289,7 +290,7 @@ function validateStateRelations(state: AttunementState): void {
     "interaction delivery ids"
   );
   assertUnique(
-    state.experienceLearningPolicyAudits.map((audit) => audit.id),
+    experienceLearningPolicyAudits.map((audit) => audit.id),
     "experience learning policy audit ids"
   );
   assertUnique(state.resetReceipts.map((receipt) => receipt.id), "reset receipt ids");
@@ -425,11 +426,11 @@ function validateStateRelations(state: AttunementState): void {
   }
 
   const promotions = new Map(
-    state.experienceLearningPolicyAudits
+    experienceLearningPolicyAudits
       .filter((audit) => audit.kind === "promotion")
       .map((audit) => [audit.id, audit])
   );
-  for (const audit of state.experienceLearningPolicyAudits) {
+  for (const audit of experienceLearningPolicyAudits) {
     if (!threads.has(audit.threadId)) {
       invalid(`experience learning audit '${audit.id}' references a missing thread`);
     }

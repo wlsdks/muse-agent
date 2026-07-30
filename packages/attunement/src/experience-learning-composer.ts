@@ -42,6 +42,7 @@ export type ExperienceLearningProposalResult =
  * callback and therefore cannot activate behavior.
  */
 export function proposeExperienceLearningFromDelivery(input: Readonly<{
+  readonly activeBehaviorDigest?: string;
   readonly delivery: ContinuityDelivery;
   readonly draft: ExperienceLearningProposalDraft;
 }>): ExperienceLearningProposalResult {
@@ -53,6 +54,7 @@ export function proposeExperienceLearningFromDelivery(input: Readonly<{
 }
 
 function composeExperienceLearningProposal(input: Readonly<{
+  readonly activeBehaviorDigest?: string;
   readonly delivery: ContinuityDelivery;
   readonly draft: ExperienceLearningProposalDraft;
 }>): ExperienceLearningProposalResult {
@@ -62,7 +64,7 @@ function composeExperienceLearningProposal(input: Readonly<{
     return held("scope-mismatch");
   }
   const candidate = proposeExperienceLearningCandidate({
-    activeBehaviorDigest: source.sourceRun.behaviorDigest,
+    activeBehaviorDigest: input.activeBehaviorDigest ?? source.sourceRun.behaviorDigest,
     expectedBenefit: input.draft.expectedBenefit,
     expiresAt: input.draft.expiresAt,
     experienceId: input.draft.experienceId,
