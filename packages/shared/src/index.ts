@@ -72,6 +72,21 @@ export {
   type TriggerAdmissionReason
 } from "./trigger-admission.js";
 export {
+  TRIGGER_ADMISSION_JOURNAL_SCHEMA_VERSION,
+  admitTriggerToJournal,
+  createTriggerAdmissionJournal,
+  parseTriggerAdmissionJournal,
+  serializeTriggerAdmissionJournal,
+  settleTriggerAdmission,
+  type CreateTriggerAdmissionJournalInput,
+  type JournalTriggerAdmissionInput,
+  type JournalTriggerAdmissionResult,
+  type SettleTriggerAdmissionInput,
+  type TriggerAdmissionJournal,
+  type TriggerAdmissionJournalEntry,
+  type TriggerAdmissionJournalState
+} from "./trigger-admission-journal.js";
+export {
   runCommandWithTimeout,
   type RunCommandOptions,
   type RunCommandResult
