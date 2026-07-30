@@ -74,15 +74,17 @@ transactional portable encoder against the normative `.magx` v1 contract in
 [`PORTABLE-FORMAT.md`](PORTABLE-FORMAT.md), with a checked-in golden corpus and a streaming
 non-retention qualification.
 
-The current implementation includes validated temporal/provenance assertions over an
-immutable logical journal; bounded traversal and Activation Subgraph compilation; the neutral
-`open → project → execute → close` lifecycle; an in-memory semantic oracle plus a backend
-conformance harness; a worker-isolated SQLite adapter with an append-only projection journal,
-exact per-scope heads, compare-and-swap writes and restart recovery; a checked runtime
-boundary separating protocol, physical profile, execution and worker dispatch; and a
-transactional portable encoder against the normative `.magx` v1 contract in
-[`PORTABLE-FORMAT.md`](PORTABLE-FORMAT.md), with a checked-in golden corpus and a streaming
-non-retention qualification.
+The portable path also includes a package-private streaming decoder, an exact
+raw-UTF-8-keyed SQLite indexed-validation sink, and an owner-private POSIX Admin staging
+lifecycle. The staging boundary pins directory/file device and inode identities, observes
+native close outcome monotonically, deletes only capability-recorded files, and requires
+parent-directory fsync before `cleanup-complete`.
+
+These surfaces remain validated-but-unpublished infrastructure. They do not ship a public
+decoder, serving or separate Admin Worker command, destination generation activation, or
+public `./admin` API. Unknown close outcomes and unexpected artifacts remain toxic; native
+directory-FD/`openat` same-UID race closure, non-POSIX profiles, crash-residue discovery,
+and production-scale proof remain unverified.
 
 Still roadmap:
 

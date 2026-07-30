@@ -101,6 +101,15 @@ export interface MagPortableIndexedValidationFaultForInternalUse {
   readonly beforeOperation?: (operation: SqliteOperation) => void;
 }
 
+export type MagPortableIndexedTerminalCloseOutcomeForInternalUse =
+  | "closed"
+  | "unknown";
+
+export interface MagPortableIndexedValidationCreationForInternalUse {
+  readonly sink: MagPortableDecoderValidationSink;
+  terminalCloseOutcome(): MagPortableIndexedTerminalCloseOutcomeForInternalUse;
+}
+
 interface Statements {
   readonly current: StatementSync;
   readonly insertScope: StatementSync;
@@ -349,7 +358,7 @@ function createIndexedSink(
   candidate: unknown,
   qualificationFaultInput: unknown,
   qualificationMode: boolean
-): MagPortableDecoderValidationSink {
+): MagPortableIndexedValidationCreationForInternalUse {
   if (
     candidate === null
     || typeof candidate !== "object"
@@ -386,6 +395,9 @@ function createIndexedSink(
   let committed = false;
   let rollbackAttempted = false;
   let closeAttempted = false;
+  let closeOutcome:
+    | "unobserved"
+    | MagPortableIndexedTerminalCloseOutcomeForInternalUse = "unobserved";
   let statements: Statements | undefined;
   let currentIdentity: DetachedIdentity | undefined;
   let initialized = false;
@@ -497,14 +509,21 @@ function createIndexedSink(
   const close = (): void => {
     if (closeAttempted) return;
     closeAttempted = true;
-    maybeFault("close", true);
+    try {
+      maybeFault("close", true);
+    } catch (cause) {
+      closeOutcome = "unknown";
+      throw cause;
+    }
     try {
       // StatementSync has no finalize API; DatabaseSync.close finalizes its
       // fixed prepared statements as part of the transferred handle close.
       reflectApply(databaseClose, database, []);
     } catch {
+      closeOutcome = "unknown";
       throw sinkError("STORE_FAILURE", "indexed validation database close failed");
     }
+    closeOutcome = "closed";
   };
 
   const cleanup = (): void => {
@@ -893,19 +912,49 @@ function createIndexedSink(
       cleanup();
     }
   };
-  return objectFreeze(sink);
+  return objectFreeze({
+    sink: objectFreeze(sink),
+    terminalCloseOutcome() {
+      if (closeOutcome === "unobserved") {
+        throw sinkError(
+          "INVALID_STATE",
+          "indexed validation terminal close is not observable"
+        );
+      }
+      return closeOutcome;
+    }
+  });
 }
 
 export function createMagPortableIndexedValidationSink(
   database: DatabaseSync
 ): MagPortableDecoderValidationSink {
-  return createIndexedSink(database, undefined, false);
+  return createIndexedSink(database, undefined, false).sink;
 }
 
 export function createMagPortableIndexedValidationSinkForQualification(
   database: DatabaseSync,
   fault: MagPortableIndexedValidationFaultForInternalUse
 ): MagPortableDecoderValidationSink {
+  if (process.env.NODE_ENV !== "test") {
+    throw sinkError(
+      "INVALID_INPUT",
+      "indexed validation qualification faults require the test runtime"
+    );
+  }
+  return createIndexedSink(database, fault, true).sink;
+}
+
+export function createMagPortableIndexedValidationSinkWithTerminalCloseOutcomeForInternalUse(
+  database: DatabaseSync
+): MagPortableIndexedValidationCreationForInternalUse {
+  return createIndexedSink(database, undefined, false);
+}
+
+export function createMagPortableIndexedValidationSinkWithTerminalCloseOutcomeForQualification(
+  database: DatabaseSync,
+  fault: MagPortableIndexedValidationFaultForInternalUse
+): MagPortableIndexedValidationCreationForInternalUse {
   if (process.env.NODE_ENV !== "test") {
     throw sinkError(
       "INVALID_INPUT",

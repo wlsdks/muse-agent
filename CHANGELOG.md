@@ -8,6 +8,21 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a4d package-private POSIX Admin
+  staging lifecycle. It creates an owner-private, exclusive, no-follow SQLite
+  target, pins directory/file device and inode identities across the path-open
+  boundary, transfers the handle to the indexed validation sink, and returns
+  immutable capability-bound receipts for validated, pending-cleanup, or toxic
+  residue states. Cleanup is limited to exact recorded SQLite files and reaches
+  `cleanup-complete` only after absence checks and parent-directory fsync.
+  Independent evaluation found and repaired an open-handle false cleanup success,
+  incomplete toxic-residue receipts, and an overcorrection that made normal aborts
+  permanently uncleanable; a package-private monotonic `closed | unknown` close
+  outcome now preserves both fail-closed safety and normal cleanup. Public Admin
+  APIs, a serving or separate Admin Worker runtime/command, destination
+  publication, crash-residue discovery, native `openat` same-UID race closure,
+  non-POSIX profiles, and production-scale qualification remain later work.
+
 - Added the independently verified AWG-070a3a1a4c package-private SQLite indexed
   `.magx` validation sink. It transfers ownership of a caller-opened empty
   `DatabaseSync`, stages one exact raw-UTF-8-BLOB-keyed final identity per scope,

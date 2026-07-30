@@ -3,7 +3,8 @@
 Status: **encoder core, golden integration, streaming/order qualification,
 shared-path reduced-budget qualification, package-private decoder implementation, and
 structural decoder non-retention qualification, and SQLite indexed validation substrate
-verified-current**. This document fixes the portable wire contract.
+and POSIX Admin staging lifecycle verified-current**. This document fixes the portable
+wire contract.
 AWG-070a3a1a2 implements its independently verified
 package-private transactional encoder core and mandatory exact-head identity-sink
 boundary. AWG-070a3a1a3a0b adds an independently verified production generator and
@@ -17,8 +18,8 @@ chunk-boundary families, closed retained-state ledgers, and two current-only
 4,096-generation runs are independently verified by AWG-070a3a1a4b. This is structural
 JavaScript-heap evidence with deterministic corroboration, not RSS, empirical
 asymptotic, production-scale, or cross-runtime proof. No runtime filesystem publisher,
-filesystem staging owner, serving/Admin Worker command, public administration API, or
-public decoder/export exists.
+destination generation publisher, serving/Admin Worker command, public administration
+API, or public decoder/export exists.
 
 AWG-070a3a1a4c adds an independently verified package-private indexed validation substrate:
 it accepts ownership of a caller-opened empty `DatabaseSync`, stores only the current
@@ -28,7 +29,19 @@ future separate Admin Worker; it does not reuse the serving MAG Worker or import
 projection bodies. This is structural JavaScript-heap evidence only. SQLite native
 allocator/page-cache/statement memory and RSS are outside the claim, and no filesystem
 staging ownership, destination publication, cleanup, crash recovery, Admin API, or
-production-scale qualification ships here.
+production-scale qualification ships in that slice.
+
+AWG-070a3a1a4d adds an independently verified package-private POSIX filesystem owner
+around that sink. It requires a canonical owner-private staging directory, reserves an
+exclusive no-follow target, pins directory and file device/inode identities across the
+SQLite path-open boundary, and records only exact verified SQLite files in immutable
+capability-bound terminal receipts. Normal abort and deterministic pre-commit rejection
+physically clean up only after a4c reports a native close success; an unknown close
+outcome preserves toxic unpublished residue without discovery, unlink, or parent fsync.
+Exact absence plus parent-directory fsync is required for `cleanup-complete`. This is not
+a destination publisher or crash scanner, does not claim a race-free same-UID namespace
+proof before a native directory-FD/`openat` boundary, and fails closed outside the
+supported POSIX ownership profile.
 
 ## 1. Purpose and boundary
 
@@ -279,8 +292,9 @@ interface MagPortableValidationSink {
 
 The `O(max-line)` claim excludes sink storage. The independently verified
 package-private AWG-070a3a1a4c indexed sink supplies transactional SQLite staging and
-exact final-head validation; a later Admin operation still owns the file and publishes
-only after both decoder and sink completion. An exporter is expected to use a
+exact final-head validation, while AWG-070a3a1a4d owns its POSIX staging-file lifecycle.
+A later Admin operation still publishes a destination generation only after decoder,
+sink, and staging completion. An exporter is expected to use a
 pinned ordered cursor so concurrent source changes cannot mix states in one artifact.
 A future encoder MUST accept caller-supplied `expectedScope` for every projection and a
 mandatory exact-head validation sink; it must not infer scope from an unadmitted value or

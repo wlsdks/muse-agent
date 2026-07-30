@@ -15,6 +15,8 @@ import { openMag } from "./mag-engine.js";
 import {
   createMagPortableIndexedValidationSink,
   createMagPortableIndexedValidationSinkForQualification,
+  createMagPortableIndexedValidationSinkWithTerminalCloseOutcomeForInternalUse,
+  createMagPortableIndexedValidationSinkWithTerminalCloseOutcomeForQualification,
   MagPortableIndexedValidationSinkError
 } from "./mag-portable-indexed-validation-sink.js";
 import { createMagPortableDecoder } from "./mag-portable-decoder.js";
@@ -760,6 +762,41 @@ describe("package-private MAG portable indexed validation sink", () => {
     inspected.close();
   });
 
+  it("observes native terminal close exactly once without changing the public sink", () => {
+    const transferred = new DatabaseSync(":memory:");
+    const internal =
+      createMagPortableIndexedValidationSinkWithTerminalCloseOutcomeForInternalUse(
+        transferred
+      );
+    expect(() => internal.terminalCloseOutcome())
+      .toThrow(expect.objectContaining({ code: "INVALID_STATE" }));
+    internal.sink.abort("cancel");
+    expect(transferred.isOpen).toBe(false);
+    expect(internal.terminalCloseOutcome()).toBe("closed");
+    expect(internal.terminalCloseOutcome()).toBe("closed");
+    internal.sink.abort("later");
+    expect(internal.terminalCloseOutcome()).toBe("closed");
+  });
+
+  it("observes injected terminal close failure as monotonic unknown", () => {
+    const transferred = new DatabaseSync(":memory:");
+    const internal =
+      createMagPortableIndexedValidationSinkWithTerminalCloseOutcomeForQualification(
+        transferred,
+        {
+          operation: "close",
+          payload: new Error("close"),
+          runtimeOnly: true
+        }
+      );
+    internal.sink.abort("cancel");
+    expect(transferred.isOpen).toBe(true);
+    expect(internal.terminalCloseOutcome()).toBe("unknown");
+    internal.sink.abort("later");
+    expect(internal.terminalCloseOutcome()).toBe("unknown");
+    transferred.close();
+  });
+
   it("preserves successful finished terminal across later cleanup aborts", () => {
     for (const payload of [undefined, null, new Error("late")]) {
       const transferred = new DatabaseSync(":memory:");
@@ -917,6 +954,7 @@ describe("package-private MAG portable indexed validation sink", () => {
       "let committed = false;",
       "let rollbackAttempted = false;",
       "let closeAttempted = false;",
+      "let closeOutcome:",
       "let statements: Statements | undefined;",
       "let currentIdentity: DetachedIdentity | undefined;",
       "let initialized = false;",
