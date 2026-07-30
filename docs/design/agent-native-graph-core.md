@@ -4,7 +4,7 @@ audience: [engineering, product, security, agents]
 purpose: Fix the core architecture and staged delivery plan for Muse's built-in graph engine
 status: partial-implementation
 updated: 2026-07-30
-related: [attunement-graph.md, ../goals/attunement-wow-graph-roadmap.md, ../../CONTEXT.md]
+related: [attunement-graph.md, ../../internal/goals/attunement-wow-graph-roadmap.md, ../../CONTEXT.md]
 ---
 
 # Muse Attunement Graph (MAG) Core

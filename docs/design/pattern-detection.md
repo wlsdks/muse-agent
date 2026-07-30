@@ -18,12 +18,12 @@ finding #24 (Tier 3). The detector pipeline runs end-to-end:
   task-creation clusters keyed by weekday × normalised title.
   `missingThisWeek` flag for proactive-fire gating.
 - Step 4 — cooldown sidecar + orchestrator + daemon:
-  - `~/.muse/patterns-fired.json` store + `isPatternOnCooldown` in `@muse/mcp`.
+  - `~/.muse/patterns-fired.json` store + `isPatternOnCooldown` in `@muse/proactivity`.
   - `selectFireablePatterns` orchestrator in `@muse/memory` — combines
     both detectors with `currentSlotOnly` + confidence floor 0.7 +
     cooldown filter.
-  - `runDueFollowups`-shaped firing engine `runDueProactiveNotices`
-    in `@muse/mcp/src/pattern-firing-loop.ts` + `apps/api/src/pattern-tick.ts`
+  - `runDueFollowups`-shaped firing engine `runDuePatternNotices`
+    in `@muse/proactivity/src/pattern-firing-loop.ts` + `apps/api/src/pattern-tick.ts`
     setInterval rider. Gated by `MUSE_PROACTIVE_PATTERN_ENABLED=true`.
 - User surface — `muse pattern list|fired|reset` CLI +
   `muse.pattern.{list,fired_history,reset}` MCP loopback.

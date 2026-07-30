@@ -28,8 +28,9 @@ pnpm build
 pnpm test
 ```
 
-The repo is a pnpm workspace; every package builds with `tsc -p
-tsconfig.json` and tests with `vitest run`.
+The repo is a pnpm workspace; every package builds with `tsc -b`
+(TypeScript project references, so a stale upstream `dist/` rebuilds first) and tests with
+`vitest run`.
 
 Compilation uses the TypeScript 7 native compiler. The `typescript` dependency is
 intentionally the official TypeScript 6 compiler-API compatibility alias for tooling;
@@ -45,8 +46,8 @@ Run from the repo root unless noted:
 pnpm --filter @muse/<name> test    # narrow: one package while iterating
 pnpm check                         # build + test for every workspace
 pnpm lint                          # ESLint flat config (0 errors / 0 warnings)
-pnpm smoke:broad                   # 47 HTTP endpoints, diagnostic provider
-GEMINI_API_KEY=… pnpm smoke:live   # 12 endpoints, real LLM round-trip
+pnpm smoke:broad                   # broad HTTP sweep, diagnostic provider (no API key)
+pnpm smoke:live                    # real LLM round-trip — LOCAL OLLAMA ONLY, never a cloud API
 ```
 
 Don't ship a request/response-touching change without a real
@@ -66,8 +67,8 @@ but never exercises the actual model contract.
 - **Tests are the only form of verification.** Add the narrowest
   useful test (unit before integration before HTTP smoke) for every
   new behavior.
-- **Lint is `error`-only.** All eleven rules in `eslint.config.js`
-  block `pnpm lint` exit-0. New violations don't ship.
+- **Lint is `error`-only.** Every rule in `eslint.config.js` is set to `error` and
+  blocks `pnpm lint` exit-0. New violations don't ship.
 
 ## Provider credentials
 

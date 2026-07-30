@@ -92,8 +92,8 @@ Muse*. Each entry is one definition plus where it lives. Exact verification evid
 
 The full flow is in [grounding-gate.md](grounding-gate.md); this section is terms only.
 
-- **Grounding gate** — `verifyGrounding` in `packages/agent-core/src/grounding-verifier.ts` (called
-  from `knowledge-recall.ts`), which takes an answer plus its evidence and returns a deterministic
+- **Grounding gate** — `verifyGrounding` in `packages/agent-core/src/grounding-verifier.ts` (re-exported
+  through `knowledge-recall.ts`; called from `recall-verdict.ts` and `chat-answer-gate.ts`), which takes an answer plus its evidence and returns a deterministic
   three-way verdict with no model call. The trust floor that stops
   Attunement inventing hypotheses about a person.
 - **Three-way verdict** — **grounded** (enough evidence) / **weak** (only weakly supported → "I'm

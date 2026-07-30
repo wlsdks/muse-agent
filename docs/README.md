@@ -3,7 +3,7 @@ title: Muse documentation guide (index)
 audience: [planners, developers, AI agents]
 purpose: Single entry point to the Muse documentation set — which document holds what
 updated: 2026-07-30
-related: [strategy/attunement.md, design/attunement-graph.md, goals/attunement-wow-graph-roadmap.md, SYSTEM-MAP.md, FEATURES.md]
+related: [strategy/attunement.md, design/attunement-graph.md, ../internal/goals/attunement-wow-graph-roadmap.md, SYSTEM-MAP.md, FEATURES.md]
 ---
 
 # Muse documentation guide

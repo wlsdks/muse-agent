@@ -39,7 +39,7 @@
 
 An autonomous agent that acts on the world is one wrong send away from a message the
 user never wrote arriving in someone else's inbox. Muse's `performConsentedAction`
-(`@muse/mcp`) gates every standing-objective outbound action deterministically: a
+(`@muse/proactivity`) gates every standing-objective outbound action deterministically: a
 recorded **veto** (checked first) overrides prior consent, **no recorded consent**
 means the scoped credential is never resolved and no request is made, a consent bound
 to an **allowedHost** refuses a different host (so a caller-controlled URL can't
@@ -56,12 +56,12 @@ ambiguous-recipient / absent-consent produces no external effect).
 contract-faithful HTTP fake (never a fake registry), proving all five fail-close
 vectors (no-consent / scope-mismatch / host-mismatch / veto / timeout) make ZERO
 external effect (fetch never called) while only a recorded scoped consent sends the
-credential. Imports `@muse/mcp` read-only; engine untouched; folded into the
+credential. Imports `@muse/stores` read-only; engine untouched; folded into the
 `differentiationBatteries` ratchet (4→5).
 >
 > **Widened (fire 15) — recipient is resolved, never guessed (rule 3):**
 > `scripts/eval-recipient-resolution.mjs` (`pnpm eval:recipient-resolution`) proves
-> `resolveContact` (`@muse/mcp`) resolves a unique match, returns `ambiguous` with ALL
+> `resolveContact` (`@muse/stores`) resolves a unique match, returns `ambiguous` with ALL
 > candidates on multiple matches (never silently best-guesses one), and `unknown` on
 > no match / empty query / a relationship word — so "message Alex" with two Alexes
 > clarifies instead of auto-sending to the wrong one. Falsifying `=== 1`→`>= 1`
@@ -103,7 +103,7 @@ properties, not its wiring into every live surface — a code-property proof lik
 Muse hash-chains every logged autonomous action — performed AND refused — into a
 genesis-anchored SHA-256 chain (`appendActionLog` sets each entry's `prevHash` to
 `computeEntryHash` of the tip; `ACTION_LOG_GENESIS_HASH` roots it). So
-`verifyActionLogChain` / `verifyActionLogChainFile` (`@muse/mcp`) mechanically detect
+`verifyActionLogChain` / `verifyActionLogChainFile` (`@muse/stores`) mechanically detect
 any after-the-fact edit, deletion, reorder, or insertion and pinpoint the break
 index, and `undoLoggedAction` records a durable veto + an accountable `undo_*` entry
 that *extends* the chain rather than breaking it. Rivals treat their action/mutation

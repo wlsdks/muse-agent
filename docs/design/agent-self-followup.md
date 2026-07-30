@@ -6,12 +6,12 @@ Audit finding #25 (Tier 3). The full chain runs in production:
 - Step 1 — rule detector (English + Korean) — `extractFollowupPromises`
   in `@muse/agent-core/src/followup-detector.ts`.
 - Step 2 — `~/.muse/followups.json` store — `personal-followups-store.ts`
-  in `@muse/mcp`. Atomic tmp+rename writes, tolerant reads.
+  in `@muse/stores`. Atomic tmp+rename writes, tolerant reads.
 - Step 3 — runtime capture hook — `createFollowupCaptureHook` in
   `@muse/agent-core`, wired into the autoconfigure runtime hook
   stack. Auto-captures from assistant turn output.
 - Step 4 — firing engine + daemon — `runDueFollowups` in
-  `@muse/mcp` + `apps/api/src/followup-tick.ts` `setInterval`
+  `@muse/proactivity` (`runDueFollowups`) + `apps/api/src/followup-tick.ts` `setInterval`
   rider. LLM-synthesised delivery via the messaging registry.
 - Step 5 — LLM-fallback detector + per-day budget. Opt-in via
   `MUSE_FOLLOWUP_LLM_FALLBACK=true`. Budget tracker:

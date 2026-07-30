@@ -11,40 +11,18 @@ and asks before it does anything on your behalf. You choose the model and where 
 
 <p><a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-22c55e.svg" /></a> <a href="package.json"><img alt="Node ≥ 22.12" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-43853d.svg" /></a> <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178c6.svg" /></a> <a href="#architecture-in-one-paragraph"><img alt="Provider-neutral" src="https://img.shields.io/badge/architecture-provider--neutral-6f42c1.svg" /></a></p>
 
+```bash
+git clone https://github.com/wlsdks/muse-agent.git && cd muse-agent
+corepack enable && pnpm install:muse && muse onboard
+```
+
 </div>
 
-<p align="center"><img src="docs/images/web-home.png" alt="The Muse console" width="840" /></p>
+<p align="center"><img src="docs/images/muse-continue.gif" alt="A real terminal session: starting a thread, linking a note and a task, then muse continue handing the thread back with its next step and sources" width="880" /></p>
+
+<p align="center"><i>A real session: you park a thread, and a week later Muse hands it back — with its sources.</i></p>
 
 ---
-
-<table>
-<tr>
-<td width="33%" valign="top">
-
-**🧵 It keeps the thread**
-
-Not a chat that forgets. You name what you're in the middle of; Muse hands it back later with
-what changed.
-
-</td>
-<td width="33%" valign="top">
-
-**🧾 It shows its work**
-
-Answers are built from your own notes, each with a receipt you can open. Weak evidence gets an
-honest *"I'm not sure."*
-
-</td>
-<td width="33%" valign="top">
-
-**🔐 You decide where it runs**
-
-Plain files in `~/.muse/`, no cloud account required. `MUSE_LOCAL_ONLY=true` turns covered remote
-model and cloud voice egress into a hard error.
-
-</td>
-</tr>
-</table>
 
 ### Contents
 
@@ -106,7 +84,6 @@ Most assistants start from zero every time. Muse is built around the opposite: y
 thread matters, and it gives that thread back to you later — where you stopped, what changed since,
 the next step, and every source it used.
 
-<p align="center"><img src="docs/images/muse-continue.gif" alt="A real terminal session: starting a thread, linking a note and a task, then muse continue handing the thread back with its next step and sources" width="880" /></p>
 
 ### 1. Start a thread and link what belongs to it
 
@@ -122,8 +99,8 @@ muse thread link <thread-id> task <task-id>   --role next-step
 muse continue <thread-id>
 ```
 
-You get a **pack**: the stopping point, the changes since, a proposed next step, and the receipts
-behind each claim. Nothing is guessed — the pack is built only from sources you linked.
+You get a **pack** — the shipped form of what the roadmap below calls the Continuity Capsule: the
+stopping point, the changes since, a proposed next step, and the receipts behind each claim. Nothing is guessed — the pack is built only from sources you linked.
 
 ### 3. Tell it whether that helped
 
@@ -151,6 +128,11 @@ This is the loop that makes the next pack better. Outcomes are recorded, not inf
 | `muse doctor` | One-shot diagnosis and repair of a broken local setup. |
 
 <p align="center"><img src="docs/images/cli-ask.png" alt="muse ask with an openable receipt, and muse today" width="880" /></p>
+
+The same runtime drives a local web console — chat, notes, memory, continuity and the integration
+status, on `muse serve`:
+
+<p align="center"><img src="docs/images/web-home.png" alt="The Muse web console" width="840" /></p>
 
 ---
 

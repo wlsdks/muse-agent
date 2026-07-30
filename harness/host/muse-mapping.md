@@ -27,7 +27,7 @@ related: [../core/team-roles.md, ../core/role-prompts.md, ../core/handoff-templa
 |---|---|---|
 | Orchestrator / supervisor | A **supervisor** + orchestrator runtime that distributes work across workers and synthesizes results. Carries limits like minimum confidence and maximum handoff count. | ✅ runtime exists |
 | Worker / generator | Registered **worker agents** — the supervisor picks and runs them. | ✅ runtime exists |
-| Shape of work (sequential/parallel/race) | Orchestration actually supports **sequential, parallel, and race (first-to-finish wins)** modes. | ✅ runtime exists |
+| Shape of work (sequential/parallel/race) | Orchestration actually supports **sequential and parallel (race is parked — the `"race"` branch runs `runSequential`)** modes. | ✅ runtime exists |
 | Agent specs | An **agent-spec registry** with roles, tools, and instructions — the fitting one is picked per request. | ✅ runtime exists |
 | Direct agent-to-agent messages | Workers exchange with each other/the supervisor over an in-memory **message bus**. | ✅ runtime exists |
 | Model tiering | Within one task, simple work is **automatically routed** to a fast model and deep reasoning to a strong one. | ✅ runtime exists |

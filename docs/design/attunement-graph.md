@@ -4,7 +4,7 @@ audience: [engineering, product, security, agents]
 purpose: Define the modular graph engine that powers Muse's signature Attunement experience
 status: partial-implementation
 updated: 2026-07-30
-related: [../strategy/attunement.md, attunement.md, agent-native-graph-core.md, ../goals/attunement-wow-graph-roadmap.md]
+related: [../strategy/attunement.md, attunement.md, agent-native-graph-core.md, ../../internal/goals/attunement-wow-graph-roadmap.md]
 ---
 
 # Muse Attunement Graph (MAG)

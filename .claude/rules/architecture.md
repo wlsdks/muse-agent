@@ -75,7 +75,7 @@ switched on it is deterministic, fail-close (`local-only-policy.ts`):
 
 ## What's allowed inside adapters
 
-- Vendor SDK provider packages MAY be used inside `packages/model/src/adapters/<name>.ts`.
+- Vendor SDK provider packages MAY be used inside `packages/model/src/adapter-<name>.ts`.
 - They MUST NOT become the core runtime API.
 - OpenAI Agents SDK, Vercel AI SDK, LangGraph.js may be studied but must not own Muse contracts.
 

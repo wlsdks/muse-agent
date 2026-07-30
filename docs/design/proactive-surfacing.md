@@ -67,7 +67,7 @@ is the user currently on?" signal that doesn't exist yet.
 ### Phase A (this design's "first cut")
 
 - New module `apps/api/src/proactive-tick.ts` modelled on `reminder-tick.ts`.
-- New `runDueProactiveNotices(options)` helper in `@muse/mcp` (analogous
+- New `runDueProactiveNotices(options)` helper in `@muse/proactivity` (analogous
   to `runDueReminders`).
 - Sidecar file `~/.muse/proactive-fired.json` for dedupe — same shape
   as `reminder-history.json` but tracks which `{kind:'calendar', id, dueIso}`
@@ -150,7 +150,7 @@ radius of a bug in either. Symmetric daemons that share helpers
 
 ## Phase A landing checklist
 
-1. `@muse/mcp` exports `runDueProactiveNotices(options) → { fired, errors }`.
+1. `@muse/proactivity` exports `runDueProactiveNotices(options) → { fired, errors }`.
 2. `apps/api/src/proactive-tick.ts` mirrors `reminder-tick.ts` minus the
    reminder-store flip.
 3. `apps/api/src/server.ts` wires the tick the same way it wires

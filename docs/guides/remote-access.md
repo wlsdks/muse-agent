@@ -3,7 +3,7 @@ title: Using Muse from your phone (remote access via Tailscale)
 audience: [users]
 purpose: One `muse remote enable` to open the Muse web UI from your own Tailscale devices — without exposing it to the public internet
 updated: 2026-07-15
-related: [README.md, setup-local-llm.md]
+related: [../README.md, ../setup-local-llm.md]
 ---
 
 # Using Muse from your phone (remote access)

@@ -32,7 +32,7 @@ The store already supports the read side (`status: "pending" |
 ### Phase A (this iter): manual fire
 
 - New pure helper `fireReminder(reminders, id, firedAt)` in
-  `packages/mcp/src/personal-reminders-store.ts`. Takes an
+  `packages/stores/src/personal-reminders-store.ts`. Takes an
   array, returns the updated array (immutable; mirrors the
   add/remove pattern).
 - New MCP tool `muse.reminders.fire` (write). Args: `id`,

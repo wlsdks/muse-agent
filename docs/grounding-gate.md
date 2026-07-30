@@ -19,8 +19,8 @@ test-level evidence lives in [feature-catalog/02](feature-catalog/02-knowledge-r
 in the [glossary](glossary.md).
 
 > The key point: on this path the gate is **deterministic code, not a model call**:
-> `verifyGrounding` in `packages/agent-core/src/grounding-verifier.ts`, called from
-> `knowledge-recall.ts`. When retrieval evidence is
+> `verifyGrounding` in `packages/agent-core/src/grounding-verifier.ts` (re-exported through
+> `knowledge-recall.ts`; called from `recall-verdict.ts` and `chat-answer-gate.ts`). When retrieval evidence is
 > weak or a citation is wrong, the answer is downgraded or dropped. This document does not claim
 > that every uncited sentence of free-form chat is verified.
 

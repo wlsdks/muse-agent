@@ -11,7 +11,7 @@ there directly.
 **Don't open a public issue.** Use GitHub's private security
 advisory flow instead:
 
-https://github.com/wlsdks/Muse/security/advisories/new
+https://github.com/wlsdks/muse-agent/security/advisories/new
 
 What to include:
 
@@ -34,8 +34,8 @@ triaged.
 
 Muse is designed to run **as a single user, on the user's own
 machine or trusted server**. Multi-tenant isolation is explicitly
-not a goal (see `CLAUDE.md`'s "1원리 가이드" — personal-JARVIS
-focus). With that scope:
+not a goal (see `.claude/rules/product-identity.md` — a personal agent for
+one person, not a workspace). With that scope:
 
 In scope for security reports:
 

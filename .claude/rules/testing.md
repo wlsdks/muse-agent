@@ -133,7 +133,7 @@ binary LLM-judge — see [`agent-testing.md`](agent-testing.md) (the method).
 ## Run only the narrowest test that proves THIS change (Jinan, 2026-06-22)
 
 Running hundreds/thousands of tests "to be safe" is noise — Muse has
-**18,484 passing Vitest cases across 1,624 executed files** (verified 2026-07-17; more than
+**~2,000 `*.test.ts(x)` files across `packages/` + `apps/`** (1,987 on 2026-07-30; more than
 the openclaw TS repo proportionally — the count is healthy, running ALL of
 it per edit is the waste). A full package suite per edit proves nothing
 about the specific change and only saturates the machine. Run the tests

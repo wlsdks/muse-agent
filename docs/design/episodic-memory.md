@@ -9,7 +9,7 @@ Status: **all 5 steps shipped + persona surfacing + LLM-judge
 paraphrase recall.** Audit finding #26 (Tier 3). The chain
 captures + surfaces + manages prior-session summaries:
 
-- Step 1 — `~/.muse/episodes.json` store in `@muse/mcp`
+- Step 1 — `~/.muse/episodes.json` store in `@muse/stores`
   (`personal-episodes-store.ts`) — same shape as the followups /
   tasks stores, vacuum-trimmable.
 - Step 2 — `[SESSION_BOUNDARY]` sentinel written to
