@@ -103,6 +103,11 @@ export type {
   ExperienceReplayCase,
   ExperienceReplayObservation
 } from "./experience-learning-replay.js";
+export { projectExperienceLearningSource } from "./experience-learning-source.js";
+export type {
+  ExperienceLearningSourceHeldReason,
+  ExperienceLearningSourceProjection
+} from "./experience-learning-source.js";
 export {
   EXPERIENCE_LEARNING_PROMOTION_MIN_CASES,
   ExperienceLearningPromotionError,
