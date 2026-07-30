@@ -11,7 +11,7 @@ import {
   createExperienceReplayEvidenceReceipt,
   createPersonalThread,
   fingerprintContinuityPolicy,
-  promoteExperienceLearningContinuityPolicy,
+  promoteApprovedExperienceLearningContinuityPolicy,
   proposeExperienceLearningCandidate,
   readAttunementState,
   rollbackExperienceLearningContinuityPolicy,
@@ -114,31 +114,39 @@ describe("deterministic experience learning journey", () => {
     expect(await readFile(file, "utf8")).toBe(beforePreview);
 
     const input = {
-      approval: {
-        approvedAt: approval.approvedAt,
-        authority: approval.authority,
-        candidateId: approval.candidateId,
-        replayInputHash: approval.replayInputHash
-      },
+      approvalReceipt: approval,
       appliedAt: "2026-07-29T03:08:00.000Z",
       candidate,
       currentPolicy: thread.policy,
       nextPolicyVersion: 1,
-      replay: replayBundle.replay,
-      replayCases: replayBundle.cases.map((entry) => ({
-        baseline: {
-          evidenceHash: entry.baseline.evidenceHash,
-          passed: entry.baseline.passed
-        },
-        caseId: entry.caseId,
-        challenger: {
-          evidenceHash: entry.challenger.evidenceHash,
-          passed: entry.challenger.passed
-        }
-      }))
+      preview,
+      replayBundle
     };
-    const promotion = await promoteExperienceLearningContinuityPolicy(file, input, gate);
-    await expect(promoteExperienceLearningContinuityPolicy(file, input, gate))
+    let getterCalls = 0;
+    const hostile = { ...input } as Record<string, unknown>;
+    Object.defineProperty(hostile, "approvalReceipt", {
+      enumerable: true,
+      get: () => {
+        getterCalls += 1;
+        return approval;
+      }
+    });
+    await expect(promoteApprovedExperienceLearningContinuityPolicy(
+      file,
+      hostile as unknown as typeof input,
+      gate
+    )).rejects.toMatchObject({ code: "invalid-input" });
+    expect(getterCalls).toBe(0);
+    expect(await readFile(file, "utf8")).toBe(beforePreview);
+
+    await expect(promoteApprovedExperienceLearningContinuityPolicy(file, {
+      ...input,
+      approvalReceipt: { ...approval, approvedAt: "2026-07-29T03:07:01.000Z" }
+    }, gate)).rejects.toMatchObject({ code: "invalid-approval" });
+    expect(await readFile(file, "utf8")).toBe(beforePreview);
+
+    const promotion = await promoteApprovedExperienceLearningContinuityPolicy(file, input, gate);
+    await expect(promoteApprovedExperienceLearningContinuityPolicy(file, input, gate))
       .rejects.toMatchObject({ code: "stale-active-policy" });
     let restarted = await readAttunementState(file);
     expect(restarted.experienceLearningPolicyAudits?.map((audit) => audit.kind))

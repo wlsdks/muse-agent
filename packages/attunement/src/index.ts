@@ -133,12 +133,14 @@ export {
   EXPERIENCE_LEARNING_PROMOTION_MIN_CASES,
   ExperienceLearningPromotionError,
   projectVerifiedExperienceLearningPromotionHealth,
-  promoteExperienceLearningCandidate,
   rollbackExperienceLearningPromotion
 } from "./experience-learning-promotion.js";
 export {
-  promoteExperienceLearningContinuityPolicy,
+  promoteApprovedExperienceLearningContinuityPolicy,
   rollbackExperienceLearningContinuityPolicy
+} from "./experience-learning-policy-store.js";
+export type {
+  ApprovedExperienceLearningPromotionInput
 } from "./experience-learning-policy-store.js";
 export {
   createExperienceLearningApprovalReceipt,

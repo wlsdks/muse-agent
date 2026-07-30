@@ -43,7 +43,7 @@ import {
   mcpProviderId,
   prepareContinuityPack,
   prepareContinuityReview,
-  promoteExperienceLearningContinuityPolicy,
+  promoteApprovedExperienceLearningContinuityPolicy,
   proposeExperienceLearningFromDelivery,
   readAttunementState,
   resetThreadPolicy,
@@ -879,31 +879,16 @@ Examples:
           approvedAt
         );
         if (!approval) throw new AttunementStoreError("learning approval window is invalid");
-        const promotion = await promoteExperienceLearningContinuityPolicy(
+        const promotion = await promoteApprovedExperienceLearningContinuityPolicy(
           attunementFile(),
           {
-            approval: {
-              approvedAt: approval.approvedAt,
-              authority: approval.authority,
-              candidateId: approval.candidateId,
-              replayInputHash: approval.replayInputHash
-            },
+            approvalReceipt: approval,
             appliedAt: approvedAt,
             candidate: proposal.candidate,
             currentPolicy: ownerThread.policy,
             nextPolicyVersion: state.nextPolicyVersion,
-            replay: replayBundle.replay,
-            replayCases: replayBundle.cases.map((entry) => ({
-              baseline: {
-                evidenceHash: entry.baseline.evidenceHash,
-                passed: entry.baseline.passed
-              },
-              caseId: entry.caseId,
-              challenger: {
-                evidenceHash: entry.challenger.evidenceHash,
-                passed: entry.challenger.passed
-              }
-            }))
+            preview,
+            replayBundle
           },
           createQualificationLearningWriteGate(process.env)
         );

@@ -6,15 +6,17 @@ import {
   ExperienceLearningPromotionError,
   fingerprintContinuityPolicy,
   projectVerifiedExperienceLearningPromotionHealth,
-  promoteExperienceLearningCandidate,
   proposeExperienceLearningCandidate,
-  rollbackExperienceLearningPromotion,
   type ActiveAttunementPolicyWriteGate,
   type ExperienceLearningCandidate,
-  type ExperienceLearningPromotionInput,
   type ExperienceReplayCase,
   type ContinuityPolicy
 } from "./index.js";
+import {
+  promoteExperienceLearningCandidate,
+  rollbackExperienceLearningPromotion,
+  type ExperienceLearningPromotionInput
+} from "./experience-learning-promotion.js";
 
 const digest = (character: string) => character.repeat(64);
 const gate: ActiveAttunementPolicyWriteGate = {

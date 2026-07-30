@@ -1,4 +1,7 @@
+import { assertPlainDataTree } from "@muse/shared";
+
 import {
+  ExperienceLearningPromotionError,
   promoteExperienceLearningCandidate,
   rollbackExperienceLearningPromotion,
   type ExperienceLearningPolicyCompareAndSwap,
@@ -6,13 +9,78 @@ import {
   type ExperienceLearningPromotionReceipt,
   type ExperienceLearningRollbackReceipt
 } from "./experience-learning-promotion.js";
+import {
+  verifyExperienceLearningApprovalReceipt
+} from "./experience-learning-approval.js";
+import type { ExperienceLearningProposalPreview } from "./experience-learning-preview.js";
+import type { ExperienceLearningReplayBundle } from "./experience-learning-replay-evidence.js";
 import { readAttunementState, writeAttunementState } from "./attunement-store.js";
 import type { ActiveAttunementPolicyWriteGate } from "./active-policy-write-gate.js";
 import { mutateFileState } from "./file-state-mutation.js";
 import { fingerprintContinuityPolicy } from "./policy-digest.js";
 import type { AttunementState, ContinuityPolicy } from "./types.js";
 
-export async function promoteExperienceLearningContinuityPolicy(
+export interface ApprovedExperienceLearningPromotionInput
+  extends Pick<
+    ExperienceLearningPromotionInput,
+    "appliedAt" | "candidate" | "currentPolicy" | "nextPolicyVersion"
+  > {
+  readonly approvalReceipt: unknown;
+  readonly preview: ExperienceLearningProposalPreview;
+  readonly replayBundle: ExperienceLearningReplayBundle;
+}
+
+/**
+ * Binds the content-derived owner approval receipt to the exact preview,
+ * replay bundle, and policy mutation. Callers cannot replace verified approval
+ * with a hand-built authority-shaped object between verification and CAS.
+ */
+export async function promoteApprovedExperienceLearningContinuityPolicy(
+  file: string,
+  input: ApprovedExperienceLearningPromotionInput,
+  activePolicyWriteGate: ActiveAttunementPolicyWriteGate | undefined
+): Promise<ExperienceLearningPromotionReceipt> {
+  try {
+    assertPlainDataTree(input, "approvedExperienceLearningPromotionInput");
+  } catch {
+    throw new ExperienceLearningPromotionError("invalid-input");
+  }
+  const approval = verifyExperienceLearningApprovalReceipt(
+    input.approvalReceipt,
+    input.preview,
+    input.replayBundle,
+    input.appliedAt
+  );
+  if (!approval) {
+    throw new ExperienceLearningPromotionError("invalid-approval");
+  }
+  return promoteExperienceLearningContinuityPolicyUnchecked(file, {
+    approval: {
+      approvedAt: approval.approvedAt,
+      authority: approval.authority,
+      candidateId: approval.candidateId,
+      replayInputHash: approval.replayInputHash
+    },
+    appliedAt: input.appliedAt,
+    candidate: input.candidate,
+    currentPolicy: input.currentPolicy,
+    nextPolicyVersion: input.nextPolicyVersion,
+    replay: input.replayBundle.replay,
+    replayCases: input.replayBundle.cases.map((entry) => ({
+      baseline: {
+        evidenceHash: entry.baseline.evidenceHash,
+        passed: entry.baseline.passed
+      },
+      caseId: entry.caseId,
+      challenger: {
+        evidenceHash: entry.challenger.evidenceHash,
+        passed: entry.challenger.passed
+      }
+    }))
+  }, activePolicyWriteGate);
+}
+
+async function promoteExperienceLearningContinuityPolicyUnchecked(
   file: string,
   input: ExperienceLearningPromotionInput,
   activePolicyWriteGate: ActiveAttunementPolicyWriteGate | undefined
