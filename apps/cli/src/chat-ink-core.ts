@@ -8,7 +8,10 @@
 import { readFile as fsReadFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
-import { augmentCompactionSummary } from "@muse/agent-core";
+import {
+  augmentCompactionSummary,
+  projectLoopControlReceiptHealth
+} from "@muse/agent-core";
 import {
   createApproximateTokenEstimator,
   DEFAULT_CHUNK_MAX_CHARS,
@@ -723,6 +726,15 @@ export function formatAutomaticCompactionNotice(removedCount: number): string {
     ? removedCount
     : 0;
   return `Context compacted — summarized ${count.toString()} older message(s).`;
+}
+
+export function formatLoopTerminalNotice(value: unknown): string | undefined {
+  const health = projectLoopControlReceiptHealth(value);
+  if (!health || health.terminalStatus === "completed") return undefined;
+  const state = health.terminalStatus === "held"
+    ? "paused"
+    : health.terminalStatus;
+  return `Agent loop ${state} — ${health.terminalReason} (verification: ${health.verificationStatus}).`;
 }
 
 export interface FocusedCompactionResult {

@@ -1,4 +1,9 @@
-import { enforceAnswerCitations, guardAgainstUnbackedActionClaim, type AgentRuntime } from "@muse/agent-core";
+import {
+  enforceAnswerCitations,
+  guardAgainstUnbackedActionClaim,
+  projectLoopControlReceiptHealth,
+  type AgentRuntime
+} from "@muse/agent-core";
 import { chatAllowedCitations, createCitationStreamFilter, gateChatAnswerGrounding, type ChatGroundingSource } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 
@@ -207,6 +212,15 @@ export async function* toSseStream(
     if (event.type === "synthesis-started") {
       yield `event: synthesis_started\ndata: ${sseData(JSON.stringify({ runId: event.runId }))}\n\n`;
       continue;
+    }
+
+    if (event.type !== "done") continue;
+    const loopHealth = projectLoopControlReceiptHealth(event.loopControlReceipt);
+    if (loopHealth) {
+      const { runId: _runId, ...compatLoopHealth } = loopHealth;
+      yield `event: loop_health\ndata: ${sseData(JSON.stringify(
+        responseMode === "compat" ? compatLoopHealth : loopHealth
+      ))}\n\n`;
     }
 
     const tail = liveFilter.flush();

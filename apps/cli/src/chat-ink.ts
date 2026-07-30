@@ -39,6 +39,7 @@ import {
   imageMimeForPath,
   formatCompactPreview,
   formatJobsList,
+  formatLoopTerminalNotice,
   formatMemoryView,
   formatTrust,
   formatUndoNotice,
@@ -240,8 +241,8 @@ export function MuseChatApp(props: {
    * signal, or a cloud failure all fall back the same way, silently.
    */
   readonly cloudTurn?: (message: string, personaBlock: string, groundingBlock: string) => Promise<{ readonly text: string; readonly marker: string } | undefined>;
-  readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; removedCount?: number; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
-  readonly streamWithTools: (messages: readonly ChatTurnMessage[], model: string, requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<ApprovalPromptDecision>) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; removedCount?: number; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
+  readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; removedCount?: number; loopControlReceipt?: unknown; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
+  readonly streamWithTools: (messages: readonly ChatTurnMessage[], model: string, requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<ApprovalPromptDecision>) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; removedCount?: number; loopControlReceipt?: unknown; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
   readonly readFile: (relativePath: string) => Promise<string | undefined>;
   readonly readImage?: (relativePath: string) => Promise<{ readonly mimeType: string; readonly dataBase64: string } | undefined>;
   readonly saveText: (text: string) => Promise<string | undefined>;
@@ -794,6 +795,8 @@ export function MuseChatApp(props: {
             setStreaming(accumulated);
           }
           if (event.type === "done") {
+            const terminalNotice = formatLoopTerminalNotice(event.loopControlReceipt);
+            if (terminalNotice) setCommandNotice(terminalNotice);
             const u = event.response?.usage;
             turnTokens = (u?.inputTokens ?? 0) + (u?.outputTokens ?? 0) + (u?.reasoningTokens ?? 0);
             lastInputTokens = u?.inputTokens ?? 0;

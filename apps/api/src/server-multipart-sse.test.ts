@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { createLoopControlReceipt } from "@muse/agent-core";
 import { parseMultipartBody, sseData } from "./server-multipart-sse.js";
 
 // Direct coverage for the multipart parser + SSE line-framer (untested). The
@@ -78,6 +79,69 @@ describe("toSseStream opening stage frame", () => {
       'event: context_compacted\ndata: {"removedCount":7,"runId":"r"}\n\n'
     );
     expect(frames[2]).toContain("event: message");
+  });
+});
+
+describe("toSseStream loop terminal health", () => {
+  const receipt = createLoopControlReceipt({
+    budget: { retries: null, steps: null, tools: null, wallclockLimitMs: null },
+    endedAt: "2026-07-30T00:00:01.000Z",
+    loopKind: "react",
+    runId: "stream-health",
+    startedAt: "2026-07-30T00:00:00.000Z",
+    terminal: { reason: "verification-failed", status: "failed" },
+    verification: { evidenceId: "eval:stream", status: "failed" }
+  });
+
+  async function* terminal(value: unknown) {
+    yield {
+      loopControlReceipt: value,
+      response: {
+        model: "diagnostic/smoke",
+        output: "answer",
+        usage: undefined
+      },
+      runId: "stream-health",
+      type: "done" as const
+    };
+  }
+
+  it("emits one validated health frame before compat and extended done", async () => {
+    const { toSseStream } = await import("./server-multipart-sse.js");
+    for (const mode of ["compat", "extended"] as const) {
+      const frames: string[] = [];
+      for await (const frame of toSseStream(terminal(receipt) as never, mode)) {
+        frames.push(frame);
+      }
+      const healthIndex = frames.findIndex((frame) =>
+        frame.startsWith("event: loop_health"));
+      const doneIndex = frames.findIndex((frame) =>
+        frame.startsWith("event: done"));
+      expect(healthIndex).toBeGreaterThan(0);
+      expect(healthIndex).toBeLessThan(doneIndex);
+      expect(frames[healthIndex]).toContain('"terminalStatus":"failed"');
+      expect(frames[healthIndex]).toContain(
+        mode === "compat" ? '"terminalReason"' : '"runId":"stream-health"'
+      );
+      if (mode === "compat") {
+        expect(frames[healthIndex]).not.toContain('"runId"');
+      }
+      expect(frames.filter((frame) =>
+        frame.startsWith("event: loop_health"))).toHaveLength(1);
+    }
+  });
+
+  it("drops tampered terminal evidence instead of surfacing health", async () => {
+    const { toSseStream } = await import("./server-multipart-sse.js");
+    const frames: string[] = [];
+    for await (const frame of toSseStream(
+      terminal({ ...receipt, runId: "tampered" }) as never,
+      "compat"
+    )) {
+      frames.push(frame);
+    }
+    expect(frames.some((frame) =>
+      frame.startsWith("event: loop_health"))).toBe(false);
   });
 });
 

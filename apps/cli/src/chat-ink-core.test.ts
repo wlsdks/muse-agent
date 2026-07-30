@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MUSE_TAGLINE } from "./muse-identity.js";
 
+import { createLoopControlReceipt } from "@muse/agent-core";
 import { trimConversationMessages, type ConversationMessage } from "@muse/memory";
 
 import {
@@ -35,6 +36,7 @@ import {
   formatNoModelMessage,
   firstOpenToday,
   formatJobsList,
+  formatLoopTerminalNotice,
   composeMorningGreeting,
   formatMemoryView,
   recurringEpisodeThreads,
@@ -73,6 +75,50 @@ describe("formatAutomaticCompactionNotice", () => {
       .toBe("Context compacted — summarized 7 older message(s).");
     expect(formatAutomaticCompactionNotice(Number.NaN))
       .toBe("Context compacted — summarized 0 older message(s).");
+  });
+});
+
+describe("formatLoopTerminalNotice", () => {
+  const receipt = (
+    terminal: Parameters<typeof createLoopControlReceipt>[0]["terminal"],
+    verification: Parameters<typeof createLoopControlReceipt>[0]["verification"]
+  ) => createLoopControlReceipt({
+    budget: { retries: null, steps: null, tools: null, wallclockLimitMs: null },
+    endedAt: "2026-07-30T00:00:01.000Z",
+    loopKind: "react",
+    runId: "notice-run",
+    startedAt: "2026-07-30T00:00:00.000Z",
+    terminal,
+    verification
+  });
+
+  it("shows only validated non-completed terminal truth", () => {
+    expect(formatLoopTerminalNotice(receipt(
+      { reason: "verification-failed", status: "failed" },
+      { evidenceId: "eval:failed", status: "failed" }
+    ))).toBe(
+      "Agent loop failed — verification-failed (verification: failed)."
+    );
+    expect(formatLoopTerminalNotice(receipt(
+      { reason: "verification-pending", status: "held" },
+      { status: "pending" }
+    ))).toBe(
+      "Agent loop paused — verification-pending (verification: pending)."
+    );
+    expect(formatLoopTerminalNotice(receipt(
+      { reason: "caller-cancelled", status: "cancelled" },
+      { status: "not-required" }
+    ))).toBe(
+      "Agent loop cancelled — caller-cancelled (verification: not-required)."
+    );
+    const completed = receipt(
+      { reason: "goal-verified", status: "completed" },
+      { evidenceId: "eval:passed", status: "passed" }
+    );
+    expect(formatLoopTerminalNotice(completed)).toBeUndefined();
+    expect(formatLoopTerminalNotice(undefined)).toBeUndefined();
+    expect(formatLoopTerminalNotice({ ...completed, runId: "tampered" }))
+      .toBeUndefined();
   });
 });
 
