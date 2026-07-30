@@ -59,6 +59,7 @@ export interface LifecycleRunCompleteArgs {
   readonly historyStore?: AgentRunHistoryStore;
   readonly context: AgentRunContext;
   readonly execution: ModelLoopExecution;
+  readonly statusOverride?: "cancelled" | "completed" | "failed";
   readonly resolveToolRisk: (name: string) => "read" | "write" | "execute";
 }
 
@@ -133,7 +134,7 @@ export async function recordRunComplete(args: LifecycleRunCompleteArgs): Promise
       ...(costUsd > 0 ? { costUsd: costUsd.toString() } : {}),
       output: args.execution.finalResponse.output,
       runId: args.context.runId,
-      status: interrupted ? "cancelled" : "completed",
+      status: args.statusOverride ?? (interrupted ? "cancelled" : "completed"),
       tokenUsage: usage ? { ...usage } : undefined
     });
   } catch {

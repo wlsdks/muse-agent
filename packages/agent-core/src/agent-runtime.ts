@@ -32,6 +32,7 @@ import {
   createRetryBudget,
   normalizeRetryBudgetPolicy,
   runWithRetryBudget,
+  withTimeout,
   type CircuitBreaker,
   type FallbackStrategy,
   type RetryBudget,
@@ -128,6 +129,7 @@ import {
 import { isPlanExecuteMode } from "./plan-execute.js";
 import {
   createLoopControlReceipt,
+  settleLoopControlReceipt,
   type LoopControlReceipt,
   type LoopKind,
   type LoopTerminalState
@@ -174,6 +176,7 @@ import type {
   AgentRuntimeOptions,
   AgentRuntimeStreamEvent,
   EgressAdvisorySink,
+  LoopOutcomeVerifier,
   ToolApprovalGate,
 } from "./agent-runtime-types.js";
 
@@ -204,6 +207,8 @@ export type {
   AgentRuntimeStreamEvent,
   EgressAdvisory,
   EgressAdvisorySink,
+  LoopOutcomeVerificationInput,
+  LoopOutcomeVerifier,
   ToolApprovalGate,
   ToolApprovalGateDecision,
   ToolApprovalGateInput,
@@ -243,6 +248,8 @@ function recordRetryBudgetSpanAttributes(span: SpanHandle, budget: RetryBudget):
 export class AgentRuntime {
   private readonly modelProvider?: ModelProvider;
   private readonly modelRegistry?: ModelProviderRegistry;
+  private readonly loopOutcomeVerifier?: LoopOutcomeVerifier;
+  private readonly loopOutcomeVerifierTimeoutMs: number;
   private readonly agentSpecResolver?: AgentSpecResolver;
   private readonly historyStore?: AgentRunHistoryStore;
   private readonly checkpointStore?: CheckpointStore;
@@ -307,6 +314,8 @@ export class AgentRuntime {
   constructor(options: AgentRuntimeOptions) {
     this.modelProvider = options.modelProvider;
     this.modelRegistry = options.modelRegistry;
+    this.loopOutcomeVerifier = options.loopOutcomeVerifier;
+    this.loopOutcomeVerifierTimeoutMs = clampRunLimit(options.loopOutcomeVerifierTimeoutMs, 5_000);
     this.agentSpecResolver = options.agentSpecResolver;
     this.historyStore = options.historyStore;
     this.checkpointStore = options.checkpointStore;
@@ -459,7 +468,7 @@ export class AgentRuntime {
       const execution = isPlanExecuteRun
         ? await executePlanExecuteLoopFn(this.modelLoopRunner(compactionOccurred, retryBudget), layeredContext, selected.provider, loopRequest)
         : await executeModelLoopFn(this.modelLoopRunner(compactionOccurred, retryBudget), layeredContext, selected.provider, loopRequest);
-      const loopControlReceipt = this.createLoopControlReceipt(
+      const pendingLoopControlReceipt = this.createLoopControlReceipt(
         layeredContext,
         execution,
         isPlanExecuteRun ? "plan-execute" : "react",
@@ -467,10 +476,11 @@ export class AgentRuntime {
         loopStartedAtMs,
         Date.now()
       );
-      const guardedResponse = await this.finalizeInvocation({
+      const { loopControlReceipt, response: guardedResponse } = await this.finalizeInvocation({
         cacheKey,
         context: layeredContext,
         execution,
+        pendingLoopControlReceipt,
         preparedRequest,
         promptBudget,
         runSpan,
@@ -566,7 +576,7 @@ export class AgentRuntime {
         }
         execution = next.value;
       }
-      const loopControlReceipt = this.createLoopControlReceipt(
+      const pendingLoopControlReceipt = this.createLoopControlReceipt(
         layeredContext,
         execution,
         isPlanExecuteRun ? "plan-execute" : "react",
@@ -574,10 +584,11 @@ export class AgentRuntime {
         loopStartedAtMs,
         Date.now()
       );
-      const response = await this.finalizeInvocation({
+      const { loopControlReceipt, response } = await this.finalizeInvocation({
         cacheKey,
         context: layeredContext,
         execution,
+        pendingLoopControlReceipt,
         preparedRequest,
         promptBudget,
         runSpan,
@@ -760,14 +771,26 @@ export class AgentRuntime {
     readonly cacheKey: string;
     readonly context: AgentRunContext;
     readonly execution: ModelLoopExecution;
+    readonly pendingLoopControlReceipt: LoopControlReceipt;
     readonly preparedRequest: ReturnType<typeof prepareModelRequest>;
     readonly promptBudget: ReturnType<typeof measureSystemPromptBudget>;
     readonly runSpan: SpanHandle;
     readonly selected: { readonly provider: ModelProvider; readonly model: string };
     readonly startedAtMs: number;
     readonly summaryAppliedMessageCount: number;
-  }): Promise<ModelResponse> {
-    const { cacheKey, context, execution, preparedRequest, promptBudget, runSpan, selected, startedAtMs, summaryAppliedMessageCount } = args;
+  }): Promise<{ readonly loopControlReceipt: LoopControlReceipt; readonly response: ModelResponse }> {
+    const {
+      cacheKey,
+      context,
+      execution,
+      pendingLoopControlReceipt,
+      preparedRequest,
+      promptBudget,
+      runSpan,
+      selected,
+      startedAtMs,
+      summaryAppliedMessageCount
+    } = args;
     // Preserve the loop's terminal classification across response filters and
     // output guards. Those stages may replace response objects (including
     // their ids), but they must not turn an interrupted run into a successful
@@ -781,36 +804,53 @@ export class AgentRuntime {
       responseFilterEvidenceFromExecution(execution)
     );
     const guarded = await applyOutputGuardsFn(context, filtered, this.outputGuards, this.tracer, this.metrics);
+    const loopControlReceipt = await this.settleLoopOutcome(
+      context,
+      execution,
+      guarded,
+      pendingLoopControlReceipt
+    );
 
+    const verificationFailed =
+      loopControlReceipt.terminal.status === "failed" &&
+      loopControlReceipt.terminal.reason === "verification-failed";
     await this.recordRunComplete(context, {
       ...execution,
       finalResponse: interrupted ? { ...guarded, id: "interrupted" } : guarded
-    });
+    }, verificationFailed ? "failed" : undefined);
     if (interrupted) {
       await this.recordCheckpoint(context, 100, "cancelled", context.input.messages, guarded.output);
       this.recordAgentRun(context, guarded.model, "cancelled", startedAtMs);
       runSpan.setAttribute("run.latency_ms", Date.now() - startedAtMs);
-      return guarded;
+      return { loopControlReceipt, response: guarded };
     }
 
-    await this.recordCheckpoint(context, 100, "complete", context.input.messages, guarded.output);
-    await this.writeCache(cacheKey, guarded, execution.toolsUsed);
-    if (preparedRequest.contextWindow?.summaryInserted) {
-      await persistConversationSummaryFromRequestFn(
-        context,
-        preparedRequest.request,
-        summaryAppliedMessageCount,
-        this.conversationSummaryStore
-      );
+    await this.recordCheckpoint(
+      context,
+      100,
+      verificationFailed ? "failed" : "complete",
+      context.input.messages,
+      guarded.output
+    );
+    if (!verificationFailed) {
+      await this.writeCache(cacheKey, guarded, execution.toolsUsed);
+      if (preparedRequest.contextWindow?.summaryInserted) {
+        await persistConversationSummaryFromRequestFn(
+          context,
+          preparedRequest.request,
+          summaryAppliedMessageCount,
+          this.conversationSummaryStore
+        );
+      }
+      await this.invokeHooks("afterComplete", context, guarded);
     }
-    await this.invokeHooks("afterComplete", context, guarded);
-    this.recordAgentRun(context, guarded.model, "completed", startedAtMs);
+    this.recordAgentRun(context, guarded.model, verificationFailed ? "failed" : "completed", startedAtMs);
     // stamp wall-clock run latency on the trace span so a
     // trace-store consumer can correlate latency with the same ctx.*
     // span attrs without going through a separate query.
     runSpan.setAttribute("run.latency_ms", Date.now() - startedAtMs);
     this.recordTelemetry(context, selected.provider.id, selected.model, guarded, promptBudget, startedAtMs);
-    return guarded;
+    return { loopControlReceipt, response: guarded };
   }
 
   private async handleRunError(
@@ -1200,6 +1240,40 @@ export class AgentRuntime {
     });
   }
 
+  private async settleLoopOutcome(
+    context: AgentRunContext,
+    execution: ModelLoopExecution,
+    response: ModelResponse,
+    pendingReceipt: LoopControlReceipt
+  ): Promise<LoopControlReceipt> {
+    if (
+      !this.loopOutcomeVerifier ||
+      pendingReceipt.terminal.status !== "held" ||
+      pendingReceipt.terminal.reason !== "verification-pending"
+    ) {
+      return pendingReceipt;
+    }
+
+    try {
+      const verdict = await withTimeout(
+        (signal) => this.loopOutcomeVerifier!(Object.freeze({
+          loopControlReceipt: pendingReceipt,
+          model: response.model,
+          output: response.output,
+          runId: context.runId,
+          signal,
+          toolsUsed: Object.freeze([...execution.toolsUsed])
+        })),
+        this.loopOutcomeVerifierTimeoutMs
+      );
+      return settleLoopControlReceipt(pendingReceipt, verdict);
+    } catch {
+      // Verification is fail-closed for completion but fail-open for the
+      // user's response: a broken verifier cannot manufacture PASS and does
+      // not erase the already-produced answer. The receipt remains pending.
+      return pendingReceipt;
+    }
+  }
 
   private async executeToolCall(
     context: AgentRunContext,
@@ -1337,12 +1411,17 @@ export class AgentRuntime {
     });
   }
 
-  private async recordRunComplete(context: AgentRunContext, execution: ModelLoopExecution): Promise<void> {
+  private async recordRunComplete(
+    context: AgentRunContext,
+    execution: ModelLoopExecution,
+    statusOverride?: "cancelled" | "completed" | "failed"
+  ): Promise<void> {
     return recordRunComplete({
       context,
       execution,
       historyStore: this.historyStore,
-      resolveToolRisk: (name) => this.resolveToolRisk(name)
+      resolveToolRisk: (name) => this.resolveToolRisk(name),
+      ...(statusOverride ? { statusOverride } : {})
     });
   }
 

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createLoopControlReceipt, parseLoopControlReceipt } from "../src/loop-control-receipt.js";
+import {
+  createLoopControlReceipt,
+  parseLoopControlReceipt,
+  settleLoopControlReceipt
+} from "../src/loop-control-receipt.js";
 
 const base = () =>
   createLoopControlReceipt({
@@ -155,5 +159,26 @@ describe("LoopControlReceipt", () => {
     expect(() => parseLoopControlReceipt({ ...receipt, terminal: { reason: "goal-verified", status: 42 } })).toThrow(
       /terminal status/
     );
+  });
+
+  it("settles only a pending receipt with exact passed or failed evidence", () => {
+    const pending = createLoopControlReceipt({
+      budget: { retries: null, steps: null, tools: null, wallclockLimitMs: null },
+      endedAt: "2026-07-30T00:00:03.000Z",
+      loopKind: "react",
+      runId: "run-settle",
+      startedAt: "2026-07-30T00:00:00.000Z",
+      terminal: { reason: "verification-pending", status: "held" },
+      verification: { status: "pending" }
+    });
+
+    expect(settleLoopControlReceipt(pending, { evidenceId: "eval:pass", status: "passed" }).terminal)
+      .toEqual({ reason: "goal-verified", status: "completed" });
+    expect(settleLoopControlReceipt(pending, { evidenceId: "eval:fail", status: "failed" }).terminal)
+      .toEqual({ reason: "verification-failed", status: "failed" });
+    expect(() => settleLoopControlReceipt(base(), { evidenceId: "eval:pass", status: "passed" })).toThrow(
+      /only a verification-pending/
+    );
+    expect(() => settleLoopControlReceipt(pending, { status: "pending" })).toThrow(/passed or failed/);
   });
 });

@@ -1,5 +1,6 @@
 import { InMemoryResponseCache } from "@muse/cache";
 import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
+import { InMemoryAgentRunHistoryStore, InMemoryCheckpointStore } from "@muse/runtime-state";
 import { ToolRegistry } from "@muse/tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -44,6 +45,79 @@ describe("AgentRuntime loop control receipt wiring", () => {
     expect(receipt.loopKind).toBe("react");
     expect(receipt.terminal).toEqual({ reason: "verification-pending", status: "held" });
     expect(receipt.verification).toEqual({ status: "pending" });
+  });
+
+  it("promotes to completed only when the explicit outcome verifier passes with evidence", async () => {
+    const runtime = createAgentRuntime({
+      loopOutcomeVerifier: (verificationInput) => {
+        expect(Object.isFrozen(verificationInput)).toBe(true);
+        expect(Object.isFrozen(verificationInput.toolsUsed)).toBe(true);
+        expect(verificationInput.output).toBe("done");
+        return { evidenceId: "terminal-eval:pass", status: "passed" };
+      },
+      modelProvider: sequenceProvider([{ id: "answer", model: "test/model", output: "done" }])
+    });
+
+    const result = await runtime.run({ ...input, runId: "verified-pass-run" });
+    const receipt = parseLoopControlReceipt(result.loopControlReceipt);
+
+    expect(receipt.terminal).toEqual({ reason: "goal-verified", status: "completed" });
+    expect(receipt.verification).toEqual({ evidenceId: "terminal-eval:pass", status: "passed" });
+  });
+
+  it("records an explicit verifier failure and keeps verifier errors pending", async () => {
+    const failedCache = new InMemoryResponseCache();
+    const checkpointStore = new InMemoryCheckpointStore();
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    const failedRuntime = createAgentRuntime({
+      checkpointStore,
+      historyStore,
+      loopOutcomeVerifier: () => ({ evidenceId: "terminal-eval:fail", status: "failed" }),
+      modelProvider: sequenceProvider([{ id: "answer", model: "test/model", output: "wrong" }]),
+      responseCache: failedCache
+    });
+    const failedResult = await failedRuntime.run({ ...input, runId: "verified-fail-run" });
+    const failed = parseLoopControlReceipt(failedResult.loopControlReceipt);
+    const failedRepeat = await failedRuntime.run({ ...input, runId: "verified-fail-repeat" });
+
+    expect(failed.terminal).toEqual({ reason: "verification-failed", status: "failed" });
+    expect(failedRepeat.fromCache).not.toBe(true);
+    expect(await historyStore.findRun("verified-fail-run")).toMatchObject({ status: "failed" });
+    expect((await checkpointStore.findLatestByRunId("verified-fail-run"))?.state.phase).toBe("failed");
+
+    const brokenRuntime = createAgentRuntime({
+      loopOutcomeVerifier: () => {
+        throw new Error("verifier unavailable");
+      },
+      modelProvider: sequenceProvider([{ id: "answer", model: "test/model", output: "unverified" }])
+    });
+    const pending = parseLoopControlReceipt(
+      (await brokenRuntime.run({ ...input, runId: "broken-verifier-run" })).loopControlReceipt
+    );
+
+    expect(pending.terminal).toEqual({ reason: "verification-pending", status: "held" });
+  });
+
+  it("bounds a hung verifier and leaves completion pending", async () => {
+    vi.useFakeTimers();
+    let aborted = false;
+    const runtime = createAgentRuntime({
+      loopOutcomeVerifier: ({ signal }) => new Promise((_resolve) => {
+        signal.addEventListener("abort", () => {
+          aborted = true;
+        }, { once: true });
+      }),
+      loopOutcomeVerifierTimeoutMs: 5,
+      modelProvider: sequenceProvider([{ id: "answer", model: "test/model", output: "unverified" }])
+    });
+
+    const resultPromise = runtime.run({ ...input, runId: "hung-verifier-run" });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5);
+    const receipt = parseLoopControlReceipt((await resultPromise).loopControlReceipt);
+
+    expect(aborted).toBe(true);
+    expect(receipt.terminal).toEqual({ reason: "verification-pending", status: "held" });
   });
 
   it("omits a loop receipt on a cache hit because no loop executed", async () => {
@@ -101,6 +175,30 @@ describe("AgentRuntime loop control receipt wiring", () => {
 
     expect(receipt.loopKind).toBe("plan-execute");
     expect(receipt.terminal).toEqual({ reason: "verification-pending", status: "held" });
+  });
+
+  it("settles the streamed receipt through the same explicit verifier", async () => {
+    const runtime = createAgentRuntime({
+      loopOutcomeVerifier: () => ({ evidenceId: "stream-eval:pass", status: "passed" }),
+      modelProvider: sequenceProvider([
+        { id: "plan", model: "test/model", output: "[]" },
+        { id: "answer", model: "test/model", output: "direct answer" }
+      ])
+    });
+    const events = [];
+    for await (const event of runtime.stream({
+      ...input,
+      metadata: { agentMode: "plan_execute" },
+      runId: "verified-stream-plan"
+    })) {
+      events.push(event);
+    }
+    const done = events.find((event) => event.type === "done");
+    if (!done || done.type !== "done") throw new Error("missing done event");
+    const receipt = parseLoopControlReceipt(done.loopControlReceipt);
+
+    expect(receipt.terminal).toEqual({ reason: "goal-verified", status: "completed" });
+    expect(receipt.verification).toEqual({ evidenceId: "stream-eval:pass", status: "passed" });
   });
 
   it("reports a consumed tool cap as budget-exhausted instead of completed", async () => {

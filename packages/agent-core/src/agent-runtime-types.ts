@@ -52,6 +52,7 @@ import type { EpisodicRecallProvider } from "./episodic-recall.js";
 import type { HookRegistry } from "./hook-registry.js";
 import type { InboxContextProvider } from "./inbox-context.js";
 import type { LoopControlReceipt } from "./loop-control-receipt.js";
+import type { LoopOutcomeVerificationVerdict } from "./loop-control-receipt.js";
 import type { PlanStep } from "./plan-execute.js";
 import type { SkillCatalogProvider } from "./skills-context.js";
 import type { ToolExemplar } from "./tool-exemplars.js";
@@ -71,6 +72,14 @@ import type {
 export interface AgentRuntimeOptions {
   readonly modelProvider?: ModelProvider;
   readonly modelRegistry?: ModelProviderRegistry;
+  /**
+   * Optional deterministic or externally assembled goal verifier. Raw model
+   * completion remains `verification-pending` when absent, invalid, or
+   * throwing. This seam never grants tool/effect authority.
+   */
+  readonly loopOutcomeVerifier?: LoopOutcomeVerifier;
+  /** Hard timeout for one outcome-verifier call. Default 5_000 ms. */
+  readonly loopOutcomeVerifierTimeoutMs?: number;
   readonly agentSpecResolver?: AgentSpecResolver;
   readonly historyStore?: AgentRunHistoryStore;
   readonly checkpointStore?: CheckpointStore;
@@ -294,6 +303,19 @@ export interface AgentRuntimeOptions {
     readonly temperature?: number;
   };
 }
+
+export interface LoopOutcomeVerificationInput {
+  readonly loopControlReceipt: LoopControlReceipt;
+  readonly model: string;
+  readonly output: string;
+  readonly runId: string;
+  readonly signal: AbortSignal;
+  readonly toolsUsed: readonly string[];
+}
+
+export type LoopOutcomeVerifier = (
+  input: LoopOutcomeVerificationInput
+) => LoopOutcomeVerificationVerdict | Promise<LoopOutcomeVerificationVerdict>;
 
 export type ToolRiskLevel = "read" | "write" | "execute";
 

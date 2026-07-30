@@ -20,6 +20,10 @@ export type LoopVerification =
   | { readonly evidenceId: string; readonly status: "failed" }
   | { readonly status: "pending" };
 
+export type LoopOutcomeVerificationVerdict =
+  | { readonly evidenceId: string; readonly status: "passed" }
+  | { readonly evidenceId: string; readonly status: "failed" };
+
 export interface LoopBudgetCounterInput {
   readonly limit: number;
   readonly used: number;
@@ -313,4 +317,45 @@ export function parseLoopControlReceipt(value: unknown): LoopControlReceipt {
   }
   if (value.receiptId !== candidate.receiptId) throw new Error("receiptId does not match receipt content");
   return candidate;
+}
+
+export function settleLoopControlReceipt(
+  receiptValue: unknown,
+  verdictValue: unknown
+): LoopControlReceipt {
+  const receipt = parseLoopControlReceipt(receiptValue);
+  if (
+    receipt.terminal.status !== "held" ||
+    receipt.terminal.reason !== "verification-pending" ||
+    receipt.verification.status !== "pending"
+  ) {
+    throw new Error("only a verification-pending loop receipt can be settled");
+  }
+  const verification = normalizeVerification(verdictValue);
+  if (verification.status !== "passed" && verification.status !== "failed") {
+    throw new Error("loop outcome verdict must be passed or failed");
+  }
+
+  return createLoopControlReceipt({
+    budget: {
+      retries: receipt.budget.retries
+        ? { limit: receipt.budget.retries.limit, used: receipt.budget.retries.used }
+        : null,
+      steps: receipt.budget.steps
+        ? { limit: receipt.budget.steps.limit, used: receipt.budget.steps.used }
+        : null,
+      tools: receipt.budget.tools
+        ? { limit: receipt.budget.tools.limit, used: receipt.budget.tools.used }
+        : null,
+      wallclockLimitMs: receipt.budget.wallclock.limitMs
+    },
+    endedAt: receipt.endedAt,
+    loopKind: receipt.loopKind,
+    runId: receipt.runId,
+    startedAt: receipt.startedAt,
+    terminal: verification.status === "passed"
+      ? { reason: "goal-verified", status: "completed" }
+      : { reason: "verification-failed", status: "failed" },
+    verification
+  });
 }

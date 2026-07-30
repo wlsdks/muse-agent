@@ -130,6 +130,7 @@ export { DEFAULT_STREAM_IDLE_TIMEOUT_MS } from "./model-loop.js";
 export {
   createLoopControlReceipt,
   parseLoopControlReceipt,
+  settleLoopControlReceipt,
   type CreateLoopControlReceiptInput,
   type LoopBudgetCounter,
   type LoopBudgetCounterInput,
@@ -137,6 +138,7 @@ export {
   type LoopControlBudgetSnapshot,
   type LoopControlReceipt,
   type LoopKind,
+  type LoopOutcomeVerificationVerdict,
   type LoopTerminalState,
   type LoopVerification
 } from "./loop-control-receipt.js";
@@ -647,6 +649,8 @@ export {
   type AgentRuntimeStreamEvent,
   type EgressAdvisory,
   type EgressAdvisorySink,
+  type LoopOutcomeVerificationInput,
+  type LoopOutcomeVerifier,
   type ToolApprovalGate,
   type ToolApprovalGateDecision,
   type ToolApprovalGateInput,
