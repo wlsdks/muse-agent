@@ -1,4 +1,10 @@
-import { createTriggerEnvelope, errorMessage, type JsonObject, type JsonValue } from "@muse/shared";
+import {
+  createRunId,
+  createTriggerEnvelope,
+  errorMessage,
+  type JsonObject,
+  type JsonValue
+} from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { ActiveRunTracker } from "./active-run-tracker.js";
@@ -33,13 +39,24 @@ import {
  * nothing, so its record is unchanged from before. */
 function triggerRecordFields(
   invocation: TriggerInvocation | undefined
-): { triggeredBy?: "webhook"; payloadPreview?: string } {
-  if (!invocation || invocation.webhookPayload === undefined) {
+): {
+  triggerDedupKey?: string;
+  triggeredBy?: "webhook";
+  payloadPreview?: string;
+} {
+  if (!invocation?.trigger) {
     return {};
   }
   return {
-    triggeredBy: "webhook",
-    ...(invocation.payloadPreview !== undefined ? { payloadPreview: invocation.payloadPreview } : {})
+    triggerDedupKey: invocation.trigger.dedupKey,
+    ...(invocation.webhookPayload !== undefined
+      ? {
+          triggeredBy: "webhook" as const,
+          ...(invocation.payloadPreview !== undefined
+            ? { payloadPreview: invocation.payloadPreview }
+            : {})
+        }
+      : {})
   };
 }
 
@@ -252,7 +269,7 @@ export class DynamicScheduler {
     }
     const startedAt = this.now();
     const trigger = invocation?.trigger ?? createTriggerEnvelope({
-      generation: startedAt.toISOString(),
+      generation: createRunId("scheduler_trigger"),
       occurredAt: startedAt,
       provenance: {
         kind: automatic ? "local-scheduler" : "owner-command",

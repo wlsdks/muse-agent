@@ -7,7 +7,8 @@ describe("db migrations", () => {
       "0001_runtime_state",
       "0002_conversation_summaries_user_id",
       "0003_scheduled_jobs_webhook_trigger_token",
-      "0004_scheduled_job_executions_webhook_trigger"
+      "0004_scheduled_job_executions_webhook_trigger",
+      "0005_scheduled_job_executions_trigger_correlation"
     ]);
   });
 
@@ -38,6 +39,24 @@ describe("db migrations", () => {
     const sql = migrations.map((migration) => migration.up).join("\n");
     expect(sql).toContain("ADD COLUMN IF NOT EXISTS triggered_by");
     expect(sql).toContain("ADD COLUMN IF NOT EXISTS payload_preview");
+  });
+
+  it("adds reversible unique trigger correlation to execution history (0005)", () => {
+    const migration = migrations.find((candidate) =>
+      candidate.name === "0005_scheduled_job_executions_trigger_correlation");
+    expect(migration?.up).toContain(
+      "ADD COLUMN IF NOT EXISTS trigger_dedup_key VARCHAR(96)"
+    );
+    expect(migration?.up).toContain(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduled_job_executions_trigger_dedup_key"
+    );
+    expect(migration?.up).toContain("WHERE trigger_dedup_key IS NOT NULL");
+    expect(migration?.down).toContain(
+      "DROP INDEX IF EXISTS idx_scheduled_job_executions_trigger_dedup_key"
+    );
+    expect(migration?.down).toContain(
+      "DROP COLUMN IF EXISTS trigger_dedup_key"
+    );
   });
 
   it("does not include private migration material", () => {

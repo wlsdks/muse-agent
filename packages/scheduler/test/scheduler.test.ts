@@ -168,6 +168,33 @@ describe("scheduled job stores", () => {
     expect(store.findRecent()).toHaveLength(2);
   });
 
+  it("indexes one canonical trigger occurrence and rejects duplicates", () => {
+    const store = new InMemoryScheduledJobExecutionStore({
+      idFactory: () => "exec-trigger"
+    });
+    const triggerDedupKey = `trigger:${"a".repeat(64)}`;
+    const saved = store.save({
+      jobId: "job-1",
+      jobName: "Job",
+      status: "success",
+      triggerDedupKey
+    });
+
+    expect(store.findByTriggerDedupKey(triggerDedupKey)).toBe(saved);
+    expect(() => store.save({
+      jobId: "job-1",
+      jobName: "Job",
+      status: "failed",
+      triggerDedupKey
+    })).toThrow("Scheduled trigger execution already exists");
+    expect(() => store.save({
+      jobId: "job-1",
+      jobName: "Job",
+      status: "success",
+      triggerDedupKey: "trigger:invalid"
+    })).toThrow("canonical trigger occurrence key");
+  });
+
   it("enforces in-memory scheduler locks with owner and TTL semantics", async () => {
     let nowMs = Date.parse("2026-01-01T00:00:00.000Z");
     const first = new InMemoryDistributedSchedulerLock({
@@ -594,6 +621,9 @@ describe("DynamicScheduler", () => {
 
   it("a failed trigger's recorded result carries the REAL error message, not just the error's class name", async () => {
     const store = new InMemoryScheduledJobStore({ idFactory: () => "job-1" });
+    const executions = new InMemoryScheduledJobExecutionStore({
+      idFactory: () => "exec-failed"
+    });
     const service = new DynamicScheduler({
       dispatcher: new ScheduledJobDispatcher({
         agentExecutor: {
@@ -603,6 +633,7 @@ describe("DynamicScheduler", () => {
         },
         mcpInvoker: createUnusedMcpInvoker()
       }),
+      executionStore: executions,
       store
     });
     const saved = await service.create({
@@ -616,6 +647,10 @@ describe("DynamicScheduler", () => {
     expect(result).toContain("MCP server 'muse.time' is not connected");
     expect(result).not.toContain("SchedulerExecutionError");
     expect(store.findById(saved.id)?.lastResult).toContain("MCP server 'muse.time' is not connected");
+    const [execution] = executions.findByJobId(saved.id);
+    expect(execution?.triggerDedupKey).toMatch(/^trigger:[0-9a-f]{64}$/u);
+    expect(executions.findByTriggerDedupKey(execution!.triggerDedupKey!))
+      .toBe(execution);
   });
 
   it("dry run records history but does not mutate last status", async () => {
@@ -639,7 +674,10 @@ describe("DynamicScheduler", () => {
     await expect(service.dryRun(saved.id)).resolves.toBe("dry");
 
     expect(store.findById(saved.id)?.lastStatus).toBeUndefined();
-    expect(executions.findByJobId(saved.id)[0]?.dryRun).toBe(true);
+    expect(executions.findByJobId(saved.id)[0]).toMatchObject({
+      dryRun: true,
+      triggerDedupKey: expect.stringMatching(/^trigger:[0-9a-f]{64}$/u)
+    });
   });
 
   it("records a shadow admission without dispatch, lock acquisition, or notification", async () => {
@@ -682,7 +720,8 @@ describe("DynamicScheduler", () => {
     expect(store.findById(saved.id)?.lastStatus).toBe("skipped");
     expect(executions.findByJobId(saved.id)[0]).toMatchObject({
       result: "shadow: delivery-brake",
-      status: "skipped"
+      status: "skipped",
+      triggerDedupKey: expect.stringMatching(/^trigger:[0-9a-f]{64}$/u)
     });
   });
 });
@@ -830,13 +869,40 @@ describe("Kysely mapping helpers", () => {
       { idFactory: () => "job-1", now: () => now }
     );
     const execution = createScheduledJobExecutionInsert(
-      { jobId: "job-1", jobName: "Job", result: "ok", status: "success" },
+      {
+        jobId: "job-1",
+        jobName: "Job",
+        result: "ok",
+        status: "success",
+        triggerDedupKey: `trigger:${"b".repeat(64)}`
+      },
       { idFactory: () => "exec-1", now: () => now }
     );
     const lock = createScheduledJobLockInsert("job-1", "worker-1", 1_000, now);
 
     expect(mapScheduledJobRow(insert)).toMatchObject({ id: "job-1", name: "Job", tags: ["ops"] });
-    expect(mapScheduledJobExecutionRow(execution)).toMatchObject({ id: "exec-1", jobId: "job-1" });
+    expect(mapScheduledJobExecutionRow(execution)).toMatchObject({
+      id: "exec-1",
+      jobId: "job-1",
+      triggerDedupKey: `trigger:${"b".repeat(64)}`
+    });
+    expect(mapScheduledJobExecutionRow({
+      ...execution,
+      trigger_dedup_key: null
+    }).triggerDedupKey).toBeUndefined();
+    expect(() => createScheduledJobExecutionInsert(
+      {
+        jobId: "job-1",
+        jobName: "Job",
+        status: "success",
+        triggerDedupKey: "trigger:invalid"
+      },
+      { idFactory: () => "exec-invalid", now: () => now }
+    )).toThrow("canonical trigger occurrence key");
+    expect(() => mapScheduledJobExecutionRow({
+      ...execution,
+      trigger_dedup_key: "trigger:invalid"
+    })).toThrow("canonical trigger occurrence key");
     expect(lock).toMatchObject({
       job_id: "job-1",
       locked_until: new Date("2026-05-05T00:00:01.000Z"),
@@ -1098,9 +1164,13 @@ describe("webhook trigger invocation — isolation of the untrusted payload", ()
   it("records triggeredBy + payloadPreview for a webhook-invoked run, and NOTHING for a plain trigger", async () => {
     const store = new InMemoryScheduledJobStore({ idFactory: () => "job-rec" });
     const executions = new InMemoryScheduledJobExecutionStore({ idFactory: () => "exec-rec" });
+    let seen: TriggerInvocation | undefined;
     const service = new DynamicScheduler({
       dispatcher: new ScheduledJobDispatcher({
-        agentExecutor: { execute: async () => "done" },
+        agentExecutor: { execute: async (_job, resolvedInvocation) => {
+          seen = resolvedInvocation;
+          return "done";
+        } },
         mcpInvoker: createUnusedMcpInvoker()
       }),
       executionStore: executions,
@@ -1112,11 +1182,14 @@ describe("webhook trigger invocation — isolation of the untrusted payload", ()
     const [webhookRun] = executions.findByJobId(saved.id);
     expect(webhookRun?.triggeredBy).toBe("webhook");
     expect(webhookRun?.payloadPreview).toBe("{\"note\":\"milk\"}");
+    expect(webhookRun?.triggerDedupKey).toBe(seen?.trigger?.dedupKey);
 
     await service.trigger(saved.id);
     const [plainRun] = executions.findByJobId(saved.id);
     expect(plainRun?.triggeredBy).toBeUndefined();
     expect(plainRun?.payloadPreview).toBeUndefined();
+    expect(plainRun?.triggerDedupKey).toMatch(/^trigger:[0-9a-f]{64}$/u);
+    expect(plainRun?.triggerDedupKey).not.toBe(webhookRun?.triggerDedupKey);
   });
 
   it("an AUTOMATIC (cron) fire carries a canonical trigger and records no webhook source", async () => {
@@ -1149,6 +1222,7 @@ describe("webhook trigger invocation — isolation of the untrusted payload", ()
     expect(seen?.trigger?.dedupKey).toMatch(/^trigger:[a-f0-9]{64}$/u);
     const [autoRun] = executions.findByJobId("job-auto");
     expect(autoRun?.triggeredBy).toBeUndefined();
+    expect(autoRun?.triggerDedupKey).toBe(seen?.trigger?.dedupKey);
   });
 });
 

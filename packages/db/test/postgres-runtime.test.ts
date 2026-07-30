@@ -91,6 +91,63 @@ describe.skipIf(!runPostgresSmoke)("PostgreSQL runtime migrations", () => {
       id: "run-postgres-smoke",
       status: "completed"
     });
+
+    await sql`
+      INSERT INTO scheduled_jobs (
+        id,
+        name,
+        cron_expression,
+        timezone,
+        job_type,
+        tool_arguments,
+        tags
+      ) VALUES (
+        'job-trigger-correlation',
+        'Trigger correlation',
+        '0 * * * * *',
+        'UTC',
+        'agent',
+        '{}'::jsonb,
+        '[]'::jsonb
+      )
+    `.execute(db);
+    const triggerDedupKey = `trigger:${"a".repeat(64)}`;
+    await db.insertInto("scheduled_job_executions").values({
+      completed_at: new Date("2026-07-31T00:00:01.000Z"),
+      dry_run: false,
+      duration_ms: 1_000,
+      id: "execution-trigger-correlation",
+      job_id: "job-trigger-correlation",
+      job_name: "Trigger correlation",
+      payload_preview: null,
+      result: "ok",
+      started_at: new Date("2026-07-31T00:00:00.000Z"),
+      status: "success",
+      trigger_dedup_key: triggerDedupKey,
+      triggered_by: null
+    }).execute();
+    const correlated = await db.selectFrom("scheduled_job_executions")
+      .select(["id", "trigger_dedup_key"])
+      .where("trigger_dedup_key", "=", triggerDedupKey)
+      .executeTakeFirstOrThrow();
+    expect(correlated).toEqual({
+      id: "execution-trigger-correlation",
+      trigger_dedup_key: triggerDedupKey
+    });
+    await expect(db.insertInto("scheduled_job_executions").values({
+      completed_at: new Date("2026-07-31T00:00:02.000Z"),
+      dry_run: false,
+      duration_ms: 1_000,
+      id: "execution-trigger-correlation-duplicate",
+      job_id: "job-trigger-correlation",
+      job_name: "Trigger correlation",
+      payload_preview: null,
+      result: "duplicate",
+      started_at: new Date("2026-07-31T00:00:01.000Z"),
+      status: "success",
+      trigger_dedup_key: triggerDedupKey,
+      triggered_by: null
+    }).execute()).rejects.toThrow();
   }, 120_000);
 
   async function tableExists(tableName: string): Promise<boolean> {

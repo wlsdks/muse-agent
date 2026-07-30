@@ -29,6 +29,7 @@ type ScheduledJobExecutionRow = Selectable<ScheduledJobExecutionTable>;
 
 export const defaultTimezone = "UTC";
 export const defaultRetryCount = 3;
+const TRIGGER_DEDUP_KEY_PATTERN = /^(?:trigger|reminder):[0-9a-f]{64}$/u;
 
 export { maxRetryCountCeiling, requireText, validateCronExpression, validateExecutionTimeout, validateJobName, validateJobTypeFields, validateRetryConfig, validateTimezone } from "./scheduler-validation.js";
 
@@ -126,8 +127,26 @@ export function normalizeScheduledJobExecution(
     result: blankToUndefined(input.result),
     startedAt: input.startedAt ?? now,
     status: input.status,
+    triggerDedupKey: normalizeTriggerDedupKey(input.triggerDedupKey),
     triggeredBy: input.triggeredBy === "webhook" ? "webhook" : undefined
   };
+}
+
+export function normalizeTriggerDedupKey(value: string): string;
+export function normalizeTriggerDedupKey(
+  value: null | undefined
+): undefined;
+export function normalizeTriggerDedupKey(
+  value: string | null | undefined
+): string | undefined;
+export function normalizeTriggerDedupKey(
+  value: string | null | undefined
+): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (!TRIGGER_DEDUP_KEY_PATTERN.test(value)) {
+    throw new TypeError("triggerDedupKey must be a canonical trigger occurrence key");
+  }
+  return value;
 }
 
 export function renderTemplateVariables(template: string, job: ScheduledJob, now = new Date()): string {
@@ -199,6 +218,7 @@ export function createScheduledJobExecutionInsert(
     result: execution.result ?? null,
     started_at: execution.startedAt,
     status: execution.status,
+    trigger_dedup_key: normalizeTriggerDedupKey(execution.triggerDedupKey) ?? null,
     triggered_by: execution.triggeredBy ?? null
   };
 }
@@ -250,6 +270,7 @@ export function mapScheduledJobExecutionRow(row: ScheduledJobExecutionRow): Sche
     result: row.result ?? undefined,
     startedAt: toDate(row.started_at),
     status: row.status,
+    triggerDedupKey: normalizeTriggerDedupKey(row.trigger_dedup_key),
     triggeredBy: row.triggered_by === "webhook" ? "webhook" : undefined
   };
 }

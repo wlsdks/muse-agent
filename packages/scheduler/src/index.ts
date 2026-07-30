@@ -19,6 +19,7 @@ export {
   mapScheduledJobRow,
   normalizeScheduledJob,
   normalizeScheduledJobExecution,
+  normalizeTriggerDedupKey,
   parseNotificationChannel,
   renderTemplateVariables,
   requireText,
@@ -112,6 +113,8 @@ export interface ScheduledJobExecution {
   readonly dryRun: boolean;
   readonly startedAt: Date;
   readonly completedAt?: Date;
+  /** Exact provider-neutral trigger occurrence that produced this record. */
+  readonly triggerDedupKey?: string;
   /** How this run was fired. Only `"webhook"` is recorded today; cron and
    * manual `trigger`/`dryRun` runs leave it `undefined`. */
   readonly triggeredBy?: "webhook";
@@ -130,6 +133,7 @@ export interface ScheduledJobExecutionInput {
   readonly dryRun?: boolean;
   readonly startedAt?: Date;
   readonly completedAt?: Date | null;
+  readonly triggerDedupKey?: string | null;
   readonly triggeredBy?: "webhook" | null;
   readonly payloadPreview?: string | null;
 }
@@ -194,6 +198,7 @@ export interface ScheduledJobStore {
 export interface ScheduledJobExecutionStore {
   save(execution: ScheduledJobExecutionInput): Awaitable<ScheduledJobExecution>;
   findByJobId(jobId: string, limit?: number): Awaitable<readonly ScheduledJobExecution[]>;
+  findByTriggerDedupKey(dedupKey: string): Awaitable<ScheduledJobExecution | undefined>;
   findRecent(limit?: number): Awaitable<readonly ScheduledJobExecution[]>;
   deleteOldestExecutions(jobId: string, keepCount: number): Awaitable<void>;
 }

@@ -19,6 +19,7 @@ import type { MuseDatabase, ScheduledJobExecutionTable, ScheduledJobTable } from
 import { createRunId } from "@muse/shared";
 import type { Kysely, Selectable } from "kysely";
 
+import { normalizeTriggerDedupKey } from "./scheduler-helpers.js";
 import {
   SchedulerValidationError,
   compareJobs,
@@ -185,6 +186,13 @@ export class InMemoryScheduledJobExecutionStore implements ScheduledJobExecution
       id: input.id ?? this.idFactory(),
       now: this.now
     });
+    if (
+      saved.triggerDedupKey
+      && this.executions.some((execution) =>
+        execution.triggerDedupKey === saved.triggerDedupKey)
+    ) {
+      throw new SchedulerValidationError("Scheduled trigger execution already exists");
+    }
 
     this.executions.unshift(saved);
 
@@ -197,6 +205,11 @@ export class InMemoryScheduledJobExecutionStore implements ScheduledJobExecution
 
   findByJobId(jobId: string, limit = 20): readonly ScheduledJobExecution[] {
     return this.executions.filter((execution) => execution.jobId === jobId).slice(0, Math.max(0, limit));
+  }
+
+  findByTriggerDedupKey(dedupKey: string): ScheduledJobExecution | undefined {
+    const key = normalizeTriggerDedupKey(dedupKey);
+    return this.executions.find((execution) => execution.triggerDedupKey === key);
   }
 
   findRecent(limit = 50): readonly ScheduledJobExecution[] {
@@ -337,6 +350,21 @@ export class KyselyScheduledJobExecutionStore implements ScheduledJobExecutionSt
       .limit(Math.max(0, limit))
       .execute();
     return rows.map(mapScheduledJobExecutionRow);
+  }
+
+  async findByTriggerDedupKey(
+    dedupKey: string
+  ): Promise<ScheduledJobExecution | undefined> {
+    const key = normalizeTriggerDedupKey(dedupKey);
+    if (key === undefined) {
+      throw new TypeError("triggerDedupKey must be a canonical trigger occurrence key");
+    }
+    const row = await this.db
+      .selectFrom("scheduled_job_executions")
+      .selectAll()
+      .where("trigger_dedup_key", "=", key)
+      .executeTakeFirst();
+    return row ? mapScheduledJobExecutionRow(row) : undefined;
   }
 
   async findRecent(limit = 50): Promise<readonly ScheduledJobExecution[]> {

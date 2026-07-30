@@ -240,6 +240,7 @@ export class ScheduledJobExecutionRecorder {
     readonly durationMs: number;
     readonly dryRun: boolean;
     readonly startedAt: Date;
+    readonly triggerDedupKey?: string;
     readonly triggeredBy?: "webhook";
     readonly payloadPreview?: string;
   }): Promise<void> {
@@ -257,6 +258,7 @@ export class ScheduledJobExecutionRecorder {
       result: options.result,
       startedAt: options.startedAt,
       status: options.status,
+      triggerDedupKey: options.triggerDedupKey,
       triggeredBy: options.triggeredBy
     });
     await this.executionStore.deleteOldestExecutions(options.job.id, this.maxExecutionsPerJob);

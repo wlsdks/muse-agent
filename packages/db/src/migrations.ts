@@ -443,6 +443,21 @@ export const migrations: readonly SqlMigration[] = [
       ALTER TABLE scheduled_job_executions
         ADD COLUMN IF NOT EXISTS payload_preview TEXT;
     `
+  },
+  {
+    down: `
+      DROP INDEX IF EXISTS idx_scheduled_job_executions_trigger_dedup_key;
+      ALTER TABLE IF EXISTS scheduled_job_executions
+        DROP COLUMN IF EXISTS trigger_dedup_key;
+    `,
+    name: "0005_scheduled_job_executions_trigger_correlation",
+    up: `
+      ALTER TABLE scheduled_job_executions
+        ADD COLUMN IF NOT EXISTS trigger_dedup_key VARCHAR(96);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduled_job_executions_trigger_dedup_key
+        ON scheduled_job_executions(trigger_dedup_key)
+        WHERE trigger_dedup_key IS NOT NULL;
+    `
   }
 ];
 
