@@ -14,11 +14,15 @@
  */
 
 import {
+  buildExperienceLearningProposalPreview,
   buildExperienceLearningReviewQueue,
   createLocalExactArtifactResolver,
+  fingerprintContinuityPolicy,
+  proposeExperienceLearningFromDelivery,
   readAttunementState,
   readPreparedContinuityPack,
-  retryContinuityTaskCompletionInteractions
+  retryContinuityTaskCompletionInteractions,
+  type ExperienceLearningProposalDraft
 } from "@muse/attunement";
 import {
   createLocalAttunementSnapshotProvider,
@@ -50,6 +54,7 @@ import {
 } from "./continuity-pack-tools.js";
 import { createContinuityOutcomeTool } from "./continuity-outcome-tool.js";
 import { createContinuityLearningOpportunityTool } from "./continuity-learning-opportunity-tool.js";
+import { createContinuityLearningPreviewTool } from "./continuity-learning-preview-tool.js";
 import { createQualificationLearningWriteGate } from "./qualification-learning-active-skill-write-gate.js";
 import { resolveWeaknessesFile } from "./provider-paths.js";
 import type { MuseEnvironment } from "./index.js";
@@ -196,6 +201,33 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
             readQueue: async () => buildExperienceLearningReviewQueue(
               await readAttunementState(deps.attunementFile!)
             )
+          }),
+          createContinuityLearningPreviewTool({
+            preview: async ({ draft, opportunityId }) => {
+              const state = await readAttunementState(deps.attunementFile!);
+              const queue = buildExperienceLearningReviewQueue(state);
+              const opportunity = queue.items.find((entry) =>
+                entry.opportunityId === opportunityId
+              );
+              if (!opportunity) return undefined;
+              const delivery = state.deliveries.find((entry) =>
+                entry.id === opportunity.deliveryId
+              );
+              const thread = state.threads.find((entry) =>
+                entry.id === opportunity.scope.threadId
+              );
+              if (!delivery || !thread) return undefined;
+              const proposal = proposeExperienceLearningFromDelivery({
+                activeBehaviorDigest: fingerprintContinuityPolicy(thread.policy),
+                delivery,
+                draft: draft as ExperienceLearningProposalDraft
+              });
+              if (proposal.status === "held"
+                || proposal.candidate.outcome.outcomeId !== opportunity.outcome.outcomeId) {
+                return undefined;
+              }
+              return buildExperienceLearningProposalPreview(proposal.candidate);
+            }
           }),
           createContinuityOutcomeTool({
             recordOutcome: (deliveryId, outcome, ownerNote) =>
