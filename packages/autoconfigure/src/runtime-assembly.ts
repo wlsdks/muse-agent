@@ -633,6 +633,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     })
   });
   schedulerHandle.current = schedulerService;
+  const triggerControlRecovery = triggerControlStore.reconcileExpired(new Date());
   if (schedulerCronEnabled) {
     // Re-arm every enabled job's cron timer after a process restart — with
     // no caller, `loadEnabledJobs` (which exists precisely for this) was
@@ -640,7 +641,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     // that created it exited. Fire-and-forget: assembly itself stays
     // synchronous, and a failure here (e.g. a corrupt persisted cron
     // expression) must not block the whole runtime from coming up.
-    void schedulerService.loadEnabledJobs().catch(() => undefined);
+    void triggerControlRecovery
+      .then(() => schedulerService.loadEnabledJobs())
+      .catch(() => undefined);
+  } else {
+    void triggerControlRecovery.catch(() => undefined);
   }
 
   assertAuthConfigCoherent(env, Boolean(authService));
@@ -672,6 +677,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       adaptationLoopHealthSnapshot: adaptationLoopHealthObserver.snapshot,
       agentLoopHealthSnapshot: agentLoopHealthObserver.snapshot,
       eventLoopHealthSnapshot: async () => {
+        await triggerControlRecovery;
         const state = await triggerControlStore.snapshot();
         return Object.freeze({
           journal: state.journal,

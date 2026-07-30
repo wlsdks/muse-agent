@@ -16,6 +16,7 @@ import { parseStrictJson } from "./strict-json.js";
 import {
   cancelTriggerWork,
   claimTriggerWork,
+  expireFinalTriggerWorkLease,
   importTerminalTriggerWorkState,
   normalizeTriggerWorkState,
   parseTriggerWorkState,
@@ -46,6 +47,10 @@ export interface AdmitTriggerControlResult {
 
 export interface TriggerControlWorkInput {
   readonly dedupKey: string;
+}
+
+export interface ReconcileExpiredTriggerControlWorkInput {
+  readonly at: Date;
 }
 
 const STATE_ID_PREFIX = "trigger-control:";
@@ -146,6 +151,31 @@ export function cancelTriggerControlWork(
   const cancelled = cancelTriggerWork(requireWork(current, input.dedupKey), input);
   const journal = settleJournalForWork(current.journal, cancelled, input.at);
   return nextState(current, journal, replaceWork(current.workStates, cancelled));
+}
+
+export function reconcileExpiredTriggerControlWork(
+  state: TriggerControlState,
+  input: ReconcileExpiredTriggerControlWorkInput
+): TriggerControlState {
+  const current = normalizeTriggerControlState(state);
+  if (!(input.at instanceof Date) || Number.isNaN(input.at.getTime())) {
+    throw new TypeError("at must be a valid Date");
+  }
+  let journal = current.journal;
+  let workStates = current.workStates;
+  let changed = false;
+  for (const work of current.workStates) {
+    if (work.status !== "leased"
+      || work.attempt < work.maxAttempts
+      || Date.parse(work.leaseExpiresAt!) > input.at.getTime()) {
+      continue;
+    }
+    const expired = expireFinalTriggerWorkLease(work, input);
+    journal = settleJournalForWork(journal, expired, input.at);
+    workStates = replaceWork(workStates, expired);
+    changed = true;
+  }
+  return changed ? nextState(current, journal, workStates) : current;
 }
 
 export function serializeTriggerControlState(state: TriggerControlState): string {

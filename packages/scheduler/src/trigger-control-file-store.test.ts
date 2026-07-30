@@ -214,6 +214,35 @@ describe("TriggerControlFileStore", () => {
     expect((await restarted.snapshot()).stateId).toBe(settled.stateId);
   });
 
+  it("durably reconciles an expired final lease exactly once", async () => {
+    const { file, store } = await tempStore();
+    const occurrence = envelope("expired-final");
+    await store.admit({ envelope: occurrence, now: at });
+    await store.claim({
+      at,
+      dedupKey: occurrence.dedupKey,
+      leaseDurationMs: 1_000,
+      leaseToken: "lease-expired",
+      maxAttempts: 1
+    });
+
+    const reconciled = await store.reconcileExpired(
+      new Date("2026-07-30T08:00:01.000Z")
+    );
+    expect(reconciled).toMatchObject({
+      journal: {
+        entries: [{ state: "dead-lettered", terminalReason: "lease-expired" }]
+      },
+      workStates: [{ status: "dead-lettered", terminalReason: "lease-expired" }]
+    });
+    const bytes = await readFile(file);
+    const replay = await store.reconcileExpired(
+      new Date("2026-07-30T08:00:02.000Z")
+    );
+    expect(replay.stateId).toBe(reconciled.stateId);
+    expect(await readFile(file)).toEqual(bytes);
+  });
+
   it("fails closed on corrupt state or configuration drift without changing bytes", async () => {
     const { file, store } = await tempStore();
     await writeFile(file, "{", { mode: 0o600 });

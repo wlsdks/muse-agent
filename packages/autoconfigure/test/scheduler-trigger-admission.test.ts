@@ -281,6 +281,64 @@ describe("scheduled trigger admission runtime wiring", () => {
     });
   });
 
+  it("reconciles an expired final lease before production health observes it", async () => {
+    const file = await journalFile();
+    const legacyFile = `${file}.legacy`;
+    const store = new TriggerControlFileStore(file, { maxPending: 256 });
+    const occurrence = envelope("expired-production");
+    await store.admit({ envelope: occurrence, now: NOW });
+    await store.claim({
+      at: NOW,
+      dedupKey: occurrence.dedupKey,
+      leaseDurationMs: 1,
+      leaseToken: "expired-production-lease",
+      maxAttempts: 1
+    });
+    const assembly = createMuseRuntimeAssembly({
+      env: {
+        MUSE_SCHEDULER_CRON_ENABLED: "false",
+        MUSE_SCHEDULER_PERSIST: "false",
+        MUSE_TASK_MEMORY_PERSIST: "false",
+        MUSE_TRIGGER_ADMISSION_JOURNAL_FILE: legacyFile,
+        MUSE_TRIGGER_CONTROL_FILE: file
+      }
+    });
+
+    await expect(assembly.observability.eventLoopHealthSnapshot()).resolves.toMatchObject({
+      journal: {
+        entries: [{ state: "dead-lettered", terminalReason: "lease-expired" }]
+      },
+      workStates: [{ status: "dead-lettered", terminalReason: "lease-expired" }]
+    });
+  });
+
+  it("does not arm cron jobs when startup control recovery fails closed", async () => {
+    const file = await journalFile();
+    await fs.writeFile(file, "{", { mode: 0o600 });
+    const loadEnabledJobs = vi.spyOn(
+      DynamicScheduler.prototype,
+      "loadEnabledJobs"
+    ).mockResolvedValue(0);
+    try {
+      const assembly = createMuseRuntimeAssembly({
+        env: {
+          MUSE_SCHEDULER_CRON_ENABLED: "true",
+          MUSE_SCHEDULER_PERSIST: "false",
+          MUSE_TASK_MEMORY_PERSIST: "false",
+          MUSE_TRIGGER_ADMISSION_JOURNAL_FILE: `${file}.legacy`,
+          MUSE_TRIGGER_CONTROL_FILE: file
+        }
+      });
+
+      await expect(assembly.observability.eventLoopHealthSnapshot()).rejects.toMatchObject({
+        code: "corrupt-state"
+      });
+      expect(loadEnabledJobs).not.toHaveBeenCalled();
+    } finally {
+      loadEnabledJobs.mockRestore();
+    }
+  });
+
   it("uses an explicit env override without touching the filesystem", async () => {
     const file = await journalFile();
     await fs.rm(file, { force: true });

@@ -91,6 +91,7 @@ export {
   TRIGGER_WORK_STATE_SCHEMA_VERSION,
   cancelTriggerWork,
   claimTriggerWork,
+  expireFinalTriggerWorkLease,
   importTerminalTriggerWorkState,
   normalizeTriggerWorkState,
   parseTriggerWorkState,
@@ -99,6 +100,7 @@ export {
   settleTriggerWork,
   type CancelTriggerWorkInput,
   type ClaimTriggerWorkInput,
+  type ExpireFinalTriggerWorkLeaseInput,
   type ImportTerminalTriggerWorkStateInput,
   type ResumeTriggerWorkInput,
   type SettleTriggerWorkInput,
@@ -126,10 +128,12 @@ export {
   createTriggerControlStateFromJournal,
   normalizeTriggerControlState,
   parseTriggerControlState,
+  reconcileExpiredTriggerControlWork,
   resumeTriggerControlWork,
   serializeTriggerControlState,
   settleTriggerControlWork,
   type AdmitTriggerControlResult,
+  type ReconcileExpiredTriggerControlWorkInput,
   type TriggerControlState,
   type TriggerControlWorkInput
 } from "./trigger-control-state.js";

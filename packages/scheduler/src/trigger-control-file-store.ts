@@ -9,6 +9,7 @@ import {
   createTriggerControlStateFromJournal,
   parseTriggerAdmissionJournal,
   parseTriggerControlState,
+  reconcileExpiredTriggerControlWork,
   resumeTriggerControlWork,
   serializeTriggerControlState,
   settleTriggerControlWork,
@@ -124,6 +125,13 @@ export class TriggerControlFileStore {
   cancel(input: CancelTriggerWorkInput & { readonly dedupKey: string }): Promise<TriggerControlState> {
     return this.transition((state) => {
       const next = cancelTriggerControlWork(state, input);
+      return { result: next, state: next };
+    });
+  }
+
+  reconcileExpired(at: Date): Promise<TriggerControlState> {
+    return this.transition((state) => {
+      const next = reconcileExpiredTriggerControlWork(state, { at });
       return { result: next, state: next };
     });
   }

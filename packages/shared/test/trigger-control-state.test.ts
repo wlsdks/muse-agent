@@ -10,6 +10,7 @@ import {
   createTriggerControlStateFromJournal,
   createTriggerEnvelope,
   parseTriggerControlState,
+  reconcileExpiredTriggerControlWork,
   resumeTriggerControlWork,
   serializeTriggerControlState,
   settleTriggerAdmission,
@@ -50,6 +51,56 @@ function claimed(generation = "g1", maxAttempts = 2) {
 }
 
 describe("trigger control state", () => {
+  it("reconciles only expired final leases and is idempotent", () => {
+    const finalLease = claimed("final", 1);
+    const reconciled = reconcileExpiredTriggerControlWork(finalLease, { at: T1000 });
+    expect(reconciled).toMatchObject({
+      journal: {
+        entries: [{ state: "dead-lettered", terminalReason: "lease-expired" }]
+      },
+      revision: finalLease.revision + 1,
+      workStates: [{ status: "dead-lettered", terminalReason: "lease-expired" }]
+    });
+    expect(reconcileExpiredTriggerControlWork(reconciled, { at: T1000 })).toBe(reconciled);
+    const retryable = claimed("retryable", 2);
+    expect(reconcileExpiredTriggerControlWork(retryable, { at: T1000 })).toBe(retryable);
+    expect(reconcileExpiredTriggerControlWork(finalLease, { at: T500 })).toBe(finalLease);
+  });
+
+  it("reconciles an exhausted lease without discarding retryable sibling work", () => {
+    let mixed = createTriggerControlState({ maxEntries: 4, maxPending: 2 });
+    for (const generation of ["final", "retryable"]) {
+      mixed = admitTriggerControl(mixed, {
+        envelope: envelope(generation),
+        now: T0
+      }).state;
+    }
+    mixed = claimTriggerControlWork(mixed, {
+      at: T0,
+      dedupKey: envelope("final").dedupKey,
+      leaseDurationMs: 1_000,
+      leaseToken: "worker-final",
+      maxAttempts: 1
+    });
+    mixed = claimTriggerControlWork(mixed, {
+      at: T0,
+      dedupKey: envelope("retryable").dedupKey,
+      leaseDurationMs: 1_000,
+      leaseToken: "worker-retryable",
+      maxAttempts: 2
+    });
+
+    const reconciled = reconcileExpiredTriggerControlWork(mixed, { at: T1000 });
+    expect(reconciled.journal.entries.map((entry) => entry.state)).toEqual([
+      "dead-lettered",
+      "queued"
+    ]);
+    expect(reconciled.workStates.find((work) =>
+      work.dedupKey === envelope("final").dedupKey)?.status).toBe("dead-lettered");
+    expect(reconciled.workStates.find((work) =>
+      work.dedupKey === envelope("retryable").dedupKey)?.status).toBe("leased");
+  });
+
   it("imports legacy journal history without inventing active work", () => {
     const queuedEnvelope = envelope("legacy-queued");
     const completedEnvelope = envelope("legacy-completed");

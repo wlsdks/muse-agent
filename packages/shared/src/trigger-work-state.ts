@@ -67,6 +67,10 @@ export interface ImportTerminalTriggerWorkStateInput {
   readonly updatedAt: string;
 }
 
+export interface ExpireFinalTriggerWorkLeaseInput {
+  readonly at: Date;
+}
+
 const STATE_ID_PREFIX = "trigger-work:";
 const trustedWorkStates = new WeakSet<object>();
 
@@ -272,6 +276,36 @@ export function importTerminalTriggerWorkState(
     status: input.status,
     ...(terminalReason !== undefined ? { terminalReason } : {}),
     updatedAt: input.updatedAt
+  });
+}
+
+/**
+ * Converges an expired final-attempt lease after process loss without
+ * redispatching its potentially non-idempotent external effect.
+ */
+export function expireFinalTriggerWorkLease(
+  state: TriggerWorkState,
+  input: ExpireFinalTriggerWorkLeaseInput
+): TriggerWorkState {
+  const current = normalizeTriggerWorkState(state);
+  const at = canonicalTimestamp(input.at, "at");
+  if (current.status !== "leased") {
+    throw new TypeError("only leased trigger work can expire");
+  }
+  if (Date.parse(at) < Date.parse(current.leaseExpiresAt!)) {
+    throw new TypeError("trigger work lease is still active");
+  }
+  if (current.attempt < current.maxAttempts) {
+    throw new TypeError("trigger work lease still has retry budget");
+  }
+  return stateFromBody({
+    attempt: current.attempt,
+    dedupKey: current.dedupKey,
+    maxAttempts: current.maxAttempts,
+    schemaVersion: TRIGGER_WORK_STATE_SCHEMA_VERSION,
+    status: "dead-lettered",
+    terminalReason: "lease-expired",
+    updatedAt: at
   });
 }
 

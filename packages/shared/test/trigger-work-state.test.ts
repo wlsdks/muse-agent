@@ -6,6 +6,7 @@ import {
   claimTriggerWork,
   createTriggerAdmissionJournal,
   createTriggerEnvelope,
+  expireFinalTriggerWorkLease,
   parseTriggerWorkState,
   resumeTriggerWork,
   serializeTriggerWorkState,
@@ -40,6 +41,24 @@ function lease(maxAttempts = 3) {
 }
 
 describe("trigger work state", () => {
+  it("expires only a final-attempt lease at its exact boundary", () => {
+    const expired = expireFinalTriggerWorkLease(lease(1), {
+      at: new Date("2026-07-30T12:00:01.000Z")
+    });
+    expect(expired).toMatchObject({
+      attempt: 1,
+      maxAttempts: 1,
+      status: "dead-lettered",
+      terminalReason: "lease-expired"
+    });
+    expect(() => expireFinalTriggerWorkLease(lease(1), {
+      at: new Date("2026-07-30T12:00:00.999Z")
+    })).toThrow(/still active/u);
+    expect(() => expireFinalTriggerWorkLease(lease(2), {
+      at: new Date("2026-07-30T12:00:01.000Z")
+    })).toThrow(/retry budget/u);
+  });
+
   it("claims only queued admission entries with a bounded lease", () => {
     expect(lease()).toMatchObject({
       attempt: 1,
