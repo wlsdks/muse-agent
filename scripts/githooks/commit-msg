@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# commit-msg: deterministic guards (fail-close) — immutable-core, then write-back.
+# commit-msg: deterministic guards (fail-close) — immutable-core, ledger shape, then the two
+# completion claims that used to be prose only: which review tier was used, and what learning
+# the slice left behind.
 root="$(git rev-parse --show-toplevel)"
 node "$root/scripts/guard-immutable.mjs" "$1" || exit 1
 node "$root/scripts/check-ledger-format.mjs" || exit 1
+if [ -f "$root/scripts/guard-review-tier.mjs" ]; then
+  node "$root/scripts/guard-review-tier.mjs" "$1" || exit 1
+fi
 exec node "$root/scripts/guard-writeback.mjs" "$1"

@@ -145,7 +145,26 @@ export const ERASURE_ALLOWLIST = new Set(["verifiedCapabilities"]);
  * since a dropped gate was never visited by the loop above). No previous
  * entry ⇒ nothing to regress against.
  */
-export function detectRegressions(prev, curr) {
+/**
+ * An intentional drop, declared in the latest commit body as `[ratchet: <gate> -<n>]`.
+ *
+ * The contract makes subtraction first-class work ("deleting a tool, a rule or a doc is a
+ * real slice"), but every numeric here ratchets against a high-water mark — so the first
+ * slice that deletes a dead test made ORIENT permanently red, and the only escapes were to
+ * undo the work, pad the count back (the "code artifacts as agent signal" anti-pattern), or
+ * `rm` the gitignored scoreboard, which erases the whole history with no trace. This makes
+ * the deliberate case sayable, in the commit body, where a reader can check it against the
+ * diff.
+ */
+export function parseRatchetAllowances(commitMessage) {
+  const allowances = new Map();
+  for (const m of String(commitMessage ?? "").matchAll(/\[ratchet:\s*([A-Za-z][\w-]*)\s*(-\d+)\s*\]/gu)) {
+    allowances.set(m[1], Math.abs(Number(m[2])));
+  }
+  return allowances;
+}
+
+export function detectRegressions(prev, curr, allowances = new Map()) {
   const out = [];
   if (!prev || !prev.gates) {
     return out;
@@ -159,7 +178,11 @@ export function detectRegressions(prev, curr) {
       out.push(`${name}: pass→fail`);
     }
     if (typeof p.value === "number" && typeof c.value === "number" && c.value < p.value) {
-      out.push(`${name}: ${String(p.value)}→${String(c.value)}`);
+      const allowed = allowances.get(name) ?? 0;
+      if (p.value - c.value > allowed) {
+        out.push(`${name}: ${String(p.value)}→${String(c.value)}`
+          + (allowed > 0 ? ` (declared -${String(allowed)}, actual -${String(p.value - c.value)})` : ""));
+      }
     }
   }
   for (const name of Object.keys(prev.gates)) {
@@ -181,19 +204,32 @@ export function detectRegressions(prev, curr) {
  * from the last entry (pass→fail and present→missing are correctly per-previous,
  * not per-peak). Empty history ⇒ nothing to compare against.
  */
+/**
+ * The peak each numeric gate has reached — but a gate whose drop was DECLARED restarts its
+ * peak from the declaring entry.
+ *
+ * Without the reset the declaration cured nothing: `[ratchet:]` is read from the latest
+ * commit, so the moment HEAD advanced past it the max over history resurrected the old peak
+ * and the drop was reported forever. An accepted subtraction has to move the floor, or the
+ * contract's "deleting is a real slice" stays unreachable.
+ */
 export function highWaterBaseline(history) {
   if (!Array.isArray(history) || history.length === 0) {
     return undefined;
   }
   const last = history[history.length - 1];
-  const gates = { ...last.gates };
+  const peaks = new Map();
   for (const entry of history) {
-    for (const [name, g] of Object.entries(entry.gates ?? {})) {
-      const cur = gates[name];
-      if (cur && typeof cur.value === "number" && typeof g.value === "number") {
-        gates[name] = { ...cur, value: Math.max(cur.value, g.value) };
-      }
+    for (const [name, gate] of Object.entries(entry.gates ?? {})) {
+      if (typeof gate.value !== "number") continue;
+      const declaredHere = Object.hasOwn(entry.ratchetReset ?? {}, name);
+      const previous = peaks.get(name);
+      peaks.set(name, declaredHere || previous === undefined ? gate.value : Math.max(previous, gate.value));
     }
+  }
+  const gates = { ...last.gates };
+  for (const [name, value] of peaks) {
+    if (gates[name] && typeof gates[name].value === "number") gates[name] = { ...gates[name], value };
   }
   return { ...last, gates };
 }
@@ -333,7 +369,20 @@ function main() {
   const entry = { at: new Date().toISOString(), gates };
   const history = readScoreboard();
   const prev = highWaterBaseline(history);
-  const regressions = detectRegressions(prev, entry);
+  // The declaration lives in the latest commit body, so it is reviewable in git history
+  // rather than in an untracked file that can be deleted without a trace.
+  let latestCommitMessage = "";
+  try { latestCommitMessage = execSync("git log -1 --pretty=%B", { encoding: "utf8" }); } catch { /* not a repo */ }
+  const allowances = parseRatchetAllowances(latestCommitMessage);
+  const regressions = detectRegressions(prev, entry, allowances);
+  // Record the accepted subtraction ON the entry so the peak restarts here, not just while
+  // this commit is HEAD.
+  if (allowances.size > 0) {
+    entry.ratchetReset = Object.fromEntries(
+      [...allowances.keys()].filter((name) => name in entry.gates).map((name) => [name, entry.gates[name].value])
+    );
+    if (Object.keys(entry.ratchetReset).length === 0) delete entry.ratchetReset;
+  }
 
   const next = [...history, entry].slice(-MAX_HISTORY);
   writeFileSync(SCOREBOARD, `${JSON.stringify(next, null, 2)}\n`);

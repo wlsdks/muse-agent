@@ -28,6 +28,18 @@ it). Each entry holds the gate results:
   count auto-resumes if a ledger is restored.
 - `tests` — full suite pass/fail (only with `--full`)
 
+## Declaring an intentional drop
+
+Subtraction is first-class work, but every tracked number ratchets against its high-water
+mark — so deleting a dead test would otherwise make the next ORIENT permanently red. Declare
+it in the commit body: `[ratchet: testFiles -3]`. The declaration lives in git history where
+a reviewer can check it against the diff, it is per-gate, and a drop LARGER than declared is
+still a regression that names both numbers. It never excuses a `pass→fail` gate.
+
+The accepted drop is written onto the scoreboard entry (`ratchetReset`) so the gate's
+high-water mark restarts there. Without that the declaration cured nothing: it is read from
+the LATEST commit, so the peak returned the moment HEAD advanced past it.
+
 ## Fail-close on regression
 
 Exit 1 when any gate fails OR a previously-passing gate now fails OR a

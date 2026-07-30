@@ -63,6 +63,25 @@ Don't mix unrelated work into one commit.
   origin/main` should list no leftover slice branches — any that show up
   are cleanup debt, not history.
 
+## `review-tier:` is required, and checked
+
+A `feat`/`fix`/`refactor`/`perf` commit body must carry one line:
+`review-tier: independent-evaluator | thin-review | n/a`. `guard-review-tier.mjs`
+(commit-msg) blocks the commit without it, and REFUSES the thin tier when the diff
+touches a surface where the evaluator is unconditional — migrations, SQL,
+credential/auth/approval/consent/policy/guard sources, `scripts/githooks/`, or the
+policy/secrets/quarantine-eval packages.
+
+A mandatory surface demands the tier **whatever the subject says** — the commit type is the
+author's own claim about risk, and this gate exists because a claim about risk is not
+evidence.
+
+It cannot verify that an evaluation happened. It forces the claim to exist in a fixed
+vocabulary so a reader can check it against the diff — "the evaluator passed" used to be
+a claim no script could audit. When editing the surface list, check it against
+`git ls-files`: the first version anchored each keyword to the start of the basename and so
+missed `channel-approval-gate.ts`, while blocking an `approval-gate.ts` that does not exist.
+
 ## Versioned git hooks
 
 Hooks are checked into `scripts/githooks/` and wired via `core.hooksPath`, which is

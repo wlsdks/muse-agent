@@ -19,7 +19,7 @@ import {
   parseCapabilityExecutionRequest,
   readCapabilityResourceSnapshot,
 } from "./eval-agent-admission.mjs";
-import { classifySkip, parseCompletion } from "./eval-skip.mjs";
+import { classifySkip, parseCompletion, requireLiveFrom } from "./eval-skip.mjs";
 import {
   buildAndPublishRunner,
   captureGitSourceSnapshot,
@@ -319,6 +319,12 @@ export function classifyCapabilityResult(capability, child) {
     return failedRow(capability, durationMs, "battery-reported-failure", completion.executed);
   }
 
+  // An unattended fire reads the aggregate, not each battery's prose. Under MUSE_REQUIRE_LIVE
+  // a missing environment is a FAILURE, not an "unverified" row that still lets the run go
+  // green — the whole point of the flag is that a box with no model must not look healthy.
+  if (skipCode && requireLiveFrom()) {
+    return failedRow(capability, durationMs, `environment-skip-under-require-live:${skipCode}`, completion.executed);
+  }
   if (!skipCode || !RECOGNIZED_ENVIRONMENT_SKIPS.has(skipCode)) {
     return failedRow(capability, durationMs, skipCode ? "unrecognized-skip" : "missing-skip-evidence", completion.executed);
   }

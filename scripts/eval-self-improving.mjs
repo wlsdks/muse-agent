@@ -21,7 +21,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { classifyOutcome, classifySkip, skipLine } from "./eval-skip.mjs";
+import { classifyOutcome, classifySkip, requireLiveFrom, skipLine } from "./eval-skip.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
@@ -104,7 +104,7 @@ for (const battery of BATTERIES) {
   const skipCode = classifySkip(combined);
   // Ollama is confirmed up above, so an embed-model skip HERE means nomic isn't
   // pulled — classifyOutcome escalates that to `fail`, never a green skip.
-  const outcome = classifyOutcome({ exitCode: run.status ?? 1, skipCode });
+  const outcome = classifyOutcome({ exitCode: run.status ?? 1, skipCode, requireLive: requireLiveFrom() });
   results.push({ ...battery, outcome, status: run.status, skipCode });
   console.log(
     outcome === "ok"

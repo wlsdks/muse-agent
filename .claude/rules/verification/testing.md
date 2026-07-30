@@ -90,6 +90,19 @@ binary LLM-judge — see [`agent-testing.md`](agent-testing.md) (the method).
    ([code-style](../engineering/code-style.md) owns the rule list).
    New violations block exit-0.
 
+## `MUSE_REQUIRE_LIVE=1` — a skip is not a pass
+
+Live batteries exit 0 when Ollama or Chrome is missing, and print the reason. An unattended
+fire reads the aggregate, not the prose, so a box with no model made every live gate green.
+Set `MUSE_REQUIRE_LIVE=1` in any autonomous context: `pnpm eval:agent` then FAILS the
+capability instead of recording it `unverified`, and `pnpm eval:self-improving` classifies
+the battery as a failure. Off by default so an interactive run on a laptop without Ollama
+still works.
+
+`eval-skip.mjs` also exports `skipExitCode` (0 normally, 75 = `EX_TEMPFAIL` under the flag)
+for a battery that wants to signal a skip through its own exit code. **No battery calls it
+yet** — the aggregates above are where the flag currently bites.
+
 ## Test placement
 
 - Unit tests for policy, trimming, message pairing, capability logic.

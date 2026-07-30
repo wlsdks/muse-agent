@@ -92,6 +92,21 @@ export function parseCompletion(output) {
 }
 
 /** Build the marker line a battery prints when it skips. */
+/** Truthy MUSE_REQUIRE_LIVE turns "the environment was missing" into a hard failure. */
+export function requireLiveFrom(env = process.env) {
+  return ["1", "true", "yes", "on"].includes(String(env.MUSE_REQUIRE_LIVE ?? "").trim().toLowerCase());
+}
+
+/**
+ * The exit code a battery should use when it skips. 0 keeps every existing caller working;
+ * under MUSE_REQUIRE_LIVE it is EX_TEMPFAIL (75), which is non-zero for any orchestrator and
+ * still distinguishable from a genuine assertion failure (1).
+ */
+export const SKIP_EXIT_CODE = 75;
+export function skipExitCode(env = process.env) {
+  return requireLiveFrom(env) ? SKIP_EXIT_CODE : 0;
+}
+
 export function skipLine(code, message) {
   return `${SKIP_MARKER}:${code}${message ? ` ${message}` : ""}`;
 }
@@ -135,8 +150,15 @@ export function classifySkip(stdout) {
  * that would otherwise silently grey out every grounding battery. Every other
  * recognised skip (Ollama/Chrome down) stays a genuine skip.
  */
-export function classifyOutcome({ exitCode, skipCode }) {
+export function classifyOutcome({ exitCode, skipCode, requireLive = false }) {
   if (exitCode !== 0) {
+    return "fail";
+  }
+  // An unattended fire cannot read stdout prose. Under MUSE_REQUIRE_LIVE the absence of the
+  // environment is a FAILURE, not a quiet pass: a loop that pushes on a green exit code while
+  // every live battery silently skipped is the "ran the required check, ignored its result"
+  // failure mode. Off by default so an interactive run on a laptop with no Ollama still works.
+  if (requireLive && skipCode) {
     return "fail";
   }
   if (skipCode === "embed-model-missing") {

@@ -4,15 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  classifyOutcome,
-  classifySkip,
-  completionLine,
-  parseCompletion,
-  skipLine,
-  COMPLETION_MARKER,
-  SKIP_MARKER,
-} from "./eval-skip.mjs";
+import { COMPLETION_MARKER, SKIP_EXIT_CODE, SKIP_MARKER, classifyOutcome, classifySkip, completionLine, parseCompletion, requireLiveFrom, skipExitCode, skipLine } from "./eval-skip.mjs";
 
 test("completion contract: a versioned marker round-trips without payload data", () => {
   const line = completionLine({ status: "passed", requested: 3, executed: 3 });
@@ -101,4 +93,28 @@ test("classifyOutcome: skipping on a MISSING EMBED MODEL while Ollama is up is a
   // This is the load-bearing assertion: an embed-model skip must NOT launder to
   // "ok" or even "skip" — the box has Ollama up and just needs `ollama pull`.
   assert.equal(classifyOutcome({ exitCode: 0, skipCode: "embed-model-missing" }), "fail");
+});
+
+// An unattended fire reads the exit code, not the prose. Without this, a box with no Ollama
+// makes every live battery "green" and the loop pushes on evidence that never existed.
+test("under MUSE_REQUIRE_LIVE a skip becomes a failure", () => {
+  assert.equal(classifyOutcome({ exitCode: 0, skipCode: "ollama-unreachable" }), "skip");
+  assert.equal(classifyOutcome({ exitCode: 0, skipCode: "ollama-unreachable", requireLive: true }), "fail");
+  assert.equal(classifyOutcome({ exitCode: 0, skipCode: "chrome-missing", requireLive: true }), "fail");
+});
+
+test("require-live does not turn a genuine pass into a failure", () => {
+  assert.equal(classifyOutcome({ exitCode: 0, skipCode: null, requireLive: true }), "ok");
+});
+
+test("require-live never rescues a real assertion failure", () => {
+  assert.equal(classifyOutcome({ exitCode: 1, skipCode: null, requireLive: true }), "fail");
+});
+
+test("the skip exit code is 0 by default and EX_TEMPFAIL under require-live", () => {
+  assert.equal(skipExitCode({}), 0);
+  assert.equal(skipExitCode({ MUSE_REQUIRE_LIVE: "1" }), SKIP_EXIT_CODE);
+  assert.equal(SKIP_EXIT_CODE, 75);
+  for (const on of ["1", "true", "YES", " on "]) assert.equal(requireLiveFrom({ MUSE_REQUIRE_LIVE: on }), true, on);
+  for (const off of ["", "0", "false", "no"]) assert.equal(requireLiveFrom({ MUSE_REQUIRE_LIVE: off }), false, off);
 });

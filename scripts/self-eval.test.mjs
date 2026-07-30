@@ -4,18 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  countDifferentiationBatteries,
-  countEgressGuards,
-  countGroundedCases,
-  countGroundedSurfaces,
-  countTestFileNames,
-  countVerifiedCapabilityLines,
-  detectRegressions,
-  ERASURE_ALLOWLIST,
-  highWaterBaseline,
-  summarize
-} from "./self-eval.mjs";
+import { ERASURE_ALLOWLIST, countDifferentiationBatteries, countEgressGuards, countGroundedCases, countGroundedSurfaces, countTestFileNames, countVerifiedCapabilityLines, detectRegressions, highWaterBaseline, parseRatchetAllowances, summarize } from "./self-eval.mjs";
 
 test("countTestFileNames counts distinct *.test.ts(x), ignoring non-tests", () => {
   assert.equal(countTestFileNames(["a.test.ts", "b.test.tsx", "a.test.ts", "c.ts", "d.md"]), 2);
@@ -256,4 +245,82 @@ test("highWaterBaseline: boolean status and gate keys come from the LAST entry, 
 
 test("highWaterBaseline: empty history has no baseline", () => {
   assert.equal(highWaterBaseline([]), undefined);
+});
+
+// Subtraction is first-class work here, but every numeric ratchets against a high-water
+// mark — so deleting a dead test used to make ORIENT permanently red, with the only escapes
+// being to undo it, pad the count back, or `rm` the untracked scoreboard. The declaration
+// makes the deliberate case sayable where a reviewer can check it against the diff.
+test("parseRatchetAllowances reads declarations from a commit body", () => {
+  const found = parseRatchetAllowances("chore: prune\n\nbody\n\n[ratchet: testFiles -3]\n");
+  assert.equal(found.get("testFiles"), 3);
+  assert.equal(parseRatchetAllowances("no declaration here").size, 0);
+  const two = parseRatchetAllowances("[ratchet: testFiles -2] and [ratchet: toolCases -10]");
+  assert.equal(two.get("testFiles"), 2);
+  assert.equal(two.get("toolCases"), 10);
+});
+
+test("a declared drop within the allowance is not a regression", () => {
+  const prev = { gates: { testFiles: { status: "pass", value: 100 } } };
+  const curr = { gates: { testFiles: { status: "pass", value: 97 } } };
+  assert.deepEqual(detectRegressions(prev, curr), ["testFiles: 100→97"]);
+  assert.deepEqual(detectRegressions(prev, curr, new Map([["testFiles", 3]])), []);
+});
+
+test("a drop BIGGER than declared is still a regression, and says so", () => {
+  const prev = { gates: { testFiles: { status: "pass", value: 100 } } };
+  const curr = { gates: { testFiles: { status: "pass", value: 90 } } };
+  const [only] = detectRegressions(prev, curr, new Map([["testFiles", 3]]));
+  assert.match(only, /declared -3, actual -10/u);
+});
+
+test("an allowance for one gate never excuses another", () => {
+  const prev = { gates: { testFiles: { status: "pass", value: 10 }, toolCases: { status: "pass", value: 10 } } };
+  const curr = { gates: { testFiles: { status: "pass", value: 9 }, toolCases: { status: "pass", value: 9 } } };
+  assert.deepEqual(detectRegressions(prev, curr, new Map([["testFiles", 1]])), ["toolCases: 10→9"]);
+});
+
+test("an allowance never excuses a pass→fail gate", () => {
+  const prev = { gates: { lint: { status: "pass" } } };
+  const curr = { gates: { lint: { status: "fail" } } };
+  assert.deepEqual(detectRegressions(prev, curr, new Map([["lint", 99]])), ["lint: pass→fail"]);
+});
+
+// The declaration alone cured nothing: it is read from the LATEST commit, so once HEAD
+// advanced past it the max-over-history resurrected the old peak and the drop was reported
+// forever. An accepted subtraction has to move the floor.
+test("a declared drop restarts the gate's high-water mark", () => {
+  const declared = [
+    { gates: { t: { status: "pass", value: 100 } } },
+    { gates: { t: { status: "pass", value: 97 } }, ratchetReset: { t: 97 } },
+    { gates: { t: { status: "pass", value: 97 } } },
+  ];
+  assert.equal(highWaterBaseline(declared).gates.t.value, 97);
+});
+
+test("an UNDECLARED drop leaves the high-water mark intact", () => {
+  const undeclared = [
+    { gates: { t: { status: "pass", value: 100 } } },
+    { gates: { t: { status: "pass", value: 97 } } },
+  ];
+  assert.equal(highWaterBaseline(undeclared).gates.t.value, 100);
+});
+
+test("a reset for one gate does not lower another gate's peak", () => {
+  const history = [
+    { gates: { a: { status: "pass", value: 10 }, b: { status: "pass", value: 10 } } },
+    { gates: { a: { status: "pass", value: 4 }, b: { status: "pass", value: 4 } }, ratchetReset: { a: 4 } },
+  ];
+  const peaks = highWaterBaseline(history).gates;
+  assert.equal(peaks.a.value, 4);
+  assert.equal(peaks.b.value, 10);
+});
+
+test("growth after a reset ratchets again from the new floor", () => {
+  const history = [
+    { gates: { t: { status: "pass", value: 100 } } },
+    { gates: { t: { status: "pass", value: 50 } }, ratchetReset: { t: 50 } },
+    { gates: { t: { status: "pass", value: 60 } } },
+  ];
+  assert.equal(highWaterBaseline(history).gates.t.value, 60);
 });
