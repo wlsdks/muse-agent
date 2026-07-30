@@ -187,7 +187,9 @@ are read additionally only when the task actually touches that risk/feature. `go
 `pass^k`, the runner spec, and the full architecture/observability documents are for
 harness/runtime/eval slices and phase gates — not prerequisite reading for ordinary FAST S/M.
 
-- **Loop caps** — hard caps on iterations, time, and budget (2–3 retry ceiling). → [loop-budget](reference/loop-budget.md).
+- **Loop caps** — hard caps on iterations, time, and budget. The BUILD↔EVAL default is **2 retry
+  passes** (`maxRetries = 2` in `runner/orchestrator.mjs`), overridable within the active budget.
+  → [loop-budget](reference/loop-budget.md).
 - **Memory** — store only durable facts long-term, drop one-offs, hold weak inferences. → [memory-layers](reference/memory-layers.md).
 - **Compaction** — reduce pre-emptively and periodically before the limit, but **preserve decisions and sources**. → [context-compaction](reference/context-compaction.md).
 - **Tools, skills, MCP** — names/schemas selectable in one shot; allowlists and isolation. → [tool-design](reference/tool-design.md) · [skills-and-mcp](reference/skills-and-mcp.md).

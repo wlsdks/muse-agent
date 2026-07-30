@@ -34,7 +34,7 @@ Read [`harness/AGENTS.md`](../../harness/AGENTS.md) first, then follow it:
    refused). Uncertain ⇒ stop, don't pass. See
    [`verification-and-guardrails`](../../harness/core/verification-and-guardrails.md)
    and [`permission-matrix`](../../harness/core/permission-matrix.md).
-4. **Respect the foundations** — loop budget caps (2–3 retry max), memory
+4. **Respect the foundations** — loop budget caps (2 retry passes by default), memory
    write rules, compaction that preserves decisions+sources.
 5. **Verify or it didn't happen** — golden-set + pass^k
    ([`harness-acceptance`](../../harness/reference/harness-acceptance.md)).

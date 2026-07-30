@@ -18,7 +18,7 @@ animal. We adopt their proven mechanics, but the *organizing principle* is ours.
 | Dominant pressure | huge tool outputs overflow one window mid-task | the *right few* personal facts must surface, session after session |
 | Lifetime | context dies at task end | context is **cross-session by default** |
 | Failure that hurts | task stalls / loops / forgets the file it wrote | a **confident wrong memory** about the user's life |
-| Truth model | code either compiles or not — the repo is ground truth | grounding is the only truth signal; **fabrication = 0 is the release gate** |
+| Truth model | code either compiles or not — the repo is ground truth | grounding is the only truth signal; **fabrication = 0 is the release gate for the grounding batteries** (a battery metric, not a product-wide guarantee) |
 | Model | frontier cloud model, large window | **local gemma4:12b, small window** — discipline is existential, not an optimization |
 
 The coding-agent literature optimizes *task completion under window pressure*. Muse

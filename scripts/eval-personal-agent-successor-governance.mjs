@@ -196,7 +196,7 @@ if (JSON.stringify(sourceEnd) !== JSON.stringify(sourceStart)) {
   throw new Error("PA-S008 source changed during evaluation");
 }
 
-const roadmap = resolve(repo, "docs", "goals", "personal-agent-successor-roadmap.md");
+const roadmap = resolve(repo, "internal", "goals", "personal-agent-successor-roadmap.md");
 const generator = fileURLToPath(import.meta.url);
 const evidenceLibrary = fileURLToPath(
   new URL("./lib/personal-agent-successor-evidence.mjs", import.meta.url)

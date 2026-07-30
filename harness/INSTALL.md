@@ -53,7 +53,8 @@ work the same way.
    project; everything else is reused as-is.
 
 4. **(If using Claude Code) install the role subagents** — copying the bundled templates makes the
-   4 roles work as real subagents (the evaluator has no write permission — maker ≠ judge is
+   four role subagents work as real subagents (the two contract roles, worker and independent
+   evaluator, plus planner/curator as optional helpers; the evaluator has no write permission — maker ≠ judge is
    enforced via tool permissions):
    ```
    mkdir -p /path/to/your-project/.claude/agents

@@ -106,7 +106,9 @@ machines, shared workstations).
 
 ## Database
 
-- PostgreSQL is the source of truth for server state.
+- PostgreSQL is the optional durable backend for server state; every store falls back to an
+  in-memory implementation (`db ? new KyselyXStore(db) : new InMemoryXStore(env)`), which is what
+  runs by default today.
 - Kysely is used for typed SQL access.
 - Prefer explicit SQL migrations over ORM-managed schema mutation.
 - Run, message, tool-call, approval, checkpoint, and trace tables stay queryable.

@@ -3,7 +3,7 @@ title: Muse feature definitions (per-feature detail)
 audience: [planners, developers, AI agents]
 purpose: Detailed definition of what each feature is and how it behaves from the user's perspective
 status_legend:
-  "✅": usable right away
+  "✅": usable right away (SYSTEM-MAP's ✅ means a different thing: verified against the codebase)
   "⚙️": needs external integration/setup
   "⚠️": known gap (not yet trustworthy enough)
 updated: 2026-07-13

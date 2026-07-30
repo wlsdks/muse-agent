@@ -70,7 +70,8 @@ increases live trials/inference requests.
 
 - **Circuit breaker** — on detecting cascading tool failures or anomalous behavior, cut the loop
   even before the limits.
-- **Retries are finite with backoff** — no infinite retries; exponential backoff + a maximum
+- **Retries are finite with backoff** — no infinite retries; the BUILD↔EVAL default is **2 retry
+  passes** (`maxRetries = 2` in `runner/orchestrator.mjs`), with exponential backoff + a maximum
   count.
 - **Deterministic enforcement** — these limits operate as **fixed rule code**, not "model
   judgment" (matching the deterministic budgets/stop conditions of the [architecture rule]).

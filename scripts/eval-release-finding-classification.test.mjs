@@ -131,10 +131,10 @@ function fixture(findingPath = "fixture.txt") {
   git(root, ["config", "user.name", "Fixture"]);
   git(remote, ["init", "--bare", "-q"]);
   const matchedValue = ["-----BEGIN ", "PRIVATE KEY-----"].join("");
-  mkdirSync(join(root, "docs", "goals"), { recursive: true });
+  mkdirSync(join(root, "internal", "goals"), { recursive: true });
   writeFileSync(join(root, ".gitignore"), "candidate.tar\n.evidence/\n", "utf8");
   writeFileSync(
-    join(root, "docs", "goals", "personal-agent-successor-roadmap.md"),
+    join(root, "internal", "goals", "personal-agent-successor-roadmap.md"),
     "fixture roadmap\n",
     "utf8",
   );

@@ -1,7 +1,8 @@
 # Security sweep 2 — findings & remediation plan
 
-> **Status: CLOSED (2026-07-17).** 12 of 13 findings fixed and verified; #11 remains
-> open as an accepted risk. No new findings are tracked here — a future sweep starts
+> **Status: CLOSED (2026-07-17).** 11 of 13 findings fixed and verified. #11 remains open as an
+> accepted risk, and #4 (plaintext high-value credentials) is traced but NOT fixed — encrypt-at-rest
+> for provider keys and MCP PATs is still outstanding. No new findings are tracked here — a future sweep starts
 > its own document.
 
 2026-07-12. Second fable5-driven security investigation (5 deep scouts on surfaces

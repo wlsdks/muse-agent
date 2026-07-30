@@ -58,7 +58,7 @@ verification (golden tasks, 6 layers).
 
 | Component | Document |
 |---|---|
-| Roles, patterns, boundaries (7 roles incl. curator/learner) | [team-roles](../core/team-roles.md) |
+| Roles, patterns, boundaries (two roles — worker and independent evaluator — plus inline fields) | [team-roles](../core/team-roles.md) |
 | Paste-in prompts per role | [role-prompts](../core/role-prompts.md) |
 | Self-learning feedback loop (skills, playbook, retrospective) | [team-roles](../core/team-roles.md) curator/learner + [muse-mapping](../host/muse-mapping.md) |
 | Tool design / external tools (skills·MCP) | [tool-design](tool-design.md) · [skills-and-mcp](skills-and-mcp.md) |

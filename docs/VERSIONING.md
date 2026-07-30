@@ -87,9 +87,10 @@ production-ready for its supported platform.* Cut it only when **all** hold:
 3. **Stable public surface.** CLI commands, `MUSE_*` config, and `~/.muse`
    store formats are stable enough to promise: no breaking change without a
    major bump.
-4. **Supported platforms are declared and solid.** (macOS today; Windows is
-   planned. `1.0` declares its supported set — it does not require every
-   platform, only that the declared ones are reliable.)
+4. **Supported platforms are declared and solid.** (macOS and Linux fully;
+   Windows covers the CLI, API, recall, Ollama and opt-in PowerShell actuators,
+   with a `windows-latest` CI job. `1.0` declares its supported set — it does not
+   require every platform, only that the declared ones are reliable.)
 5. **Onboarding + docs are complete** enough that a new user succeeds unaided.
 
 There is a real failure mode of *never leaving `0.x`* — a project that works
