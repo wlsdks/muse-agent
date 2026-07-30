@@ -8,6 +8,21 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a4e2b2 package-private,
+  dedicated Admin Worker/application over the parent-owned offline snapshot lease.
+  The parent alone acquires and releases the snapshot; the Worker receives only its
+  path, opens SQLite read-only, composes the bounded inspector, and has no filesystem,
+  snapshot, cleanup, serving, or public-entrypoint authority. Separate protocol and
+  raw-exit planes preserve Worker-exit-before-release ordering, first-error identity,
+  fixed termination deadlines, and exact once-only terminal accounting across clean
+  close, spawn/initialize/idle/forced/nonzero exit, SQLite close failure, and release
+  failure. Production input now delegates unchanged to the descriptor-safe snapshot
+  admission boundary. This slice remains private and does not add live-store
+  snapshotting, public `./admin`, CLI/API/UI, export/rebuild activation, or scale proof.
+  The full package suite still has the exact pre-existing activation-baseline failure
+  set; focused and changed gates add no regression and must not be described as a green
+  whole-package result.
+
 - Added the independently verified AWG-070a3a1a4e2b1 package-private,
   parent-owned offline MAG snapshot lease for explicitly closed, quiescent SQLite
   stores. The lease admits owner-private local POSIX profiles, copies the exact

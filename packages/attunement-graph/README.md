@@ -108,12 +108,22 @@ cached and marker-last;
 construction failures are removed or fail closed as recorded quarantine rather than
 granting the future Worker cleanup authority.
 
+That lease now feeds a separate package-private Admin Worker/application. The parent
+acquires and exclusively releases the offline snapshot; the Worker receives only the
+snapshot path, opens SQLite read-only, composes the existing bounded inspector, and never
+imports filesystem or snapshot-cleanup authority. The application keeps protocol and raw
+Worker-exit observation on separate planes, waits for actual exit before lease release,
+pins the first terminal error, and exposes only detached summary, exact-head, integrity,
+and close results. Qualification covers real SQLite success, hostile production option
+admission, spawn/initialization/idle/forced/nonzero-exit failures, SQLite close failure,
+release failure, exact terminal counter/trace vectors, and same-error settlement.
+
 These surfaces remain validated-but-unpublished infrastructure. They do not ship a public
-decoder, separate Admin Worker/application, destination generation activation, or public
-`./admin` API. The snapshot lease is not live-store snapshotting and is not yet connected
-to an inspection command. Unknown close outcomes and unexpected artifacts remain
-toxic; native directory-FD/`openat` same-UID race closure, non-POSIX profiles,
-crash-residue discovery, and production-scale proof remain unverified.
+decoder, destination generation activation, CLI/API/UI, or public `./admin` API. The
+snapshot lease and Worker/application are not live-store snapshotting or a public
+inspection command. Unknown close outcomes and unexpected artifacts remain toxic; native
+directory-FD/`openat` same-UID race closure, non-POSIX profiles, crash-residue discovery,
+and production-scale proof remain unverified.
 
 Still roadmap:
 
