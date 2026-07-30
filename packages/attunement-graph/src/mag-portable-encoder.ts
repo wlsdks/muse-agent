@@ -11,7 +11,7 @@ import {
   admitPortableProjection
 } from "./mag-portable-admission.js";
 
-interface MagPortableEncoderBudgets {
+export interface MagPortableEncoderBudgetsForInternalUse {
   readonly maxProjections: number;
   readonly maxHeads: number;
   readonly maxScopes: number;
@@ -30,7 +30,7 @@ const BUDGET_KEYS = Object.freeze([
   "maxEdgeLineBytes",
   "maxArtifactBytes"
 ] as const);
-const PRODUCTION_MAG_PORTABLE_BUDGETS = Object.freeze({
+export const PRODUCTION_MAG_PORTABLE_BUDGETS_FOR_INTERNAL_USE = Object.freeze({
   maxProjections: 1_000_000,
   maxHeads: 1_000_000,
   maxScopes: 1_000_000,
@@ -199,7 +199,9 @@ function captureSink(value: unknown): {
   });
 }
 
-function normalizeBudgets(value: unknown): MagPortableEncoderBudgets {
+export function normalizeMagPortableEncoderBudgetsForInternalUse(
+  value: unknown
+): MagPortableEncoderBudgetsForInternalUse {
   if (
     value === null
     || typeof value !== "object"
@@ -225,7 +227,7 @@ function normalizeBudgets(value: unknown): MagPortableEncoderBudgets {
     );
   }
   const normalized = Object.create(null) as {
-    -readonly [Key in keyof MagPortableEncoderBudgets]: number;
+    -readonly [Key in keyof MagPortableEncoderBudgetsForInternalUse]: number;
   };
   for (const key of BUDGET_KEYS) {
     const descriptor = objectGetOwnPropertyDescriptor(value, key);
@@ -256,7 +258,7 @@ function normalizeBudgets(value: unknown): MagPortableEncoderBudgets {
 function line(
   unsignedRecord: Readonly<Record<string, unknown>>,
   edge: boolean,
-  budgets: MagPortableEncoderBudgets
+  budgets: MagPortableEncoderBudgetsForInternalUse
 ): PreparedLine {
   const max = edge
     ? budgets.maxEdgeLineBytes
@@ -361,7 +363,7 @@ function stateHashWith(lineBytes: Uint8Array): Hash {
 
 function createMagPortableEncoderWithBudgets(options: {
   readonly identitySink: MagPortableEncoderIdentitySink;
-}, budgets: MagPortableEncoderBudgets): MagPortableEncoder {
+}, budgets: MagPortableEncoderBudgetsForInternalUse): MagPortableEncoder {
   const normalizedOptions = closedDataRecord(
     options,
     "portable encoder options",
@@ -681,7 +683,7 @@ export function createMagPortableEncoder(options: {
 }): MagPortableEncoder {
   return createMagPortableEncoderWithBudgets(
     options,
-    PRODUCTION_MAG_PORTABLE_BUDGETS
+    PRODUCTION_MAG_PORTABLE_BUDGETS_FOR_INTERNAL_USE
   );
 }
 
@@ -689,10 +691,10 @@ export function createMagPortableEncoderForQualification(
   options: {
     readonly identitySink: MagPortableEncoderIdentitySink;
   },
-  budgets: MagPortableEncoderBudgets
+  budgets: MagPortableEncoderBudgetsForInternalUse
 ): MagPortableEncoder {
   return createMagPortableEncoderWithBudgets(
     options,
-    normalizeBudgets(budgets)
+    normalizeMagPortableEncoderBudgetsForInternalUse(budgets)
   );
 }

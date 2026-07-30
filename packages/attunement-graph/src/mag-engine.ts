@@ -202,14 +202,17 @@ function storeEnvelope(value: unknown): Readonly<Record<string, unknown>> {
   }
 }
 
-export function normalizeStoredProjection(value: unknown, expectedScope: MagScope): MagStoredProjection {
+function normalizeStoredProjectionShared(
+  value: unknown,
+  expectedScope: MagScope | undefined
+): MagStoredProjection {
   const input = record(storeEnvelope(value), "stored projection", ["schemaVersion", "storeEnvelopeId", "snapshot", "observationId", "canonicalProjection", "projectionFingerprint", "observedAt", "sourceFreshness", "assertions"], ["schemaVersion", "storeEnvelopeId", "snapshot", "observationId", "canonicalProjection", "projectionFingerprint", "observedAt", "sourceFreshness", "assertions"], "CORRUPT_STORE");
   if (input.schemaVersion !== 1) {
     if (typeof input.schemaVersion === "number" && input.schemaVersion > 1) magError("FUTURE_STORE_STATE", "Store projection schema is newer than this engine");
     magError("CORRUPT_STORE", "Store projection schema is invalid");
   }
   const storedSnapshot = snapshot(input.snapshot, "stored projection.snapshot", "CORRUPT_STORE");
-  if (!sameScope(storedSnapshot.scope, expectedScope)) magError("CORRUPT_STORE", "Store projection belongs to another scope");
+  if (expectedScope !== undefined && !sameScope(storedSnapshot.scope, expectedScope)) magError("CORRUPT_STORE", "Store projection belongs to another scope");
   const observationId = text(input.observationId, "stored projection.observationId", "CORRUPT_STORE");
   const canonicalProjection = text(input.canonicalProjection, "stored projection.canonicalProjection", "CORRUPT_STORE", MAX_STORED_PROJECTION_TEXT);
   let parsed: unknown;
@@ -221,7 +224,7 @@ export function normalizeStoredProjection(value: unknown, expectedScope: MagScop
     "CORRUPT_STORE"
   );
   if (canonical.canonicalJson !== canonicalProjection || canonical.contentId !== observationId) magError("CORRUPT_STORE", "stored canonical projection fingerprint is invalid");
-  const observation = normalizedObservationFromEnvelope(canonical.envelope, canonical.canonicalJson, canonical.contentId, expectedScope, "CORRUPT_STORE");
+  const observation = normalizedObservationFromEnvelope(canonical.envelope, canonical.canonicalJson, canonical.contentId, storedSnapshot.scope, "CORRUPT_STORE");
   if (input.projectionFingerprint !== observation.observationId) magError("CORRUPT_STORE", "stored projection fingerprint does not match its observation");
   if (storedSnapshot.commitId !== `mag-commit:${observation.observationId}`) magError("CORRUPT_STORE", "stored snapshot commit does not match its observation");
   const rawObservedAt = instant(input.observedAt, "stored projection.observedAt", "CORRUPT_STORE");
@@ -241,6 +244,19 @@ export function normalizeStoredProjection(value: unknown, expectedScope: MagScop
     sourceFreshness: Object.freeze({ ...observation.sourceFreshness }),
     assertions: Object.freeze([...observation.assertions])
   });
+}
+
+export function normalizeStoredProjection(
+  value: unknown,
+  expectedScope: MagScope
+): MagStoredProjection {
+  return normalizeStoredProjectionShared(value, expectedScope);
+}
+
+export function normalizeStoredProjectionForPortableDecoder(
+  value: unknown
+): MagStoredProjection {
+  return normalizeStoredProjectionShared(value, undefined);
 }
 
 function assertionActive(assertion: GraphAssertion, now: string): boolean {

@@ -8,6 +8,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the independently verified AWG-070a3a1a4a package-private streaming `.magx` v1
+  decoder.
+  It incrementally validates fatal UTF-8 canonical NDJSON, record/store/state identities,
+  order, counts, and reduced limits while driving a captured async validation sink with
+  exactly-once abort and original-failure pinning. Independent evaluation found that a
+  nullish hostile sink failure could bypass terminal state; a separate boolean pin plus
+  sync/async `undefined`/`null` regressions repaired it before PASS. Exhaustive
+  chunk-boundary and structural 4,096-generation non-retention qualification remain
+  AWG-070a3a1a4b work; filesystem, SQLite, Worker, Admin, and public exports remain absent.
+
 - Added the independently verified AWG-070a3a1a3b shared-path reduced-budget
   qualification for the `.magx` encoder. Production and qualification wrappers now
   share one private implementation factory; a hostile immutable seven-axis budget

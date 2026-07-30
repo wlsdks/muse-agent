@@ -6,7 +6,8 @@ import type { MagStoredProjection } from "./mag-backend.js";
 import type { MagScope } from "./mag-contracts.js";
 import {
   normalizeMagScope,
-  normalizeStoredProjection
+  normalizeStoredProjection,
+  normalizeStoredProjectionForPortableDecoder
 } from "./mag-engine.js";
 import { MagError } from "./mag-error.js";
 
@@ -26,15 +27,9 @@ export interface AdmittedPortableProjection {
   };
 }
 
-export function admitPortableProjection(
-  value: unknown,
-  expectedScope: MagScope
+function admitNormalizedPortableProjection(
+  projection: MagStoredProjection
 ): AdmittedPortableProjection {
-  const normalizedExpectedScope = normalizeMagScope(
-    expectedScope,
-    "portable projection expected scope"
-  );
-  const projection = normalizeStoredProjection(value, normalizedExpectedScope);
   const minted =
     mintCanonicalImmutableEnvelopeFromFrozenUnsignedForInternalUse(
       projection,
@@ -66,4 +61,36 @@ export function admitPortableProjection(
     projectionId: readmitted.contentId as `mag-store:${string}`
   });
   return Object.freeze({ projection, identity });
+}
+
+export function admitPortableProjection(
+  value: unknown,
+  expectedScope: MagScope
+): AdmittedPortableProjection {
+  const normalizedExpectedScope = normalizeMagScope(
+    expectedScope,
+    "portable projection expected scope"
+  );
+  const projection = normalizeStoredProjection(value, normalizedExpectedScope);
+  return admitNormalizedPortableProjection(projection);
+}
+
+export function admitPortableProjectionForDecoder(
+  value: unknown
+): AdmittedPortableProjection {
+  const minted =
+    mintCanonicalImmutableEnvelopeFromFrozenUnsignedForInternalUse(
+      value,
+      STORE_ENVELOPE_SPEC
+    );
+  const admitted = admitNormalizedPortableProjection(
+    normalizeStoredProjectionForPortableDecoder(minted.envelope)
+  );
+  if (admitted.identity.projectionId !== minted.contentId) {
+    throw new MagError(
+      "CORRUPT_STORE",
+      "Portable decoder projection identity does not match its stored envelope"
+    );
+  }
+  return admitted;
 }

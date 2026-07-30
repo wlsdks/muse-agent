@@ -62,6 +62,10 @@ The current implementation includes:
   production and qualification use one private encoder implementation while seven
   independent budget axes retain exact boundary, precedence, retry, and terminal-abort
   behavior without changing the public surface or golden corpus;
+- an independently verified AWG-070a3a1a4a package-private streaming decoder with fatal
+  UTF-8/canonical record validation, exact shared projection admission, async
+  transactional sink abort pinning, and essential fixture, corruption, reduced-limit,
+  and hostile sink-failure tests;
 - exact Continuity observation, change, Capsule-presentation, resume-runtime, and Shadow
   decision-receipt compatibility Modules used by Muse.
 
@@ -71,11 +75,12 @@ byte-identical conformance corpus pass. AWG-070b remains `partial` until backup,
 export, and the complete physical-profile program pass.
 
 The AWG-070a3a0, AWG-070a3a1a0, AWG-070a3a1a2, AWG-070a3a1a3a0b,
-AWG-070a3a1a3a1, and AWG-070a3a1a3b foundations and qualifications are
-`verified-current`. Production-scale 100K/1M/1 TiB execution remains pending. The
-package still ships no decoder, runtime
-export/rebuild, filesystem or SQLite staging, Worker/admin runtime, or public `./admin`
-subpath.
+AWG-070a3a1a3a1, AWG-070a3a1a3b, and AWG-070a3a1a4a foundations,
+qualifications, and decoder implementation are `verified-current`. Exhaustive
+chunk-boundary and structural 4,096-generation non-retention qualification belongs to
+AWG-070a3a1a4b. Production-scale 100K/1M/1 TiB execution remains pending. The package
+still ships no public decoder, runtime export/rebuild, filesystem or SQLite staging,
+Worker/admin runtime, or public `./admin` subpath.
 
 Still required before a standalone release:
 
