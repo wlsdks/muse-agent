@@ -147,6 +147,22 @@ The harness operates in two layers:
 The enforced layer is what survives a headless run, where an instruction enforces nothing. Any
 autonomous loop therefore has to land on a real gate, never on a promise in prose.
 
+**A gate has an admission bar, and it is high.** Current models verify their own work, so a
+check that merely repeats what a careful agent already does is pure overhead — and worse, a
+thicket of gates teaches agents to route around them. A new gate needs all three:
+
+1. the failure it catches is **silent** — a green suite, a passing typecheck, or a clean read
+   would not reveal it;
+2. it **recurs** — it has happened more than once, or the same class has;
+3. it is **cheaper than the failure**, including the false positives it will produce.
+
+Note that `guard-writeback` accepts a test or a backlog entry, not only a new gate. Do not
+let the write-back requirement become a reason to mint gates.
+
+**Gates are pruned on the same rule as rules.** A gate whose failure class has stopped
+recurring gets deleted, not kept for reassurance. Record each gate's catches; one that has
+never caught anything and guards a one-time mistake is ceremony.
+
 ## 3.6 When the evaluator is mandatory
 
 The tier list is in [the harness rule](../rules/engineering/harness.md), which is
@@ -234,8 +250,8 @@ GPT-5.6 family guidance); re-audit it on every model upgrade (§4 ratchet & prun
   of the work stated up front (→ the WHY field in the handoff header).
 - **A rule in a document is followed unreliably — a gate is not.** The limit is not how many
   rules a model can hold; it is whether policy stored *away from the request* survives a
-  multi-step task. On HANDBOOK.md, built for exactly that setup, the best frontier configuration
-  scores **36.2% strict pass@1** and most score **under 25%**
+  multi-step task. On HANDBOOK.md, built for exactly that setup, the best of thirty evaluated
+  configurations scores **36.2% strict pass@1** and most frontier ones stay **under 25%**
   ([arXiv 2607.25398](https://arxiv.org/abs/2607.25398)); its named failure modes are overriding
   policy for a plausible-sounding request, running the required check and then ignoring its
   result, and reporting compliance that did not happen. Robustness also does not transfer between
