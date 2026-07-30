@@ -145,7 +145,7 @@ import {
   type AttuneGraphPolicyCardCompileInputV1
 } from "./policy-card.js";
 import {
-  ATTUNEGRAPH_POLICY_CARD_MAX_BYTES,
+  POLICY_CARD_MAX_BYTES,
   settleAttuneGraphPolicyCardBudget
 } from "./policy-card-finalization.js";
 
@@ -463,7 +463,7 @@ describe("AttuneGraph Policy Card", () => {
       throw new Error("must not run after an exceeded budget");
     });
     expect(settleAttuneGraphPolicyCardBudget(
-      "x".repeat(ATTUNEGRAPH_POLICY_CARD_MAX_BYTES + 1),
+      "x".repeat(POLICY_CARD_MAX_BYTES + 1),
       oversizedFinalizer
     )).toEqual({ status: "budget-exceeded" });
     expect(oversizedFinalizer).not.toHaveBeenCalled();

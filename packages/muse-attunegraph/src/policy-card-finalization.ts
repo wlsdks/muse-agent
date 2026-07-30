@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 
-export const ATTUNEGRAPH_POLICY_CARD_MAX_BYTES = 64 * 1024;
+export const POLICY_CARD_MAX_BYTES = 64 * 1024;
 
 export type AttuneGraphPolicyCardBudgetSettlement<T> =
   | Readonly<{
@@ -24,7 +24,7 @@ export function settleAttuneGraphPolicyCardBudget<T>(
 ): AttuneGraphPolicyCardBudgetSettlement<T> {
   if (
     Buffer.byteLength(serializedCard, "utf8")
-      > ATTUNEGRAPH_POLICY_CARD_MAX_BYTES
+      > POLICY_CARD_MAX_BYTES
   ) {
     return Object.freeze({ status: "budget-exceeded" as const });
   }
