@@ -9,7 +9,7 @@ const corePath = "packages/attunegraph";
 const coreSubmoduleUrl = "https://github.com/wlsdks/attunegraph.git";
 const coreExports = [
   ".", "./admin", "./backend", "./local", "./readonly-working-graph",
-  "./testing", "./extension-kit"
+  "./source-adapter", "./testing", "./extension-kit"
 ];
 const integrationExports = [
   "./continuity", "./continuity-capsule-preparation", "./continuity-changes",
@@ -73,8 +73,19 @@ export function assertAttuneGraphBoundary({ workspaceRoot = root } = {}) {
   for (const path of coreFiles) {
     if (!/\.(?:[cm]?js|tsx?)$/.test(path)) continue;
     const content = readFileSync(join(workspaceRoot, corePath, path), "utf8");
-    assert.doesNotMatch(content, /@muse\//, `${path} reaches a Muse package`);
-    assert.doesNotMatch(content, /packages\/muse-attunegraph|\.\.\/muse-attunegraph/, `${path} reaches integration by path`);
+    let boundaryContent = content;
+    if (path === "scripts/verify-clean-room-consumer.mjs") {
+      for (const packedLeakSentinel of [
+        '  "@muse/",\n',
+        '  "packages/muse-attunegraph",\n'
+      ]) {
+        const withoutSentinel = boundaryContent.replace(packedLeakSentinel, "");
+        assert.notEqual(withoutSentinel, boundaryContent, `missing packed leak sentinel in ${path}`);
+        boundaryContent = withoutSentinel;
+      }
+    }
+    assert.doesNotMatch(boundaryContent, /@muse\//, `${path} reaches a Muse package`);
+    assert.doesNotMatch(boundaryContent, /packages\/muse-attunegraph|\.\.\/muse-attunegraph/, `${path} reaches integration by path`);
   }
   const localCore = packageFiles(join(workspaceRoot, corePath));
   const localIntegration = packageFiles(join(workspaceRoot, "packages/muse-attunegraph"));
