@@ -8,6 +8,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Updated Muse's exact AttuneGraph Git submodule pin to standalone main commit
+  `e7d09fc`. The dependency-free core, in-memory store, canonical portable
+  fixtures, build, example, and pack dry-run now verify on Linux, macOS,
+  and Windows; the worker-isolated local SQLite and offline Admin contracts run
+  as a separate Muse Linux gate and remain fail-closed outside reviewed
+  Linux/macOS filesystem profiles. Muse still adds no external graph-database
+  dependency or fallback.
+
 - Added AWG-040f restart-safe local comparison baselines for explicit Continuity Capsule
   preparation. Production assembly now stores at most 16 exact verified Source/Graph baselines in
   a strict-private local file, reloads and reverifies them before capture or model work, and
