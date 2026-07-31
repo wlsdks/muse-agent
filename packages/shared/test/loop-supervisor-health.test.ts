@@ -330,6 +330,42 @@ describe("createLoopSupervisorHealthSnapshot", () => {
     });
   });
 
+  it("degrades a verified rollback proposal and blocks an unverified one", () => {
+    expect(createLoopSupervisorHealthSnapshot({
+      adaptation: {
+        evidenceId: "learning_rollback_proposal_verified",
+        evidenceVerified: true,
+        status: "rollback-proposed"
+      },
+      generatedAt: NOW
+    })).toMatchObject({
+      adaptation: {
+        level: "degraded",
+        reasons: ["adaptation-rollback-proposed"]
+      },
+      level: "degraded"
+    });
+    for (const adaptation of [
+      { status: "rollback-proposed" as const },
+      {
+        evidenceId: "learning_rollback_proposal_unverified",
+        evidenceVerified: false,
+        status: "rollback-proposed" as const
+      }
+    ]) {
+      expect(createLoopSupervisorHealthSnapshot({
+        adaptation,
+        generatedAt: NOW
+      })).toMatchObject({
+        adaptation: {
+          level: "blocked",
+          reasons: ["adaptation-rollback-proposal-unverified"]
+        },
+        level: "blocked"
+      });
+    }
+  });
+
   it("counts one cancellation identity once across journal and worker state", () => {
     const admitted = journal("cancelled");
     const leased = claimTriggerWork(admitted, {

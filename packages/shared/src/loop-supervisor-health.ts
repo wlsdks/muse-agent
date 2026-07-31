@@ -30,7 +30,15 @@ export interface EventLoopHealthInput {
 export interface AdaptationLoopHealthInput {
   readonly evidenceId?: string;
   readonly evidenceVerified?: boolean;
-  readonly status: "eligible" | "idle" | "paused" | "promoted" | "rejected" | "rolled-back" | "shadowing";
+  readonly status:
+    | "eligible"
+    | "idle"
+    | "paused"
+    | "promoted"
+    | "rejected"
+    | "rollback-proposed"
+    | "rolled-back"
+    | "shadowing";
 }
 
 export interface CreateLoopSupervisorHealthInput {
@@ -329,8 +337,15 @@ function adaptationHealth(
       ? component("healthy", [])
       : component("blocked", ["adaptation-promotion-unverified"]);
   }
+  if (input.status === "rollback-proposed") {
+    return input.evidenceId && input.evidenceVerified === true
+      ? component("degraded", ["adaptation-rollback-proposed"])
+      : component("blocked", ["adaptation-rollback-proposal-unverified"]);
+  }
   if (input.evidenceId !== undefined || input.evidenceVerified !== undefined) {
-    throw new TypeError("adaptation evidence is only valid for promoted status");
+    throw new TypeError(
+      "adaptation evidence is only valid for promoted or rollback-proposed status"
+    );
   }
   if (input.status === "paused") return component("degraded", ["adaptation-paused"]);
   if (input.status === "rejected") return component("degraded", ["adaptation-rejected"]);
@@ -411,6 +426,7 @@ function isAdaptationStatus(value: unknown): value is AdaptationLoopHealthInput[
     || value === "paused"
     || value === "promoted"
     || value === "rejected"
+    || value === "rollback-proposed"
     || value === "rolled-back"
     || value === "shadowing";
 }
