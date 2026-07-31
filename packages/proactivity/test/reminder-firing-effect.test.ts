@@ -446,6 +446,59 @@ describe("runDueReminders durable occurrence effect", () => {
     expect(existsSync(p.effectFile)).toBe(false);
   });
 
+  it.each([
+    {
+      label: "malformed JSON",
+      originalBytes: "{\"reminders\":["
+    },
+    {
+      label: "mixed valid and invalid entries",
+      originalBytes: `${JSON.stringify({
+        reminders: [reminder(), reminder({ dueAt: "not-a-date", id: "rem-invalid" })]
+      }, null, 2)}\n`
+    },
+    {
+      label: "duplicate IDs",
+      originalBytes: `${JSON.stringify({
+        reminders: [reminder(), reminder({ text: "Conflicting duplicate." })]
+      }, null, 2)}\n`
+    },
+    {
+      label: "non-canonical store shape",
+      originalBytes: `${JSON.stringify({ reminders: [reminder()], version: 1 }, null, 2)}\n`
+    }
+  ])("rejects $label before any external effect or rewrite", async ({ originalBytes }) => {
+    const p = paths();
+    writeFileSync(p.remindersFile, originalBytes, { mode: 0o600 });
+    let providerCalls = 0;
+
+    await expect(runDueReminders(options(p, registry(async (message) => {
+      providerCalls += 1;
+      return { destination: message.destination, messageId: "must-not-send", providerId: "telegram" };
+    })))).rejects.toThrow("reminder store cannot be read or validated");
+
+    expect(providerCalls).toBe(0);
+    expect(existsSync(p.effectFile)).toBe(false);
+    expect(existsSync(p.historyFile)).toBe(false);
+    expect(readFileSync(p.remindersFile, "utf8")).toBe(originalBytes);
+  });
+
+  it("keeps an absent reminder store as an empty no-op", async () => {
+    const p = paths();
+    let providerCalls = 0;
+
+    const summary = await runDueReminders(options(p, registry(async (message) => {
+      providerCalls += 1;
+      return { destination: message.destination, messageId: "must-not-send", providerId: "telegram" };
+    })));
+
+    expect(summary).toEqual({ delivered: 0, due: 0, errors: [], fired: [] });
+    expect(providerCalls).toBe(0);
+    expect(existsSync(p.remindersFile)).toBe(false);
+    expect(existsSync(p.effectFile)).toBe(false);
+    expect(existsSync(p.historyFile)).toBe(false);
+  });
+
   it("does not fabricate history when an accepted payload cannot be reconstructed after drift", async () => {
     const p = paths();
     const original = reminder();

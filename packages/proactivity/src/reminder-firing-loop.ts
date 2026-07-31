@@ -21,7 +21,7 @@ import { appendReminderHistoryStrictOnce, readReminderHistoryStrict, withRequire
 import {
   filterReminders,
   fireReminder,
-  mutateReminders,
+  mutateRemindersValidated,
   type PersistedReminder
 } from "@muse/stores";
 import type {
@@ -149,7 +149,7 @@ async function runDueRemindersUnderLock(
 ): Promise<RunDueRemindersSummary> {
   const tickNow = () => tickAt;
   let summary: RunDueRemindersSummary = { delivered: 0, due: 0, errors: [], fired: [] };
-  await mutateReminders(options.file, async (all) => {
+  await mutateRemindersValidated(options.file, async (all) => {
     const due = filterReminders(all, "due", tickNow);
     if (due.length === 0) return all;
 

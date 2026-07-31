@@ -95,10 +95,21 @@ export async function readReminders(file: string): Promise<readonly PersistedRem
  * recovery-oriented reader above, it never quarantines malformed bytes or
  * normalizes an unreadable/invalid store to an empty list. */
 export async function readRemindersStrict(file: string): Promise<readonly PersistedReminder[]> {
+  return readRemindersValidatedInternal(file, false, isPersistedReminderStrict);
+}
+
+async function readRemindersValidatedInternal(
+  file: string,
+  absentIsEmpty: boolean,
+  isValid: (value: unknown) => value is PersistedReminder
+): Promise<readonly PersistedReminder[]> {
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
-  } catch {
+  } catch (cause) {
+    if (absentIsEmpty && (cause as NodeJS.ErrnoException).code === "ENOENT") {
+      return [];
+    }
     throw new ReminderStoreUnavailableError();
   }
   let parsed: unknown;
@@ -113,7 +124,7 @@ export async function readRemindersStrict(file: string): Promise<readonly Persis
     throw new ReminderStoreUnavailableError();
   }
   const entries = (parsed as { reminders: unknown[] }).reminders;
-  if (entries.some((entry) => !isPersistedReminderStrict(entry))) {
+  if (entries.some((entry) => !isValid(entry))) {
     throw new ReminderStoreUnavailableError();
   }
   const reminders = entries as readonly PersistedReminder[];
@@ -142,6 +153,25 @@ export async function mutateReminders(
 ): Promise<readonly PersistedReminder[]> {
   return withFileLock(file, async () => {
     const current = await readReminders(file);
+    const next = await fn(current);
+    if (next !== current) {
+      await writeReminders(file, next);
+    }
+    return next;
+  });
+}
+
+/**
+ * Firing-safe mutation boundary: an absent store is an empty no-op, while every
+ * row in a present store must be valid before the callback can send or persist
+ * effects. Other reminder callers keep the recovery-oriented boundary.
+ */
+export async function mutateRemindersValidated(
+  file: string,
+  fn: (current: readonly PersistedReminder[]) => readonly PersistedReminder[] | Promise<readonly PersistedReminder[]>
+): Promise<readonly PersistedReminder[]> {
+  return withFileLock(file, async () => {
+    const current = await readRemindersValidatedInternal(file, true, isPersistedReminder);
     const next = await fn(current);
     if (next !== current) {
       await writeReminders(file, next);

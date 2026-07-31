@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatReminderDueLocal,
+  mutateRemindersValidated,
   type PersistedReminder,
   readReminderByIdStrict,
   readRemindersStrict,
@@ -142,6 +143,57 @@ describe("strict exact reminder reads", () => {
     await expect(readRemindersStrict(file)).rejects.toThrow("reminder store cannot be read or validated");
     await writeReminders(file, []);
     await expect(readRemindersStrict(file)).resolves.toEqual([]);
+  });
+});
+
+describe("validated reminder mutation", () => {
+  const tmp = async (): Promise<{ file: string; root: string }> => {
+    const root = await mkdtemp(join(tmpdir(), "muse-rem-mutate-validated-"));
+    return { file: join(root, "reminders.json"), root };
+  };
+
+  it("treats an absent store as an empty no-op without creating a file", async () => {
+    const { file, root } = await tmp();
+
+    await expect(mutateRemindersValidated(file, (current) => current)).resolves.toEqual([]);
+
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  it("validates present bytes before invoking the callback or rewriting the store", async () => {
+    const { file, root } = await tmp();
+    const originalBytes = JSON.stringify({ reminders: [
+      { ...base, createdAt: "2026-01-01T00:00:00.000Z", dueAt: "2026-01-01T09:00:00.000Z" },
+      { ...base, dueAt: "bad", id: "r-invalid" }
+    ] });
+    await writeFile(file, originalBytes, "utf8");
+    let callbackCalls = 0;
+
+    await expect(mutateRemindersValidated(file, (current) => {
+      callbackCalls += 1;
+      return current;
+    })).rejects.toThrow("reminder store cannot be read or validated");
+
+    expect(callbackCalls).toBe(0);
+    expect(await readFile(file, "utf8")).toBe(originalBytes);
+    expect(await readdir(root)).toEqual(["reminders.json"]);
+  });
+
+  it("accepts parseable existing ISO spellings before invoking the callback", async () => {
+    const { file } = await tmp();
+    const originalBytes = JSON.stringify({ reminders: [base] });
+    await writeFile(file, originalBytes, "utf8");
+    let callbackCalls = 0;
+
+    await expect(readRemindersStrict(file)).rejects.toThrow("reminder store cannot be read or validated");
+    await expect(mutateRemindersValidated(file, (current) => {
+      callbackCalls += 1;
+      return current;
+    })).resolves.toEqual([base]);
+
+    expect(callbackCalls).toBe(1);
+    expect(await readFile(file, "utf8")).toBe(originalBytes);
+    await expect(readReminders(file)).resolves.toEqual([base]);
   });
 });
 
