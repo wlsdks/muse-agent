@@ -9,8 +9,8 @@ related: [../../docs/strategy/attunement.md, ../../docs/design/attunement/attune
 
 # Attunement wow + AttuneGraph roadmap
 
-This program is deliberately separate from the personal-agent core 100/300-task programs.
-Those programs harden the general agent substrate. This one builds Muse's signature:
+This program is deliberately separate from the personal-agent successor program and the retired
+Core 100 work. Those programs harden the general agent substrate. This one builds Muse's signature:
 
 > **A procedural skill teaches an agent how to do a task better. An Attunement Policy
 > teaches Muse how to collaborate with this person better.**
@@ -31,11 +31,45 @@ indiscriminate screen/content surveillance. RAG may nominate semantically releva
 the Graph owns exact thread, identity, time, change, provenance, return, and policy
 relations.
 
-AttuneGraph is built as an independently extractable product Module inside Muse. A second Git
-repository is intentionally deferred until clean-room package, dependency-isolation,
-conformance, packed-artifact, export/rebuild, and license/documentation gates pass. Focused
-AttuneGraph and Muse-integration commits preserve history for that later split without imposing
-dual-repository version churn during rapid development. The accepted boundary is
+## Current execution charter — owner directive 2026-07-31
+
+This is the only active order for the AttuneGraph lane. Completed personal-agent roadmaps are not
+inputs to work selection.
+
+1. **Independent product boundary.** `github.com/wlsdks/attunegraph` is the authoritative source.
+   It must build, test, document, package-dry-run, run its non-Muse example, inspect local state,
+   and round-trip `.atgx` without a Muse checkout or external graph database.
+2. **Flexible Muse integration.** Muse consumes an exact AttuneGraph gitlink and a narrow public
+   port. Host projection code declares source observations and exact thread roots; it does not
+   import storage internals, copy engine source, or require edits in two repositories for one
+   engine change.
+3. **Measured 90%+ engine readiness.** After the boundary and integration are proven, build a
+   reproducible 10K/100K/1M corpus and measure projection latency, Working Graph latency,
+   throughput, peak memory, SQLite cold/warm open, concurrency, and portable encode/decode.
+   Optimize only profiled bottlenecks, including a Rust kernel only when measurement proves a
+   material net benefit after boundary-crossing cost.
+
+The readiness score is evidence-gated rather than based on code volume:
+
+| gate | weight | evidence required |
+| --- | ---: | --- |
+| Independent clean-room install/use | 15 | fresh checkout, install, build, example, pack/install |
+| Muse adapter and submodule integration | 20 | v2 durable paths, exact root, no duplicate engine source |
+| Semantic correctness and fail-closed safety | 20 | conformance, adversarial, property and fault gates |
+| Persistence and portable recovery | 10 | SQLite crash/CAS plus `.atgx` streaming round trip |
+| Agent-native retrieval quality | 10 | bounded Working Graph golden corpus and abstention |
+| Performance and resource efficiency | 15 | reproducible 10K/100K/1M report with declared budgets |
+| Admin and operability | 5 | inspect/verify/diagnose surfaces without hidden mutation |
+| Public docs and non-Muse adoption path | 5 | API reference, migration notes, independent example |
+
+`90/100` requires every 20-point critical gate to pass; points cannot compensate for a failed
+correctness, authority, persistence, or Muse-integration invariant. Benchmark budgets are fixed
+from a recorded baseline before optimization, then tightened from measured user/agent latency—not
+invented after seeing the result.
+
+AttuneGraph now lives in its own public Git repository and Muse consumes it as an exact git
+submodule. The standalone repository is the only engine source of truth; Muse owns only host
+adapters, source projections, integration tests, and the pinned commit. The accepted boundary is
 [ADR 0001](../../docs/architecture/adr/0001-attunegraph-product-module-boundary.md). The TypeScript-first Engine,
 worker-isolated SQLite Store, and benchmark-gated Rust hot-kernel policy are fixed in
 [ADR 0002](../../docs/architecture/adr/0002-attunegraph-language-runtime-boundary.md).
@@ -392,7 +426,7 @@ Shadow ledger or durable database:
   `muse.continuity.capsule.prepare` tool with exactly `threadId` and `locale`. Its bounded scope is
   one evidence-bound, display-only proposal; it does not implement or duplicate AWG-050 graph
   hardening or the Shadow decision/return ledger, AWG-060 Policy Card learning controls, or the
-  separate personal-agent 300-task productization program. Only an exact scope-bound compared
+  separate personal-agent successor program. Only an exact scope-bound compared
   result reaches one configured-provider structured-output call; the
   content-addressed evidence input admits only available current
   task/note/reminder source keys; and every ordered model claim cites those keys while

@@ -722,7 +722,7 @@ that bounded scope of one evidence-bound, display-only proposal and does not ext
 end-to-end claim to semantic entailment, continuous truth, automatic observation, broader
 persistence, or user value. It does
 not implement or duplicate AWG-050 graph hardening or the Shadow decision/return ledger, AWG-060
-Policy Card learning controls, or the separate personal-agent 300-task productization program.
+Policy Card learning controls, or the separate personal-agent successor program.
 The Provider-bound paths make no authoritative absence, permission, or action claim.
 The durable projection-journal foundation and its typed Worker boundary are independently
 verified. Muse default-path composition,

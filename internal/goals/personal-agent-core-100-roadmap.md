@@ -7,8 +7,6 @@ updated: 2026-07-28
 reconciledSourceHead: d693cea6fb1b6bf4889fa99dd38d9e5e0ae04642
 supersededBy:
   - personal-agent-successor-roadmap.md
-supersedesForActivation:
-  - personal-agent-productization-roadmap.md
 related:
   - ../../docs/strategy/attunement.md
   - ../../docs/development/personal-agent-qualification.md
@@ -20,9 +18,9 @@ related:
 
 ## Purpose
 
-This document is the authoritative execution document that re-selects, from the existing
-300-task program, **excluding work already implemented and verified in the current source**, only
-the essential remaining work as 100 execution slices for Muse to become a trusted,
+This document selected, from the legacy productization requirements,
+**excluding work already implemented and verified in the current source**, only the essential
+remaining work as 100 execution slices for Muse to become a trusted,
 provider-neutral personal AI agent in one user's real daily life.
 
 The product's success statement stays the same.
@@ -30,10 +28,8 @@ The product's success statement stays the same.
 > Muse connects one user's life and work with exact sources, learns explicitly whether it helped,
 > and runs reliably every day without covertly expanding its authority.
 
-The existing
-[`personal-agent-productization-roadmap.md`](personal-agent-productization-roadmap.md) remains as
-a reference document for looking up requirement history and legacy IDs. This document takes
-priority for new task activation and next-task selection.
+Git history retains predecessor requirement rationale when historical lookup is genuinely
+necessary; no predecessor roadmap is active or retained in this worktree.
 
 ## Current source reconciliation
 
