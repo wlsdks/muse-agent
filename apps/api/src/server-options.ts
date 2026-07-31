@@ -45,6 +45,8 @@ import type {
 } from "@muse/shared";
 
 export interface ServerOptions {
+  /** Assembly-owned resources that must drain before Fastify finishes closing. */
+  readonly closeRuntimeResources?: () => Promise<void>;
   /**
    * Trusted, non-executable projection of dependency state captured at server
    * construction. Health requests never invoke a callback or provider egress.

@@ -1,9 +1,12 @@
 import { types as nodeTypes } from "node:util";
 
 import {
+  ContinuityAttuneGraphProjectionError,
   createContinuityAttuneGraphProjector,
+  createContinuityAttuneGraphSessionProjector,
   type ContinuityAttuneGraphProjectionResult,
-  type ContinuityAttuneGraphProjector
+  type ContinuityAttuneGraphProjector,
+  type ContinuityAttuneGraphSessionProjector
 } from "@muse/attunegraph/continuity-durable-projection";
 import {
   captureContinuityObservation
@@ -164,18 +167,73 @@ export function createConfiguredContinuityAttuneGraphProjector(
   const projector = createContinuityAttuneGraphProjector({ databasePath });
   const attunementFile = resolveAttunementFile(env);
   return Object.freeze({
-    async project(observationReceipt: unknown) {
-      const [state, timingState] = await Promise.all([
-        readAttunementState(attunementFile),
-        readTimingState(`${attunementFile}.timing.json`)
-      ]);
-      return projector.project(
-        captureContinuityShadowReturnObservation({
-          baseObservationReceipt: observationReceipt,
-          state,
-          timingState
-        })
+    project: (observationReceipt: unknown) =>
+      projectConfiguredObservation(
+        projector,
+        attunementFile,
+        observationReceipt
+      )
+  });
+}
+
+async function projectConfiguredObservation(
+  projector: ContinuityAttuneGraphProjector,
+  attunementFile: string,
+  observationReceipt: unknown
+): Promise<ContinuityAttuneGraphProjectionResult> {
+  const [state, timingState] = await Promise.all([
+    readAttunementState(attunementFile),
+    readTimingState(`${attunementFile}.timing.json`)
+  ]);
+  return projector.project(
+    captureContinuityShadowReturnObservation({
+      baseObservationReceipt: observationReceipt,
+      state,
+      timingState
+    })
+  );
+}
+
+export function createConfiguredContinuityAttuneGraphSessionProjector(
+  env: MuseEnvironment
+): ContinuityAttuneGraphSessionProjector | undefined {
+  const databasePath = env.MUSE_ATTUNEGRAPH_DATABASE;
+  if (databasePath === undefined || databasePath === "") return undefined;
+  const projector = createContinuityAttuneGraphSessionProjector({ databasePath });
+  const attunementFile = resolveAttunementFile(env);
+  let lifecycle: "open" | "closing" | "closed" = "open";
+  let tail: Promise<void> = Promise.resolve();
+  let closePromise: Promise<void> | undefined;
+
+  return Object.freeze({
+    project(observationReceipt: unknown) {
+      if (lifecycle !== "open") {
+        return Promise.reject(
+          new ContinuityAttuneGraphProjectionError("CLOSED")
+        );
+      }
+      const operation = tail.then(() =>
+        projectConfiguredObservation(
+          projector,
+          attunementFile,
+          observationReceipt
+        )
       );
+      tail = operation.then(
+        () => undefined,
+        () => undefined
+      );
+      return operation;
+    },
+    close() {
+      if (closePromise) return closePromise;
+      lifecycle = "closing";
+      closePromise = tail
+        .then(() => projector.close())
+        .finally(() => {
+          lifecycle = "closed";
+        });
+      return closePromise;
     }
   });
 }

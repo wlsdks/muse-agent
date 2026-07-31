@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  createPersonalThread,
   evaluateTimingSession,
   emptyTimingState,
+  readAttunementState,
   recordAttuneGraphShadowReturn,
   startTimingSession
 } from "@muse/attunement";
@@ -19,6 +21,7 @@ import { expect, it } from "vitest";
 
 import {
   createConfiguredContinuityAttuneGraphProjector,
+  createConfiguredContinuityAttuneGraphSessionProjector,
   projectConfiguredContinuityAttuneGraphCurrentState,
   readConfiguredContinuityShadowReturns
 } from "../src/continuity-attunegraph-composition.js";
@@ -48,9 +51,17 @@ it("reads an empty valid timing ledger once without mutating its source bytes", 
 });
 
 it("creates only an explicit absolute projector and fails invalid non-empty configuration closed", () => {
-  expect(createConfiguredContinuityAttuneGraphProjector({
+  const coldProjector = createConfiguredContinuityAttuneGraphProjector({
     MUSE_ATTUNEGRAPH_DATABASE: "/tmp/muse-attunegraph.sqlite"
-  })).toMatchObject({ project: expect.any(Function) });
+  });
+  expect(coldProjector).toMatchObject({ project: expect.any(Function) });
+  expect(coldProjector).not.toHaveProperty("close");
+  expect(createConfiguredContinuityAttuneGraphSessionProjector({
+    MUSE_ATTUNEGRAPH_DATABASE: "/tmp/muse-attunegraph.sqlite"
+  })).toMatchObject({
+    close: expect.any(Function),
+    project: expect.any(Function)
+  });
   expect(() =>
     createConfiguredContinuityAttuneGraphProjector({
       MUSE_ATTUNEGRAPH_DATABASE: " "
@@ -61,6 +72,44 @@ it("creates only an explicit absolute projector and fails invalid non-empty conf
       MUSE_ATTUNEGRAPH_DATABASE: "relative.sqlite"
     })
   ).toThrow(expect.objectContaining({ code: "INVALID_CONFIGURATION" }));
+});
+
+it("drains an admitted configured projection before close and rejects later work", async () => {
+  const directory = await realpath(
+    await mkdtemp(join(tmpdir(), "muse-configured-session-close-"))
+  );
+  const attunementFile = join(directory, "attunement.json");
+  const projector = createConfiguredContinuityAttuneGraphSessionProjector({
+    HOME: directory,
+    MUSE_ATTUNEGRAPH_DATABASE: join(directory, "attunegraph.sqlite"),
+    MUSE_ATTUNEMENT_FILE: attunementFile
+  })!;
+  const thread = await createPersonalThread(
+    attunementFile,
+    { kind: "work", title: "Configured session close" },
+    {
+      idFactory: () => "thread_configured_session_close",
+      now: () => new Date("2026-07-31T01:00:00.000Z")
+    }
+  );
+  const observation = captureContinuityObservation({
+    scope: {
+      sourceId: "muse.local-attunement",
+      threadId: thread.id
+    },
+    sourceObservedAt: "2026-07-31T01:01:00.000Z",
+    state: await readAttunementState(attunementFile)
+  });
+
+  const admitted = projector.project(observation);
+  const closing = projector.close();
+
+  await expect(projector.project(observation)).rejects.toMatchObject({
+    code: "CLOSED"
+  });
+  await expect(admitted).resolves.toMatchObject({ status: "projected" });
+  await expect(closing).resolves.toBeUndefined();
+  expect(projector.close()).toBe(closing);
 });
 
 it("rebuilds the reserved composite scope from the current Attunement and timing ledgers", async () => {

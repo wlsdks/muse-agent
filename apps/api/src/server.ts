@@ -198,6 +198,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const server = Fastify({
     logger: options.logger ?? true
   });
+  const closeRuntimeResources = options.closeRuntimeResources;
+  if (closeRuntimeResources) {
+    server.addHook("onClose", async () => {
+      await closeRuntimeResources();
+    });
+  }
   server.addHook("onRequest", async (request, reply) => {
     applyCompatWebContractHeaders(request.url, request.headers["x-request-id"], reply);
     applyCorsHeaders(options.cors, request.headers.origin, reply);

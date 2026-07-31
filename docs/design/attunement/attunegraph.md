@@ -214,6 +214,11 @@ ingestion, LLM extraction, automatic Shadow delivery, automatic Capsule delivery
 UI, or action authority. The complete three-part signature experience therefore remains a
 roadmap claim.
 
+The API host reuses one lazily opened standalone local AttuneGraph session for these serialized
+projections and closes it from Fastify `onClose`. Calls accepted before shutdown drain; later
+calls fail closed. Direct runtime and CLI assembly deliberately retain the cold self-closing
+projector because those synchronous consumers do not own a matching long-lived shutdown hook.
+
 AWG-040e1 adds the provider-neutral preparation/provenance prerequisite without converting
 model text into evidence. One assembly-owned service reuses the resume coordinator
 (process-local in that original slice; backed by the AWG-040f durable host store in assembled

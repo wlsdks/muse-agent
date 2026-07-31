@@ -5,7 +5,10 @@ import type {
   AttuneGraph,
   AttuneGraphSnapshot
 } from "@attunegraph/core";
-import { openLocalAttuneGraph } from "@attunegraph/core/local";
+import {
+  openLocalAttuneGraph,
+  openLocalAttuneGraphSession
+} from "@attunegraph/core/local";
 
 import {
   ContinuityObservationError,
@@ -15,6 +18,7 @@ import {
 import { continuityThreadGraphRef } from "./continuity-projection.js";
 
 export type ContinuityAttuneGraphProjectionErrorCode =
+  | "CLOSED"
   | "INVALID_CONFIGURATION"
   | "INVALID_OBSERVATION"
   | "PROJECTION_FAILED";
@@ -22,6 +26,7 @@ export type ContinuityAttuneGraphProjectionErrorCode =
 const ERROR_MESSAGES: Readonly<
   Record<ContinuityAttuneGraphProjectionErrorCode, string>
 > = Object.freeze({
+  CLOSED: "Continuity AttuneGraph projector is closing or closed",
   INVALID_CONFIGURATION: "Continuity AttuneGraph projection configuration is invalid",
   INVALID_OBSERVATION: "Continuity Graph Observation Receipt is invalid",
   PROJECTION_FAILED: "Continuity AttuneGraph projection failed"
@@ -71,6 +76,11 @@ export interface ContinuityAttuneGraphProjector {
   ): Promise<ContinuityAttuneGraphProjectionResult>;
 }
 
+export interface ContinuityAttuneGraphSessionProjector
+  extends ContinuityAttuneGraphProjector {
+  close(): Promise<void>;
+}
+
 type ProjectionAttuneGraph = Pick<
   AttuneGraph,
   "close" | "head" | "project"
@@ -86,6 +96,22 @@ export interface ContinuityAttuneGraphProjectorDependencies {
       }>;
     }>
   ) => Promise<ProjectionAttuneGraph>;
+}
+
+interface ProjectionAttuneGraphSession {
+  readonly open: (options: Readonly<{
+    readonly scope: Readonly<{
+      readonly sourceId: string;
+      readonly threadId: string;
+    }>;
+  }>) => Promise<ProjectionAttuneGraph>;
+  readonly close: () => Promise<void>;
+}
+
+export interface ContinuityAttuneGraphSessionProjectorDependencies {
+  readonly openSession: (
+    options: Readonly<{ readonly databasePath: string }>
+  ) => Promise<ProjectionAttuneGraphSession>;
 }
 
 function dataRecord(
@@ -162,6 +188,10 @@ function invalidObservation(cause: unknown): ContinuityAttuneGraphProjectionErro
     "INVALID_OBSERVATION",
     { cause }
   );
+}
+
+function closedProjector(): ContinuityAttuneGraphProjectionError {
+  return new ContinuityAttuneGraphProjectionError("CLOSED");
 }
 
 function projectionFailure(cause: unknown): ContinuityAttuneGraphProjectionError {
@@ -285,5 +315,89 @@ export function createContinuityAttuneGraphProjector(
 ): ContinuityAttuneGraphProjector {
   return createContinuityAttuneGraphProjectorWithDependencies(options, {
     openLocal: openLocalAttuneGraph
+  });
+}
+
+export function createContinuityAttuneGraphSessionProjectorWithDependencies(
+  rawOptions: ContinuityAttuneGraphProjectorOptions,
+  dependencies: ContinuityAttuneGraphSessionProjectorDependencies
+): ContinuityAttuneGraphSessionProjector {
+  const options = normalizeOptions(rawOptions);
+  let lifecycle: "open" | "closing" | "closed" = "open";
+  let tail: Promise<void> = Promise.resolve();
+  let sessionPromise: Promise<ProjectionAttuneGraphSession> | undefined;
+  let closePromise: Promise<void> | undefined;
+
+  const session = (): Promise<ProjectionAttuneGraphSession> => {
+    if (sessionPromise) return sessionPromise;
+    const opening = Promise.resolve().then(() => dependencies.openSession({
+      databasePath: options.databasePath
+    }));
+    const tracked = opening.catch((cause: unknown) => {
+      if (sessionPromise === tracked) sessionPromise = undefined;
+      throw projectionFailure(cause);
+    });
+    sessionPromise = tracked;
+    return tracked;
+  };
+  const projectionDependencies: ContinuityAttuneGraphProjectorDependencies = {
+    openLocal: async ({ scope }) => {
+      const activeSession = await session();
+      return activeSession.open({ scope });
+    }
+  };
+
+  const projector: ContinuityAttuneGraphSessionProjector = {
+    project(
+      observationReceipt: unknown
+    ): Promise<ContinuityAttuneGraphProjectionResult> {
+      if (lifecycle !== "open") return Promise.reject(closedProjector());
+      let receipt: ContinuityObservationReceipt;
+      try {
+        receipt = verifyContinuityObservation(observationReceipt);
+      } catch (cause) {
+        return Promise.reject(
+          invalidObservation(
+            cause instanceof ContinuityObservationError ? cause : undefined
+          )
+        );
+      }
+      const operation = tail.then(() =>
+        projectOne(options.databasePath, receipt, projectionDependencies)
+      );
+      tail = operation.then(
+        () => undefined,
+        () => undefined
+      );
+      return operation;
+    },
+    close(): Promise<void> {
+      if (closePromise) return closePromise;
+      lifecycle = "closing";
+      closePromise = tail
+        .then(async () => {
+          const opened = sessionPromise;
+          if (!opened) return;
+          const activeSession = await opened;
+          try {
+            await activeSession.close();
+          } catch (cause) {
+            throw projectionFailure(cause);
+          }
+        })
+        .finally(() => {
+          lifecycle = "closed";
+        });
+      return closePromise;
+    }
+  };
+  return Object.freeze(projector);
+}
+
+export function createContinuityAttuneGraphSessionProjector(
+  options: ContinuityAttuneGraphProjectorOptions
+): ContinuityAttuneGraphSessionProjector {
+  return createContinuityAttuneGraphSessionProjectorWithDependencies(options, {
+    openSession: openLocalAttuneGraphSession
   });
 }

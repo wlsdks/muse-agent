@@ -7,12 +7,14 @@
  */
 export {
   ContinuityAttuneGraphProjectionError,
-  createContinuityAttuneGraphProjector
+  createContinuityAttuneGraphProjector,
+  createContinuityAttuneGraphSessionProjector
 } from "./continuity-durable-projection-internal.js";
 
 export type {
   ContinuityAttuneGraphProjectionErrorCode,
   ContinuityAttuneGraphProjectionResult,
   ContinuityAttuneGraphProjector,
-  ContinuityAttuneGraphProjectorOptions
+  ContinuityAttuneGraphProjectorOptions,
+  ContinuityAttuneGraphSessionProjector
 } from "./continuity-durable-projection-internal.js";

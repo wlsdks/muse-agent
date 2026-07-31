@@ -31,6 +31,9 @@ import {
   collectDeliverySafety,
   type DeliverySafetyCollectorDependencies
 } from "./delivery-safety.js";
+import {
+  createConfiguredContinuityAttuneGraphSessionProjector
+} from "./continuity-attunegraph-composition.js";
 
 export interface CreateApiServerOptionsOptions extends ApiServerAssemblyOptions {
   /** Narrow inspection seam for deterministic delivery-safety assembly tests. */
@@ -52,12 +55,17 @@ export function createApiServerOptions(options: CreateApiServerOptionsOptions = 
   const env = mergeModelKeysFromFile(source, {
     ...(modelAndHomeLocalOnlyOverride === undefined ? {} : { localOnlyOverride: modelAndHomeLocalOnlyOverride })
   });
+  const continuityAttuneGraphProjector =
+    createConfiguredContinuityAttuneGraphSessionProjector(env);
   // One effective env feeds both the runtime assembly and the narrow API
   // integration snapshot. Reusing raw options.env here would let setup routes
   // disagree with the registry the runtime actually assembled.
   const assembly = createMuseRuntimeAssembly({
     ...assemblyOptions,
     env,
+    ...(continuityAttuneGraphProjector
+      ? { continuityAttuneGraphProjector }
+      : {}),
     ...(modelAndHomeLocalOnlyOverride === undefined ? {} : { localOnlyOverride: modelAndHomeLocalOnlyOverride })
   });
 
@@ -79,6 +87,9 @@ export function createApiServerOptions(options: CreateApiServerOptionsOptions = 
       env
     }),
     agentRuntime: assembly.agentRuntime,
+    ...(continuityAttuneGraphProjector
+      ? { closeRuntimeResources: continuityAttuneGraphProjector.close }
+      : {}),
     ...(assembly.backgroundModelProvider ? { backgroundModelProvider: assembly.backgroundModelProvider } : {}),
     ...(assembly.continuityCapsulePreparation
       ? { continuityCapsulePreparation: assembly.continuityCapsulePreparation }

@@ -37,6 +37,7 @@ import {
   type AgentSpecRegistry
 } from "@muse/agent-specs";
 import type { MuseAuth } from "@muse/auth";
+import type { ContinuityAttuneGraphProjector } from "@muse/attunegraph/continuity-durable-projection";
 import {
   InMemoryCacheMetricsRecorder,
   InMemoryCacheStatsStore,
@@ -388,6 +389,8 @@ export interface MuseRuntimeAssembly {
 export interface ApiServerAssemblyOptions {
   readonly db?: Kysely<MuseDatabase>;
   readonly env?: MuseEnvironment;
+  /** Composition-owned override; ordinary assembly keeps the self-closing projector. */
+  readonly continuityAttuneGraphProjector?: ContinuityAttuneGraphProjector;
   /** Explicit workspace authority for future-only local checkpoint provenance. */
   readonly continuityWorkspaceDir?: string;
   /**
@@ -945,7 +948,8 @@ function buildPersonalStoreStack(
   >
 ) {
   const continuityAttuneGraphProjector =
-    createConfiguredContinuityAttuneGraphProjector(env);
+    options.continuityAttuneGraphProjector
+    ?? createConfiguredContinuityAttuneGraphProjector(env);
   const notesDir = resolveNotesDir(env);
   ensureNotesDir(notesDir);
   const notesRegistry = parseBoolean(env.MUSE_NOTES_ENABLED, true) ? buildNotesRegistry(env) : undefined;

@@ -13,8 +13,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ContinuityAttuneGraphProjectionError,
   createContinuityAttuneGraphProjector,
+  createContinuityAttuneGraphSessionProjector,
+  createContinuityAttuneGraphSessionProjectorWithDependencies,
   createContinuityAttuneGraphProjectorWithDependencies,
-  type ContinuityAttuneGraphProjectorDependencies
+  type ContinuityAttuneGraphProjectorDependencies,
+  type ContinuityAttuneGraphSessionProjectorDependencies
 } from "./continuity-durable-projection-internal.js";
 import {
   captureContinuityObservation,
@@ -211,6 +214,34 @@ describe("Continuity durable AttuneGraph projection", () => {
     await graph.close();
   });
 
+  it("projects through the standalone local session and closes its worker explicitly", async () => {
+    const databasePath = await temporaryDatabase();
+    const receipt = observation();
+    const projector = createContinuityAttuneGraphSessionProjector({
+      databasePath
+    });
+
+    await expect(projector.project(receipt)).resolves.toMatchObject({
+      status: "projected",
+      snapshot: { generation: 1 }
+    });
+    await expect(projector.project(receipt)).resolves.toMatchObject({
+      status: "replayed",
+      snapshot: { generation: 1 }
+    });
+    await expect(projector.close()).resolves.toBeUndefined();
+    await expect(projector.project(receipt)).rejects.toMatchObject({
+      code: "CLOSED"
+    });
+
+    const graph = await openLocalAttuneGraph({
+      databasePath,
+      scope: { sourceId: SOURCE_ID, threadId: THREAD_ID }
+    });
+    await expect(graph.head()).resolves.toMatchObject({ generation: 1 });
+    await graph.close();
+  });
+
   it("serializes distinct calls in invocation order", async () => {
     const firstGate = Promise.withResolvers<void>();
     const trace: string[] = [];
@@ -368,5 +399,121 @@ describe("Continuity durable AttuneGraph projection", () => {
       .catch((cause: unknown) => cause);
     expect(closeFailure).toMatchObject({ code: "PROJECTION_FAILED" });
     expect((closeFailure as Error).cause).toBe(cleanup);
+  });
+
+  it("shares one lazy session, drains admitted work, and rejects work after close begins", async () => {
+    const firstGate = Promise.withResolvers<void>();
+    const trace: string[] = [];
+    let generation = 0;
+    let head: AttuneGraphSnapshot | undefined;
+    const closeSession = vi.fn(async () => {
+      trace.push("session-close");
+    });
+    const open = vi.fn(async () => {
+      const invocation = generation + 1;
+      trace.push(`handle-open-${invocation.toString()}`);
+      return {
+        head: vi.fn(async () => head),
+        project: vi.fn(async () => {
+          trace.push(`project-${invocation.toString()}`);
+          if (invocation === 1) await firstGate.promise;
+          generation = invocation;
+          head = snapshot(invocation);
+          return head;
+        }),
+        close: vi.fn(async () => {
+          trace.push(`handle-close-${invocation.toString()}`);
+        })
+      };
+    });
+    const openSession = vi.fn(async () => {
+      trace.push("session-open");
+      return { close: closeSession, open };
+    });
+    const dependencies: ContinuityAttuneGraphSessionProjectorDependencies = {
+      openSession
+    };
+    const projector = createContinuityAttuneGraphSessionProjectorWithDependencies(
+      { databasePath: "/tmp/shared-session-attunegraph.sqlite" },
+      dependencies
+    );
+
+    expect(openSession).not.toHaveBeenCalled();
+    const first = projector.project(observation());
+    const second = projector.project(observation(SECOND_AT, 2));
+    await vi.waitFor(() => expect(trace).toEqual([
+      "session-open",
+      "handle-open-1",
+      "project-1"
+    ]));
+
+    const closing = projector.close();
+    expect(projector.close()).toBe(closing);
+    await expect(projector.project(observation())).rejects.toMatchObject({
+      code: "CLOSED"
+    });
+    firstGate.resolve();
+
+    await expect(Promise.all([first, second])).resolves.toMatchObject([
+      { snapshot: { generation: 1 } },
+      { snapshot: { generation: 2 } }
+    ]);
+    await expect(closing).resolves.toBeUndefined();
+    expect(openSession).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(trace).toEqual([
+      "session-open",
+      "handle-open-1",
+      "project-1",
+      "handle-close-1",
+      "handle-open-2",
+      "project-2",
+      "handle-close-2",
+      "session-close"
+    ]);
+  });
+
+  it("closes a session that resolves while close is waiting on its first project", async () => {
+    const opening = Promise.withResolvers<Awaited<
+      ReturnType<ContinuityAttuneGraphSessionProjectorDependencies["openSession"]>
+    >>();
+    const closeSession = vi.fn(async () => undefined);
+    const openSession = vi.fn(() => opening.promise);
+    const projector = createContinuityAttuneGraphSessionProjectorWithDependencies(
+      { databasePath: "/tmp/open-race-attunegraph.sqlite" },
+      { openSession }
+    );
+    const pending = projector.project(observation());
+    await vi.waitFor(() => expect(openSession).toHaveBeenCalledOnce());
+
+    const closing = projector.close();
+    opening.resolve({
+      close: closeSession,
+      open: async () => ({
+        close: async () => undefined,
+        head: async () => undefined,
+        project: async () => snapshot(1)
+      })
+    });
+
+    await expect(pending).resolves.toMatchObject({
+      snapshot: { generation: 1 }
+    });
+    await expect(closing).resolves.toBeUndefined();
+    expect(closeSession).toHaveBeenCalledOnce();
+  });
+
+  it("closes without opening a session when no work was admitted", async () => {
+    const openSession = vi.fn();
+    const projector = createContinuityAttuneGraphSessionProjectorWithDependencies(
+      { databasePath: "/tmp/unused-shared-session-attunegraph.sqlite" },
+      { openSession }
+    );
+
+    await expect(projector.close()).resolves.toBeUndefined();
+    expect(openSession).not.toHaveBeenCalled();
+    await expect(projector.project(observation())).rejects.toMatchObject({
+      code: "CLOSED"
+    });
   });
 });

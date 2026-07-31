@@ -27,6 +27,7 @@ export {
 export {
   continuityRuntimeSourceId,
   createConfiguredContinuityAttuneGraphProjector,
+  createConfiguredContinuityAttuneGraphSessionProjector,
   projectConfiguredContinuityAttuneGraphCurrentState,
   readConfiguredContinuityShadowReturns,
   type ProjectConfiguredContinuityAttuneGraphInput,

@@ -8,6 +8,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added explicit shared-session ownership for configured AttuneGraph projection in the API
+  host. `@muse/attunegraph` now exposes a lazy, closable session projector that serializes
+  admitted projections, rejects new work once closing starts, drains accepted work, and closes
+  its single standalone local-session worker exactly once. Fastify owns that resource through
+  `onClose`; ordinary runtime/CLI assembly keeps the prior per-projection self-closing path, so
+  synchronous consumers do not acquire a worker they cannot dispose.
+
 - Updated Muse's exact AttuneGraph Git submodule pin to standalone main commit
   `4298c13` and moved durable Continuity projection to Thread-rooted Admission
   `canonical-projection@2`. The canonical observation now binds the exact opaque
