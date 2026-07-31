@@ -115,13 +115,13 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-040** | Continuity Capsule v1 | Explicit Pack Preview can render the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer from one exact verified comparison | in progress (`AWG-040b/c/d/e1/e2/f` implemented; exact-stop capture, all-source parity, and automatic timing/surfacing pending) |
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
-| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3d3b` independently verified; explicit Pack Preview dogfoods `resumeContext` with a durable-local assembled baseline and process-local direct-construction fallback, while current-world semantics remain pending) |
+| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3d3b` independently verified; `AWG-050a4` adds standalone Thread-rooted Admission v2 and migrates Muse's durable producer to the exact root, while current-world semantics remain pending) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | partial (`AWG-050b1` binds fresh decision-time evidence; `AWG-050b2` adds an explicit-CLI return receipt source ledger; `AWG-050b3` adds a verified durable factual return projection; `AWG-050b4` adds a bounded read-only product inspector; automatic timing and usefulness proof remain pending) |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | partial (`AWG-060d` claim-safe read-only compiler/tool independently verified; automatic surfacing, trusted trial/edit/reject writes, apply/rollback controls, and UI pending) |
 | **AWG-065** | Neutral AttuneGraph product boundary | Closed `AttuneGraph*` interface, forbidden-import gate, and Muse integration package keep private Continuity types outside the standalone Engine without copying validation | completed (dependency-free `@attunegraph/core` plus explicit `@muse/attunegraph` integration; no compatibility alias) |
 | **AWG-070** | SQLite AttuneGraph Store v1 | Implement the selected worker-isolated `node:sqlite` default behind the AttuneGraph Store contract with version-gated physical profile, journal replay, indexes, restart/crash/corruption tests, portable export, and 10K/100K/1M operator benchmarks; record measured TS/SQLite optimization and activate a Rust kernel only when end-to-end evidence justifies it | partial (`AWG-070a1` durable projection journal, `AWG-070a2` typed Worker boundary, the `.atgx` encoder/decoder/order/budget/non-retention chain through `AWG-070a3a1a4b`, indexed validation `a4c`, POSIX staging lifecycle `a4d`, Admin protocol/fail-stop spine `a4e1`, shared physical-schema/read-only inspector core `a4e2a`, parent-owned closed-store offline snapshot lease `a4e2b1`, dedicated read-only Admin Worker/application `a4e2b2`, and public offline `./admin` plus Muse Lens CLI `a4e2b3` independently verified; export/rebuild/activation, write/repair/live-web Admin, backup, physical forget, complete profile/corpus, and 10K/100K/1M benchmarks pending) |
 | **AWG-080** | Durable local graph adapter | Selected adapter passes conformance, export/rebuild, corruption, migration, forget, and crash-recovery gates | partial (`AWG-080a` explicit restart-safe Continuity Preview writer implemented; export/rebuild activation, migration, physical forget, backup/recovery, default ingestion, and remaining qualification pending) |
-| **AWG-085** | Standalone AttuneGraph qualification | Clean-room build/test, forbidden-import audit, packed install, non-Muse example, license/security/contribution docs, and repository split pass without workspace dependencies | completed (`wlsdks/attunegraph` is public and Muse pins clean main commit `e7d09fc`; runtime dependencies remain zero, exact Node 22.12 core compatibility passes, Node 24.15/current-24 cross-platform contracts pass on Linux/macOS/Windows, local SQLite/Admin pass separately on reviewed Linux/macOS profiles, a clean tarball installs and imports outside Muse, and the same-path submodule lifecycle plus independent integration review pass) |
+| **AWG-085** | Standalone AttuneGraph qualification | Clean-room build/test, forbidden-import audit, packed install, non-Muse example, license/security/contribution docs, and repository split pass without workspace dependencies | completed (`wlsdks/attunegraph` is public and Muse pins clean main commit `16edea0`; runtime dependencies remain zero, exact Node 22.12 core compatibility passes, Node 24.15/current-24 cross-platform contracts pass on Linux/macOS/Windows, local SQLite/Admin pass separately on reviewed Linux/macOS profiles, a clean tarball installs and imports outside Muse, and the same-path submodule lifecycle plus independent integration review pass) |
 | **AWG-090** | Dogfood qualification | Controlled scenarios plus repeated organic use; reconstruction-cost and policy-correction evidence remain separately reported | pending |
 
 Raw numbering does not activate work. Before each BUILD slice, inspect current source and
@@ -132,6 +132,36 @@ Engineering completeness and evidence maturity are reported separately. AWG-090 
 dogfood does not block building the product path to engineering-complete status; it does
 block claims that Muse has proved usefulness, saved reconstruction time, or learned better
 timing in real life.
+
+## Completed sub-slice: AWG-050a4
+
+- **Classification at activation:** `partial` — standalone AttuneGraph had no exact-root
+  admission contract, and Muse's durable producer still submitted root-unverified v1
+  observations. The missing delta was bounded to v2 admission, the exact gitlink, and the
+  Muse adapter/projection changes required to satisfy it.
+- **Maker routing:** root Codex, Sol-class architecture/persistence BUILD with high reasoning.
+  Selection reason: this changes a persisted semantic boundary and fail-closed admission.
+  Escalation trigger: any need to infer a root from raw scope text, change v1 bytes, reach a
+  private Store API, or introduce a non-TypeScript kernel.
+- **Shipped neutral delta:** standalone main `16edea0` adds
+  `canonical-projection@2`; its canonical bytes declare an exact `threadRoot`, and an O(V+E)
+  admission walk rejects a wrong root kind or disconnected observation before Store read/CAS.
+  Legacy v1 bytes stay byte-compatible and explicitly root-unverified.
+- **Shipped Muse delta:** the durable Continuity adapter derives the public opaque thread ref,
+  submits only v2, and source-binds historical reset/undo policy components to that root. A real
+  local SQLite case proves two otherwise separate policy histories produce a complete Working
+  Graph from the exact seed.
+- **Evidence:** standalone exact-SHA CI is green on Linux/macOS/Windows and supported local
+  profiles. Muse typecheck, focused lint, boundary/docs gates, durable verifier, 335 integration
+  tests, 268 standalone tests, 4,980 CLI tests, and 293 related tests pass. Package batteries
+  report zero newly failing; three pre-existing canonical-ID divergences remain explicitly
+  baselined as a separate persisted-format decision.
+- **Independent gate:** a fresh `gpt-5.6-sol`/xhigh evaluator passed all eight acceptance items,
+  including public-only imports, shared root derivation, pre-Store rejection, real SQLite/wire
+  coverage, and honest product claims.
+- **Still pending:** clean-room packed-install CI, registry publication, resolution of the three
+  canonical-ID batteries, automatic ingestion/current-world composition, 10K/100K/1M benchmark
+  evidence, and the evidence-gated 90/100 target.
 
 ## Completed sub-slice: AWG-060d
 
@@ -167,8 +197,10 @@ timing in real life.
   separate `@muse/attunegraph` package.
 - **Shipped neutral delta:** the package root exports canonical `AttuneGraph*` contracts,
   `AttuneGraphError`, `openAttuneGraph`, and `createAttuneGraphEngine`. One instance binds exactly one
-  `(sourceId, threadId)`, accepts only `canonical-projection@1`, executes only the bounded
-  `working-graph@1`, and closes through an idempotent drain.
+  `(sourceId, threadId)`, accepts byte-compatible legacy `canonical-projection@1` and exact-root
+  `canonical-projection@2`, executes only the bounded `working-graph@1`, and closes through an
+  idempotent drain. V2 rejects a wrong root kind or any disconnected assertion before Store
+  read/CAS; v1 remains explicitly root-unverified compatibility data.
 - **Store seam:** root `AttuneGraphStore` is an opaque WeakMap capability. The expert `/backend`
   subpath exposes `createAttuneGraphStore` and Adapter types without an extractor; `/testing`
   exposes the explicit in-memory semantic oracle and backend-neutral conformance corpus.

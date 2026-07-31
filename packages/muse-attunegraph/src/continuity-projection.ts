@@ -763,6 +763,11 @@ export function projectContinuityState(
       { resetId: reset.id },
       resetView(reset)
     );
+    const resetPolicyRef = deriveContinuityPolicyGraphRef(
+      sourceId,
+      thread.id,
+      reset.resetPolicyVersion
+    );
     add(makeAssertion({
       epistemicClass: "source-observed",
       object: deriveContinuityPolicyGraphRef(
@@ -773,11 +778,15 @@ export function projectContinuityState(
       predicate: "SUPERSEDES",
       recordedAt: sourceObservedAt,
       sourceRefs: [resetSource],
-      subject: deriveContinuityPolicyGraphRef(
-        sourceId,
-        thread.id,
-        reset.resetPolicyVersion
-      )
+      subject: resetPolicyRef
+    }), "source-observation");
+    add(makeAssertion({
+      epistemicClass: "source-observed",
+      object: threadRef,
+      predicate: "SCOPED_TO",
+      recordedAt: sourceObservedAt,
+      sourceRefs: [resetSource],
+      subject: resetPolicyRef
     }), "source-observation");
   }
 
@@ -789,6 +798,11 @@ export function projectContinuityState(
       { undoId: undo.id },
       undoView(undo)
     );
+    const undoPolicyRef = deriveContinuityPolicyGraphRef(
+      sourceId,
+      thread.id,
+      undo.undoPolicyVersion
+    );
     add(makeAssertion({
       epistemicClass: "source-observed",
       object: deriveContinuityPolicyGraphRef(
@@ -799,11 +813,16 @@ export function projectContinuityState(
       predicate: "SUPERSEDES",
       recordedAt: undoneAt,
       sourceRefs: [undoSource],
-      subject: deriveContinuityPolicyGraphRef(
-        sourceId,
-        thread.id,
-        undo.undoPolicyVersion
-      ),
+      subject: undoPolicyRef,
+      validFrom: undoneAt
+    }));
+    add(makeAssertion({
+      epistemicClass: "source-observed",
+      object: threadRef,
+      predicate: "SCOPED_TO",
+      recordedAt: undoneAt,
+      sourceRefs: [undoSource],
+      subject: undoPolicyRef,
       validFrom: undoneAt
     }));
   }

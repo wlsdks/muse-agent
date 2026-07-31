@@ -309,7 +309,7 @@ describe("Exact Continuity projection", () => {
 
     expect(replay).toEqual(first);
     expect(first.ruleVersion).toBe(CONTINUITY_PROJECTION_RULE_VERSION);
-    expect(first.assertions).toHaveLength(17);
+    expect(first.assertions).toHaveLength(19);
     expect(first.assertions.map((assertion) => assertion.id))
       .toEqual([...first.assertions.map((assertion) => assertion.id)].sort());
     expect(first.assertions.every((assertion) =>
@@ -326,12 +326,12 @@ describe("Exact Continuity projection", () => {
 
     const store = new InMemoryAttuneGraphDataStore();
     await expect(store.append(first.assertions)).resolves.toMatchObject({
-      appended: 17,
+      appended: 19,
       replayed: 0
     });
     await expect(store.append(replay.assertions)).resolves.toMatchObject({
       appended: 0,
-      replayed: 17
+      replayed: 19
     });
     await expect(store.verify()).resolves.toMatchObject({ ok: true });
   });

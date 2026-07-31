@@ -9,7 +9,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 ## [Unreleased]
 
 - Updated Muse's exact AttuneGraph Git submodule pin to standalone main commit
-  `e7d09fc`. The dependency-free core, in-memory store, canonical portable
+  `16edea0` and moved durable Continuity projection to Thread-rooted Admission
+  `canonical-projection@2`. The canonical observation now binds the exact opaque
+  thread root and rejects disconnected assertions before any Store read/CAS;
+  Muse explicitly scopes historical reset and undo policy components so complete
+  valid histories remain admissible. Legacy v1 portable/store bytes remain
+  readable as root-unverified compatibility data. The dependency-free core,
+  in-memory store, canonical portable
   fixtures, build, example, and pack dry-run now verify on Linux, macOS,
   and Windows; the worker-isolated local SQLite and offline Admin contracts run
   as a separate Muse Linux gate and remain fail-closed outside reviewed
