@@ -192,7 +192,7 @@ piece got.
 | --- | --- |
 | AttuneGraph engine | Exact projection, *"what changed since I stopped"*, content-addressed receipts, bounded resume compilation, canonical `.atgx`, a worker-isolated SQLite journal, an explicit opt-in Continuity Preview writer, and the offline read-only `muse attunegraph inspect` Lens — verified engine substrate; write/repair/live-web Admin and default automatic ingestion/delivery remain roadmap |
 | Continuity Capsule | Render data returned from an explicit API call. No product UI, no automatic timing |
-| Shadow Muse | The ledger records the decision. It does not surface anything on its own yet |
+| Shadow Muse | The ledger records the decision and, after an explicit CLI Pack open, a bounded return association. It does not surface on its own or treat return as feedback, usefulness, outcome, or causality |
 | Policy Card | An explicit read-only compiler and `muse.continuity.learning.policy-card.preview` tool return English/Korean render data from one fresh local snapshot. No automatic surfacing, UI, edit/reject/trial write, policy mutation, or action |
 
 ### Roadmap
@@ -210,6 +210,12 @@ graph and personal context compiler — not a third-party graph DB. RAG can find
 has to prove the exact thread, time, change, source and policy relation. It runs on an embedded
 SQLite store behind an isolated worker, with no external graph server required
 ([blueprint](docs/design/attunement/agent-native-graph-core.md)).
+
+The first return seam is intentionally narrower than a graph claim: after either explicit CLI
+`continue` spelling opens a Pack, Muse records a content-addressed timing receipt against the
+latest strictly prior eligible Shadow candidate. The receipt is inspectable and forgettable, but
+durable AttuneGraph relation ingestion, automatic return detection, and usefulness validation are
+still roadmap work.
 
 It is deliberately built as an independently extractable module — Muse is its first consumer and
 dogfood environment. The public interface, adapter boundaries and repository-split plan are fixed in

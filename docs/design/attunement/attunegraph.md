@@ -227,6 +227,19 @@ candidates, mismatched scopes, and Graph observations later than the decision ab
 This proves decision-time provenance only; it is not automatic timing, a return event,
 feedback, a Policy Card, persistence, or a usefulness result.
 
+The next bounded source seam is now implemented separately: only after an owner invokes
+`muse continue` or `muse thread continue` and a real Continuity Delivery opens, the timing
+store may content-address a `cli-continue` return receipt against the latest strictly prior
+unreturned rule-v3 candidate for that thread. Exact Delivery id/open time/thread, decision
+time, and elapsed time are bound; missing, simultaneous, ambiguous, or already-linked
+candidates do not trigger older backfill. Its fixed authority fields say feedback/outcome
+were not inferred, causality was not claimed, reconstruction benefit was not assessed, and
+no action was granted. This is still a source receipt, not a durable graph assertion: the
+AttuneGraph projection and query relation remain roadmap work. Before its first
+return-bearing timing-schema-v3 write, Muse preserves the exact validated pre-v3 bytes at
+`<timing-file>.pre-v3.json`; rollback must restore that file before reverting code and can
+therefore lose timing-only writes made after the backup.
+
 ## Why a graph, and where it must beat flat or vector memory
 
 Vector retrieval is useful for “find things similar to this text.” It is not enough for
@@ -245,7 +258,7 @@ vector baseline. “We use Cypher” or “we have connected nodes” is not a p
 ## Research snapshot and lessons
 
 This design reviewed primary papers, standards, current official documentation, and current
-open-source source trees on 2026-07-29.
+open-source source trees on 2026-07-31.
 
 Open-source source snapshot:
 
@@ -258,7 +271,9 @@ Open-source source snapshot:
 |---|---|---|
 | [Microsoft GraphRAG](https://www.microsoft.com/en-us/research/project/graphrag/) | Entity/community structure and global-versus-local retrieval over private corpora | It is primarily batch document understanding; Muse's core problem is a changing single-person world and collaboration policy. |
 | [Zep / Graphiti paper](https://arxiv.org/html/2501.13956v1) | Episode → entity/fact → community tiers; source lineage; bi-temporal validity; hybrid semantic, keyword, and traversal retrieval | The paper is vendor-authored, some benchmark gains are marginal or category-dependent, and LLM contradiction resolution cannot become Muse's authority. |
+| [REMem](https://arxiv.org/abs/2602.13530) | Time-aware episodic gist/fact structure and bounded retrieval around return/decision episodes | Its temporal-window results do not establish that a later return was caused by, or validates, an earlier agent decision. |
 | [Graphiti OSS](https://github.com/getzep/graphiti) | Incremental temporal context graph and a graph-driver interface | Provider-specific queries still leak into domain objects; extraction relies heavily on structured LLM output; current Kùzu support is deprecated. |
+| [MemoryGraph OSS](https://github.com/memory-graph/memory-graph) | Embedded temporal memory, as-of/history/change queries, and a practical return-briefing workflow | Its generic coding-memory ontology is not an authority model for personal sources, outcomes, or policy. |
 | [Independent 2026 LTM comparison](https://arxiv.org/html/2601.07978) | Reproducible cost, resource, retrieval, and accuracy accounting across vector/graph/hybrid systems | Its LoCoMo/cloud-edge setup is not Muse dogfood. It nevertheless falsifies “graph is automatically better”: Graphiti under-retrieved in that setup. |
 | [TGMS v2](https://arxiv.org/abs/2607.10265) and [OSS](https://github.com/zxf-work/tgms) | A small typed temporal-operator surface, bi-temporal snapshots, cost guards, content-addressed traces, and explicit completeness taint | It is a very new single-author preprint with a co-designed workload; its baseline and performance numbers are not Muse evidence. Muse should adopt the bounded operator discipline, not its claims. |
 | [LongMemEval-V2](https://arxiv.org/abs/2605.12493) | Environment experience needs dynamic-state, workflow, gotcha, and premise memory; file/sandbox evidence gathering can beat conventional RAG | It is a work-in-progress benchmark, and its strongest coding-agent method has high latency. It supports keeping exact source artifacts available, not routing every turn through an expensive agent search. |
@@ -267,6 +282,7 @@ Open-source source snapshot:
 | [LadybugDB](https://github.com/LadybugDB/ladybug) | Embedded/serverless property graph, Node binding, full-text/vector indexes, WAL, ACID transactions, and no required daemon | It is a young community successor to Kùzu, which was archived in October 2025. It is a bake-off candidate, not an architectural dependency. |
 | [SQLite recursive CTE](https://www.sqlite.org/lang_with.html) and [WAL](https://www.sqlite.org/wal.html) | An already-small embedded substrate can traverse bounded trees/graphs and allow readers beside one writer without a graph daemon | It is not a property graph and must not leak SQL into domain operators. If a future adapter enables WAL, Muse must gate a fixed SQLite release: the official WAL page records a rare reset/checkpoint corruption bug fixed in 3.51.3 and backports 3.44.6/3.50.7. |
 | [W3C PROV-O](https://www.w3.org/TR/prov-o/) | Explicit generation, derivation, attribution, primary-source, revision, and invalidation relations | Muse should adopt the semantics it needs, not introduce RDF/OWL as a runtime requirement. |
+| [Task switching diary study](https://research.microsoft.com/en-us/um/people/horvitz/taskdiary.pdf), [context-cue experiment](https://pubmed.ncbi.nlm.nih.gov/16938050/), and [notification field study](https://www.erichorvitz.com/shamsi_iqbal-eric_horvitz_cscw_2010.pdf) | Observable return triggers, preserved cues, and separate awareness/disruption outcomes | A click, open, or return is not proof of cognitive readiness, reconstructed intent, saved effort, usefulness, or causal benefit. |
 
 The strongest common pattern is not “put embeddings in a graph DB.” It is:
 

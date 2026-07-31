@@ -8,7 +8,8 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, readFile, writeFile } from "node:fs/promises";
 
 import { atomicWriteFile } from "@muse/stores";
 
@@ -18,7 +19,7 @@ import {
   type ActiveAttunementPolicyWriteGate
 } from "./active-policy-write-gate.js";
 import { mutateFileState, type FileStateMutation } from "./file-state-mutation.js";
-import type { ContinuityOutcome } from "./types.js";
+import type { ContinuityDelivery, ContinuityOutcome } from "./types.js";
 
 export const TIMING_APP_CATEGORIES = ["communication", "planning", "research", "writing", "building", "other"] as const;
 export type TimingAppCategory = (typeof TIMING_APP_CATEGORIES)[number];
@@ -185,6 +186,41 @@ export interface TimingFeedback {
   readonly legacyUnproposedRejection?: true;
 }
 
+export const ATTUNEGRAPH_SHADOW_RETURN_FORMAT_VERSION =
+  "muse.attunegraph.shadow-return.v1" as const;
+export const ATTUNEGRAPH_SHADOW_RETURN_MATCH_RULE =
+  "latest-prior-unreturned-thread-candidate@1" as const;
+
+export interface AttuneGraphShadowReturnReceipt {
+  readonly authority: {
+    readonly actionGranted: false;
+    readonly causality: "not-claimed";
+    readonly feedback: "not-inferred";
+    readonly outcome: "not-inferred";
+    readonly reconstructionBenefit: "unassessed";
+  };
+  readonly candidateId: string;
+  readonly decisionAt: string;
+  readonly deliveryId: string;
+  readonly elapsedMs: number;
+  readonly formatVersion: typeof ATTUNEGRAPH_SHADOW_RETURN_FORMAT_VERSION;
+  readonly id: string;
+  readonly matchRule: typeof ATTUNEGRAPH_SHADOW_RETURN_MATCH_RULE;
+  readonly openedAt: string;
+  readonly schemaVersion: 1;
+  readonly sessionId: string;
+  readonly threadId: string;
+  readonly trigger: "cli-continue";
+}
+
+export type RecordAttuneGraphShadowReturnResult =
+  | Readonly<{ readonly receipt: AttuneGraphShadowReturnReceipt; readonly status: "recorded" }>
+  | Readonly<{ readonly receipt: AttuneGraphShadowReturnReceipt; readonly status: "already-linked" }>
+  | Readonly<{
+    readonly reason: "ambiguous-latest-candidate" | "no-eligible-candidate";
+    readonly status: "unmatched";
+  }>;
+
 export interface TimingRollbackProposal {
   readonly baseCooldownMs: number;
   readonly basePolicyVersion: number;
@@ -207,7 +243,8 @@ export interface TimingState {
   readonly candidates: readonly TimingCandidate[];
   readonly feedback: readonly TimingFeedback[];
   readonly observations: readonly TimingObservation[];
-  readonly schemaVersion: 2;
+  readonly returns: readonly AttuneGraphShadowReturnReceipt[];
+  readonly schemaVersion: 3;
   readonly sessions: readonly ThreadTimingSession[];
 }
 
@@ -231,8 +268,11 @@ export interface RecordTimingObservationInput {
 const MAX_CANDIDATES = 200;
 const MAX_OBSERVATIONS = 500;
 const MAX_FEEDBACK = 200;
+const MAX_RETURNS = 200;
+const MAX_RECEIPT_ID_LENGTH = 256;
 const MAX_COOLDOWN_MS = 24 * 60 * 60_000;
 const MIN_COOLDOWN_MS = 30 * 60_000;
+const PRE_V3_BACKUP_SUFFIX = ".pre-v3.json";
 
 const PERSISTED_TIMING_STATES = new WeakMap<object, PersistedTimingStateStamp>();
 const ATTUNEGRAPH_SHADOW_TIMING_PROJECTIONS =
@@ -242,7 +282,8 @@ const EMPTY_STATE: TimingState = freezeTimingState({
   candidates: [],
   feedback: [],
   observations: [],
-  schemaVersion: 2,
+  returns: [],
+  schemaVersion: 3,
   sessions: []
 });
 
@@ -305,21 +346,35 @@ export async function resumeTimingSession(file: string, sessionId: string, optio
   });
 }
 
-/** Forget is destructive by design: session, observation, candidate, and feedback receipts are all removed. */
-export async function forgetTimingSession(file: string, sessionId: string): Promise<{ readonly deletedCandidates: number; readonly deletedFeedback: number; readonly deletedObservations: number }> {
+/** Forget is destructive by design: every timing and return receipt for the session is removed. */
+export async function forgetTimingSession(file: string, sessionId: string): Promise<{
+  readonly deletedCandidates: number;
+  readonly deletedFeedback: number;
+  readonly deletedObservations: number;
+  readonly deletedReturns: number;
+}> {
   return mutateTimingState(file, {}, (state) => {
     const session = requireSession(state, sessionId);
     const observations = state.observations.filter((observation) => observation.sessionId !== session.id);
     const candidates = state.candidates.filter((candidate) => candidate.sessionId !== session.id);
     const feedback = state.feedback.filter((entry) => entry.sessionId !== session.id);
+    const returns = state.returns.filter((entry) => entry.sessionId !== session.id);
     return {
       changed: true,
       result: {
         deletedCandidates: state.candidates.length - candidates.length,
         deletedFeedback: state.feedback.length - feedback.length,
-        deletedObservations: state.observations.length - observations.length
+        deletedObservations: state.observations.length - observations.length,
+        deletedReturns: state.returns.length - returns.length
       },
-      state: { ...state, candidates, feedback, observations, sessions: state.sessions.filter((candidate) => candidate.id !== session.id) }
+      state: {
+        ...state,
+        candidates,
+        feedback,
+        observations,
+        returns,
+        sessions: state.sessions.filter((candidate) => candidate.id !== session.id)
+      }
     };
   });
 }
@@ -340,7 +395,7 @@ export async function recordTimingObservation(
       sessionId: session.id,
       threadId: session.threadId
     };
-    const observations = trim([...state.observations, observation], MAX_OBSERVATIONS);
+    const observations = appendObservationWithRetention(state, observation);
     return { changed: true, result: observation, state: { ...state, observations } };
   });
 }
@@ -366,7 +421,7 @@ export async function evaluateTimingSession(
     return {
       changed: true,
       result: candidate,
-      state: { ...state, candidates: trim([...state.candidates, candidate], MAX_CANDIDATES) }
+      state: { ...state, candidates: appendCandidateWithRetention(state, candidate) }
     };
   });
 }
@@ -410,7 +465,7 @@ export async function recordTimingFeedback(
         result: { applied: true, feedback, session: updatedSession },
         state: {
           ...replaceSession(state, updatedSession),
-          feedback: trim([...state.feedback, feedback], MAX_FEEDBACK)
+          feedback: appendBounded(state.feedback, feedback, MAX_FEEDBACK, "timing feedback")
         }
       };
     })
@@ -463,7 +518,10 @@ function recordRejectedTimingFeedbackProposal(
     return {
       changed: true,
       result: { applied: false, feedback, session },
-      state: { ...state, feedback: trim([...state.feedback, feedback], MAX_FEEDBACK) }
+      state: {
+        ...state,
+        feedback: appendBounded(state.feedback, feedback, MAX_FEEDBACK, "timing feedback")
+      }
     };
   });
 }
@@ -472,6 +530,7 @@ export function inspectTimingSession(state: TimingState, sessionId: string): {
   readonly candidates: readonly TimingCandidate[];
   readonly feedback: readonly TimingFeedback[];
   readonly observations: readonly TimingObservation[];
+  readonly returns: readonly AttuneGraphShadowReturnReceipt[];
   readonly session: ThreadTimingSession;
 } {
   const session = requireSession(state, sessionId);
@@ -479,8 +538,82 @@ export function inspectTimingSession(state: TimingState, sessionId: string): {
     candidates: state.candidates.filter((entry) => entry.sessionId === session.id),
     feedback: state.feedback.filter((entry) => entry.sessionId === session.id),
     observations: state.observations.filter((entry) => entry.sessionId === session.id),
+    returns: state.returns.filter((entry) => entry.sessionId === session.id),
     session
   };
+}
+
+/**
+ * Records only the observed relation between an explicit CLI open and the
+ * latest prior Shadow timing candidate. It does not create feedback, outcome,
+ * usefulness, permission, or causal evidence.
+ */
+export async function recordAttuneGraphShadowReturn(
+  file: string,
+  delivery: Pick<ContinuityDelivery, "id" | "openedAt" | "threadId">
+): Promise<RecordAttuneGraphShadowReturnResult> {
+  validateReturnDelivery(delivery);
+  return mutateTimingState<RecordAttuneGraphShadowReturnResult>(file, {}, (state) => {
+    const replay = state.returns.find((entry) => entry.deliveryId === delivery.id);
+    if (replay) {
+      if (
+        replay.openedAt !== delivery.openedAt
+        || replay.threadId !== delivery.threadId
+      ) {
+        throw new AttunementStoreError(
+          `continuity delivery '${delivery.id}' conflicts with its immutable Shadow return receipt`
+        );
+      }
+      return {
+        changed: false,
+        result: { receipt: replay, status: "already-linked" as const },
+        state
+      };
+    }
+
+    const eligible = state.candidates
+      .filter((candidate): candidate is AttuneGraphShadowTimingCandidate =>
+        candidate.ruleVersion === 3
+        && candidate.threadId === delivery.threadId
+        && isBoundedReceiptId(candidate.id)
+        && isBoundedReceiptId(candidate.sessionId)
+        && isCanonicalInstant(candidate.createdAt)
+        && Date.parse(candidate.createdAt) < Date.parse(delivery.openedAt))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    const latest = eligible[0];
+    if (!latest) {
+      return {
+        changed: false,
+        result: { reason: "no-eligible-candidate" as const, status: "unmatched" as const },
+        state
+      };
+    }
+    if (eligible[1]?.createdAt === latest.createdAt) {
+      return {
+        changed: false,
+        result: { reason: "ambiguous-latest-candidate" as const, status: "unmatched" as const },
+        state
+      };
+    }
+    const existing = state.returns.find((entry) => entry.candidateId === latest.id);
+    if (existing) {
+      return {
+        changed: false,
+        result: { receipt: existing, status: "already-linked" as const },
+        state
+      };
+    }
+
+    const receipt = createAttuneGraphShadowReturnReceipt(latest, delivery);
+    return {
+      changed: true,
+      result: { receipt, status: "recorded" as const },
+      state: {
+        ...state,
+        returns: appendBounded(state.returns, receipt, MAX_RETURNS, "Shadow return receipt")
+      }
+    };
+  });
 }
 
 /**
@@ -688,14 +821,142 @@ async function mutateTimingState<T>(
 }
 
 async function writeTimingState(file: string, state: TimingState): Promise<void> {
-  await atomicWriteFile(file, `${JSON.stringify(state, null, 2)}\n`);
+  if (state.returns.length > 0) await ensurePreV3Backup(file);
+  const persisted = state.returns.length === 0
+    ? {
+      candidates: state.candidates,
+      feedback: state.feedback,
+      observations: state.observations,
+      schemaVersion: 2 as const,
+      sessions: state.sessions
+    }
+    : state;
+  await atomicWriteFile(file, `${JSON.stringify(persisted, null, 2)}\n`);
+}
+
+export function resolveTimingPreV3BackupFile(file: string): string {
+  return `${file}${PRE_V3_BACKUP_SUFFIX}`;
+}
+
+async function ensurePreV3Backup(file: string): Promise<void> {
+  let current: string;
+  try {
+    current = await readFile(file, "utf8");
+  } catch (cause) {
+    throw new AttunementStoreError(
+      `cannot create timing pre-v3 backup: ${describe(cause)}`
+    );
+  }
+  let version: unknown;
+  try {
+    version = (JSON.parse(current) as { readonly schemaVersion?: unknown }).schemaVersion;
+  } catch (cause) {
+    throw new AttunementStoreError(
+      `cannot create timing pre-v3 backup: ${describe(cause)}`
+    );
+  }
+  const backupFile = resolveTimingPreV3BackupFile(file);
+  if (version === 1 || version === 2) {
+    try {
+      await writeFile(backupFile, current, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    } catch (cause) {
+      if (!isAlreadyExists(cause)) {
+        throw new AttunementStoreError(
+          `cannot create timing pre-v3 backup: ${describe(cause)}`
+        );
+      }
+    }
+  }
+  const backup = await readOwnerLocalPreV3Backup(backupFile);
+  if (!isValidPreV3Backup(backup)) {
+    throw new AttunementStoreError("timing pre-v3 backup is malformed");
+  }
+}
+
+async function readOwnerLocalPreV3Backup(file: string): Promise<string> {
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    const pathMetadata = await lstat(file);
+    if (pathMetadata.isSymbolicLink() || !pathMetadata.isFile()) {
+      throw new AttunementStoreError(
+        "timing pre-v3 backup must be a regular non-symlink file"
+      );
+    }
+    const noFollow = process.platform === "win32" ? 0 : constants.O_NOFOLLOW;
+    handle = await open(file, constants.O_RDONLY | noFollow);
+    const metadata = await handle.stat();
+    if (
+      !metadata.isFile()
+      || metadata.dev !== pathMetadata.dev
+      || metadata.ino !== pathMetadata.ino
+    ) {
+      throw new AttunementStoreError(
+        "timing pre-v3 backup changed during validation"
+      );
+    }
+    if (process.platform !== "win32") {
+      const owner = process.getuid?.();
+      if (owner !== undefined && metadata.uid !== owner) {
+        throw new AttunementStoreError(
+          "timing pre-v3 backup must be owned by the current user"
+        );
+      }
+      if ((metadata.mode & 0o077) !== 0) {
+        throw new AttunementStoreError(
+          "timing pre-v3 backup must not grant group or other permissions"
+        );
+      }
+    }
+    return await handle.readFile("utf8");
+  } catch (cause) {
+    if (cause instanceof AttunementStoreError) throw cause;
+    throw new AttunementStoreError(
+      `timing schema v3 requires a valid owner-local pre-v3 backup: ${describe(cause)}`
+    );
+  } finally {
+    await handle?.close();
+  }
+}
+
+function isValidPreV3Backup(raw: string): boolean {
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (
+      !isRecord(value)
+      || (value.schemaVersion !== 1 && value.schemaVersion !== 2)
+    ) {
+      return false;
+    }
+    parseTimingState(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function parseTimingState(value: unknown): TimingState {
-  if (isTimingStateShape(value, 2, isFeedback)) {
+  if (isTimingStateV3Shape(value)) {
     const state = value as unknown as TimingState;
     validateTimingStateRelationships(state);
     return state;
+  }
+  if (isTimingStateShape(value, 2, isFeedback)) {
+    const legacy = value as {
+      readonly candidates: readonly TimingCandidate[];
+      readonly feedback: readonly TimingFeedback[];
+      readonly observations: readonly TimingObservation[];
+      readonly sessions: readonly ThreadTimingSession[];
+    };
+    const migrated: TimingState = {
+      candidates: legacy.candidates,
+      feedback: legacy.feedback,
+      observations: legacy.observations,
+      returns: [],
+      schemaVersion: 3,
+      sessions: legacy.sessions
+    };
+    validateTimingStateRelationships(migrated);
+    return migrated;
   }
   if (isTimingStateShape(value, 1, isLegacyFeedback)) {
     const legacy = value as {
@@ -712,13 +973,40 @@ function parseTimingState(value: unknown): TimingState {
           : entry
       ),
       observations: legacy.observations,
-      schemaVersion: 2,
+      returns: [],
+      schemaVersion: 3,
       sessions: legacy.sessions
     };
     validateTimingStateRelationships(migrated);
     return migrated;
   }
   throw new AttunementStoreError("timing state is malformed or uses an unsupported schema");
+}
+
+function isTimingStateV3Shape(value: unknown): value is Record<string, unknown> {
+  return isExactRecord(value, [
+    "candidates",
+    "feedback",
+    "observations",
+    "returns",
+    "schemaVersion",
+    "sessions"
+  ])
+    && value.schemaVersion === 3
+    && Array.isArray(value.sessions)
+    && Array.isArray(value.observations)
+    && Array.isArray(value.candidates)
+    && Array.isArray(value.feedback)
+    && Array.isArray(value.returns)
+    && value.observations.length <= MAX_OBSERVATIONS
+    && value.candidates.length <= MAX_CANDIDATES
+    && value.feedback.length <= MAX_FEEDBACK
+    && value.returns.length <= MAX_RETURNS
+    && value.sessions.every(isSession)
+    && value.observations.every(isObservation)
+    && value.candidates.every(isCandidate)
+    && value.feedback.every(isFeedback)
+    && value.returns.every(isAttuneGraphShadowReturnReceipt);
 }
 
 function isTimingStateShape(
@@ -732,6 +1020,9 @@ function isTimingStateShape(
     && Array.isArray(value.observations)
     && Array.isArray(value.candidates)
     && Array.isArray(value.feedback)
+    && value.observations.length <= MAX_OBSERVATIONS
+    && value.candidates.length <= MAX_CANDIDATES
+    && value.feedback.length <= MAX_FEEDBACK
     && value.sessions.every(isSession)
     && value.observations.every(isObservation)
     && value.candidates.every(isCandidate)
@@ -743,7 +1034,10 @@ function validateTimingStateRelationships(state: TimingState): void {
   const sessions = indexTimingEntries(state.sessions, "session");
   const observations = indexTimingEntries(state.observations, "observation");
   const candidates = indexTimingEntries(state.candidates, "candidate");
+  indexTimingEntries(state.returns, "Shadow return receipt");
   const feedbackCandidateIds = new Set<string>();
+  const returnCandidateIds = new Set<string>();
+  const returnDeliveryIds = new Set<string>();
 
   for (const observation of state.observations) {
     const session = sessions.get(observation.sessionId);
@@ -792,6 +1086,27 @@ function validateTimingStateRelationships(state: TimingState): void {
           && entry.resultingCooldownMs !== session.policy.offerCooldownMs
         )
       )
+    ) {
+      throwInconsistentTimingRelationships();
+    }
+  }
+
+  for (const entry of state.returns) {
+    const session = sessions.get(entry.sessionId);
+    const candidate = candidates.get(entry.candidateId);
+    if (
+      !returnCandidateIds.add(entry.candidateId)
+      || !returnDeliveryIds.add(entry.deliveryId)
+      || !session
+      || !candidate
+      || candidate.ruleVersion !== 3
+      || session.threadId !== entry.threadId
+      || candidate.sessionId !== entry.sessionId
+      || candidate.threadId !== entry.threadId
+      || candidate.createdAt !== entry.decisionAt
+      || Date.parse(entry.openedAt) <= Date.parse(candidate.createdAt)
+      || entry.elapsedMs !== Date.parse(entry.openedAt) - Date.parse(candidate.createdAt)
+      || entry.id !== attuneGraphShadowReturnId(returnReceiptIdentity(entry))
     ) {
       throwInconsistentTimingRelationships();
     }
@@ -1015,6 +1330,149 @@ function isTimingRollbackProposal(value: unknown): value is TimingRollbackPropos
     && isNonEmptyString(value.threadId);
 }
 
+type AttuneGraphShadowReturnIdentity = Readonly<{
+  readonly authority: AttuneGraphShadowReturnReceipt["authority"];
+  readonly candidateId: string;
+  readonly decisionAt: string;
+  readonly deliveryId: string;
+  readonly elapsedMs: number;
+  readonly formatVersion: typeof ATTUNEGRAPH_SHADOW_RETURN_FORMAT_VERSION;
+  readonly matchRule: typeof ATTUNEGRAPH_SHADOW_RETURN_MATCH_RULE;
+  readonly openedAt: string;
+  readonly schemaVersion: 1;
+  readonly sessionId: string;
+  readonly threadId: string;
+  readonly trigger: "cli-continue";
+}>;
+
+function returnAuthority(): AttuneGraphShadowReturnReceipt["authority"] {
+  return Object.freeze({
+    actionGranted: false,
+    causality: "not-claimed",
+    feedback: "not-inferred",
+    outcome: "not-inferred",
+    reconstructionBenefit: "unassessed"
+  });
+}
+
+function createAttuneGraphShadowReturnReceipt(
+  candidate: AttuneGraphShadowTimingCandidate,
+  delivery: Pick<ContinuityDelivery, "id" | "openedAt" | "threadId">
+): AttuneGraphShadowReturnReceipt {
+  const elapsedMs = Date.parse(delivery.openedAt) - Date.parse(candidate.createdAt);
+  if (!isPositiveSafeInteger(elapsedMs)) {
+    throw new AttunementStoreError(
+      "Shadow return elapsed time must be a positive safe integer"
+    );
+  }
+  const identity: AttuneGraphShadowReturnIdentity = {
+    authority: returnAuthority(),
+    candidateId: candidate.id,
+    decisionAt: candidate.createdAt,
+    deliveryId: delivery.id,
+    elapsedMs,
+    formatVersion: ATTUNEGRAPH_SHADOW_RETURN_FORMAT_VERSION,
+    matchRule: ATTUNEGRAPH_SHADOW_RETURN_MATCH_RULE,
+    openedAt: delivery.openedAt,
+    schemaVersion: 1,
+    sessionId: candidate.sessionId,
+    threadId: candidate.threadId,
+    trigger: "cli-continue"
+  };
+  return Object.freeze({
+    ...identity,
+    id: attuneGraphShadowReturnId(identity)
+  });
+}
+
+function returnReceiptIdentity(
+  receipt: AttuneGraphShadowReturnReceipt
+): AttuneGraphShadowReturnIdentity {
+  return {
+    authority: receipt.authority,
+    candidateId: receipt.candidateId,
+    decisionAt: receipt.decisionAt,
+    deliveryId: receipt.deliveryId,
+    elapsedMs: receipt.elapsedMs,
+    formatVersion: receipt.formatVersion,
+    matchRule: receipt.matchRule,
+    openedAt: receipt.openedAt,
+    schemaVersion: receipt.schemaVersion,
+    sessionId: receipt.sessionId,
+    threadId: receipt.threadId,
+    trigger: receipt.trigger
+  };
+}
+
+function attuneGraphShadowReturnId(identity: AttuneGraphShadowReturnIdentity): string {
+  return `shadow_return_${createHash("sha256")
+    .update(JSON.stringify(identity), "utf8")
+    .digest("hex")}`;
+}
+
+function isAttuneGraphShadowReturnReceipt(
+  value: unknown
+): value is AttuneGraphShadowReturnReceipt {
+  if (
+    !isExactRecord(value, [
+      "authority",
+      "candidateId",
+      "decisionAt",
+      "deliveryId",
+      "elapsedMs",
+      "formatVersion",
+      "id",
+      "matchRule",
+      "openedAt",
+      "schemaVersion",
+      "sessionId",
+      "threadId",
+      "trigger"
+    ])
+    || !isExactRecord(value.authority, [
+      "actionGranted",
+      "causality",
+      "feedback",
+      "outcome",
+      "reconstructionBenefit"
+    ])
+    || value.authority.actionGranted !== false
+    || value.authority.causality !== "not-claimed"
+    || value.authority.feedback !== "not-inferred"
+    || value.authority.outcome !== "not-inferred"
+    || value.authority.reconstructionBenefit !== "unassessed"
+    || !isBoundedReceiptId(value.candidateId)
+    || !isCanonicalInstant(value.decisionAt as string)
+    || !isBoundedReceiptId(value.deliveryId)
+    || !isPositiveSafeInteger(value.elapsedMs)
+    || value.formatVersion !== ATTUNEGRAPH_SHADOW_RETURN_FORMAT_VERSION
+    || !isBoundedReceiptId(value.id)
+    || value.matchRule !== ATTUNEGRAPH_SHADOW_RETURN_MATCH_RULE
+    || !isCanonicalInstant(value.openedAt as string)
+    || value.schemaVersion !== 1
+    || !isBoundedReceiptId(value.sessionId)
+    || !isBoundedReceiptId(value.threadId)
+    || value.trigger !== "cli-continue"
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function validateReturnDelivery(
+  delivery: Pick<ContinuityDelivery, "id" | "openedAt" | "threadId">
+): void {
+  if (
+    !isBoundedReceiptId(delivery.id)
+    || !isBoundedReceiptId(delivery.threadId)
+    || !isCanonicalInstant(delivery.openedAt)
+  ) {
+    throw new AttunementStoreError(
+      "Shadow return requires a bounded delivery id, thread id, and canonical openedAt"
+    );
+  }
+}
+
 function validateObservationInput(input: RecordTimingObservationInput): void {
   if (!TIMING_APP_CATEGORIES.includes(input.appCategory)) throw new AttunementStoreError("observation app category is invalid");
   if (!isPositiveSafeInteger(input.durationMs)) throw new AttunementStoreError("observation duration must be a positive safe integer");
@@ -1042,8 +1500,63 @@ function replaceSession(state: TimingState, session: ThreadTimingSession): Timin
   return { ...state, sessions: state.sessions.map((entry) => entry.id === session.id ? session : entry) };
 }
 
-function trim<T>(values: readonly T[], max: number): readonly T[] {
-  return values.length > max ? values.slice(values.length - max) : values;
+function appendObservationWithRetention(
+  state: TimingState,
+  observation: TimingObservation
+): readonly TimingObservation[] {
+  if (state.observations.length < MAX_OBSERVATIONS) {
+    return [...state.observations, observation];
+  }
+  const referenced = new Set(
+    state.candidates.flatMap((candidate) => candidate.evidenceObservationIds)
+  );
+  const removable = state.observations.findIndex((entry) => !referenced.has(entry.id));
+  if (removable < 0) {
+    throw new AttunementStoreError(
+      "timing observation capacity is full and every observation is referenced"
+    );
+  }
+  return [
+    ...state.observations.slice(0, removable),
+    ...state.observations.slice(removable + 1),
+    observation
+  ];
+}
+
+function appendCandidateWithRetention(
+  state: TimingState,
+  candidate: TimingCandidate
+): readonly TimingCandidate[] {
+  if (state.candidates.length < MAX_CANDIDATES) {
+    return [...state.candidates, candidate];
+  }
+  const protectedIds = new Set([
+    ...state.feedback.map((entry) => entry.candidateId),
+    ...state.returns.map((entry) => entry.candidateId)
+  ]);
+  const removable = state.candidates.findIndex((entry) => !protectedIds.has(entry.id));
+  if (removable < 0) {
+    throw new AttunementStoreError(
+      "timing candidate capacity is full and every candidate has dependent receipts"
+    );
+  }
+  return [
+    ...state.candidates.slice(0, removable),
+    ...state.candidates.slice(removable + 1),
+    candidate
+  ];
+}
+
+function appendBounded<T>(
+  values: readonly T[],
+  value: T,
+  max: number,
+  label: string
+): readonly T[] {
+  if (values.length >= max) {
+    throw new AttunementStoreError(`${label} capacity is full`);
+  }
+  return [...values, value];
 }
 
 function sameIds(left: readonly string[], right: readonly string[]): boolean {
@@ -1073,6 +1586,10 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function isBoundedReceiptId(value: unknown): value is string {
+  return isNonEmptyString(value) && value.length <= MAX_RECEIPT_ID_LENGTH;
+}
+
 function isPositiveSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
@@ -1087,6 +1604,10 @@ function isIso(value: string): boolean {
 
 function isMissingFile(cause: unknown): boolean {
   return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
+}
+
+function isAlreadyExists(cause: unknown): boolean {
+  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "EEXIST";
 }
 
 function describe(cause: unknown): string {

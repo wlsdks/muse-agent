@@ -2,7 +2,16 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlin
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { computeContinuityEvaluation, createExperienceReplayEvidenceReceipt, createLocalExactArtifactResolver, prepareContinuityReview, readAttunementState } from "@muse/attunement";
+import {
+  computeContinuityEvaluation,
+  createExperienceReplayEvidenceReceipt,
+  createLocalExactArtifactResolver,
+  evaluateTimingSession,
+  prepareContinuityReview,
+  readAttunementState,
+  readTimingState,
+  startTimingSession
+} from "@muse/attunement";
 import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
 import { writeBrowsingStore } from "@muse/recall";
 import { FileCheckpointStore } from "@muse/runtime-state";
@@ -189,6 +198,9 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(continued.stdout).toContain("Plan a birthday [life]");
     expect(continued.stdout).toContain(`[task:${TASK.id}] Send the flower options`);
     expect(continued.stdout).toContain("Birthday ideas");
+    expect(continued.stdout).toContain(
+      "Shadow return: unmatched (no-eligible-candidate)"
+    );
     const deliveryId = continued.stdout.match(/Delivery: (delivery_[\w-]+)/u)?.[1];
     expect(deliveryId).toBeTruthy();
 
@@ -236,6 +248,60 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(readFileSync(f.attunementFile)).toEqual(queueBytes);
     const next = await run(f, ["thread", "continue", id]);
     expect(next.stdout).toContain("Previous pack: ignored");
+  });
+
+  it("records both explicit CLI continue spellings and keeps a return-write failure non-fatal", async () => {
+    const f = fixture();
+    await writeTasks(f.taskFile, [TASK]);
+    const started = await run(
+      f,
+      ["thread", "start", "Return", "to", "work", "--kind", "work"]
+    );
+    const id = threadId(started.stdout);
+    await run(f, ["thread", "link", id, "task", TASK.id, "--role", "next-step"]);
+
+    const timingFile = `${f.attunementFile}.timing.json`;
+    const timingOptions = {
+      idFactory: () => "cli-return",
+      now: () => new Date("2026-07-15T09:00:00.000Z")
+    };
+    const session = await startTimingSession(
+      timingFile,
+      { consentVersion: 1, threadId: id },
+      async () => undefined,
+      timingOptions
+    );
+    await evaluateTimingSession(timingFile, session.id, {
+      idFactory: () => "cli-candidate",
+      now: timingOptions.now
+    });
+
+    const direct = await run(f, ["continue", id], {
+      now: () => Date.parse("2026-07-15T10:00:00.000Z")
+    });
+    expect(direct.exitCode).toBeUndefined();
+    expect(direct.stdout).toContain("Shadow return: recorded shadow_return_");
+    expect((await readTimingState(timingFile)).returns).toHaveLength(1);
+
+    const nested = await run(f, ["thread", "continue", id], {
+      now: () => Date.parse("2026-07-15T11:00:00.000Z")
+    });
+    expect(nested.exitCode).toBeUndefined();
+    expect(nested.stdout).toContain("Shadow return: already-linked shadow_return_");
+    expect((await readTimingState(timingFile)).returns).toHaveLength(1);
+
+    const failed = await run(f, ["continue", id], {
+      now: () => Date.parse("2026-07-15T12:00:00.000Z"),
+      recordShadowReturn: async () => {
+        throw new Error("simulated return ledger failure");
+      }
+    });
+    expect(failed.exitCode).toBeUndefined();
+    expect(failed.stdout).toContain("Return to work [work]");
+    expect(failed.stdout).toContain("Delivery: delivery_");
+    expect(failed.stdout).toContain("Shadow return: write-failed");
+    expect(failed.stdout).toContain("Pack is still opened");
+    expect(failed.stderr).toBe("");
   });
 
   it("links and reviews one exact reminder as read-only context", async () => {

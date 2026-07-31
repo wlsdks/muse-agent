@@ -1,5 +1,5 @@
 import { mkdtempSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,11 +9,14 @@ import { AttunementStoreError } from "./attunement-store.js";
 import {
   evaluateTimingSession,
   forgetTimingSession,
+  inspectTimingSession,
   pauseTimingSession,
   projectAttuneGraphShadowTimingDecision,
   readTimingState,
+  recordAttuneGraphShadowReturn,
   recordTimingFeedback as recordTimingFeedbackImpl,
   recordTimingObservation,
+  resolveTimingPreV3BackupFile,
   startTimingSession,
   verifyAttuneGraphShadowTimingProjection
 } from "./timing-store.js";
@@ -132,6 +135,7 @@ describe("thread-scoped continuity timing store", () => {
       "candidates",
       "feedback",
       "observations",
+      "returns",
       "schemaVersion",
       "sessions"
     ]);
@@ -191,6 +195,356 @@ describe("thread-scoped continuity timing store", () => {
     });
     expect(projectAttuneGraphShadowTimingDecision(proxy, candidate.id)).toBeUndefined();
     expect(traps).toEqual({ get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 });
+  });
+
+  it("records one content-addressed explicit CLI return without inferring authority", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(
+      file,
+      { consentVersion: 2, threadId: "thread_work" },
+      knownThread,
+      options
+    );
+    const candidate = await evaluateTimingSession(file, session.id, options);
+    const preV3 = await readFile(file, "utf8");
+    expect(JSON.parse(preV3)).toMatchObject({ schemaVersion: 2 });
+
+    const result = await recordAttuneGraphShadowReturn(file, {
+      id: "delivery_exact",
+      openedAt: "2026-07-15T10:00:00.000Z",
+      threadId: "thread_work"
+    });
+
+    expect(result).toMatchObject({
+      receipt: {
+        authority: {
+          actionGranted: false,
+          causality: "not-claimed",
+          feedback: "not-inferred",
+          outcome: "not-inferred",
+          reconstructionBenefit: "unassessed"
+        },
+        candidateId: candidate.id,
+        decisionAt: candidate.createdAt,
+        deliveryId: "delivery_exact",
+        elapsedMs: 60 * 60_000,
+        formatVersion: "muse.attunegraph.shadow-return.v1",
+        matchRule: "latest-prior-unreturned-thread-candidate@1",
+        openedAt: "2026-07-15T10:00:00.000Z",
+        schemaVersion: 1,
+        sessionId: session.id,
+        threadId: session.threadId,
+        trigger: "cli-continue"
+      },
+      status: "recorded"
+    });
+    if (result.status !== "recorded") throw new Error("return must be recorded");
+    expect(result.receipt.id).toMatch(/^shadow_return_[a-f0-9]{64}$/u);
+    const persisted = await readTimingState(file);
+    expect(inspectTimingSession(persisted, session.id).returns).toEqual([result.receipt]);
+    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({
+      returns: [{ id: result.receipt.id }],
+      schemaVersion: 3
+    });
+    expect(await readFile(resolveTimingPreV3BackupFile(file), "utf8")).toBe(preV3);
+  });
+
+  it("replays by exact delivery and never backfills an older candidate", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(
+      file,
+      { consentVersion: 1, threadId: "thread_work" },
+      knownThread,
+      options
+    );
+    await evaluateTimingSession(file, session.id, options);
+    const first = await recordAttuneGraphShadowReturn(file, {
+      id: "delivery_one",
+      openedAt: "2026-07-15T10:00:00.000Z",
+      threadId: session.threadId
+    });
+    if (first.status !== "recorded") throw new Error("first return must record");
+    const raw = await readFile(file, "utf8");
+
+    expect(await recordAttuneGraphShadowReturn(file, {
+      id: "delivery_one",
+      openedAt: "2026-07-15T10:00:00.000Z",
+      threadId: session.threadId
+    })).toEqual({ receipt: first.receipt, status: "already-linked" });
+    expect(await recordAttuneGraphShadowReturn(file, {
+      id: "delivery_two",
+      openedAt: "2026-07-15T11:00:00.000Z",
+      threadId: session.threadId
+    })).toEqual({ receipt: first.receipt, status: "already-linked" });
+    expect(await readFile(file, "utf8")).toBe(raw);
+    await expect(recordAttuneGraphShadowReturn(file, {
+      id: "delivery_one",
+      openedAt: "2026-07-15T10:01:00.000Z",
+      threadId: session.threadId
+    })).rejects.toThrow("conflicts with its immutable Shadow return receipt");
+  });
+
+  it("abstains on missing, simultaneous, or non-prior candidates", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(
+      file,
+      { consentVersion: 1, threadId: "thread_work" },
+      knownThread,
+      options
+    );
+    expect(await recordAttuneGraphShadowReturn(file, {
+      id: "delivery_before",
+      openedAt: "2026-07-15T08:00:00.000Z",
+      threadId: session.threadId
+    })).toEqual({ reason: "no-eligible-candidate", status: "unmatched" });
+
+    await evaluateTimingSession(file, session.id, options);
+    expect(await recordAttuneGraphShadowReturn(file, {
+      id: "delivery_equal",
+      openedAt: "2026-07-15T09:00:00.000Z",
+      threadId: session.threadId
+    })).toEqual({ reason: "no-eligible-candidate", status: "unmatched" });
+
+    await recordTimingObservation(file, session.id, {
+      appCategory: "writing",
+      durationMs: 1,
+      endedAt: "2026-07-15T08:30:00.000Z",
+      startedAt: "2026-07-15T08:29:59.999Z"
+    }, options);
+    await evaluateTimingSession(file, session.id, options);
+    expect(await recordAttuneGraphShadowReturn(file, {
+      id: "delivery_ambiguous",
+      openedAt: "2026-07-15T10:00:00.000Z",
+      threadId: session.threadId
+    })).toEqual({ reason: "ambiguous-latest-candidate", status: "unmatched" });
+  });
+
+  it("fails closed on raw fields or weakened authority in a return receipt", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(
+      file,
+      { consentVersion: 1, threadId: "thread_work" },
+      knownThread,
+      options
+    );
+    await evaluateTimingSession(file, session.id, options);
+    await recordAttuneGraphShadowReturn(file, {
+      id: "delivery_exact",
+      openedAt: "2026-07-15T10:00:00.000Z",
+      threadId: session.threadId
+    });
+    const state = JSON.parse(await readFile(file, "utf8")) as {
+      returns: Array<{
+        authority: { feedback: string };
+        rawContent?: string;
+      }>;
+    };
+    state.returns[0]!.rawContent = "private window title";
+    await writeFile(file, JSON.stringify(state));
+    await expect(readTimingState(file)).rejects.toBeInstanceOf(AttunementStoreError);
+
+    delete state.returns[0]!.rawContent;
+    state.returns[0]!.authority.feedback = "inferred-positive";
+    await writeFile(file, JSON.stringify(state));
+    await expect(readTimingState(file)).rejects.toBeInstanceOf(AttunementStoreError);
+
+    state.returns[0]!.authority.feedback = "not-inferred";
+    (state.returns[0] as { deliveryId?: string }).deliveryId = "x".repeat(257);
+    await writeFile(file, JSON.stringify(state));
+    await expect(readTimingState(file)).rejects.toBeInstanceOf(AttunementStoreError);
+  });
+
+  it("restores the exact pre-v3 state for a bounded rollback", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(
+      file,
+      { consentVersion: 1, threadId: "thread_work" },
+      knownThread,
+      options
+    );
+    await evaluateTimingSession(file, session.id, options);
+    const preV3 = await readFile(file, "utf8");
+    await recordAttuneGraphShadowReturn(file, {
+      id: "delivery_exact",
+      openedAt: "2026-07-15T10:00:00.000Z",
+      threadId: session.threadId
+    });
+
+    await writeFile(file, await readFile(resolveTimingPreV3BackupFile(file), "utf8"));
+    expect(await readFile(file, "utf8")).toBe(preV3);
+    expect(await readTimingState(file)).toMatchObject({
+      candidates: [{ id: expect.any(String) }],
+      returns: [],
+      schemaVersion: 3
+    });
+  });
+
+  it("refuses the first v3 write when the rollback backup is malformed", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(
+      file,
+      { consentVersion: 1, threadId: "thread_work" },
+      knownThread,
+      options
+    );
+    await evaluateTimingSession(file, session.id, options);
+    const before = await readFile(file, "utf8");
+    const backup = resolveTimingPreV3BackupFile(file);
+    await writeFile(backup, "{\"schemaVersion\":2}", { mode: 0o600 });
+    if (process.platform !== "win32") await chmod(backup, 0o600);
+
+    await expect(recordAttuneGraphShadowReturn(file, {
+      id: "delivery_exact",
+      openedAt: "2026-07-15T10:00:00.000Z",
+      threadId: session.threadId
+    })).rejects.toThrow("timing pre-v3 backup is malformed");
+    expect(await readFile(file, "utf8")).toBe(before);
+    expect((await readTimingState(file)).returns).toEqual([]);
+  });
+
+  it("rejects permissive or symlinked pre-v3 rollback backups", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(
+      file,
+      { consentVersion: 1, threadId: "thread_work" },
+      knownThread,
+      options
+    );
+    await evaluateTimingSession(file, session.id, options);
+    const preV3 = await readFile(file, "utf8");
+    const backup = resolveTimingPreV3BackupFile(file);
+    const delivery = {
+      id: "delivery_exact",
+      openedAt: "2026-07-15T10:00:00.000Z",
+      threadId: session.threadId
+    };
+
+    if (process.platform !== "win32") {
+      await writeFile(backup, preV3, { mode: 0o644 });
+      await chmod(backup, 0o644);
+      await expect(recordAttuneGraphShadowReturn(file, delivery)).rejects.toThrow(
+        "must not grant group or other permissions"
+      );
+      expect(await readFile(file, "utf8")).toBe(preV3);
+      await unlink(backup);
+    }
+    if (process.platform === "win32") {
+      const target = `${backup}.target-directory`;
+      await mkdir(target);
+      await symlink(target, backup, "junction");
+    } else {
+      const target = `${backup}.target`;
+      await writeFile(target, preV3, { mode: 0o600 });
+      await symlink(target, backup);
+    }
+    await expect(recordAttuneGraphShadowReturn(file, delivery)).rejects.toThrow(
+      "must be a regular non-symlink file"
+    );
+    expect(await readFile(file, "utf8")).toBe(preV3);
+  });
+
+  it("rejects persisted timing collections above their declared bounds", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(
+      file,
+      { consentVersion: 1, threadId: "thread_work" },
+      knownThread,
+      options
+    );
+    const state = JSON.parse(await readFile(file, "utf8")) as {
+      candidates: unknown[];
+      observations: unknown[];
+    };
+    state.observations = Array.from({ length: 501 }, (_, index) => ({
+      appCategory: "writing",
+      durationMs: 1,
+      endedAt: "2026-07-15T08:30:00.000Z",
+      id: `observation_overflow_${index.toString()}`,
+      sessionId: session.id,
+      startedAt: "2026-07-15T08:29:59.999Z",
+      threadId: session.threadId
+    }));
+    await writeFile(file, JSON.stringify(state));
+    await expect(readTimingState(file)).rejects.toThrow(
+      "timing state is malformed or uses an unsupported schema"
+    );
+
+    state.observations = [];
+    state.candidates = Array.from({ length: 201 }, (_, index) => {
+      const createdAt = new Date(Date.parse("2026-07-14T00:00:00.000Z") + index).toISOString();
+      return {
+        counterfactual: { action: "stay-silent", evaluatedAt: createdAt },
+        createdAt,
+        decision: "silent",
+        evidenceObservationIds: [],
+        id: `candidate_overflow_${index.toString()}`,
+        policySnapshot: session.policy,
+        reason: "no-observation",
+        ruleVersion: 3,
+        sessionId: session.id,
+        threadId: session.threadId
+      };
+    });
+    await writeFile(file, JSON.stringify(state));
+    await expect(readTimingState(file)).rejects.toThrow(
+      "timing state is malformed or uses an unsupported schema"
+    );
+  });
+
+  it("fails before mutation when candidate capacity has no dependency-safe eviction", async () => {
+    const { file, options } = fixture();
+    const session = await startTimingSession(
+      file,
+      { consentVersion: 1, threadId: "thread_work" },
+      knownThread,
+      options
+    );
+    const candidates = Array.from({ length: 200 }, (_, index) => {
+      const createdAt = new Date(Date.parse("2026-07-14T00:00:00.000Z") + index).toISOString();
+      return {
+        counterfactual: { action: "stay-silent", evaluatedAt: createdAt },
+        createdAt,
+        decision: "silent",
+        evidenceObservationIds: [],
+        id: `candidate_protected_${index.toString()}`,
+        policySnapshot: session.policy,
+        reason: "no-observation",
+        ruleVersion: 3,
+        sessionId: session.id,
+        threadId: session.threadId
+      };
+    });
+    await writeFile(file, JSON.stringify({
+      candidates,
+      feedback: candidates.map((candidate) => ({
+        candidateId: candidate.id,
+        outcome: "used",
+        recordedAt: candidate.createdAt,
+        resultingCooldownMs: session.policy.offerCooldownMs,
+        resultingPolicyVersion: session.policy.version,
+        sessionId: session.id,
+        threadId: session.threadId
+      })),
+      observations: [],
+      schemaVersion: 2,
+      sessions: [session]
+    }));
+    await recordTimingObservation(file, session.id, {
+      appCategory: "writing",
+      durationMs: 1,
+      endedAt: "2026-07-15T08:30:00.000Z",
+      startedAt: "2026-07-15T08:29:59.999Z"
+    }, options);
+    const before = await readFile(file, "utf8");
+
+    await expect(evaluateTimingSession(file, session.id, {
+      idFactory: () => "capacity",
+      now: () => new Date("2026-07-15T09:00:00.000Z")
+    })).rejects.toThrow(
+      "timing candidate capacity is full and every candidate has dependent receipts"
+    );
+    expect(await readFile(file, "utf8")).toBe(before);
+    expect((await readTimingState(file)).candidates).toHaveLength(200);
   });
 
   it("turns rejected timing feedback into a bounded rollback proposal without policy mutation", async () => {
@@ -293,8 +647,9 @@ describe("thread-scoped continuity timing store", () => {
     const { file, options } = fixture();
     const session = await startTimingSession(file, { consentVersion: 1, threadId: "thread_work" }, knownThread, options);
     const state = await readTimingState(file);
+    const { returns: _returns, ...preV3State } = state;
     const legacy = {
-      ...state,
+      ...preV3State,
       candidates: [{
         createdAt: "2026-07-15T09:00:00.000Z",
         decision: "silent",
@@ -310,7 +665,11 @@ describe("thread-scoped continuity timing store", () => {
     const raw = `${JSON.stringify(legacy, null, 2)}\n`;
     await writeFile(file, raw);
 
-    expect(await readTimingState(file)).toEqual({ ...legacy, schemaVersion: 2 });
+    expect(await readTimingState(file)).toEqual({
+      ...legacy,
+      returns: [],
+      schemaVersion: 3
+    });
     expect(await readFile(file, "utf8")).toBe(raw);
   });
 
@@ -323,8 +682,9 @@ describe("thread-scoped continuity timing store", () => {
       options
     );
     const state = await readTimingState(file);
+    const { returns: _returns, ...preV3State } = state;
     const legacyV2 = {
-      ...state,
+      ...preV3State,
       candidates: [{
         counterfactual: {
           action: "stay-silent",
@@ -345,7 +705,7 @@ describe("thread-scoped continuity timing store", () => {
     await writeFile(file, raw);
 
     const persisted = await readTimingState(file);
-    expect(persisted).toEqual(legacyV2);
+    expect(persisted).toEqual({ ...legacyV2, returns: [], schemaVersion: 3 });
     expect(await readFile(file, "utf8")).toBe(raw);
     expect(
       projectAttuneGraphShadowTimingDecision(persisted, "candidate_legacy_v2")
@@ -357,8 +717,9 @@ describe("thread-scoped continuity timing store", () => {
     const session = await startTimingSession(file, { consentVersion: 1, threadId: "thread_work" }, knownThread, options);
     const candidate = await evaluateTimingSession(file, session.id, options);
     const state = await readTimingState(file);
+    const { returns: _returns, ...preV3State } = state;
     const legacy = {
-      ...state,
+      ...preV3State,
       feedback: [{
         candidateId: candidate.id,
         outcome: "rejected",
@@ -391,7 +752,8 @@ describe("thread-scoped continuity timing store", () => {
     await pauseTimingSession(file, session.id, options);
     expect(await readTimingState(file)).toMatchObject({
       feedback: [{ legacyUnproposedRejection: true }],
-      schemaVersion: 2
+      returns: [],
+      schemaVersion: 3
     });
   });
 
@@ -405,9 +767,26 @@ describe("thread-scoped continuity timing store", () => {
       startedAt: "2026-07-15T09:00:00.000Z"
     }, options);
     await evaluateTimingSession(file, session.id, options);
+    await recordAttuneGraphShadowReturn(file, {
+      id: "delivery_forget",
+      openedAt: "2026-07-15T10:00:00.000Z",
+      threadId: session.threadId
+    });
     const deleted = await forgetTimingSession(file, session.id);
-    expect(deleted).toEqual({ deletedCandidates: 1, deletedFeedback: 0, deletedObservations: 1 });
-    expect(await readTimingState(file)).toEqual({ candidates: [], feedback: [], observations: [], schemaVersion: 2, sessions: [] });
+    expect(deleted).toEqual({
+      deletedCandidates: 1,
+      deletedFeedback: 0,
+      deletedObservations: 1,
+      deletedReturns: 1
+    });
+    expect(await readTimingState(file)).toEqual({
+      candidates: [],
+      feedback: [],
+      observations: [],
+      returns: [],
+      schemaVersion: 3,
+      sessions: []
+    });
   });
 
   it("fails closed when persisted state contains a raw desktop field", async () => {

@@ -226,6 +226,8 @@ export {
 } from "./progressive-autonomy.js";
 export {
   DEFAULT_TIMING_POLICY,
+  ATTUNEGRAPH_SHADOW_RETURN_FORMAT_VERSION,
+  ATTUNEGRAPH_SHADOW_RETURN_MATCH_RULE,
   ATTUNEGRAPH_SHADOW_TIMING_PROJECTION_VERSION,
   TIMING_APP_CATEGORIES,
   TIMING_DECISIONS,
@@ -236,6 +238,8 @@ export {
   inspectTimingSession,
   pauseTimingSession,
   projectAttuneGraphShadowTimingDecision,
+  recordAttuneGraphShadowReturn,
+  resolveTimingPreV3BackupFile,
   verifyAttuneGraphShadowTimingProjection,
   readTimingState,
   recordTimingFeedback,
@@ -245,8 +249,10 @@ export {
 } from "./timing-store.js";
 export type {
   RecordTimingObservationInput,
+  AttuneGraphShadowReturnReceipt,
   AttuneGraphShadowTimingCandidate,
   AttuneGraphShadowTimingProjectionV1,
+  RecordAttuneGraphShadowReturnResult,
   StartTimingSessionInput,
   ThreadTimingSession,
   TimingAppCategory,

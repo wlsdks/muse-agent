@@ -82,7 +82,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
 | **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3d3b` independently verified; explicit Pack Preview now dogfoods process-local `resumeContext`, while durable/current-world semantics remain pending) |
-| **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | partial (`AWG-050b1` binds fresh timing-policy snapshots to exact process-local Source/Graph comparison evidence; return/card/durability pending) |
+| **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | partial (`AWG-050b1` binds fresh decision-time evidence; `AWG-050b2` adds an explicit-CLI return receipt source ledger; automatic timing, durable graph relation, card, and usefulness proof remain pending) |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | partial (`AWG-060d` claim-safe read-only compiler/tool independently verified; automatic surfacing, trusted trial/edit/reject writes, apply/rollback controls, and UI pending) |
 | **AWG-065** | Neutral AttuneGraph product boundary | Closed `AttuneGraph*` interface, forbidden-import gate, and Muse integration package keep private Continuity types outside the standalone Engine without copying validation | completed (dependency-free `@attunegraph/core` plus explicit `@muse/attunegraph` integration; no compatibility alias) |
 | **AWG-070** | SQLite AttuneGraph Store v1 | Implement the selected worker-isolated `node:sqlite` default behind the AttuneGraph Store contract with version-gated physical profile, journal replay, indexes, restart/crash/corruption tests, portable export, and 10K/100K/1M operator benchmarks; record measured TS/SQLite optimization and activate a Rust kernel only when end-to-end evidence justifies it | partial (`AWG-070a1` durable projection journal, `AWG-070a2` typed Worker boundary, the `.atgx` encoder/decoder/order/budget/non-retention chain through `AWG-070a3a1a4b`, indexed validation `a4c`, POSIX staging lifecycle `a4d`, Admin protocol/fail-stop spine `a4e1`, shared physical-schema/read-only inspector core `a4e2a`, parent-owned closed-store offline snapshot lease `a4e2b1`, dedicated read-only Admin Worker/application `a4e2b2`, and public offline `./admin` plus Muse Lens CLI `a4e2b3` independently verified; export/rebuild/activation, write/repair/live-web Admin, backup, physical forget, complete profile/corpus, and 10K/100K/1M benchmarks pending) |
@@ -234,6 +234,21 @@ timing in real life.
   closed. It grants no delivery, feedback, policy, or action authority. This is a library
   foundation, not automatic Shadow timing, portable restart verification, return evidence,
   a user-facing card, or durable AttuneGraph storage.
+- **AWG-050b2 is `verified-current`:** both owner-invoked CLI spellings, `muse continue`
+  and `muse thread continue`, attempt a best-effort return-ledger write only after the
+  Continuity Delivery has opened. The content-addressed receipt binds that exact Delivery
+  id/open time/thread to the latest strictly prior unreturned rule-v3 timing candidate.
+  Missing or simultaneous candidates abstain; equal latest timestamps abstain; a linked
+  latest candidate prevents older backfill. The receipt declares feedback and outcome
+  `not-inferred`, causality `not-claimed`, reconstruction benefit `unassessed`, and grants
+  no action. Version-1/2 timing files are read without rewriting; the first return-bearing
+  version-3 write creates a non-overwriting owner-local pre-v3 backup with cross-platform
+  symlink/replacement refusal. Persisted collection bounds and dependency-safe retention
+  fail closed. Inspection exposes returns and session forget removes them. A fresh
+  independent completion evaluator passed after focused Attunement 423/423, CLI coverage,
+  changed-scope tests, lint, typechecks/builds, and the full cross-package gate. This is a
+  factual source ledger, not durable AttuneGraph ingestion, usefulness evidence, automatic
+  return detection, or Policy Card promotion.
 
 ## Current 050a3 activation
 

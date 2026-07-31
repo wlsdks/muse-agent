@@ -47,6 +47,7 @@ import {
   promoteApprovedExperienceLearningContinuityPolicy,
   proposeExperienceLearningFromDelivery,
   readAttunementState,
+  recordAttuneGraphShadowReturn,
   resetThreadPolicy,
   undoThreadReset,
   unlinkArtifact,
@@ -62,6 +63,7 @@ import {
   type ContinuityReview,
   type ContinuityReviewItem,
   type ExperienceLearningProposalDraft,
+  type RecordAttuneGraphShadowReturnResult,
   type ContinuityOutcome,
   type ContinuityPack,
   type ExactArtifactResolver,
@@ -100,6 +102,8 @@ export interface AttunementCommandDeps {
   readonly calendarRegistry?: CalendarProviderRegistry;
   /** One Pack captures this clock exactly once for deterministic due-state rendering. */
   readonly now?: () => number;
+  /** Test/host seam; production records only after this CLI opens a Pack. */
+  readonly recordShadowReturn?: typeof recordAttuneGraphShadowReturn;
 }
 
 function environment(): Record<string, string | undefined> {
@@ -108,6 +112,10 @@ function environment(): Record<string, string | undefined> {
 
 function attunementFile(): string {
   return resolveAttunementFile(environment());
+}
+
+function timingFile(): string {
+  return `${attunementFile()}.timing.json`;
 }
 
 function worksFile(): string {
@@ -551,12 +559,28 @@ async function runContinue(
   io: ProgramIO,
   threadId: string | undefined,
   resolveExactArtifact: ExactArtifactResolver,
-  now: () => number
+  now: () => number,
+  recordShadowReturn: typeof recordAttuneGraphShadowReturn
 ): Promise<void> {
   const file = attunementFile();
   const chosenId = await resolveContinueThreadId(threadId);
   const { delivery, pack } = await openProductionAuthorizedContinuityPack(file, chosenId, resolveExactArtifact, { now });
   io.stdout(formatPack(pack, delivery.id, delivery.runId));
+  try {
+    io.stdout(formatShadowReturn(await recordShadowReturn(timingFile(), delivery)));
+  } catch {
+    io.stdout("Shadow return: write-failed · Pack is still opened; feedback, outcome, usefulness, and causality were not inferred.\n");
+  }
+}
+
+function formatShadowReturn(result: RecordAttuneGraphShadowReturnResult): string {
+  if (result.status === "recorded") {
+    return `Shadow return: recorded ${result.receipt.id} · temporal association only; feedback, outcome, usefulness, and causality were not inferred.\n`;
+  }
+  if (result.status === "already-linked") {
+    return `Shadow return: already-linked ${result.receipt.id} · no older candidate was backfilled.\n`;
+  }
+  return `Shadow return: unmatched (${result.reason}) · no feedback, outcome, usefulness, or causality was inferred.\n`;
 }
 
 async function commandAction(command: Command, io: ProgramIO, label: string, action: () => Promise<void>): Promise<void> {
@@ -572,6 +596,7 @@ export function registerAttunementCommands(program: Command, io: ProgramIO, deps
   const mcpResourceCaller = deps.mcpResourceCaller ?? defaultMcpResourceCaller();
   const calendarRegistry = deps.calendarRegistry ?? buildCalendarRegistry(environment());
   const now = deps.now ?? Date.now;
+  const recordShadowReturn = deps.recordShadowReturn ?? recordAttuneGraphShadowReturn;
   const browsingFile = defaultBrowsingFile(environment());
   const conversationsFile = defaultConversationsFile(environment());
   const validateArtifact = createArtifactValidator(mcpResourceCaller, calendarRegistry, io.workspaceDir, browsingFile, conversationsFile, worksFile());
@@ -688,7 +713,12 @@ Examples:
       .command(`${name} [thread-id]`)
       .description("Prepare a grounded continuity pack from this thread's explicit local links")
       .action(async (threadId: string | undefined, _options: unknown, command: Command) => {
-        await commandAction(command, io, "continue", () => runContinue(io, threadId, resolveExactArtifact, now));
+        await commandAction(
+          command,
+          io,
+          "continue",
+          () => runContinue(io, threadId, resolveExactArtifact, now, recordShadowReturn)
+        );
       });
   };
   registerContinue(thread, "continue");
