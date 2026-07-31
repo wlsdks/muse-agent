@@ -42,7 +42,8 @@ import {
 import {
   createContinuityResumeRuntimeCaptureAdapter,
   createContinuityResumeRuntimeCoordinator,
-  getContinuityResumeRuntimePack
+  getContinuityResumeRuntimePack,
+  type ContinuityResumeRuntimeBaselineStore
 } from "@muse/attunegraph/continuity-resume-runtime";
 import type {
   ContinuityObservationReceipt
@@ -92,6 +93,8 @@ import { continuityRuntimeSourceId } from "./continuity-attunegraph-composition.
 
 export interface LoopbackToolsDeps {
   readonly attunementFile?: string;
+  readonly continuityResumeBaselineStore?:
+    ContinuityResumeRuntimeBaselineStore;
   readonly env: MuseEnvironment;
   readonly experienceLearningPromotionObserver?: (
     receipt: ExperienceLearningPromotionReceipt,
@@ -102,7 +105,7 @@ export interface LoopbackToolsDeps {
   ) => void;
   readonly projectCurrentGraphObservation?: (
     observation: ContinuityObservationReceipt
-  ) => Promise<unknown>;
+  ) => Promise<Readonly<{ readonly status: "projected" | "replayed" }>>;
   /** Optional LLM provider for `mode: "llm-judge"` paths on notes / episodes search. */
   readonly modelProvider?: ModelProvider;
   readonly defaultModel?: string;
@@ -199,6 +202,9 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
         });
         const resumeCoordinator =
           createContinuityResumeRuntimeCoordinator({
+            ...(deps.continuityResumeBaselineStore === undefined
+              ? {}
+              : { baselineStore: deps.continuityResumeBaselineStore }),
             captureCurrent:
               createContinuityResumeRuntimeCaptureAdapter({
                 captureHeadRevalidation:

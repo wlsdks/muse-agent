@@ -10,6 +10,7 @@ import {
   resolveAuthoredSkillsDir,
   resolveBriefingSidecarFile,
   resolveContactsFile,
+  resolveContinuityResumeBaselinesFile,
   resolveCredentialsFile,
   resolveDiscordAfterFile,
   resolveDiscordInboxFile,
@@ -57,6 +58,11 @@ const dotMuse = (name: string) => join(isoHome, ".muse", name);
 
 // [resolver, env key it reads, default name under ~/.muse]
 const RESOLVERS: ReadonlyArray<readonly [(e: MuseEnvironment) => string, string, string]> = [
+  [
+    resolveContinuityResumeBaselinesFile,
+    "MUSE_CONTINUITY_RESUME_BASELINES_FILE",
+    "continuity-resume-baselines.json"
+  ],
   [resolveNotesDir, "MUSE_NOTES_DIR", "notes"],
   [resolveCredentialsFile, "MUSE_CREDENTIALS_FILE", "credentials.json"],
   [resolveLocalCalendarFile, "MUSE_CALENDAR_FILE", "calendar.json"],
@@ -119,6 +125,28 @@ describe("provider-paths shared resolution (via resolveTasksFile)", () => {
 
   it("leaves a ~otheruser override untouched (only the current-user form expands)", () => {
     expect(resolveTasksFile(env({ MUSE_TASKS_FILE: "~bob/x.json" }))).toBe("~bob/x.json");
+  });
+});
+
+describe("continuity resume baseline path", () => {
+  it("accepts only an absolute normalized NUL-free override", () => {
+    expect(
+      resolveContinuityResumeBaselinesFile(env({
+        MUSE_CONTINUITY_RESUME_BASELINES_FILE: "  /private/muse/baselines.json  "
+      }))
+    ).toBe("/private/muse/baselines.json");
+    for (const override of [
+      "relative.json",
+      "~/baselines.json",
+      "/private/../baselines.json",
+      "/private/baselines.json\0suffix"
+    ]) {
+      expect(() =>
+        resolveContinuityResumeBaselinesFile(env({
+          MUSE_CONTINUITY_RESUME_BASELINES_FILE: override
+        }))
+      ).toThrow(/absolute normalized NUL-free/u);
+    }
   });
 });
 

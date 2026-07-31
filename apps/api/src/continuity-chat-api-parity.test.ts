@@ -145,10 +145,9 @@ async function runChatSequence(target: SurfaceFixture): Promise<AttunementState>
     ...linkProposal,
     previewDigest: linkPreview["previewDigest"] as string
   }, "chat_link");
-  const packPreview = await previewPack.execute(
-    { threadId },
-    { runId: "chat_pack_preview" }
-  ) as JsonObject;
+  const packPreview = await approveChatWrite(target, previewPack, {
+    threadId
+  }, "chat_pack_preview");
   const opened = await approveChatWrite(target, openPack, {
     previewDigest: packPreview["previewDigest"] as string,
     threadId

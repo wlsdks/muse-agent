@@ -312,6 +312,22 @@ describe("Continuity Capsule API contract", () => {
       status: "seeded",
       baselineDurability: "process-local-only"
     });
+    expect(projectContinuityCapsuleResponse({
+      schemaVersion: 1,
+      status: "seeded",
+      state: "durable-baseline-seeded",
+      reason: "no-prior-durable-baseline",
+      baselineDurability: "durable-local",
+      authority: {
+        canAssertCurrentWorldTruth: false,
+        canAssertSourceCompleteness: false,
+        canGrantActionAuthority: false
+      }
+    })).toEqual({
+      schemaVersion: 1,
+      status: "seeded",
+      baselineDurability: "durable-local"
+    });
     expect(prepare).toHaveBeenCalledTimes(1);
     expect(preparedInput).toMatchObject({
       locale: "ko",

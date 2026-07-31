@@ -197,19 +197,24 @@ independent observation. It adds no automatic delivery, UI, persistence, source/
 policy mutation, or action authority. AWG-040b/c do not implement core-roadmap onboarding
 103 or session-handoff 211.
 
-The AttuneGraph-backed resume path now has one narrow application/runtime composition point in
-the existing read-only Pack Preview, including an explicit verified Capsule render-data
-option. Its verified current v1 Graph Observation Receipt remains the provider boundary; the
-explicit `MUSE_ATTUNEGRAPH_DATABASE` composition revalidates both local ledgers and writes a
-separate complete `muse.local-attunement-timing` scope. The resume
-baseline itself remains process-local, and the path still has no continuous/current-world
-ingestion, LLM extraction, automatic Shadow delivery, automatic Capsule delivery, Policy Card UI,
-or action authority. The complete three-part signature experience therefore remains a
+The AttuneGraph-backed resume path has one narrow application/runtime composition point in
+the explicit owner-invoked Pack Preview, including a verified Capsule render-data option.
+Pack Preview may first project its verified observation into a separate complete
+`muse.local-attunement-timing` scope when `MUSE_ATTUNEGRAPH_DATABASE` is configured, then may
+update its bounded comparison baseline: restart-safe local storage in the assembled host, or
+process-local state when a direct library/test construction omits the store. The projection
+precedes baseline compare-and-set, so results report both internal effects and preserve
+uncertainty if a failing dependency cannot prove whether it committed. Its verified current v1
+Graph Observation Receipt remains the provider boundary, and neither internal path mutates a
+linked source, delivery, outcome, or policy. The path still has no continuous/current-world
+ingestion, LLM extraction, automatic Shadow delivery, automatic Capsule delivery, Policy Card
+UI, or action authority. The complete three-part signature experience therefore remains a
 roadmap claim.
 
 AWG-040e1 adds the provider-neutral preparation/provenance prerequisite without converting
-model text into evidence. One assembly-owned service reuses the existing process-local resume
-coordinator; the first qualifying call therefore reports `seeded`, and only an exact later
+model text into evidence. One assembly-owned service reuses the resume coordinator
+(process-local in that original slice; backed by the AWG-040f durable host store in assembled
+production); the first qualifying call therefore reports `seeded`, and only an exact later
 compared result may reach the configured provider. The provider receives one detached,
 content-addressed evidence view containing exact thread/observation receipt identities, available
 current artifact snapshots, the current next-step key, and deterministic change/abstention
@@ -221,14 +226,18 @@ whole proposal. The separately versioned Manifest, Presentation, and preparation
 `expectedMinutes: estimate`, and `display-only`. A deterministic English/Korean system title
 prevents an uncited model-title path.
 
-The public assembly service and read-only `muse.continuity.capsule.prepare` tool accept only
-`threadId` and `locale`; callers cannot inject draft text, evidence IDs, model/provider, time, or
-action mode. This first composition supports local `task | note | reminder` links only and rejects
+The public assembly service and explicit owner-invoked `muse.continuity.capsule.prepare` tool
+accept only `threadId` and `locale`; the tool declares `write` risk because a verified request may
+project a durable rebuildable observation when configured and may update the bounded comparison
+baseline, while never mutating a linked source, delivery, outcome, or policy. Callers cannot
+inject draft text, evidence IDs, model/provider, time, or action mode. This
+first composition supports local `task | note | reminder` links only and rejects
 every other source class in a state preflight before coordinator/model work, then revalidates the
 exact captured result before any provider call. AWG-040e1 itself adds no authenticated evidence
 witness, persistent baseline, exact/automatic stop capture, semantic-entailment verification,
 delivery/outcome/policy mutation, action payload, automatic timing, or usefulness claim. Those
-remain durability/qualification work, not properties of AWG-040e1.
+remain qualification work, not properties of AWG-040e1; AWG-040f later supplies the bounded
+durable comparison baseline without changing those denials.
 
 AWG-040e2 adds the first explicit product/API projection without widening the evidence contract.
 The owner-gated `POST /api/attunement/threads/:threadId/capsule/prepare` route accepts only an
@@ -238,12 +247,13 @@ ready projector resolves the exact cited source keys before rendering and expose
 display fields; it does not disclose source keys, raw references, receipt or evidence identities,
 provider/model details, or an action payload. The empty Chat state offers an explicit Prepare
 control only after its existing resumable-thread review. It never prepares on render, polls, or
-retries automatically; the first request may truthfully establish only a process-local baseline.
+retries automatically; the first assembled-host request may truthfully establish a durable-local
+baseline, while direct construction without a store remains process-local.
 The rendered Capsule keeps citation binding separate from unverified semantic entailment, states
 its display-only/new-approval boundary, and its Continue control writes only the existing local
 navigation handoff. Configured HTTP authentication rejects anonymous calls, but that access gate
 does not establish an authenticated evidence witness. This slice is not automatic timing or
-delivery, durable baseline storage, exact stop capture, all-source ingestion, semantic truth,
+delivery, exact stop capture, all-source ingestion, semantic truth,
 Policy Card control, action execution, or usefulness qualification.
 
 An explicit second composition point now exposes the read-only

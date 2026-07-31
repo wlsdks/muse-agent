@@ -37,7 +37,9 @@ export type ContinuityCapsulePrepareResponse =
   | Readonly<{
       readonly schemaVersion: 1;
       readonly status: "seeded";
-      readonly baselineDurability: "process-local-only";
+      readonly baselineDurability:
+        | "durable-local"
+        | "process-local-only";
     }>
   | Readonly<{
       readonly schemaVersion: 1;

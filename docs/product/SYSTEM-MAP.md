@@ -55,9 +55,12 @@ automatic path remains roadmap; an explicit inert Policy Card render-data previe
 without policy mutation or action. The existing Continuity screen also has a bounded read-only
 Shadow Return inspector for exact explicit-CLI source receipts and graph-pair status; it does not
 record returns or claim usefulness. A separate runtime preparation substrate may now bind one
-display-only model draft to exact current task/note/reminder source keys after a process-local
-comparison; it verifies citation membership but not semantic entailment, freshness, authenticated
-invocation, durability, or usefulness. **AttuneGraph**
+display-only model draft to exact current task/note/reminder source keys. The assembled host
+defaults to a durable-local comparison baseline bounded to 16 entries, so a fresh process can
+compare with an earlier observation; direct library or test construction without a baseline store
+uses a process-local fallback. It verifies citation membership, but semantic entailment, current
+freshness, authenticated observation witness, all-source parity, exact stop capture, automatic
+timing, and usefulness remain roadmap. **AttuneGraph**
 behind it is not a heavy server duplicating existing stores; it is an
 agent-native personal context compiler that links time, relationships and provenance as a
 regenerable projection and builds only the small Working Graph each turn needs

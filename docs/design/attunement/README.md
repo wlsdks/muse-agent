@@ -3,7 +3,7 @@ title: Attunement architecture and data contract
 audience: [engineering, product, security, agents]
 purpose: Define the closed loop, privacy boundary, and implementation seams for Attunement
 status: partial-implementation
-updated: 2026-07-29
+updated: 2026-07-31
 related: [../../strategy/attunement.md, attunegraph.md, ../../../internal/goals/attunement-implementation-plan.md, ../../../internal/goals/attunegraph-roadmap.md, ../../trust/privacy-and-data.md]
 ---
 
@@ -46,12 +46,15 @@ The roadmap experience has three consumers of the existing Attunement loop:
   delivery or action.
 - **Continuity Capsule** turns exact linked state plus verified changes into a richer,
   user-invoked resumption surface. Its newest shipped substrate can bind one configured-model
-  draft to exact current task/note/reminder source keys after a process-local comparison,
-  while explicitly recording that citation membership—not semantic entailment—was verified.
-  An explicit empty-Chat Prepare action now reaches that same assembly-owned service through an
-  owner-gated, no-store API and renders only a redacted display projection; render alone performs
-  no preparation. Durable baseline, authenticated observation witness, all-source parity, exact
-  stop capture, and automatic timing/surfacing remain roadmap.
+  draft to exact current task/note/reminder source keys after comparison. The assembled host
+  defaults to a durable-local baseline bounded to 16 entries, so a fresh process can compare with
+  an earlier observation; direct library or test construction without a baseline store remains a
+  process-local fallback. The result explicitly records that citation membership—not semantic
+  entailment—was verified. An explicit empty-Chat Prepare action reaches that same assembly-owned
+  service through an owner-gated API with a no-store response and renders only a redacted display
+  projection; render alone performs no preparation. Exact stop capture, current freshness,
+  authenticated observation witness, all-source parity, automatic timing/surfacing, and usefulness
+  remain roadmap.
 - **Policy Card** proposes a scoped, reversible policy delta; its current explicit preview is
   inert and keeps authority, caller replay claims, and graph explanation separate. It never hides
   learning in a prompt or silently widens observation or authority. Trusted interactive controls

@@ -151,6 +151,9 @@ import { buildLoopbackTools } from "./loopback-tools.js";
 import {
   createConfiguredContinuityAttuneGraphProjector
 } from "./continuity-attunegraph-composition.js";
+import {
+  ContinuityResumeBaselineFileStore
+} from "./continuity-resume-baseline-file-store.js";
 import { buildBackgroundReviewHooks } from "./context-engineering-builders.js";
 
 import {
@@ -174,6 +177,7 @@ import {
   resolveEffectiveLocalOnlyOverride,
   resolveActionLogFile,
   resolveAttunementFile,
+  resolveContinuityResumeBaselinesFile,
   resolveEpisodesFile,
   resolveFollowupLlmBudgetFile,
   resolveFollowupsFile,
@@ -956,6 +960,9 @@ function buildPersonalStoreStack(
   const followupsFile = resolveFollowupsFile(env);
   const episodesFile = resolveEpisodesFile(env);
   const patternsFiredFile = resolvePatternsFiredFile(env);
+  const continuityResumeBaselineStore = new ContinuityResumeBaselineFileStore(
+    resolveContinuityResumeBaselinesFile(env)
+  );
   // 11 loopback-tool bundles in one call. `buildLoopbackTools`
   // owns the env-gate + LLM-judge-opt-in logic that used to live
   // inline as 95 LOC of repeated scaffolding.
@@ -970,6 +977,7 @@ function buildPersonalStoreStack(
       : {}),
     ...(options.messagingApprovalGate ? { messagingApprovalGate: options.messagingApprovalGate } : {}),
     calendarRegistry,
+    continuityResumeBaselineStore,
     defaultModel,
     env,
     episodesFile,

@@ -27,10 +27,14 @@ import {
   CONTINUITY_RESUME_RUNTIME_LIMITS,
   createContinuityResumeRuntimeCaptureAdapter,
   createContinuityResumeRuntimeCoordinator,
+  getContinuityResumeRuntimeMutationReceipt,
   getContinuityResumeRuntimePack,
   prepareContinuityResumeRuntimeCapsule,
   presentContinuityResumeRuntimeCapsule,
   validateContinuityResumeRuntimeCapsuleRequest,
+  verifyContinuityResumeRuntimeBaseline,
+  type ContinuityResumeRuntimeBaselineStore,
+  type ContinuityResumeRuntimeBaselineV1,
   type ContinuityResumeRuntimeCaptureV1
 } from "./continuity-resume-runtime.js";
 import {
@@ -329,6 +333,29 @@ function expectFrozenTree(
   }
 }
 
+function durableBaselineStore(): {
+  readonly store: ContinuityResumeRuntimeBaselineStore;
+  readonly current: () => ContinuityResumeRuntimeBaselineV1 | undefined;
+} {
+  let baseline: ContinuityResumeRuntimeBaselineV1 | undefined;
+  return {
+    current: () => baseline,
+    store: {
+      load: async () => baseline,
+      compareAndSet: async (_scope, expectedBoundaryId, proposed) => {
+        const currentBoundaryId = baseline?.boundary.boundaryId;
+        if (currentBoundaryId !== expectedBoundaryId) return "conflict";
+        const verified = verifyContinuityResumeRuntimeBaseline(proposed);
+        if (currentBoundaryId === verified.boundary.boundaryId) {
+          return "unchanged";
+        }
+        baseline = verified;
+        return "stored";
+      }
+    }
+  };
+}
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -443,7 +470,8 @@ describe("continuity resume runtime coordinator", () => {
     });
     const scope = { sourceId: SOURCE_ID, threadId };
 
-    expect(await coordinator.preview(scope)).toEqual({
+    const failed = await coordinator.preview(scope);
+    expect(failed).toEqual({
       schemaVersion: 1,
       status: "partial",
       state: "process-local-baseline-seeded",
@@ -453,6 +481,22 @@ describe("continuity resume runtime coordinator", () => {
         canAssertSourceCompleteness: false,
         canGrantActionAuthority: false
       }
+    });
+    expect(getContinuityResumeRuntimeMutationReceipt(failed)).toEqual({
+      schemaVersion: 1,
+      summary: "committed",
+      effects: [
+        {
+          target: "projection",
+          durability: "durable-local",
+          outcome: "not-attempted"
+        },
+        {
+          target: "baseline",
+          durability: "process-local",
+          outcome: "committed"
+        }
+      ]
     });
     expect(await coordinator.preview(scope)).toMatchObject({
       status: "partial",
@@ -478,11 +522,13 @@ describe("continuity resume runtime coordinator", () => {
       projectCurrentGraphObservation: async (receipt) => {
         projectedReceiptIds.push(receipt.receiptId);
         if (failProjection) throw new Error("private projection failure");
+        return { status: "projected" };
       }
     });
     const scope = { sourceId: SOURCE_ID, threadId };
 
-    expect(await coordinator.preview(scope)).toEqual({
+    const failed = await coordinator.preview(scope);
+    expect(failed).toEqual({
       schemaVersion: 1,
       status: "unavailable",
       reason: "graph-projection-failed",
@@ -491,6 +537,22 @@ describe("continuity resume runtime coordinator", () => {
         canAssertSourceCompleteness: false,
         canGrantActionAuthority: false
       }
+    });
+    expect(getContinuityResumeRuntimeMutationReceipt(failed)).toEqual({
+      schemaVersion: 1,
+      summary: "possible",
+      effects: [
+        {
+          target: "projection",
+          durability: "durable-local",
+          outcome: "outcome-unknown"
+        },
+        {
+          target: "baseline",
+          durability: "process-local",
+          outcome: "not-attempted"
+        }
+      ]
     });
     failProjection = false;
     expect(await coordinator.preview(scope)).toMatchObject({
@@ -511,6 +573,88 @@ describe("continuity resume runtime coordinator", () => {
       state: "compared-and-advanced"
     });
     expect(projectedReceiptIds[3]).toBe(projectedReceiptIds[2]);
+  });
+
+  it("keeps projection and baseline outcomes exact across replay and CAS conflict", async () => {
+    const threadId = "thread_durable_mutation_receipt";
+    const scope = { sourceId: SOURCE_ID, threadId };
+    const durable = durableBaselineStore();
+    let projectionStatus: "projected" | "replayed" = "projected";
+    const coordinator = createContinuityResumeRuntimeCoordinator({
+      baselineStore: durable.store,
+      captureCurrent: () => capture(threadId),
+      projectCurrentGraphObservation: async () => ({ status: projectionStatus })
+    });
+
+    const seeded = await coordinator.preview(scope);
+    expect(getContinuityResumeRuntimeMutationReceipt(seeded)).toEqual({
+      schemaVersion: 1,
+      summary: "committed",
+      effects: [
+        {
+          target: "projection",
+          durability: "durable-local",
+          outcome: "committed"
+        },
+        {
+          target: "baseline",
+          durability: "durable-local",
+          outcome: "committed"
+        }
+      ]
+    });
+
+    projectionStatus = "replayed";
+    const replayed = await coordinator.preview(scope);
+    expect(getContinuityResumeRuntimeMutationReceipt(replayed)).toEqual({
+      schemaVersion: 1,
+      summary: "none",
+      effects: [
+        {
+          target: "projection",
+          durability: "durable-local",
+          outcome: "unchanged"
+        },
+        {
+          target: "baseline",
+          durability: "durable-local",
+          outcome: "unchanged"
+        }
+      ]
+    });
+
+    const conflicted = createContinuityResumeRuntimeCoordinator({
+      baselineStore: {
+        load: async () => undefined,
+        compareAndSet: async () => "conflict"
+      },
+      captureCurrent: () => capture(`${threadId}_conflict`),
+      projectCurrentGraphObservation: async () => ({ status: "projected" })
+    });
+    const conflict = await conflicted.preview({
+      sourceId: SOURCE_ID,
+      threadId: `${threadId}_conflict`
+    });
+    expect(conflict).toMatchObject({
+      status: "unavailable",
+      reason: "runtime-generation-changed"
+    });
+    expect(getContinuityResumeRuntimeMutationReceipt(conflict)).toEqual({
+      schemaVersion: 1,
+      summary: "committed",
+      effects: [
+        {
+          target: "projection",
+          durability: "durable-local",
+          outcome: "committed"
+        },
+        {
+          target: "baseline",
+          durability: "durable-local",
+          outcome: "conflict"
+        }
+      ]
+    });
   });
 
   it("presents a Capsule only for an exact compared result and observation-bound preparation", async () => {
@@ -1282,6 +1426,52 @@ describe("continuity resume runtime coordinator", () => {
     expect(calls).toBe(2);
   });
 
+  it("times out a durable load without allowing late capture or CAS", async () => {
+    vi.useFakeTimers();
+    const threadId = "thread_durable_load_timeout";
+    const scope = { sourceId: SOURCE_ID, threadId };
+    const lateLoad = deferred<unknown | undefined>();
+    const captureCurrent = vi.fn(() => capture(threadId));
+    const compareAndSet = vi.fn(async () => "stored" as const);
+    let loadCalls = 0;
+    const coordinator = createContinuityResumeRuntimeCoordinator({
+      baselineStore: {
+        load: async () => {
+          loadCalls += 1;
+          return loadCalls === 1 ? lateLoad.promise : undefined;
+        },
+        compareAndSet
+      },
+      captureCurrent
+    });
+
+    const timed = coordinator.preview(scope);
+    await Promise.resolve();
+    expect(loadCalls).toBe(1);
+    await vi.advanceTimersByTimeAsync(
+      CONTINUITY_RESUME_RUNTIME_LIMITS.operationTimeoutMs
+    );
+    await expect(timed).resolves.toMatchObject({
+      status: "unavailable",
+      reason: "operation-timeout"
+    });
+    await expect(coordinator.preview(scope)).resolves.toMatchObject({
+      status: "unavailable",
+      reason: "runtime-busy"
+    });
+    expect(captureCurrent).not.toHaveBeenCalled();
+    expect(compareAndSet).not.toHaveBeenCalled();
+
+    lateLoad.resolve(undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(coordinator.preview(scope)).resolves.toMatchObject({
+      status: "partial",
+      state: "durable-baseline-seeded"
+    });
+    expect(captureCurrent).toHaveBeenCalledTimes(1);
+    expect(compareAndSet).toHaveBeenCalledTimes(1);
+  });
+
   it("evicts the least-recently-used baseline and isolates instances", async () => {
     const coordinator = createContinuityResumeRuntimeCoordinator({
       captureCurrent: (scope) => capture(scope.threadId)
@@ -1350,6 +1540,125 @@ describe("continuity resume runtime coordinator", () => {
     });
     expect(calls).toBe(3);
     expect(JSON.stringify(exact)).toBe(before);
+  });
+
+  it("loads a verified durable baseline in a fresh coordinator before its first comparison", async () => {
+    const threadId = "thread_durable_restart";
+    const durable = durableBaselineStore();
+    const first = createContinuityResumeRuntimeCoordinator({
+      baselineStore: durable.store,
+      captureCurrent: () => capture(threadId)
+    });
+    await expect(first.preview({
+      sourceId: SOURCE_ID,
+      threadId
+    })).resolves.toMatchObject({
+      status: "partial",
+      state: "durable-baseline-seeded",
+      reason: "no-prior-durable-baseline"
+    });
+    expect(durable.current()).toBeDefined();
+
+    const restarted = createContinuityResumeRuntimeCoordinator({
+      baselineStore: durable.store,
+      captureCurrent: () => capture(threadId, BASE_AT + 1_000)
+    });
+    await expect(restarted.preview({
+      sourceId: SOURCE_ID,
+      threadId
+    })).resolves.toMatchObject({
+      status: "partial",
+      state: "compared-and-advanced"
+    });
+
+    const sameObservationRestart = createContinuityResumeRuntimeCoordinator({
+      baselineStore: durable.store,
+      captureCurrent: () => capture(threadId, BASE_AT + 1_000)
+    });
+    await expect(sameObservationRestart.preview({
+      sourceId: SOURCE_ID,
+      threadId
+    })).resolves.toMatchObject({
+      status: "partial",
+      state: "compared-with-baseline-reused"
+    });
+  });
+
+  it("fails a corrupt durable load before capture, projection, or CAS", async () => {
+    const captureCurrent = vi.fn(() => capture("unreachable"));
+    const projectCurrentGraphObservation = vi.fn(async () => ({
+      status: "projected" as const
+    }));
+    const compareAndSet = vi.fn(async () => "stored" as const);
+    const coordinator = createContinuityResumeRuntimeCoordinator({
+      baselineStore: {
+        load: async () => ({ schemaVersion: 1 }),
+        compareAndSet
+      },
+      captureCurrent,
+      projectCurrentGraphObservation
+    });
+    await expect(coordinator.preview({
+      sourceId: SOURCE_ID,
+      threadId: "thread_corrupt_durable"
+    })).resolves.toMatchObject({
+      status: "unavailable",
+      reason: "baseline-store-unavailable"
+    });
+    expect(captureCurrent).not.toHaveBeenCalled();
+    expect(projectCurrentGraphObservation).not.toHaveBeenCalled();
+    expect(compareAndSet).not.toHaveBeenCalled();
+  });
+
+  it("does not retain a proposed baseline when durable CAS conflicts", async () => {
+    const threadId = "thread_durable_conflict";
+    let conflict = true;
+    const coordinator = createContinuityResumeRuntimeCoordinator({
+      baselineStore: {
+        load: async () => undefined,
+        compareAndSet: async () => conflict ? "conflict" : "stored"
+      },
+      captureCurrent: () => capture(threadId)
+    });
+    const scope = { sourceId: SOURCE_ID, threadId };
+    await expect(coordinator.preview(scope)).resolves.toMatchObject({
+      status: "unavailable",
+      reason: "runtime-generation-changed"
+    });
+    conflict = false;
+    await expect(coordinator.preview(scope)).resolves.toMatchObject({
+      status: "partial",
+      state: "durable-baseline-seeded"
+    });
+  });
+
+  it("rejects a durable baseline substituted from another exact scope before capture", async () => {
+    const durable = durableBaselineStore();
+    const originalThreadId = "thread_durable_original";
+    const original = createContinuityResumeRuntimeCoordinator({
+      baselineStore: durable.store,
+      captureCurrent: () => capture(originalThreadId)
+    });
+    await original.preview({
+      sourceId: SOURCE_ID,
+      threadId: originalThreadId
+    });
+    const captureCurrent = vi.fn(() => capture("thread_durable_other"));
+    const substituted = createContinuityResumeRuntimeCoordinator({
+      baselineStore: {
+        load: async () => durable.current(),
+        compareAndSet: durable.store.compareAndSet
+      },
+      captureCurrent
+    });
+    await expect(substituted.preview({
+      sourceId: SOURCE_ID,
+      threadId: "thread_durable_other"
+    })).resolves.toMatchObject({
+      status: "unavailable",
+      reason: "baseline-store-unavailable"
+    });
+    expect(captureCurrent).not.toHaveBeenCalled();
   });
 
   it("rejects hostile and malformed scopes before calling the dependency", async () => {

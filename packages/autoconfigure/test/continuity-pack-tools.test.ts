@@ -57,6 +57,11 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
   it("previews byte-identically and only an exact current digest opens one delivery", async () => {
     directory = await mkdtemp(join(tmpdir(), "muse-continuity-pack-"));
     const attunementFile = join(directory, "attunement.json");
+    const baselineFile = join(
+      directory,
+      ".muse",
+      "continuity-resume-baselines.json"
+    );
     const notesDir = join(directory, "notes");
     const tasksFile = join(directory, "tasks.json");
     const task = {
@@ -94,7 +99,7 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
     );
     expect(previews).toHaveLength(1);
     expect(opens).toHaveLength(1);
-    expect(previews[0]!.definition.risk).toBe("read");
+    expect(previews[0]!.definition.risk).toBe("write");
     expect(opens[0]!.definition.risk).toBe("write");
     expect(previews[0]!.definition.description).toContain("never opens the Pack");
     expect(opens[0]!.definition.description).toContain("exactly one delivery receipt");
@@ -104,12 +109,30 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
       { threadId: thread.id },
       { runId: "preview_1" }
     );
-    const second = await previews[0]!.execute(
+    expect(JSON.parse(await readFile(baselineFile, "utf8"))).toMatchObject({
+      baselines: [{ scope: { threadId: thread.id } }],
+      schemaVersion: 1
+    });
+
+    const resumedAssembly = createMuseRuntimeAssembly({
+      env: {
+        HOME: directory,
+        MUSE_ATTUNEMENT_FILE: attunementFile,
+        MUSE_NOTES_DIR: notesDir,
+        MUSE_TASKS_FILE: tasksFile
+      }
+    });
+    const resumedPreviews = resumedAssembly.toolRegistry.list().filter(
+      (tool) => tool.definition.name === "muse.continuity.pack.preview"
+    );
+    expect(resumedPreviews).toHaveLength(1);
+    const second = await resumedPreviews[0]!.execute(
       { threadId: thread.id },
       { runId: "preview_2" }
     );
     expect(second).toMatchObject({
-      mutation: false,
+      mutation: true,
+      mutationScope: "internal-comparison-baseline",
       pack: (first as { readonly pack: unknown }).pack,
       previewDigest:
         (first as { readonly previewDigest: string }).previewDigest,
@@ -120,7 +143,9 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
       }
     });
     expect(first).toMatchObject({
-      mutation: false,
+      mutation: true,
+      mutationScope: "internal-comparison-baseline",
+      sourceMutation: false,
       pack: {
         evidenceCount: 1,
         thread: { id: thread.id },
@@ -130,8 +155,8 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
       previewDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
       resume: {
         status: "partial",
-        state: "process-local-baseline-seeded",
-        reason: "no-prior-process-local-baseline",
+        state: "durable-baseline-seeded",
+        reason: "no-prior-durable-baseline",
         authority: {
           canAssertCurrentWorldTruth: false,
           canAssertSourceCompleteness: false,
@@ -160,7 +185,8 @@ describe("normal-chat Continuity Pack preview/open tools", () => {
           preparedAt: expect.any(String)
         }
       },
-      mutation: false,
+      mutation: true,
+      mutationScope: "internal-comparison-baseline",
       previewDigest: (first as { readonly previewDigest: string }).previewDigest
     });
     const capsule = (withCapsule as { readonly capsule: {

@@ -78,10 +78,10 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | completed |
 | **AWG-035a** | Observation Receipt format | Strict content-addressed codec preserves one caller-declared exact projection and source accounting without personal source text | completed |
 | **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | completed |
-| **AWG-040** | Continuity Capsule v1 | Explicit Pack Preview can render the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer from one exact verified comparison | in progress (`AWG-040b/c/d/e1/e2` verified; exact-stop capture, durable baseline, all-source parity, and automatic timing/surfacing pending) |
+| **AWG-040** | Continuity Capsule v1 | Explicit Pack Preview can render the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer from one exact verified comparison | in progress (`AWG-040b/c/d/e1/e2/f` implemented; exact-stop capture, all-source parity, and automatic timing/surfacing pending) |
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
-| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3d3b` independently verified; explicit Pack Preview now dogfoods process-local `resumeContext`, while durable/current-world semantics remain pending) |
+| **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3d3b` independently verified; explicit Pack Preview dogfoods `resumeContext` with a durable-local assembled baseline and process-local direct-construction fallback, while current-world semantics remain pending) |
 | **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | partial (`AWG-050b1` binds fresh decision-time evidence; `AWG-050b2` adds an explicit-CLI return receipt source ledger; `AWG-050b3` adds a verified durable factual return projection; `AWG-050b4` adds a bounded read-only product inspector; automatic timing and usefulness proof remain pending) |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | partial (`AWG-060d` claim-safe read-only compiler/tool independently verified; automatic surfacing, trusted trial/edit/reject writes, apply/rollback controls, and UI pending) |
 | **AWG-065** | Neutral AttuneGraph product boundary | Closed `AttuneGraph*` interface, forbidden-import gate, and Muse integration package keep private Continuity types outside the standalone Engine without copying validation | completed (dependency-free `@attunegraph/core` plus explicit `@muse/attunegraph` integration; no compatibility alias) |
@@ -368,8 +368,13 @@ Shadow ledger or durable database:
   capture-span/timeout/generation checks, and monotonic observation rules prevent stale or
   late work from advancing state. The returned value contains semantic-only frozen resume
   facts and grants no current-world, completeness, or action authority.
-- **AWG-050a3d3b (completed application dogfood):** the existing read-only
-  `muse.continuity.pack.preview` creates one Provider/coordinator per runtime assembly.
+- **AWG-050a3d3b (completed application dogfood):** the explicit owner-invoked
+  `muse.continuity.pack.preview` creates one Provider/coordinator per runtime assembly and
+  may first project its verified observation into the configured rebuildable
+  `muse.local-attunement-timing` AttuneGraph scope, then may update its bounded internal
+  comparison baseline (process-local in this original slice, durable when the AWG-040f host
+  store is injected). Without `MUSE_ATTUNEGRAPH_DATABASE`, only the baseline path is available;
+  neither path mutates a linked source, delivery, outcome, or policy.
   Exact successful results reuse their same immutable Pack through a non-enumerable
   exact-identity sidecar; every unavailable result falls back to the ordinary Pack.
   Pack digest/open/delivery remain isolated and raw Provider, Source, Graph, boundary,
@@ -383,7 +388,7 @@ Shadow ledger or durable database:
   results receive one bounded `exact-compared-evidence-unavailable` Capsule result.
 - **AWG-040e1 (`verified-current` evidence-bound preparation/provenance substrate):** the
   independently verified implementation adds an assembly-scoped service that
-  reuses the process-local coordinator and exposes the read-only
+  reuses the process-local coordinator and exposes the explicit owner-invoked
   `muse.continuity.capsule.prepare` tool with exactly `threadId` and `locale`. Its bounded scope is
   one evidence-bound, display-only proposal; it does not implement or duplicate AWG-050 graph
   hardening or the Shadow decision/return ledger, AWG-060 Policy Card learning controls, or the
@@ -398,7 +403,7 @@ Shadow ledger or durable database:
   estimated minutes value, fixed system title, and display-only/no-action authority. Unsupported
   source classes must fail the state preflight before coordinator/model work and must be
   revalidated from the exact captured result before any provider call. Genuine cross-thread and
-  cross-source substitutions fail with zero provider calls. Durable baseline, all-source parity,
+  cross-source substitutions fail with zero provider calls. All-source parity,
   an authenticated observation witness,
   exact stop capture, automatic timing, Policy Card controls, semantic entailment, and usefulness
   remain roadmap work.
@@ -414,35 +419,65 @@ Shadow ledger or durable database:
   minutes, visible entailment/timing/action caveats, and a source disclosure inside the existing
   Chat scroller. Configured authentication denies anonymous calls, but the underlying evidence
   correctly retains `authenticatedWitness: not-proven`.
+- **AWG-040f (durable explicit-resume baseline):** `@muse/attunegraph` owns a closed versioned
+  portable verified baseline and optional async store port. The assembled host persists at most
+  16 exact scopes in `~/.muse/continuity-resume-baselines.json` by default, reloads and reverifies
+  the Source/Graph boundary before capture or model work, and uses compare-and-set before
+  publishing or mutating process memory. Direct library/test construction without the store
+  retains the process-local fallback. The API and English/Korean Chat state distinguish
+  `durable-local` from `process-local-only`; the durable file is bounded local personal data that
+  serializes the verified Source receipt needed for exact comparison: artifact/provider IDs;
+  thread title/kind; presentation policy/thread metadata; prior outcome; titles/summaries; generic
+  `updatedAt`; and task/reminder/calendar/contact/run/checkpoint/browsing/conversation/work
+  metadata, including tags, dates/times, locations, contact birthday/relationship, run tool names,
+  browsing URL/`visitedAt`, conversation last owner prompt/origin/`updatedAt`, and work
+  counters/status. It retains exact artifact IDs verbatim, including provider-local paths or
+  locator strings; exact serialized source strings are potentially sensitive. The store adds no
+  separate whole-source snapshot, prepared Capsule draft, credential field, permission/action
+  authority, inferred usefulness, or policy promotion.
 
 The full decision and dissent are in
 [Muse Agent-Native Graph Core](../../docs/design/attunement/agent-native-graph-core.md). Those earlier
 fail-closed findings produced AWG-045a/045b and the now verified
 AWG-050a1/050a2a/050a2b1/050a2b2/050a2c seams rather than being bypassed. The Provider
 capture and head-revalidation are trusted host seams, while the graph compiler remains
-private deterministic substrate. The later runtime coordinator now ships bounded,
-process-local `resumeContext` semantics through explicit Pack Preview, but this is not
-durable/current-world truth, automatic timing, or proven user-visible wow. Its independent
+private deterministic substrate. The later runtime coordinator now ships bounded, restart-safe
+local `resumeContext` comparison through assembled explicit Pack Preview, with a compatible
+process-local fallback when no store is injected. This is not current-world truth, automatic
+timing, or proven user-visible wow. Its independent
 completion gates forced per-Provider process ownership,
 shell-before-hidden-state verification, closed Graph binding-receipt semantics, and exact
 scope-derived seed verification before passing. AWG-050b now owns the actual Shadow
 `silent | digest | offer` decision receipt and counterfactual.
 
-## Completed slices: AWG-050a3d3a/b, AWG-040d, AWG-040e1, and AWG-040e2
+## Completed slices: AWG-050a3d3a/b, AWG-040d, AWG-040e1, AWG-040e2, and AWG-040f
 
 - **Product meaning:** call this capability **AttuneGraph-backed explicit resume preview**. The
-  first qualifying Preview seeds one exact process-local baseline; later calls return
+  first qualifying assembled Preview seeds one exact durable-local baseline; a fresh process can
+  compare against it on its first request. Construction without a store retains the exact
+  process-local seeded contract. Later calls return
   bounded change and supporting facts from the verified AttuneGraph path.
-- **Runtime bounds:** one assembly-local coordinator retains at most 16 baselines, admits
-  four concurrent captures globally, rejects same-scope overlap, caps head revalidation at
-  `1,000 ms`, and times out at `5,000 ms` without allowing a late cache write.
+- **Runtime bounds:** one assembly-local coordinator and its durable store retain at most 16
+  baselines, admit
+  four concurrent captures globally, reject same-scope overlap, cap head revalidation at
+  `1,000 ms`, and time out at `5,000 ms` without allowing a late cache write.
 - **Identity and fallback:** successful exact results privately bind the immutable Pack
-  used for their Source receipt. All twelve unavailable reasons use the ordinary Pack;
+  used for their Source receipt. All unavailable reasons use the ordinary Pack;
   copied, spread, cloned, wrapped, or proxy results cannot recover side state.
 - **Tool compatibility:** the completed Pack Preview contract remains compatible:
   `previewDigest` hashes only the Pack,
   `pack.open` stays on its ordinary Pack dependency and records no Graph baseline work, and
-  the Preview remains read-only with no delivery/outcome/policy write. The optional
+  the explicit owner-invoked `muse.continuity.pack.preview` and
+  `muse.continuity.capsule.prepare` tools both declare `write` risk because they may write the
+  bounded internal comparison baseline and, when configured, may first project a durable
+  rebuildable AttuneGraph observation; neither makes a linked-source, delivery, outcome, or
+  policy mutation. Model-driven API/inbound Chat exposes both only through
+  `MUSE_CHAT_WRITE_ENABLED` and the draft-first approval coordinator: denial creates neither
+  projection nor baseline bytes and approval executes once. Tool results separately mark
+  successful completion, each committed, unchanged, or uncertain internal effect, and no
+  linked-source mutation. The explicit local Capsule button remains a direct owner action over
+  the same service and does not add a second chat approval. The
+  optional
   Capsule contains verified render data and content-addressed source-drawer receipt IDs,
   never raw receipts, audits, boundaries, retained inventories, or authority.
 - **AWG-040e1 completion status:** the no-caller-text prepare tool and evidence-bound
@@ -457,8 +492,12 @@ scope-derived seed verification before passing. AWG-050b now owns the actual Sha
   change, never retries automatically, and cannot execute the draft. API adversarial/redaction
   tests and real-Chromium interaction/layout tests are controlled execution evidence, not
   authenticated source observation or organic usefulness evidence.
-- **Still not shipped:** cross-process/durable baseline storage, continuous/current-world
-  freshness, exact automatic stop capture, automatic timing/surfacing, authenticated evidence
+- **AWG-040f completion status:** production assembly enables the strict-private local baseline
+  store by default; loaded values are reverified, same-scope writes use exact-boundary CAS, and
+  Chat/API seeded responses truthfully report whether persistence is restart-safe or session-only.
+  This is durable comparison memory, not a freshness or source-witness claim.
+- **Still not shipped:** continuous/current-world freshness, exact automatic stop capture,
+  automatic timing/surfacing, authenticated evidence
   witness, non-local source parity, semantic entailment verification, Shadow/Policy controls, action
   authority, and organic usefulness qualification remain pending.
 

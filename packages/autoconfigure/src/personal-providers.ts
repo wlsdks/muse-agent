@@ -55,6 +55,7 @@ export {
   resolvePendingApprovalsFile,
   resolveBriefingSidecarFile,
   resolveContactsFile,
+  resolveContinuityResumeBaselinesFile,
   resolveCredentialsFile,
   resolveDiscordAfterFile,
   resolveDiscordInboxFile,

@@ -23,6 +23,15 @@ describe("createMuseRuntimeAssembly end-to-end (diagnostic provider)", () => {
     expect(assembly.modelProvider?.id).toBe("diagnostic");
   });
 
+  it("resolves the durable Continuity baseline store during production assembly", () => {
+    expect(() => createMuseRuntimeAssembly({
+      env: {
+        ...DIAGNOSTIC_ENV,
+        MUSE_CONTINUITY_RESUME_BASELINES_FILE: "relative/baselines.json"
+      }
+    })).toThrow(/MUSE_CONTINUITY_RESUME_BASELINES_FILE.*absolute normalized/u);
+  });
+
   it("runs a direct-answer turn through the full stack", async () => {
     const result = await assembly.agentRuntime!.run({
       messages: [{ content: "hello there", role: "user" }],

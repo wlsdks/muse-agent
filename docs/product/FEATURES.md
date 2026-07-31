@@ -555,14 +555,17 @@ thread, not a hidden global preference.
   usefulness evidence remain roadmap.
 - **Continuity Capsule** — aims to restore the stopping point, changes, grounds, next steps,
   prepared work, and estimated time. Today, legacy caller-declared render data is joined by an
-  evidence-bound preparation substrate: after an exact process-local comparison, one configured
-  model may return a display-only draft whose claims cite exact current task/note/reminder source
-  keys. The empty Chat session exposes this through an explicit owner action and a closed,
-  no-store English/Korean card; rendering alone makes no model call, the first request may only
-  seed the process-local baseline, and the ready state shows recorded/current next steps,
-  relation changes, estimated work, and source/authority caveats without executing anything.
-  Citation membership is verified; semantic entailment, authenticated source observation, exact
-  stop capture, durable baseline, automatic timing/surfacing, and usefulness remain roadmap.
+  evidence-bound preparation substrate. The assembled host defaults to a bounded durable-local
+  comparison baseline with at most 16 entries, so a fresh process can compare with an earlier
+  observation; direct library or test construction without a baseline store falls back to
+  process-local comparison. After comparison, one configured model may return a display-only draft
+  whose claims cite exact current task/note/reminder source keys. The empty Chat session exposes
+  this through an explicit owner action and a closed, no-store English/Korean card; rendering alone
+  makes no model call, a request with no earlier baseline seeds one, and the ready state shows
+  recorded/current next steps, relation changes, estimated work, and source/authority caveats
+  without executing anything. Citation membership is verified; semantic entailment, current
+  freshness, authenticated observation witness, all-source parity, exact stop capture, automatic
+  timing/surfacing, and usefulness remain roadmap.
 - **Policy Card** — today, an explicit read-only preview shows the grounds and thread scope of a
   proposed collaboration rule while separating authoritative experience, caller-supplied replay
   claims, and AttuneGraph explanation. Automatic surfacing and trusted try/edit/reject/undo

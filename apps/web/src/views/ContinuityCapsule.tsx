@@ -33,7 +33,9 @@ export type ContinuityCapsulePrepareResponse =
   | Readonly<{
       readonly schemaVersion: 1;
       readonly status: "seeded";
-      readonly baselineDurability: "process-local-only";
+      readonly baselineDurability:
+        | "durable-local"
+        | "process-local-only";
     }>
   | Readonly<{
       readonly schemaVersion: 1;
@@ -497,10 +499,18 @@ export function ContinuityCapsuleFlow({
         {visible?.status === "seeded" ? (
           <div role="status" aria-live="polite">
             <div className="row-title">
-              {t("chat.continuityCapsule.seededTitle")}
+              {t(
+                visible.baselineDurability === "durable-local"
+                  ? "chat.continuityCapsule.seededDurableTitle"
+                  : "chat.continuityCapsule.seededProcessLocalTitle"
+              )}
             </div>
             <div className="row-meta">
-              {t("chat.continuityCapsule.seededBody")}
+              {t(
+                visible.baselineDurability === "durable-local"
+                  ? "chat.continuityCapsule.seededDurableBody"
+                  : "chat.continuityCapsule.seededProcessLocalBody"
+              )}
             </div>
           </div>
         ) : null}
