@@ -76,6 +76,38 @@ export interface InteractionReport {
   };
 }
 
+type ShadowReturnGraphStatus = "linked" | "not-linked" | "incomplete" | "unavailable" | "not-configured";
+
+export interface ShadowReturnReport {
+  readonly limit: number;
+  readonly rows: readonly {
+    readonly graph: { readonly status: ShadowReturnGraphStatus };
+    readonly receipt: {
+      readonly authority: {
+        readonly actionGranted: false;
+        readonly causality: "not-claimed";
+        readonly feedback: "not-inferred";
+        readonly outcome: "not-inferred";
+        readonly reconstructionBenefit: "unassessed";
+      };
+      readonly candidateId: string;
+      readonly decisionAt: string;
+      readonly deliveryId: string;
+      readonly elapsedMs: number;
+      readonly formatVersion: "muse.attunegraph.shadow-return.v1";
+      readonly id: string;
+      readonly matchRule: string;
+      readonly openedAt: string;
+      readonly schemaVersion: 1;
+      readonly sessionId: string;
+      readonly threadId: string;
+      readonly trigger: "cli-continue";
+    };
+    readonly schemaVersion: 1;
+  }[];
+  readonly schemaVersion: 1;
+}
+
 interface ReviewResponse {
   readonly calendarProviders?: readonly { readonly displayName: string; readonly id: string }[];
   readonly deliveries: readonly {
@@ -292,6 +324,54 @@ export function InteractionEvidenceCard({ report }: { readonly report: Interacti
   </Card>;
 }
 
+export function ShadowReturnCard({
+  error,
+  loading,
+  locale,
+  report
+}: {
+  readonly error: boolean;
+  readonly loading: boolean;
+  readonly locale: string;
+  readonly report?: ShadowReturnReport;
+}) {
+  const { t } = useI18n();
+  const rows = report?.rows ?? [];
+  return <Card>
+    <h2 className="row-title" id="shadow-return-title">{t("continuity.shadowReturnTitle")}</h2>
+    <p className="row-meta">{t("continuity.shadowReturnExplanation")}</p>
+    <p className="row-meta" style={{ marginBottom: 0 }}>{t("continuity.shadowReturnBoundary")}</p>
+    {loading ? <p className="row-meta" role="status">{t("continuity.shadowReturnLoading")}</p> : null}
+    {!loading && error ? <p className="banner err" role="alert" style={{ marginBottom: 0 }}>{t("continuity.shadowReturnLoadError")}</p> : null}
+    {!loading && !error && rows.length === 0 ? <p className="row-meta" style={{ marginBottom: 0 }}>{t("continuity.shadowReturnEmpty")}</p> : null}
+    {!loading && !error && rows.map(({ graph, receipt }) => <article aria-labelledby={`shadow-return-${receipt.id}`} key={receipt.id} style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}>
+      <div style={{ alignItems: "flex-start", display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "space-between" }}>
+        <div>
+          <div className="row-title" id={`shadow-return-${receipt.id}`}>{t("continuity.shadowReturnRecorded", { openedAt: new Date(receipt.openedAt).toLocaleString(locale) })}</div>
+          <div className="row-meta">{t("continuity.shadowReturnElapsed", { elapsed: elapsedLabel(receipt.elapsedMs, locale) })}</div>
+        </div>
+        <Badge tone={graph.status === "linked" ? "ok" : graph.status === "unavailable" ? "err" : "warn"}>{t(`continuity.shadowReturnStatus.${graph.status}`)}</Badge>
+      </div>
+      <details style={{ marginTop: 10 }}>
+        <summary className="field-label" style={{ cursor: "pointer" }}>{t("continuity.shadowReturnDetails")}</summary>
+        <div className="row-meta" style={{ marginTop: 8 }}>{t("continuity.shadowReturnTimes", {
+          decisionAt: new Date(receipt.decisionAt).toLocaleString(locale),
+          openedAt: new Date(receipt.openedAt).toLocaleString(locale)
+        })}</div>
+        <div className="row-meta">{t("continuity.shadowReturnIds", {
+          candidateId: receipt.candidateId,
+          deliveryId: receipt.deliveryId,
+          id: receipt.id,
+          sessionId: receipt.sessionId,
+          threadId: receipt.threadId
+        })}</div>
+        <div className="row-meta">{t("continuity.shadowReturnSource", { matchRule: receipt.matchRule, trigger: receipt.trigger })}</div>
+        <div className="row-meta">{t("continuity.shadowReturnAuthority")}</div>
+      </details>
+    </article>)}
+  </Card>;
+}
+
 function decisionMetric(evaluation: KindEvaluation, id: string): DecisionMetric | undefined {
   return evaluation.measurements?.find((metric) => metric.id === id);
 }
@@ -302,6 +382,17 @@ function metricRate(metric: DecisionMetric | undefined): string {
 
 function kindLabel(kind: Kind): string {
   return kind === "life" ? "Life" : "Work";
+}
+
+function elapsedLabel(elapsedMs: number, locale: string): string {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const korean = locale.startsWith("ko");
+  if (hours > 0) return korean ? `${hours}시간 ${minutes}분` : `${hours}h ${minutes}m`;
+  if (minutes > 0) return korean ? `${minutes}분 ${seconds}초` : `${minutes}m ${seconds}s`;
+  return korean ? `${seconds}초` : `${seconds}s`;
 }
 
 function outcomeTone(outcome: Outcome | undefined): "ok" | "warn" | "err" | "neutral" {
@@ -609,6 +700,10 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
     queryFn: () => client.get<InteractionReport>("/api/attunement/interactions"),
     queryKey: ["attunement-interactions", client.baseUrl]
   });
+  const shadowReturns = useQuery({
+    queryFn: () => client.get<ShadowReturnReport>("/api/attunement/shadow-returns"),
+    queryKey: ["attunement-shadow-returns", client.baseUrl]
+  });
   const invalidateContinuity = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: ["attunement-interactions", client.baseUrl] }),
     queryClient.invalidateQueries({ queryKey: ["attunement-review", client.baseUrl] })
@@ -684,6 +779,9 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
       <p className="eyebrow">{t("group.knowledge")}</p>
       <h1 className="page-title">{t("continuity.title")}</h1>
       <p className="muted" style={{ marginTop: 4 }}>{t("continuity.subtitle")}</p>
+      <div style={{ marginTop: 16 }}>
+        <ShadowReturnCard error={shadowReturns.isError} loading={shadowReturns.isLoading} locale={locale} report={shadowReturns.data} />
+      </div>
 
       <AsyncBlock loading={review.isLoading} error={review.error} empty={false}>
         {data ? (

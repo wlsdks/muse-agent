@@ -26,6 +26,10 @@
       "types": "./dist/admin.d.ts",
       "import": "./dist/admin.js"
     },
+    "./readonly-working-graph": {
+      "types": "./dist/readonly-working-graph.d.ts",
+      "import": "./dist/readonly-working-graph.js"
+    },
     "./extension-kit": {
       "types": "./dist/extension-kit.d.ts",
       "import": "./dist/extension-kit.js"

@@ -192,7 +192,7 @@ piece got.
 | --- | --- |
 | AttuneGraph engine | Exact projection, *"what changed since I stopped"*, content-addressed receipts, bounded resume compilation, canonical `.atgx`, a worker-isolated SQLite journal, an explicit opt-in Continuity Preview writer, and the offline read-only `muse attunegraph inspect` Lens — verified engine substrate; write/repair/live-web Admin and default automatic ingestion/delivery remain roadmap |
 | Continuity Capsule | Render data returned from an explicit API call. No product UI, no automatic timing |
-| Shadow Muse | The ledger records the decision and, after an explicit CLI Pack open, a bounded return association. It does not surface on its own or treat return as feedback, usefulness, outcome, or causality |
+| Shadow Muse | The ledger records the decision and, after an explicit CLI Pack open, a bounded return association. The Continuity screen can now show that source receipt and whether its exact two-relation AttuneGraph pair is active. It does not record Web returns, surface automatically, or treat return as feedback, usefulness, outcome, causality, permission, or success |
 | Policy Card | An explicit read-only compiler and `muse.continuity.learning.policy-card.preview` tool return English/Korean render data from one fresh local snapshot. No automatic surfacing, UI, edit/reject/trial write, policy mutation, or action |
 
 ### Roadmap
@@ -216,8 +216,12 @@ The first return seam is intentionally narrower than a usefulness claim: after e
 latest strictly prior eligible Shadow candidate. When the explicit AttuneGraph database is
 configured, Muse rebuilds a complete reserved-scope snapshot containing only the factual paths
 `Decision → PRECEDED → Delivery` and `Evidence → OBSERVED_DURING → Thread`. The receipt remains
-authoritative; automatic return detection, usefulness validation, and physical journal erasure are
-still roadmap work.
+authoritative. The authenticated Continuity screen now reads at most 20 persisted receipts and
+shows `linked | not-linked | incomplete | unavailable | not-configured`; only one complete,
+untruncated Working Graph containing the exact active pair becomes `linked`. The card is
+read-only and describes the interval from the earlier Shadow decision to the explicit CLI Pack
+open—not “time saved” or a successful return. Automatic return detection, usefulness validation,
+write/repair Admin, and physical journal erasure are still roadmap work.
 
 It is deliberately built as an independently extractable module — Muse is its first consumer and
 dogfood environment. The public interface, adapter boundaries and repository-split plan are fixed in
@@ -243,6 +247,10 @@ What is verified today, and what those words do **not** mean:
 - The public `@attunegraph/core/admin` Interface and `muse attunegraph inspect` Lens can inspect
   summary, integrity, and one exact scope head from an explicitly attested closed/quiescent store.
   They do not inspect a live writer, repair data, expose raw SQL, or provide the future web Admin.
+- `GET /api/attunement/shadow-returns` and the existing Continuity screen form a separate
+  Muse-product inspector over the source timing ledger plus bounded Working Graph. They do not
+  extend `@attunegraph/core/admin`, inspect physical SQLite state, record returns, mutate the
+  graph, or infer that a Pack helped.
 - Observation receipts are *caller-declared* integrity evidence. They prove bytes and boundaries —
   not that Muse observed you, and not your exact stopping point.
 - Freshness is honest by construction: only exact endpoint equality under a bounded head

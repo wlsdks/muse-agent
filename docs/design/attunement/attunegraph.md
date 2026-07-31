@@ -240,7 +240,14 @@ The configured `AWG-050b3` composition keeps that source authority intact while 
 complete reserved `muse.local-attunement-timing` scope. It emits only
 `Decision PRECEDED Delivery` and return `Evidence OBSERVED_DURING Thread`; both are queryable
 through the bounded Working Graph and cannot become feedback, outcome, causality, policy,
-action, or permission. Before its first
+action, or permission. The read-only `AWG-050b4` product inspector reads one current persisted
+timing snapshot, keeps the receipt primary, and reports `linked` only for one complete,
+untruncated reserved-scope Working Graph containing the exact active pair. Partial/truncated
+output is `incomplete`; configured graph failure is `unavailable`; no configured database is
+`not-configured`. Its authenticated Continuity card exposes the factual interval from the earlier
+Shadow decision to the explicit CLI Pack open and the existing authority denials, not a saved-time,
+helpfulness, or successful-return claim. It neither records returns nor uses the physical Admin
+Interface. Before its first
 return-bearing timing-schema-v3 write, Muse preserves the exact validated pre-v3 bytes at
 `<timing-file>.pre-v3.json`; rollback must restore that file before reverting code and can
 therefore lose timing-only writes made after the backup.

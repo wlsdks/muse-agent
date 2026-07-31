@@ -52,7 +52,9 @@ The signature experience path is **Shadow Muse → Continuity Capsule → Policy
 learns in silence, then restores the state the user meant to continue along with what changed since,
 then shows the next collaboration rule with its evidence, scope and rollback. The complete
 automatic path remains roadmap; an explicit inert Policy Card render-data preview is available
-without policy mutation or action. **AttuneGraph**
+without policy mutation or action. The existing Continuity screen also has a bounded read-only
+Shadow Return inspector for exact explicit-CLI source receipts and graph-pair status; it does not
+record returns or claim usefulness. **AttuneGraph**
 behind it is not a heavy server duplicating existing stores; it is an
 agent-native personal context compiler that links time, relationships and provenance as a
 regenerable projection and builds only the small Working Graph each turn needs

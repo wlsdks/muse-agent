@@ -82,7 +82,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
 | **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3d3b` independently verified; explicit Pack Preview now dogfoods process-local `resumeContext`, while durable/current-world semantics remain pending) |
-| **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | partial (`AWG-050b1` binds fresh decision-time evidence; `AWG-050b2` adds an explicit-CLI return receipt source ledger; `AWG-050b3` adds a verified durable factual return projection; automatic timing, card, and usefulness proof remain pending) |
+| **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | partial (`AWG-050b1` binds fresh decision-time evidence; `AWG-050b2` adds an explicit-CLI return receipt source ledger; `AWG-050b3` adds a verified durable factual return projection; `AWG-050b4` adds a bounded read-only product inspector; automatic timing and usefulness proof remain pending) |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | partial (`AWG-060d` claim-safe read-only compiler/tool independently verified; automatic surfacing, trusted trial/edit/reject writes, apply/rollback controls, and UI pending) |
 | **AWG-065** | Neutral AttuneGraph product boundary | Closed `AttuneGraph*` interface, forbidden-import gate, and Muse integration package keep private Continuity types outside the standalone Engine without copying validation | completed (dependency-free `@attunegraph/core` plus explicit `@muse/attunegraph` integration; no compatibility alias) |
 | **AWG-070** | SQLite AttuneGraph Store v1 | Implement the selected worker-isolated `node:sqlite` default behind the AttuneGraph Store contract with version-gated physical profile, journal replay, indexes, restart/crash/corruption tests, portable export, and 10K/100K/1M operator benchmarks; record measured TS/SQLite optimization and activate a Rust kernel only when end-to-end evidence justifies it | partial (`AWG-070a1` durable projection journal, `AWG-070a2` typed Worker boundary, the `.atgx` encoder/decoder/order/budget/non-retention chain through `AWG-070a3a1a4b`, indexed validation `a4c`, POSIX staging lifecycle `a4d`, Admin protocol/fail-stop spine `a4e1`, shared physical-schema/read-only inspector core `a4e2a`, parent-owned closed-store offline snapshot lease `a4e2b1`, dedicated read-only Admin Worker/application `a4e2b2`, and public offline `./admin` plus Muse Lens CLI `a4e2b3` independently verified; export/rebuild/activation, write/repair/live-web Admin, backup, physical forget, complete profile/corpus, and 10K/100K/1M benchmarks pending) |
@@ -269,6 +269,20 @@ timing in real life.
   naming/environment/document gates, changed-scope tests, full workspace build/tests, and
   repository self-evaluation passed. This does not prove automatic timing quality, user
   usefulness, or physical erasure.
+- **AWG-050b4 is `verified-current`:** one authenticated read path now reads the exact
+  capability-authenticated timing snapshot once, returns at most 20 deterministic source
+  receipts, and optionally corroborates their exact active two-relation pairs through one
+  bounded Working Graph read per selected thread. Partial/truncated output is
+  `incomplete`, configured read failure is isolated as `unavailable`, and no database is
+  `not-configured`; only complete exact cardinality is `linked`. The existing Continuity
+  screen renders the factual decision-to-explicit-CLI-open interval, authority denials,
+  status, and source drawer in English/Korean without a mutation or review control. It is
+  not Web return recording, automatic timing, usefulness/success evidence,
+  `@attunegraph/core/admin`, physical inspection, write/repair, or owner-review semantics.
+  A fresh Sol/high completion evaluator passed the latest-main implementation after
+  focused adversarial and physical non-mutation suites, Browser Mode, changed-scope
+  tests, affected package builds/typechecks, full API and CLI suites, document/static
+  gates, and repeated isolation of the two unrelated default-parallel load flakes.
 
 ## Current 050a3 activation
 

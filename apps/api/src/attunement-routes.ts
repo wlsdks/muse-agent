@@ -3,7 +3,7 @@ import { realpath } from "node:fs/promises";
 import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, buildExperienceLearningProposalPreview, buildExperienceLearningReplayBundle, buildExperienceLearningReviewQueue, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, ExperienceLearningPromotionError, fingerprintContinuityPolicy, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TEMPLATE, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, promoteApprovedExperienceLearningContinuityPolicy, proposeExperienceLearningFromDelivery, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, verifyExperienceLearningApprovalReceipt, type ArtifactLinkValidator, type ExactArtifactResolver, type ExperienceLearningPromotionReceipt } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
 import type { ContinuityOutcome, ExperienceLearningProposalDraft, ObserveConsentGrant, OpenPreparedContinuityPack } from "@muse/attunement";
-import { createQualificationLearningWriteGate } from "@muse/autoconfigure";
+import { createQualificationLearningWriteGate, readConfiguredContinuityShadowReturns, type ShadowReturnInspectionReport } from "@muse/autoconfigure";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { readExactBrowsingVisit } from "@muse/recall";
 import { isCanonicalWorkspaceRealpath } from "@muse/shared";
@@ -27,6 +27,8 @@ export interface AttunementRoutesGate {
   readonly now?: () => number;
   readonly openContinuityPack?: OpenPreparedContinuityPack;
   readonly remindersFile?: string;
+  /** Narrow read seam for tests; production uses the configured local ledger reader. */
+  readonly readContinuityShadowReturns?: (input: Readonly<{ readonly limit: number; readonly now: string; readonly timingFile: string }>) => Promise<ShadowReturnInspectionReport>;
   readonly tasksFile: string;
   readonly worksFile?: string;
   /** Explicit authority for workspace-scoped run evidence. No cwd fallback. */
@@ -37,6 +39,34 @@ function sendObserveFailure(reply: FastifyReply, cause: unknown): FastifyReply {
   if (!(cause instanceof ObserveStoreError)) throw cause;
   const status = cause.code === "invalid" ? 400 : cause.code === "not-found" ? 404 : 409;
   return reply.code(status).send({ errorMessage: cause.message });
+}
+
+type ShadowReturnQuery = Readonly<Record<string, unknown>>;
+
+function parseShadowReturnLimit(value: unknown): { readonly limit: number } | { readonly errorMessage: string } {
+  if (
+    typeof value !== "object"
+    || value === null
+    || Array.isArray(value)
+  ) {
+    return { errorMessage: "shadow return query has unknown fields" };
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Object.keys(descriptors);
+  if (
+    keys.some((key) =>
+      key !== "limit"
+      || !("value" in descriptors[key]!)
+    )
+  ) {
+    return { errorMessage: "shadow return query has unknown fields" };
+  }
+  if (!Object.hasOwn(descriptors, "limit")) return { limit: 20 };
+  const limit = descriptors.limit!.value;
+  if (typeof limit !== "string" || !/^(?:[1-9]|1[0-9]|20)$/u.test(limit)) {
+    return { errorMessage: "limit must be one canonical integer from 1 through 20" };
+  }
+  return { limit: Number(limit) };
 }
 
 /** Read-only evaluation: it never resolves sources or opens a Continuity delivery. */
@@ -115,6 +145,24 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     const state = await readAttunementState(gate.attunementFile);
     if (!state.threads.some((thread) => thread.id === threadId)) throw new Error(`no personal thread with id '${threadId}'`);
   };
+
+  server.get<{ Querystring: ShadowReturnQuery }>("/api/attunement/shadow-returns", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    const query = parseShadowReturnLimit(request.query);
+    if ("errorMessage" in query) return reply.code(400).send(query);
+    try {
+      const input = Object.freeze({
+        limit: query.limit,
+        now: new Date(gate.now?.() ?? Date.now()).toISOString(),
+        timingFile
+      });
+      return gate.readContinuityShadowReturns
+        ? await gate.readContinuityShadowReturns(input)
+        : await readConfiguredContinuityShadowReturns(gate.env ?? process.env, input);
+    } catch {
+      return reply.code(500).send({ errorMessage: "shadow return source is unavailable" });
+    }
+  });
 
   server.get("/api/attunement/observe/consent", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;

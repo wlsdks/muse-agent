@@ -1,9 +1,10 @@
-import { mkdtemp, realpath, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   evaluateTimingSession,
+  emptyTimingState,
   recordAttuneGraphShadowReturn,
   startTimingSession
 } from "@muse/attunement";
@@ -18,7 +19,8 @@ import { expect, it } from "vitest";
 
 import {
   createConfiguredContinuityAttuneGraphProjector,
-  projectConfiguredContinuityAttuneGraphCurrentState
+  projectConfiguredContinuityAttuneGraphCurrentState,
+  readConfiguredContinuityShadowReturns
 } from "../src/continuity-attunegraph-composition.js";
 
 it("keeps absent and exactly empty AttuneGraph configuration disabled", () => {
@@ -26,6 +28,23 @@ it("keeps absent and exactly empty AttuneGraph configuration disabled", () => {
   expect(createConfiguredContinuityAttuneGraphProjector({
     MUSE_ATTUNEGRAPH_DATABASE: ""
   })).toBeUndefined();
+});
+
+it("reads an empty valid timing ledger once without mutating its source bytes", async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "muse-configured-return-read-")));
+  const timingFile = join(directory, "attunement.timing.json");
+  await writeFile(timingFile, `${JSON.stringify(emptyTimingState())}\n`);
+  const before = await readFile(timingFile);
+
+  const report = await readConfiguredContinuityShadowReturns({}, {
+    now: "2026-07-31T02:00:00.000Z",
+    timingFile
+  });
+
+  expect(report).toEqual({ limit: 20, rows: [], schemaVersion: 1 });
+  expect(Object.isFrozen(report)).toBe(true);
+  expect(Object.isFrozen(report.rows)).toBe(true);
+  expect(await readFile(timingFile)).toEqual(before);
 });
 
 it("creates only an explicit absolute projector and fails invalid non-empty configuration closed", () => {

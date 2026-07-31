@@ -1,6 +1,8 @@
 import { expect, expectTypeOf, it } from "vitest";
 
+import type { AttuneGraphExecuteCommand } from "@attunegraph/core";
 import * as admin from "@attunegraph/core/admin";
+import * as readonlyWorkingGraph from "@attunegraph/core/readonly-working-graph";
 import type {
   AttuneGraphAdminErrorCode,
   AttuneGraphAdminHeadResult,
@@ -9,12 +11,26 @@ import type {
   AttuneGraphScope,
   OpenAttuneGraphAdminReadonlyApplicationOptions
 } from "@attunegraph/core/admin";
+import type {
+  ReadLocalAttuneGraphWorkingGraphOptions
+} from "@attunegraph/core/readonly-working-graph";
 
 it("exposes the exact production readonly Admin runtime allowlist", () => {
   expect(Object.keys(admin).sort()).toEqual([
     "AttuneGraphAdminReadonlyError",
     "openAttuneGraphAdminReadonlyApplication"
   ]);
+});
+
+it("exposes one capability-narrow readonly Working Graph runtime", () => {
+  expect(Object.keys(readonlyWorkingGraph)).toEqual([
+    "readLocalAttuneGraphWorkingGraph"
+  ]);
+  expectTypeOf<ReadLocalAttuneGraphWorkingGraphOptions>().toEqualTypeOf<{
+    readonly command: AttuneGraphExecuteCommand;
+    readonly databasePath: string;
+    readonly scope: AttuneGraphScope;
+  }>();
 });
 
 it("exposes the closed standalone Admin type contract", () => {

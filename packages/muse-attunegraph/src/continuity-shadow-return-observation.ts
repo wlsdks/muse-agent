@@ -11,7 +11,9 @@ import type {
   GraphEvidenceRef,
   GraphRef
 } from "@attunegraph/core";
-import { openLocalAttuneGraph } from "@attunegraph/core/local";
+import {
+  readLocalAttuneGraphWorkingGraph
+} from "@attunegraph/core/readonly-working-graph";
 import {
   evidenceRefKey,
   graphRefKey,
@@ -470,17 +472,13 @@ export async function readContinuityShadowReturnWorkingGraph(
   options: ReadContinuityShadowReturnWorkingGraphOptions
 ): Promise<AttuneGraphOperatorResult> {
   const normalized = workingGraphOptionsRecord(options);
-  const graph = await openLocalAttuneGraph({
+  return readLocalAttuneGraphWorkingGraph({
     databasePath: normalized.databasePath,
     scope: {
       sourceId: continuityCompositeSourceId,
       threadId: normalized.threadId
-    }
-  });
-  let primaryFailure: unknown;
-  let result: AttuneGraphOperatorResult | undefined;
-  try {
-    result = await graph.execute({
+    },
+    command: {
       operator: "working-graph@1",
       seed: deriveContinuityThreadGraphRef(
         continuityCompositeSourceId,
@@ -488,15 +486,280 @@ export async function readContinuityShadowReturnWorkingGraph(
       ),
       now: normalized.now,
       maxEstimatedTokens: normalized.maxEstimatedTokens
-    });
-  } catch (cause) {
-    primaryFailure = cause;
+    }
+  });
+}
+
+export type ShadowReturnInspectionStatus =
+  | "linked"
+  | "not-linked"
+  | "incomplete"
+  | "unavailable"
+  | "not-configured";
+
+export interface InspectContinuityShadowReturnsInput {
+  readonly databasePath: string | undefined;
+  readonly limit: number;
+  readonly maxEstimatedTokens: number;
+  readonly now: string;
+  /** Capability returned by readTimingState; lookalike objects are refused. */
+  readonly timingState: unknown;
+}
+
+export interface ShadowReturnInspectionRow {
+  readonly schemaVersion: 1;
+  readonly receipt: AttuneGraphShadowReturnReceipt;
+  readonly graph: Readonly<{
+    readonly status: ShadowReturnInspectionStatus;
+  }>;
+}
+
+export interface ShadowReturnInspectionReport {
+  readonly schemaVersion: 1;
+  readonly limit: number;
+  readonly rows: readonly ShadowReturnInspectionRow[];
+}
+
+interface ContinuityShadowReturnInspectorDependencies {
+  readonly readWorkingGraph: (
+    options: ReadContinuityShadowReturnWorkingGraphOptions
+  ) => Promise<AttuneGraphOperatorResult>;
+}
+
+function inspectorInputRecord(
+  value: unknown
+): InspectContinuityShadowReturnsInput {
+  return exactDataRecord(
+    value,
+    ["databasePath", "limit", "maxEstimatedTokens", "now", "timingState"],
+    "Shadow-return inspection input"
+  ) as unknown as InspectContinuityShadowReturnsInput;
+}
+
+function validateInspectorInput(
+  input: InspectContinuityShadowReturnsInput
+): void {
+  if (input.databasePath !== undefined && typeof input.databasePath !== "string") {
+    fail("INVALID_INPUT", "databasePath must be a string or undefined");
   }
+  if (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 20) {
+    fail("INVALID_INPUT", "limit must be an integer from 1 through 20");
+  }
+  if (!Number.isSafeInteger(input.maxEstimatedTokens) || input.maxEstimatedTokens < 1) {
+    fail("INVALID_INPUT", "maxEstimatedTokens must be a positive safe integer");
+  }
+  if (typeof input.now !== "string") {
+    fail("INVALID_INPUT", "now must be a string");
+  }
+}
+
+function cloneAndFreeze<T>(value: T): T {
+  const clone = structuredClone(value);
+  const seen = new WeakSet<object>();
+  const freeze = (current: unknown): void => {
+    if (typeof current !== "object" || current === null || seen.has(current)) return;
+    seen.add(current);
+    for (const child of Object.values(current)) freeze(child);
+    Object.freeze(current);
+  };
+  freeze(clone);
+  return clone;
+}
+
+function sameGraphRef(left: unknown, right: GraphRef): boolean {
+  return typeof left === "object"
+    && left !== null
+    && !Array.isArray(left)
+    && (left as GraphRef).kind === right.kind
+    && (left as GraphRef).id === right.id;
+}
+
+function sameEvidenceRef(left: unknown, right: GraphEvidenceRef): boolean {
+  return typeof left === "object"
+    && left !== null
+    && !Array.isArray(left)
+    && (left as GraphEvidenceRef).namespace === right.namespace
+    && (left as GraphEvidenceRef).id === right.id
+    && (left as GraphEvidenceRef).version === right.version;
+}
+
+function exactActiveReturnAssertion(
+  assertion: unknown,
+  expected: Readonly<{
+    readonly subject: GraphRef;
+    readonly predicate: "OBSERVED_DURING" | "PRECEDED";
+    readonly object: GraphRef;
+    readonly sourceRef: GraphEvidenceRef;
+    readonly openedAt: string;
+  }>
+): boolean {
+  if (typeof assertion !== "object" || assertion === null || Array.isArray(assertion)) {
+    return false;
+  }
+  const value = assertion as GraphAssertion;
+  return value.predicate === expected.predicate
+    && sameGraphRef(value.subject, expected.subject)
+    && sameGraphRef(value.object, expected.object)
+    && value.epistemicClass === "source-observed"
+    && Array.isArray(value.sourceRefs)
+    && value.sourceRefs.length === 1
+    && sameEvidenceRef(value.sourceRefs[0], expected.sourceRef)
+    && value.recordedAt === expected.openedAt
+    && value.validFrom === expected.openedAt
+    && !Object.hasOwn(value, "validTo")
+    && !Object.hasOwn(value, "supersededAt")
+    && value.derivation?.kind === "projection"
+    && value.derivation.version === continuityShadowReturnProjectionRuleVersion;
+}
+
+function completeWorkingGraphForThread(
+  value: unknown,
+  threadId: string
+): readonly GraphAssertion[] | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const result = value as AttuneGraphOperatorResult;
+  if (
+    result.operator !== "working-graph@1"
+    || result.status !== "complete"
+    || !sameGraphRef(
+      result.workingGraph?.seed,
+      deriveContinuityThreadGraphRef(continuityCompositeSourceId, threadId)
+    )
+    || result.snapshot?.scope?.sourceId !== continuityCompositeSourceId
+    || result.snapshot.scope.threadId !== threadId
+    || !Array.isArray(result.workingGraph?.assertions)
+    || !Array.isArray(result.workingGraph?.diagnostics?.truncationReasons)
+    || result.workingGraph.diagnostics.truncationReasons.length !== 0
+  ) {
+    return undefined;
+  }
+  return result.workingGraph.assertions;
+}
+
+function graphStatusForReceipt(
+  result: unknown,
+  receipt: AttuneGraphShadowReturnReceipt
+): ShadowReturnInspectionStatus {
   try {
-    await graph.close();
-  } catch (cause) {
-    primaryFailure ??= cause;
+    const assertions = completeWorkingGraphForThread(result, receipt.threadId);
+    if (assertions === undefined) return "incomplete";
+    const sourceRef = deriveContinuityShadowReturnSourceRef(
+      continuityCompositeSourceId,
+      receipt
+    );
+    const preceding = assertions.filter((assertion) =>
+      exactActiveReturnAssertion(assertion, {
+        subject: deriveContinuityShadowDecisionGraphRef(
+          continuityCompositeSourceId,
+          receipt.candidateId
+        ),
+        predicate: "PRECEDED",
+        object: deriveContinuityDeliveryGraphRef(
+          continuityCompositeSourceId,
+          receipt.deliveryId
+        ),
+        sourceRef,
+        openedAt: receipt.openedAt
+      })
+    );
+    const observedDuring = assertions.filter((assertion) =>
+      exactActiveReturnAssertion(assertion, {
+        subject: deriveContinuityShadowReturnEvidenceGraphRef(
+          continuityCompositeSourceId,
+          receipt.id
+        ),
+        predicate: "OBSERVED_DURING",
+        object: deriveContinuityThreadGraphRef(
+          continuityCompositeSourceId,
+          receipt.threadId
+        ),
+        sourceRef,
+        openedAt: receipt.openedAt
+      })
+    );
+    return preceding.length === 1 && observedDuring.length === 1
+      ? "linked"
+      : "not-linked";
+  } catch {
+    return "incomplete";
   }
-  if (primaryFailure !== undefined) throw primaryFailure;
-  return result!;
+}
+
+async function inspectContinuityShadowReturnsWithDependencies(
+  input: InspectContinuityShadowReturnsInput,
+  dependencies: ContinuityShadowReturnInspectorDependencies
+): Promise<ShadowReturnInspectionReport> {
+  const normalized = inspectorInputRecord(input);
+  validateInspectorInput(normalized);
+  let timingState;
+  try {
+    timingState = verifyPersistedTimingState(normalized.timingState);
+  } catch (cause) {
+    fail(
+      "INVALID_INPUT",
+      "timingState must be the current persisted timing snapshot",
+      cause
+    );
+  }
+  const receipts = timingState.returns.slice().sort((left, right) =>
+    right.openedAt.localeCompare(left.openedAt) || left.id.localeCompare(right.id)
+  ).slice(0, normalized.limit);
+  const configured = normalized.databasePath !== undefined && normalized.databasePath !== "";
+  const graphByThread = new Map<string, unknown>();
+  const unavailableThreads = new Set<string>();
+  if (configured) {
+    await Promise.all([...new Set(receipts.map((receipt) => receipt.threadId))].map(
+      async (threadId) => {
+        try {
+          const result = await dependencies.readWorkingGraph({
+            databasePath: normalized.databasePath!,
+            maxEstimatedTokens: normalized.maxEstimatedTokens,
+            now: normalized.now,
+            threadId
+          });
+          graphByThread.set(threadId, result);
+        } catch {
+          unavailableThreads.add(threadId);
+        }
+      }
+    ));
+  }
+  const report = {
+    schemaVersion: 1 as const,
+    limit: normalized.limit,
+    rows: receipts.map((receipt) => ({
+      schemaVersion: 1 as const,
+      receipt,
+      graph: {
+        status: configured
+          ? unavailableThreads.has(receipt.threadId)
+            ? "unavailable"
+            : graphStatusForReceipt(graphByThread.get(receipt.threadId), receipt)
+          : "not-configured" as const
+      }
+    }))
+  };
+  return cloneAndFreeze(report);
+}
+
+/**
+ * Inspects persisted Shadow-return facts and optionally corroborates their exact
+ * active projection pair. It never writes either the timing ledger or graph.
+ */
+export async function inspectContinuityShadowReturns(
+  input: InspectContinuityShadowReturnsInput
+): Promise<ShadowReturnInspectionReport> {
+  return inspectContinuityShadowReturnsWithDependencies(input, {
+    readWorkingGraph: readContinuityShadowReturnWorkingGraph
+  });
+}
+
+/** Package-private dependency seam. Not part of the public inspector contract. */
+export async function inspectContinuityShadowReturnsWithDependenciesForInternalUse(
+  input: InspectContinuityShadowReturnsInput,
+  dependencies: ContinuityShadowReturnInspectorDependencies
+): Promise<ShadowReturnInspectionReport> {
+  return inspectContinuityShadowReturnsWithDependencies(input, dependencies);
 }

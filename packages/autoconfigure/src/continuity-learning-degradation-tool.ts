@@ -40,6 +40,8 @@ export function createContinuityLearningDegradationTool(
         additionalProperties: false,
         properties: {
           handleId: {
+            description:
+              "The exact durable promotion handle ID whose organic post-promotion outcome window should be assessed.",
             pattern: "^learning_promotion_handle_[a-f0-9]{64}$",
             type: "string"
           }

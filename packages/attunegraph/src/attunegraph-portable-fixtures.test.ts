@@ -299,7 +299,8 @@ describe("production AttuneGraph portable fixture integration", () => {
       "settleCandidateInventory"
     ]);
     expect(Object.keys(packageJson.exports).sort()).toEqual([
-      ".", "./admin", "./backend", "./extension-kit", "./local", "./testing"
+      ".", "./admin", "./backend", "./extension-kit", "./local",
+      "./readonly-working-graph", "./testing"
     ]);
   });
 });

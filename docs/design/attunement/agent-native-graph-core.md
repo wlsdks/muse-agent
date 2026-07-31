@@ -56,7 +56,7 @@ alone.
 | Activation Subgraph v1 | `partial` | It is bounded, but not yet scope-safe or proof-closed enough for flagship decisions. |
 | Continuity projection/change/observation/Capsule Modules | `verified-current` at their documented pure boundaries | Reuse them as the first operator workload; do not reimplement them in a database layer. |
 | Durable projection journal and exact scoped head | `verified-current` for AWG-070a1 | The Worker-backed SQLite Adapter persists projection commits and exact heads; full assertion lifecycle, portable export, and physical forget remain outside this slice. |
-| Shadow Muse decision provenance | `partial` | Existing no-send timing decisions now have a fresh-policy snapshot and an exact process-local Source/Graph receipt binding; return/card/durability remain. |
+| Shadow Muse decision provenance | `partial` | Existing no-send timing decisions have a fresh-policy snapshot, exact process-local Source/Graph binding, a persisted explicit-CLI return receipt, durable factual return relations, and a bounded explicit-CLI Continuity inspector card. Automatic return detection and surfacing, usefulness qualification, and physical forget remain. |
 | Policy Card and user-facing runtime composition | `partial` | An explicit claim-safe read-only compiler and assembled tool preview now ship; automatic surfacing, UI, trusted replay execution, mutation controls, and the complete three-part composition remain. |
 | Durable local engine program | `partial` | AWG-070a1 ships the projection-journal foundation; backup, portable export/rebuild, destructive migration, physical forget/compaction, complete profile qualification, and performance matrices remain. |
 
@@ -666,8 +666,9 @@ Do not build the database first.
    records the exact explicit CLI return in the timing ledger. `AWG-050b3` now rebuilds a
    separately versioned complete durable projection with only `Decision PRECEDED Delivery`
    and return `Evidence OBSERVED_DURING Thread`, queryable through the bounded Working Graph.
-   Automatic return detection, the Shadow-to-Return card, usefulness qualification, and
-   physical journal forget remain.
+   `AWG-050b4` ships the bounded read-only explicit-CLI Shadow-to-Return inspector card.
+   Automatic return detection and surfacing, usefulness qualification, and physical journal
+   forget remain.
 5. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
    reject, rollback, and no hidden promotion.
 6. **AWG-070a — SQLite AttuneGraph Store conformance (`partial`):** AWG-070a1 ships the
