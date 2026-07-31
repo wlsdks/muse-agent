@@ -57,7 +57,7 @@ export function evaluateReleaseEvidence({
     MAX_CANDIDATE_BYTES,
     "candidate boundary is unsafe"
   );
-  assertIgnoredOutput({ output, root, spawn });
+  if (writeOutput) assertIgnoredOutput({ output, root, spawn });
 
   const source = captureSource(root, spawn);
   const candidateSha256 = sha256(candidateBytes);

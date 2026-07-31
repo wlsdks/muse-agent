@@ -8,7 +8,6 @@ import {
   constants,
   fstatSync,
   lstatSync,
-  mkdirSync,
   openSync,
   readFileSync,
   realpathSync,
@@ -68,64 +67,52 @@ export function capturePackagePreflightSource(repoRoot) {
   return { head, tree, upstream, worktree: dirty.length === 0 ? "clean" : "dirty" };
 }
 
-function assertNoSymlinkAncestry(root, targetParent) {
-  let current = root;
-  for (const segment of relative(root, targetParent).split(sep).filter(Boolean)) {
-    current = resolve(current, segment);
-    let stat;
-    try {
-      stat = lstatSync(current);
-    } catch (cause) {
-      if (cause && typeof cause === "object" && cause.code === "ENOENT") return;
-      throw cause;
-    }
-    if (!stat.isDirectory() || stat.isSymbolicLink()) {
-      throw new Error("package signature preflight output ancestry is unsafe");
-    }
+function safeEvidenceOutput(repoRoot, requestedArtifactRoot, requested) {
+  if (!requestedArtifactRoot) {
+    throw new Error("usage: eval-package-signature-preflight --artifact-root <outside-repo-dir> --output <json>");
   }
-}
-
-function safeEvidenceOutput(repoRoot, requested) {
   if (!requested) throw new Error("usage: eval-package-signature-preflight --output <ignored-json>");
   const requestedRoot = resolve(repoRoot);
   const root = realpathSync(requestedRoot);
-  const requestedEvidenceRoot = resolve(
-    requestedRoot,
-    ".muse-dev",
-    "evals",
-    "personal-agent-roadmap"
+  const artifactRootInput = resolve(
+    isAbsolute(requestedArtifactRoot)
+      ? requestedArtifactRoot
+      : resolve(requestedRoot, requestedArtifactRoot)
   );
-  const requestedOutput = resolve(
-    isAbsolute(requested) ? requested : resolve(requestedRoot, requested)
-  );
-  const lexicalRel = relative(requestedEvidenceRoot, requestedOutput);
+  const artifactRootInputStat = lstatSync(artifactRootInput);
+  const artifactRoot = realpathSync(artifactRootInput);
+  const artifactRootStat = lstatSync(artifactRoot);
   if (
-    lexicalRel === ""
-    || lexicalRel === ".."
-    || lexicalRel.startsWith(`..${sep}`)
-    || isAbsolute(lexicalRel)
+    artifactRoot !== artifactRootInput
+    || artifactRootInputStat.dev !== artifactRootStat.dev
+    || artifactRootInputStat.ino !== artifactRootStat.ino
+    || artifactRootInputStat.isSymbolicLink()
+    || !artifactRootInputStat.isDirectory()
+    || !artifactRootStat.isDirectory()
+    || artifactRootStat.isSymbolicLink()
   ) {
-    throw new Error("package signature preflight output must stay inside the roadmap evidence directory");
+    throw new Error("package signature preflight artifact root is unsafe");
   }
-  const evidenceRoot = resolve(root, ".muse-dev", "evals", "personal-agent-roadmap");
-  const canonicalCandidate = resolve(evidenceRoot, lexicalRel);
-  assertNoSymlinkAncestry(root, dirname(canonicalCandidate));
-  mkdirSync(dirname(canonicalCandidate), { mode: 0o700, recursive: true });
-  const canonicalEvidenceRoot = realpathSync(evidenceRoot);
-  const output = resolve(realpathSync(dirname(canonicalCandidate)), basename(canonicalCandidate));
-  const rel = relative(canonicalEvidenceRoot, output);
-  if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
-    throw new Error("package signature preflight output must stay inside the roadmap evidence directory");
+  const repoRel = relative(root, artifactRoot);
+  if (
+    repoRel === ""
+    || (!repoRel.startsWith(`..${sep}`) && repoRel !== ".." && !isAbsolute(repoRel))
+  ) {
+    throw new Error("package signature preflight artifact root must stay outside the repository");
   }
-  const parent = dirname(output);
-  if (realpathSync(parent) !== parent) throw new Error("package signature preflight output ancestry is unsafe");
-  const parentStat = lstatSync(parent);
+  const requestedOutput = resolve(
+    isAbsolute(requested) ? requested : resolve(artifactRootInput, requested)
+  );
+  if (dirname(requestedOutput) !== artifactRootInput) {
+    throw new Error("package signature preflight output must stay inside the artifact root");
+  }
+  const output = resolve(artifactRoot, basename(requestedOutput));
   return {
     boundary: {
-      dev: parentStat.dev,
-      evidenceRoot: canonicalEvidenceRoot,
-      ino: parentStat.ino,
-      parent
+      artifactRoot,
+      dev: artifactRootStat.dev,
+      ino: artifactRootStat.ino,
+      parent: artifactRoot
     },
     output,
     root
@@ -170,7 +157,7 @@ function archiveBytes(repoRoot) {
 function assertBoundParent(boundary) {
   const parent = realpathSync(boundary.parent);
   const stat = lstatSync(parent);
-  const rel = relative(boundary.evidenceRoot, parent);
+  const rel = relative(boundary.artifactRoot, parent);
   if (
     parent !== boundary.parent
     || !stat.isDirectory()
@@ -315,6 +302,11 @@ function outputArgument(argv) {
   return index >= 0 ? argv[index + 1] : undefined;
 }
 
+function artifactRootArgument(argv) {
+  const index = argv.indexOf("--artifact-root");
+  return index >= 0 ? argv[index + 1] : undefined;
+}
+
 export function runPackageSignaturePreflight({
   argv = process.argv.slice(2),
   now = () => new Date(),
@@ -324,7 +316,11 @@ export function runPackageSignaturePreflight({
   if (!(generatedAt instanceof Date) || !Number.isFinite(generatedAt.getTime())) {
     throw new Error("package signature preflight time is invalid");
   }
-  const { boundary, output, root } = safeEvidenceOutput(repoRoot, outputArgument(argv));
+  const { boundary, output, root } = safeEvidenceOutput(
+    repoRoot,
+    artifactRootArgument(argv),
+    outputArgument(argv)
+  );
   const sourceStart = capturePackagePreflightSource(root);
   if (sourceStart.worktree !== "clean" || sourceStart.head !== sourceStart.upstream) {
     throw new Error("package signature preflight requires clean source at its normal upstream");
