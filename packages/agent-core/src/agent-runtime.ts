@@ -927,7 +927,7 @@ export class AgentRuntime {
     await this.recordRunComplete(context, {
       ...execution,
       finalResponse: interrupted ? { ...guarded, id: "interrupted" } : guarded
-    }, completionFailed ? "failed" : undefined);
+    }, completionFailed ? "failed" : undefined, loopControlReceipt);
     if (interrupted) {
       await this.recordCheckpoint(context, 100, "cancelled", context.input.messages, guarded.output);
       this.recordAgentRun(context, guarded.model, "cancelled", startedAtMs);
@@ -1610,12 +1610,14 @@ export class AgentRuntime {
   private async recordRunComplete(
     context: AgentRunContext,
     execution: ModelLoopExecution,
-    statusOverride?: "cancelled" | "completed" | "failed"
+    statusOverride?: "cancelled" | "completed" | "failed",
+    loopControlReceipt?: LoopControlReceipt
   ): Promise<void> {
     return recordRunComplete({
       context,
       execution,
       historyStore: this.historyStore,
+      ...(loopControlReceipt ? { loopControlReceipt } : {}),
       resolveToolRisk: (name) => this.resolveToolRisk(name),
       ...(statusOverride ? { statusOverride } : {})
     });

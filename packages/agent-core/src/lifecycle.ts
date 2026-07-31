@@ -13,6 +13,7 @@ import { errorMessage, type JsonObject } from "@muse/shared";
 import { createCheckpointContinuityEvidence, type AgentRunHistoryStore, type CheckpointContinuityEvidence, type CheckpointStore } from "@muse/runtime-state";
 import { createAgentCheckpointState } from "./checkpoint.js";
 import { joinUserMessages } from "./internals.js";
+import type { LoopControlReceipt } from "./loop-control-receipt.js";
 import { terminalModelUsage } from "./model-usage-accounting.js";
 import { metadataString, toAgentRunMode, toolCallsMetadata } from "./runtime-helpers.js";
 import type { ModelLoopExecution } from "./runtime-internals.js";
@@ -60,6 +61,7 @@ export interface LifecycleRunCompleteArgs {
   readonly historyStore?: AgentRunHistoryStore;
   readonly context: AgentRunContext;
   readonly execution: ModelLoopExecution;
+  readonly loopControlReceipt?: LoopControlReceipt;
   readonly statusOverride?: "cancelled" | "completed" | "failed";
   readonly resolveToolRisk: (name: string) => "read" | "write" | "execute";
 }
@@ -95,11 +97,21 @@ export async function recordRunComplete(args: LifecycleRunCompleteArgs): Promise
       });
     }
 
+    const finalMetadata: JsonObject = {
+      ...(args.execution.finalResponse.toolCalls
+        ? toolCallsMetadata(args.execution.finalResponse.toolCalls)
+        : {}),
+      ...(args.loopControlReceipt
+        ? {
+            loopControlReceipt: JSON.parse(
+              JSON.stringify(args.loopControlReceipt)
+            ) as JsonObject
+          }
+        : {})
+    };
     await args.historyStore.appendMessage({
       content: args.execution.finalResponse.output,
-      metadata: args.execution.finalResponse.toolCalls
-        ? toolCallsMetadata(args.execution.finalResponse.toolCalls)
-        : {},
+      metadata: finalMetadata,
       role: "assistant",
       runId: args.context.runId
     });

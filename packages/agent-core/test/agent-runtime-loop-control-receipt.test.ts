@@ -71,7 +71,9 @@ describe("AgentRuntime loop control receipt wiring", () => {
   });
 
   it("promotes to completed only when the explicit outcome verifier passes with evidence", async () => {
+    const historyStore = new InMemoryAgentRunHistoryStore();
     const runtime = createAgentRuntime({
+      historyStore,
       loopOutcomeVerifier: (verificationInput) => {
         expect(Object.isFrozen(verificationInput)).toBe(true);
         expect(Object.isFrozen(verificationInput.toolEvidence)).toBe(true);
@@ -90,6 +92,11 @@ describe("AgentRuntime loop control receipt wiring", () => {
 
     expect(receipt.terminal).toEqual({ reason: "goal-verified", status: "completed" });
     expect(receipt.verification).toEqual({ evidenceId: "terminal-eval:pass", status: "passed" });
+    expect(parseLoopControlReceipt(
+      (await historyStore.listMessages("verified-pass-run"))
+        .filter((message) => message.role === "assistant")
+        .at(-1)?.metadata.loopControlReceipt
+    )).toEqual(receipt);
   });
 
   it("supplies minimal immutable effect evidence without tool arguments or output", async () => {
@@ -163,6 +170,11 @@ describe("AgentRuntime loop control receipt wiring", () => {
     expect(failedRepeat.fromCache).not.toBe(true);
     expect(await historyStore.findRun("verified-fail-run")).toMatchObject({ status: "failed" });
     expect((await checkpointStore.findLatestByRunId("verified-fail-run"))?.state.phase).toBe("failed");
+    expect(parseLoopControlReceipt(
+      (await historyStore.listMessages("verified-fail-run"))
+        .filter((message) => message.role === "assistant")
+        .at(-1)?.metadata.loopControlReceipt
+    )).toEqual(failed);
 
     const brokenRuntime = createAgentRuntime({
       loopOutcomeVerifier: () => {
@@ -821,7 +833,8 @@ describe("AgentRuntime loop control receipt wiring", () => {
     };
     const controller = new AbortController();
     controller.abort();
-    const runtime = createAgentRuntime({ modelProvider: provider });
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    const runtime = createAgentRuntime({ historyStore, modelProvider: provider });
 
     const result = await runtime.run({
       ...input,
@@ -834,6 +847,11 @@ describe("AgentRuntime loop control receipt wiring", () => {
     expect(calls).toBe(0);
     expect(receipt.loopKind).toBe("plan-execute");
     expect(receipt.terminal).toEqual({ reason: "caller-cancelled", status: "cancelled" });
+    expect(parseLoopControlReceipt(
+      (await historyStore.listMessages("run-plan-cancel-receipt"))
+        .filter((message) => message.role === "assistant")
+        .at(-1)?.metadata.loopControlReceipt
+    )).toEqual(receipt);
   });
 
   it("settles an in-flight tool cancellation and forwards the exact signal to child work", async () => {
@@ -1023,12 +1041,18 @@ describe("AgentRuntime loop control receipt wiring", () => {
     };
     const controller = new AbortController();
     controller.abort();
-    const runtime = createAgentRuntime({ modelProvider: provider });
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    const runtime = createAgentRuntime({ historyStore, modelProvider: provider });
 
     const result = await runtime.run({ ...input, runId: "run-cancel-receipt", signal: controller.signal });
     const receipt = parseLoopControlReceipt(result.loopControlReceipt);
 
     expect(calls).toBe(0);
     expect(receipt.terminal).toEqual({ reason: "caller-cancelled", status: "cancelled" });
+    expect(parseLoopControlReceipt(
+      (await historyStore.listMessages("run-cancel-receipt"))
+        .filter((message) => message.role === "assistant")
+        .at(-1)?.metadata.loopControlReceipt
+    )).toEqual(receipt);
   });
 });
