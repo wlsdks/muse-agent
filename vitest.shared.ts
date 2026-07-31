@@ -8,7 +8,7 @@ import { defineConfig } from "vitest/config";
 // compiled output. Restore the exclude.
 export default defineConfig({
   test: {
-    exclude: ["**/node_modules/**", "**/dist/**"],
+    exclude: ["**/.muse-dev/**", "**/node_modules/**", "**/dist/**"],
     // Repo-wide per-file HOME isolation (see vitest.isolate-home.ts). Paired
     // with the @muse/autoconfigure provider-paths fail-close guard, which is a
     // SHARED module every package reaches — so the isolation must be repo-wide
