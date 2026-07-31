@@ -18,6 +18,8 @@ import {
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertCapabilityArtifactRoot } from "./eval-agent-artifact-root.mjs";
+
 const MAX_EVIDENCE_BYTES = 2 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const SHA256 = /^[0-9a-f]{64}$/u;
@@ -95,11 +97,6 @@ const CAPABILITY_REPORT_REASON_CODES = new Set([
   "unexpected-skip",
   "unrecognized-skip",
 ]);
-export const DEFAULT_CAPABILITY_REPORT_PATH = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../.muse-dev/evals/agent-capability/latest.json",
-);
-
 function canonicalJson(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -160,26 +157,45 @@ function ensureOwnerDirectory(root, rootRealPath, directory) {
   }
 }
 
-function evidenceLayout(reportPath = DEFAULT_CAPABILITY_REPORT_PATH, allowedRoot) {
+function evidenceLayout(reportPath, allowedRoot, allowedRootBinding) {
+  if (typeof reportPath !== "string" || typeof allowedRoot !== "string") throw evidenceError();
   const canonicalReport = resolve(reportPath);
-  const root = resolve(allowedRoot ?? dirname(dirname(dirname(dirname(canonicalReport)))));
+  const root = resolve(allowedRoot);
+  if (allowedRootBinding) {
+    if (assertCapabilityArtifactRoot(allowedRootBinding) !== root) throw evidenceError();
+    if (dirname(canonicalReport) !== root) throw evidenceError();
+  }
   if (!isStrictDescendant(root, canonicalReport)) throw evidenceError();
   const rootRealPath = requireSafeRoot(root);
   verifyExistingAncestors(root, rootRealPath, canonicalReport);
   const directory = dirname(canonicalReport);
   return {
-    attemptsDirectory: join(directory, "attempts"),
-    axisProgressDirectory: join(directory, "axis-progress"),
+    attemptsDirectory: allowedRootBinding ? root : join(directory, "attempts"),
+    axisProgressDirectory: allowedRootBinding ? root : join(directory, "axis-progress"),
     canonicalReport,
     directory,
+    flatBoundLayout: Boolean(allowedRootBinding),
     pointer: join(directory, "latest-attempt.json"),
     root,
     rootRealPath,
+    ...(allowedRootBinding ? { rootBinding: allowedRootBinding } : {}),
   };
+}
+
+function verifyBoundRoot(layout) {
+  if (layout.rootBinding && assertCapabilityArtifactRoot(layout.rootBinding) !== layout.root) {
+    throw evidenceError();
+  }
 }
 
 function attemptPaths(layout, attemptId) {
   if (!UUID.test(attemptId)) throw evidenceError();
+  if (layout.flatBoundLayout) {
+    return {
+      report: join(layout.root, `attempt-${attemptId}.report.json`),
+      state: join(layout.root, `attempt-${attemptId}.state.json`),
+    };
+  }
   return {
     report: join(layout.attemptsDirectory, `${attemptId}.report.json`),
     state: join(layout.attemptsDirectory, `${attemptId}.state.json`),
@@ -198,6 +214,7 @@ function syncDirectory(directory, fsync = fsyncSync) {
 
 function atomicWriteText(layout, target, text, options = {}) {
   if (Buffer.byteLength(text, "utf8") > MAX_EVIDENCE_BYTES) throw evidenceError();
+  verifyBoundRoot(layout);
   ensureOwnerDirectory(layout.root, layout.rootRealPath, dirname(target));
   verifyExistingAncestors(layout.root, layout.rootRealPath, target);
   const transaction = `${target}.transaction`;
@@ -214,6 +231,7 @@ function atomicWriteText(layout, target, text, options = {}) {
   let rollbackCreated = false;
   let targetReplaced = false;
   let committed = false;
+  let cleanupAllowed = true;
   const fsync = options.fsync ?? fsyncSync;
   try {
     descriptor = openSync(temporary, "wx", 0o600);
@@ -231,13 +249,16 @@ function atomicWriteText(layout, target, text, options = {}) {
     closeSync(transactionDescriptor);
     transactionDescriptor = undefined;
     syncDirectory(dirname(target), fsync);
+    options.beforeCommit?.();
+    verifyBoundRoot(layout);
+    verifyExistingAncestors(layout.root, layout.rootRealPath, target);
 
     if (existsSync(target)) {
       renameSync(target, rollback);
       rollbackCreated = true;
       syncDirectory(dirname(target), fsync);
     }
-    (options.rename ?? renameSync)(temporary, target);
+    renameSync(temporary, target);
     targetReplaced = true;
     if (process.platform !== "win32") chmodSync(target, 0o600);
     syncDirectory(dirname(target), fsync);
@@ -252,13 +273,18 @@ function atomicWriteText(layout, target, text, options = {}) {
       try { syncDirectory(dirname(target), fsync); } catch { /* post-commit cleanup durability */ }
     }
   } catch {
+    try {
+      verifyBoundRoot(layout);
+    } catch {
+      cleanupAllowed = false;
+    }
     if (descriptor !== undefined) {
       try { closeSync(descriptor); } catch { /* fail closed below */ }
     }
     if (transactionDescriptor !== undefined) {
       try { closeSync(transactionDescriptor); } catch { /* fail closed below */ }
     }
-    if (!committed) {
+    if (!committed && cleanupAllowed) {
       let restored = false;
       try {
         if (rollbackCreated && existsSync(rollback)) {
@@ -287,7 +313,7 @@ function atomicWriteText(layout, target, text, options = {}) {
     }
     throw evidenceError();
   } finally {
-    rmSync(temporary, { force: true });
+    if (cleanupAllowed) rmSync(temporary, { force: true });
   }
 }
 
@@ -654,7 +680,10 @@ function sameCapabilityProvenance(left, right) {
 
 function axisProgressPath(layout, axisId) {
   if (!CAPABILITY_MATRIX.some((capability) => capability.id === axisId)) throw evidenceError();
-  return join(layout.axisProgressDirectory, `${axisId}.json`);
+  return join(
+    layout.axisProgressDirectory,
+    layout.flatBoundLayout ? `axis-progress-${axisId}.json` : `${axisId}.json`,
+  );
 }
 
 function parseAxisProgressRecord(value) {
@@ -730,7 +759,18 @@ function inspectAxisProgressRecord(layout, record) {
 }
 
 function readCapabilityAxisProgress(layout) {
-  if (existsSync(layout.axisProgressDirectory)) {
+  if (layout.flatBoundLayout) {
+    const allowedNames = new Set(
+      CAPABILITY_MATRIX.map((capability) => `axis-progress-${capability.id}.json`),
+    );
+    if (
+      readdirSync(layout.root).some(
+        (name) => name.startsWith("axis-progress-") && !allowedNames.has(name),
+      )
+    ) {
+      throw evidenceError();
+    }
+  } else if (existsSync(layout.axisProgressDirectory)) {
     verifyExistingPath(layout.rootRealPath, layout.axisProgressDirectory);
     const directoryStat = lstatSync(layout.axisProgressDirectory);
     if (
@@ -777,7 +817,11 @@ function readCapabilityAxisProgress(layout) {
  */
 export function readReusableCapabilityAxisProgress(options = {}) {
   try {
-    const layout = evidenceLayout(options.reportPath, options.allowedRoot);
+    const layout = evidenceLayout(
+      options.reportPath,
+      options.allowedRoot,
+      options.allowedRootBinding,
+    );
     const progress = readCapabilityAxisProgress(layout);
     const candidate = progress.find((item) => item.axis.id === options.axisId);
     if (
@@ -808,7 +852,11 @@ export function readCapabilityAxisAggregate(options = {}) {
       options.provenance,
     );
     if (!expected) return undefined;
-    const layout = evidenceLayout(options.reportPath, options.allowedRoot);
+    const layout = evidenceLayout(
+      options.reportPath,
+      options.allowedRoot,
+      options.allowedRootBinding,
+    );
     const progress = readCapabilityAxisProgress(layout);
     const matching = progress.filter((item) => {
       const receipt = expected.get(item.axis.id);
@@ -860,18 +908,27 @@ export function readCapabilityAxisAggregate(options = {}) {
 }
 
 export function beginCapabilityEvidenceAttempt(options = {}) {
-  const layout = evidenceLayout(options.reportPath, options.allowedRoot);
+  const layout = evidenceLayout(options.reportPath, options.allowedRoot, options.allowedRootBinding);
   const attemptId = options.attemptId ?? randomUUID();
   const paths = attemptPaths(layout, attemptId);
   const state = { schemaVersion: CAPABILITY_EVIDENCE_SCHEMA_VERSION, attemptId, phase: "running" };
   const pointer = { schemaVersion: CAPABILITY_EVIDENCE_SCHEMA_VERSION, attemptId };
   atomicWriteJson(layout, paths.state, state, options);
   atomicWriteJson(layout, layout.pointer, pointer, options);
-  return { attemptId, reportPath: layout.canonicalReport, allowedRoot: layout.root };
+  return {
+    attemptId,
+    reportPath: layout.canonicalReport,
+    allowedRoot: layout.root,
+    ...(options.allowedRootBinding ? { allowedRootBinding: options.allowedRootBinding } : {}),
+  };
 }
 
 export function finalizeCapabilityEvidenceAttempt(attempt, report, options = {}) {
-  const layout = evidenceLayout(attempt?.reportPath, attempt?.allowedRoot);
+  const layout = evidenceLayout(
+    attempt?.reportPath,
+    attempt?.allowedRoot,
+    attempt?.allowedRootBinding,
+  );
   const paths = attemptPaths(layout, attempt?.attemptId);
   const pointerRead = readCanonicalJson(layout, layout.pointer);
   const pointer = pointerRead.state === "ok" ? parsePointer(pointerRead.value) : undefined;
@@ -946,7 +1003,11 @@ function legacyArtifact(layout) {
 
 export function inspectCapabilityEvidence(options = {}) {
   try {
-    const layout = evidenceLayout(options.reportPath, options.allowedRoot);
+    const layout = evidenceLayout(
+      options.reportPath,
+      options.allowedRoot,
+      options.allowedRootBinding,
+    );
     const pointerRead = readCanonicalJson(layout, layout.pointer);
     if (pointerRead.state === "missing") return { artifact: legacyArtifact(layout), state: "missing" };
     if (pointerRead.state !== "ok") return { artifact: legacyArtifact(layout), state: "invalid" };

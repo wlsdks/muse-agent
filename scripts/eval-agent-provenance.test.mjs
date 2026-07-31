@@ -5,6 +5,8 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -23,8 +25,9 @@ import {
 } from "./eval-agent-provenance.mjs";
 
 test("runtime digest binds emitted TS content to an executable owner-only fixed runner", () => {
-  const repoRoot = mkdtempSync(join(tmpdir(), "muse-eval-artifacts-"));
-  const runnerPath = defaultEvalRunnerPath(repoRoot);
+  const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "muse-eval-artifacts-")));
+  const artifactRoot = realpathSync(mkdtempSync(join(tmpdir(), "muse-eval-artifact-root-")));
+  const runnerPath = defaultEvalRunnerPath(artifactRoot);
   try {
     writeFileSync(join(repoRoot, "tsconfig.json"), JSON.stringify({
       files: [],
@@ -36,21 +39,25 @@ test("runtime digest binds emitted TS content to an executable owner-only fixed 
     writeFileSync(runnerPath, "runner-binary", "utf8");
     chmodSync(runnerPath, 0o700);
 
-    const first = captureRuntimeArtifacts({ repoRoot, runnerPath });
+    const first = captureRuntimeArtifacts({ artifactRoot, repoRoot, runnerPath });
     assert.equal(first.status, "ok");
     assert.equal(first.count, 2);
     assert.match(first.digest, /^[a-f0-9]{64}$/u);
     assert.doesNotMatch(JSON.stringify(first), /packages|example|muse-runner/u);
 
     writeFileSync(join(repoRoot, "packages", "example", "dist", "index.js"), "export const value = 2;\n", "utf8");
-    const changed = captureRuntimeArtifacts({ repoRoot, runnerPath });
+    const changed = captureRuntimeArtifacts({ artifactRoot, repoRoot, runnerPath });
     assert.equal(changed.status, "ok");
     assert.notEqual(changed.digest, first.digest);
 
     chmodSync(runnerPath, 0o600);
-    assert.deepEqual(captureRuntimeArtifacts({ repoRoot, runnerPath }), { count: 0, status: "unknown" });
+    assert.deepEqual(
+      captureRuntimeArtifacts({ artifactRoot, repoRoot, runnerPath }),
+      { count: 0, status: "unknown" },
+    );
   } finally {
     rmSync(repoRoot, { force: true, recursive: true });
+    rmSync(artifactRoot, { force: true, recursive: true });
   }
 });
 
@@ -156,6 +163,7 @@ test("elapsed synchronous preparation cannot launch a build after its shared dea
 test("TypeScript cleanup rejects escaped or symlinked dist targets before deleting anything", async () => {
   for (const unsafeKind of ["escaped-reference", "symlinked-dist"]) {
     const repoRoot = mkdtempSync(join(tmpdir(), "muse-eval-ts-safety-"));
+    const artifactRoot = realpathSync(mkdtempSync(join(tmpdir(), "muse-eval-ts-artifacts-")));
     const outside = mkdtempSync(join(tmpdir(), "muse-eval-ts-outside-"));
     try {
       const goodProject = join(repoRoot, "packages", "good");
@@ -179,7 +187,7 @@ test("TypeScript cleanup rejects escaped or symlinked dist targets before deleti
         files: [],
         references: [{ path: "./packages/good" }, { path: unsafeReference }],
       }), "utf8");
-      const runnerPath = defaultEvalRunnerPath(repoRoot);
+      const runnerPath = defaultEvalRunnerPath(artifactRoot);
       mkdirSync(dirname(runnerPath), { recursive: true });
       writeFileSync(runnerPath, "runner", "utf8");
       chmodSync(runnerPath, 0o700);
@@ -197,20 +205,22 @@ test("TypeScript cleanup rejects escaped or symlinked dist targets before deleti
       assert.equal(existsSync(goodSentinel), true, "all refs must validate before any cleanup");
       assert.equal(existsSync(outsideSentinel), true, "cleanup must stay inside the repo");
       assert.deepEqual(
-        captureRuntimeArtifacts({ repoRoot, runnerPath }),
+        captureRuntimeArtifacts({ artifactRoot, repoRoot, runnerPath }),
         { count: 0, status: "unknown" },
         "artifact manifests must reject the same unsafe reference graph",
       );
     } finally {
       rmSync(repoRoot, { force: true, recursive: true });
+      rmSync(artifactRoot, { force: true, recursive: true });
       rmSync(outside, { force: true, recursive: true });
     }
   }
 });
 
 test("runner build uses a fresh locked Cargo target and atomically publishes mode 0700", async () => {
-  const repoRoot = mkdtempSync(join(tmpdir(), "muse-eval-runner-build-"));
-  const runnerPath = defaultEvalRunnerPath(repoRoot);
+  const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "muse-eval-runner-build-")));
+  const artifactRoot = realpathSync(mkdtempSync(join(tmpdir(), "muse-eval-runner-output-")));
+  const runnerPath = defaultEvalRunnerPath(artifactRoot);
   let cargoCall;
   let cargoTarget;
   try {
@@ -218,6 +228,7 @@ test("runner build uses a fresh locked Cargo target and atomically publishes mod
     writeFileSync(runnerPath, "old-runner", "utf8");
     const result = await buildAndPublishRunner({
       deadlineMs: 5_000,
+      artifactRoot,
       now: () => 0,
       repoRoot,
       runnerPath,
@@ -245,14 +256,17 @@ test("runner build uses a fresh locked Cargo target and atomically publishes mod
     if (process.platform !== "win32") assert.equal(statSync(runnerPath).mode & 0o777, 0o700);
   } finally {
     rmSync(repoRoot, { force: true, recursive: true });
+    rmSync(artifactRoot, { force: true, recursive: true });
   }
 });
 
-test("runner parent symlinks cannot redirect fixed publish or artifact qualification", async () => {
-  const repoRoot = mkdtempSync(join(tmpdir(), "muse-eval-runner-symlink-"));
-  const outside = mkdtempSync(join(tmpdir(), "muse-eval-runner-outside-"));
-  const runnerPath = defaultEvalRunnerPath(repoRoot);
+test("runner artifact-root replacement cannot redirect fixed publish or qualification", async () => {
+  const repoRoot = realpathSync(mkdtempSync(join(tmpdir(), "muse-eval-runner-symlink-")));
+  const artifactRoot = realpathSync(mkdtempSync(join(tmpdir(), "muse-eval-runner-output-")));
+  const outside = realpathSync(mkdtempSync(join(tmpdir(), "muse-eval-runner-outside-")));
+  const runnerPath = defaultEvalRunnerPath(artifactRoot);
   const outsideRunner = join(outside, "muse-runner");
+  const movedRoot = `${artifactRoot}-moved`;
   try {
     writeFileSync(join(repoRoot, "tsconfig.json"), JSON.stringify({
       files: [],
@@ -262,11 +276,11 @@ test("runner parent symlinks cannot redirect fixed publish or artifact qualifica
     mkdirSync(dist, { recursive: true });
     writeFileSync(join(dist, "index.js"), "export {};\n", "utf8");
 
-    const runtimeParent = dirname(dirname(runnerPath));
-    mkdirSync(runtimeParent, { recursive: true });
-    symlinkSync(outside, dirname(runnerPath), "dir");
+    renameSync(artifactRoot, movedRoot);
+    symlinkSync(outside, artifactRoot, "dir");
 
     const build = await buildAndPublishRunner({
+      artifactRoot,
       repoRoot,
       runnerPath,
       spawn: (_command, _args, options) => {
@@ -282,9 +296,14 @@ test("runner parent symlinks cannot redirect fixed publish or artifact qualifica
 
     writeFileSync(outsideRunner, "external-runner", "utf8");
     chmodSync(outsideRunner, 0o700);
-    assert.deepEqual(captureRuntimeArtifacts({ repoRoot, runnerPath }), { count: 0, status: "unknown" });
+    assert.deepEqual(
+      captureRuntimeArtifacts({ artifactRoot, repoRoot, runnerPath }),
+      { count: 0, status: "unknown" },
+    );
   } finally {
     rmSync(repoRoot, { force: true, recursive: true });
+    rmSync(artifactRoot, { force: true, recursive: true });
+    rmSync(movedRoot, { force: true, recursive: true });
     rmSync(outside, { force: true, recursive: true });
   }
 });

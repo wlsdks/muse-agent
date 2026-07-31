@@ -4,7 +4,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -657,6 +656,41 @@ test("execution admission is read-only, requires owner confirmation and a full d
     );
     assert.equal(admitted.status, "admit");
     assert.equal(admitted.sideEffects, "none");
+  } finally {
+    process.exitCode = previousExitCode;
+  }
+});
+
+test("production execution requires an explicit external artifact root before any build or evidence write", () => {
+  let pipelineCalls = 0;
+  let stdout = "";
+  const previousExitCode = process.exitCode;
+  const noPipeline = () => {
+    pipelineCalls += 1;
+    throw new Error("missing artifact root must stop before the pipeline");
+  };
+  try {
+    process.exitCode = undefined;
+    const admission = main(
+      ["--json", "--execute", "--axis", "plan-quality", "--confirm-idle", "--budget-minutes", "12"],
+      {
+        beginAttempt: noPipeline,
+        buildRunnerArtifact: noPipeline,
+        captureArtifacts: noPipeline,
+        captureSource: noPipeline,
+        enforceArtifactRoot: true,
+        readResourceSnapshot: () => HEALTHY_RESOURCE_SNAPSHOT,
+        runTypeScriptBuild: noPipeline,
+        spawn: noPipeline,
+        stdout: { write: (chunk) => { stdout += chunk; } },
+      },
+    );
+
+    assert.equal(admission.status, "defer");
+    assert.deepEqual(admission.reasons, ["artifact-root-required"]);
+    assert.deepEqual(JSON.parse(stdout), admission);
+    assert.equal(pipelineCalls, 0);
+    assert.equal(process.exitCode, 1);
   } finally {
     process.exitCode = previousExitCode;
   }
@@ -1333,14 +1367,13 @@ test("a failed canonical replace preserves the prior pass while the current atte
   const prior = { status: "passed", version: 2 };
   writeOwnerJson(reportPath, prior);
   try {
-    let renames = 0;
+    let commits = 0;
     assert.throws(
       () => persistCapabilityReport(passingReport(), reportPath, {
         allowedRoot,
-        rename: (from, to) => {
-          renames += 1;
-          if (renames === 4) throw new Error("/Users/private-owner/rename-failed");
-          renameSync(from, to);
+        beforeCommit: () => {
+          commits += 1;
+          if (commits === 4) throw new Error("/Users/private-owner/rename-failed");
         },
       }),
       (error) => error instanceof Error && error.message === "capability-report-persistence-failed",

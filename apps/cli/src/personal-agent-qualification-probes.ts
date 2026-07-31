@@ -2,7 +2,7 @@
 
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import {
   collectDeliverySafetyDiagnostic,
@@ -48,7 +48,10 @@ export interface QualificationProbeDependencies {
   readonly uid?: number;
   readonly daemonTemporaryRoots?: readonly string[];
   readonly residentInspection?: () => Promise<ResidentDaemonInspection>;
-  readonly artifactDigest?: (workspaceDir: string) => Promise<ArtifactEvidenceSnapshot>;
+  readonly artifactDigest?: (
+    workspaceDir: string,
+    artifactRoot?: string
+  ) => Promise<ArtifactEvidenceSnapshot>;
   readonly capabilityEvidence?: (
     reportFile: string,
     allowedRoot: string,
@@ -179,10 +182,18 @@ async function inspectCapabilityEvidence(
   }
 }
 
-async function defaultArtifactDigest(workspaceDir: string, run: ReadOnlyCommandRunner): Promise<ArtifactEvidenceSnapshot> {
+async function defaultArtifactDigest(
+  workspaceDir: string,
+  artifactRoot: string,
+  run: ReadOnlyCommandRunner
+): Promise<ArtifactEvidenceSnapshot> {
   const helper = join(workspaceDir, "scripts", "eval-agent-artifacts.mjs");
   if (!existsSync(helper)) return { count: 0, status: "unknown" };
-  const result = await run(process.execPath, [helper, "--json"], { cwd: workspaceDir });
+  const result = await run(
+    process.execPath,
+    [helper, "--json", "--artifact-root", artifactRoot],
+    { cwd: workspaceDir }
+  );
   if (result.code !== 0) return { count: 0, status: "unknown" };
   try {
     const parsed = JSON.parse(result.stdout) as unknown;
@@ -279,22 +290,31 @@ export async function collectPersonalAgentQualificationObservations(
 ): Promise<PersonalAgentQualificationObservations> {
   const run = dependencies.run ?? defaultRun;
   const workspaceDir = resolve(options.workspaceDir);
-  const reportFile = options.capabilityReportFile ?? join(workspaceDir, ".muse-dev", "evals", "agent-capability", "latest.json");
+  const reportFile = options.capabilityReportFile
+    ? resolve(options.capabilityReportFile)
+    : undefined;
   const now = dependencies.now ?? (() => new Date());
   const nowDate = now();
   const nowMs = nowDate.getTime();
   const currentSourceStart = await inspectGitSnapshot(workspaceDir, run);
-  const allowedEvidenceRoot = options.capabilityReportFile === undefined ? workspaceDir : dirname(reportFile);
+  const reportDirectory = reportFile ? dirname(reportFile) : undefined;
+  const allowedEvidenceRoot = reportDirectory
+    ? (basename(reportDirectory) === "agent-capability" ? dirname(reportDirectory) : reportDirectory)
+    : undefined;
   const capabilityEvidence = dependencies.capabilityEvidence
     ?? ((file: string, root: string, workspace: string) => inspectCapabilityEvidence(file, root, workspace, run));
-  const initialCapabilityEvidencePromise = capabilityEvidence(
-    reportFile,
-    allowedEvidenceRoot,
-    workspaceDir
-  );
-  const artifactDigestPromise = dependencies.artifactDigest
-    ? dependencies.artifactDigest(workspaceDir)
-    : defaultArtifactDigest(workspaceDir, run);
+  const unconfiguredCapabilityEvidence: CapabilityEvidenceInspection = {
+    artifact: { state: "missing" },
+    state: "missing"
+  };
+  const initialCapabilityEvidencePromise = reportFile && allowedEvidenceRoot
+    ? capabilityEvidence(reportFile, allowedEvidenceRoot, workspaceDir)
+    : Promise.resolve(unconfiguredCapabilityEvidence);
+  const artifactDigestPromise = allowedEvidenceRoot
+    ? dependencies.artifactDigest
+      ? dependencies.artifactDigest(workspaceDir, allowedEvidenceRoot)
+      : defaultArtifactDigest(workspaceDir, allowedEvidenceRoot, run)
+    : Promise.resolve({ count: 0, status: "unknown" } as const);
   const [residentDelivery, initialCapabilityEvidence, currentArtifacts] = await Promise.all([
     collectResidentDeliverySafety({
       ...dependencies,
@@ -304,7 +324,9 @@ export async function collectPersonalAgentQualificationObservations(
     artifactDigestPromise
   ]);
   const currentSourceEnd = await inspectGitSnapshot(workspaceDir, run);
-  const finalCapabilityEvidence = await capabilityEvidence(reportFile, allowedEvidenceRoot, workspaceDir);
+  const finalCapabilityEvidence = reportFile && allowedEvidenceRoot
+    ? await capabilityEvidence(reportFile, allowedEvidenceRoot, workspaceDir)
+    : unconfiguredCapabilityEvidence;
   const capabilityEvidenceStable = initialCapabilityEvidence.state === finalCapabilityEvidence.state
     && initialCapabilityEvidence.status === finalCapabilityEvidence.status
     && initialCapabilityEvidence.fingerprint === finalCapabilityEvidence.fingerprint;

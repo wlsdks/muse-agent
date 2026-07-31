@@ -28,11 +28,16 @@ import {
 } from "./eval-agent-provenance.mjs";
 import {
   beginCapabilityEvidenceAttempt,
-  DEFAULT_CAPABILITY_REPORT_PATH,
   finalizeCapabilityEvidenceAttempt,
   isExactCapabilityReport,
   readReusableCapabilityAxisProgress,
 } from "./eval-agent-evidence.mjs";
+import {
+  assertCapabilityArtifactRoot,
+  bindCapabilityArtifactRoot,
+  capabilityReportPath,
+  capabilityRunnerPath,
+} from "./eval-agent-artifact-root.mjs";
 import {
   MAX_EVAL_PROCESS_DEADLINE_MS,
   MIN_EVAL_PROCESS_DEADLINE_MS,
@@ -49,6 +54,7 @@ const PREFLIGHT_FLAG = "--preflight";
 const ADMISSION_FLAG = "--admit";
 const EXECUTE_FLAG = "--execute";
 const AXIS_FLAG = "--axis";
+const ARTIFACT_ROOT_FLAG = "--artifact-root";
 const SAFE_SHARD_IDENTITY = /^[a-z0-9][a-z0-9._:/@+-]{0,199}$/iu;
 const SAFE_SHARD_SEED = /^(?:default|[0-9]{1,20}|seed-[0-9]{1,20})$/u;
 const SECRET_LIKE_IDENTITY = /^(?:eyJ|gh[opsu]_|sk-|xox[abprs]-)/u;
@@ -410,7 +416,7 @@ function integrityFailureRows() {
 }
 
 /** Compatibility helper for tests/tools that publish one complete attempt. */
-export function persistCapabilityReport(report, reportPath = DEFAULT_CAPABILITY_REPORT_PATH, options = {}) {
+export function persistCapabilityReport(report, reportPath, options = {}) {
   const attempt = beginCapabilityEvidenceAttempt({ ...options, reportPath });
   finalizeCapabilityEvidenceAttempt(attempt, report, options);
 }
@@ -429,11 +435,11 @@ function printHumanReport(report, stdout) {
 
 function printUsage(stdout) {
   stdout.write(
-    "Usage: pnpm eval:agent -- [--preflight | --admit | --execute --confirm-idle --budget-minutes <minutes>] [--axis <id>] [--json]\n\n"
+    "Usage: pnpm eval:agent -- [--preflight | --admit | --execute --confirm-idle --budget-minutes <minutes> --artifact-root <outside-repo-dir>] [--axis <id>] [--json]\n\n"
     + "Runs the full 11-axis local capability gate by default and may load local models; --axis selects exactly one known axis.\n"
     + "Use --preflight to inspect its static requirements and resource budget without builds, probes, model calls, or writes.\n"
     + "Use --admit with --confirm-idle and --budget-minutes to check live local readiness without builds, probes, model calls, or writes.\n"
-    + "Use --execute with the same owner confirmation and sufficient budget to start the full gate.\n"
+    + "Use --execute with the same owner confirmation, sufficient budget, and one canonical existing artifact root outside the repository.\n"
     + "Use --json for a privacy-safe machine-readable report.\n"
   );
 }
@@ -574,6 +580,51 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
   if (admissionRequested || !executionRequested || admission.status !== "admit") {
     return emitAdmission(admission, { json, stdout });
   }
+  let artifactRootBinding = dependencies.artifactRootBinding;
+  if (dependencies.enforceArtifactRoot === true || artifactRootBinding) {
+    try {
+      const requestedRoot = capabilityArtifactRootArgument(args);
+      const requestedBinding = bindCapabilityArtifactRoot(REPO_ROOT, requestedRoot);
+      if (artifactRootBinding) {
+        assertCapabilityArtifactRoot(artifactRootBinding);
+        if (
+          artifactRootBinding.root !== requestedBinding.root
+          || artifactRootBinding.dev !== requestedBinding.dev
+          || artifactRootBinding.ino !== requestedBinding.ino
+        ) {
+          throw new Error("capability-artifact-root-changed");
+        }
+      }
+      artifactRootBinding = requestedBinding;
+    } catch {
+      const reason = capabilityArtifactRootArgument(args) === undefined
+        ? "artifact-root-required"
+        : "artifact-root-unsafe";
+      return emitAdmission(
+        { ...admission, reasons: [reason], status: "defer" },
+        { json, stdout },
+      );
+    }
+  }
+  const reportPath = artifactRootBinding
+    ? capabilityReportPath(artifactRootBinding)
+    : undefined;
+  const runnerPath = artifactRootBinding
+    ? capabilityRunnerPath(artifactRootBinding)
+    : undefined;
+  const executionDependencies = {
+    ...dependencies,
+    ...(dependencies.enforceArtifactRoot === true && artifactRootBinding && reportPath ? {
+      beginAttempt: dependencies.beginAttempt ?? (() => beginCapabilityEvidenceAttempt({
+        allowedRoot: artifactRootBinding.root,
+        allowedRootBinding: artifactRootBinding,
+        reportPath,
+      })),
+      finishAttempt: dependencies.finishAttempt ?? (
+        (attempt, report, options) => finalizeCapabilityEvidenceAttempt(attempt, report, options)
+      ),
+    } : {}),
+  };
   const selectedCapabilities = selection.ok ? selection.axes : CAPABILITIES;
   const runProcess = dependencies.runProcess
     ?? (dependencies.spawn
@@ -592,13 +643,23 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
       runProcess,
     }));
   const buildRunnerArtifact = dependencies.buildRunnerArtifact
-    ?? ((options) => buildAndPublishRunner({
+    ?? ((options) => artifactRootBinding && runnerPath ? buildAndPublishRunner({
       ...options,
+      artifactRoot: artifactRootBinding.root,
+      artifactRootBinding,
       repoRoot: REPO_ROOT,
+      runnerPath,
       runProcess,
-    }));
+    }) : ({ ok: false, reason: "runner-publish-failed" }));
   const captureArtifacts = dependencies.captureArtifacts
-    ?? ((runnerPath) => captureRuntimeArtifacts({ repoRoot: REPO_ROOT, runnerPath }));
+    ?? ((publishedRunnerPath) => artifactRootBinding
+      ? captureRuntimeArtifacts({
+        artifactRoot: artifactRootBinding.root,
+        artifactRootBinding,
+        repoRoot: REPO_ROOT,
+        runnerPath: publishedRunnerPath,
+      })
+      : ({ count: 0, status: "unknown" }));
 
   return (async () => {
   const monotonicNow = dependencies.monotonicNow ?? (() => performance.now());
@@ -611,7 +672,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
   };
   let evidenceAttempt;
   try {
-    evidenceAttempt = dependencies.beginAttempt?.();
+    evidenceAttempt = executionDependencies.beginAttempt?.();
   } catch {
     const report = createCapabilityReport(
       CAPABILITIES.map((capability) => failedRow(capability, 0, "report-persistence-failed")),
@@ -634,7 +695,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
       captureArtifacts,
       captureSource,
       capabilities: selectedCapabilities,
-      dependencies,
+      dependencies: executionDependencies,
       evidenceAttempt,
       json,
       now,
@@ -655,7 +716,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
       captureArtifacts,
       captureSource,
       capabilities: selectedCapabilities,
-      dependencies,
+      dependencies: executionDependencies,
       evidenceAttempt,
       json,
       now,
@@ -682,11 +743,14 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     ? createCapabilityShardReceipt(selectedCapabilities[0], provisionalProvenance)
     : undefined;
   const readReusableAxis = dependencies.readReusableAxis
-    ?? ((options) => readReusableCapabilityAxisProgress({
+    ?? ((options) => artifactRootBinding && reportPath
+      ? readReusableCapabilityAxisProgress({
       ...options,
-      allowedRoot: REPO_ROOT,
-      reportPath: DEFAULT_CAPABILITY_REPORT_PATH,
-    }));
+        allowedRoot: artifactRootBinding.root,
+        allowedRootBinding: artifactRootBinding,
+        reportPath,
+      })
+      : undefined);
   const reusableProgress = selectedCapabilities.length === 1 && provisionalReceipt
     ? readReusableAxis({
       axisId: selectedCapabilities[0].id,
@@ -768,7 +832,7 @@ export function main(args = process.argv.slice(2), dependencies = {}) {
     provenance,
   });
   return emitReport(report, {
-    dependencies,
+    dependencies: executionDependencies,
     evidenceAttempt,
     json,
     shardReceipt,
@@ -973,6 +1037,13 @@ function generatedAt(now) {
   }
 }
 
+function capabilityArtifactRootArgument(args) {
+  const indexes = args.flatMap((arg, index) => arg === ARTIFACT_ROOT_FLAG ? [index] : []);
+  if (indexes.length !== 1) return undefined;
+  const value = args[indexes[0] + 1];
+  return value && !value.startsWith("--") ? value : undefined;
+}
+
 function unknownProvenance() {
   return {
     sourceBeforeBuild: { tree: "unknown" },
@@ -997,12 +1068,5 @@ function sanitizeProvenance(provenance) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await main(process.argv.slice(2), {
-    beginAttempt: () => beginCapabilityEvidenceAttempt({ allowedRoot: REPO_ROOT }),
-    finishAttempt: (attempt, report, options) => finalizeCapabilityEvidenceAttempt(
-      attempt,
-      report,
-      options,
-    ),
-  });
+  await main(process.argv.slice(2), { enforceArtifactRoot: true });
 }

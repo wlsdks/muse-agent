@@ -2,14 +2,22 @@ export interface CapabilityEvidenceAttempt {
   readonly attemptId: string;
   readonly reportPath: string;
   readonly allowedRoot: string;
+  readonly allowedRootBinding?: CapabilityArtifactRootBinding;
+}
+
+export interface CapabilityArtifactRootBinding {
+  readonly dev: number;
+  readonly ino: number;
+  readonly root: string;
 }
 
 export interface CapabilityEvidenceOptions {
   readonly reportPath?: string;
   readonly allowedRoot?: string;
+  readonly allowedRootBinding?: CapabilityArtifactRootBinding;
   readonly attemptId?: string;
   readonly persistShardProgress?: boolean;
-  readonly rename?: (from: string, to: string) => void;
+  readonly beforeCommit?: () => void;
   readonly fsync?: (descriptor: number) => void;
   readonly shardReceipt?: unknown;
   readonly shardReceipts?: readonly unknown[];
@@ -23,8 +31,6 @@ export interface CapabilityEvidenceInspection {
 }
 
 export const CAPABILITY_EVIDENCE_SCHEMA_VERSION: 1;
-export const DEFAULT_CAPABILITY_REPORT_PATH: string;
-
 export function beginCapabilityEvidenceAttempt(options?: CapabilityEvidenceOptions): CapabilityEvidenceAttempt;
 export function finalizeCapabilityEvidenceAttempt(
   attempt: CapabilityEvidenceAttempt,
@@ -35,12 +41,14 @@ export function inspectCapabilityEvidence(options?: CapabilityEvidenceOptions): 
 export function isCanonicalPassingCapabilityReport(report: unknown): boolean;
 export function readReusableCapabilityAxisProgress(options: {
   readonly allowedRoot?: string;
+  readonly allowedRootBinding?: CapabilityArtifactRootBinding;
   readonly axisId: string;
   readonly expectedReceipt: unknown;
   readonly reportPath?: string;
 }): unknown;
 export function readCapabilityAxisAggregate(options: {
   readonly allowedRoot?: string;
+  readonly allowedRootBinding?: CapabilityArtifactRootBinding;
   readonly expectedReceipts: readonly unknown[];
   readonly generatedAt?: string;
   readonly provenance: unknown;

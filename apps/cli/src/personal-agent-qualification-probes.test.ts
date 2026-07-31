@@ -400,6 +400,31 @@ describe("git source probe", () => {
 });
 
 describe("qualification collector integration", () => {
+  it("does not invent or probe a repository-local capability artifact when none is configured", async () => {
+    const fixture = qualificationFixture();
+    let capabilityReads = 0;
+    let artifactReads = 0;
+    const observations = await collectPersonalAgentQualificationObservations(
+      { workspaceDir: fixture.options.workspaceDir },
+      {
+        ...fixture.dependencies,
+        artifactDigest: async () => {
+          artifactReads += 1;
+          return QUALIFY_ARTIFACTS;
+        },
+        capabilityEvidence: async () => {
+          capabilityReads += 1;
+          return { artifact: { state: "invalid" }, state: "invalid" };
+        }
+      }
+    );
+
+    expect(observations.capability.artifact).toEqual({ state: "missing" });
+    expect(observations.capability.currentArtifacts).toEqual({ count: 0, status: "unknown" });
+    expect(capabilityReads).toBe(0);
+    expect(artifactReads).toBe(0);
+  });
+
   it("keeps API, qualification, and local Doctor on the same canonical synthetic delivery result", async () => {
     const fixture = qualificationFixture();
     const resident = await inspectResidentDaemon(fixture.dependencies);
@@ -674,19 +699,19 @@ describe("qualification collector integration", () => {
     expect(report.gates[0].reasonCodes).toContain("capability-attempt-state-missing");
   });
 
-  it("rejects a default capability-report parent symlink without following it", async () => {
+  it("rejects an explicit capability-report parent symlink without following it", async () => {
     if (process.platform === "win32") return;
     const fixture = qualificationFixture({ report: "missing" });
     const outside = mkdtempSync(join(tmpdir(), "muse-qualify-report-outside-"));
-    const outsideReport = join(outside, "evals", "agent-capability", "latest.json");
-    mkdirSync(join(outside, "evals", "agent-capability"), { recursive: true });
+    const outsideReport = join(outside, "latest.json");
     writeFileSync(outsideReport, JSON.stringify(capabilityReport()), { mode: 0o600 });
     chmodSync(outsideReport, 0o600);
-    symlinkSync(outside, join(fixture.root, ".muse-dev"), "dir");
+    const linkedParent = join(fixture.root, "capability-link");
+    symlinkSync(outside, linkedParent, "dir");
     const before = createHash("sha256").update(readFileSync(outsideReport)).digest("hex");
 
     const report = qualifyPersonalAgent(await collectPersonalAgentQualificationObservations(
-      { workspaceDir: fixture.root },
+      { capabilityReportFile: join(linkedParent, "latest.json"), workspaceDir: fixture.root },
       fixture.dependencies
     ));
 

@@ -20,12 +20,17 @@ import {
   MIN_EVAL_PROCESS_DEADLINE_MS,
   runBoundedEvalProcess,
 } from "./eval-agent-process.mjs";
+import {
+  assertCapabilityArtifactRoot,
+  bindCapabilityArtifactRoot,
+  capabilityRunnerPath,
+} from "./eval-agent-artifact-root.mjs";
 
 const RUNTIME_EXTENSIONS = new Set([".cjs", ".js", ".json", ".mjs", ".node", ".wasm"]);
 
-export function defaultEvalRunnerPath(repoRoot) {
+export function defaultEvalRunnerPath(artifactRoot) {
   const executable = process.platform === "win32" ? "muse-runner.exe" : "muse-runner";
-  return join(repoRoot, ".muse-dev", "evals", "agent-capability", "runtime", executable);
+  return join(artifactRoot, executable);
 }
 
 export async function captureGitSourceSnapshot({
@@ -125,11 +130,13 @@ export async function runForcedTypeScriptBuild({
 }
 
 export async function buildAndPublishRunner({
+  artifactRoot,
+  artifactRootBinding,
   deadlineMs = MAX_EVAL_PROCESS_DEADLINE_MS,
   now = () => performance.now(),
   remainingProcessDeadline,
   repoRoot,
-  runnerPath = defaultEvalRunnerPath(repoRoot),
+  runnerPath = artifactRoot ? defaultEvalRunnerPath(artifactRoot) : undefined,
   runProcess,
   sourceEnv = process.env,
   spawn,
@@ -177,15 +184,35 @@ export async function buildAndPublishRunner({
 
     let fixedRunnerPath;
     try {
-      fixedRunnerPath = prepareFixedRunnerPublishDirectory(repoRoot, runnerPath);
+      fixedRunnerPath = prepareFixedRunnerPublishDirectory({
+        artifactRoot,
+        artifactRootBinding,
+        repoRoot,
+        runnerPath,
+      });
     } catch {
       return { ok: false, reason: "runner-publish-failed" };
     }
     const publishDir = dirname(fixedRunnerPath);
     const temporary = join(publishDir, `.${basename(fixedRunnerPath)}.${randomUUID()}.tmp`);
     try {
+      const boundary = resolveRunnerBoundary({ artifactRoot, artifactRootBinding, repoRoot });
+      assertCapabilityArtifactRoot(boundary);
+      prepareFixedRunnerPublishDirectory({
+        artifactRoot,
+        artifactRootBinding: boundary,
+        repoRoot,
+        runnerPath,
+      });
       copyFileSync(builtRunner, temporary);
       if (process.platform !== "win32") chmodSync(temporary, 0o700);
+      assertCapabilityArtifactRoot(boundary);
+      prepareFixedRunnerPublishDirectory({
+        artifactRoot,
+        artifactRootBinding: boundary,
+        repoRoot,
+        runnerPath,
+      });
       renameSync(temporary, fixedRunnerPath);
       if (process.platform !== "win32") chmodSync(fixedRunnerPath, 0o700);
     } catch {
@@ -204,12 +231,22 @@ export async function buildAndPublishRunner({
  * Digest the forced TS runtime plus the one fixed runner. Only the aggregate is
  * returned; paths stay inside the hash input and never enter reports or logs.
  */
-export function captureRuntimeArtifacts({ repoRoot, runnerPath = defaultEvalRunnerPath(repoRoot) }) {
+export function captureRuntimeArtifacts({
+  artifactRoot,
+  artifactRootBinding,
+  repoRoot,
+  runnerPath = artifactRoot ? defaultEvalRunnerPath(artifactRoot) : undefined,
+}) {
   try {
     const runtimeFiles = collectTypeScriptRuntimeFiles(repoRoot);
     if (runtimeFiles.length === 0) return unknownArtifact();
 
-    const fixedRunnerPath = validateExistingFixedRunner(repoRoot, runnerPath);
+    const fixedRunnerPath = validateExistingFixedRunner({
+      artifactRoot,
+      artifactRootBinding,
+      repoRoot,
+      runnerPath,
+    });
     const runnerStat = lstatSync(fixedRunnerPath);
     if (!runnerStat.isFile() || runnerStat.isSymbolicLink() || runnerStat.size === 0) {
       return unknownArtifact();
@@ -218,14 +255,16 @@ export function captureRuntimeArtifacts({ repoRoot, runnerPath = defaultEvalRunn
       return unknownArtifact();
     }
 
-    const files = [...runtimeFiles, fixedRunnerPath];
-    const manifest = files
-      .map((file) => {
+    const manifest = [
+      ...runtimeFiles.map((file) => {
         const contentDigest = createHash("sha256").update(readFileSync(file)).digest("hex");
         const relativePath = relative(repoRoot, file).split(sep).join("/");
         return `${relativePath}\0${contentDigest}`;
-      })
-      .sort();
+      }),
+      `external-runner/${basename(fixedRunnerPath)}\0${
+        createHash("sha256").update(readFileSync(fixedRunnerPath)).digest("hex")
+      }`,
+    ].sort();
     if (manifest.length === 0) return unknownArtifact();
     return {
       count: manifest.length,
@@ -318,25 +357,32 @@ function isStrictDescendant(root, candidate) {
     && !isAbsolute(pathFromRoot);
 }
 
-function fixedRunnerLocation(repoRoot, runnerPath) {
-  const root = resolve(repoRoot);
-  const rootStat = lstatSync(root);
-  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new Error("invalid-repo-root");
+function resolveRunnerBoundary({ artifactRoot, artifactRootBinding, repoRoot }) {
+  const boundary = artifactRootBinding
+    ?? bindCapabilityArtifactRoot(repoRoot, artifactRoot);
+  assertCapabilityArtifactRoot(boundary);
+  return boundary;
+}
+
+function fixedRunnerLocation({ artifactRoot, artifactRootBinding, repoRoot, runnerPath }) {
+  const boundary = resolveRunnerBoundary({ artifactRoot, artifactRootBinding, repoRoot });
   const fixedRunnerPath = resolve(runnerPath);
-  if (fixedRunnerPath !== defaultEvalRunnerPath(root)) throw new Error("noncanonical-runner-path");
+  if (fixedRunnerPath !== capabilityRunnerPath(boundary)) throw new Error("noncanonical-runner-path");
   return {
+    boundary,
     fixedRunnerPath,
-    root,
-    rootRealPath: realpathSync(root),
+    root: boundary.root,
+    rootRealPath: boundary.root,
   };
 }
 
-function prepareFixedRunnerPublishDirectory(repoRoot, runnerPath) {
-  const location = fixedRunnerLocation(repoRoot, runnerPath);
+function prepareFixedRunnerPublishDirectory(options) {
+  const location = fixedRunnerLocation(options);
   const publishDirectory = dirname(location.fixedRunnerPath);
   let current = location.root;
   for (const segment of relative(location.root, publishDirectory).split(sep)) {
     if (!segment) continue;
+    assertCapabilityArtifactRoot(location.boundary);
     current = join(current, segment);
     if (!existsSync(current)) mkdirSync(current, { mode: 0o700 });
     const stat = lstatSync(current);
@@ -346,6 +392,7 @@ function prepareFixedRunnerPublishDirectory(repoRoot, runnerPath) {
       throw new Error("runner-directory-outside-repo");
     }
   }
+  assertCapabilityArtifactRoot(location.boundary);
   if (existsSync(location.fixedRunnerPath)) {
     const existing = lstatSync(location.fixedRunnerPath);
     if (!existing.isFile() || existing.isSymbolicLink()) throw new Error("invalid-existing-runner");
@@ -357,8 +404,9 @@ function prepareFixedRunnerPublishDirectory(repoRoot, runnerPath) {
   return location.fixedRunnerPath;
 }
 
-function validateExistingFixedRunner(repoRoot, runnerPath) {
-  const location = fixedRunnerLocation(repoRoot, runnerPath);
+function validateExistingFixedRunner(options) {
+  const location = fixedRunnerLocation(options);
+  assertCapabilityArtifactRoot(location.boundary);
   assertNoSymlinkSegments(location.root, location.fixedRunnerPath);
   const stat = lstatSync(location.fixedRunnerPath);
   if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("invalid-runner");

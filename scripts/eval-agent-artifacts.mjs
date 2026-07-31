@@ -5,8 +5,11 @@ import { fileURLToPath } from "node:url";
 
 import {
   captureRuntimeArtifacts,
-  defaultEvalRunnerPath,
 } from "./eval-agent-provenance.mjs";
+import {
+  bindCapabilityArtifactRoot,
+  capabilityRunnerPath,
+} from "./eval-agent-artifact-root.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(here, "..");
@@ -14,10 +17,17 @@ const REPO_ROOT = resolve(here, "..");
 /** Recompute the current fixed runtime manifest without returning any paths. */
 export function createArtifactDigestReport(dependencies = {}) {
   const repoRoot = dependencies.repoRoot ?? REPO_ROOT;
-  const runnerPath = dependencies.runnerPath ?? defaultEvalRunnerPath(repoRoot);
+  const artifactRootBinding = dependencies.artifactRootBinding;
+  if (!artifactRootBinding) return { status: "unknown", count: 0 };
+  const runnerPath = dependencies.runnerPath ?? capabilityRunnerPath(artifactRootBinding);
   const captureArtifacts = dependencies.captureArtifacts ?? captureRuntimeArtifacts;
   try {
-    const snapshot = captureArtifacts({ repoRoot, runnerPath });
+    const snapshot = captureArtifacts({
+      artifactRoot: artifactRootBinding.root,
+      artifactRootBinding,
+      repoRoot,
+      runnerPath,
+    });
     if (
       snapshot?.status === "ok"
       && typeof snapshot.digest === "string"
@@ -34,7 +44,19 @@ export function createArtifactDigestReport(dependencies = {}) {
 }
 
 export function main(args = process.argv.slice(2), dependencies = {}) {
-  const report = createArtifactDigestReport(dependencies);
+  let artifactRootBinding;
+  try {
+    const index = args.indexOf("--artifact-root");
+    const duplicate = args.filter((arg) => arg === "--artifact-root").length !== 1;
+    const requestedRoot = duplicate || index < 0 ? undefined : args[index + 1];
+    artifactRootBinding = bindCapabilityArtifactRoot(
+      dependencies.repoRoot ?? REPO_ROOT,
+      requestedRoot,
+    );
+  } catch {
+    // Fail closed below without exposing path or filesystem details.
+  }
+  const report = createArtifactDigestReport({ ...dependencies, artifactRootBinding });
   const stdout = dependencies.stdout ?? process.stdout;
   if (args.includes("--json")) {
     stdout.write(`${JSON.stringify(report)}\n`);

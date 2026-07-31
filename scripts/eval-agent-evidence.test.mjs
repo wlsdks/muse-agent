@@ -5,7 +5,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -16,6 +18,10 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import { CAPABILITIES, createCapabilityReport } from "./eval-agent.mjs";
+import {
+  bindCapabilityArtifactRoot,
+  capabilityReportPath,
+} from "./eval-agent-artifact-root.mjs";
 import {
   beginCapabilityEvidenceAttempt,
   composeCapabilityAxisProgress as composeCapabilityAxisProgressRaw,
@@ -776,6 +782,40 @@ test("axis progress cannot be redirected through a symlinked parent", () => {
   } finally {
     rmSync(root, { force: true, recursive: true });
     rmSync(outside, { force: true, recursive: true });
+  }
+});
+
+test("bound production evidence rejects root replacement before committing any external file", () => {
+  if (process.platform === "win32") return;
+  const fixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), "muse-bound-evidence-")));
+  const repoRoot = join(fixtureRoot, "repo");
+  const artifactRoot = join(fixtureRoot, "artifacts");
+  const movedRoot = join(fixtureRoot, "moved-artifacts");
+  const outside = join(fixtureRoot, "outside");
+  mkdirSync(repoRoot);
+  mkdirSync(artifactRoot);
+  mkdirSync(outside);
+  const binding = bindCapabilityArtifactRoot(repoRoot, artifactRoot);
+  const reportPath = capabilityReportPath(binding);
+  let swapped = false;
+  try {
+    assert.throws(
+      () => beginCapabilityEvidenceAttempt({
+        allowedRoot: artifactRoot,
+        allowedRootBinding: binding,
+        beforeCommit: () => {
+          if (swapped) return;
+          swapped = true;
+          renameSync(artifactRoot, movedRoot);
+          symlinkSync(outside, artifactRoot, "dir");
+        },
+        reportPath,
+      }),
+      /capability-report-persistence-failed/u,
+    );
+    assert.deepEqual(readdirSync(outside), []);
+  } finally {
+    rmSync(fixtureRoot, { force: true, recursive: true });
   }
 });
 
