@@ -26,7 +26,10 @@ import type {
   SessionTagStore
 } from "@muse/runtime-state";
 import type { VoiceProviderRegistry } from "@muse/voice";
-import type { ResolvedIntegrationEnvironment } from "@muse/autoconfigure";
+import type {
+  ContinuityCapsulePreparationService,
+  ResolvedIntegrationEnvironment
+} from "@muse/autoconfigure";
 
 import type { InjectionDetectionCounter } from "@muse/policy";
 
@@ -63,6 +66,11 @@ export interface ServerOptions {
   readonly deliverySafety?: DeliverySafetySupplier;
   /** Owner-only Personal Continuity ledger used by the read-only evaluation route. */
   readonly attunementFile?: string;
+  /**
+   * Assembly-owned Capsule preparation service. The API must reuse this
+   * instance because it owns the process-local comparison baseline.
+   */
+  readonly continuityCapsulePreparation?: ContinuityCapsulePreparationService;
   /** Opt-in local browsing archive used only for exact Continuity visit resolution. */
   readonly browsingFile?: string;
   /**

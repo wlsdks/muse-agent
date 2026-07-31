@@ -80,6 +80,9 @@ export function createApiServerOptions(options: CreateApiServerOptionsOptions = 
     }),
     agentRuntime: assembly.agentRuntime,
     ...(assembly.backgroundModelProvider ? { backgroundModelProvider: assembly.backgroundModelProvider } : {}),
+    ...(assembly.continuityCapsulePreparation
+      ? { continuityCapsulePreparation: assembly.continuityCapsulePreparation }
+      : {}),
     ...((options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE)
       ? { continuityWorkspaceDir: options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE }
       : {}),

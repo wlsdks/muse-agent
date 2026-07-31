@@ -557,8 +557,12 @@ thread, not a hidden global preference.
   prepared work, and estimated time. Today, legacy caller-declared render data is joined by an
   evidence-bound preparation substrate: after an exact process-local comparison, one configured
   model may return a display-only draft whose claims cite exact current task/note/reminder source
-  keys. Citation membership is verified; semantic entailment, exact stop capture, durable
-  baseline, authenticated API/UI presentation, automatic timing, and usefulness remain roadmap.
+  keys. The empty Chat session exposes this through an explicit owner action and a closed,
+  no-store English/Korean card; rendering alone makes no model call, the first request may only
+  seed the process-local baseline, and the ready state shows recorded/current next steps,
+  relation changes, estimated work, and source/authority caveats without executing anything.
+  Citation membership is verified; semantic entailment, authenticated source observation, exact
+  stop capture, durable baseline, automatic timing/surfacing, and usefulness remain roadmap.
 - **Policy Card** — today, an explicit read-only preview shows the grounds and thread scope of a
   proposed collaboration rule while separating authoritative experience, caller-supplied replay
   claims, and AttuneGraph explanation. Automatic surfacing and trusted try/edit/reject/undo

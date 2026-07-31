@@ -41,6 +41,7 @@ import { dirname, join } from "node:path";
 import { registerStaticWeb } from "./static-web.js";
 import { registerAdminRoutes } from "./admin-routes.js";
 import { registerAttunementRoutes } from "./attunement-routes.js";
+import { registerContinuityCapsuleRoutes } from "./continuity-capsule-routes.js";
 import { registerMcpRoutes } from "./mcp-routes.js";
 import { registerMultiAgentRoutes, resolveWorkerTimeoutMs } from "./multi-agent-routes.js";
 import { registerCompatibilityRoutes } from "./compat-routes.js";
@@ -386,6 +387,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     worksFile: options.worksFile ?? resolveWorksFile(env),
     ...((options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE)
       ? { workspaceDir: options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE }
+      : {})
+  });
+  registerContinuityCapsuleRoutes(server, {
+    authService,
+    ...(options.continuityCapsulePreparation
+      ? { preparation: options.continuityCapsulePreparation }
       : {})
   });
   registerPersonalStatusRoutes(server, {
