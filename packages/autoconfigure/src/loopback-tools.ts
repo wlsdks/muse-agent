@@ -20,6 +20,7 @@ import {
   createExperienceLearningApprovalReceipt,
   createLocalExactArtifactResolver,
   fingerprintContinuityPolicy,
+  projectExperienceLearningDegradationFromState,
   promoteApprovedExperienceLearningContinuityPolicy,
   rollbackExperienceLearningContinuityPolicyByHandleId,
   proposeExperienceLearningFromDelivery,
@@ -68,6 +69,9 @@ import { createContinuityLearningPreviewTool } from "./continuity-learning-previ
 import { createContinuityLearningReplayPreviewTool } from "./continuity-learning-replay-preview-tool.js";
 import { createContinuityLearningPolicyCardTool } from "./continuity-learning-policy-card-tool.js";
 import { createContinuityLearningApplyTool } from "./continuity-learning-apply-tool.js";
+import {
+  createContinuityLearningDegradationTool
+} from "./continuity-learning-degradation-tool.js";
 import { createContinuityLearningRollbackTool } from "./continuity-learning-rollback-tool.js";
 import { createQualificationLearningWriteGate } from "./qualification-learning-active-skill-write-gate.js";
 import { resolveWeaknessesFile } from "./provider-paths.js";
@@ -393,6 +397,13 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
                   }
                 : undefined;
             }
+          }),
+          createContinuityLearningDegradationTool({
+            assess: async (handleId) =>
+              projectExperienceLearningDegradationFromState(
+                await readAttunementState(deps.attunementFile!),
+                handleId
+              )
           }),
           createContinuityLearningRollbackTool({
             rollback: async (handleId) => {

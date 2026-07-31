@@ -27,6 +27,9 @@ import {
   createContinuityLearningApplyTool
 } from "../src/continuity-learning-apply-tool.js";
 import {
+  createContinuityLearningDegradationTool
+} from "../src/continuity-learning-degradation-tool.js";
+import {
   createContinuityLearningRollbackTool
 } from "../src/continuity-learning-rollback-tool.js";
 import { createMuseRuntimeAssembly } from "../src/index.js";
@@ -326,6 +329,18 @@ describe("continuity learning preview tool", () => {
     const rollbackTool = tool("muse.continuity.learning.rollback");
     expect(rollbackTool.definition.risk).toBe("write");
     const handleId = (applied as { readonly handleId: string }).handleId;
+    const degradationTool = tool("muse.continuity.learning.degradation");
+    expect(degradationTool.definition.risk).toBe("read");
+    const beforeAssessment = await readFile(attunementFile);
+    await expect(degradationTool.execute(
+      { handleId },
+      { runId: "assess-learning" }
+    )).resolves.toMatchObject({
+      handleId,
+      reason: "insufficient-window",
+      status: "hold"
+    });
+    expect(await readFile(attunementFile)).toEqual(beforeAssessment);
     const beforeForgedRollback = await readFile(attunementFile);
     await expect(rollbackTool.execute(
       { handleId: `learning_promotion_handle_${"f".repeat(64)}` },
@@ -525,5 +540,37 @@ describe("continuity learning preview tool", () => {
       { runId: "proxy" }
     )).rejects.toThrow();
     expect(rollback).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires one exact promotion handle ID before read-only degradation assessment", async () => {
+    const handleId = `learning_promotion_handle_${"a".repeat(64)}`;
+    const assess = vi.fn(async () => ({
+      baseline: { adjusted: 0, ignored: 0, rejected: 0, total: 0, used: 0 },
+      handleId,
+      promoted: { adjusted: 0, ignored: 0, rejected: 0, total: 0, used: 0 },
+      reason: "insufficient-window" as const,
+      requiredOutcomesPerWindow: 5 as const,
+      status: "hold" as const
+    }));
+    const tool = createContinuityLearningDegradationTool({ assess });
+    expect(tool.definition.risk).toBe("read");
+    await expect(tool.execute({ handleId }, { runId: "read" }))
+      .resolves.toMatchObject({ handleId, status: "hold" });
+    assess.mockResolvedValueOnce(undefined);
+    await expect(tool.execute({ handleId }, { runId: "missing" }))
+      .rejects.toThrow(/unavailable/u);
+    for (const input of [
+      {},
+      { handleId: "invalid" },
+      { handleId, extra: true },
+      { promotion: {} }
+    ]) {
+      await expect(tool.execute(input as never, { runId: "invalid" })).rejects.toThrow();
+    }
+    await expect(tool.execute(
+      new Proxy({ handleId }, {}),
+      { runId: "proxy" }
+    )).rejects.toThrow();
+    expect(assess).toHaveBeenCalledTimes(2);
   });
 });
