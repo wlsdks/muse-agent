@@ -64,8 +64,10 @@ For an existing source checkout, initialize the embedded engine with
 Muse consumes the independent
 [`@attunegraph/core`](https://github.com/wlsdks/attunegraph) repository as the
 exact `packages/attunegraph` Git submodule, currently pinned to standalone main
-commit `16edea0`. Its dependency-free core,
-in-memory store, and portable format are verified on Linux, macOS, and Windows.
+commit `4298c13`. Its dependency-free core, in-memory store, portable format,
+and package dry-run are verified on Linux, macOS, and Windows. A separate
+Ubuntu Node 24.15 clean-room job installs the tarball offline in a fresh project
+and exercises every public export plus a real v2 Working Graph.
 The opt-in durable local SQLite store and offline Admin currently require Node
 24.15 or newer on reviewed Linux/macOS filesystems and fail closed elsewhere;
 Muse does not silently replace them with an external graph database.
@@ -248,8 +250,9 @@ What is verified today, and what those words do **not** mean:
   projection journal and typed worker boundary. New writes can use `canonical-projection@2`, whose
   canonical bytes name the exact thread root and whose admission rejects any disconnected assertion
   before storage; byte-compatible v1 data remains readable as legacy root-unverified evidence.
-  Portable export/rebuild activation, backup, physical forget and the 10K/100K/1M benchmarks are
-  still pending.
+  Portable export/rebuild activation, backup, and physical forget remain roadmap work. A
+  revision-bound measurement-only 10K/100K/1M harness now exists; clean 100K/1M evidence,
+  qualification thresholds, and any 90/100 readiness verdict remain pending.
 - `MUSE_ATTUNEGRAPH_DATABASE=/absolute/path/attunegraph.sqlite` explicitly connects the existing
   provider-revalidated Continuity Pack Preview path to
   `@muse/attunegraph/continuity-durable-projection`. The configured composition revalidates current
