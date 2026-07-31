@@ -82,7 +82,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
 | **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3d3b` independently verified; explicit Pack Preview now dogfoods process-local `resumeContext`, while durable/current-world semantics remain pending) |
-| **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | partial (`AWG-050b1` binds fresh decision-time evidence; `AWG-050b2` adds an explicit-CLI return receipt source ledger; automatic timing, durable graph relation, card, and usefulness proof remain pending) |
+| **AWG-050b** | Shadow Muse ledger | Records `silent|digest|offer`, reason, evidence, bounded alternatives, and later return timing without sending or acting | partial (`AWG-050b1` binds fresh decision-time evidence; `AWG-050b2` adds an explicit-CLI return receipt source ledger; `AWG-050b3` adds a verified durable factual return projection; automatic timing, card, and usefulness proof remain pending) |
 | **AWG-060** | Policy Card v1 | Evidence counts, scope, proposed delta, trial/edit/reject/rollback; no hidden promotion | partial (`AWG-060d` claim-safe read-only compiler/tool independently verified; automatic surfacing, trusted trial/edit/reject writes, apply/rollback controls, and UI pending) |
 | **AWG-065** | Neutral AttuneGraph product boundary | Closed `AttuneGraph*` interface, forbidden-import gate, and Muse integration package keep private Continuity types outside the standalone Engine without copying validation | completed (dependency-free `@attunegraph/core` plus explicit `@muse/attunegraph` integration; no compatibility alias) |
 | **AWG-070** | SQLite AttuneGraph Store v1 | Implement the selected worker-isolated `node:sqlite` default behind the AttuneGraph Store contract with version-gated physical profile, journal replay, indexes, restart/crash/corruption tests, portable export, and 10K/100K/1M operator benchmarks; record measured TS/SQLite optimization and activate a Rust kernel only when end-to-end evidence justifies it | partial (`AWG-070a1` durable projection journal, `AWG-070a2` typed Worker boundary, the `.atgx` encoder/decoder/order/budget/non-retention chain through `AWG-070a3a1a4b`, indexed validation `a4c`, POSIX staging lifecycle `a4d`, Admin protocol/fail-stop spine `a4e1`, shared physical-schema/read-only inspector core `a4e2a`, parent-owned closed-store offline snapshot lease `a4e2b1`, dedicated read-only Admin Worker/application `a4e2b2`, and public offline `./admin` plus Muse Lens CLI `a4e2b3` independently verified; export/rebuild/activation, write/repair/live-web Admin, backup, physical forget, complete profile/corpus, and 10K/100K/1M benchmarks pending) |
@@ -249,6 +249,26 @@ timing in real life.
   changed-scope tests, lint, typechecks/builds, and the full cross-package gate. This is a
   factual source ledger, not durable AttuneGraph ingestion, usefulness evidence, automatic
   return detection, or Policy Card promotion.
+- **AWG-050b3 is `verified-current`:** one configured full rebuild composes current
+  Attunement state with a capability-authenticated persisted Timing snapshot and writes it
+  to the reserved `muse.local-attunement-timing` AttuneGraph source scope. Each exact
+  return-to-Delivery join contributes only `Decision --PRECEDED--> Delivery` and
+  content-addressed `Evidence --OBSERVED_DURING--> Thread`; it never emits feedback,
+  outcome, causality, policy, action, usefulness, or permission claims. Historical v1
+  provider receipts remain byte-compatible, and the separate source scope prevents a
+  later provider-only projection from erasing the composite graph. The owner-invoked CLI
+  attempts this rebuild after recording a return and reports graph failure separately
+  without rolling back or overstating the authoritative source receipt. Working Graph
+  reads use the same bounded neutral operator. Forget plus a later full rebuild removes
+  return relations from the active head, while historical SQLite journal bytes remain;
+  this is not physical erasure. Strictly older observations cannot replace a newer graph
+  head. A fresh Sol/high independent completion evaluator first rejected an unguarded
+  public input envelope; after descriptor-safe proxy/accessor/prototype/symbol/exact-field
+  admission and direct runtime coverage were added, the evaluator passed the repaired
+  implementation. Focused package suites, hostile-input cases, package typechecks, lint,
+  naming/environment/document gates, changed-scope tests, full workspace build/tests, and
+  repository self-evaluation passed. This does not prove automatic timing quality, user
+  usefulness, or physical erasure.
 
 ## Current 050a3 activation
 

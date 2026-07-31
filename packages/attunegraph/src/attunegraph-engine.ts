@@ -368,6 +368,16 @@ export async function openAttuneGraph(options: OpenAttuneGraphOptions): Promise<
           if (current.canonicalProjection !== normalized.observation.canonicalProjection || current.projectionFingerprint !== normalized.observation.observationId) attuneGraphError("CORRUPT_STORE", "stored replay does not match the requested canonical projection");
           return freezeSnapshot(current.snapshot);
         }
+        if (
+          current
+          && Date.parse(normalized.observation.observedAt)
+            < Date.parse(current.observedAt)
+        ) {
+          attuneGraphError(
+            "SNAPSHOT_CONFLICT",
+            "source observation must not precede the current projection"
+          );
+        }
         if (normalized.expectedSnapshot && !sameSnapshot(current?.snapshot, normalized.expectedSnapshot)) attuneGraphError("SNAPSHOT_CONFLICT", "expected snapshot is stale");
         if (!normalized.expectedSnapshot && current) attuneGraphError("SNAPSHOT_CONFLICT", "expectedSnapshot is required after the first projection");
         const nextSnapshot = Object.freeze({ schemaVersion: 1 as const, scope: Object.freeze({ ...openedScope }), generation: (current?.snapshot.generation ?? 0) + 1, commitId: `attunegraph-commit:${normalized.observation.observationId}` });

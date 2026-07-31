@@ -73,7 +73,7 @@ import { createQualificationLearningWriteGate } from "./qualification-learning-a
 import { resolveWeaknessesFile } from "./provider-paths.js";
 import type { MuseEnvironment } from "./index.js";
 
-const CONTINUITY_RUNTIME_SOURCE_ID = "muse.local-attunement";
+import { continuityRuntimeSourceId } from "./continuity-attunegraph-composition.js";
 
 export interface LoopbackToolsDeps {
   readonly attunementFile?: string;
@@ -169,7 +169,7 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
         });
         const snapshotProvider = createLocalAttunementSnapshotProvider({
           attunementFile: deps.attunementFile!,
-          sourceId: CONTINUITY_RUNTIME_SOURCE_ID
+          sourceId: continuityRuntimeSourceId
         });
         const resumeCoordinator =
           createContinuityResumeRuntimeCoordinator({
@@ -207,7 +207,7 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
           ),
           previewResume: async (threadId) => {
             const resume = await resumeCoordinator.preview({
-              sourceId: CONTINUITY_RUNTIME_SOURCE_ID,
+              sourceId: continuityRuntimeSourceId,
               threadId
             });
             const pack = getContinuityResumeRuntimePack(resume);
@@ -314,7 +314,7 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
               const headRevalidation =
                 await snapshotProvider.captureHeadRevalidation(
                   {
-                    sourceId: CONTINUITY_RUNTIME_SOURCE_ID,
+                    sourceId: continuityRuntimeSourceId,
                     threadId: matches[0]!.scope.threadId
                   },
                   { maxCaptureSpanMs: 1_000 }

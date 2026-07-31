@@ -60,6 +60,7 @@ async function run(
   const stderr: string[] = [];
   const previous = {
     HOME: process.env.HOME,
+    MUSE_ATTUNEGRAPH_DATABASE: process.env.MUSE_ATTUNEGRAPH_DATABASE,
     MUSE_ATTUNEMENT_FILE: process.env.MUSE_ATTUNEMENT_FILE,
     MUSE_CALENDAR_ICS_FILE: process.env.MUSE_CALENDAR_ICS_FILE,
     MUSE_BROWSING_FILE: process.env.MUSE_BROWSING_FILE,
@@ -72,6 +73,7 @@ async function run(
     MUSE_TASKS_FILE: process.env.MUSE_TASKS_FILE
   };
   process.env.HOME = fixture.root;
+  delete process.env.MUSE_ATTUNEGRAPH_DATABASE;
   process.env.MUSE_ATTUNEMENT_FILE = fixture.attunementFile;
   process.env.MUSE_CALENDAR_ICS_FILE = join(fixture.root, "calendar.ics");
   process.env.MUSE_BROWSING_FILE = fixture.browsingFile;
@@ -289,6 +291,51 @@ describe("muse thread / continue — Personal Continuity", () => {
     expect(nested.exitCode).toBeUndefined();
     expect(nested.stdout).toContain("Shadow return: already-linked shadow_return_");
     expect((await readTimingState(timingFile)).returns).toHaveLength(1);
+
+    const projected = await run(f, ["continue", id], {
+      now: () => Date.parse("2026-07-15T11:30:00.000Z"),
+      projectShadowReturnGraph: async (receipt) => ({
+        schemaVersion: 1,
+        status: "projected",
+        observationReceiptId: receipt.id,
+        sourceFreshness: {
+          state: "unknown",
+          observedAt: receipt.openedAt
+        },
+        snapshot: {
+          schemaVersion: 1,
+          scope: {
+            sourceId: "muse.local-attunement-timing",
+            threadId: receipt.threadId
+          },
+          generation: 2,
+          commitId: "attunegraph-commit:test"
+        }
+      })
+    });
+    expect(projected.exitCode).toBeUndefined();
+    expect(projected.stdout).toContain(
+      "AttuneGraph return relation: projected generation 2"
+    );
+    expect(projected.stdout).toContain(
+      "feedback, outcome, causality, and permission were not inferred"
+    );
+
+    const graphFailed = await run(f, ["thread", "continue", id], {
+      now: () => Date.parse("2026-07-15T11:45:00.000Z"),
+      projectShadowReturnGraph: async () => {
+        throw new Error("simulated graph rebuild failure");
+      }
+    });
+    expect(graphFailed.exitCode).toBeUndefined();
+    expect(graphFailed.stdout).toContain("Shadow return: already-linked");
+    expect(graphFailed.stdout).toContain(
+      "AttuneGraph return relation: rebuild-failed"
+    );
+    expect(graphFailed.stdout).toContain(
+      "Shadow return receipt remains recorded and the Pack remains opened"
+    );
+    expect(graphFailed.stderr).toBe("");
 
     const failed = await run(f, ["continue", id], {
       now: () => Date.parse("2026-07-15T12:00:00.000Z"),

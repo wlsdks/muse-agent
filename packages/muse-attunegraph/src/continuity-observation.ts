@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   CONTINUITY_PROJECTION_RULE_VERSION,
+  continuityShadowReturnProjectionRuleVersion,
   type ContinuityGraphProjection,
   type ContinuityProjectionScope,
   type ContinuityProjectionTimestampBasis
@@ -474,9 +475,13 @@ function parseProjection(
   if (record.schemaVersion !== 1) {
     fail(context.invalidCode, "projection.schemaVersion must be 1");
   }
-  if (record.ruleVersion !== CONTINUITY_PROJECTION_RULE_VERSION) {
+  if (
+    record.ruleVersion !== CONTINUITY_PROJECTION_RULE_VERSION
+    && record.ruleVersion !== continuityShadowReturnProjectionRuleVersion
+  ) {
     fail(context.invalidCode, "projection.ruleVersion is not supported");
   }
+  const ruleVersion = record.ruleVersion;
   const scope = parseScope(record.scope, context);
   const rawAssertions = dataArray(
     record.assertions,
@@ -599,7 +604,7 @@ function parseProjection(
   }
   const projection = Object.freeze({
     schemaVersion: 1 as const,
-    ruleVersion: CONTINUITY_PROJECTION_RULE_VERSION,
+    ruleVersion,
     scope,
     sourceVersion,
     projectionVersion: declaredProjectionVersion,

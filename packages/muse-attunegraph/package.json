@@ -16,6 +16,10 @@
       "types": "./dist/continuity-observation.d.ts",
       "import": "./dist/continuity-observation.js"
     },
+    "./continuity-shadow-returns": {
+      "types": "./dist/continuity-shadow-return-observation.d.ts",
+      "import": "./dist/continuity-shadow-return-observation.js"
+    },
     "./continuity-capsules": {
       "types": "./dist/continuity-capsule-presentation.d.ts",
       "import": "./dist/continuity-capsule-presentation.js"

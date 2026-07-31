@@ -16,7 +16,10 @@ engine.
 - `pause` rejects every future observation. A collector must check the session
   before reading an OS signal, so pausing means zero reads on its next tick.
 - `forget` atomically removes that session plus every observation, candidate,
-  and feedback receipt derived from it.
+  feedback receipt, and factual Shadow-return receipt derived from it. A later
+  configured full AttuneGraph rebuild removes those return relations from the
+  active graph head; this is not physical erasure of historical graph-journal
+  bytes.
 
 ## Data contract
 
@@ -43,6 +46,20 @@ rule version, and a reason:
 
 An `offer` is permission to display an existing exact-source Continuity Pack.
 It never sends a message, invokes a model, changes a task, or contacts anyone.
+
+## Explicit return and graph projection
+
+Only a successful explicit `muse continue` or `muse thread continue` Pack open
+can record a return. The content-addressed receipt binds the latest strictly
+prior unreturned rule-v3 candidate to one exact Delivery/thread/open time and
+states that feedback/outcome were not inferred, causality was not claimed,
+reconstruction benefit was not assessed, and no action was granted.
+
+When `MUSE_ATTUNEGRAPH_DATABASE` is configured, Muse then rebuilds the complete
+reserved `muse.local-attunement-timing` scope. It adds only
+`Decision PRECEDED Delivery` and return `Evidence OBSERVED_DURING Thread`.
+Failure is reported separately and never rolls back the Pack or source receipt;
+the next configured projection is a safe retry point.
 
 ## Feedback
 

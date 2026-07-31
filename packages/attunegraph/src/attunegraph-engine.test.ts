@@ -55,16 +55,22 @@ function deferred(): { readonly promise: Promise<void>; readonly resolve: () => 
 
 function command(
   id: string,
-  options: { readonly scope?: typeof SCOPE; readonly freshness?: "fresh" | "stale" | "unknown"; readonly assertions?: readonly GraphAssertion[] } = {}
+  options: {
+    readonly scope?: typeof SCOPE;
+    readonly freshness?: "fresh" | "stale" | "unknown";
+    readonly assertions?: readonly GraphAssertion[];
+    readonly observedAt?: string;
+  } = {}
 ) {
+  const observedAt = options.observedAt ?? NOW;
   return {
     operator: "canonical-projection@1" as const,
     observation: {
       schemaVersion: 1 as const,
       observationKey: id,
       scope: options.scope ?? SCOPE,
-      observedAt: NOW,
-      sourceFreshness: { state: options.freshness ?? "fresh", observedAt: NOW },
+      observedAt,
+      sourceFreshness: { state: options.freshness ?? "fresh", observedAt },
       assertions: options.assertions ?? [assertion(id)]
     }
   };
@@ -94,10 +100,31 @@ it("rejects content-id collision, stale CAS, and cross-scope snapshots", async (
     ...command("wrong-id", { assertions: [] }),
     observation: { ...command("wrong-id", { assertions: [] }).observation, observationId: "wrong-id" }
   } as never)).rejects.toMatchObject({ code: "INVALID_INPUT" });
-  const second = await attuneGraph.project({ ...command("two"), expectedSnapshot: first });
+  const second = await attuneGraph.project({
+    ...command("two", { observedAt: "2026-07-30T00:00:01.000Z" }),
+    expectedSnapshot: first
+  });
   await expect(attuneGraph.project({ ...command("three"), expectedSnapshot: first })).rejects.toMatchObject({ code: "SNAPSHOT_CONFLICT" });
   const other = await openAttuneGraph({ scope: OTHER_SCOPE, store });
   await expect(other.project({ ...command("other", { scope: OTHER_SCOPE }), expectedSnapshot: second })).rejects.toMatchObject({ code: "SNAPSHOT_SCOPE_MISMATCH" });
+});
+
+it("rejects delayed source observations before they can replace newer truth", async () => {
+  const attuneGraph = await openAttuneGraph({
+    scope: SCOPE,
+    store: createInMemoryAttuneGraphStore()
+  });
+  const first = await attuneGraph.project(command("first"));
+  const second = await attuneGraph.project({
+    ...command("second", { observedAt: "2026-07-30T00:00:02.000Z" }),
+    expectedSnapshot: first
+  });
+
+  await expect(attuneGraph.project({
+    ...command("delayed", { observedAt: "2026-07-30T00:00:01.000Z" }),
+    expectedSnapshot: second
+  })).rejects.toMatchObject({ code: "SNAPSHOT_CONFLICT" });
+  await expect(attuneGraph.head()).resolves.toEqual(second);
 });
 
 it("reports separate freshness and deterministic partial Working Graph truncation", async () => {

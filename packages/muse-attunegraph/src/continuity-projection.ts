@@ -53,6 +53,12 @@ export {
 
 export const CONTINUITY_PROJECTION_RULE_VERSION =
   "continuity-state-projection-v1" as const;
+export const continuityShadowReturnProjectionRuleVersion =
+  "continuity-state-shadow-return-projection-v1" as const;
+
+export type ContinuityProjectionRuleVersion =
+  | typeof CONTINUITY_PROJECTION_RULE_VERSION
+  | typeof continuityShadowReturnProjectionRuleVersion;
 
 export { CONTINUITY_SOURCE_NAMESPACES };
 
@@ -93,7 +99,7 @@ export interface ContinuityProjectionTimestampBasis {
 
 export interface ContinuityGraphProjection {
   readonly schemaVersion: 1;
-  readonly ruleVersion: typeof CONTINUITY_PROJECTION_RULE_VERSION;
+  readonly ruleVersion: ContinuityProjectionRuleVersion;
   readonly scope: ContinuityProjectionScope;
   readonly sourceVersion: string;
   readonly projectionVersion: string;
@@ -103,7 +109,7 @@ export interface ContinuityGraphProjection {
 
 export interface ContinuityGraphProjectionDelta {
   readonly schemaVersion: 1;
-  readonly ruleVersion: typeof CONTINUITY_PROJECTION_RULE_VERSION;
+  readonly ruleVersion: ContinuityProjectionRuleVersion;
   readonly scope: ContinuityProjectionScope;
   readonly fromProjectionVersion: string;
   readonly toProjectionVersion: string;
@@ -949,13 +955,10 @@ export function diffContinuityProjections(
       "projection schema versions must both be 1"
     );
   }
-  if (
-    previous.ruleVersion !== CONTINUITY_PROJECTION_RULE_VERSION
-    || next.ruleVersion !== CONTINUITY_PROJECTION_RULE_VERSION
-  ) {
+  if (previous.ruleVersion !== next.ruleVersion) {
     throw new ContinuityProjectionError(
       "RULE_MISMATCH",
-      "projection rule versions do not match the active projector"
+      "projection rule versions do not match"
     );
   }
   if (!sameScope(previous.scope, next.scope)) {
@@ -992,7 +995,7 @@ export function diffContinuityProjections(
 
   return Object.freeze({
     schemaVersion: 1 as const,
-    ruleVersion: CONTINUITY_PROJECTION_RULE_VERSION,
+    ruleVersion: previous.ruleVersion,
     scope: Object.freeze({ ...previous.scope }),
     fromProjectionVersion: previous.projectionVersion,
     toProjectionVersion: next.projectionVersion,

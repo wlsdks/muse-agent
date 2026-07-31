@@ -660,10 +660,14 @@ Do not build the database first.
    and leaves open/delivery isolated. A strict optional request can present the verified
    bilingual Capsule render-data contract only when the exact result also owns its Pack and
    Capsule receipt evidence; this is not automatic delivery or a product UI.
-4. **AWG-050b — Shadow decision receipt:** `AWG-050b1` now preserves the bounded policy
+4. **AWG-050b — Shadow-to-return evidence:** `AWG-050b1` preserves the bounded policy
    snapshot for fresh `silent | digest | offer` decisions and binds it to the exact
-   process-local Source/Graph comparison result without sending or acting. Explicit return
-   evidence, the Shadow-to-Return card, and durability remain.
+   process-local Source/Graph comparison result without sending or acting. `AWG-050b2`
+   records the exact explicit CLI return in the timing ledger. `AWG-050b3` now rebuilds a
+   separately versioned complete durable projection with only `Decision PRECEDED Delivery`
+   and return `Evidence OBSERVED_DURING Thread`, queryable through the bounded Working Graph.
+   Automatic return detection, the Shadow-to-Return card, usefulness qualification, and
+   physical journal forget remain.
 5. **AWG-060 — Policy evidence/Card contract:** scoped proposal, evidence, trial, edit,
    reject, rollback, and no hidden promotion.
 6. **AWG-070a — SQLite AttuneGraph Store conformance (`partial`):** AWG-070a1 ships the

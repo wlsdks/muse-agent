@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type {
   ArtifactLink,
   ArtifactReference,
+  AttuneGraphShadowReturnReceipt,
   ContinuityOutcomeRecord,
   ContinuityPolicy,
   ExperienceLearningPolicyAudit,
@@ -21,6 +22,7 @@ export const CONTINUITY_SOURCE_NAMESPACES = Object.freeze({
   outcome: "muse.attunement.outcome",
   policyReset: "muse.attunement.policy-reset",
   policyUndo: "muse.attunement.policy-undo",
+  shadowReturn: "muse.attunement.shadow-return",
   thread: "muse.attunement.thread",
   threadPolicy: "muse.attunement.thread-policy"
 } as const);
@@ -177,6 +179,40 @@ export function deriveContinuityPolicyGraphRef(
   version: number
 ): GraphRef {
   return graphRef("policy", { sourceId, threadId, version });
+}
+
+export function deriveContinuityShadowDecisionGraphRef(
+  sourceId: string,
+  candidateId: string
+): GraphRef {
+  return graphRef("decision", {
+    candidateId,
+    sourceId,
+    type: "shadow-timing-decision"
+  });
+}
+
+export function deriveContinuityShadowReturnEvidenceGraphRef(
+  sourceId: string,
+  returnId: string
+): GraphRef {
+  return graphRef("evidence", {
+    returnId,
+    sourceId,
+    type: "shadow-return"
+  });
+}
+
+export function deriveContinuityShadowReturnSourceRef(
+  sourceId: string,
+  receipt: AttuneGraphShadowReturnReceipt
+): GraphEvidenceRef {
+  return sourceRef(
+    CONTINUITY_SOURCE_NAMESPACES.shadowReturn,
+    sourceId,
+    { returnId: receipt.id },
+    receipt
+  );
 }
 
 export function deriveExperienceLearningAuditEvidenceGraphRef(

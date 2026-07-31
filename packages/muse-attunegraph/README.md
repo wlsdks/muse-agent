@@ -9,6 +9,7 @@ It deliberately has no root export. Consumers import one explicit surface:
 - `@muse/attunegraph/continuity`
 - `@muse/attunegraph/continuity-changes`
 - `@muse/attunegraph/continuity-observations`
+- `@muse/attunegraph/continuity-shadow-returns`
 - `@muse/attunegraph/continuity-capsules`
 - `@muse/attunegraph/continuity-resume-runtime`
 - `@muse/attunegraph/continuity-durable-projection`
@@ -80,3 +81,47 @@ absolute normalized path. There is intentionally no default until portable
 export/rebuild clears the default-persistence gate. This Module does not read
 Attunement, Notes, Tasks, Notion, or Obsidian stores itself; applications remain
 the composition root and authoritative sources remain authoritative.
+
+## Durable Shadow-return relations
+
+The provider/source-revalidated v1 observation remains unchanged. Muse then reads one immutable
+capability returned by `readTimingState`, rebuilds the exact Attunement state under the reserved
+`muse.local-attunement-timing` source scope, and seals a separately versioned complete observation:
+
+```ts
+import {
+  captureContinuityShadowReturnObservation,
+  readContinuityShadowReturnWorkingGraph
+} from "@muse/attunegraph/continuity-shadow-returns";
+
+const composite = captureContinuityShadowReturnObservation({
+  baseObservationReceipt,
+  state: currentAttunementState,
+  timingState: persistedTimingState
+});
+
+await projector.project(composite);
+
+const result = await readContinuityShadowReturnWorkingGraph({
+  databasePath,
+  threadId,
+  now,
+  maxEstimatedTokens: 8_192
+});
+```
+
+Each exact in-scope return adds only:
+
+- `Decision --PRECEDED--> Delivery`
+- content-addressed return `Evidence --OBSERVED_DURING--> Thread`
+
+Both are `source-observed`, cite the exact return evidence ref, and carry no feedback, outcome,
+usefulness, causality, policy, action, or permission. Delivery id, thread, and canonical
+`openedAt` must join one existing base Delivery or the whole composition fails closed. The source
+and projection versions bind the complete return set; order and replay are deterministic.
+
+The reserved composite scope prevents a legacy provider-only v1 write from replacing these
+relations. The Engine also refuses an observation older than its active head. Timing-session
+forget removes the receipts from the source ledger, and the next configured full rebuild removes
+their relations from the active graph head. Historical SQLite journal bytes are not physically
+erased by this logical rebuild.

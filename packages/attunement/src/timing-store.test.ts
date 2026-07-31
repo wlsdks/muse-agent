@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { AttunementStoreError } from "./attunement-store.js";
 import {
   evaluateTimingSession,
+  emptyTimingState,
   forgetTimingSession,
   inspectTimingSession,
   pauseTimingSession,
@@ -18,7 +19,8 @@ import {
   recordTimingObservation,
   resolveTimingPreV3BackupFile,
   startTimingSession,
-  verifyAttuneGraphShadowTimingProjection
+  verifyAttuneGraphShadowTimingProjection,
+  verifyPersistedTimingState
 } from "./timing-store.js";
 
 const recordTimingFeedback = (
@@ -48,6 +50,18 @@ function fixture(): { readonly file: string; readonly options: { readonly idFact
 const knownThread = async (): Promise<void> => undefined;
 
 describe("thread-scoped continuity timing store", () => {
+  it("brands only immutable snapshots read from the persisted timing ledger", async () => {
+    const { file } = fixture();
+    const persisted = await readTimingState(file);
+
+    expect(verifyPersistedTimingState(persisted)).toBe(persisted);
+    expect(Object.isFrozen(persisted)).toBe(true);
+    expect(() => verifyPersistedTimingState(emptyTimingState()))
+      .toThrow("not a verified persisted snapshot");
+    expect(() => verifyPersistedTimingState(structuredClone(persisted)))
+      .toThrow("not a verified persisted snapshot");
+  });
+
   it("permits only one explicit active thread and rejects observations while paused", async () => {
     const { file, options } = fixture();
     const session = await startTimingSession(file, { consentVersion: 1, threadId: "thread_work" }, knownThread, options);

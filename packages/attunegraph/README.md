@@ -101,6 +101,11 @@ console.log(snapshot.commitId, result.status, result.workingGraph);
 await attuneGraph.close();
 ```
 
+After an exact replay check, `canonical-projection@1` refuses a source
+observation whose `observedAt` precedes the active head. This prevents a delayed
+older source read from replacing newer truth; equal-instant distinct writes
+retain the existing expected-snapshot CAS semantics.
+
 The process-local in-memory adapter is intended for tests and experiments. It
 does not provide durable storage.
 

@@ -8,6 +8,20 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added AWG-050b3 durable, queryable Shadow-return relations. The new
+  `@muse/attunegraph/continuity-shadow-returns` surface combines an unchanged
+  provider/source v1 observation with exact current Attunement state and an
+  immutable persisted timing snapshot, then writes a complete separately
+  versioned `muse.local-attunement-timing` scope. Each exact return contributes
+  only `Decision PRECEDED Delivery` and return `Evidence OBSERVED_DURING Thread`;
+  it cannot become feedback, outcome, causality, policy, action, or permission.
+  Explicit configured CLI returns and later Pack Previews share the same
+  rebuild path, Working Graph reads can query it, older source observations
+  fail closed, and source forget removes relations from the next active head.
+  Graph failure remains non-fatal to the opened Pack and authoritative timing
+  receipt. Physical SQLite journal erasure, automatic return detection, and
+  usefulness qualification remain roadmap.
+
 - Added the independently verified AWG-060d claim-safe AttuneGraph Policy Card preview.
   The public `@muse/attunegraph/policy-card` compiler and read-only
   `muse.continuity.learning.policy-card.preview` tool render one inert English/Korean card

@@ -199,8 +199,9 @@ policy mutation, or action authority. AWG-040b/c do not implement core-roadmap o
 
 The AttuneGraph-backed resume path now has one narrow application/runtime composition point in
 the existing read-only Pack Preview, including an explicit verified Capsule render-data
-option. Its verified current Graph Observation Receipt can now enter the embedded durable
-Store only through the explicit `MUSE_ATTUNEGRAPH_DATABASE` opt-in writer. The resume
+option. Its verified current v1 Graph Observation Receipt remains the provider boundary; the
+explicit `MUSE_ATTUNEGRAPH_DATABASE` composition revalidates both local ledgers and writes a
+separate complete `muse.local-attunement-timing` scope. The resume
 baseline itself remains process-local, and the path still has no continuous/current-world
 ingestion, LLM extraction, automatic Shadow delivery, Capsule product UI, Policy Card UI,
 or action authority. The complete three-part signature experience therefore remains a
@@ -234,8 +235,12 @@ unreturned rule-v3 candidate for that thread. Exact Delivery id/open time/thread
 time, and elapsed time are bound; missing, simultaneous, ambiguous, or already-linked
 candidates do not trigger older backfill. Its fixed authority fields say feedback/outcome
 were not inferred, causality was not claimed, reconstruction benefit was not assessed, and
-no action was granted. This is still a source receipt, not a durable graph assertion: the
-AttuneGraph projection and query relation remain roadmap work. Before its first
+no action was granted. The ledger entry remains a source receipt rather than graph authority.
+The configured `AWG-050b3` composition keeps that source authority intact while rebuilding a
+complete reserved `muse.local-attunement-timing` scope. It emits only
+`Decision PRECEDED Delivery` and return `Evidence OBSERVED_DURING Thread`; both are queryable
+through the bounded Working Graph and cannot become feedback, outcome, causality, policy,
+action, or permission. Before its first
 return-bearing timing-schema-v3 write, Muse preserves the exact validated pre-v3 bytes at
 `<timing-file>.pre-v3.json`; rollback must restore that file before reverting code and can
 therefore lose timing-only writes made after the backup.
@@ -631,13 +636,20 @@ backup/restore, export/rebuild activation, and a web Admin remain roadmap work.
 The first real Muse writer is the explicit
 `@muse/attunegraph/continuity-durable-projection` Module. When
 `MUSE_ATTUNEGRAPH_DATABASE` is a non-empty absolute normalized path, the
-existing provider-revalidated Continuity Preview composition projects its
-verified current Graph Observation Receipt into Local AttuneGraph. The Module
+existing provider-revalidated Continuity Preview composition keeps its v1
+Graph Observation Receipt unchanged, re-reads the current validated Attunement
+and persisted timing ledgers, verifies the exact source version, and projects a
+separately versioned complete observation under
+`muse.local-attunement-timing`. Explicit CLI returns invoke the same rebuild.
+The Module
 serializes calls, reads the restart-safe current head, supplies that exact
 optimistic token to the Engine's atomic compare-and-swap, and always closes the
 local instance. An external-writer race fails with no retry or overwrite; an
 identical receipt replays without advancing generation. It records freshness as
-`unknown` because receipt integrity cannot prove current-world freshness.
+`unknown` because receipt integrity cannot prove current-world freshness. The
+Engine refuses observations older than the active source head, and the reserved
+scope prevents a legacy provider-only v1 write from erasing composite
+relations.
 Absent or exactly empty configuration preserves the old Preview path; invalid
 non-empty configuration fails assembly creation closed. This is not continuous
 Observe, a persisted resume baseline, or default ingestion.

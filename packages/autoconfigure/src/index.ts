@@ -25,6 +25,13 @@ export {
 } from "./runtime-assembly.js";
 
 export {
+  continuityRuntimeSourceId,
+  createConfiguredContinuityAttuneGraphProjector,
+  projectConfiguredContinuityAttuneGraphCurrentState,
+  type ProjectConfiguredContinuityAttuneGraphInput
+} from "./continuity-attunegraph-composition.js";
+
+export {
   buildActiveContextProvider,
   buildCalendarRegistry,
   buildSkillRegistry,

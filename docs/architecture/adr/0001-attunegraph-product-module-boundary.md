@@ -98,13 +98,18 @@ rebuildable relations rather than becoming a second document database.
 Muse's first write composition is shipped but deliberately has no default:
 `MUSE_ATTUNEGRAPH_DATABASE` must name an absolute normalized database path.
 The existing provider-revalidated Continuity Preview supplies a verified Graph
-Observation Receipt to the Muse durable-projection Module. The Module reads the
-current snapshot through the public Engine Interface, supplies that exact
-optimistic token to the Engine's atomic compare-and-swap, serializes in-process
-calls, and closes each Local AttuneGraph instance. An external-writer race
-rejects without retry or overwrite; an identical receipt replay does not
-advance the generation. Receipt integrity does not prove freshness, so the
-stored source-freshness state remains `unknown`.
+Observation Receipt to the Muse composition. That v1 receipt remains unchanged.
+The composition re-reads validated Attunement and the immutable capability
+returned by `readTimingState`, verifies the source version, and seals a complete
+v2 observation under the reserved `muse.local-attunement-timing` scope. This
+scope separation prevents a later provider-only v1 write from erasing return
+relations. The durable-projection Module reads the current snapshot through the
+public Engine Interface, supplies that exact optimistic token to the Engine's
+atomic compare-and-swap, serializes in-process calls, and closes each Local
+AttuneGraph instance. Older source observations are refused; an
+external-writer race rejects without retry or overwrite; an identical receipt
+replay does not advance the generation. Receipt integrity does not prove
+freshness, so the stored source-freshness state remains `unknown`.
 
 ## Dependency direction
 

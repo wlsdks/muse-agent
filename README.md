@@ -211,10 +211,12 @@ has to prove the exact thread, time, change, source and policy relation. It runs
 SQLite store behind an isolated worker, with no external graph server required
 ([blueprint](docs/design/attunement/agent-native-graph-core.md)).
 
-The first return seam is intentionally narrower than a graph claim: after either explicit CLI
+The first return seam is intentionally narrower than a usefulness claim: after either explicit CLI
 `continue` spelling opens a Pack, Muse records a content-addressed timing receipt against the
-latest strictly prior eligible Shadow candidate. The receipt is inspectable and forgettable, but
-durable AttuneGraph relation ingestion, automatic return detection, and usefulness validation are
+latest strictly prior eligible Shadow candidate. When the explicit AttuneGraph database is
+configured, Muse rebuilds a complete reserved-scope snapshot containing only the factual paths
+`Decision → PRECEDED → Delivery` and `Evidence → OBSERVED_DURING → Thread`. The receipt remains
+authoritative; automatic return detection, usefulness validation, and physical journal erasure are
 still roadmap work.
 
 It is deliberately built as an independently extractable module — Muse is its first consumer and
@@ -232,9 +234,12 @@ What is verified today, and what those words do **not** mean:
   the 10K/100K/1M benchmarks are still pending.
 - `MUSE_ATTUNEGRAPH_DATABASE=/absolute/path/attunegraph.sqlite` explicitly connects the existing
   provider-revalidated Continuity Pack Preview path to
-  `@muse/attunegraph/continuity-durable-projection`. It serializes writes, recovers the exact
-  expected head after restart, treats receipt replay as idempotent, and records source freshness as
-  `unknown`. The variable has no default; an invalid non-empty value fails assembly creation closed.
+  `@muse/attunegraph/continuity-durable-projection`. The configured composition revalidates current
+  Attunement plus timing ledgers, writes a complete `muse.local-attunement-timing` scope, serializes
+  writes, recovers the exact expected head after restart, treats receipt replay as idempotent, and
+  records source freshness as `unknown`. An explicit CLI return triggers the same rebuild; failure
+  remains separate and non-fatal to the opened Pack and recorded source receipt. The variable has no
+  default; an invalid non-empty value fails assembly creation closed.
 - The public `@attunegraph/core/admin` Interface and `muse attunegraph inspect` Lens can inspect
   summary, integrity, and one exact scope head from an explicitly attested closed/quiescent store.
   They do not inspect a live writer, repair data, expose raw SQL, or provide the future web Admin.

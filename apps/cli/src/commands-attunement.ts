@@ -54,6 +54,7 @@ import {
   unlinkWorkContinuity,
   type ArtifactLink,
   type ArtifactLinkValidator,
+  type AttuneGraphShadowReturnReceipt,
   type AttunementState,
   type ContinuityEvaluation,
   type ContinuityFeedbackCohort as CoreContinuityFeedbackCohort,
@@ -71,7 +72,18 @@ import {
   type PersonalThreadKind,
 } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
-import { buildCalendarRegistry, createQualificationLearningWriteGate, resolveAttunementFile, resolveCheckpointsDir, resolveContactsFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, resolveWorksFile } from "@muse/autoconfigure";
+import {
+  buildCalendarRegistry,
+  createQualificationLearningWriteGate,
+  projectConfiguredContinuityAttuneGraphCurrentState,
+  resolveAttunementFile,
+  resolveCheckpointsDir,
+  resolveContactsFile,
+  resolveNotesDir,
+  resolveRemindersFile,
+  resolveTasksFile,
+  resolveWorksFile
+} from "@muse/autoconfigure";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { defaultBrowsingFile, readExactBrowsingVisit } from "@muse/recall";
 import { defaultConversationsFile, readExactConversation, readExactWork } from "@muse/stores";
@@ -104,6 +116,10 @@ export interface AttunementCommandDeps {
   readonly now?: () => number;
   /** Test/host seam; production records only after this CLI opens a Pack. */
   readonly recordShadowReturn?: typeof recordAttuneGraphShadowReturn;
+  /** Test/host seam; production rebuilds only an explicitly configured Store. */
+  readonly projectShadowReturnGraph?: (
+    receipt: AttuneGraphShadowReturnReceipt
+  ) => ReturnType<typeof projectConfiguredContinuityAttuneGraphCurrentState>;
 }
 
 function environment(): Record<string, string | undefined> {
@@ -560,14 +576,32 @@ async function runContinue(
   threadId: string | undefined,
   resolveExactArtifact: ExactArtifactResolver,
   now: () => number,
-  recordShadowReturn: typeof recordAttuneGraphShadowReturn
+  recordShadowReturn: typeof recordAttuneGraphShadowReturn,
+  projectShadowReturnGraph: NonNullable<
+    AttunementCommandDeps["projectShadowReturnGraph"]
+  >
 ): Promise<void> {
   const file = attunementFile();
   const chosenId = await resolveContinueThreadId(threadId);
   const { delivery, pack } = await openProductionAuthorizedContinuityPack(file, chosenId, resolveExactArtifact, { now });
   io.stdout(formatPack(pack, delivery.id, delivery.runId));
   try {
-    io.stdout(formatShadowReturn(await recordShadowReturn(timingFile(), delivery)));
+    const result = await recordShadowReturn(timingFile(), delivery);
+    io.stdout(formatShadowReturn(result));
+    if (result.status !== "unmatched") {
+      try {
+        const projection = await projectShadowReturnGraph(result.receipt);
+        if (projection !== undefined) {
+          io.stdout(
+            `AttuneGraph return relation: ${projection.status} generation ${projection.snapshot.generation.toString()} · active-head temporal provenance only; feedback, outcome, causality, and permission were not inferred.\n`
+          );
+        }
+      } catch {
+        io.stdout(
+          "AttuneGraph return relation: rebuild-failed · Shadow return receipt remains recorded and the Pack remains opened; retry is deferred to the next configured projection.\n"
+        );
+      }
+    }
   } catch {
     io.stdout("Shadow return: write-failed · Pack is still opened; feedback, outcome, usefulness, and causality were not inferred.\n");
   }
@@ -597,6 +631,12 @@ export function registerAttunementCommands(program: Command, io: ProgramIO, deps
   const calendarRegistry = deps.calendarRegistry ?? buildCalendarRegistry(environment());
   const now = deps.now ?? Date.now;
   const recordShadowReturn = deps.recordShadowReturn ?? recordAttuneGraphShadowReturn;
+  const projectShadowReturnGraph = deps.projectShadowReturnGraph
+    ?? ((receipt: AttuneGraphShadowReturnReceipt) =>
+      projectConfiguredContinuityAttuneGraphCurrentState(environment(), {
+        sourceObservedAt: receipt.openedAt,
+        threadId: receipt.threadId
+      }));
   const browsingFile = defaultBrowsingFile(environment());
   const conversationsFile = defaultConversationsFile(environment());
   const validateArtifact = createArtifactValidator(mcpResourceCaller, calendarRegistry, io.workspaceDir, browsingFile, conversationsFile, worksFile());
@@ -717,7 +757,14 @@ Examples:
           command,
           io,
           "continue",
-          () => runContinue(io, threadId, resolveExactArtifact, now, recordShadowReturn)
+          () => runContinue(
+            io,
+            threadId,
+            resolveExactArtifact,
+            now,
+            recordShadowReturn,
+            projectShadowReturnGraph
+          )
         );
       });
   };

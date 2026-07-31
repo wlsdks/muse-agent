@@ -297,10 +297,35 @@ export async function readTimingState(file: string): Promise<TimingState> {
       parseTimingState(JSON.parse(await readFile(file, "utf8")))
     );
   } catch (cause) {
-    if (isMissingFile(cause)) return markPersistedTimingState(EMPTY_STATE);
+    if (isMissingFile(cause)) {
+      return markPersistedTimingState(structuredClone(EMPTY_STATE));
+    }
     if (cause instanceof AttunementStoreError) throw cause;
     throw new AttunementStoreError(`cannot read timing state: ${describe(cause)}`);
   }
+}
+
+/**
+ * Admits only the immutable snapshot capability returned by readTimingState.
+ * A structurally identical caller object is not proof that the receipts were
+ * committed to the current owner-local timing ledger.
+ */
+export function verifyPersistedTimingState(value: unknown): TimingState {
+  if (typeof value !== "object" || value === null) {
+    throw new AttunementStoreError(
+      "timing state is not a verified persisted snapshot"
+    );
+  }
+  const stamp = PERSISTED_TIMING_STATES.get(value);
+  if (
+    stamp === undefined
+    || timingStateDigest(value as TimingState) !== stamp.digest
+  ) {
+    throw new AttunementStoreError(
+      "timing state is not a verified persisted snapshot"
+    );
+  }
+  return value as TimingState;
 }
 
 export async function startTimingSession(

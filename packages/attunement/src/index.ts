@@ -241,6 +241,7 @@ export {
   recordAttuneGraphShadowReturn,
   resolveTimingPreV3BackupFile,
   verifyAttuneGraphShadowTimingProjection,
+  verifyPersistedTimingState,
   readTimingState,
   recordTimingFeedback,
   recordTimingObservation,
