@@ -11,6 +11,13 @@ const BANNED = /[★◦✓✅⚠⏳⛔✗✔①②③④⑤⑥⑦⑧⑨→\u{1F0
 const RECORD = /^- \[(open|done|blocked|decision|rejected|superseded)\](\s+\d{4}-\d{2}-\d{2})?(\s+[a-z-]+=("[^"]*"|\S+))*(\s+::\s+.*)?$/u;
 
 const KINDS = new Set(["fix", "feat", "test", "docs", "guard", "scout", "security", "perf", "reliability", "refactor"]);
+// The README declares closed sets for src= and for= too, and only kind= was ever checked.
+// Half-enforced grammar drifts: three records written the day after the vocabulary was read
+// carried src=<a skill name>, which greps for none of the real sources. `evaluator` is here
+// deliberately — an independent-evaluator finding is a distinct origin from an audit, and it
+// was already in use.
+const SOURCES = new Set(["probe", "scout", "owner", "loop", "audit", "evaluator"]);
+const OWNERS = new Set(["maintenance", "grow-muse"]);
 // commit= is mandatory on [done] records dated on/after the template's
 // enforcement date — historical bare records stay valid (text-only data).
 const COMMIT_REQUIRED_FROM = "2026-07-18";
@@ -37,10 +44,14 @@ for (const file of FILES) {
       return;
     }
     const head = line.split(" :: ")[0];
-    const kind = head.match(/\bkind=(\S+)/u);
-    if (kind && !KINDS.has(kind[1])) {
-      console.error(`${where}: kind='${kind[1]}' outside the closed set [${[...KINDS].join("|")}]`);
-      errors++;
+    for (const [field, allowed] of [["kind", KINDS], ["src", SOURCES], ["for", OWNERS]]) {
+      // matchAll, not match: a repeated field put the legal value first and hid an illegal one
+      // behind it, because only the first occurrence was ever read.
+      for (const [, value] of head.matchAll(new RegExp(`\\b${field}=(\\S+)`, "gu"))) {
+        if (allowed.has(value)) continue;
+        console.error(`${where}: ${field}='${value}' outside the closed set [${[...allowed].join("|")}]`);
+        errors++;
+      }
     }
     const date = line.match(/^- \[done\]\s+(\d{4}-\d{2}-\d{2})/u);
     if (date && date[1] >= COMMIT_REQUIRED_FROM && !/\bcommit=[0-9a-f]{7,}/u.test(head)) {

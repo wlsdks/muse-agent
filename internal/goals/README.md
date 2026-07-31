@@ -93,13 +93,15 @@ Every top-level `- ` line in backlog.md·backlog-archive.md follows this grammar
 
 - **status** (word only): `open` needs doing · `done` complete · `blocked` blocked ·
   `decision` awaiting human decision · `rejected` rejected (do not re-propose) · `superseded` superseded
-- **fields** (only if present, space-separated): `commit=<sha>` `kind=<fix|feat|test|docs|guard|scout>`
-  `src=<probe|scout|owner|loop|audit>` `prio=<1-5>` `gate="before->after"`
-  `for=<maintenance|grow-muse>`
+- **fields** (only if present, space-separated): `commit=<sha>` `kind=<fix|feat|test|docs|guard|scout|security|perf|reliability|refactor>`
+  `src=<probe|scout|owner|loop|audit|evaluator>` `prio=<1-5>` `gate="before->after"`
+  `for=<maintenance|grow-muse>` — kind/src/for are closed sets enforced by
+  `scripts/check-ledger-format.mjs`, which owns the authoritative lists
 - **no emoji/decorative symbols** (math symbols allowed). Arrows are `->`.
 - analysis example: `grep '^- \[done\]' | ...` pulls date·commit·gate-delta directly.
 - **enforcement**: commit-msg hook + self-eval gate (`check-ledger-format.mjs`) — grammar, forbidden
-  symbols, closed `kind` set, (for `[done]` dated after 2026-07-18) required commit=, no indented records.
+  symbols, the closed `kind`/`src`/`for` sets (every occurrence, not just the first), (for `[done]`
+  dated after 2026-07-18) required commit=, no indented records.
 - **scope**: backlog.md + backlog-archive.md only. growth-backlog (its own row format)·rival-watch
   (watermark format)·judgment-lens (frozen) are explicit exceptions. Historical records from before
   2026-07-18 remain fieldless text data (the archive is a move commit, so git-blame dates can't be recovered).
