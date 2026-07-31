@@ -206,6 +206,47 @@ test("a shard receipt binds source, input, seed, model, and runtime without leak
   }, { env }), undefined);
 });
 
+test("multihop receipts bind the embedding model the battery actually resolves", () => {
+  const capability = CAPABILITIES.find(({ id }) => id === "multihop-retrieval-lift");
+  const source = { revision: "a".repeat(40), tree: "clean" };
+  const artifacts = { count: 41, digest: "b".repeat(64), status: "ok" };
+  const provenance = {
+    sourceBeforeBuild: source,
+    sourceAfterBuild: source,
+    sourceAtEnd: source,
+    artifactsAfterBuild: artifacts,
+    artifactsAtEnd: artifacts,
+  };
+  const common = {
+    MUSE_EVAL_EMBED_MODEL: "receipt-only-model",
+    MUSE_EVAL_MODEL: "gemma4:12b",
+    MUSE_EVAL_SEED: "17",
+  };
+  const first = createCapabilityShardReceipt(capability, provenance, {
+    env: { ...common, MUSE_EMBED_MODEL: " actual-model-a " },
+    nodeVersion: "v24.0.0",
+    platformIdentity: "darwin/arm64",
+  });
+  const second = createCapabilityShardReceipt(capability, provenance, {
+    env: { ...common, MUSE_EMBED_MODEL: "actual-model-b" },
+    nodeVersion: "v24.0.0",
+    platformIdentity: "darwin/arm64",
+  });
+
+  assert.equal(first.modelIdentity.embedding, "actual-model-a");
+  assert.equal(second.modelIdentity.embedding, "actual-model-b");
+  assert.notEqual(first.inputHash, second.inputHash);
+  assert.equal(
+    createCapabilityShardReceipt(capability, provenance, {
+      env: { ...common, MUSE_EMBED_MODEL: "   " },
+    }).modelIdentity.embedding,
+    "nomic-embed-text-v2-moe",
+  );
+  assert.equal(createCapabilityShardReceipt(capability, provenance, {
+    env: { ...common, MUSE_EMBED_MODEL: "sk-secret-like-value" },
+  }), undefined);
+});
+
 test("plan-quality threshold is pinned to one and cannot be weakened by environment", () => {
   const source = readFileSync(new URL("./eval-plan-quality.mjs", import.meta.url), "utf8");
   assert.match(source, /const THRESHOLD = 1;/u);

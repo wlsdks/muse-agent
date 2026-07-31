@@ -112,9 +112,13 @@ export function createCapabilityShardReceipt(capability, provenance, options = {
     const seed = SAFE_SHARD_SEED.test(rawSeed) ? rawSeed : undefined;
     const generation = safeShardIdentity(env.MUSE_EVAL_MODEL ?? DEFAULT_GENERATION_MODEL);
     const embedding = safeShardIdentity(
-      env.MUSE_EVAL_EMBED_MODEL
-      ?? env.MUSE_RECALL_EMBED_MODEL
-      ?? DEFAULT_EMBEDDING_MODEL
+      capability.id === "multihop-retrieval-lift"
+        ? (env.MUSE_EMBED_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL)
+        : (
+          env.MUSE_EVAL_EMBED_MODEL
+          ?? env.MUSE_RECALL_EMBED_MODEL
+          ?? DEFAULT_EMBEDDING_MODEL
+        )
     );
     const node = safeShardIdentity(options.nodeVersion ?? process.version);
     const platform = safeShardIdentity(
