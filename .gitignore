@@ -75,7 +75,10 @@ Thumbs.db
 # local per-machine permissions and paths — was covered only by the owner's global
 # gitignore, so a fresh clone would have committed it
 .claude/settings.local.json
-.codex/
+# Codex session scratch, but .codex/config.toml is a committed project setting: it raises
+# project_doc_max_bytes so AGENTS.md is not silently truncated on a fresh checkout.
+.codex/*
+!.codex/config.toml
 
 # self-eval fitness log — local trend, rebuildable; not committed (avoids parallel-loop churn)
 docs/self-eval-scoreboard.json

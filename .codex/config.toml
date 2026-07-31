@@ -1,0 +1,9 @@
+# Project-scoped Codex settings. Codex reads this file in a TRUSTED repo, walking from the
+# project root down to the working directory, and it is the only way to ship the setting below
+# with the repo rather than relying on each machine's ~/.codex/config.toml.
+#
+# AGENTS.md carries a generated verbatim copy of CLAUDE.md + .claude/rules/ (~80 KB) so a
+# non-Claude agent gets the same instructions Claude Code is handed automatically. Codex
+# truncates a project doc at project_doc_max_bytes and says NOTHING — at the 32 KiB default the
+# outbound-safety contract, the push policy and the testing gates never reach the model.
+project_doc_max_bytes = 200000

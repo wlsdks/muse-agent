@@ -37,9 +37,11 @@ this file.
 truncates a project doc at `project_doc_max_bytes` (default 32 KiB) *silently*, so a default
 setup drops the last two thirds — outbound safety, the push policy, the testing gates — with no
 warning at all. The check: the very last line of this file is `<!-- END GENERATED -->`. If your
-copy ends anywhere else, you were truncated — read every file in the table below directly, and
-tell the owner to set `project_doc_max_bytes = 200000` at the TOP LEVEL of `~/.codex/config.toml`
-(appended at the end it lands inside the last `[projects."…"]` table and does nothing).
+copy ends anywhere else, you were truncated. This repo ships [`.codex/config.toml`](.codex/config.toml)
+raising the budget, and codex applies it only once the project is TRUSTED — so being truncated
+means the repo is untrusted here. Trust it, or set `project_doc_max_bytes = 200000` at the TOP
+LEVEL of `~/.codex/config.toml` (appended at the end it lands inside the last `[projects."…"]`
+table and does nothing). Until then, read every file in the table below directly.
 
 If you were truncated, the table below is the minimum to read back; the appendix's own list of
 all 12 projected paths is delivered even under truncation, so use that for the rest. Only the

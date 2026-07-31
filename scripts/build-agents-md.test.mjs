@@ -8,6 +8,7 @@ import {
   CODEX_DEFAULT_DOC_BUDGET,
   checkBudget,
   codexDocBudget,
+  resolveDocBudget,
   compose,
   renderBlock,
   rewriteLinks,
@@ -33,17 +34,17 @@ test("a projection that fits, or a machine without codex, reports nothing", () =
 
 test("the budget is read from the codex config, defaulting when absent", () => {
   assert.equal(codexDocBudget("model = \"x\"\nproject_doc_max_bytes = 200000\n"), 200000);
-  assert.equal(codexDocBudget("model = \"x\"\n"), CODEX_DEFAULT_DOC_BUDGET);
-  assert.equal(codexDocBudget(undefined), CODEX_DEFAULT_DOC_BUDGET);
+  assert.equal(codexDocBudget("model = \"x\"\n"), null, "absent is null, not a guess");
+  assert.equal(codexDocBudget(undefined), null);
 });
 
 test("a commented-out or table-scoped budget key does not count", () => {
-  assert.equal(codexDocBudget("# project_doc_max_bytes = 200000\n"), CODEX_DEFAULT_DOC_BUDGET);
+  assert.equal(codexDocBudget("# project_doc_max_bytes = 200000\n"), null);
   // The real trap: appending the key to a config that ends in tables puts it inside the last
   // one, where codex ignores it. Reading it as the budget blesses a truncating config.
   assert.equal(
     codexDocBudget('[projects."/x"]\ntrust_level = "trusted"\nproject_doc_max_bytes = 200000\n'),
-    CODEX_DEFAULT_DOC_BUDGET,
+    null,
   );
 });
 
@@ -52,6 +53,22 @@ test("a budget value that is not a plain integer falls back rather than passing"
   for (const value of ["0x30000", "2e5", '"200000"', "true"]) {
     assert.equal(codexDocBudget(`project_doc_max_bytes = ${value}\n`), CODEX_DEFAULT_DOC_BUDGET, value);
   }
+});
+
+// The repo ships .codex/config.toml, so the budget travels with the checkout instead of
+// depending on each machine's home directory. Project scope wins, exactly as codex resolves it.
+test("the project config outranks the user config, and absent falls through", () => {
+  assert.equal(resolveDocBudget({
+    projectConfig: "project_doc_max_bytes = 200000\n",
+    userConfig: "project_doc_max_bytes = 40000\n",
+  }), 200000);
+  assert.equal(resolveDocBudget({ projectConfig: "", userConfig: "project_doc_max_bytes = 40000\n" }), 40000);
+  assert.equal(resolveDocBudget({ projectConfig: "", userConfig: "" }), CODEX_DEFAULT_DOC_BUDGET);
+  // An unusable project value stops there rather than inheriting a permissive user value.
+  assert.equal(resolveDocBudget({
+    projectConfig: "project_doc_max_bytes = 2e5\n",
+    userConfig: "project_doc_max_bytes = 200000\n",
+  }), CODEX_DEFAULT_DOC_BUDGET);
 });
 
 test("a projection exactly at the budget is allowed, one byte over is not", () => {

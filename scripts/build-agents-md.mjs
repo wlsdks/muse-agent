@@ -50,7 +50,17 @@ export function codexDocBudget(configText) {
     const value = match[1].replace(/_/gu, "");
     return /^\d+$/u.test(value) ? Number(value) : CODEX_DEFAULT_DOC_BUDGET;
   }
-  return CODEX_DEFAULT_DOC_BUDGET;
+  return null;
+}
+
+/**
+ * Project scope wins over user scope, which is how codex resolves it: in a TRUSTED repo it
+ * reads `.codex/config.toml` walking from the project root down. That file is committed here,
+ * so the budget ships with the repo instead of depending on each machine's home directory —
+ * verified with a CODEX_HOME carrying no budget key at all.
+ */
+export function resolveDocBudget({ projectConfig, userConfig }) {
+  return codexDocBudget(projectConfig) ?? codexDocBudget(userConfig) ?? CODEX_DEFAULT_DOC_BUDGET;
 }
 
 /**
@@ -139,16 +149,20 @@ export function checkBudget(bytes, { budget, codexInstalled }) {
   if (!codexInstalled || bytes <= budget) return null;
   return `AGENTS.md is ${bytes} bytes but codex reads at most ${budget}.\n`
     + `  The tail is dropped SILENTLY — the rules at the end never reach the model.\n`
-    + `  Fix: raise it in ${CODEX_CONFIG}\n`
-    + `    project_doc_max_bytes = ${Math.ceil((bytes * 1.5) / 10000) * 10000}`;
+    + `  Fix: set project_doc_max_bytes = ${Math.ceil((bytes * 1.5) / 10000) * 10000} in .codex/config.toml\n`
+    + `  (which this repo ships; it applies only once the repo is TRUSTED), or in ${CODEX_CONFIG}.`;
 }
 
 const invokedDirectly = process.argv[1] && import.meta.url.endsWith(path.basename(process.argv[1]));
 if (invokedDirectly) {
   const current = readFileSync(TARGET, "utf8");
   const next = compose(current, renderBlock());
+  const read = (file) => (existsSync(file) ? readFileSync(file, "utf8") : "");
   const budgetProblem = checkBudget(Buffer.byteLength(next), {
-    budget: codexDocBudget(existsSync(CODEX_CONFIG) ? readFileSync(CODEX_CONFIG, "utf8") : ""),
+    budget: resolveDocBudget({
+      projectConfig: read(path.join(ROOT, ".codex", "config.toml")),
+      userConfig: read(CODEX_CONFIG),
+    }),
     codexInstalled: existsSync(path.dirname(CODEX_CONFIG)),
   });
   // A WARNING, never an exit code. The budget lives in a per-user file outside the repo, so
