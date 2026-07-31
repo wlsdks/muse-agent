@@ -13,7 +13,8 @@ import {
 import {
   buildEvidence,
   canonicalIdentities,
-  committedHashes
+  committedHashes,
+  assertHistoricalRenameEvidenceCandidate
 } from "./write-attunegraph-rename-evidence.mjs";
 import { verifyEvidence } from "./verify-attunegraph-rename-evidence.mjs";
 
@@ -99,6 +100,19 @@ test("candidate checks reject wrong parent and dirty trees", () => {
   assert.throws(() => assertCandidate({ baseline: "base", candidate: "HEAD", resolve: (ref) => ref === "HEAD" ? "head" : "base", parent: () => "base", status: () => "?? worktree-only" }));
 });
 
+test("historical rename evidence explicitly retires when AttuneGraph is a gitlink", () => {
+  const repo = repository();
+  try {
+    const output = "160000 commit 7bcac1cca6c3e9883b0faf9545df1a85985ddf64\tpackages/attunegraph\n";
+    assert.throws(
+      () => assertHistoricalRenameEvidenceCandidate(repo.candidate, repo.cwd, () => output),
+      /retired for submodule candidates/u
+    );
+  } finally {
+    rmSync(repo.cwd, { recursive: true, force: true });
+  }
+});
+
 test("command receipts bind diff-check to the committed candidate range", () => {
   const commits = { baseline: "base-commit", candidate: "candidate-commit" };
   const matrix = materializeCommandMatrix(commits);
@@ -109,6 +123,10 @@ test("command receipts bind diff-check to the committed candidate range", () => 
   assert.deepEqual(COMMAND_MATRIX[0], [
     "diff-check",
     ["git", "diff", "--check", "{baseline}...{candidate}"]
+  ]);
+  assert.deepEqual(matrix.find(([name]) => name === "fixture-clean"), [
+    "fixture-clean",
+    ["git", "-C", "packages/attunegraph", "diff", "--exit-code", "HEAD", "--", "fixtures/portable-v1", "src/fixtures", "attunegraph-local-runtime-manifest.json"]
   ]);
 });
 

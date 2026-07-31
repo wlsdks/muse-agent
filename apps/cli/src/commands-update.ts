@@ -155,6 +155,17 @@ export async function runUpdateCommand(deps: UpdateCommandDeps): Promise<number>
   const budget = (max: number): number => Math.max(0, Math.min(max, deadline - now()));
   const git = (args: readonly string[], timeoutMs: number) => run({ args, command: "git", cwd: repoRoot, timeoutMs });
   const pnpmRun = (args: readonly string[], timeoutMs: number) => run({ args, command: "pnpm", cwd: repoRoot, timeoutMs });
+  const synchronizeSubmodules = async (): Promise<string | undefined> => {
+    const syncResult = await git(["submodule", "sync", "--recursive"], budget(GIT_QUICK_TIMEOUT_MS));
+    if (syncResult.exitCode !== 0 || syncResult.timedOut) {
+      return `git submodule sync --recursive failed — ${tail(syncResult.stderr || syncResult.stdout)}`;
+    }
+    const updateResult = await git(["submodule", "update", "--init", "--recursive"], budget(GIT_PULL_TIMEOUT_MS));
+    if (updateResult.exitCode !== 0 || updateResult.timedOut) {
+      return `git submodule update --init --recursive failed — ${tail(updateResult.stderr || updateResult.stdout)}`;
+    }
+    return undefined;
+  };
 
   if (check) {
     stdout("Checking for updates…\n");
@@ -222,11 +233,6 @@ export async function runUpdateCommand(deps: UpdateCommandDeps): Promise<number>
     return 1;
   }
 
-  if (newHead === oldHead) {
-    stdout("Already up to date.\n");
-    return 0;
-  }
-
   const rollback = async (reason: string): Promise<number> => {
     stderr(`muse update: ${reason}\n`);
     stdout("Rolling back to the previous version…\n");
@@ -235,6 +241,14 @@ export async function runUpdateCommand(deps: UpdateCommandDeps): Promise<number>
       stderr(
         `muse update: automatic rollback FAILED (git reset --hard ${oldHead} exited ${String(resetResult.exitCode)}). ` +
         `Manual recovery: cd ${repoRoot} && git reset --hard ${oldHead} && pnpm build\n`
+      );
+      return 1;
+    }
+    const submoduleError = await synchronizeSubmodules();
+    if (submoduleError) {
+      stderr(
+        "muse update: rolled back the code but recursive submodule restoration ALSO failed. " +
+        `Manual recovery: cd ${repoRoot} && git submodule sync --recursive && git submodule update --init --recursive && pnpm build\n${submoduleError}\n`
       );
       return 1;
     }
@@ -249,6 +263,14 @@ export async function runUpdateCommand(deps: UpdateCommandDeps): Promise<number>
     stderr("muse update failed, restored previous version.\n");
     return 1;
   };
+
+  const submoduleError = await synchronizeSubmodules();
+  if (submoduleError) return rollback(submoduleError);
+
+  if (newHead === oldHead) {
+    stdout("Already up to date.\n");
+    return 0;
+  }
 
   const lockDiffResult = await git(
     ["diff", "--name-only", `${oldHead}..${newHead}`, "--", "pnpm-lock.yaml"],

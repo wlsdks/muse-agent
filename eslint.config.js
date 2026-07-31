@@ -20,6 +20,7 @@ export default tseslint.config(
       "**/dist/**",
       "**/.claude/worktrees/**",
       "**/node_modules/**",
+      "packages/attunegraph/**",
       "**/coverage/**",
       "**/.muse/**",
       "**/.muse-dev/**",

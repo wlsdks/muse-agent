@@ -11,7 +11,6 @@
 // fail the gate; a battery NOT in it that fails does; and a baseline entry that starts passing
 // fails too, so the list cannot quietly become a graveyard.
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
@@ -35,20 +34,11 @@ export const BASELINE = new Map([
 
 /** Every workspace battery, discovered rather than listed, so a new one is covered on arrival. */
 export function discoverBatteries() {
-  const found = [];
-  for (const group of ["packages"]) {
-    const base = path.join(ROOT, group);
-    if (!existsSync(base)) continue;
-    for (const workspace of readdirSync(base)) {
-      const dir = path.join(base, workspace, "scripts");
-      if (!existsSync(dir)) continue;
-      for (const file of readdirSync(dir)) {
-        if (!file.startsWith("verify-") || !file.endsWith(".mjs")) continue;
-        found.push(`${group}/${workspace}/scripts/${file}`);
-      }
-    }
-  }
-  return found.sort();
+  return execFileSync(
+    "git",
+    ["ls-files", "--recurse-submodules", "--", "packages/*/scripts/verify-*.mjs"],
+    { cwd: ROOT, encoding: "utf8" }
+  ).split("\n").filter(Boolean).sort();
 }
 
 /**

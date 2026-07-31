@@ -13,15 +13,20 @@
 // `composite: true` rather than on a name allowlist. Probing confirmed that setting
 // `composite: false` exits the gate — accepted, because doing so also removes the project
 // from the `tsc -b` graph entirely, so the evasion costs more than the check it avoids.
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join, normalize, relative } from "node:path";
-import { execFileSync } from "node:child_process";
 
 const ROOT = process.cwd();
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 
-const manifests = execFileSync("git", ["ls-files", "packages/*/package.json", "apps/*/package.json"], { cwd: ROOT, encoding: "utf8" })
-  .split("\n").filter(Boolean);
+const manifests = ["packages", "apps"].flatMap((workspaceDirectory) => {
+  const directory = join(ROOT, workspaceDirectory);
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
+    .map((entry) => join(workspaceDirectory, entry.name, "package.json"))
+    .filter((manifest) => existsSync(join(ROOT, manifest)));
+});
 
 // A reference is a directory path; resolve it to the package name it actually declares
 // instead of inferring the name from the path.

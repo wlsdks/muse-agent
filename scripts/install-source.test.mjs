@@ -93,23 +93,44 @@ test("dry run validates the checkout and prints the one install plan without mut
 
   assert.deepEqual(fake.calls.map((call) => `${call.command} ${call.args.join(" ")}`), [
     "git rev-parse --abbrev-ref HEAD",
-    "git status --porcelain",
-    "pnpm --version",
-    "pnpm bin --global"
+    "git status --porcelain"
   ]);
+  assert.match(lines.join(""), /git submodule sync --recursive/u);
+  assert.match(lines.join(""), /git submodule update --init --recursive/u);
   assert.match(lines.join(""), /pnpm install --frozen-lockfile/u);
   assert.match(lines.join(""), /pnpm --dir apps\/cli link --global/u);
 });
 
-test("a successful install runs frozen install, build, global link, and CLI verification in order", async () => {
+test("a successful install synchronizes recursive submodules before every pnpm step", async () => {
   const root = await fixture();
   const fake = scripted();
   const lines = [];
   await runSourceInstall({ nodeVersion: "24.0.0", root, run: fake.run, stdout: (line) => lines.push(line) });
 
-  assert.deepEqual(fake.calls.slice(4), sourceInstallCommands(root));
-  assert.match(lines.join(""), /Update:    muse update/u);
+  assert.deepEqual(fake.calls.slice(2), sourceInstallCommands(root));
+  assert.deepEqual(fake.calls.slice(2, 4).map((call) => `${call.command} ${call.args.join(" ")}`), [
+    "git submodule sync --recursive",
+    "git submodule update --init --recursive"
+  ]);
+  assert.match(lines.join(""), /Update:[ ]{4}muse update/u);
   assert.match(lines.join(""), /Uninstall: pnpm --global remove @muse\/cli/u);
+});
+
+test("a recursive submodule update failure stops before pnpm", async () => {
+  const root = await fixture();
+  const fake = scripted({
+    "git submodule update --init --recursive": { code: 1, stderr: "submodule checkout failed", stdout: "" }
+  });
+  await assert.rejects(
+    runSourceInstall({ nodeVersion: "24.0.0", root, run: fake.run, stdout: () => undefined }),
+    /submodule checkout failed/u
+  );
+  assert.deepEqual(fake.calls.map((call) => `${call.command} ${call.args.join(" ")}`), [
+    "git rev-parse --abbrev-ref HEAD",
+    "git status --porcelain",
+    "git submodule sync --recursive",
+    "git submodule update --init --recursive"
+  ]);
 });
 
 test("a build failure stops before the global link", async () => {

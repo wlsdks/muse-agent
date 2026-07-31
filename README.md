@@ -12,7 +12,7 @@ and asks before it does anything on your behalf. You choose the model and where 
 <p><a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-22c55e.svg" /></a> <a href="package.json"><img alt="Node ≥ 22.12" src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-43853d.svg" /></a> <a href="https://www.typescriptlang.org/"><img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-3178c6.svg" /></a> <a href="#architecture-in-one-paragraph"><img alt="Provider-neutral" src="https://img.shields.io/badge/architecture-provider--neutral-6f42c1.svg" /></a></p>
 
 ```bash
-git clone https://github.com/wlsdks/muse-agent.git && cd muse-agent
+git clone --recurse-submodules https://github.com/wlsdks/muse-agent.git && cd muse-agent
 corepack enable && pnpm install:muse && muse onboard
 ```
 
@@ -49,7 +49,7 @@ corepack enable && pnpm install:muse && muse onboard
 ### Install from source
 
 ```bash
-git clone https://github.com/wlsdks/muse-agent.git
+git clone --recurse-submodules https://github.com/wlsdks/muse-agent.git
 cd muse-agent && corepack enable
 pnpm install:muse     # frozen install → build → link the `muse` CLI → verify
 muse onboard
@@ -58,6 +58,8 @@ muse onboard
 `pnpm install:muse` requires a clean `main`. Preview it with `pnpm install:muse -- --dry-run`,
 update later with `muse update`, or watch the narrated tour with `pnpm demo`. If anything looks
 wrong afterwards, `muse doctor` diagnoses and repairs the local setup in one pass.
+For an existing source checkout, initialize the embedded engine with
+`git submodule update --init --recursive`.
 
 ### Local or cloud — your choice
 
@@ -190,7 +192,7 @@ piece got.
 
 | Area | Where it actually stands |
 | --- | --- |
-| AttuneGraph engine | Exact projection, *"what changed since I stopped"*, content-addressed receipts, bounded resume compilation, canonical `.atgx`, a worker-isolated SQLite journal, an explicit opt-in Continuity Preview writer, and the offline read-only `muse attunegraph inspect` Lens — verified engine substrate; write/repair/live-web Admin and default automatic ingestion/delivery remain roadmap |
+| [AttuneGraph engine](https://github.com/wlsdks/attunegraph) | Public standalone `@attunegraph/core` source consumed here as a pinned submodule: exact projection, *"what changed since I stopped"*, content-addressed receipts, bounded resume compilation, canonical `.atgx`, a worker-isolated SQLite journal, an explicit opt-in Continuity Preview writer, and the offline read-only `muse attunegraph inspect` Lens. Registry publication, write/repair/live-web Admin, Agent Bridge/MCP, and default automatic ingestion/delivery remain roadmap |
 | Continuity Capsule | The explicit Chat/API preparation path now keeps its verified comparison baseline in bounded local personal storage by default, so the first preparation after a Muse restart can compare instead of silently reseeding. Direct library/test construction without that store remains session-only. A compared task/note/reminder result may make one configured-provider call for a display-only draft whose claims cite exact current source keys. Citation membership is verified; exact stop capture, source freshness, authenticated request witness, semantic entailment, all-source support, automatic timing, and usefulness are not |
 | Shadow Muse | The ledger records the decision and, after an explicit CLI Pack open, a bounded return association. The Continuity screen can now show that source receipt and whether its exact two-relation AttuneGraph pair is active. It does not record Web returns, surface automatically, or treat return as feedback, usefulness, outcome, causality, permission, or success |
 | Policy Card | An explicit read-only compiler and `muse.continuity.learning.policy-card.preview` tool return English/Korean render data from one fresh local snapshot. No automatic surfacing, UI, edit/reject/trial write, policy mutation, or action |
@@ -198,7 +200,7 @@ piece got.
 ### Roadmap
 
 Automatic Policy Card surfacing and interactive controls · automatic thread detection · a durable
-current-world graph · standalone release of the graph engine · organic-use evidence.
+current-world graph · AttuneGraph Agent Bridge/MCP and registry release · organic-use evidence.
 
 <details>
 <summary><b>The fine print on the graph engine (AttuneGraph)</b></summary>

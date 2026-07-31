@@ -37,7 +37,7 @@ const SCANNED_EXTENSIONS = new Set([
 const repoRoot = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..");
 
 function trackedTextFiles(): readonly string[] {
-  const out = execFileSync("git", ["-C", repoRoot, "ls-files"], {
+  const out = execFileSync("git", ["-C", repoRoot, "ls-files", "--recurse-submodules"], {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024
   });
@@ -56,6 +56,7 @@ describe("repo byte hygiene (goal-227)", () => {
     // Guard against a silent false-pass: a wrong repoRoot / empty
     // `git ls-files` would scan nothing and "pass" vacuously.
     expect(files.length).toBeGreaterThan(200);
+    expect(files).toContain("packages/attunegraph/src/index.ts");
     const offenders: string[] = [];
     for (const rel of files) {
       let content: string;

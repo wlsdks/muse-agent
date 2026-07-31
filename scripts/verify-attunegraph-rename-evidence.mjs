@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { assertCandidate } from "./run-attunegraph-rename-verification.mjs";
-import { assertAllowedDiffPaths, assertReceipts, canonicalIdentities, committedHashes } from "./write-attunegraph-rename-evidence.mjs";
+import { assertAllowedDiffPaths, assertHistoricalRenameEvidenceCandidate, assertReceipts, canonicalIdentities, committedHashes } from "./write-attunegraph-rename-evidence.mjs";
 import { scanAttuneGraphNaming } from "./check-attunegraph-naming.mjs";
 
 const git = (args, cwd = process.cwd(), encoding = "utf8") => execFileSync("git", args, { cwd, encoding });
@@ -44,6 +44,7 @@ function assertCanonicalIdentitiesPresent(candidate, cwd) {
 
 export function verifyEvidence(evidence, { baseline, candidate, cwd = process.cwd() } = {}) {
   const commits = assertCandidate({ baseline, candidate, cwd });
+  assertHistoricalRenameEvidenceCandidate(commits.candidate, cwd);
   if (!evidence || evidence.version !== 1 || evidence.baseline !== commits.baseline || evidence.candidate !== commits.candidate) throw new Error("evidence commit binding is invalid");
   assertReceipts(evidence.receipts, commits);
   if (!same(evidence.identities, canonicalIdentities)) throw new Error("evidence identities are incomplete or tampered");

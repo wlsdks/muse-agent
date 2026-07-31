@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { scanAttuneGraphNaming } from "./check-attunegraph-naming.mjs";
+import {
+  scanAttuneGraphNaming,
+  trackedAndUntrackedPaths
+} from "./check-attunegraph-naming.mjs";
 
 const word = (...parts) => parts.join("");
 const short = word("m", "ag");
@@ -43,4 +46,11 @@ test("allows ordinary words and unrelated magic constants", () => {
     "const MUSE_EXPORT_MAGIC = true; const label = 'MAGNITUDE'; const pkg = 'magic-string'; const imageMagic = true;"
   );
   assert.deepEqual(findings, []);
+});
+
+test("the repository scan includes initialized AttuneGraph submodule files", () => {
+  assert.ok(
+    trackedAndUntrackedPaths().includes("packages/attunegraph/src/index.ts"),
+    "canonical naming must not false-pass on only the gitlink"
+  );
 });

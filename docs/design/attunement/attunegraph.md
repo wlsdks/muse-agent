@@ -28,11 +28,14 @@ and it is not a new source of truth for tasks, notes, calendar, memory, or Attun
 receipts. Those stores remain authoritative. The graph is a rebuildable, append-oriented
 projection that makes relationships and changes queryable.
 
-AttuneGraph is also a future standalone open-source product. It is developed inside the Muse
-monorepo until its clean-room build, packed-artifact, conformance, export/rebuild, and
-dependency-isolation gates pass. Muse is the first consumer, not a dependency that may
-leak into AttuneGraph Engine semantics. The accepted Module topology and repository extraction
-strategy are in
+AttuneGraph is now a standalone public open-source product at
+[`wlsdks/attunegraph`](https://github.com/wlsdks/attunegraph). Muse pins that repository as the
+same-path `packages/attunegraph` submodule and keeps product integration in
+`@muse/attunegraph`; Muse is the first consumer, not an Engine dependency. The first clean-room
+snapshot passed its independent TypeScript/Vitest configuration, Node 24.16 conformance suite,
+non-Muse example, and packed-artifact inspection. Registry publication, Agent Bridge/MCP,
+write/repair Admin, and the remaining engine roadmap are separate claims. The Module topology and
+repository strategy are in
 [ADR 0001](../../architecture/adr/0001-attunegraph-product-module-boundary.md).
 
 Markdown is AttuneGraph's planned portable document interchange/export format. Obsidian is a

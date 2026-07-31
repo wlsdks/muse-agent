@@ -345,7 +345,17 @@ importers:
         specifier: ^0.29.2
         version: 0.29.2
 
-  packages/attunegraph: {}
+  packages/attunegraph:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.0
+        version: 26.1.0
+      '@typescript/native':
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.0)(@vitest/browser-playwright@4.1.10)(vite@8.1.2(@types/node@26.1.0)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
   packages/attunement:
     dependencies:
