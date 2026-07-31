@@ -129,7 +129,7 @@ describe("lifecycle recorders", () => {
     const execution: ModelLoopExecution = {
       finalResponse: {
         id: "interrupted",
-        model: "m",
+        model: "openai/gpt-4o-mini",
         output: "(run interrupted)"
       },
       intermediateMessages: [
@@ -152,7 +152,16 @@ describe("lifecycle recorders", () => {
           toolCall: { arguments: {}, id: "b", name: "beta" }
         }
       ],
-      toolsUsed: ["alpha", "beta"]
+      toolsUsed: ["alpha", "beta"],
+      usageAccounting: {
+        state: "recorded",
+        usage: {
+          cachedInputTokens: 0,
+          inputTokens: 1_000,
+          outputTokens: 1_000,
+          reasoningTokens: 0
+        }
+      }
     };
 
     await recordRunComplete({
@@ -164,13 +173,91 @@ describe("lifecycle recorders", () => {
 
     expect(await historyStore.findRun("run-interrupted")).toMatchObject({
       output: "(run interrupted)",
-      status: "cancelled"
+      status: "cancelled",
+      tokenUsage: {
+        accountingState: "recorded",
+        cachedInputTokens: 0,
+        inputTokens: 1_000,
+        outputTokens: 1_000,
+        reasoningTokens: 0
+      }
     });
+    expect(Number((await historyStore.findRun("run-interrupted"))?.costUsd))
+      .toBeCloseTo(0.00075, 5);
     expect((await historyStore.findRun("run-interrupted"))?.completedAt).toBeDefined();
     expect((await historyStore.listToolCalls("run-interrupted")).map((call) => call.status))
       .toEqual(["completed", "blocked"]);
     expect((await historyStore.listToolCalls("run-interrupted")).some((call) => call.status === "queued"))
       .toBe(false);
+  });
+
+  it("persists an explicit unknown token state instead of fabricated zero counters", async () => {
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    await historyStore.createRun({
+      id: "run-unknown-usage",
+      input: "u",
+      mode: "react",
+      model: "m",
+      provider: "p",
+      startedAt: new Date(),
+      status: "running"
+    });
+    await recordRunComplete({
+      context: buildContext({ runId: "run-unknown-usage" }),
+      execution: {
+        finalResponse: {
+          id: "interrupted",
+          model: "m",
+          output: "(run interrupted)"
+        },
+        intermediateMessages: [],
+        toolCallCount: 0,
+        toolResults: [],
+        toolsUsed: [],
+        usageAccounting: { state: "unknown" }
+      },
+      historyStore,
+      resolveToolRisk: () => "read"
+    });
+
+    expect(await historyStore.findRun("run-unknown-usage")).toMatchObject({
+      status: "cancelled",
+      tokenUsage: { accountingState: "unknown" }
+    });
+  });
+
+  it("omits token usage when cancellation happens before any model response", async () => {
+    const historyStore = new InMemoryAgentRunHistoryStore();
+    await historyStore.createRun({
+      id: "run-unobserved-usage",
+      input: "u",
+      mode: "react",
+      model: "m",
+      provider: "p",
+      startedAt: new Date(),
+      status: "running"
+    });
+    await recordRunComplete({
+      context: buildContext({ runId: "run-unobserved-usage" }),
+      execution: {
+        finalResponse: {
+          id: "interrupted",
+          model: "m",
+          output: "(run interrupted)"
+        },
+        intermediateMessages: [],
+        toolCallCount: 0,
+        toolResults: [],
+        toolsUsed: [],
+        usageAccounting: { state: "unobserved" }
+      },
+      historyStore,
+      resolveToolRisk: () => "read"
+    });
+
+    const run = await historyStore.findRun("run-unobserved-usage");
+    expect(run).toMatchObject({ status: "cancelled" });
+    expect(run?.tokenUsage).toEqual({});
   });
 
   it("recordRunComplete persists costUsd when the model has known pricing", async () => {

@@ -2,7 +2,13 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { ModelEvent, ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
+import {
+  USAGE_RECORDED_BY_RUNTIME_FLAG,
+  type ModelEvent,
+  type ModelProvider,
+  type ModelRequest,
+  type ModelResponse
+} from "@muse/model";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -559,6 +565,86 @@ describe("background model execution budget", () => {
     expect(returnCalls).toBe(1);
     expect(starts).toEqual(["stream", "next"]);
     expect(views.snapshot()).toMatchObject({ activeForeground: 0, queuedForeground: 0 });
+  });
+
+  it("returns only usage from late generate responses marked for runtime settlement", async () => {
+    const late = deferred<ModelResponse>();
+    const controller = new AbortController();
+    const views = createBackgroundModelExecutionBudgetProviders(
+      providerWithGenerate(async () => late.promise)
+    );
+    const running = views.foreground.generate(request("runtime", {
+      metadata: { [USAGE_RECORDED_BY_RUNTIME_FLAG]: true },
+      signal: controller.signal
+    }));
+    await flush();
+    controller.abort("owner cancelled");
+    late.resolve({
+      id: "late",
+      model: "test",
+      output: "must be discarded by the runtime",
+      toolCalls: [{ arguments: {}, id: "late-tool", name: "must_not_run" }],
+      usage: { inputTokens: 12, outputTokens: 3 }
+    });
+
+    await expect(running).resolves.toMatchObject({
+      id: "late",
+      model: "test",
+      output: "",
+      usage: { inputTokens: 12, outputTokens: 3 }
+    });
+    expect((await running).toolCalls).toBeUndefined();
+    expect(views.snapshot()).toMatchObject({ activeForeground: 0 });
+  });
+
+  it("suppresses late stream output while forwarding terminal usage to the runtime cancellation owner", async () => {
+    const release = deferred<void>();
+    const started = deferred<void>();
+    const controller = new AbortController();
+    const provider: ModelProvider = {
+      generate: async () => response("unused"),
+      id: "runtime-late-stream-provider",
+      listModels: async () => [],
+      stream: () => (async function* (): AsyncIterable<ModelEvent> {
+        started.resolve();
+        await release.promise;
+        yield { text: "must not escape", type: "text-delta" };
+        yield {
+          response: {
+            id: "late-done",
+            model: "test",
+            output: "must not escape",
+            toolCalls: [{ arguments: {}, id: "late-tool", name: "must_not_run" }],
+            usage: { inputTokens: 8, outputTokens: 2 }
+          },
+          type: "done"
+        };
+      })()
+    };
+    const views = createBackgroundModelExecutionBudgetProviders(provider);
+    const iterator = views.foreground.stream(request("runtime-stream", {
+      metadata: { [USAGE_RECORDED_BY_RUNTIME_FLAG]: true },
+      signal: controller.signal
+    }))[Symbol.asyncIterator]();
+    const pending = iterator.next();
+    await started.promise;
+    controller.abort("owner cancelled");
+    release.resolve();
+
+    await expect(pending).resolves.toEqual({
+      done: false,
+      value: {
+        response: {
+          id: "late-done",
+          model: "test",
+          output: "",
+          usage: { inputTokens: 8, outputTokens: 2 }
+        },
+        type: "done"
+      }
+    });
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined });
+    expect(views.snapshot()).toMatchObject({ activeForeground: 0 });
   });
 
   it("does not preempt background for a pre-aborted or queue-full foreground request", async () => {

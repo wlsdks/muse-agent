@@ -1,6 +1,7 @@
 import type { AgentSpecResolution } from "@muse/agent-specs";
 import type { ModelMessage, ModelResponse, ModelToolCall } from "@muse/model";
 import type { ToolExecutionResult } from "@muse/tools";
+import type { TerminalModelUsageAccounting } from "./model-usage-accounting.js";
 import { neutralizeInjectionSpans } from "./injection.js";
 import { normalizeSourceUrl } from "./internals.js";
 import type { PlanStep, StepExecutionResult } from "./plan-execute.js";
@@ -28,6 +29,8 @@ export interface ModelLoopExecution {
   readonly controlStopReason?: "no-progress";
   readonly finalResponse: ModelResponse;
   readonly intermediateMessages: readonly ModelMessage[];
+  /** Aggregate usage observed across every physical model turn in this execution. */
+  readonly usageAccounting?: TerminalModelUsageAccounting;
   /** Tool-call budget slots actually admitted by the loop; blocked calls do not consume it. */
   readonly toolCallCount: number;
   readonly toolResults: readonly ExecutedToolResult[];

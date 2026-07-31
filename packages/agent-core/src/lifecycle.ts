@@ -8,11 +8,12 @@
 
 import { estimateCostUsd } from "@muse/cache";
 import { isCancellationLikeError } from "@muse/resilience";
-import type { ModelMessage } from "@muse/model";
-import { errorMessage } from "@muse/shared";
+import type { ModelMessage, ModelUsage } from "@muse/model";
+import { errorMessage, type JsonObject } from "@muse/shared";
 import { createCheckpointContinuityEvidence, type AgentRunHistoryStore, type CheckpointContinuityEvidence, type CheckpointStore } from "@muse/runtime-state";
 import { createAgentCheckpointState } from "./checkpoint.js";
 import { joinUserMessages } from "./internals.js";
+import { terminalModelUsage } from "./model-usage-accounting.js";
 import { metadataString, toAgentRunMode, toolCallsMetadata } from "./runtime-helpers.js";
 import type { ModelLoopExecution } from "./runtime-internals.js";
 import type { AgentRunContext } from "./types.js";
@@ -61,6 +62,19 @@ export interface LifecycleRunCompleteArgs {
   readonly execution: ModelLoopExecution;
   readonly statusOverride?: "cancelled" | "completed" | "failed";
   readonly resolveToolRisk: (name: string) => "read" | "write" | "execute";
+}
+
+function modelUsageRecord(usage: ModelUsage): JsonObject {
+  return {
+    ...(usage.cachedInputTokens !== undefined
+      ? { cachedInputTokens: usage.cachedInputTokens }
+      : {}),
+    ...(usage.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
+    ...(usage.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
+    ...(usage.reasoningTokens !== undefined
+      ? { reasoningTokens: usage.reasoningTokens }
+      : {})
+  };
 }
 
 export async function recordRunComplete(args: LifecycleRunCompleteArgs): Promise<void> {
@@ -121,7 +135,21 @@ export async function recordRunComplete(args: LifecycleRunCompleteArgs): Promise
       });
     }
 
-    const usage = args.execution.finalResponse.usage;
+    const usage = args.execution.usageAccounting
+      ? terminalModelUsage(args.execution.usageAccounting)
+      : args.execution.finalResponse.usage;
+    const tokenUsage: JsonObject | undefined = args.execution.usageAccounting
+      ? args.execution.usageAccounting.state === "recorded"
+        ? {
+            accountingState: "recorded",
+            ...modelUsageRecord(args.execution.usageAccounting.usage)
+          }
+        : args.execution.usageAccounting.state === "unknown"
+          ? { accountingState: "unknown" }
+          : undefined
+      : usage
+        ? modelUsageRecord(usage)
+        : undefined;
     const costUsd = usage
       ? estimateCostUsd(
           args.execution.finalResponse.model,
@@ -135,7 +163,7 @@ export async function recordRunComplete(args: LifecycleRunCompleteArgs): Promise
       output: args.execution.finalResponse.output,
       runId: args.context.runId,
       status: args.statusOverride ?? (interrupted ? "cancelled" : "completed"),
-      tokenUsage: usage ? { ...usage } : undefined
+      tokenUsage
     });
   } catch {
     // History is observability state and must not block agent execution.

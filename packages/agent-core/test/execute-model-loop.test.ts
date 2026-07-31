@@ -1,4 +1,4 @@
-import type { ModelProvider, ModelRequest, ModelResponse, ModelToolCall } from "@muse/model";
+import type { ModelProvider, ModelRequest, ModelResponse, ModelToolCall, ModelUsage } from "@muse/model";
 import { describe, expect, it } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -43,7 +43,17 @@ const runner = (opts: {
     },
   } as unknown as ModelLoopRunner;
 };
-const resp = (output: string, toolCalls: ModelToolCall[] = []): ModelResponse => ({ id: "x", model: "m", output, toolCalls });
+const resp = (
+  output: string,
+  toolCalls: ModelToolCall[] = [],
+  usage?: ModelUsage
+): ModelResponse => ({
+  id: "x",
+  model: "m",
+  output,
+  toolCalls,
+  ...(usage ? { usage } : {})
+});
 
 describe("executeModelLoop", () => {
   it("returns the first response immediately when the model requests no tools", async () => {
@@ -51,6 +61,20 @@ describe("executeModelLoop", () => {
     expect(result.finalResponse.output).toBe("done");
     expect(result.toolsUsed).toEqual([]);
     expect(result.toolResults).toHaveLength(0);
+  });
+
+  it("keeps usage unobserved when cancelled before the first physical model response", async () => {
+    const controller = new AbortController();
+    controller.abort("owner cancelled");
+
+    const result = await executeModelLoop(
+      runner({ turns: [resp("must not run")] }),
+      context(controller.signal),
+      provider,
+      request()
+    );
+
+    expect(result.usageAccounting).toEqual({ state: "unobserved" });
   });
 
   it("runs a requested tool, then returns the model's follow-up answer", async () => {
@@ -67,6 +91,38 @@ describe("executeModelLoop", () => {
     // The assistant tool-call turn and the tool result both land in the transcript.
     expect(result.intermediateMessages.map((m) => m.role)).toEqual(["assistant", "tool"]);
     expect(result.toolResults[0]?.result.output).toBe("ran echo");
+  });
+
+  it("records one terminal usage aggregate across every blocking model turn", async () => {
+    const result = await executeModelLoop(
+      runner({
+        turns: [
+          resp("calling", [call("t1", "echo")], {
+            cachedInputTokens: 2,
+            inputTokens: 10,
+            outputTokens: 3
+          }),
+          resp("final answer", [], {
+            inputTokens: 7,
+            outputTokens: 4,
+            reasoningTokens: 5
+          })
+        ]
+      }),
+      context(),
+      provider,
+      request()
+    );
+
+    expect(result.usageAccounting).toEqual({
+      state: "recorded",
+      usage: {
+        cachedInputTokens: 2,
+        inputTokens: 17,
+        outputTokens: 7,
+        reasoningTokens: 5
+      }
+    });
   });
 
   it("compacts before each physical turn while preserving the current tool exchange and exact source", async () => {
@@ -301,13 +357,25 @@ describe("executeModelLoop", () => {
     const pending = executeModelLoop(loop, context(controller.signal), provider, request());
     await started.promise;
     controller.abort("owner cancelled");
-    turn.resolve(resp("late", [call("late-tool", "echo")]));
+    turn.resolve(resp("late", [call("late-tool", "echo")], {
+      inputTokens: 13,
+      outputTokens: 2
+    }));
     const result = await pending;
 
     expect(result.finalResponse).toMatchObject({ id: "interrupted", output: "(run interrupted)" });
     expect(result.toolCallCount).toBe(0);
     expect(result.toolResults).toEqual([]);
     expect(ran).toEqual([]);
+    expect(result.usageAccounting).toEqual({
+      state: "recorded",
+      usage: {
+        cachedInputTokens: 0,
+        inputTokens: 13,
+        outputTokens: 2,
+        reasoningTokens: 0
+      }
+    });
   });
 
   // Runaway guard (agent-eval / backlog P1): the wall-clock deadline cuts the

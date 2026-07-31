@@ -35,6 +35,11 @@ import type { CheckpointStore } from "@muse/runtime-state";
 
 import { recordCheckpoint } from "./lifecycle.js";
 import { applyCitationSanitisation, recordTokenUsageEvent } from "./model-invocation.js";
+import {
+  createTerminalModelUsageAccounting,
+  observeTerminalModelUsage,
+  type TerminalModelUsageAccounting
+} from "./model-usage-accounting.js";
 import type { PlanCacheProvider } from "./plan-cache.js";
 import { appendSystemSection, recordUsageSpanAttributes } from "./runtime-helpers.js";
 import {
@@ -240,14 +245,16 @@ function interruptedExecution(
   intermediateMessages: ModelMessage[],
   toolResults: ExecutedToolResult[],
   toolsUsed: readonly string[],
-  toolCallCount: number
+  toolCallCount: number,
+  usageAccounting?: TerminalModelUsageAccounting
 ): ModelLoopExecution {
   return {
     finalResponse: { id: "interrupted", model: request.model, output: "(run interrupted)" },
     intermediateMessages,
     toolCallCount,
     toolResults,
-    toolsUsed: [...new Set(toolsUsed)]
+    toolsUsed: [...new Set(toolsUsed)],
+    ...(usageAccounting ? { usageAccounting } : {})
   };
 }
 
@@ -262,7 +269,8 @@ function postCompactionAbortedExecution(
   intermediateMessages: ModelMessage[],
   toolResults: ExecutedToolResult[],
   toolsUsed: readonly string[],
-  toolCallCount: number
+  toolCallCount: number,
+  usageAccounting: TerminalModelUsageAccounting
 ): ModelLoopExecution {
   return {
     finalResponse: {
@@ -273,7 +281,8 @@ function postCompactionAbortedExecution(
     intermediateMessages,
     toolCallCount,
     toolResults,
-    toolsUsed: [...new Set(toolsUsed)]
+    toolsUsed: [...new Set(toolsUsed)],
+    usageAccounting
   };
 }
 
@@ -287,7 +296,8 @@ function pingPongAbortedExecution(
   intermediateMessages: ModelMessage[],
   toolResults: ExecutedToolResult[],
   toolsUsed: readonly string[],
-  toolCallCount: number
+  toolCallCount: number,
+  usageAccounting: TerminalModelUsageAccounting
 ): ModelLoopExecution {
   return {
     finalResponse: {
@@ -298,7 +308,8 @@ function pingPongAbortedExecution(
     intermediateMessages,
     toolCallCount,
     toolResults,
-    toolsUsed: [...new Set(toolsUsed)]
+    toolsUsed: [...new Set(toolsUsed)],
+    usageAccounting
   };
 }
 
@@ -645,6 +656,7 @@ export async function executeModelLoop(
   const toolResults: ExecutedToolResult[] = [];
   const toolsUsed: string[] = [];
   let messages: readonly ModelMessage[] = [...request.messages];
+  let usageAccounting = createTerminalModelUsageAccounting();
   const anchorTerms = deriveAnchorTerms(request.messages);
   let toolCallCount = 0;
   const deduplicator = new ToolCallDeduplicator();
@@ -667,7 +679,14 @@ export async function executeModelLoop(
     // Cooperative interrupt: a caller-aborted signal stops the loop cleanly
     // here — before any further model call or tool — and returns what we have.
     if (context.input.signal?.aborted) {
-      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
+      return interruptedExecution(
+        request,
+        intermediateMessages,
+        toolResults,
+        toolsUsed,
+        toolCallCount,
+        usageAccounting
+      );
     }
     // Wall-clock deadline cuts the loop short BEFORE the next model
     // call — disables tools for the final synthesis turn so the
@@ -715,8 +734,16 @@ export async function executeModelLoop(
       : pendingRequest;
     messages = turnRequest.messages;
     const response = await runner.generateWithTracing(context, provider, turnRequest);
+    usageAccounting = observeTerminalModelUsage(usageAccounting, response.usage);
     if (context.input.signal?.aborted) {
-      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
+      return interruptedExecution(
+        request,
+        intermediateMessages,
+        toolResults,
+        toolsUsed,
+        toolCallCount,
+        usageAccounting
+      );
     }
     const calls = response.toolCalls ?? [];
 
@@ -740,7 +767,8 @@ export async function executeModelLoop(
         intermediateMessages,
         toolCallCount,
         toolResults,
-        toolsUsed: [...new Set(toolsUsed)]
+        toolsUsed: [...new Set(toolsUsed)],
+        usageAccounting
       };
     }
 
@@ -771,10 +799,24 @@ export async function executeModelLoop(
     messages = step.value.messages;
     toolCallCount = step.value.toolCallCount;
     if (step.value.postCompactionLoopDetected) {
-      return postCompactionAbortedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
+      return postCompactionAbortedExecution(
+        request,
+        intermediateMessages,
+        toolResults,
+        toolsUsed,
+        toolCallCount,
+        usageAccounting
+      );
     }
     if (step.value.pingPongLoopDetected) {
-      return pingPongAbortedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
+      return pingPongAbortedExecution(
+        request,
+        intermediateMessages,
+        toolResults,
+        toolsUsed,
+        toolCallCount,
+        usageAccounting
+      );
     }
     // Per-step checkpoint: the messages now include this batch's tool results, so a
     // crash before the next model call can resume from here without re-running tools.
@@ -782,7 +824,14 @@ export async function executeModelLoop(
       await recordCheckpoint({ checkpointStore: runner.checkpointStore, context, messages, phase: "act", step: toolCallCount });
     }
     if (step.value.interrupted) {
-      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
+      return interruptedExecution(
+        request,
+        intermediateMessages,
+        toolResults,
+        toolsUsed,
+        toolCallCount,
+        usageAccounting
+      );
     }
   }
 }
@@ -798,6 +847,7 @@ export async function* executeStreamingModelLoop(
   const toolResults: ExecutedToolResult[] = [];
   const toolsUsed: string[] = [];
   let messages: readonly ModelMessage[] = [...request.messages];
+  let usageAccounting = createTerminalModelUsageAccounting();
   const anchorTerms = deriveAnchorTerms(request.messages);
   let toolCallCount = 0;
   const deduplicator = new ToolCallDeduplicator();
@@ -818,7 +868,14 @@ export async function* executeStreamingModelLoop(
 
   while (true) {
     if (context.input.signal?.aborted) {
-      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
+      return interruptedExecution(
+        request,
+        intermediateMessages,
+        toolResults,
+        toolsUsed,
+        toolCallCount,
+        usageAccounting
+      );
     }
     // No-progress early-exit (arXiv:2505.17616): a stalled read loop disables
     // tools for this turn → clean synthesis instead of spinning the budget.
@@ -858,10 +915,18 @@ export async function* executeStreamingModelLoop(
       next = await turnStream.next();
     }
 
-    if (context.input.signal?.aborted) {
-      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
-    }
     const response = next.value.response;
+    usageAccounting = observeTerminalModelUsage(usageAccounting, response.usage);
+    if (context.input.signal?.aborted) {
+      return interruptedExecution(
+        request,
+        intermediateMessages,
+        toolResults,
+        toolsUsed,
+        toolCallCount,
+        usageAccounting
+      );
+    }
     const calls = response.toolCalls ?? [];
 
     if (calls.length === 0 || (activeTools?.length ?? 0) === 0) {
@@ -884,7 +949,8 @@ export async function* executeStreamingModelLoop(
         intermediateMessages,
         toolCallCount,
         toolResults,
-        toolsUsed: [...new Set(toolsUsed)]
+        toolsUsed: [...new Set(toolsUsed)],
+        usageAccounting
       };
     }
 
@@ -909,10 +975,24 @@ export async function* executeStreamingModelLoop(
     messages = batchResult.messages;
     toolCallCount = batchResult.toolCallCount;
     if (batchResult.postCompactionLoopDetected) {
-      return postCompactionAbortedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
+      return postCompactionAbortedExecution(
+        request,
+        intermediateMessages,
+        toolResults,
+        toolsUsed,
+        toolCallCount,
+        usageAccounting
+      );
     }
     if (batchResult.pingPongLoopDetected) {
-      return pingPongAbortedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
+      return pingPongAbortedExecution(
+        request,
+        intermediateMessages,
+        toolResults,
+        toolsUsed,
+        toolCallCount,
+        usageAccounting
+      );
     }
     // Per-step checkpoint (streaming parity): resume mid-loop after a crash without
     // re-running already-completed tools (their results are in the replayed messages).
@@ -920,7 +1000,14 @@ export async function* executeStreamingModelLoop(
       await recordCheckpoint({ checkpointStore: runner.checkpointStore, context, messages, phase: "act", step: toolCallCount });
     }
     if (batchResult.interrupted) {
-      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
+      return interruptedExecution(
+        request,
+        intermediateMessages,
+        toolResults,
+        toolsUsed,
+        toolCallCount,
+        usageAccounting
+      );
     }
   }
 }
@@ -1003,6 +1090,14 @@ async function* streamModelTurn(
   try {
     for await (const event of withStreamIdleTimeout(provider.stream(flaggedRequest), idleMs, provider.id)) {
       if (context.input.signal?.aborted) {
+        if (event.type === "done" && event.response.usage) {
+          response = {
+            id: event.response.id,
+            model: event.response.model,
+            output: "",
+            usage: event.response.usage
+          };
+        }
         break;
       }
       if (event.type === "text-delta") {

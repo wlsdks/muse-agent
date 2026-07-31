@@ -2,6 +2,7 @@ import { performance } from "node:perf_hooks";
 
 import {
   ModelProviderError,
+  USAGE_RECORDED_BY_RUNTIME_FLAG,
   type ModelEvent,
   type ModelProvider,
   type ModelRequest,
@@ -566,6 +567,8 @@ async function* foregroundStream(
   request: ModelRequest
 ): AsyncIterable<ModelEvent> {
   const lease = await coordinator.acquireForeground(request.signal);
+  const runtimeSettlesCancellation =
+    request.metadata?.[USAGE_RECORDED_BY_RUNTIME_FLAG] === true;
   if (request.signal?.aborted) {
     lease.cancelBeforeDispatch();
     throw new BackgroundModelExecutionBudgetError(
@@ -577,6 +580,21 @@ async function* foregroundStream(
   try {
     for await (const event of managedProviderStream(provider, request)) {
       if (request.signal?.aborted) {
+        if (runtimeSettlesCancellation) {
+          if (event.type === "done") {
+            yield {
+              response: {
+                id: event.response.id,
+                model: event.response.model,
+                output: "",
+                ...(event.response.usage ? { usage: event.response.usage } : {})
+              },
+              type: "done"
+            };
+            return;
+          }
+          continue;
+        }
         throw new BackgroundModelExecutionBudgetError(
           provider.id,
           "REQUEST_ABORTED",
@@ -623,6 +641,14 @@ async function runForegroundGenerate(
   try {
     const response = await provider.generate(request);
     if (request.signal?.aborted) {
+      if (request.metadata?.[USAGE_RECORDED_BY_RUNTIME_FLAG] === true) {
+        return {
+          id: response.id,
+          model: response.model,
+          output: "",
+          ...(response.usage ? { usage: response.usage } : {})
+        };
+      }
       throw new BackgroundModelExecutionBudgetError(
         provider.id,
         "REQUEST_ABORTED",

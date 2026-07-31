@@ -1,4 +1,4 @@
-import { ModelProviderError, type ModelEvent, type ModelProvider, type ModelRequest, type ModelResponse, type ModelToolCall } from "@muse/model";
+import { ModelProviderError, type ModelEvent, type ModelProvider, type ModelRequest, type ModelResponse, type ModelToolCall, type ModelUsage } from "@muse/model";
 import { describe, expect, it } from "vitest";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -18,9 +18,19 @@ const context = (signal?: AbortSignal): AgentRunContext => ({
   input: { model: "m", messages: [{ role: "user", content: "hi" }], ...(signal ? { signal } : {}) },
 });
 const request = (): ModelRequest => ({ model: "m", messages: [{ role: "user", content: "hi" }], tools: [tool] });
-const done = (output: string, toolCalls: ModelToolCall[] = []): ModelEvent => ({
+const done = (
+  output: string,
+  toolCalls: ModelToolCall[] = [],
+  usage?: ModelUsage
+): ModelEvent => ({
   type: "done",
-  response: { id: "d", model: "m", output, toolCalls } as ModelResponse,
+  response: {
+    id: "d",
+    model: "m",
+    output,
+    toolCalls,
+    ...(usage ? { usage } : {})
+  } as ModelResponse
 });
 
 // A provider whose stream replays a scripted list of events per turn.
@@ -83,6 +93,32 @@ describe("executeStreamingModelLoop", () => {
     expect(ran).toEqual(["echo"]);
     expect(execution.toolsUsed).toEqual(["echo"]);
     expect(execution.finalResponse.output).toBe("final");
+  });
+
+  it("records one terminal usage aggregate across every streaming model turn", async () => {
+    const prov = provider([
+      [done("calling", [{ id: "t1", name: "echo", arguments: {} }], {
+        cachedInputTokens: 3,
+        inputTokens: 11,
+        outputTokens: 2
+      })],
+      [done("final", [], {
+        inputTokens: 5,
+        outputTokens: 4,
+        reasoningTokens: 6
+      })]
+    ]);
+    const { execution } = await drive(prov, runner(), context(), false);
+
+    expect(execution.usageAccounting).toEqual({
+      state: "recorded",
+      usage: {
+        cachedInputTokens: 3,
+        inputTokens: 16,
+        outputTokens: 6,
+        reasoningTokens: 6
+      }
+    });
   });
 
   it("reports a repeated-read no-progress stop on the streaming path", async () => {
@@ -326,7 +362,10 @@ describe("executeStreamingModelLoop", () => {
         started.resolve();
         await release.promise;
         yield { text: "late", type: "text-delta" };
-        yield done("late", [{ arguments: {}, id: "late-tool", name: "echo" }]);
+        yield done("late", [{ arguments: {}, id: "late-tool", name: "echo" }], {
+          inputTokens: 9,
+          outputTokens: 1
+        });
       })()
     };
 
@@ -341,6 +380,7 @@ describe("executeStreamingModelLoop", () => {
     expect(execution.toolCallCount).toBe(0);
     expect(execution.toolResults).toEqual([]);
     expect(ran).toEqual([]);
+    expect(execution.usageAccounting).toEqual({ state: "unknown" });
   });
 
   it("propagates a provider error event out of the loop", async () => {
