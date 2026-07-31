@@ -184,7 +184,7 @@ export { buildReminderTriageDigest, confirmReminderTriage, previewReminderTriage
 export type { ConfirmReminderTriageOptions, PreviewReminderTriageOptions, ReminderTriageAction, ReminderTriageItemResult, ReminderTriageOutcome, ReminderTriagePreview, ReminderTriagePreviewChange, ReminderTriageResult } from "./personal-reminder-triage-store.js";
 export { compareRemindersByDueAt, filterReminders, fireReminder, mutateReminders, nextReminderOccurrence, normalizeReminderRecurrence, parseReminderDueAt, parseReminderVia, readReminderByIdStrict, readReminders, readRemindersStrict, readReminderStatusFilter, ReminderStoreUnavailableError, resolveReminderRef, serializeReminder, serializeReminderForModel, snoozeReminder, writeReminders } from "./personal-reminders-store.js";
 export type { PersistedReminder, ReminderRecurrence } from "./personal-reminders-store.js";
-export { compareTasksByDueDate, mutateTasks, parseTaskDueAt, readTaskById, readTaskByIdStrict, readTasks, readTaskStatusFilter, resolveTaskRef, resolveTasksDueLine, selectTasksDueWithin, serializeTask, serializeTaskForModel, TaskStoreUnavailableError, writeTasks } from "./personal-tasks-store.js";
+export { compareTasksByDueDate, mutateTasks, parseTaskDueAt, readTaskById, readTaskByIdStrict, readTasks, readTasksStrict, readTaskStatusFilter, resolveTaskRef, resolveTasksDueLine, selectTasksDueWithin, serializeTask, serializeTaskForModel, TaskStoreUnavailableError, writeTasks } from "./personal-tasks-store.js";
 export type { PersistedTask } from "./personal-tasks-store.js";
 export {
   hasVeto,

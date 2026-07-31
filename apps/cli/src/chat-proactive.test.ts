@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { calendarEventItems, checkinItems, dueTaskItems, groupProactiveNotice, imminentItems, jobCompletionItems, jobDoneNoticeText, orchestrationCompletionItems, orchestrationDoneNoticeText, patternSuggestionItems, pickUnseen, proactiveNoticeText, relativeWhen } from "./chat-proactive.js";
+import { calendarEventItems, checkinItems, dueTaskItems, groupProactiveNotice, imminentItems, jobCompletionItems, jobDoneNoticeText, orchestrationCompletionItems, orchestrationDoneNoticeText, patternSuggestionItems, pickUnseen, proactiveNoticeText, relativeWhen, taskCompletionItems } from "./chat-proactive.js";
 
 const now = Date.UTC(2026, 4, 24, 12, 0, 0);
 const iso = (minFromNow: number): string => new Date(now + minFromNow * 60_000).toISOString();
@@ -62,6 +62,42 @@ describe("jobCompletionItems", () => {
     ], since);
     expect(items.map((i) => i.id)).toEqual(["job:fresh"]);
     expect(items[0]?.text).toBe("✓ Background job done: fresh — ok");
+  });
+});
+
+describe("taskCompletionItems", () => {
+  const since = "2026-05-24T12:00:00.000Z";
+
+  it("surfaces only a new completed occurrence and sanitizes its title", () => {
+    const items = taskCompletionItems([
+      { completedAt: "2026-05-24T12:05:00.000Z", id: "fresh", status: "done", title: "Ship\u001B[31m release" },
+      { completedAt: "2026-05-24T12:05:00.000Z", id: "open", status: "open", title: "Still open" },
+      { completedAt: since, id: "boundary", status: "done", title: "At chat start" },
+      { completedAt: "2026-05-24T11:59:59.999Z", id: "old", status: "done", title: "Already done" },
+      { completedAt: "not-a-date", id: "bad", status: "done", title: "Bad timestamp" },
+      { id: "missing", status: "done", title: "Missing timestamp" }
+    ], since);
+
+    expect(items).toEqual([{
+      dueAt: "2026-05-24T12:05:00.000Z",
+      id: "task-completed:fresh:2026-05-24T12:05:00.000Z",
+      text: "✓ Completed: Ship[31m release — want to capture the outcome or decide the next step?"
+    }]);
+  });
+
+  it("dedupes one occurrence while allowing a later completion occurrence", () => {
+    const first = taskCompletionItems([
+      { completedAt: "2026-05-24T12:05:00.000Z", id: "same", status: "done", title: "Draft" }
+    ], since);
+    const later = taskCompletionItems([
+      { completedAt: "2026-05-24T12:10:00.000Z", id: "same", status: "done", title: "Draft" }
+    ], since);
+    const seen = new Set(first.map((item) => item.id));
+
+    expect(pickUnseen(first, seen)).toEqual([]);
+    expect(pickUnseen(later, seen).map((item) => item.id)).toEqual([
+      "task-completed:same:2026-05-24T12:10:00.000Z"
+    ]);
   });
 });
 

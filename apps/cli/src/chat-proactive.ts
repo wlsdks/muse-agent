@@ -177,6 +177,38 @@ export function jobCompletionItems(jobs: readonly JobDoneInput[], sinceIso: stri
     .map((job) => ({ id: `job:${job.id}`, text: jobDoneNoticeText(job), ...(job.finishedAt ? { dueAt: job.finishedAt } : {}) }));
 }
 
+export interface TaskCompletionInput {
+  readonly id: string;
+  readonly title: string;
+  readonly status: string;
+  readonly completedAt?: string;
+}
+
+/**
+ * Personal tasks completed after this chat opened, projected as read-only
+ * wrap-up prompts. The completion timestamp is part of the identity so a task
+ * reopened and completed again is a new occurrence while repeated polls stay
+ * deduplicable by the chat's existing seen-set.
+ */
+export function taskCompletionItems(
+  tasks: readonly TaskCompletionInput[],
+  sinceIso: string
+): ProactiveItem[] {
+  const since = Date.parse(sinceIso);
+  if (!Number.isFinite(since)) return [];
+  return tasks.flatMap((task): readonly ProactiveItem[] => {
+    if (task.status !== "done" || task.completedAt === undefined) return [];
+    const completed = Date.parse(task.completedAt);
+    if (!Number.isFinite(completed) || completed <= since) return [];
+    const title = stripUntrustedTerminalChars(task.title).replace(/\s+/gu, " ").trim().slice(0, 80);
+    return [{
+      dueAt: task.completedAt,
+      id: `task-completed:${task.id}:${task.completedAt}`,
+      text: `✓ Completed: ${title} — want to capture the outcome or decide the next step?`
+    }];
+  });
+}
+
 export interface OrchestrationDoneInput {
   readonly id: string;
   readonly status: "completed" | "failed";

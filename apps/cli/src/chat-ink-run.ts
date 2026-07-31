@@ -10,7 +10,7 @@ import { buildChatActuatorWiring } from "./chat-actuator-wiring.js";
 import type { ProgramIO } from "./program.js";
 import { buildContextWindowOptions, createMuseRuntimeAssembly, createProgressiveAutonomyRuntimeDecisionRecorder, createQualificationLearningActiveSkillWriteGate, evaluateLocalOnlyPosture, parseBoolean, resolveAttunementFile, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveProgressiveAutonomyOpportunitiesFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
-import { isSkillAvoided, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks, type ConversationSummary } from "@muse/stores";
+import { isSkillAvoided, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks, readTasksStrict, type ConversationSummary } from "@muse/stores";
 import { readCheckins } from "@muse/proactivity";
 import { aggregateActivitySignals, contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, selectFireablePatterns } from "@muse/memory";
 import { AuthoredSkillStore, loadSkillsFromDirectory, type Skill } from "@muse/skills";
@@ -67,7 +67,7 @@ import { buildModelGroundingReverify, formatReflection, synthesizeReflection, ty
 import { listRecentJobIds, readJobSummary, startBackgroundJob } from "./commands-jobs.js";
 import { createChatOrchestration, orchestrationCompletionsFrom } from "./chat-orchestrate.js";
 import { buildLocalTodayText, parseLookaheadHours, readDueFollowups, readDueReminders } from "./commands-today.js";
-import { calendarEventItems, checkinItems, dueTaskItems, jobCompletionItems, patternSuggestionItems, type ProactiveItem } from "./chat-proactive.js";
+import { calendarEventItems, checkinItems, dueTaskItems, jobCompletionItems, patternSuggestionItems, taskCompletionItems, type ProactiveItem } from "./chat-proactive.js";
 import { checkinsFile } from "./commands-checkins.js";
 import { buildMusePersona } from "@muse/recall";
 import { resolvePersona } from "./program-helpers.js";
@@ -506,13 +506,19 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // stops jobs that completed before launch from announcing on the first poll.
   const chatStartedIso = new Date().toISOString();
   const jobCompletions = async (): Promise<readonly ProactiveItem[]> => {
-    const summaries = await Promise.all(listRecentJobIds(20).map((id) => readJobSummary(id)));
-    return jobCompletionItems(
-      summaries
-        .filter((s): s is NonNullable<typeof s> => Boolean(s))
-        .map((s) => ({ id: s.id, status: s.status, finishedAt: s.finishedAt, prompt: s.prompt, finalText: s.finalText })),
-      chatStartedIso
-    );
+    const [summaries, tasks] = await Promise.all([
+      Promise.all(listRecentJobIds(20).map((id) => readJobSummary(id))),
+      readTasksStrict(resolveTasksFile(process.env)).catch(() => [])
+    ]);
+    return [
+      ...jobCompletionItems(
+        summaries
+          .filter((s): s is NonNullable<typeof s> => Boolean(s))
+          .map((s) => ({ id: s.id, status: s.status, finishedAt: s.finishedAt, prompt: s.prompt, finalText: s.finalText })),
+        chatStartedIso
+      ),
+      ...taskCompletionItems(tasks, chatStartedIso)
+    ];
   };
 
   // /orchestrate — a background sub-agent fan-out (direct-answer + risk-critic,

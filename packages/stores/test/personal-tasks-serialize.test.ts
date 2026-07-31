@@ -1,10 +1,10 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { type PersistedTask, readTaskById, readTaskStatusFilter, readTasks, resolveTaskRef, serializeTask, serializeTaskForModel, writeTasks } from "../src/personal-tasks-store.js";
+import { type PersistedTask, readTaskById, readTaskStatusFilter, readTasks, readTasksStrict, resolveTaskRef, serializeTask, serializeTaskForModel, TaskStoreUnavailableError, writeTasks } from "../src/personal-tasks-store.js";
 
 const base: PersistedTask = { id: "t1", title: "buy milk", status: "open", createdAt: "2026-01-01T00:00:00Z" };
 
@@ -156,5 +156,16 @@ describe("readTasks", () => {
       ]
     }));
     expect(await readTasks(file)).toEqual([base]);
+  });
+});
+
+describe("readTasksStrict", () => {
+  it("fails closed on malformed state without quarantining or changing its bytes", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "muse-task-strict-read-")), "tasks.json");
+    const malformed = "{\"tasks\":";
+    writeFileSync(file, malformed);
+
+    await expect(readTasksStrict(file)).rejects.toBeInstanceOf(TaskStoreUnavailableError);
+    expect(readFileSync(file, "utf8")).toBe(malformed);
   });
 });

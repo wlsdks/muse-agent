@@ -80,11 +80,11 @@ export async function readTaskById(file: string, id: string): Promise<PersistedT
   return (await readTasks(file)).find((task) => task.id === id);
 }
 
-/** Strict, non-mutating lookup for audit/review boundaries. Unlike the
+/** Strict, non-mutating list read for audit/review boundaries. Unlike the
  * recovery-oriented reader above, absence, unreadable bytes, malformed JSON,
  * an invalid document, or any invalid task row is surfaced to the caller and
  * never quarantined or normalized to an empty store. */
-export async function readTaskByIdStrict(file: string, id: string): Promise<PersistedTask | undefined> {
+export async function readTasksStrict(file: string): Promise<readonly PersistedTask[]> {
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
@@ -95,7 +95,12 @@ export async function readTaskByIdStrict(file: string, id: string): Promise<Pers
   if (!entries || entries.some((entry) => !isPersistedTask(entry))) {
     throw new TaskStoreUnavailableError();
   }
-  return entries.find((entry): entry is PersistedTask => isPersistedTask(entry) && entry.id === id);
+  return entries.filter((entry): entry is PersistedTask => isPersistedTask(entry));
+}
+
+/** Exact strict lookup over the same byte-preserving reader. */
+export async function readTaskByIdStrict(file: string, id: string): Promise<PersistedTask | undefined> {
+  return (await readTasksStrict(file)).find((task) => task.id === id);
 }
 
 function parseTaskEntries(raw: string): readonly unknown[] | undefined {
