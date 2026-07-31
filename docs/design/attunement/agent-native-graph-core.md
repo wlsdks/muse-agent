@@ -302,8 +302,10 @@ composes the existing Engine rather than reimplementing graph meaning.
 
 The shipped physical profile is intentionally narrow and fails closed:
 
-- `node:sqlite` is imported only in one long-lived Worker; the supported runtime is Node
-  `>=24.12.0` with defensive mode;
+- `node:sqlite` is imported only in one long-lived Worker; the local Adapter requires Node
+  `>=24.15.0`, the first Node 24 release carrying a reviewed WAL-reset-safe SQLite, with
+  defensive mode. The dependency-free core and in-memory Adapter remain compatible with
+  Muse's Node `>=22.12.0` baseline;
 - WAL is allowed only for SQLite `3.44.6–3.44.x`, `3.50.7–3.50.x`, or `>=3.51.3`;
 - profile v1 uses a regular local file, fixed application ID, `user_version=1`, STRICT
   tables, extensions and double-quoted string literals disabled, foreign keys on,

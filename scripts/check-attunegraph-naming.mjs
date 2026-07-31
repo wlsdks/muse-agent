@@ -11,6 +11,7 @@ const oldFormat = word("muse-", short, "-portable");
 const oldExtension = word(".", short, "x");
 const museIntegrationPackage = word("@muse/", "attunegraph");
 const coreOnlySubpaths = ["admin", "backend", "extension-kit", "local", "testing"];
+const coreSubmodulePath = "packages/attunegraph";
 
 const patterns = [
   ["old package", new RegExp(escape(oldPackage), "i")],
@@ -35,10 +36,18 @@ function gitPaths(args, cwd) {
 }
 
 export function trackedAndUntrackedPaths(cwd = process.cwd()) {
-  return [...new Set([
+  const rootPaths = [
     ...gitPaths(["ls-files", "-z"], cwd),
     ...gitPaths(["ls-files", "--others", "--exclude-standard", "-z"], cwd)
-  ])].sort();
+  ];
+  const coreRoot = `${cwd}/${coreSubmodulePath}`;
+  const corePaths = existsSync(`${coreRoot}/package.json`)
+    ? [
+        ...gitPaths(["ls-files", "-z"], coreRoot),
+        ...gitPaths(["ls-files", "--others", "--exclude-standard", "-z"], coreRoot)
+      ].map((path) => `${coreSubmodulePath}/${path}`)
+    : [];
+  return [...new Set([...rootPaths, ...corePaths])].sort();
 }
 
 export function scanAttuneGraphNaming({ cwd = process.cwd(), paths = trackedAndUntrackedPaths(cwd), read = readFileSync } = {}) {

@@ -224,6 +224,8 @@ describe("runUpdateCommand — already up to date", () => {
       if (key === "rev-parse --abbrev-ref HEAD") return ok("main\n");
       if (key === "rev-parse HEAD") return ok("abc1234\n");
       if (key === "pull --ff-only") return ok("Already up to date.\n");
+      if (key === "submodule sync --recursive") return ok("");
+      if (key === "submodule update --init --recursive") return ok("");
       throw new Error(`unexpected call: ${key}`);
     });
     const messages: string[] = [];
@@ -248,6 +250,8 @@ describe("runUpdateCommand — build failure triggers rollback", () => {
         return ok(revParseCalls === 1 ? "old1234\n" : "new5678\n");
       }
       if (key === "pull --ff-only") return ok("Updating...\n");
+      if (key === "submodule sync --recursive") return ok("");
+      if (key === "submodule update --init --recursive") return ok("");
       if (key.startsWith("diff --name-only old1234..new5678 -- pnpm-lock.yaml")) return ok("");
       if (key === "build" && call.command === "pnpm") {
         pnpmBuildCalls += 1;
@@ -272,9 +276,13 @@ describe("runUpdateCommand — build failure triggers rollback", () => {
       "git:rev-parse HEAD",
       "git:pull --ff-only",
       "git:rev-parse HEAD",
+      "git:submodule sync --recursive",
+      "git:submodule update --init --recursive",
       "git:diff --name-only old1234..new5678 -- pnpm-lock.yaml",
       "pnpm:build",
       "git:reset --hard old1234",
+      "git:submodule sync --recursive",
+      "git:submodule update --init --recursive",
       "pnpm:build"
     ]);
   });
@@ -292,6 +300,8 @@ describe("runUpdateCommand — build failure triggers rollback", () => {
         return ok(revParseCalls === 1 ? "old1234\n" : "new5678\n");
       }
       if (key === "pull --ff-only") return ok("Updating...\n");
+      if (key === "submodule sync --recursive") return ok("");
+      if (key === "submodule update --init --recursive") return ok("");
       if (key.startsWith("diff --name-only")) return ok("");
       if (key === "build") {
         pnpmBuildCalls += 1;
@@ -308,6 +318,51 @@ describe("runUpdateCommand — build failure triggers rollback", () => {
   });
 });
 
+describe("runUpdateCommand — recursive submodules", () => {
+  it("rolls back and re-synchronizes recursive submodules when post-pull initialization fails", async () => {
+    const { entry } = makeFixtureRepo();
+    let revParseCalls = 0;
+    let submoduleUpdateCalls = 0;
+    const { calls, run } = makeRun((call) => {
+      const key = call.args.join(" ");
+      if (key === "status --porcelain") return ok("");
+      if (key === "rev-parse --abbrev-ref HEAD") return ok("main\n");
+      if (key === "rev-parse HEAD") {
+        revParseCalls += 1;
+        return ok(revParseCalls === 1 ? "old1234\n" : "new5678\n");
+      }
+      if (key === "pull --ff-only") return ok("Updating...\n");
+      if (key === "submodule sync --recursive") return ok("");
+      if (key === "submodule update --init --recursive") {
+        submoduleUpdateCalls += 1;
+        return submoduleUpdateCalls === 1 ? fail("submodule checkout failed") : ok("");
+      }
+      if (key === "reset --hard old1234") return ok("");
+      if (key === "build" && call.command === "pnpm") return ok("");
+      throw new Error(`unexpected call: ${call.command} ${key}`);
+    });
+
+    const stderrMsgs: string[] = [];
+    const exitCode = await runUpdateCommand(baseDeps(run, entry, { stderr: (m) => stderrMsgs.push(m) }));
+
+    expect(exitCode).toBe(1);
+    expect(stderrMsgs.join("")).toMatch(/restored previous version/u);
+    expect(calls.map((call) => `${call.command}:${call.args.join(" ")}`)).toEqual([
+      "git:status --porcelain",
+      "git:rev-parse --abbrev-ref HEAD",
+      "git:rev-parse HEAD",
+      "git:pull --ff-only",
+      "git:rev-parse HEAD",
+      "git:submodule sync --recursive",
+      "git:submodule update --init --recursive",
+      "git:reset --hard old1234",
+      "git:submodule sync --recursive",
+      "git:submodule update --init --recursive",
+      "pnpm:build"
+    ]);
+  });
+});
+
 describe("runUpdateCommand — success path", () => {
   it("runs commands in the exact safe order and renders the changelog", async () => {
     const { entry } = makeFixtureRepo({ withDesktop: true });
@@ -321,6 +376,8 @@ describe("runUpdateCommand — success path", () => {
         return ok(revParseCalls === 1 ? "old1234\n" : "new5678\n");
       }
       if (key === "pull --ff-only") return ok("Updating...\n");
+      if (key === "submodule sync --recursive") return ok("");
+      if (key === "submodule update --init --recursive") return ok("");
       if (key.startsWith("diff --name-only old1234..new5678 -- pnpm-lock.yaml")) return ok("pnpm-lock.yaml\n");
       if (key === "install --frozen-lockfile") return ok("");
       if (key === "build") return ok("");
@@ -340,6 +397,8 @@ describe("runUpdateCommand — success path", () => {
       "git:rev-parse HEAD",
       "git:pull --ff-only",
       "git:rev-parse HEAD",
+      "git:submodule sync --recursive",
+      "git:submodule update --init --recursive",
       "git:diff --name-only old1234..new5678 -- pnpm-lock.yaml",
       "pnpm:install --frozen-lockfile",
       "pnpm:build",
@@ -365,6 +424,8 @@ describe("runUpdateCommand — success path", () => {
         return ok(revParseCalls === 1 ? "old1234\n" : "new5678\n");
       }
       if (key === "pull --ff-only") return ok("Updating...\n");
+      if (key === "submodule sync --recursive") return ok("");
+      if (key === "submodule update --init --recursive") return ok("");
       if (key.startsWith("diff --name-only old1234..new5678 -- pnpm-lock.yaml")) return ok("");
       if (key === "build") return ok("");
       if (key === "log --oneline old1234..new5678") return ok("new5678 chore: bump\n");
@@ -410,6 +471,8 @@ describe("runUpdateCommand — overall timeout budget", () => {
         return ok(revParseCalls === 1 ? "old1234\n" : "new5678\n");
       }
       if (key === "pull --ff-only") return ok("Updating...\n");
+      if (key === "submodule sync --recursive") return ok("");
+      if (key === "submodule update --init --recursive") return ok("");
       if (key.startsWith("diff --name-only old1234..new5678 -- pnpm-lock.yaml")) return ok("");
       if (key === "reset --hard old1234") return ok("");
       if (key === "build") return ok("");

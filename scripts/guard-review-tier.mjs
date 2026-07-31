@@ -28,6 +28,8 @@ export const TIERS = ["independent-evaluator", "thin-review", "n/a"];
  * against `git ls-files` when changing this list; a pattern that matches nothing is a lie.
  */
 export const MANDATORY_EVALUATOR_PATTERNS = [
+  // The exact gitlink changes the independently-versioned AttuneGraph engine.
+  /^packages\/attunegraph$/u,
   // security / permission / outbound
   /[\w-]*(approval|consent|credential|secret|auth|policy|guard|egress|outbound|permission)[\w-]*\.[cm]?tsx?$/u,
   // on-disk / persisted formats

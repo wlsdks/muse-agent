@@ -32,6 +32,15 @@ test("a dependency that is also a reference passes", () => {
   assert.equal(run(dir).status, 0, run(dir).stdout);
 });
 
+test("an initialized on-disk workspace manifest is discovered even before its gitlink is staged", () => {
+  const dir = repoWith({
+    "packages/app": { pkg: { name: "@muse/app", dependencies: { "@muse/leaf": "workspace:*" } }, tsconfig: composite([{ path: "../leaf" }]) },
+  });
+  fs.mkdirSync(path.join(dir, "packages/leaf"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "packages/leaf/package.json"), `${JSON.stringify({ name: "@muse/leaf" }, null, 2)}\n`);
+  assert.equal(run(dir).status, 0, run(dir).stdout);
+});
+
 test("a dependency with no reference fails and names the fix", () => {
   const result = run(repoWith({
     "packages/leaf": { pkg: { name: "@muse/leaf" }, tsconfig: composite() },

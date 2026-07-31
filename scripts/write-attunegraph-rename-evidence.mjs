@@ -145,6 +145,13 @@ export function assertAllowedDiffPaths(paths) {
   }
 }
 
+export function assertHistoricalRenameEvidenceCandidate(candidate, cwd = process.cwd(), readTree = () => git(["ls-tree", candidate, "--", "packages/attunegraph"], cwd)) {
+  const entry = readTree().trim();
+  if (entry.startsWith("160000 commit ")) {
+    throw new Error("AttuneGraph rename evidence is retired for submodule candidates; verify the pinned AttuneGraph repository directly");
+  }
+}
+
 export function committedHashes(candidate, cwd = process.cwd()) {
   const paths = git(["ls-tree", "-r", "--name-only", candidate], cwd).trim().split("\n").filter((path) =>
     path.startsWith("packages/attunegraph/fixtures/") || path.startsWith("packages/attunegraph/src/fixtures/") ||
@@ -158,6 +165,7 @@ export function committedHashes(candidate, cwd = process.cwd()) {
 
 export function buildEvidence({ baseline, candidate, receiptDocument, cwd = process.cwd() }) {
   const commits = assertCandidate({ baseline, candidate, cwd });
+  assertHistoricalRenameEvidenceCandidate(commits.candidate, cwd);
   const receipts = assertReceiptDocument(receiptDocument, commits);
   const diffPaths = git(["diff", "--name-only", `${commits.baseline}...${commits.candidate}`], cwd).trim().split("\n").filter(Boolean).sort();
   assertAllowedDiffPaths(diffPaths);

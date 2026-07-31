@@ -11,7 +11,7 @@ export const COMMAND_MATRIX = [
   ["core-test", ["pnpm", "--filter", "@attunegraph/core", "test"]],
   ["core-focused-tests", ["pnpm", "--dir", "packages/attunegraph", "exec", "vitest", "run", "src/attunegraph-engine.test.ts", "src/local.test.ts", "src/attunegraph-local-protocol.test.ts", "src/attunegraph-portable-encoder.test.ts", "src/attunegraph-portable-decoder.test.ts", "src/attunegraph-portable-fixtures.test.ts", "src/attunegraph-portable-indexed-validation-sink.test.ts", "src/attunegraph-admin-staging-lifecycle.test.ts", "src/attunegraph-admin-readonly-protocol-spine.test.ts", "src/attunegraph-admin-readonly-snapshot.test.ts", "src/attunegraph-admin-readonly-inspector.test.ts", "src/attunegraph-admin-readonly-worker.test.ts"]],
   ["portable-generation", ["pnpm", "--filter", "@attunegraph/core", "fixtures:portable"]],
-  ["fixture-clean", ["git", "diff", "--exit-code", "HEAD", "--", "packages/attunegraph/fixtures/portable-v1", "packages/attunegraph/src/fixtures", "packages/attunegraph/attunegraph-local-runtime-manifest.json"]],
+  ["fixture-clean", ["git", "-C", "packages/attunegraph", "diff", "--exit-code", "HEAD", "--", "fixtures/portable-v1", "src/fixtures", "attunegraph-local-runtime-manifest.json"]],
   ["portable-verify", ["pnpm", "--filter", "@attunegraph/core", "verify:portable-fixtures"]],
   ["local-verify", ["pnpm", "--filter", "@attunegraph/core", "verify:local"]],
   ["integration-typecheck", ["pnpm", "--filter", "@muse/attunegraph", "typecheck"]],

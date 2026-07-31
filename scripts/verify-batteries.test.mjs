@@ -13,10 +13,11 @@ test("every workspace battery on disk is discovered", () => {
   const found = discoverBatteries();
   const expected = execFileSync(
     "git",
-    ["ls-files", "--", "packages/*/scripts/verify-*.mjs"],
+    ["ls-files", "--recurse-submodules", "--", "packages/*/scripts/verify-*.mjs"],
     { cwd: ROOT, encoding: "utf8" },
   ).split("\n").filter(Boolean).sort();
   assert.deepEqual(found, expected);
+  assert.ok(found.some((battery) => battery.startsWith("packages/attunegraph/scripts/")), "tracked AttuneGraph submodule batteries must be discovered");
   assert.ok(found.length >= 12, `expected the AttuneGraph batteries, got ${found.length}`);
 });
 

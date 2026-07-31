@@ -1,0 +1,3 @@
+[submodule "packages/attunegraph"]
+	path = packages/attunegraph
+	url = https://github.com/wlsdks/attunegraph.git

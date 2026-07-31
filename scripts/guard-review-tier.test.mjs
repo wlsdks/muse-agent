@@ -48,6 +48,11 @@ test("the same diff passes when the strongest tier is recorded", () => {
   assert.equal(checkReviewTier(body("independent-evaluator"), ["packages/messaging/src/channel-approval-gate.ts"]), null);
 });
 
+test("the exact AttuneGraph gitlink demands the independent evaluator", () => {
+  assert.equal(needsMandatoryEvaluator(["packages/attunegraph"]), true);
+  assert.match(checkReviewTier(body("thin-review"), ["packages/attunegraph"]), /UNCONDITIONAL/u);
+});
+
 // These are REAL paths in this repo, checked with git ls-files. The first version of this
 // suite asserted on `packages/agent-core/src/approval-gate.ts`, which does not exist — so it
 // passed while the actual approval gates sailed through with a thin review.

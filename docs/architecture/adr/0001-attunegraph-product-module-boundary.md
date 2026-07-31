@@ -1,6 +1,6 @@
 # ADR 0001: AttuneGraph is an independently extractable product Module
 
-- Status: accepted
+- Status: accepted; extraction completed 2026-07-31
 - Date: 2026-07-30
 - Decision owners: Muse architecture
 - Related:
@@ -25,15 +25,13 @@ the engine until clean extraction became impractical.
 
 ## Decision
 
-**AttuneGraph** is developed inside the Muse monorepo as an independent
-product Module. Muse is AttuneGraph's first consumer and dogfood environment, not the owner of its
-storage semantics.
-
-The eventual standalone repository is provisionally `attunegraph`. The neutral code
-package is `@attunegraph/core`; Muse-specific product integration is isolated in
-`@muse/attunegraph`. Registry availability is not an ownership claim and must be
-verified before public release. We will create the repository only after the standalone
-qualification gate passes. Until then, one monorepo is the authoritative history.
+**AttuneGraph** is developed in the public
+[`wlsdks/attunegraph`](https://github.com/wlsdks/attunegraph) repository and consumed by Muse as a
+pinned same-path submodule at `packages/attunegraph`. The neutral package is
+`@attunegraph/core`; Muse-specific product integration remains isolated in
+`@muse/attunegraph`. Muse is AttuneGraph's first consumer and dogfood environment, not the owner
+of its storage semantics. The standalone repository is authoritative for Engine changes; the
+Muse repository owns only the reviewed submodule pin and integration.
 
 The public product Interface converges on a small lifecycle:
 
@@ -171,8 +169,9 @@ AttuneGraph is ready to split into its own repository only when all of the follo
 6. at least one minimal non-Muse example agent uses only the public package;
 7. the packed artifact installs and runs in a fresh project with no workspace dependency.
 
-Before this gate, documentation must say “standalone-ready target,” not “independently
-publishable today.”
+The first public snapshot passed items 1–4 and 6 plus a clean package dry-run and the shipped
+portable/corruption contracts. Registry publication, physical forget, write/repair Admin, and
+complete migration/export qualification remain separate roadmap claims.
 
 ## Git and release strategy
 
@@ -181,19 +180,12 @@ Muse integration changes should be separate commits whenever practical. This pre
 meaningful history for later extraction without slowing current development with dual-repo
 version churn.
 
-At qualification:
-
-1. freeze one verified Muse commit;
-2. extract only the AttuneGraph packages, AttuneGraph-owned docs, tests, examples, and required neutral
-   contracts with history-preserving repository filtering;
-3. create the new repository once;
-4. run the clean-room and packed-artifact gates against the extracted commit;
-5. publish an immutable initial package version;
-6. change Muse from workspace composition to the released package in a separate integration
-   commit.
-
-No automated bidirectional mirroring is planned. After extraction, the standalone AttuneGraph
-repository becomes authoritative and Muse consumes released versions.
+The extraction used a clean-room current snapshot instead of publishing Muse's reachable history.
+The standalone repository is authoritative. Muse consumes a reviewed immutable git commit through
+the same-path submodule, so its existing `workspace:*` and TypeScript references stay intact.
+Engine work lands in AttuneGraph first; Muse then advances the pin and verifies integration.
+Registry publication remains optional and is not required for Muse source builds. No automated
+bidirectional mirroring is planned.
 
 ## Consequences
 

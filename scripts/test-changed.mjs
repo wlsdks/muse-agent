@@ -23,6 +23,12 @@ import { dirname, join, relative } from "node:path";
 
 const ROOT = process.cwd();
 const uncommittedOnly = process.argv.includes("--uncommitted");
+export const ATTUNEGRAPH_SUBMODULE_PATH = "packages/attunegraph";
+export const ATTUNEGRAPH_SUBMODULE_GATE_PACKAGES = [
+  "@attunegraph/core",
+  "@muse/attunegraph",
+  "@muse/cli"
+];
 
 function git(args) {
   try {
@@ -32,30 +38,50 @@ function git(args) {
   }
 }
 
-// Union of staged + unstaged + UNTRACKED (a brand-new file — e.g. a freshly added
-// `*.test.ts` — is NOT in `git diff`, so without ls-files it would be silently
-// skipped) (+ committed-since-main, unless --uncommitted).
-const sources = [
+export function hasAttuneGraphGitlinkChange(rawDiff) {
+  return rawDiff.split("\n").some((line) => {
+    const [metadata, ...paths] = line.split("\t");
+    if (!metadata?.split(" ").includes("160000")) return false;
+    return paths.includes(ATTUNEGRAPH_SUBMODULE_PATH);
+  });
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  // Union of staged + unstaged + UNTRACKED (a brand-new file — e.g. a freshly added
+  // `*.test.ts` — is NOT in `git diff`, so without ls-files it would be silently
+  // skipped) (+ committed-since-main, unless --uncommitted).
+  const sources = [
   ["diff", "--name-only"],
   ["diff", "--name-only", "--cached"],
   ["ls-files", "--others", "--exclude-standard"],
   ...(uncommittedOnly ? [] : [["diff", "--name-only", "origin/main...HEAD"]])
-];
-const changed = new Set();
-for (const args of sources) {
+  ];
+  const rawSources = [
+  ["diff", "--raw"],
+  ["diff", "--raw", "--cached"],
+  ...(uncommittedOnly ? [] : [["diff", "--raw", "origin/main...HEAD"]])
+  ];
+  const attuneGraphGitlinkChanged = rawSources.some((args) => hasAttuneGraphGitlinkChange(git(args)));
+  const changed = new Set();
+  for (const args of sources) {
   for (const line of git(args).split("\n")) {
     const f = line.trim();
-    if (f && /\.(ts|tsx)$/.test(f) && (f.startsWith("packages/") || f.startsWith("apps/"))) changed.add(f);
+    if (
+      f
+      && /\.(ts|tsx)$/.test(f)
+      && (f.startsWith("packages/") || f.startsWith("apps/"))
+      && !(attuneGraphGitlinkChanged && f.startsWith(`${ATTUNEGRAPH_SUBMODULE_PATH}/`))
+    ) changed.add(f);
   }
-}
+  }
 
-if (changed.size === 0) {
+  if (changed.size === 0 && !attuneGraphGitlinkChanged) {
   console.log("[test:changed] no changed .ts files — nothing to test (clean tree vs origin/main).");
   process.exit(0);
-}
+  }
 
 // Map each file to its nearest package.json (the owning workspace) + a package-relative path.
-function nearestPackage(file) {
+  function nearestPackage(file) {
   let dir = dirname(join(ROOT, file));
   while (dir.startsWith(ROOT)) {
     const pkgJson = join(dir, "package.json");
@@ -70,28 +96,38 @@ function nearestPackage(file) {
     dir = parent;
   }
   return undefined;
-}
+  }
 
-const byPackage = new Map();
-const orphans = [];
-for (const file of changed) {
+  const byPackage = new Map();
+  const orphans = [];
+  for (const file of changed) {
   const pkg = nearestPackage(file);
   if (!pkg) { orphans.push(file); continue; }
   if (!byPackage.has(pkg.name)) byPackage.set(pkg.name, { dir: pkg.dir, files: [] });
   byPackage.get(pkg.name).files.push(pkg.rel);
-}
+  }
 
-if (orphans.length > 0) {
+  if (orphans.length > 0) {
   console.log(`[test:changed] ${orphans.length.toString()} changed file(s) outside a workspace package — skipped: ${orphans.join(", ")}`);
-}
-if (byPackage.size === 0) {
+  }
+  if (byPackage.size === 0 && !attuneGraphGitlinkChanged) {
   console.log("[test:changed] no changed files map to a workspace package — nothing to test.");
   process.exit(0);
-}
+  }
 
-console.log(`[test:changed] ${changed.size.toString()} changed file(s) across ${byPackage.size.toString()} package(s); running each package's RELATED tests only:`);
-let failed = false;
-for (const [name, entry] of byPackage) {
+  console.log(`[test:changed] ${changed.size.toString()} changed file(s) across ${byPackage.size.toString()} package(s); running each package's RELATED tests only:`);
+  let failed = false;
+  if (attuneGraphGitlinkChanged) {
+  console.log("[test:changed] AttuneGraph gitlink changed; running conservative core, Muse integration, and CLI package gates.");
+  for (const name of ATTUNEGRAPH_SUBMODULE_GATE_PACKAGES) {
+    try {
+      execFileSync("pnpm", ["--filter", name, "test"], { cwd: ROOT, stdio: "inherit" });
+    } catch {
+      failed = true;
+    }
+  }
+  }
+  for (const [name, entry] of byPackage) {
   const { dir, files } = entry;
   const browserConfig = join(dir, "vitest.browser.config.ts");
   const hasBrowserConfig = existsSync(browserConfig);
@@ -147,5 +183,6 @@ for (const [name, entry] of byPackage) {
       failed = true;
     }
   }
+  }
+  process.exit(failed ? 1 : 0);
 }
-process.exit(failed ? 1 : 0);

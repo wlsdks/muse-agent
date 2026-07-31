@@ -18,11 +18,23 @@ export function supportsNode(version) {
 
 export function sourceInstallCommands(root) {
   return [
+    { args: ["submodule", "sync", "--recursive"], command: "git", cwd: root },
+    { args: ["submodule", "update", "--init", "--recursive"], command: "git", cwd: root },
+    { args: ["--version"], command: "pnpm", cwd: root },
+    { args: ["bin", "--global"], command: "pnpm", cwd: root },
     { args: ["install", "--frozen-lockfile"], command: "pnpm", cwd: root },
     { args: ["build"], command: "pnpm", cwd: root },
     { args: ["--dir", "apps/cli", "link", "--global"], command: "pnpm", cwd: root },
     { args: [join(root, "apps", "cli", "dist", "index.js"), "--version"], command: process.execPath, cwd: root }
   ];
+}
+
+function sourceInstallLabel(call) {
+  if (call.command === "pnpm" && call.args.join(" ") === "bin --global") {
+    return "pnpm global-bin check (run `pnpm setup`, restart the shell, and retry)";
+  }
+  if (call.command === "pnpm" && call.args.join(" ") === "--version") return "pnpm check";
+  return commandText(call);
 }
 
 /** Corepack exposes pnpm as `pnpm.cmd` on Windows; execute that shim through
@@ -126,13 +138,6 @@ export async function runSourceInstall(options = {}) {
   if (gitStatus.stdout.trim()) {
     throw new Error("source install requires a clean checkout; commit or discard local changes first");
   }
-  await requireSuccessful(run, { args: ["--version"], command: "pnpm", cwd: root }, "pnpm check");
-  await requireSuccessful(
-    run,
-    { args: ["bin", "--global"], command: "pnpm", cwd: root },
-    "pnpm global-bin check (run `pnpm setup`, restart the shell, and retry)"
-  );
-
   const commands = sourceInstallCommands(root);
   if (dryRun) {
     stdout("Muse source install dry run — no files or global links were changed:\n");
@@ -142,7 +147,7 @@ export async function runSourceInstall(options = {}) {
 
   for (const [index, call] of commands.entries()) {
     stdout(`[${String(index + 1)}/${String(commands.length)}] ${commandText(call)}\n`);
-    await requireSuccessful(run, call, commandText(call));
+    await requireSuccessful(run, call, sourceInstallLabel(call));
   }
   stdout("\nMuse source install complete.\n");
   stdout("  Start:     muse onboard\n");
