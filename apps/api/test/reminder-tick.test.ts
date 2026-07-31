@@ -218,6 +218,40 @@ describe("startReminderTick", () => {
     }
   });
 
+  it("uses one injected clock snapshot for quiet hours and due selection", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-tick-skew-"));
+    const file = join(dir, "reminders.json");
+    seedReminders(file, "2020-01-02T12:00:00.000Z");
+    const sent: MessageSent[] = [];
+    let tickAt = new Date("2020-01-01T12:00:00.000Z");
+    let clockReads = 0;
+    const handle = startReminderTick({
+      destination: "@me",
+      now: () => {
+        clockReads += 1;
+        return tickAt;
+      },
+      providerId: "telegram",
+      quietHours: { endHour: 7, startHour: 23 },
+      registry: fakeRegistry(sent),
+      remindersFile: file
+    });
+    try {
+      await handle.tickOnce();
+      expect(clockReads).toBe(1);
+      expect(sent).toEqual([]);
+
+      tickAt = new Date("2020-01-03T12:00:00.000Z");
+      await handle.tickOnce();
+      expect(clockReads).toBe(2);
+      expect(sent).toHaveLength(1);
+      await handle.tickOnce();
+      expect(sent).toHaveLength(1);
+    } finally {
+      handle.stop();
+    }
+  });
+
   it("schedules ticks at the configured interval (clamped to ≥5s)", async () => {
     vi.useFakeTimers();
     const dir = mkdtempSync(join(tmpdir(), "muse-tick-clock-"));

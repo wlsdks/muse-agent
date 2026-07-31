@@ -46,8 +46,8 @@ describe("reminders stay exempt from the persisted quiet-hours setting", () => {
   it("a due reminder fires at 23:00 local (a would-be-quiet hour) when startReminderTick receives no quietHours — the exact wiring startReminderDaemonIfConfigured uses", async () => {
     await writeReminders(remindersFile, [
       {
-        createdAt: new Date().toISOString(),
-        dueAt: new Date(Date.now() - 60_000).toISOString(),
+        createdAt: new Date(2026, 0, 1, 22, 58, 0).toISOString(),
+        dueAt: new Date(2026, 0, 1, 22, 59, 0).toISOString(),
         id: "r1",
         status: "pending",
         text: "pay rent today"
@@ -81,8 +81,8 @@ describe("reminders stay exempt from the persisted quiet-hours setting", () => {
 
     await writeReminders(remindersFile, [
       {
-        createdAt: new Date().toISOString(),
-        dueAt: new Date(Date.now() - 60_000).toISOString(),
+        createdAt: new Date(2026, 0, 1, 22, 58, 0).toISOString(),
+        dueAt: new Date(2026, 0, 1, 22, 59, 0).toISOString(),
         id: "r1",
         status: "pending",
         text: "pay rent today"

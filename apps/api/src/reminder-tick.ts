@@ -84,10 +84,11 @@ export function startReminderTick(options: ReminderTickOptions): ReminderTickHan
     if (firing) {
       return;
     }
+    const tickAt = now();
     // Quiet hours: skip the firing call entirely. Reminders queue up
     // (status stays pending) and flush on the first tick after the
     // window ends.
-    if (options.quietHours && isQuietHour(now().getHours(), options.quietHours)) {
+    if (options.quietHours && isQuietHour(tickAt.getHours(), options.quietHours)) {
       return;
     }
     firing = true;
@@ -100,6 +101,7 @@ export function startReminderTick(options: ReminderTickOptions): ReminderTickHan
         destination: options.destination,
         ...(options.effectFile ? { effectFile: options.effectFile } : {}),
         file: options.remindersFile,
+        now: () => tickAt,
         providerId: options.providerId,
         registry: options.registry,
         ...(options.historyFile ? { historyFile: options.historyFile } : {})

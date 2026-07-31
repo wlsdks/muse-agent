@@ -129,7 +129,11 @@ export async function runDueReminders(options: RunDueRemindersOptions): Promise<
     }
   } as const;
   const lockPath = `${stable.file}.firing.lock`;
-  const lockOutcome = await withRequiredProcessLock(lockPath, () => runDueRemindersUnderLock(stable));
+  const lockOutcome = await withRequiredProcessLock(lockPath, () => {
+    const tickAt = stable.now();
+    if (!Number.isFinite(tickAt.getTime())) throw new Error("reminder clock returned an invalid date");
+    return runDueRemindersUnderLock(stable, tickAt);
+  });
   if (lockOutcome.kind === "lock-held") {
     return { delivered: 0, due: 0, errors: [], fired: [], outcome: "lock-held" };
   }
@@ -139,23 +143,26 @@ export async function runDueReminders(options: RunDueRemindersOptions): Promise<
   return lockOutcome.value;
 }
 
-async function runDueRemindersUnderLock(options: RunDueRemindersOptions): Promise<RunDueRemindersSummary> {
-  const now = options.now ?? (() => new Date());
+async function runDueRemindersUnderLock(
+  options: RunDueRemindersOptions,
+  tickAt: Date
+): Promise<RunDueRemindersSummary> {
+  const tickNow = () => tickAt;
   let summary: RunDueRemindersSummary = { delivered: 0, due: 0, errors: [], fired: [] };
   await mutateReminders(options.file, async (all) => {
-    const due = filterReminders(all, "due", now);
+    const due = filterReminders(all, "due", tickNow);
     if (due.length === 0) return all;
 
     const errors: string[] = [];
     let delivered = 0;
     const fired: PersistedReminder[] = [];
     let next: readonly PersistedReminder[] = all;
-    const phaseDActive = isActiveSessionWindow(now(), options);
+    const phaseDActive = isActiveSessionWindow(tickAt, options);
 
     for (const reminder of due) {
       const providerId = reminder.via?.providerId ?? options.providerId;
       const destination = reminder.via?.destination ?? options.destination;
-      const trigger = buildReminderTriggerEnvelope(reminder, now());
+      const trigger = buildReminderTriggerEnvelope(reminder, tickAt);
       const effectId = trigger.dedupKey;
       if (
         providerId.trim().length === 0
@@ -195,7 +202,7 @@ async function runDueRemindersUnderLock(options: RunDueRemindersOptions): Promis
             destination,
             effectFile: options.effectFile!,
             effectId,
-            now,
+            now: tickNow,
             providerId,
             registry: options.registry,
             text: deliveredText
@@ -208,7 +215,7 @@ async function runDueRemindersUnderLock(options: RunDueRemindersOptions): Promis
             },
             effectFile: options.effectFile!,
             effectId,
-            now,
+            now: tickNow,
             payloadHash: existing.binding.payloadHash,
             providerId: existing.binding.providerId
           });

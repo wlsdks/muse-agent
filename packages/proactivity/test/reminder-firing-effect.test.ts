@@ -134,6 +134,47 @@ describe("runDueReminders durable occurrence effect", () => {
     )).toMatchObject({ state: "accepted" });
   });
 
+  it("reuses one post-lock clock snapshot across a multi-reminder tick", async () => {
+    const p = paths();
+    await writeReminders(p.remindersFile, [
+      reminder({ id: "rem-snapshot-1" }),
+      reminder({ id: "rem-snapshot-2" })
+    ]);
+    const sent: OutboundMessage[] = [];
+    let clockReads = 0;
+    let synthesisCalls = 0;
+    const summary = await runDueReminders({
+      ...options(p, registry(async (message) => {
+        sent.push(message);
+        return {
+          destination: message.destination,
+          messageId: `accepted-${sent.length.toString()}`,
+          providerId: "telegram"
+        };
+      }), () => {
+        clockReads += 1;
+        if (clockReads > 1) throw new Error("clock drifted after the tick snapshot");
+        return new Date(NOW);
+      }),
+      activitySource: { lastActivityMs: () => Date.parse(NOW) },
+      agentModel: "test-model",
+      agentRuntime: {
+        run: async () => {
+          synthesisCalls += 1;
+          return { response: { output: "Synthesized exact reminder." } };
+        }
+      }
+    });
+
+    expect(summary).toMatchObject({ delivered: 2, due: 2, errors: [] });
+    expect(clockReads).toBe(1);
+    expect(synthesisCalls).toBe(2);
+    expect(sent).toHaveLength(2);
+    const effects = await readOutboundEffects(p.effectFile);
+    expect(effects.map(({ binding }) => binding.createdAt)).toEqual([NOW, NOW]);
+    expect(effects.map(({ receipt }) => receipt?.receivedAt)).toEqual([NOW, NOW]);
+  });
+
   it("seals provider failure and crash-left prepared as unknown with zero automatic replay", async () => {
     const p = paths();
     await writeReminders(p.remindersFile, [reminder()]);
@@ -335,7 +376,7 @@ describe("runDueReminders durable occurrence effect", () => {
     expect((await readReminders(rejected.remindersFile))[0]!.status).toBe("pending");
   });
 
-  it("uses a distinct history effect for recurring occurrences even when receipt timestamps coincide", async () => {
+  it("uses a distinct history effect for recurring occurrences across ticks", async () => {
     const p = paths();
     await writeReminders(p.remindersFile, [reminder({ recurrence: "daily" })]);
     let calls = 0;
@@ -350,20 +391,8 @@ describe("runDueReminders durable occurrence effect", () => {
     await runDueReminders(options(p, transport));
     expect(calls).toBe(1);
 
-    // The due filter observes a later tick, while the provider receipt clock is
-    // deliberately pinned to the first receipt instant. Distinct occurrences
-    // must not collapse merely because every legacy history identity field
-    // (including firedAtIso) is equal.
-    const secondTickTimes = [
-      "2026-07-30T00:00:00.000Z",
-      "2026-07-30T00:00:00.000Z",
-      NOW,
-      NOW
-    ];
-    let clockRead = 0;
-    await runDueReminders(options(p, transport, () =>
-      new Date(secondTickTimes[Math.min(clockRead++, secondTickTimes.length - 1)]!)
-    ));
+    const secondTickAt = "2026-07-30T00:00:00.000Z";
+    await runDueReminders(options(p, transport, () => new Date(secondTickAt)));
     expect(calls).toBe(2);
     const effects = await readOutboundEffects(p.effectFile);
     const occurrenceEffectIds = [
@@ -380,7 +409,10 @@ describe("runDueReminders durable occurrence effect", () => {
     const history = await readReminderHistory(p.historyFile);
     expect(history).toHaveLength(2);
     expect(history.map(({ effectId }) => effectId).sort()).toEqual([...occurrenceEffectIds].sort());
-    expect(history.map(({ firedAtIso }) => firedAtIso)).toEqual([NOW, NOW]);
+    expect(Object.fromEntries(history.map(({ effectId, firedAtIso }) => [effectId, firedAtIso]))).toEqual({
+      [occurrenceEffectIds[0]!]: NOW,
+      [occurrenceEffectIds[1]!]: secondTickAt
+    });
   });
 
   it("prevalidates route and strict history before any effect or provider call", async () => {
