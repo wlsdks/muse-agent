@@ -2,8 +2,8 @@ import { errorMessage } from "@muse/shared";
 /**
  * Session-end skill authoring. Reads the just-finished session, detects
  * procedural user corrections, asks the local model to generalise each into
- * a reusable SKILL.md, and writes it execute-gated to the authored skills
- * dir (picked up next session). Mirrors distillSessionCorrections: injectable
+ * a reusable SKILL.md, and stages it outside the active authored skills
+ * catalog for later review. Mirrors distillSessionCorrections: injectable
  * I/O, fail-soft, typed skip reason. The two are complementary — distillation
  * records a one-line playbook PREFERENCE; this records a multi-step PROCEDURE.
  */
@@ -43,10 +43,16 @@ export interface AuthorSkillsOptions {
   readonly readLines?: () => Promise<readonly SessionTurnLine[]>;
   readonly readBoundaries?: () => Promise<readonly SessionBoundaryRef[]>;
   readonly existingNames?: () => readonly string[];
+  /**
+   * Automatic callers must leave this at the fail-closed probation default.
+   * The explicit `muse skills author` owner command opts into active writes.
+   */
+  readonly destination?: "active" | "probation";
 }
 
 export type AuthorResult =
   | { readonly status: "authored"; readonly skills: readonly string[] }
+  | { readonly status: "staged"; readonly skills: readonly string[] }
   | { readonly status: "skipped"; readonly reason: string };
 
 export async function authorSkillsFromSession(options: AuthorSkillsOptions): Promise<AuthorResult> {
@@ -78,28 +84,37 @@ export async function authorSkillsFromSession(options: AuthorSkillsOptions): Pro
     dir,
     ...(options.existingNames ? { existingNames: options.existingNames } : {})
   });
-  const authored: string[] = [];
+  const accepted: string[] = [];
+  const destination = options.destination ?? "probation";
   for (const signal of signals) {
     const draft = await draftSkillFromSignal(signal, { model: options.model, modelProvider: options.modelProvider });
     if (!draft) {
       continue;
     }
     try {
-      const { action, skill } = await store.writeOrPatch(draft);
-      // Only create/patch become active learned skills; "skip" is a no-op and
-      // "quarantined" was flagged risky and parked in .quarantine, never active.
-      if (action === "create" || action === "patch") {
-        authored.push(`${skill.name} (${action})`);
+      const { action, skill } = destination === "active"
+        ? await store.writeOrPatch(draft)
+        : await store.stageDraft(draft);
+      const acceptedAction = destination === "active"
+        ? action === "create" || action === "patch"
+        : action === "stage-create" || action === "stage-patch";
+      if (acceptedAction) {
+        accepted.push(`${skill.name} (${action})`);
       }
     } catch {
       // fail-soft per skill — one bad write must not lose the rest
     }
   }
 
-  if (authored.length === 0) {
-    return { reason: "nothing new authored (all NONE / duplicates)", status: "skipped" };
+  if (accepted.length === 0) {
+    return {
+      reason: `nothing new ${destination === "active" ? "authored" : "staged"} (all NONE / duplicates)`,
+      status: "skipped"
+    };
   }
-  return { skills: authored, status: "authored" };
+  return destination === "active"
+    ? { skills: accepted, status: "authored" }
+    : { skills: accepted, status: "staged" };
 }
 
 interface SkillRewardChange {

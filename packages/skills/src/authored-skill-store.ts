@@ -48,7 +48,13 @@ export {
   type SkillSnapshotEntry
 } from "./skill-analysis.js";
 
-export type AuthorAction = "create" | "patch" | "skip" | "quarantined";
+export type AuthorAction =
+  | "create"
+  | "patch"
+  | "stage-create"
+  | "stage-patch"
+  | "skip"
+  | "quarantined";
 
 export type ActiveSkillWriteBlockReason =
   | "qualification-hold-active"
@@ -141,6 +147,86 @@ export class AuthoredSkillStore {
 
   async listAuthored(): Promise<readonly Skill[]> {
     return new FileSystemSkillLoader({ roots: [{ path: this.dir, source: "authored" }] }).loadAll();
+  }
+
+  /**
+   * List model-authored candidates that are deliberately outside the active
+   * authored root. The normal registry loader only scans immediate children of
+   * `dir`, so `.probation/<slug>/SKILL.md` can be reviewed without becoming
+   * prompt-visible or executable.
+   */
+  async listProbation(): Promise<readonly Skill[]> {
+    return new FileSystemSkillLoader({
+      roots: [{ path: join(this.dir, ".probation"), source: "authored" }]
+    }).loadAll();
+  }
+
+  /**
+   * Persist an automatically drafted skill as a non-active candidate.
+   * Risky drafts still go to quarantine; safe drafts remain in probation until
+   * a separate explicit promotion path admits them.
+   */
+  async stageDraft(draft: SkillDraft): Promise<{ action: AuthorAction; skill: Skill; reasons?: readonly string[] }> {
+    return this.serializeMutation(() => this.stageDraftUnlocked(draft));
+  }
+
+  private async stageDraftUnlocked(
+    draft: SkillDraft
+  ): Promise<{ action: AuthorAction; skill: Skill; reasons?: readonly string[] }> {
+    const scan = scanSkillBodyForRisks(draft.body);
+    if (scan.flagged) {
+      const filePath = join(this.dir, ".quarantine", slugifySkillName(draft.name), "SKILL.md");
+      await writeFileAtomic(filePath, serializeAuthoredSkill(draft, this.now().toISOString()));
+      return {
+        action: "quarantined",
+        reasons: scan.reasons,
+        skill: await parseSkillFile(filePath, { source: "authored" })
+      };
+    }
+
+    const [active, probation] = await Promise.all([this.listAuthored(), this.listProbation()]);
+    const similarToDraft = (skill: Skill): boolean =>
+      skill.name === draft.name
+      || this.similarity(`${skill.name} ${skill.description}`, `${draft.name} ${draft.description}`)
+        >= PATCH_SIMILARITY_THRESHOLD;
+    const probationMatch = probation.find(similarToDraft);
+    const activeMatch = active.find(similarToDraft);
+    const match = probationMatch ?? activeMatch;
+
+    if (match) {
+      const text = serializeAuthoredSkill(
+        { name: match.name, description: draft.description, body: draft.body },
+        this.now().toISOString()
+      );
+      const existing = probationMatch
+        ? await fs.readFile(probationMatch.sourceInfo.filePath, "utf8").catch(() => "")
+        : await fs.readFile(match.sourceInfo.filePath, "utf8").catch(() => "");
+      if (stripTimestamps(existing) === stripTimestamps(text)) {
+        return { action: "skip", skill: match };
+      }
+      const filePath = join(this.dir, ".probation", slugifySkillName(match.name), "SKILL.md");
+      await writeFileAtomic(filePath, text);
+      return {
+        action: "stage-patch",
+        skill: await parseSkillFile(filePath, { source: "authored" })
+      };
+    }
+
+    const subsumer = [...probation, ...active].find((skill) => skillBodyIsSubsumed(draft.body, skill.body));
+    if (subsumer) {
+      return { action: "skip", skill: subsumer };
+    }
+
+    const name = this.dedupeName(draft.name);
+    const filePath = join(this.dir, ".probation", slugifySkillName(name), "SKILL.md");
+    await writeFileAtomic(
+      filePath,
+      serializeAuthoredSkill({ ...draft, name }, this.now().toISOString())
+    );
+    return {
+      action: "stage-create",
+      skill: await parseSkillFile(filePath, { source: "authored" })
+    };
   }
 
   async writeOrPatch(draft: SkillDraft): Promise<{ action: AuthorAction; skill: Skill; reasons?: readonly string[] }> {

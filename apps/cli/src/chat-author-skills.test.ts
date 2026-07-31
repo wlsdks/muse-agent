@@ -41,7 +41,7 @@ const readEnvFor = (root: string): (() => NodeJS.ProcessEnv) => () => ({
 });
 
 describe("authorSkillsFromSession", () => {
-  it("authors a skill from a procedural correction", async () => {
+  it("stages a skill candidate from a procedural correction", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-auth-cli-"));
     const res = await authorSkillsFromSession({
       model: "m",
@@ -51,10 +51,30 @@ describe("authorSkillsFromSession", () => {
       readBoundaries: async () => boundaries,
       readLines: async () => correctedSession
     });
-    expect(res.status).toBe("authored");
-    if (res.status === "authored") {
+    expect(res.status).toBe("staged");
+    if (res.status === "staged") {
       expect(res.skills[0]).toContain("export-then-attach");
     }
+  });
+
+  it("preserves explicit owner-triggered active authoring", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-auth-cli-explicit-"));
+    const res = await authorSkillsFromSession({
+      authoredDir: dir,
+      destination: "active",
+      model: "m",
+      modelProvider: stub(draftOutput),
+      readEnv: readEnvFor(dir),
+      readBoundaries: async () => boundaries,
+      readLines: async () => correctedSession
+    });
+
+    expect(res.status).toBe("authored");
+    const registry = await buildSkillRegistry({
+      MUSE_AUTHORED_SKILLS_DIR: dir,
+      MUSE_SKILLS_DIR: join(dir, "user")
+    } as unknown as Parameters<typeof buildSkillRegistry>[0]);
+    expect(registry!.get("export-then-attach")).toBeDefined();
   });
 
   it("skips when there is no correction", async () => {
@@ -89,7 +109,7 @@ describe("authorSkillsFromSession", () => {
     expect(res.status).toBe("skipped");
   });
 
-  it("end-to-end: an authored skill is loaded next session and selected on a similar request", async () => {
+  it("end-to-end: a staged skill is not loaded or selected next session", async () => {
     const base = mkdtempSync(join(tmpdir(), "muse-auth-e2e-"));
     const authoredDir = join(base, "authored");
     const userDir = join(base, "user");
@@ -102,28 +122,25 @@ describe("authorSkillsFromSession", () => {
       readBoundaries: async () => boundaries,
       readLines: async () => correctedSession
     });
-    expect(authoring.status).toBe("authored");
+    expect(authoring.status).toBe("staged");
 
-    // Next session: the registry loader picks up the authored dir.
+    // Next session: the registry loader must ignore probation candidates.
     const registry = await buildSkillRegistry({
       MUSE_SKILLS_DIR: userDir,
       MUSE_AUTHORED_SKILLS_DIR: authoredDir
     } as unknown as Parameters<typeof buildSkillRegistry>[0]);
     const all = registry!.list();
-    expect(all.map((s) => s.name)).toContain("export-then-attach");
+    expect(all.map((s) => s.name)).not.toContain("export-then-attach");
 
-    // A similar request surfaces it; an unrelated one does not.
+    // A similar request cannot surface a candidate before explicit promotion.
     const relevant = selectRelevantSkills(all, "send my quarterly report to my manager as a document");
-    expect(relevant.map((s) => s.name)).toContain("export-then-attach");
-    const irrelevant = selectRelevantSkills(all, "what is the weather today");
-    expect(irrelevant.map((s) => s.name)).not.toContain("export-then-attach");
+    expect(relevant.map((s) => s.name)).not.toContain("export-then-attach");
   });
 
-  // Skill authoring is ON BY DEFAULT (MUSE_SKILL_AUTHOR_ENABLED unset ⇒ true,
-  // chat-end-session-pipeline.ts) — this proves flipping that default did NOT
-  // loosen the execute-gate: a freshly authored skill still cannot be run via
-  // `muse.skills.run` until a human promotes it (adds requires.bins by hand).
-  it("safety invariant: a skill authored on the default-on path is still refused by muse.skills.run (never promoted)", async () => {
+  // Skill authoring is ON BY DEFAULT (MUSE_SKILL_AUTHOR_ENABLED unset ⇒ true).
+  // A model-authored candidate must remain absent from every active surface
+  // until a separate, explicit promotion path admits it.
+  it("safety invariant: a default-on candidate is absent from muse.skills.run", async () => {
     const base = mkdtempSync(join(tmpdir(), "muse-auth-safety-"));
     const authoredDir = join(base, "authored");
     const userDir = join(base, "user");
@@ -138,16 +155,13 @@ describe("authorSkillsFromSession", () => {
       readBoundaries: async () => boundaries,
       readLines: async () => correctedSession
     });
-    expect(authoring.status).toBe("authored");
+    expect(authoring.status).toBe("staged");
 
     const registry = await buildSkillRegistry({
       MUSE_SKILLS_DIR: userDir,
       MUSE_AUTHORED_SKILLS_DIR: authoredDir
     } as unknown as Parameters<typeof buildSkillRegistry>[0]);
-    const skill = registry!.get("export-then-attach")!;
-    // Structural gate: an authored SkillDraft can never carry requires.bins.
-    expect(skill.frontmatter.requires?.bins).toBeUndefined();
-    expect(skill.frontmatter.requires?.anyBins).toBeUndefined();
+    expect(registry!.get("export-then-attach")).toBeUndefined();
 
     // Same registry-view mapping the real runtime wires (skills-runtime.ts) —
     // exercised here directly against `muse.skills.run`.
@@ -171,7 +185,7 @@ describe("authorSkillsFromSession", () => {
       { command: "rm -rf /", name: "export-then-attach" },
       { runId: "r-1" }
     )) as { readonly error?: string };
-    expect(result.error).toMatch(/declares no requires\.bins/u);
+    expect(result.error).toMatch(/skill not found/u);
   });
 });
 

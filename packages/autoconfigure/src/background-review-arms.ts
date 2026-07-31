@@ -78,8 +78,9 @@ export interface ReviewArmDeps {
  * Skill arm of the background-review engine ("hard tasks teach"): when the
  * tool-iteration trigger fires, author a reusable skill from the turn's LIVE
  * conversation. Gated by its OWN flag on top of the engine switch — it writes
- * the skill library unattended (the store's risk-scan quarantines a poisoned
- * draft rather than activating it), so it stays opt-in for a careful rollout.
+ * a probation candidate unattended (the store's risk-scan quarantines a
+ * poisoned draft). Candidates stay outside the active skill catalog until a
+ * separate explicit promotion path admits them.
  */
 export function createReviewSkillArm(
   deps: ReviewArmDeps
@@ -103,7 +104,7 @@ export function createReviewSkillArm(
         model: defaultModel,
         modelProvider,
         writeDraft: async (draft) => {
-          const { action, skill } = await store.writeOrPatch(draft);
+          const { action, skill } = await store.stageDraft(draft);
           return { action, name: skill.name };
         }
       });

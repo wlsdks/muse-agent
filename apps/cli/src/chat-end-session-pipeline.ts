@@ -97,19 +97,18 @@ export async function runEndOfSessionPipeline(args: {
     }
   }
 
-  // End-of-session skill authoring: turn a procedural correction into a
-  // reusable, execute-gated SKILL.md (picked up next session). On by
-  // default (Muse "learns you" out of the box); fail-soft so a flaky model
-  // never blocks exit.
+  // End-of-session skill review: turn a procedural correction into a
+  // probation candidate that remains outside the active catalog. On by
+  // default; fail-soft so a flaky model never blocks exit.
   if (parseBoolean(process.env.MUSE_SKILL_AUTHOR_ENABLED, true)) {
     const { authorSkillsFromSession, applySkillRewardsFromSession } = await import("./chat-author-skills.js");
     const result = await authorSkillsFromSession({
       model,
       modelProvider: modelProvider as Parameters<typeof authorSkillsFromSession>[0]["modelProvider"]
     }).catch(() => undefined);
-    if (result?.status === "authored") {
+    if (result?.status === "staged") {
       for (const name of result.skills) {
-        process.stderr.write(`💾 Learned skill: ${name}\n`);
+        process.stderr.write(`🧪 Staged skill candidate: ${name}\n`);
       }
     }
     // RL over skills: decay the skill that applied to a corrected request,

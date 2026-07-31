@@ -102,11 +102,19 @@ Examples:
         return;
       }
       const result = await authorSkillsFromSession({
+        destination: "active",
         model,
         modelProvider: assembly.modelProvider as Parameters<typeof authorSkillsFromSession>[0]["modelProvider"]
       });
       if (result.status === "authored") {
         io.stdout(`Authored ${result.skills.length.toString()} skill${result.skills.length === 1 ? "" : "s"} from your last session:\n`);
+        for (const name of result.skills) {
+          io.stdout(`  - ${name}\n`);
+        }
+        return;
+      }
+      if (result.status === "staged") {
+        io.stdout(`Staged ${result.skills.length.toString()} skill candidate${result.skills.length === 1 ? "" : "s"} from your last session:\n`);
         for (const name of result.skills) {
           io.stdout(`  - ${name}\n`);
         }

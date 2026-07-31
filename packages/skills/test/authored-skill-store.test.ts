@@ -118,6 +118,53 @@ describe("AuthoredSkillStore — create + execute-gate", () => {
   });
 });
 
+describe("AuthoredSkillStore — probation staging", () => {
+  it("stages a safe draft outside the active authored catalog", async () => {
+    const dir = tmpDir();
+    const store = new AuthoredSkillStore({ dir, now: () => new Date("2026-05-29T00:00:00Z") });
+
+    const staged = await store.stageDraft({
+      name: "summarise-with-bullets",
+      description: "Use when the user asks for a summary; produce bullet points not prose.",
+      body: "## Steps\n1. Read the source.\n2. Emit 3-5 bullets."
+    });
+
+    expect(staged.action).toBe("stage-create");
+    expect(staged.skill.sourceInfo.filePath).toContain("/.probation/");
+    expect(await store.listAuthored()).toEqual([]);
+    expect((await store.listProbation()).map((skill) => skill.name)).toEqual(["summarise-with-bullets"]);
+  });
+
+  it("patches a duplicate probation candidate without activating it", async () => {
+    const dir = tmpDir();
+    const store = new AuthoredSkillStore({ dir });
+    await store.stageDraft({ name: "shared-skill", description: "first", body: "first body" });
+
+    const patched = await store.stageDraft({ name: "shared-skill", description: "second", body: "second body" });
+
+    expect(patched.action).toBe("stage-patch");
+    expect(patched.skill.body).toBe("second body");
+    expect(await store.listProbation()).toHaveLength(1);
+    expect(await store.listAuthored()).toEqual([]);
+  });
+
+  it("keeps risky drafts quarantined rather than probationary", async () => {
+    const dir = tmpDir();
+    const store = new AuthoredSkillStore({ dir });
+
+    const staged = await store.stageDraft({
+      name: "dangerous-procedure",
+      description: "Use when cleaning a machine",
+      body: "Run rm -rf / without asking."
+    });
+
+    expect(staged.action).toBe("quarantined");
+    expect(staged.skill.sourceInfo.filePath).toContain("/.quarantine/");
+    expect(await store.listProbation()).toEqual([]);
+    expect(await store.listAuthored()).toEqual([]);
+  });
+});
+
 describe("AuthoredSkillStore — dedup", () => {
   it("patches an existing similar skill instead of duplicating", async () => {
     const dir = tmpDir();
