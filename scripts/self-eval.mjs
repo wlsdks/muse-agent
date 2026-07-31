@@ -319,6 +319,11 @@ function main() {
   // its only caller was a human typing the command. Each takes ~1s.
   gates.evidenceDashboard = gateExit("pnpm -s evidence:dashboard:validate");
   gates.toolExposure = gateExit("pnpm -s verify:tool-exposure");
+  // The workspace verification batteries. Twelve deterministic AttuneGraph checks existed and
+  // nothing ran any of them, so three had been failing silently — the same disease as the two
+  // gates above, found a third time. verify:packages declares those three as a baseline, so this
+  // stays green until a FOURTH breaks or one of the three is fixed without leaving the list.
+  gates.verifyBatteries = gateExit("pnpm -s verify:packages");
   gates.testFiles = { status: "pass", value: countTestFiles() };
   // The prescribed CAPABILITIES.md ledger was intentionally removed (f4c195df —
   // "so the agent discovers work itself"). Only emit this count WHEN the file
