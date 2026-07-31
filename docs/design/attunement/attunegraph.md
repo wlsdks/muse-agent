@@ -3,7 +3,7 @@ title: AttuneGraph — agent-native temporal provenance graph
 audience: [engineering, product, security, agents]
 purpose: Define the modular graph engine that powers Muse's signature Attunement experience
 status: partial-implementation
-updated: 2026-07-30
+updated: 2026-07-31
 related: [../../strategy/attunement.md, README.md, agent-native-graph-core.md, ../../../internal/goals/attunegraph-roadmap.md]
 ---
 
@@ -203,7 +203,7 @@ option. Its verified current v1 Graph Observation Receipt remains the provider b
 explicit `MUSE_ATTUNEGRAPH_DATABASE` composition revalidates both local ledgers and writes a
 separate complete `muse.local-attunement-timing` scope. The resume
 baseline itself remains process-local, and the path still has no continuous/current-world
-ingestion, LLM extraction, automatic Shadow delivery, Capsule product UI, Policy Card UI,
+ingestion, LLM extraction, automatic Shadow delivery, automatic Capsule delivery, Policy Card UI,
 or action authority. The complete three-part signature experience therefore remains a
 roadmap claim.
 
@@ -225,10 +225,26 @@ The public assembly service and read-only `muse.continuity.capsule.prepare` tool
 `threadId` and `locale`; callers cannot inject draft text, evidence IDs, model/provider, time, or
 action mode. This first composition supports local `task | note | reminder` links only and rejects
 every other source class in a state preflight before coordinator/model work, then revalidates the
-exact captured result before any provider call. It adds no HTTP authentication witness,
-API route, React card, persistent baseline, exact/automatic stop capture, semantic entailment
-verification, delivery/outcome/policy mutation, action payload, automatic timing, or usefulness
-claim. Those are later AWG-040e2/durability/qualification slices, not properties of AWG-040e1.
+exact captured result before any provider call. AWG-040e1 itself adds no authenticated evidence
+witness, persistent baseline, exact/automatic stop capture, semantic-entailment verification,
+delivery/outcome/policy mutation, action payload, automatic timing, or usefulness claim. Those
+remain durability/qualification work, not properties of AWG-040e1.
+
+AWG-040e2 adds the first explicit product/API projection without widening the evidence contract.
+The owner-gated `POST /api/attunement/threads/:threadId/capsule/prepare` route accepts only an
+exact locale request, invokes the exact assembly-owned preparation service with the request abort
+signal, and returns a private, no-store closed `ready | seeded | unavailable` display DTO. Its
+ready projector resolves the exact cited source keys before rendering and exposes only bounded
+display fields; it does not disclose source keys, raw references, receipt or evidence identities,
+provider/model details, or an action payload. The empty Chat state offers an explicit Prepare
+control only after its existing resumable-thread review. It never prepares on render, polls, or
+retries automatically; the first request may truthfully establish only a process-local baseline.
+The rendered Capsule keeps citation binding separate from unverified semantic entailment, states
+its display-only/new-approval boundary, and its Continue control writes only the existing local
+navigation handoff. Configured HTTP authentication rejects anonymous calls, but that access gate
+does not establish an authenticated evidence witness. This slice is not automatic timing or
+delivery, durable baseline storage, exact stop capture, all-source ingestion, semantic truth,
+Policy Card control, action execution, or usefulness qualification.
 
 An explicit second composition point now exposes the read-only
 `muse.continuity.learning.policy-card.preview` tool over

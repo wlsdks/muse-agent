@@ -8,6 +8,20 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added AWG-040e2, the first explicit Continuity Capsule product/API projection. An
+  owner-gated `POST /api/attunement/threads/:threadId/capsule/prepare` calls the exact
+  assembly-owned preparation service with its request abort signal and returns only a private,
+  no-store `ready | seeded | unavailable` display DTO. The ready projector resolves every cited
+  source key before exposing its bounded display fields and excludes raw references, receipt and
+  evidence identities, provider/model details, and action payloads. Empty Chat now offers an
+  explicit Prepare control for a reviewed resumable thread; it performs no request on render,
+  polling, or automatic retry, and its first request may establish only a process-local baseline.
+  The card makes citation binding, unverified semantic entailment, and display-only/new-approval
+  boundaries visible; Continue writes only the existing local navigation handoff. Configured
+  authentication rejects anonymous HTTP calls but is not an authenticated evidence witness. This
+  is not durable or all-source Capsule storage, exact stop capture, automatic timing/delivery,
+  semantic truth, Policy Card control, action execution, or usefulness evidence.
+
 - Added AWG-040e1, the evidence-bound model-preparation prerequisite for Continuity
   Capsules. One assembly-scoped service reuses the existing process-local resume coordinator;
   the first qualifying call reports a truthful seeded state, and only an exact identity-bound

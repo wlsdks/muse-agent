@@ -13,6 +13,7 @@ import { readToken } from "../lib/token-storage.js";
 import { safeSessionStorage } from "../lib/safe-storage.js";
 import { shouldStickToBottom } from "./chat-autoscroll.js";
 import { ChatsView } from "./Chats.js";
+import { ContinuityCapsuleFlow } from "./ContinuityCapsule.js";
 import { continuityNudgeFor, dismissNudge, isNudgeDismissed } from "./continuity-nudge.js";
 import { writeAutoContinueThread } from "./home-logic.js";
 import { useReconfirmCard } from "./reconfirm-inline.js";
@@ -231,7 +232,6 @@ export function ChatContinuitySection({
   isEmptySession: boolean;
   onNavigate?: (view: string) => void;
 }) {
-  const { t } = useI18n();
   const [dismissed, setDismissed] = useState(() => isNudgeDismissed(safeSessionStorage()));
   // Fetching stops (via `enabled`) the moment the first turn lands or the
   // nudge is dismissed, so the read-only GET never repeats mid-conversation.
@@ -248,7 +248,9 @@ export function ChatContinuitySection({
     return null;
   }
   return (
-    <ChatContinuityNudge
+    <ContinuityCapsuleFlow
+      client={client}
+      key={nudge.threadId}
       nudge={nudge}
       onContinue={() => {
         writeAutoContinueThread(safeSessionStorage(), nudge.threadId);
@@ -258,7 +260,6 @@ export function ChatContinuitySection({
         dismissNudge(safeSessionStorage());
         setDismissed(true);
       }}
-      t={t}
     />
   );
 }
@@ -481,6 +482,11 @@ export function ChatSession({ client, onNavigate }: { client: ApiClient; onNavig
       <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>
         <div className="chat-thread">
           <ChatEmptyState hasMessages={turns.length > 0} onPickStarter={pickStarter} />
+          <ChatContinuitySection
+            client={client}
+            isEmptySession={turns.length === 0}
+            onNavigate={onNavigate}
+          />
           {turns.map((turn, i) => (
             <div className={`msg ${turn.role}`} key={i}>
               <div className="avatar">{turn.role === "user" ? "You" : "M"}</div>
@@ -555,7 +561,6 @@ export function ChatSession({ client, onNavigate }: { client: ApiClient; onNavig
         </div>
       </div>
 
-      <ChatContinuitySection client={client} isEmptySession={turns.length === 0} onNavigate={onNavigate} />
       <ChatReconfirmStrip client={client} isEmptySession={turns.length === 0} t={t} />
 
       <div className="chat-composer">

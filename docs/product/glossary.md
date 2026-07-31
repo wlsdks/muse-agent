@@ -25,13 +25,15 @@ Muse*. Each entry is one definition plus where it lives. Exact verification evid
 - **Shadow Muse** — the **roadmap** layer that learns timing by recording `silent|digest|offer`
   candidates, their evidence, bounded counterfactuals and your actual return, all before it ever
   interrupts or acts.
-- **Continuity Capsule** — the target product form of today's Continuity Pack: the stopping point,
+- **Continuity Capsule** — the richer product form of today's Continuity Pack: the stopping point,
   what changed since, the exact evidence, the next step, prepared work and expected time, in one
-  view (**roadmap**). A shipped preparation/provenance substrate can now produce a separately
-  versioned display-only model proposal after an exact process-local comparison and verify that
-  each claim cites available current task/note/reminder evidence. It does not verify semantic
-  entailment, capture an exact stop, persist the baseline, authenticate an API request, or provide
-  the product view.
+  view. A shipped explicit Chat slice now invokes the assembly-owned preparation service only
+  after the owner selects Prepare, reports a truthful process-local seeded state when no earlier
+  observation exists, and otherwise shows a closed English/Korean display card. It verifies
+  citation membership for current task/note/reminder evidence and exposes timing, freshness,
+  entailment, and action caveats. Exact stop capture, durable baselines, all-source parity,
+  authenticated evidence witness, automatic timing/surfacing, semantic entailment, and organic
+  usefulness remain **roadmap**.
 - **Policy Card** — the surface that shows how Muse proposes to change the way it works with this
   person, with evidence and scope. A read-only, explicitly invoked AttuneGraph-backed render-data
   preview is available now; automatic surfacing, product UI, and trusted trial, edit, reject,

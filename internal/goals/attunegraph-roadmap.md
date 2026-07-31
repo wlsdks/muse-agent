@@ -78,7 +78,7 @@ The program is not done when Muse has a graph database. It is done when:
 | **AWG-030** | Explained change query | “What changed since I stopped?” returns exact temporal paths or abstains; flat/vector/graph baseline recorded | completed |
 | **AWG-035a** | Observation Receipt format | Strict content-addressed codec preserves one caller-declared exact projection and source accounting without personal source text | completed |
 | **AWG-035b** | Observation capture + query bridge | Raw authoritative observation produces the receipt and receipt→current uses the same AWG-030 comparison core | completed |
-| **AWG-040** | Continuity Capsule v1 | Explicit Pack Preview can render the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer from one exact verified comparison | in progress (`AWG-040b/c/d` verified; automatic exact-stop capture and product UI pending) |
+| **AWG-040** | Continuity Capsule v1 | Explicit Pack Preview can render the previous observation's recorded next step, changes, current next step, prepared work, expected time, and source drawer from one exact verified comparison | in progress (`AWG-040b/c/d/e1/e2` verified; exact-stop capture, durable baseline, all-source parity, and automatic timing/surfacing pending) |
 | **AWG-045a** | Canonical immutable-envelope kernel | Package-private hostile-input admission and frozen-output re-verification produce byte-identical canonical values without changing v1 codecs or exports | completed |
 | **AWG-045b** | Deterministic candidate ledger | Package-private pure reducer gives every core/optional candidate one terminal state, counter vector, reason partition, and monotone fallback | completed |
 | **AWG-050a** | Graph v2 semantic hardening | Integrate the verified 045 kernels into scope-safe immutable snapshots, bounded proof settlement, nomination/traversal, freshness, typed completeness, and adversarial isolation | partial (`AWG-050a1` through `050a3d3b` independently verified; explicit Pack Preview now dogfoods process-local `resumeContext`, while durable/current-world semantics remain pending) |
@@ -399,9 +399,21 @@ Shadow ledger or durable database:
   source classes must fail the state preflight before coordinator/model work and must be
   revalidated from the exact captured result before any provider call. Genuine cross-thread and
   cross-source substitutions fail with zero provider calls. Durable baseline, all-source parity,
-  authenticated API/UI,
+  an authenticated observation witness,
   exact stop capture, automatic timing, Policy Card controls, semantic entailment, and usefulness
   remain roadmap work.
+- **AWG-040e2 (`verified-current` explicit Capsule product slice):** one focused owner-gated
+  POST route reuses that exact assembly service and accepts only the path thread plus
+  `{ locale }`. It returns `ready | seeded | unavailable` as a closed, `private, no-store`
+  product contract; the ready projector resolves both recorded/current next-step source keys
+  before admitting a card and strips internal evidence inputs, receipts, manifests, provider
+  data, raw references, source/assertion keys, and content-addressed IDs. The empty Chat session
+  still performs only its review GET until the owner explicitly selects Prepare. Real Chromium
+  renders English/Korean seeded, unavailable, and ready states with the previous recorded step,
+  relation changes/abstentions, current observation step, display-only model proposal, estimated
+  minutes, visible entailment/timing/action caveats, and a source disclosure inside the existing
+  Chat scroller. Configured authentication denies anonymous calls, but the underlying evidence
+  correctly retains `authenticatedWitness: not-proven`.
 
 The full decision and dissent are in
 [Muse Agent-Native Graph Core](../../docs/design/attunement/agent-native-graph-core.md). Those earlier
@@ -416,7 +428,7 @@ shell-before-hidden-state verification, closed Graph binding-receipt semantics, 
 scope-derived seed verification before passing. AWG-050b now owns the actual Shadow
 `silent | digest | offer` decision receipt and counterfactual.
 
-## Completed slices: AWG-050a3d3a/b, AWG-040d, and AWG-040e1
+## Completed slices: AWG-050a3d3a/b, AWG-040d, AWG-040e1, and AWG-040e2
 
 - **Product meaning:** call this capability **AttuneGraph-backed explicit resume preview**. The
   first qualifying Preview seeds one exact process-local baseline; later calls return
@@ -439,9 +451,15 @@ scope-derived seed verification before passing. AWG-050b now owns the actual Sha
   self-eval, strict local-model `pass^3`, and fresh independent-evaluator gates passed on the
   landed candidate. This is component evidence for citation-bound proposal preparation, not
   semantic entailment or organic usefulness evidence.
+- **AWG-040e2 completion status:** an explicit Chat click now reaches the assembly-owned
+  preparation service through one owner-gated API route; render alone never invokes it. The
+  browser retains only a closed display projection in component memory, clears it on locale
+  change, never retries automatically, and cannot execute the draft. API adversarial/redaction
+  tests and real-Chromium interaction/layout tests are controlled execution evidence, not
+  authenticated source observation or organic usefulness evidence.
 - **Still not shipped:** cross-process/durable baseline storage, continuous/current-world
-  freshness, exact automatic stop capture, automatic surfacing, Capsule authenticated API/product
-  UI, non-local source parity, semantic entailment verification, Shadow/Policy controls, action
+  freshness, exact automatic stop capture, automatic timing/surfacing, authenticated evidence
+  witness, non-local source parity, semantic entailment verification, Shadow/Policy controls, action
   authority, and organic usefulness qualification remain pending.
 
 ## Completed slice: AWG-050a3d1

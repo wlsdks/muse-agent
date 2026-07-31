@@ -22,6 +22,7 @@ import { consumeBuilderCopilotSeed, writeBuilderCopilotSeed } from "./scheduled-
 import type { ApiClient } from "../api/client.js";
 import type { ReconfirmCard as ReconfirmCardData } from "../api/types.js";
 import type { ReviewThreadSummary } from "./continuity-shared.js";
+import type { ContinuityCapsulePrepareResponse } from "./ContinuityCapsule.js";
 import type { Translate } from "../i18n/index.js";
 
 const identityT = ((key: string) => key) as unknown as Translate;
@@ -294,15 +295,148 @@ const RESUMABLE_THREAD: ReviewThreadSummary = {
   title: "Prepare quarterly review"
 };
 
+const READY_CAPSULE: ContinuityCapsulePrepareResponse = {
+  schemaVersion: 1,
+  status: "ready",
+  capsule: {
+    locale: "en",
+    headline: "Continuity Capsule",
+    threadTitle: "Prepare quarterly review",
+    timingCaveat: "Muse did not evaluate whether now was a good time.",
+    stoppedPoint: {
+      heading: "Previously recorded next step",
+      observedAt: "2026-07-30T08:00:00.000Z",
+      currentAvailability: "available",
+      source: {
+        observation: "previous",
+        status: "available",
+        title: "Compare three hotels",
+        summary: "Choose one candidate."
+      }
+    },
+    changes: {
+      status: "complete",
+      summary: "One exact relation changed.",
+      items: [{
+        relationLabel: "The next-step relation changed.",
+        kindLabel: "Revised",
+        bindingLabel: "Named from an exact source snapshot."
+      }],
+      abstentions: []
+    },
+    nextStep: {
+      heading: "Current observation's next step",
+      source: {
+        observation: "current",
+        status: "available",
+        title: "Review the changed cancellation deadline",
+        summary: "One saved option expires tomorrow."
+      }
+    },
+    preparedWork: {
+      heading: "Prepared work",
+      title: "Compare the changed option",
+      content: "Review the changed source before choosing.",
+      expectedMinutes: 12,
+      expectedMinutesSemantics: "estimate",
+      actionBoundary: "Display only. No action will run.",
+      textOrigin: "model-generated-proposal",
+      entailment: "not-verified"
+    },
+    disclosure: {
+      heading: "Sources and integrity details",
+      whyShown: "Shown because you explicitly requested this Capsule.",
+      privacyNotice: "Local personal data. Source freshness is not proven.",
+      previousObservedAt: "2026-07-30T08:00:00.000Z",
+      currentObservedAt: "2026-07-30T09:00:00.000Z",
+      preparedAt: "2026-07-30T09:00:00.000Z",
+      generatedAt: "2026-07-30T09:00:01.000Z",
+      verification: "citation-binding-verified",
+      authenticatedWitness: "not-proven",
+      sourceFreshness: "not-proven",
+      currentWorldTruth: "not-granted",
+      sourceCompleteness: "not-granted",
+      actionAuthority: "not-granted",
+      sources: [{
+        observation: "previous",
+        status: "available",
+        title: "Compare three hotels"
+      }, {
+        observation: "current",
+        status: "available",
+        title: "Review the changed cancellation deadline"
+      }],
+      graphSources: { total: 1, displayed: 1, omitted: 0 }
+    }
+  }
+};
+
+const READY_CAPSULE_KO: ContinuityCapsulePrepareResponse = {
+  ...READY_CAPSULE,
+  capsule: {
+    ...READY_CAPSULE.capsule,
+    locale: "ko",
+    headline: "연속성 캡슐",
+    threadTitle: "분기 검토 준비",
+    timingCaveat: "Muse는 지금이 적절한 시점인지 판단하지 않았어요.",
+    stoppedPoint: {
+      ...READY_CAPSULE.capsule.stoppedPoint,
+      heading: "이전에 기록한 다음 단계",
+      source: {
+        ...READY_CAPSULE.capsule.stoppedPoint.source,
+        title: "숙소 후보 세 곳 비교하기",
+        summary: "후보 하나를 고르세요."
+      }
+    },
+    nextStep: {
+      ...READY_CAPSULE.capsule.nextStep,
+      heading: "현재 관찰의 다음 단계",
+      source: {
+        ...READY_CAPSULE.capsule.nextStep.source,
+        title: "변경된 취소 기한 검토하기",
+        summary: "저장한 선택지 하나가 내일 만료돼요."
+      }
+    },
+    preparedWork: {
+      ...READY_CAPSULE.capsule.preparedWork,
+      heading: "준비한 작업",
+      title: "변경된 선택지 비교하기",
+      content: "선택하기 전에 변경된 출처를 검토하세요.",
+      actionBoundary: "표시만 합니다. 어떤 작업도 실행하지 않아요."
+    },
+    disclosure: {
+      ...READY_CAPSULE.capsule.disclosure,
+      heading: "출처와 무결성 세부 정보",
+      whyShown: "이 캡슐을 명시적으로 요청했기 때문에 표시했어요.",
+      privacyNotice: "로컬 개인 데이터예요. 출처 최신성은 증명되지 않았어요.",
+      sources: [{
+        observation: "previous",
+        status: "available",
+        title: "숙소 후보 세 곳 비교하기"
+      }, {
+        observation: "current",
+        status: "available",
+        title: "변경된 취소 기한 검토하기"
+      }]
+    }
+  }
+};
+
 function forbiddenPost() {
   return vi.fn(async (path: string) => {
     throw new Error(`the continuity nudge must never mutate — unexpected POST ${path}`);
   });
 }
 
+function SwitchToKorean() {
+  const { setLang } = useI18n();
+  return <button onClick={() => setLang("ko")}>Switch to Korean</button>;
+}
+
 function renderNudge(props: {
   readonly get: (path: string) => Promise<unknown>;
   readonly isEmptySession?: boolean;
+  readonly languageSwitch?: boolean;
   readonly onNavigate?: (view: string) => void;
   readonly post?: (path: string, body?: Record<string, unknown>) => Promise<unknown>;
 }) {
@@ -312,6 +446,7 @@ function renderNudge(props: {
   return render(
     <QueryClientProvider client={queryClient}>
       <I18nProvider>
+        {props.languageSwitch ? <SwitchToKorean /> : null}
         <ChatContinuitySection client={client} isEmptySession={props.isEmptySession ?? true} onNavigate={props.onNavigate} />
       </I18nProvider>
     </QueryClientProvider>
@@ -329,6 +464,261 @@ test("renders the nudge for a resumable review fixture, and the mere render neve
   await expect.element(screen.getByRole("button", { name: "Continue" })).toBeVisible();
   await expect.element(screen.getByRole("button", { name: "Later" })).toBeVisible();
   expect(post).not.toHaveBeenCalled();
+});
+
+test("prepares only after one explicit click and renders an honest seeded state", async () => {
+  window.sessionStorage.removeItem(NUDGE_SUPPRESSION_KEY);
+  const get = vi.fn(async () => ({ threads: [RESUMABLE_THREAD] }));
+  const post = vi.fn(async () => ({
+    schemaVersion: 1,
+    status: "seeded",
+    baselineDurability: "process-local-only"
+  }));
+  const screen = await renderNudge({ get, post });
+
+  await screen.getByRole("button", { name: "Prepare continuity capsule" }).click();
+
+  await expect.element(screen.getByText("Comparison baseline started")).toBeVisible();
+  await expect.element(screen.getByText(
+    "Muse saved a process-local starting point for this running session. No capsule or draft was prepared yet."
+  )).toBeVisible();
+  expect(post).toHaveBeenCalledTimes(1);
+  expect(post).toHaveBeenCalledWith(
+    "/api/attunement/threads/thread_life/capsule/prepare",
+    { locale: "en" }
+  );
+});
+
+test("guards double-click preparation and never retries the pending mutation", async () => {
+  window.sessionStorage.removeItem(NUDGE_SUPPRESSION_KEY);
+  const get = vi.fn(async () => ({ threads: [RESUMABLE_THREAD] }));
+  let finish!: (value: ContinuityCapsulePrepareResponse) => void;
+  const post = vi.fn(() => new Promise<ContinuityCapsulePrepareResponse>(
+    (resolve) => {
+      finish = resolve;
+    }
+  ));
+  const screen = await renderNudge({ get, post });
+  const button = screen.getByRole("button", {
+    name: "Prepare continuity capsule"
+  });
+
+  await button.click();
+  await button.click({ force: true });
+  expect(post).toHaveBeenCalledTimes(1);
+  await expect.element(button).toBeDisabled();
+
+  finish({
+    schemaVersion: 1,
+    status: "unavailable",
+    reason: "busy"
+  });
+  await expect.element(screen.getByText(
+    "A continuity capsule is already being prepared. Nothing was executed or changed."
+  )).toBeVisible();
+  expect(post).toHaveBeenCalledTimes(1);
+});
+
+test("renders the ready Capsule, visible truth boundaries, and keyboard-native source disclosure", async () => {
+  window.sessionStorage.removeItem(NUDGE_SUPPRESSION_KEY);
+  const get = vi.fn(async () => ({ threads: [RESUMABLE_THREAD] }));
+  const post = vi.fn(async () => READY_CAPSULE);
+  const screen = await renderNudge({ get, post });
+
+  await screen.getByRole("button", { name: "Prepare continuity capsule" }).click();
+
+  const heading = screen.getByRole("heading", { name: "Continuity Capsule" });
+  await expect.element(heading).toBeVisible();
+  await expect.element(heading).toHaveFocus();
+  await expect.element(screen.getByText(
+    "Compare three hotels",
+    { exact: true }
+  )).toBeVisible();
+  await expect.element(screen.getByText("Review the changed cancellation deadline", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Estimated · 12 min")).toBeVisible();
+  await expect.element(screen.getByText(
+    /Sources bind this capsule to cited material; they do not prove every summary statement follows from it\./
+  ).first()).toBeVisible();
+  await expect.element(screen.getByText(
+    /This is a proposal from your explicit request\. It does not execute a draft or make an automatic timing decision\./
+  )).toBeVisible();
+
+  const disclosure = screen.getByText("Sources and integrity details", {
+    exact: true
+  });
+  await disclosure.click();
+  await expect.element(screen.getByText(
+    "Shown because you explicitly requested this Capsule."
+  )).toBeVisible();
+  await expect.element(screen.getByText("Citation binding", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Verified", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Semantic entailment", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Not verified", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Authenticated evidence witness", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Not proven", { exact: true }).first()).toBeVisible();
+  await expect.element(screen.getByText("Source freshness", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Current-world truth", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Not granted", { exact: true }).first()).toBeVisible();
+  await expect.element(screen.getByText("Source completeness", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Action authority", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Evidence prepared at", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("2026-07-30T09:00:00.000Z", { exact: true }).first()).toBeVisible();
+  await expect.element(screen.getByText("Proposal generated at", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("2026-07-30T09:00:01.000Z", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Graph sources", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("1 of 1 displayed · 0 omitted", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText(
+    /Nothing was executed or changed\./
+  )).toBeVisible();
+});
+
+test("switching language clears a settled Capsule and does not prepare another one", async () => {
+  window.sessionStorage.removeItem(NUDGE_SUPPRESSION_KEY);
+  const get = vi.fn(async () => ({ threads: [RESUMABLE_THREAD] }));
+  const post = vi.fn(async () => READY_CAPSULE);
+  const screen = await renderNudge({ get, languageSwitch: true, post });
+
+  await screen.getByRole("button", { name: "Prepare continuity capsule" }).click();
+  await expect.element(screen.getByRole("heading", { name: "Continuity Capsule" })).toBeVisible();
+
+  await screen.getByRole("button", { name: "Switch to Korean" }).click();
+
+  await expect.element(screen.getByRole("button", { name: "연속성 캡슐 준비" })).toBeVisible();
+  await expect.element(screen.getByRole("heading", { name: "Continuity Capsule" })).not.toBeInTheDocument();
+  expect(post).toHaveBeenCalledTimes(1);
+});
+
+test("switching to Korean prepares a Korean ready Capsule only after a second explicit click", async () => {
+  window.sessionStorage.removeItem(NUDGE_SUPPRESSION_KEY);
+  const get = vi.fn(async () => ({ threads: [RESUMABLE_THREAD] }));
+  const post = vi.fn(async (_path: string, body?: Record<string, unknown>) => (
+    body?.locale === "ko" ? READY_CAPSULE_KO : READY_CAPSULE
+  ));
+  const screen = await renderNudge({ get, languageSwitch: true, post });
+
+  await screen.getByRole("button", { name: "Prepare continuity capsule" }).click();
+  await expect.element(screen.getByRole("heading", { name: "Continuity Capsule" })).toBeVisible();
+  await screen.getByRole("button", { name: "Switch to Korean" }).click();
+  await screen.getByRole("button", { name: "연속성 캡슐 준비" }).click();
+
+  const koreanHeading = screen.getByRole("heading", { name: "연속성 캡슐" });
+  await expect.element(koreanHeading).toBeVisible();
+  await expect.element(koreanHeading).toHaveFocus();
+  await expect.element(screen.getByText("숙소 후보 세 곳 비교하기", { exact: true })).toBeVisible();
+  await screen.getByText("출처와 무결성 세부 정보", { exact: true }).click();
+  await expect.element(screen.getByText("현재 세계 사실", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("출처 완전성", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("부여되지 않음", { exact: true }).first()).toBeVisible();
+  await expect.element(screen.getByText("그래프 출처", { exact: true })).toBeVisible();
+  expect(post).toHaveBeenCalledTimes(2);
+  expect(post).toHaveBeenNthCalledWith(
+    1,
+    "/api/attunement/threads/thread_life/capsule/prepare",
+    { locale: "en" }
+  );
+  expect(post).toHaveBeenNthCalledWith(
+    2,
+    "/api/attunement/threads/thread_life/capsule/prepare",
+    { locale: "ko" }
+  );
+});
+
+test("a rejected preparation is retried exactly once only after its explicit retry click", async () => {
+  window.sessionStorage.removeItem(NUDGE_SUPPRESSION_KEY);
+  const get = vi.fn(async () => ({ threads: [RESUMABLE_THREAD] }));
+  const post = vi.fn()
+    .mockRejectedValueOnce(new Error("client POST rejected"))
+    .mockResolvedValueOnce(READY_CAPSULE);
+  const screen = await renderNudge({ get, post });
+
+  await screen.getByRole("button", { name: "Prepare continuity capsule" }).click();
+  await expect.element(screen.getByRole("alert")).toHaveTextContent(
+    "Muse could not prepare this continuity capsule. Nothing was executed or changed."
+  );
+  expect(post).toHaveBeenCalledTimes(1);
+
+  await screen.getByRole("button", { name: "Try again" }).click();
+  await expect.element(screen.getByRole("heading", { name: "Continuity Capsule" })).toBeVisible();
+  expect(post).toHaveBeenCalledTimes(2);
+});
+
+test("a ready Capsule Continue only writes the existing navigation handoff", async () => {
+  window.sessionStorage.removeItem(NUDGE_SUPPRESSION_KEY);
+  window.sessionStorage.removeItem("muse.homeAutoContinueThreadId");
+  const get = vi.fn(async () => ({ threads: [RESUMABLE_THREAD] }));
+  const post = vi.fn(async () => READY_CAPSULE);
+  const onNavigate = vi.fn();
+  const screen = await renderNudge({ get, onNavigate, post });
+
+  await screen.getByRole("button", { name: "Prepare continuity capsule" }).click();
+  await screen.getByRole("button", { name: "Continue" }).click();
+
+  expect(onNavigate).toHaveBeenCalledWith("home");
+  expect(consumeAutoContinueThread(safeSessionStorage())).toBe("thread_life");
+  expect(post).toHaveBeenCalledTimes(1);
+});
+
+test("a ready Capsule Later dismisses the full card for this session", async () => {
+  window.sessionStorage.removeItem(NUDGE_SUPPRESSION_KEY);
+  const get = vi.fn(async () => ({ threads: [RESUMABLE_THREAD] }));
+  const screen = await renderNudge({ get, post: vi.fn(async () => READY_CAPSULE) });
+
+  await screen.getByRole("button", { name: "Prepare continuity capsule" }).click();
+  await expect.element(screen.getByRole("heading", { name: "Continuity Capsule" })).toBeVisible();
+  await screen.getByRole("button", { name: "Later" }).click();
+
+  await expect.element(screen.getByRole("heading", { name: "Continuity Capsule" })).not.toBeInTheDocument();
+  expect(window.sessionStorage.getItem(NUDGE_SUPPRESSION_KEY)).not.toBeNull();
+});
+
+test("keeps a ready Capsule inside the actual phone-width Chat scroller without horizontal overflow", async () => {
+  window.localStorage.removeItem("muse.chat.conversationId");
+  window.localStorage.removeItem("muse.chat.transcript");
+  window.localStorage.setItem("muse.lang", "en");
+  window.sessionStorage.removeItem(NUDGE_SUPPRESSION_KEY);
+  const client = {
+    baseUrl: "http://chat-phone-layout.test",
+    del: vi.fn(),
+    get: vi.fn(async (path: string) => {
+      if (path === "/api/models") return {};
+      if (path === "/api/attunement/review") return { threads: [RESUMABLE_THREAD] };
+      throw new Error(`unexpected GET ${path}`);
+    }),
+    patch: vi.fn(),
+    post: vi.fn(async () => READY_CAPSULE),
+    put: vi.fn()
+  } as unknown as ApiClient;
+  const screen = await render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <I18nProvider>
+        <div className="main" style={{ height: 640, width: 360 }}>
+          <section className="content">
+            <div className="view">
+              <div className="chat-shell">
+                <ChatSession client={client} />
+              </div>
+            </div>
+          </section>
+        </div>
+      </I18nProvider>
+    </QueryClientProvider>
+  );
+
+  await screen.getByRole("button", { name: "Prepare continuity capsule" }).click();
+  await expect.element(screen.getByRole("heading", { name: "Continuity Capsule" })).toBeVisible();
+
+  const card = screen.container.querySelector<HTMLElement>(
+    ".continuity-capsule-card"
+  );
+  const chatScroll = screen.container.querySelector<HTMLElement>(".chat-scroll");
+  expect(card).not.toBeNull();
+  expect(chatScroll).not.toBeNull();
+  expect(card!.closest(".chat-scroll")).toBe(chatScroll);
+  expect(card!.clientWidth).toBeGreaterThan(0);
+  expect(chatScroll!.clientWidth).toBeGreaterThan(0);
+  expect(chatScroll!.clientWidth).toBeLessThanOrEqual(360);
+  expect(card!.scrollWidth).toBeLessThanOrEqual(card!.clientWidth);
+  expect(chatScroll!.scrollWidth).toBeLessThanOrEqual(chatScroll!.clientWidth);
 });
 
 test("renders nothing when the review reports no resumable thread (empty threads)", async () => {

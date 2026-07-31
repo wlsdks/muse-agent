@@ -707,10 +707,12 @@ bounded head assessments, and an assembly-local finite evidence pool; it is not
 continuous or current freshness, an automatically observed stopping point, semantic entailment,
 causality, completeness, persistence, or user value. AWG-040e1 is `verified-current` as an
 evidence-bound preparation/provenance substrate: its model-preparation path is limited to local
-task/note/reminder links and a process-local seeded baseline, with no authenticated API/UI
-witness. It is independently verified only at that bounded scope of one evidence-bound,
-display-only proposal and does not extend this end-to-end claim to semantic entailment,
-continuous truth, automatic observation, persistence, or user value. It does
+task/note/reminder links and a process-local seeded baseline, with no authenticated evidence
+witness. AWG-040e2 projects that substrate through an explicit owner-gated API and Chat card,
+but does not upgrade that evidence authority. It is independently verified only at
+that bounded scope of one evidence-bound, display-only proposal and does not extend this
+end-to-end claim to semantic entailment, continuous truth, automatic observation, persistence,
+or user value. It does
 not implement or duplicate AWG-050 graph hardening or the Shadow decision/return ledger, AWG-060
 Policy Card learning controls, or the separate personal-agent 300-task productization program.
 The Provider-bound paths make no authoritative absence, permission, or action claim.

@@ -380,6 +380,20 @@ describe("autoconfigure", () => {
     expect(options.taskMemoryMaintenance.purgeExpired(new Date())).toBe(0);
   });
 
+  it("projects the assembly-owned Capsule preparation service into API options", () => {
+    const options = createApiServerOptions({
+      env: baseWorkingBudgetEnv({
+        MUSE_SCHEDULER_PERSIST: "false",
+        MUSE_TASK_MEMORY_PERSIST: "false"
+      })
+    });
+
+    expect(options.continuityCapsulePreparation).toBeDefined();
+    expect(typeof options.continuityCapsulePreparation?.prepare).toBe(
+      "function"
+    );
+  });
+
   it("parses MUSE_CORS_ALLOWED_ORIGINS into the cors.allowedOrigins list", () => {
     const options = createApiServerOptions({
       env: {
