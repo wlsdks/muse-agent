@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  assessExperienceLearningDegradation
+  assessExperienceLearningDegradation,
+  projectVerifiedExperienceLearningRollbackProposalHealth
 } from "./experience-learning-degradation.js";
 import {
   createExperienceLearningPromotionHandle
@@ -43,6 +44,7 @@ function window(
   kind: "baseline" | "promoted",
   outcomes: readonly ContinuityOutcome[]
 ) {
+  const offset = kind === "baseline" ? 1 : 100;
   return outcomes.map((outcome, index) => ({
     authority: "owner-explicit" as const,
     behaviorDigest: kind === "baseline"
@@ -51,7 +53,8 @@ function window(
     deliveryId: `${kind}-delivery-${index}`,
     evidenceClass: "organic-production" as const,
     outcome,
-    outcomeId: `${kind}-outcome-${index}`,
+    outcomeId:
+      `continuity_outcome_${(index + offset).toString(16).padStart(64, "0")}`,
     recordedAt: kind === "baseline"
       ? `2026-07-30T${(index + 6).toString().padStart(2, "0")}:00:00.000Z`
       : `2026-07-30T${(index + 13).toString()}:00:00.000Z`,
@@ -194,5 +197,74 @@ describe("assessExperienceLearningDegradation", () => {
       handle: promotion,
       promoted
     }, {}))).toBeUndefined();
+  });
+
+  it("recomputes only an exact canonical inert proposal for loop health", () => {
+    const promotion = handle();
+    const canonicalWindow = (
+      kind: "baseline" | "promoted",
+      outcomes: readonly ContinuityOutcome[],
+      offset: number
+    ) => window(promotion, kind, outcomes).map((entry, index) => ({
+      ...entry,
+      outcomeId:
+        `continuity_outcome_${(index + offset).toString(16).padStart(64, "0")}`
+    }));
+    const assessment = assessExperienceLearningDegradation({
+      baseline: canonicalWindow(
+        "baseline",
+        ["used", "used", "used", "adjusted", "ignored"],
+        1
+      ),
+      handle: promotion,
+      promoted: canonicalWindow(
+        "promoted",
+        ["used", "adjusted", "ignored", "rejected", "rejected"],
+        10
+      )
+    });
+    const proposal = assessment?.proposal;
+    expect(proposal).toBeDefined();
+    expect(projectVerifiedExperienceLearningRollbackProposalHealth(proposal))
+      .toEqual({
+        evidenceId: proposal!.proposalId,
+        evidenceVerified: true,
+        status: "rollback-proposed"
+      });
+    for (const tampered of [
+      { ...proposal, authority: "owner-explicit" },
+      { ...proposal, baselineOutcomeIds: proposal!.baselineOutcomeIds.slice(1) },
+      {
+        ...proposal,
+        promotedOutcomeIds: [
+          proposal!.baselineOutcomeIds[0]!,
+          ...proposal!.promotedOutcomeIds.slice(1)
+        ]
+      },
+      {
+        ...proposal,
+        promotedOutcomeIds: [
+          "noncanonical",
+          ...proposal!.promotedOutcomeIds.slice(1)
+        ]
+      },
+      { ...proposal, proposalId: `learning_rollback_proposal_${"f".repeat(64)}` },
+      { ...proposal, extra: true }
+    ]) {
+      expect(projectVerifiedExperienceLearningRollbackProposalHealth(tampered))
+        .toBeUndefined();
+    }
+    expect(projectVerifiedExperienceLearningRollbackProposalHealth(
+      new Proxy(proposal!, {})
+    )).toBeUndefined();
+    const accessor = { ...proposal };
+    Object.defineProperty(accessor, "proposalId", {
+      enumerable: true,
+      get: () => {
+        throw new Error("proposal accessor must not run");
+      }
+    });
+    expect(projectVerifiedExperienceLearningRollbackProposalHealth(accessor))
+      .toBeUndefined();
   });
 });

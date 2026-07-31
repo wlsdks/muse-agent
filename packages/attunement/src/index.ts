@@ -158,7 +158,8 @@ export {
   assessExperienceLearningDegradation,
   EXPERIENCE_LEARNING_DEGRADATION_REJECTED_RISE,
   EXPERIENCE_LEARNING_DEGRADATION_USED_DROP,
-  EXPERIENCE_LEARNING_DEGRADATION_WINDOW_SIZE
+  EXPERIENCE_LEARNING_DEGRADATION_WINDOW_SIZE,
+  projectVerifiedExperienceLearningRollbackProposalHealth
 } from "./experience-learning-degradation.js";
 export type {
   ExperienceLearningDegradationAssessment,

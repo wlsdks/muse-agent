@@ -1,4 +1,8 @@
-import { assertPlainDataTree, sha256Hex } from "@muse/shared";
+import {
+  assertPlainDataTree,
+  sha256Hex,
+  type AdaptationLoopHealthInput
+} from "@muse/shared";
 
 import {
   parseExperienceLearningPromotionHandle,
@@ -31,10 +35,12 @@ export interface ExperienceLearningOutcomeSummary {
 
 export interface ExperienceLearningRollbackProposal {
   readonly authority: "none";
+  readonly baselineOutcomeIds: readonly string[];
   readonly criteriaVersion: 1;
   readonly effectPerformed: false;
   readonly handleId: string;
   readonly ownerApprovalRequired: true;
+  readonly promotedOutcomeIds: readonly string[];
   readonly proposalId: string;
   readonly reason: "post-promotion-regression";
   readonly schemaVersion: 1;
@@ -116,25 +122,33 @@ export function assessExperienceLearningDegradation(
       status: "hold"
     });
   }
+  const baselineOutcomeIds = baseline.map((entry) => entry.outcomeId);
+  const promotedOutcomeIds = promoted.map((entry) => entry.outcomeId);
+  if (!isCanonicalOutcomeIdWindow(baselineOutcomeIds)
+    || !isCanonicalOutcomeIdWindow(promotedOutcomeIds)) {
+    return undefined;
+  }
 
   const proposalCore = {
     authority: "none" as const,
-    baselineOutcomeIds: baseline.map((entry) => entry.outcomeId),
+    baselineOutcomeIds,
     criteriaVersion: 1 as const,
     effectPerformed: false as const,
     handleId: handle.handleId,
     ownerApprovalRequired: true as const,
-    promotedOutcomeIds: promoted.map((entry) => entry.outcomeId),
+    promotedOutcomeIds,
     reason: "post-promotion-regression" as const,
     schemaVersion: 1 as const,
     status: "proposed" as const
   };
   const proposal = Object.freeze({
     authority: proposalCore.authority,
+    baselineOutcomeIds: Object.freeze([...proposalCore.baselineOutcomeIds]),
     criteriaVersion: proposalCore.criteriaVersion,
     effectPerformed: proposalCore.effectPerformed,
     handleId: proposalCore.handleId,
     ownerApprovalRequired: proposalCore.ownerApprovalRequired,
+    promotedOutcomeIds: Object.freeze([...proposalCore.promotedOutcomeIds]),
     proposalId: `learning_rollback_proposal_${sha256Hex(JSON.stringify(proposalCore))}`,
     reason: proposalCore.reason,
     schemaVersion: proposalCore.schemaVersion,
@@ -149,6 +163,70 @@ export function assessExperienceLearningDegradation(
     requiredOutcomesPerWindow: EXPERIENCE_LEARNING_DEGRADATION_WINDOW_SIZE,
     status: "propose-rollback"
   });
+}
+
+/**
+ * Recomputes a serialized inert proposal before it can affect loop health.
+ * This verifies receipt integrity only; it grants no approval or rollback.
+ */
+export function projectVerifiedExperienceLearningRollbackProposalHealth(
+  value: unknown
+): AdaptationLoopHealthInput | undefined {
+  try {
+    assertPlainDataTree(value, "experienceLearningRollbackProposal");
+  } catch {
+    return undefined;
+  }
+  if (!isExactRecord(value, [
+    "authority",
+    "baselineOutcomeIds",
+    "criteriaVersion",
+    "effectPerformed",
+    "handleId",
+    "ownerApprovalRequired",
+    "promotedOutcomeIds",
+    "proposalId",
+    "reason",
+    "schemaVersion",
+    "status"
+  ])
+    || value.authority !== "none"
+    || value.criteriaVersion !== 1
+    || value.effectPerformed !== false
+    || value.ownerApprovalRequired !== true
+    || value.reason !== "post-promotion-regression"
+    || value.schemaVersion !== 1
+    || value.status !== "proposed"
+    || typeof value.handleId !== "string"
+    || !/^learning_promotion_handle_[a-f0-9]{64}$/u.test(value.handleId)
+    || typeof value.proposalId !== "string"
+    || !isCanonicalOutcomeIdWindow(value.baselineOutcomeIds)
+    || !isCanonicalOutcomeIdWindow(value.promotedOutcomeIds)) {
+    return undefined;
+  }
+  const ids = [...value.baselineOutcomeIds, ...value.promotedOutcomeIds];
+  if (new Set(ids).size !== ids.length) return undefined;
+  const core = {
+    authority: value.authority,
+    baselineOutcomeIds: value.baselineOutcomeIds,
+    criteriaVersion: value.criteriaVersion,
+    effectPerformed: value.effectPerformed,
+    handleId: value.handleId,
+    ownerApprovalRequired: value.ownerApprovalRequired,
+    promotedOutcomeIds: value.promotedOutcomeIds,
+    reason: value.reason,
+    schemaVersion: value.schemaVersion,
+    status: value.status
+  };
+  const proposalId =
+    `learning_rollback_proposal_${sha256Hex(JSON.stringify(core))}`;
+  return value.proposalId === proposalId
+    ? Object.freeze({
+        evidenceId: proposalId,
+        evidenceVerified: true,
+        status: "rollback-proposed"
+      })
+    : undefined;
 }
 
 function parseWindow(
@@ -229,6 +307,14 @@ function summarize(
 
 function isSafeId(value: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(value);
+}
+
+function isCanonicalOutcomeIdWindow(value: unknown): value is readonly string[] {
+  return Array.isArray(value)
+    && value.length === EXPERIENCE_LEARNING_DEGRADATION_WINDOW_SIZE
+    && value.every((entry) =>
+      typeof entry === "string"
+      && /^continuity_outcome_[a-f0-9]{64}$/u.test(entry));
 }
 
 function isCanonicalIso(value: string): boolean {
