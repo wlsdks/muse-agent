@@ -5,14 +5,14 @@ No auto-runner; reproduce the state, check against `expected_behavior`. Grow
 from real misses.
 
 ## Contents
-- G1 — regression present → hands off to improve-muse, builds nothing
+- G1 — regression present → bounded maintenance flow, builds no growth
 - G2 — owner's stated direction exists → it outranks every reservoir
 - G3 — no user story → the item is rejected as filler
 - G4 — pick without scores → invalid; SCORE is mandatory
 - G5 — M+ scope → design gate (adversarial review) BEFORE build
 - G6 — new tool shipped → eval:tools case + live selection proof required
 - G7 — parity item already shipped → freshness guard, keep sourcing
-- G8 — hardening debt discovered mid-build → recorded for=improve-muse, not absorbed
+- G8 — hardening debt discovered mid-build → recorded for=maintenance, not absorbed
 - G9 — outbound/product-boundary candidate → [decision]-skipped, never guessed
 - G10 — substrate-relabel temptation → build the missing stage or move on
 - G11 — working-but-poor existing surface → grow-muse owns it
@@ -21,8 +21,8 @@ from real misses.
 
 ### G1 — self-eval is red
 **state:** `pnpm self-eval` exits non-zero.
-**expected_behavior:** no growth is built; the fire becomes the improve-muse
-regression slice, executed INLINE to green (verified live 2026-07-17: a real
+**expected_behavior:** no growth is built; the fire becomes a bounded maintenance
+slice under `muse-dev-patterns`, executed inline to green (verified live 2026-07-17: a real
 fire found lint+envInventory red and shipped the fix as its slice). FAIL if
 it builds a feature on a red board OR ends the fire with the regression
 merely reported, unfixed.
@@ -65,7 +65,7 @@ continues. FAIL if it re-builds the existing capability.
 ### G8 — hardening debt surfaces mid-build
 **state:** while building, a pre-existing reliability defect appears in an
 adjacent path (not blocking the slice).
-**expected_behavior:** ONE `- [open] for=improve-muse :: ...` record; the growth slice
+**expected_behavior:** ONE `- [open] for=maintenance :: ...` record; the growth slice
 stays coherent. (A defect that BLOCKS the slice may be fixed minimally, stated
 in the commit body.) FAIL if the commit silently absorbs unrelated hardening.
 
@@ -86,6 +86,5 @@ stage is actually built or sourcing moves on. FAIL on any relabel.
 the user badly (e.g. an unusable list view, a confusing flow) — not broken,
 not missing.
 **expected_behavior:** grow-muse OWNS it (it changes what the user can
-do/feel); scored and built here with a user story. improve-muse must NOT also
-claim it (its boundary text routes it here). FAIL if both skills build it or
-both refuse it.
+do/feel); scored and built here with a user story. The maintenance flow must
+not also claim it. FAIL if both paths build it or both refuse it.

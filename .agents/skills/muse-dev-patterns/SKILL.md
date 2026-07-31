@@ -5,10 +5,9 @@ description: The distilled per-slice engineering discipline of the Muse repo —
 
 # muse-dev-patterns — the recurring slice discipline
 
-Distilled from 200+ loop fires (internal/goals/loops/*), the backlog's dedup
-ledger, and live sessions. `improve-muse` decides WHAT to build and drives
-the end-to-end cycle; THIS skill is the HOW at each step — the moves that
-kept working, and the failure classes each one exists to prevent.
+Distilled from real failures, the backlog's dedup ledger, and live sessions.
+Use this as the bounded maintenance flow for existing behavior and as the HOW
+for product slices — without creating another selection loop or artifact tree.
 
 ## 1. When a gate/test fails: triage BEFORE fixing
 
@@ -21,10 +20,11 @@ worst class of bug — "fixing" the assertion when the product regressed, or
    the path changed); `3/5` is stochastic (model variance, load, race).
    Structural failures deserve root-cause; stochastic ones deserve
    `MUSE_EVAL_REPEAT` and a look at thresholds/timeouts.
-2. **Is it pre-existing? Prove it with stash.**
-   `git stash && <run the failing test> && git stash pop` — if it fails on
-   clean HEAD, it is main's rot, not your change. File it as its own T0 fix
-   (never bundle it silently into your slice's commit).
+2. **Is it pre-existing? Prove it without touching the owner's worktree.**
+   Reproduce on a fresh disposable worktree at the base HEAD. Never stash,
+   reset, or rewrite another session's dirty changes to obtain a clean state.
+   If it fails there, it is base-branch rot, not your change; keep it out of
+   the current slice unless it blocks acceptance.
 3. **Date the flip.** `git log --format='%ci %h %s' -S '<changed token>' --
    <file>` finds WHEN the behavior changed and WHICH commit did it. Read
    that commit's intent before touching anything.
@@ -43,9 +43,11 @@ worst class of bug — "fixing" the assertion when the product regressed, or
 When behavior is in question, the cheapest decisive evidence is a live
 probe, not code reading. The repo's standing pattern:
 
-- Extract the ONE failing case into a scratchpad probe script that boots
-  the API server exactly like the harness does (temp stores, diagnostic or
-  local model, free port, `/health` wait) and fires that case k times.
+- Put the ONE failing-case probe in an OS temporary directory created with
+  `mktemp -d`, clean it when the probe ends, and boot the API server with
+  temp stores, a diagnostic or local model, a free port, and a `/health`
+  wait. Never create repo-root `scratchpad/`, `harness/`, or other ad-hoc
+  artifact directories.
   A full battery re-run costs 6–8 min; a single-case probe costs 30–60 s
   per trial and gives per-trial visibility.
 - A/B attribution: flip ONE variable per arm (a prompt layer, a constant,

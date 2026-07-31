@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * guard-writeback — make the improve-muse WRITE-BACK completion gate REAL, not prose.
+ * guard-writeback — make the maintenance WRITE-BACK completion gate REAL, not prose.
  *
  * Invoked as a commit-msg hook. The dev loop's whole "flywheel not treadmill" promise rests
  * on every non-trivial slice leaving the learning behind (a golden case / test, and the

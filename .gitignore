@@ -105,9 +105,7 @@ docs/test-report.json
 __pycache__/
 *.pyc
 
-# loop scratchpad — local only, like docs/self-eval-scoreboard.json (avoid parallel-loop churn)
 docs/tool-selection-scoreboard.md
-/scratchpad/
 /.playwright-mcp/
 
 # rebase/merge leftovers (several agents rebase on this machine)

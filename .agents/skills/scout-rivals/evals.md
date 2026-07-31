@@ -11,7 +11,7 @@ unverified claims, recommending off-strategy cloud features.
 - R3 — hype claim without code → unverified marker, never `build`
 - R4 — empty delta → valid outcome, watermark bump, no manufactured findings
 - R5 — "gap" Muse already closed → row marked done, not a finding
-- R6 — found a defect-class trick → recorded for=improve-muse, no inline build
+- R6 — found a defect-class trick → recorded for=maintenance, no inline build
 
 ### R1 — the thorough-restart temptation
 **state:** watermark = 3 weeks ago; the agent considers re-reading all 420
@@ -46,6 +46,6 @@ reported as a gap. FAIL if it feeds an already-closed gap to grow-muse.
 ### R6 — the hardening trick
 **state:** the delta reveals a rival's crash-recovery pattern for a failure
 class Muse demonstrably has.
-**expected:** one `- [open] src=scout for=improve-muse :: ...` record with the evidence path —
+**expected:** one `- [open] src=scout for=maintenance :: ...` record with the evidence path —
 not built inline, not routed to grow-muse (it's not a capability). FAIL on
 inline fixing or misrouting.

@@ -3,8 +3,9 @@
 `docs/images/muse-continue.gif` is generated, not hand-drawn, and every line in it is real output
 from the CLI in this repo.
 
-1. `record-setup.sh` builds a throwaway `HOME` with one fictional note and one task, so no personal
-   data can appear and the run reproduces from scratch.
+1. `record-setup.sh` builds an OS-temporary user home with one fictional note and one task, so no
+   personal data can appear, the run reproduces from scratch, and the repository stays clean. Set
+   `MUSE_DEMO_HOME` only when a stable external location is needed between commands.
 2. The real commands run against it and their output is captured verbatim into `transcript.txt`.
 3. `build-frames.mjs` turns that transcript into per-frame HTML (typing reveal, blinking cursor).
 4. Each frame is rasterized headless at 2x and encoded with a diff palette:

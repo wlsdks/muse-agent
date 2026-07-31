@@ -4,7 +4,7 @@
  *   node scripts/pick-evals.mjs            # batteries for the uncommitted working tree
  *   node scripts/pick-evals.mjs <base>     # batteries for the diff vs <base> (e.g. main)
  *
- * The improve-muse VERIFY step says "map the diff → the exact eval/smoke subset". That map
+ * The maintenance VERIFY step says "map the diff → the exact eval/smoke subset". That map
  * used to live only in the operator's head — the exact friction the dev loop exists to kill.
  * This is that map in version control: given the changed files, it PRINTS the required
  * battery commands (with MUSE_EVAL_REPEAT=3 already set on grounding/safety-critical ones so

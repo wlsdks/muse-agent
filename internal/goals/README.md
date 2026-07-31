@@ -8,13 +8,13 @@
 
 | file | writer | reader (consumer) | contents |
 |---|---|---|---|
-| `backlog.md` | improve-muse (adds/removes [open]), scout (records for=improve-muse), grow (debt records) | **improve-muse** rung 4 | **open only**: [open] · [decision] · [blocked] · [rejected] (lifecycle split 2026-07-17) |
-| `backlog-archive.md` | improve-muse/grow's completed ✓ lines (moved here from backlog on completion) | grep target for freshness guard/dedup | done/superseded/exhausted history (append-only) |
+| `backlog.md` | maintenance work (adds/removes [open]), scout and grow (debt records) | evidence-backed maintenance selection | **open only**: [open] · [decision] · [blocked] · [rejected] (lifecycle split 2026-07-17) |
+| `backlog-archive.md` | completed maintenance/growth lines (moved here from backlog on completion) | grep target for freshness guard/dedup | done/superseded/exhausted history (append-only) |
 | `growth-backlog.md` | scout (`[scout date]` rows) | **grow-muse** rung 4 (build rows only; done-marking is also grow) | capability-opportunity reservoir (231 base + scout deltas) — **keeps its own row format, not subject to record grammar/checker (explicit exception)** |
 | `judgment-lens.md` | (created then frozen 2026-06-23) | scout's judgment criteria doc (fit/verdict/edge precedents, incl. ⛔51 skip) | Muse-identity lens |
 | `rival-watch.md` | **scout only** | next scout (watermark is the delta fence) | roster/shelf (~/ai clones, licensing, 🚨khoj AGPL), fire log |
 
-One-line flow: **scout fills the two backlogs → grow/improve consume and flip ✓ →
+One-line flow: **scout fills the two backlogs → growth/maintenance work consumes and flips ✓ →
 rival-watch remembers where the next scout starts.**
 
 > 2026-07-17 rename: `capability-parity-backlog.md` → `growth-backlog.md`,
@@ -95,7 +95,7 @@ Every top-level `- ` line in backlog.md·backlog-archive.md follows this grammar
   `decision` awaiting human decision · `rejected` rejected (do not re-propose) · `superseded` superseded
 - **fields** (only if present, space-separated): `commit=<sha>` `kind=<fix|feat|test|docs|guard|scout>`
   `src=<probe|scout|owner|loop|audit>` `prio=<1-5>` `gate="before->after"`
-  `for=<improve-muse|grow-muse>`
+  `for=<maintenance|grow-muse>`
 - **no emoji/decorative symbols** (math symbols allowed). Arrows are `->`.
 - analysis example: `grep '^- \[done\]' | ...` pulls date·commit·gate-delta directly.
 - **enforcement**: commit-msg hook + self-eval gate (`check-ledger-format.mjs`) — grammar, forbidden

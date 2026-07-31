@@ -1,13 +1,13 @@
 ---
 name: grow-muse
-description: Use when deciding what NEW user-facing capability to build next for Muse — the owner asked for growth, a daily flow dead-ends because a capability doesn't exist, or a growth-loop fire. For defects, debt, or dead code in what already exists, use improve-muse instead.
+description: Use when deciding what NEW user-facing capability to build next for Muse — the owner asked for growth, a daily flow dead-ends because a capability doesn't exist, or a growth-loop fire. For defects or debt in existing behavior, use the bounded maintenance flow in muse-dev-patterns instead.
 ---
 
 # grow-muse — the growth cycle
 
 One invocation = one new user-visible capability slice, end-to-end: source →
-score → design-gate → build → verify → push. Sibling `improve-muse` hardens
-what exists.
+score → design-gate → build → verify → push. Existing defects follow the
+bounded maintenance flow in `muse-dev-patterns`.
 
 Every slice MUST carry a one-sentence **user story** — "Jinan asks X / lives
 situation X, and Muse now does Y." No user story ⇒ filler, drop the item.
@@ -15,11 +15,10 @@ situation X, and Muse now does Y." No user story ⇒ filler, drop the item.
 **Boundary (one item, one owner):** MISSING capability → here.
 Working-but-poor UX of an existing surface → here (usable and correct, just
 clunky — slow flows, confusing labels). BROKEN — including failing its
-function without erroring (unreadable, dead affordance, wrong output) →
-improve-muse; hardening debt found mid-build
-gets one `- [open] for=improve-muse :: ...` record in backlog.md, never
-absorbed into the slice.
-A loop calling only this skill grows forever — pair with improve-muse.
+function without erroring (unreadable, dead affordance, wrong output) —
+follows `muse-dev-patterns`; maintenance debt found mid-build gets one
+`- [open] for=maintenance :: ...` record in backlog.md and is not absorbed
+into the slice.
 
 **Standing authorizations (Jinan 2026-06-27, this skill only):** push on
 green verify (never red); auto-pick — but new outbound send classes,
@@ -29,10 +28,9 @@ not a stub.
 
 ## The cycle
 
-1. **ORIENT** — `pnpm self-eval` red ⇒ do NOT build growth: this fire
-   BECOMES the hardening slice — run improve-muse's cycle inline and fix
-   the regression to green (never end the fire having merely reported a
-   red board). Else check recent log; is Ollama up?
+1. **ORIENT** — `pnpm self-eval` red ⇒ do NOT build growth. Follow
+   `muse-dev-patterns` to reproduce and repair the blocking regression as a
+   bounded maintenance slice. Else check recent log; is Ollama up?
 
 2. **SOURCE — take the FIRST rung that yields:**
    1. **Owner's stated direction** — an explicit ask this session, or a ★

@@ -50,9 +50,9 @@ TypeScript/toolchain work follows [`docs/development/typescript-7.md`](docs/deve
 builds use TS7, the `typescript` dependency stays the TS6 compiler-API alias for tooling, and
 migration diagnostics are never masked with compiler-option relaxations.
 
-**Deciding what to do next:** `improve-muse` for HARDENING (regression → failures → live pain probe
-→ debt → subtraction), `grow-muse` for a NEW capability (owner's direction → dogfood friction →
-north-star gap → parity). One slice end-to-end; "nothing to do" is forbidden.
+**Deciding what to do next:** follow `muse-dev-patterns` for maintenance of existing behavior
+(regression → failing evidence → smallest verified repair), and use `grow-muse` only for a NEW
+user-facing capability. One bounded slice end-to-end; do not invent work merely to keep a loop busy.
 
 ## How to work — scope, delegation, effort, length
 

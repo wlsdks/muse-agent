@@ -2,7 +2,7 @@
 // A `§N` reference must point at a section that exists with that number.
 //
 // The rot this closes: renumbering a document silently redirects every deep link into it.
-// Renumbering `dev-loop.md` sent both improve-muse and grow-muse from "THE LOOP" to
+// Renumbering `dev-loop.md` sent workflow references from "THE LOOP" to
 // "Anti-patterns" — the link still resolved, the target file still existed, and
 // check-doc-links reported clean, because only the MEANING moved.
 //

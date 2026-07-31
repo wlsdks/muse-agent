@@ -1,7 +1,7 @@
 ---
 title: Development Loop — how one slice gets chosen, built and banked
 audience: [AI agents]
-purpose: The shared execution contract that the improve-muse and grow-muse skills run end to end
+purpose: The shared execution contract for one bounded maintenance or product-growth slice
 updated: 2026-07-30
 related: [contract.md, handoff.md]
 ---
@@ -12,11 +12,10 @@ related: [contract.md, handoff.md]
 > Everything else under `.claude/harness/` is project-neutral; this file is not.
 
 Where [`contract.md`](contract.md) governs *how one slice is executed* — roles, handoff, gates —
-this file governs *how that slice is chosen, verified, and its learning banked*. The two skills
-`.claude/skills/improve-muse` (HARDEN) and `grow-muse` (GROW) each run the stages below end to end.
-**"Nothing to do" is a forbidden output**; one loop moves one axis, so alternate or pair them to
-move both. Each skill's `SKILL.md` owns its sourcing ladder and permission boundaries — this file
-owns the stages they share.
+this file governs *how that slice is chosen, verified, and its learning banked*. Maintenance uses
+`muse-dev-patterns`; new user-facing capability selection may use `grow-muse`. An honest no-action
+result is valid when current evidence exposes no missing delta; never manufacture work to keep a
+loop busy.
 
 ## 1. The three principles the stages encode
 

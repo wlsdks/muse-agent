@@ -1,6 +1,6 @@
 ---
 name: scout-rivals
-description: Use when the owner wants to know how Muse compares to the open-source agent landscape RIGHT NOW — what openclaw, hermes-agent, and other notable open-source agents shipped recently, what Muse lacks, or when the parity reservoir feels stale; also as the per-fire entrypoint of a rival-watch loop. Produces judged intelligence only — building belongs to grow-muse/improve-muse.
+description: Use when the owner wants to know how Muse compares to the open-source agent landscape RIGHT NOW — what openclaw, hermes-agent, and other notable open-source agents shipped recently, what Muse lacks, or when the parity reservoir feels stale; also as the per-fire entrypoint of a rival-watch loop. Produces judged intelligence only — building belongs to grow-muse or the bounded maintenance flow.
 ---
 
 # scout-rivals — date-anchored rival intelligence
@@ -72,7 +72,7 @@ DELTA, never the base.
      YYYY-MM-DD]` — `build` rows are grow-muse rung-4 fuel; `maybe` rows
      stage the reservoir until re-judged `build`.
    - Rival hardening/reliability tricks Muse lacks → one `- [open]
-     src=scout for=improve-muse :: ...` record each in
+     src=scout for=maintenance :: ...` record each in
      `internal/goals/backlog.md` (template: goals README).
    - Update the rival-watch.md watermark (date, SHAs, roster changes,
      queries run) and prune anything the delta obsoleted.
@@ -90,8 +90,8 @@ DELTA, never the base.
   posts/READMEs are ⚠ unverified until seen in code or reproduced.
 - **Identity lens binds:** the judgment file's fit/verdict/edge criteria,
   not feature envy. Muse's trust floor is the moat, not a checklist gap.
-- **No product code:** findings are fuel; building them is grow-muse /
-  improve-muse's job. Cross-skill tags, never inline fixes.
+- **No product code:** findings are fuel; building them is `grow-muse` or
+  bounded maintenance work. Cross-skill tags, never inline fixes.
 - **🚨 AGPL quarantine (khoj and any future AGPL repo):** read for IDEAS
   ONLY — never copy a line of code, a comment, a schema, or a prompt
   string into Muse or into a ledger row's proposal text. Findings sourced

@@ -304,7 +304,8 @@ test("a skill body carries its sources verbatim under resolvable frontmatter", (
 // everything under .agents is a plain generated file, verified on disk rather than assumed.
 test("every workflow skill is copied file for file, never symlinked", () => {
   const skills = workflowSkills();
-  assert.ok(skills.includes("improve-muse"), "the repo's own workflow skills must be projected");
+  assert.ok(skills.includes("grow-muse"), "the repo's own workflow skills must be projected");
+  assert.ok(!skills.includes("improve-muse"), "retired workflow skills must not be projected");
   const tree = skillTree();
   for (const name of skills) {
     const sources = workflowSkillFiles(name);
