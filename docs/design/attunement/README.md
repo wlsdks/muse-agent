@@ -45,7 +45,11 @@ The roadmap experience has three consumers of the existing Attunement loop:
 - **Shadow Muse** observes only within explicit consent and records decisions without
   delivery or action.
 - **Continuity Capsule** turns exact linked state plus verified changes into a richer,
-  user-invoked resumption surface.
+  user-invoked resumption surface. Its newest shipped substrate can bind one configured-model
+  draft to exact current task/note/reminder source keys after a process-local comparison,
+  while explicitly recording that citation membership—not semantic entailment—was verified.
+  The authenticated product surface, durable baseline, all-source parity, and automatic timing
+  remain roadmap.
 - **Policy Card** proposes a scoped, reversible policy delta; its current explicit preview is
   inert and keeps authority, caller replay claims, and graph explanation separate. It never hides
   learning in a prompt or silently widens observation or authority. Trusted interactive controls

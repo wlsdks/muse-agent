@@ -24,6 +24,10 @@
       "types": "./dist/continuity-capsule-presentation.d.ts",
       "import": "./dist/continuity-capsule-presentation.js"
     },
+    "./continuity-capsule-preparation": {
+      "types": "./dist/continuity-capsule-model-preparation.d.ts",
+      "import": "./dist/continuity-capsule-model-preparation.js"
+    },
     "./continuity-resume-runtime": {
       "types": "./dist/continuity-resume-runtime.d.ts",
       "import": "./dist/continuity-resume-runtime.js"
@@ -58,6 +62,7 @@
   "dependencies": {
     "@attunegraph/core": "workspace:*",
     "@muse/attunement": "workspace:*",
+    "@muse/model": "workspace:*",
     "@muse/shared": "workspace:*"
   }
 }

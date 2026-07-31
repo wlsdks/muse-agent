@@ -67,6 +67,13 @@ import {
   type ContinuityPackOpenToolDeps,
   type ContinuityPackPreviewToolDeps
 } from "./continuity-pack-tools.js";
+import {
+  createContinuityCapsulePreparationService,
+  type ContinuityCapsulePreparationService
+} from "./continuity-capsule-preparation-service.js";
+import {
+  createContinuityCapsulePrepareTool
+} from "./continuity-capsule-prepare-tool.js";
 import { createContinuityOutcomeTool } from "./continuity-outcome-tool.js";
 import { createContinuityLearningOpportunityTool } from "./continuity-learning-opportunity-tool.js";
 import { createContinuityLearningPreviewTool } from "./continuity-learning-preview-tool.js";
@@ -148,6 +155,8 @@ export interface LoopbackToolsBundle {
   readonly webRead: readonly MuseTool[];
   readonly math: readonly MuseTool[];
   readonly search: readonly MuseTool[];
+  readonly continuityCapsulePreparation?:
+    ContinuityCapsulePreparationService;
 }
 
 export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle {
@@ -175,6 +184,8 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
           : {})
       }))
     : [];
+  let continuityCapsulePreparation:
+    ContinuityCapsulePreparationService | undefined;
   const continuity: readonly MuseTool[] = deps.attunementFile
     ? (() => {
         const resolveExactArtifact = createLocalExactArtifactResolver({
@@ -200,6 +211,18 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
                   projectCurrentGraphObservation:
                     deps.projectCurrentGraphObservation
                 })
+          });
+        continuityCapsulePreparation =
+          createContinuityCapsulePreparationService({
+            attunementFile: deps.attunementFile!,
+            sourceId: continuityRuntimeSourceId,
+            resumeCoordinator,
+            ...(deps.modelProvider === undefined
+              ? {}
+              : { modelProvider: deps.modelProvider }),
+            ...(deps.defaultModel === undefined
+              ? {}
+              : { model: deps.defaultModel })
           });
         const openPackDeps: ContinuityPackOpenToolDeps = {
           openPack: (threadId, runId) => openProductionAuthorizedContinuityPack(
@@ -284,6 +307,9 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
         };
         return [
           createContinuityPackPreviewTool(previewPackDeps),
+          createContinuityCapsulePrepareTool(
+            continuityCapsulePreparation
+          ),
           createContinuityPackOpenTool(openPackDeps),
           createContinuityLearningOpportunityTool({
             readQueue: async () => buildExperienceLearningReviewQueue(
@@ -651,6 +677,9 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
     search,
     tasks,
     tasksRegistry,
-    webRead
+    webRead,
+    ...(continuityCapsulePreparation === undefined
+      ? {}
+      : { continuityCapsulePreparation })
   };
 }

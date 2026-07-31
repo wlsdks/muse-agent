@@ -28,10 +28,14 @@ import {
   createContinuityResumeRuntimeCaptureAdapter,
   createContinuityResumeRuntimeCoordinator,
   getContinuityResumeRuntimePack,
+  prepareContinuityResumeRuntimeCapsule,
   presentContinuityResumeRuntimeCapsule,
   validateContinuityResumeRuntimeCapsuleRequest,
   type ContinuityResumeRuntimeCaptureV1
 } from "./continuity-resume-runtime.js";
+import {
+  continuityCapsuleArtifactSourceKey
+} from "./continuity-capsule-presentation.js";
 import {
   compileHeadRevalidatedProviderBoundGraphEvidence
 } from "./provider-head-revalidated-graph-evidence.js";
@@ -801,6 +805,121 @@ describe("continuity resume runtime coordinator", () => {
     expect(receiptTraps).toEqual({ get: 0, getOwnPropertyDescriptor: 0, ownKeys: 0 });
   });
 
+  it("prepares with the model only for the exact identity-bound compared result", async () => {
+    const threadId = "thread_model_preparation_identity";
+    const observations = [
+      BASE_AT,
+      BASE_AT + 60_000
+    ] as const;
+    const revalidations = await Promise.all(
+      observations.map((observedAt) =>
+        headRevalidation(threadId, observedAt)
+      )
+    );
+    let index = 0;
+    const adapter = createContinuityResumeRuntimeCaptureAdapter({
+      captureHeadRevalidation: async () => revalidations[index++]!,
+      resolveExactArtifact: async (link) => ({
+        artifactId: link.artifactId,
+        artifactType: link.artifactType,
+        providerId: link.providerId,
+        role: link.role,
+        taskStatus: "open" as const,
+        title: `Task ${threadId}`
+      })
+    });
+    const coordinator = createContinuityResumeRuntimeCoordinator({
+      captureCurrent: adapter
+    });
+    const scope = { sourceId: SOURCE_ID, threadId };
+    const seeded = await coordinator.preview(scope);
+    const generate = vi.fn(async () => ({
+      id: "response-identity",
+      model: "fixture-model",
+      output: JSON.stringify({
+        claims: [{
+          text: "Review the exact saved next step.",
+          sourceKeys: [continuityCapsuleArtifactSourceKey(
+            "current",
+            new Date(observations[1]).toISOString(),
+            reference(threadId)
+          )]
+        }],
+        expectedMinutes: 7
+      })
+    }));
+    const options = {
+      expectedScope: scope,
+      locale: "en" as const,
+      model: "fixture-model",
+      modelProvider: {
+        id: "fixture-provider",
+        generate
+      },
+      now: () => new Date(observations[1] + 1_000)
+    };
+    await expect(
+      prepareContinuityResumeRuntimeCapsule(seeded, options)
+    ).resolves.toMatchObject({
+      status: "unavailable",
+      reason: "invalid-exact-result"
+    });
+    const compared = await coordinator.preview(scope);
+    const unavailableResult = await coordinator.preview({
+      sourceId: "",
+      threadId
+    });
+    const proxyTrap = vi.fn(() => {
+      throw new Error("exact-result proxy trap must not run");
+    });
+    const proxied = new Proxy(compared, {
+      get: proxyTrap,
+      getOwnPropertyDescriptor: proxyTrap,
+      getPrototypeOf: proxyTrap,
+      ownKeys: proxyTrap
+    });
+    for (const copied of [
+      unavailableResult,
+      { ...compared },
+      structuredClone(compared),
+      { result: compared },
+      {
+        ...compared,
+        scope: {
+          sourceId: "other-source",
+          threadId: "other-thread"
+        }
+      },
+      proxied
+    ]) {
+      await expect(
+        prepareContinuityResumeRuntimeCapsule(copied, options)
+      ).resolves.toMatchObject({
+        status: "unavailable",
+        reason: "invalid-exact-result"
+      });
+    }
+    expect(proxyTrap).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+
+    await expect(
+      prepareContinuityResumeRuntimeCapsule(compared, options)
+    ).resolves.toMatchObject({
+      status: "ready",
+      receipt: {
+        authority: "model-generated-proposal",
+        entailment: "not-verified"
+      },
+      presentation: {
+        preparedWork: {
+          actionMode: "display-only",
+          title: "Prepared next-step draft"
+        }
+      }
+    });
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
   it("returns bounded semantic change context without raw evidence", async () => {
     const threadId = "thread_semantic";
     const policy: ContinuityPolicy = POLICY;
@@ -1124,6 +1243,43 @@ describe("continuity resume runtime coordinator", () => {
     }
     await Promise.resolve();
     await Promise.resolve();
+  });
+
+  it("retains the same-scope busy token until a timed-out capture settles", async () => {
+    vi.useFakeTimers();
+    const threadId = "thread_same_scope_timeout";
+    const scope = { sourceId: SOURCE_ID, threadId };
+    const late = deferred<ContinuityResumeRuntimeCaptureV1>();
+    let calls = 0;
+    const coordinator = createContinuityResumeRuntimeCoordinator({
+      captureCurrent: () => {
+        calls += 1;
+        return calls === 1 ? late.promise : capture(threadId);
+      }
+    });
+
+    const timed = coordinator.preview(scope);
+    await vi.advanceTimersByTimeAsync(
+      CONTINUITY_RESUME_RUNTIME_LIMITS.operationTimeoutMs
+    );
+    await expect(timed).resolves.toMatchObject({
+      status: "unavailable",
+      reason: "operation-timeout"
+    });
+    await expect(coordinator.preview(scope)).resolves.toMatchObject({
+      status: "unavailable",
+      reason: "runtime-busy"
+    });
+    expect(calls).toBe(1);
+
+    late.resolve(await capture(threadId));
+    await Promise.resolve();
+    await Promise.resolve();
+    await expect(coordinator.preview(scope)).resolves.toMatchObject({
+      status: "partial",
+      state: "process-local-baseline-seeded"
+    });
+    expect(calls).toBe(2);
   });
 
   it("evicts the least-recently-used baseline and isolates instances", async () => {

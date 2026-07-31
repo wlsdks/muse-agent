@@ -8,6 +8,23 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added AWG-040e1, the evidence-bound model-preparation prerequisite for Continuity
+  Capsules. One assembly-scoped service reuses the existing process-local resume coordinator;
+  the first qualifying call reports a truthful seeded state, and only an exact identity-bound
+  compared result can make one configured-provider structured-output call. The canonical
+  content-addressed evidence input contains exact observation receipt identities, available
+  current task/note/reminder source snapshots, the next-step key, and deterministic
+  change/abstention metadata. Every ordered model claim must cite exact current source keys;
+  unknown/duplicate citations, extra/action fields, tool calls, provider/model substitution,
+  timeout/cancellation, late output, and dependency tampering reject the whole proposal.
+  Separately versioned Manifest, Presentation, and preparation receipt expose verified citation
+  binding, unverified semantic entailment, estimated minutes, deterministic English/Korean title,
+  and display-only/no-action authority. The new read-only
+  `muse.continuity.capsule.prepare` tool accepts exactly `threadId` and `locale`; legacy
+  caller-declared Capsule bytes remain compatible. This is not an authenticated API/UI, durable
+  baseline, exact stop capture, all-source Capsule, automatic timing, semantic truth, Policy Card
+  control, or usefulness evidence.
+
 - Added the AWG-050b4 read-only Shadow Return Inspector. The Muse integration reads one
   capability-authenticated persisted timing snapshot, orders at most 20 exact CLI-return
   receipts, and optionally corroborates each receipt through the bounded Working Graph. A

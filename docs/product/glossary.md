@@ -27,7 +27,11 @@ Muse*. Each entry is one definition plus where it lives. Exact verification evid
   interrupts or acts.
 - **Continuity Capsule** — the target product form of today's Continuity Pack: the stopping point,
   what changed since, the exact evidence, the next step, prepared work and expected time, in one
-  view (**roadmap**).
+  view (**roadmap**). A shipped preparation/provenance substrate can now produce a separately
+  versioned display-only model proposal after an exact process-local comparison and verify that
+  each claim cites available current task/note/reminder evidence. It does not verify semantic
+  entailment, capture an exact stop, persist the baseline, authenticate an API request, or provide
+  the product view.
 - **Policy Card** — the surface that shows how Muse proposes to change the way it works with this
   person, with evidence and scope. A read-only, explicitly invoked AttuneGraph-backed render-data
   preview is available now; automatic surfacing, product UI, and trusted trial, edit, reject,

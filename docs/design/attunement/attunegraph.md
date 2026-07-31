@@ -207,6 +207,29 @@ ingestion, LLM extraction, automatic Shadow delivery, Capsule product UI, Policy
 or action authority. The complete three-part signature experience therefore remains a
 roadmap claim.
 
+AWG-040e1 adds the provider-neutral preparation/provenance prerequisite without converting
+model text into evidence. One assembly-owned service reuses the existing process-local resume
+coordinator; the first qualifying call therefore reports `seeded`, and only an exact later
+compared result may reach the configured provider. The provider receives one detached,
+content-addressed evidence view containing exact thread/observation receipt identities, available
+current artifact snapshots, the current next-step key, and deterministic change/abstention
+metadata. Its strict structured output contains only estimated minutes and ordered claim rows.
+Every claim must cite unique current source keys; unknown, previous-only, duplicate, malformed,
+tool-call, extra-field, model-substitution, timeout, cancellation, or late output rejects the
+whole proposal. The separately versioned Manifest, Presentation, and preparation receipt say
+`model-generated-proposal`, `citation-binding-verified`, `entailment: not-verified`,
+`expectedMinutes: estimate`, and `display-only`. A deterministic English/Korean system title
+prevents an uncited model-title path.
+
+The public assembly service and read-only `muse.continuity.capsule.prepare` tool accept only
+`threadId` and `locale`; callers cannot inject draft text, evidence IDs, model/provider, time, or
+action mode. This first composition supports local `task | note | reminder` links only and rejects
+every other source class in a state preflight before coordinator/model work, then revalidates the
+exact captured result before any provider call. It adds no HTTP authentication witness,
+API route, React card, persistent baseline, exact/automatic stop capture, semantic entailment
+verification, delivery/outcome/policy mutation, action payload, automatic timing, or usefulness
+claim. Those are later AWG-040e2/durability/qualification slices, not properties of AWG-040e1.
+
 An explicit second composition point now exposes the read-only
 `muse.continuity.learning.policy-card.preview` tool over
 `@muse/attunegraph/policy-card`. It captures one fresh provider head, derives the thread

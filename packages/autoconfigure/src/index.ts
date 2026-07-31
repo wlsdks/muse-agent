@@ -36,6 +36,15 @@ export {
 export type { ShadowReturnInspectionReport } from "@muse/attunegraph/continuity-shadow-returns";
 
 export {
+  createContinuityCapsulePreparationService,
+  CONTINUITY_CAPSULE_PREPARATION_SERVICE_LIMITS,
+  type ContinuityCapsulePreparationRequest,
+  type ContinuityCapsulePreparationService,
+  type ContinuityCapsulePreparationServiceResult,
+  type CreateContinuityCapsulePreparationServiceOptions
+} from "./continuity-capsule-preparation-service.js";
+
+export {
   buildActiveContextProvider,
   buildCalendarRegistry,
   buildSkillRegistry,

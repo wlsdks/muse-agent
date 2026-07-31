@@ -11,6 +11,7 @@
   "references": [
     { "path": "../attunegraph" },
     { "path": "../attunement" },
+    { "path": "../model" },
     { "path": "../shared" }
   ]
 }
