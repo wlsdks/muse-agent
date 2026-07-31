@@ -9,15 +9,20 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 ## [Unreleased]
 
 - Updated Muse's exact AttuneGraph Git submodule pin to standalone main commit
-  `16edea0` and moved durable Continuity projection to Thread-rooted Admission
+  `4298c13` and moved durable Continuity projection to Thread-rooted Admission
   `canonical-projection@2`. The canonical observation now binds the exact opaque
   thread root and rejects disconnected assertions before any Store read/CAS;
   Muse explicitly scopes historical reset and undo policy components so complete
   valid histories remain admissible. Legacy v1 portable/store bytes remain
   readable as root-unverified compatibility data. The dependency-free core,
   in-memory store, canonical portable
-  fixtures, build, example, and pack dry-run now verify on Linux, macOS,
-  and Windows; the worker-isolated local SQLite and offline Admin contracts run
+  fixtures, build, example, and pack dry-run now verify on Linux, macOS, and
+  Windows; a separate Ubuntu Node 24.15 job verifies a fresh offline non-Muse
+  tarball consumer. The standalone engine also
+  rejects projections that cannot fit the Store envelope before any Store
+  read/CAS, and ships a revision-bound measurement-only scale harness with the
+  real 10K lifecycle proof isolated from normal tests; no 90/100 claim follows
+  from that harness. The worker-isolated local SQLite and offline Admin contracts run
   as a separate Muse Linux gate and remain fail-closed outside reviewed
   Linux/macOS filesystem profiles. Muse still adds no external graph-database
   dependency or fallback.
