@@ -7,7 +7,9 @@ import {
   fingerprintContinuityPolicy,
   parseExperienceLearningChange,
   proposeExperienceLearningFromDelivery,
+  reduceExperienceLearningContinuityPolicy,
   type AttunementState,
+  type ContinuityPolicy,
   type ExperienceLearningCandidate,
   type ExperienceLearningProposalDraft,
   type ExperienceLearningProposalPreview,
@@ -34,6 +36,7 @@ export interface ContinuityLearningEvaluatorInput {
   readonly candidate: ExperienceLearningCandidate;
   readonly caseId: string;
   readonly input: string;
+  readonly policy: ContinuityPolicy;
   readonly variant: "baseline" | "challenger";
 }
 
@@ -175,10 +178,22 @@ export function createContinuityLearningPreparationService(
         || proposal.candidate.outcome.outcomeId !== opportunity.outcome.outcomeId) {
         return unavailable("invalid-request");
       }
+      const baselinePolicy = detachedPolicy(thread.policy);
+      const challengerPolicy = reduceExperienceLearningContinuityPolicy(
+        baselinePolicy,
+        proposal.candidate.proposedChange,
+        initial.nextPolicyVersion
+      );
+      if (!challengerPolicy) return unavailable("invalid-request");
       const preview = buildExperienceLearningProposalPreview(proposal.candidate);
       if (!preview) return unavailable("invalid-request");
 
-      const replayBundle = await evaluateReplay(parsed, proposal.candidate);
+      const replayBundle = await evaluateReplay(
+        parsed,
+        proposal.candidate,
+        baselinePolicy,
+        challengerPolicy
+      );
       if (!replayBundle) return unavailable("evaluation-failed");
 
       const current = await readState(parsed.readState);
@@ -230,7 +245,9 @@ export function createContinuityLearningPreparationService(
 
 async function evaluateReplay(
   options: ParsedOptions,
-  candidate: ExperienceLearningCandidate
+  candidate: ExperienceLearningCandidate,
+  baselinePolicy: ContinuityPolicy,
+  challengerPolicy: ContinuityPolicy
 ): Promise<ExperienceLearningReplayBundle | undefined> {
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -240,7 +257,13 @@ async function evaluateReplay(
       resolve(undefined);
     }, options.timeoutMs);
   });
-  const evaluated = runEvaluations(options, candidate, controller.signal)
+  const evaluated = runEvaluations(
+    options,
+    candidate,
+    baselinePolicy,
+    challengerPolicy,
+    controller.signal
+  )
     .catch(() => undefined);
   const result = await Promise.race([evaluated, timedOut]);
   if (timeout) clearTimeout(timeout);
@@ -250,6 +273,8 @@ async function evaluateReplay(
 async function runEvaluations(
   options: ParsedOptions,
   candidate: ExperienceLearningCandidate,
+  baselinePolicy: ContinuityPolicy,
+  challengerPolicy: ContinuityPolicy,
   signal: AbortSignal
 ): Promise<ExperienceLearningReplayBundle | undefined> {
   const observed = options.now();
@@ -267,6 +292,7 @@ async function runEvaluations(
         candidate,
         caseId: heldOutCase.caseId,
         input: heldOutCase.input,
+        policy: detachedPolicy(baselinePolicy),
         variant: "baseline" as const
       }),
       signal
@@ -277,6 +303,7 @@ async function runEvaluations(
         candidate,
         caseId: heldOutCase.caseId,
         input: heldOutCase.input,
+        policy: detachedPolicy(challengerPolicy),
         variant: "challenger" as const
       }),
       signal
@@ -312,6 +339,10 @@ async function runEvaluations(
     }));
   }
   return buildExperienceLearningReplayBundle(candidate, evidenceCases);
+}
+
+function detachedPolicy(policy: ContinuityPolicy): ContinuityPolicy {
+  return Object.freeze({ ...policy });
 }
 
 function parseOptions(

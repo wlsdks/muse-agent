@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createContinuityLearningPreparationService,
+  type ContinuityLearningEvaluatorInput,
   type ContinuityLearningHeldOutCase
 } from "./continuity-learning-preparation-service.js";
 
@@ -85,11 +86,26 @@ function state(policy: ContinuityPolicy = POLICY): AttunementState {
 
 function draft(): ExperienceLearningProposalDraft {
   return {
-    expectedBenefit: "Interrupt less often.",
+    expectedBenefit: "Make resumed context easier to scan.",
     expiresAt: "2026-08-01T10:06:00.000Z",
     experienceId: "experience-hill-1",
     proposedAt: NOW.toISOString(),
-    proposedBehavior: "Wait longer before offering this thread.",
+    proposedBehavior: "Show compact context with a contextual next step.",
+    proposedChange: {
+      detail: "compact",
+      kind: "thread-display",
+      nextStep: "contextual"
+    },
+    scope: {
+      kind: "thread-display",
+      threadId: "thread-hill-1"
+    }
+  };
+}
+
+function invalidReductionDraft(): ExperienceLearningProposalDraft {
+  return {
+    ...draft(),
     proposedChange: {
       adjustment: "increase-cooldown",
       kind: "thread-timing"
@@ -110,10 +126,10 @@ function cases(order: "forward" | "reverse" = "forward"): readonly ContinuityLea
 }
 
 function service(input: Readonly<{
-  evaluator?: (args: {
-    readonly caseId: string;
-    readonly variant: "baseline" | "challenger";
-  }, signal: AbortSignal) => Promise<unknown>;
+  evaluator?: (
+    args: ContinuityLearningEvaluatorInput,
+    signal: AbortSignal
+  ) => Promise<unknown>;
   heldOutCases?: unknown;
   readState?: () => Promise<AttunementState>;
   timeoutMs?: number;
@@ -134,24 +150,43 @@ function service(input: Readonly<{
 
 describe("Continuity learning preparation service", () => {
   it("runs sorted baseline→challenger cases and returns controlled review-only evidence", async () => {
-    const calls: string[] = [];
+    const calls: ContinuityLearningEvaluatorInput[] = [];
     const initial = state();
     const before = JSON.stringify(initial);
     const result = await service({
       heldOutCases: cases("reverse"),
       readState: async () => initial,
-      evaluator: async ({ caseId, variant }) => {
-        calls.push(`${caseId}:${variant}`);
+      evaluator: async (input) => {
+        calls.push(input);
+        const { caseId, variant } = input;
         return caseId === "case-a" ? variant === "challenger" : true;
       }
     }).prepare({ draft: draft() });
 
-    expect(calls).toEqual([
+    expect(calls.map(({ caseId, variant }) => `${caseId}:${variant}`)).toEqual([
       "case-a:baseline",
       "case-a:challenger",
       "case-b:baseline",
       "case-b:challenger"
     ]);
+    const baselineCalls = calls.filter(({ variant }) => variant === "baseline");
+    const challengerCalls = calls.filter(({ variant }) => variant === "challenger");
+    expect(new Set(baselineCalls.map(({ policy }) => policy)).size).toBe(2);
+    expect(new Set(challengerCalls.map(({ policy }) => policy)).size).toBe(2);
+    for (const call of baselineCalls) {
+      expect(call.policy).toEqual(POLICY);
+      expect(call.policy).not.toBe(initial.threads[0]!.policy);
+      expect(Object.isFrozen(call.policy)).toBe(true);
+    }
+    for (const call of challengerCalls) {
+      expect(call.policy).toEqual({
+        detail: "compact",
+        nextStep: "contextual",
+        suppression: "none",
+        version: 2
+      });
+      expect(Object.isFrozen(call.policy)).toBe(true);
+    }
     expect(result).toMatchObject({
       authority: {
         canApprove: false,
@@ -175,6 +210,58 @@ describe("Continuity learning preparation service", () => {
       status: "prepared"
     });
     expect(JSON.stringify(initial)).toBe(before);
+  });
+
+  it("isolates frozen policy variants from evaluator mutation across cases", async () => {
+    const observed: Array<Readonly<{
+      policy: ContinuityPolicy;
+      variant: "baseline" | "challenger";
+    }>> = [];
+    const initial = state();
+    const before = JSON.stringify(initial);
+    const result = await service({
+      readState: async () => initial,
+      evaluator: async ({ policy, variant }) => {
+        expect(Reflect.set(policy, "version", 999)).toBe(false);
+        expect(Reflect.set(policy, "detail", "standard")).toBe(false);
+        observed.push({ policy: { ...policy }, variant });
+        return variant === "challenger";
+      }
+    }).prepare({ draft: draft() });
+
+    expect(result.status).toBe("prepared");
+    expect(observed).toHaveLength(4);
+    expect(observed.filter(({ variant }) => variant === "baseline")
+      .map(({ policy }) => policy)).toEqual([POLICY, POLICY]);
+    expect(observed.filter(({ variant }) => variant === "challenger")
+      .map(({ policy }) => policy)).toEqual([
+        {
+          detail: "compact",
+          nextStep: "contextual",
+          suppression: "none",
+          version: 2
+        },
+        {
+          detail: "compact",
+          nextStep: "contextual",
+          suppression: "none",
+          version: 2
+        }
+      ]);
+    expect(JSON.stringify(initial)).toBe(before);
+  });
+
+  it("fails closed before evaluation when the canonical policy reduction is invalid", async () => {
+    const evaluate = vi.fn(async () => true);
+    const result = await service({ evaluator: evaluate })
+      .prepare({ draft: invalidReductionDraft() });
+
+    expect(result).toEqual({
+      reason: "invalid-request",
+      schemaVersion: 1,
+      status: "unavailable"
+    });
+    expect(evaluate).not.toHaveBeenCalled();
   });
 
   it("holds a regression or all-tie replay without granting authority", async () => {
