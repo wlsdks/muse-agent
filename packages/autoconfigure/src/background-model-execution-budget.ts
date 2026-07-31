@@ -575,7 +575,32 @@ async function* foregroundStream(
     );
   }
   try {
-    yield* managedProviderStream(provider, request);
+    for await (const event of managedProviderStream(provider, request)) {
+      if (request.signal?.aborted) {
+        throw new BackgroundModelExecutionBudgetError(
+          provider.id,
+          "REQUEST_ABORTED",
+          "foreground model execution was cancelled"
+        );
+      }
+      yield event;
+    }
+    if (request.signal?.aborted) {
+      throw new BackgroundModelExecutionBudgetError(
+        provider.id,
+        "REQUEST_ABORTED",
+        "foreground model execution was cancelled"
+      );
+    }
+  } catch (error) {
+    if (request.signal?.aborted && !(error instanceof BackgroundModelExecutionBudgetError)) {
+      throw new BackgroundModelExecutionBudgetError(
+        provider.id,
+        "REQUEST_ABORTED",
+        "foreground model execution was cancelled"
+      );
+    }
+    throw error;
   } finally {
     lease.release();
   }
@@ -596,7 +621,24 @@ async function runForegroundGenerate(
     );
   }
   try {
-    return await provider.generate(request);
+    const response = await provider.generate(request);
+    if (request.signal?.aborted) {
+      throw new BackgroundModelExecutionBudgetError(
+        provider.id,
+        "REQUEST_ABORTED",
+        "foreground model execution was cancelled"
+      );
+    }
+    return response;
+  } catch (error) {
+    if (request.signal?.aborted && !(error instanceof BackgroundModelExecutionBudgetError)) {
+      throw new BackgroundModelExecutionBudgetError(
+        provider.id,
+        "REQUEST_ABORTED",
+        "foreground model execution was cancelled"
+      );
+    }
+    throw error;
   } finally {
     lease.release();
   }

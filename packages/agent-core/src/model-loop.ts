@@ -715,6 +715,9 @@ export async function executeModelLoop(
       : pendingRequest;
     messages = turnRequest.messages;
     const response = await runner.generateWithTracing(context, provider, turnRequest);
+    if (context.input.signal?.aborted) {
+      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
+    }
     const calls = response.toolCalls ?? [];
 
     if (calls.length === 0 || (activeTools?.length ?? 0) === 0) {
@@ -855,6 +858,9 @@ export async function* executeStreamingModelLoop(
       next = await turnStream.next();
     }
 
+    if (context.input.signal?.aborted) {
+      return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed, toolCallCount);
+    }
     const response = next.value.response;
     const calls = response.toolCalls ?? [];
 
@@ -996,6 +1002,9 @@ async function* streamModelTurn(
   const idleMs = runner.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
   try {
     for await (const event of withStreamIdleTimeout(provider.stream(flaggedRequest), idleMs, provider.id)) {
+      if (context.input.signal?.aborted) {
+        break;
+      }
       if (event.type === "text-delta") {
         streamedOutput += event.text;
         emitHeartbeat(runner, context.runId);

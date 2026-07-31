@@ -278,6 +278,38 @@ describe("executeModelLoop", () => {
     expect(saved.at(-1)?.state.encodedMessages.filter((message) => message.includes("|tool|"))).toHaveLength(2);
   });
 
+  it("discards an uncooperative provider response that settles after cancellation", async () => {
+    const controller = new AbortController();
+    const turn = Promise.withResolvers<ModelResponse>();
+    const started = Promise.withResolvers<void>();
+    const ran: string[] = [];
+    const loop = {
+      executeToolCall: async (_ctx: AgentRunContext, toolCall: ModelToolCall): Promise<ExecutedToolResult> => {
+        ran.push(toolCall.name);
+        return {
+          result: { id: toolCall.id, name: toolCall.name, output: "must not run", status: "completed" },
+          toolCall
+        };
+      },
+      generateWithTracing: async () => {
+        started.resolve();
+        return turn.promise;
+      },
+      maxToolCalls: 2
+    } as unknown as ModelLoopRunner;
+
+    const pending = executeModelLoop(loop, context(controller.signal), provider, request());
+    await started.promise;
+    controller.abort("owner cancelled");
+    turn.resolve(resp("late", [call("late-tool", "echo")]));
+    const result = await pending;
+
+    expect(result.finalResponse).toMatchObject({ id: "interrupted", output: "(run interrupted)" });
+    expect(result.toolCallCount).toBe(0);
+    expect(result.toolResults).toEqual([]);
+    expect(ran).toEqual([]);
+  });
+
   // Runaway guard (agent-eval / backlog P1): the wall-clock deadline cuts the
   // loop short — once exceeded, the next turn is offered NO tools (so the model
   // synthesizes a clean answer instead of asking for one we'd refuse), even if

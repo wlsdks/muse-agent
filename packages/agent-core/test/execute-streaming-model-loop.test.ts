@@ -309,6 +309,40 @@ describe("executeStreamingModelLoop", () => {
       .toEqual(["a", "b"]);
   });
 
+  it("discards uncooperative provider stream events that arrive after cancellation", async () => {
+    const controller = new AbortController();
+    const release = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    const ran: string[] = [];
+    const prov: ModelProvider = {
+      id: "late-stream-provider",
+      async listModels() {
+        return [];
+      },
+      async generate() {
+        throw new Error("blocking generation is not used");
+      },
+      stream: () => (async function* (): AsyncIterable<ModelEvent> {
+        started.resolve();
+        await release.promise;
+        yield { text: "late", type: "text-delta" };
+        yield done("late", [{ arguments: {}, id: "late-tool", name: "echo" }]);
+      })()
+    };
+
+    const pending = drive(prov, runner({ ran }), context(controller.signal), true);
+    await started.promise;
+    controller.abort("owner cancelled");
+    release.resolve();
+    const { events, execution } = await pending;
+
+    expect(events).toEqual([]);
+    expect(execution.finalResponse).toMatchObject({ id: "interrupted", output: "(run interrupted)" });
+    expect(execution.toolCallCount).toBe(0);
+    expect(execution.toolResults).toEqual([]);
+    expect(ran).toEqual([]);
+  });
+
   it("propagates a provider error event out of the loop", async () => {
     const prov = provider([[{ type: "error", error: new ModelProviderError("fake", "boom", true) }]]);
     await expect(drive(prov, runner(), context(), true)).rejects.toThrow("boom");

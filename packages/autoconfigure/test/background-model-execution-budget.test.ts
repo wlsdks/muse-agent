@@ -499,9 +499,65 @@ describe("background model execution budget", () => {
     });
 
     first.resolve(response("late"));
-    await running;
+    await expect(running).rejects.toMatchObject({
+      code: "REQUEST_ABORTED",
+      message: "foreground model execution was cancelled"
+    });
     await next;
     expect(starts).toEqual(["first", "next"]);
+    expect(views.snapshot()).toMatchObject({ activeForeground: 0, queuedForeground: 0 });
+  });
+
+  it("discards a late foreground stream event and closes the provider before pumping the next waiter", async () => {
+    const late = deferred<IteratorResult<ModelEvent>>();
+    const streamStarted = deferred<void>();
+    let returnCalls = 0;
+    const starts: string[] = [];
+    const provider: ModelProvider = {
+      generate: async (input) => {
+        starts.push(input.model);
+        return response(input.model);
+      },
+      id: "foreground-late-stream-provider",
+      listModels: async () => [],
+      stream: (input) => {
+        starts.push(input.model);
+        streamStarted.resolve();
+        return {
+          [Symbol.asyncIterator]() {
+            return this;
+          },
+          next: () => late.promise,
+          return: async () => {
+            returnCalls += 1;
+            return { done: true, value: undefined };
+          }
+        };
+      }
+    };
+    const views = createBackgroundModelExecutionBudgetProviders(provider, {
+      maxForegroundConcurrency: 1
+    });
+    const controller = new AbortController();
+    const iterator = views.foreground.stream(
+      request("stream", { signal: controller.signal })
+    )[Symbol.asyncIterator]();
+    const running = iterator.next();
+    await streamStarted.promise;
+    const next = views.foreground.generate(request("next"));
+    controller.abort("ignored by provider");
+    await flush();
+    expect(starts).toEqual(["stream"]);
+    expect(views.snapshot()).toMatchObject({
+      activeForeground: 1,
+      queuedForeground: 1
+    });
+
+    late.resolve({ done: false, value: { text: "late", type: "text-delta" } });
+    await expect(running).rejects.toMatchObject({ code: "REQUEST_ABORTED" });
+    await next;
+    expect(returnCalls).toBe(1);
+    expect(starts).toEqual(["stream", "next"]);
     expect(views.snapshot()).toMatchObject({ activeForeground: 0, queuedForeground: 0 });
   });
 
