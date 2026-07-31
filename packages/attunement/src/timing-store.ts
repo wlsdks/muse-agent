@@ -186,9 +186,9 @@ export interface TimingFeedback {
   readonly legacyUnproposedRejection?: true;
 }
 
-export const ATTUNEGRAPH_SHADOW_RETURN_FORMAT_VERSION =
+export const SHADOW_RETURN_FORMAT_VERSION =
   "muse.attunegraph.shadow-return.v1" as const;
-export const ATTUNEGRAPH_SHADOW_RETURN_MATCH_RULE =
+export const SHADOW_RETURN_MATCH_RULE =
   "latest-prior-unreturned-thread-candidate@1" as const;
 
 export interface AttuneGraphShadowReturnReceipt {
@@ -203,9 +203,9 @@ export interface AttuneGraphShadowReturnReceipt {
   readonly decisionAt: string;
   readonly deliveryId: string;
   readonly elapsedMs: number;
-  readonly formatVersion: typeof ATTUNEGRAPH_SHADOW_RETURN_FORMAT_VERSION;
+  readonly formatVersion: typeof SHADOW_RETURN_FORMAT_VERSION;
   readonly id: string;
-  readonly matchRule: typeof ATTUNEGRAPH_SHADOW_RETURN_MATCH_RULE;
+  readonly matchRule: typeof SHADOW_RETURN_MATCH_RULE;
   readonly openedAt: string;
   readonly schemaVersion: 1;
   readonly sessionId: string;
@@ -1336,8 +1336,8 @@ type AttuneGraphShadowReturnIdentity = Readonly<{
   readonly decisionAt: string;
   readonly deliveryId: string;
   readonly elapsedMs: number;
-  readonly formatVersion: typeof ATTUNEGRAPH_SHADOW_RETURN_FORMAT_VERSION;
-  readonly matchRule: typeof ATTUNEGRAPH_SHADOW_RETURN_MATCH_RULE;
+  readonly formatVersion: typeof SHADOW_RETURN_FORMAT_VERSION;
+  readonly matchRule: typeof SHADOW_RETURN_MATCH_RULE;
   readonly openedAt: string;
   readonly schemaVersion: 1;
   readonly sessionId: string;
@@ -1371,8 +1371,8 @@ function createAttuneGraphShadowReturnReceipt(
     decisionAt: candidate.createdAt,
     deliveryId: delivery.id,
     elapsedMs,
-    formatVersion: ATTUNEGRAPH_SHADOW_RETURN_FORMAT_VERSION,
-    matchRule: ATTUNEGRAPH_SHADOW_RETURN_MATCH_RULE,
+    formatVersion: SHADOW_RETURN_FORMAT_VERSION,
+    matchRule: SHADOW_RETURN_MATCH_RULE,
     openedAt: delivery.openedAt,
     schemaVersion: 1,
     sessionId: candidate.sessionId,
@@ -1445,9 +1445,9 @@ function isAttuneGraphShadowReturnReceipt(
     || !isCanonicalInstant(value.decisionAt as string)
     || !isBoundedReceiptId(value.deliveryId)
     || !isPositiveSafeInteger(value.elapsedMs)
-    || value.formatVersion !== ATTUNEGRAPH_SHADOW_RETURN_FORMAT_VERSION
+    || value.formatVersion !== SHADOW_RETURN_FORMAT_VERSION
     || !isBoundedReceiptId(value.id)
-    || value.matchRule !== ATTUNEGRAPH_SHADOW_RETURN_MATCH_RULE
+    || value.matchRule !== SHADOW_RETURN_MATCH_RULE
     || !isCanonicalInstant(value.openedAt as string)
     || value.schemaVersion !== 1
     || !isBoundedReceiptId(value.sessionId)
