@@ -405,8 +405,6 @@ export async function withPrivateFileLock<T>(
       setupFailure = cause instanceof PrivateFileLockError
         ? cause
         : new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
-    } finally {
-      await handle.close().catch(() => undefined);
     }
 
     if (setupFailure !== undefined) {
@@ -431,6 +429,8 @@ export async function withPrivateFileLock<T>(
     if (!outcome.ok) throw outcome.cause;
     return outcome.value;
   } finally {
+    // An open descriptor prevents a replacement path from reusing the acquired file identity.
+    await handle?.close().catch(() => undefined);
     await parent.handle.close().catch(() => undefined);
   }
 }
