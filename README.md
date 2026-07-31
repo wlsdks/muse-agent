@@ -64,7 +64,7 @@ For an existing source checkout, initialize the embedded engine with
 Muse consumes the independent
 [`@attunegraph/core`](https://github.com/wlsdks/attunegraph) repository as the
 exact `packages/attunegraph` Git submodule, currently pinned to standalone main
-commit `e7d09fc`. Its dependency-free core,
+commit `16edea0`. Its dependency-free core,
 in-memory store, and portable format are verified on Linux, macOS, and Windows.
 The opt-in durable local SQLite store and offline Admin currently require Node
 24.15 or newer on reviewed Linux/macOS filesystems and fail closed elsewhere;
@@ -245,12 +245,16 @@ Muse's Continuity, Shadow, Capsule, evidence, and lineage integration.
 What is verified today, and what those words do **not** mean:
 
 - The neutral lifecycle `openAttuneGraph({ scope, store }) → head/project → execute → close`, plus a durable
-  projection journal and typed worker boundary. Portable export/rebuild, backup, physical forget and
-  the 10K/100K/1M benchmarks are still pending.
+  projection journal and typed worker boundary. New writes can use `canonical-projection@2`, whose
+  canonical bytes name the exact thread root and whose admission rejects any disconnected assertion
+  before storage; byte-compatible v1 data remains readable as legacy root-unverified evidence.
+  Portable export/rebuild activation, backup, physical forget and the 10K/100K/1M benchmarks are
+  still pending.
 - `MUSE_ATTUNEGRAPH_DATABASE=/absolute/path/attunegraph.sqlite` explicitly connects the existing
   provider-revalidated Continuity Pack Preview path to
   `@muse/attunegraph/continuity-durable-projection`. The configured composition revalidates current
-  Attunement plus timing ledgers, writes a complete `muse.local-attunement-timing` scope, serializes
+  Attunement plus timing ledgers, declares the deterministic exact thread root through v2, writes a
+  complete `muse.local-attunement-timing` scope, serializes
   writes, recovers the exact expected head after restart, treats receipt replay as idempotent, and
   records source freshness as `unknown`. An explicit CLI return triggers the same rebuild; failure
   remains separate and non-fatal to the opened Pack and recorded source receipt. The variable has no

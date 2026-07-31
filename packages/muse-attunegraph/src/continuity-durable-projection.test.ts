@@ -20,6 +20,7 @@ import {
   captureContinuityObservation,
   type ContinuityObservationReceipt
 } from "./continuity-observation.js";
+import { continuityThreadGraphRef } from "./continuity-projection.js";
 
 const SOURCE_ID = "muse.local-attunement";
 const THREAD_ID = "thread_durable_projection";
@@ -71,6 +72,53 @@ function observation(
     scope: { sourceId: SOURCE_ID, threadId: THREAD_ID },
     sourceObservedAt: observedAt,
     state: state(version)
+  });
+}
+
+function historicalResetObservation(): ContinuityObservationReceipt {
+  const historicalState: AttunementState = {
+    ...state(),
+    nextPolicyVersion: 11,
+    resetReceipts: [
+      {
+        basePolicyVersion: 4,
+        beforePolicy: {
+          detail: "compact",
+          nextStep: "direct",
+          suppression: "none",
+          version: 4
+        },
+        id: "historical_reset_five",
+        resetPolicyVersion: 5,
+        threadId: THREAD_ID
+      },
+      {
+        basePolicyVersion: 9,
+        beforePolicy: {
+          detail: "compact",
+          nextStep: "direct",
+          suppression: "none",
+          version: 9
+        },
+        id: "current_reset_ten",
+        resetPolicyVersion: 10,
+        threadId: THREAD_ID
+      }
+    ],
+    threads: [{
+      ...state().threads[0]!,
+      policy: {
+        detail: "compact",
+        nextStep: "direct",
+        suppression: "none",
+        version: 10
+      }
+    }]
+  };
+  return captureContinuityObservation({
+    scope: { sourceId: SOURCE_ID, threadId: THREAD_ID },
+    sourceObservedAt: SECOND_AT,
+    state: historicalState
   });
 }
 
@@ -138,6 +186,28 @@ describe("Continuity durable AttuneGraph projection", () => {
       scope: { sourceId: SOURCE_ID, threadId: THREAD_ID }
     });
     await expect(graph.head()).resolves.toEqual(second.snapshot);
+    await graph.close();
+  });
+
+  it("projects historical policy components through the exact declared thread root", async () => {
+    const databasePath = await temporaryDatabase();
+    const projector = createContinuityAttuneGraphProjector({ databasePath });
+
+    await expect(projector.project(historicalResetObservation())).resolves.toMatchObject({
+      status: "projected",
+      snapshot: { generation: 1 }
+    });
+
+    const graph = await openLocalAttuneGraph({
+      databasePath,
+      scope: { sourceId: SOURCE_ID, threadId: THREAD_ID }
+    });
+    await expect(graph.execute({
+      operator: "working-graph@1",
+      seed: continuityThreadGraphRef({ sourceId: SOURCE_ID, threadId: THREAD_ID }),
+      now: SECOND_AT,
+      maxEstimatedTokens: 12_000
+    })).resolves.toMatchObject({ status: "complete" });
     await graph.close();
   });
 
@@ -247,6 +317,16 @@ describe("Continuity durable AttuneGraph projection", () => {
     expect((failure as Error).cause).toBe(conflict);
     expect(openLocal).toHaveBeenCalledOnce();
     expect(project).toHaveBeenCalledOnce();
+    expect(project).toHaveBeenCalledWith(expect.objectContaining({
+      operator: "canonical-projection@2",
+      observation: expect.objectContaining({
+        schemaVersion: 2,
+        threadRoot: continuityThreadGraphRef({
+          sourceId: SOURCE_ID,
+          threadId: THREAD_ID
+        })
+      })
+    }));
     expect(close).toHaveBeenCalledOnce();
   });
 

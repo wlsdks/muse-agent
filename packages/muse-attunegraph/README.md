@@ -69,7 +69,12 @@ const result = await projector.project(verifiedContinuityObservationReceipt);
 ```
 
 This Module verifies the receipt again, preserves its exact scope, assertions,
-and observation time, and records freshness as `unknown`. Calls are serialized
+and observation time, derives the same opaque thread root used by the public
+Continuity projection, and submits `canonical-projection@2`. AttuneGraph rejects
+the whole observation before persistence if any assertion is disconnected from
+that exact root. Historical reset and undo policies receive source-bound thread
+scope assertions so a valid non-current history remains connected without
+inventing provenance. Freshness is recorded as `unknown`. Calls are serialized
 in invocation order. It reads the persisted scope head before the Engine's
 atomic compare-and-swap, so restart works without overwriting an unseen
 generation; an external writer race rejects, and identical receipt replay does

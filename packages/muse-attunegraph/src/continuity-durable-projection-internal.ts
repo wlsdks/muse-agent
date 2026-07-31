@@ -12,6 +12,7 @@ import {
   verifyContinuityObservation,
   type ContinuityObservationReceipt
 } from "./continuity-observation.js";
+import { continuityThreadGraphRef } from "./continuity-projection.js";
 
 export type ContinuityAttuneGraphProjectionErrorCode =
   | "INVALID_CONFIGURATION"
@@ -185,6 +186,9 @@ async function projectOne(
   const detachedAssertions = structuredClone(
     receipt.projection.assertions
   );
+  const detachedThreadRoot = structuredClone(
+    continuityThreadGraphRef(scope)
+  );
   let graph: ProjectionAttuneGraph;
   try {
     graph = await dependencies.openLocal({
@@ -200,12 +204,13 @@ async function projectOne(
   try {
     const expectedSnapshot = await graph.head();
     const snapshot = await graph.project({
-      operator: "canonical-projection@1",
+      operator: "canonical-projection@2",
       ...(expectedSnapshot === undefined ? {} : { expectedSnapshot }),
       observation: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         observationKey: receipt.receiptId,
         scope: detachedScope,
+        threadRoot: detachedThreadRoot,
         observedAt: receipt.observedAt,
         sourceFreshness: {
           state: "unknown",
