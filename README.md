@@ -61,6 +61,15 @@ wrong afterwards, `muse doctor` diagnoses and repairs the local setup in one pas
 For an existing source checkout, initialize the embedded engine with
 `git submodule update --init --recursive`.
 
+Muse consumes the independent
+[`@attunegraph/core`](https://github.com/wlsdks/attunegraph) repository as the
+exact `packages/attunegraph` Git submodule, currently pinned to standalone main
+commit `e7d09fc`. Its dependency-free core,
+in-memory store, and portable format are verified on Linux, macOS, and Windows.
+The opt-in durable local SQLite store and offline Admin currently require Node
+24.15 or newer on reviewed Linux/macOS filesystems and fail closed elsewhere;
+Muse does not silently replace them with an external graph database.
+
 ### Local or cloud — your choice
 
 Supported choices include OpenAI, Anthropic, Gemini, OpenRouter, Ollama, and OpenAI-compatible

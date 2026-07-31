@@ -42,6 +42,9 @@ jobs:
       # 6 hands back the slow build, a `typescript` that resolves to 7 crashes lint.
       - run: pnpm check:toolchain
       - run: pnpm check
+      # The standalone package defaults to its Linux/macOS/Windows profile.
+      # Muse's Linux gate also proves the exact pinned local SQLite/Admin profile.
+      - run: pnpm --filter @attunegraph/core test:local-profile
       # Reuse `pnpm check` build artifacts: this command deliberately performs
       # no build and exercises the deterministic agent-eval contracts omitted
       # from the workspace package test scripts.
