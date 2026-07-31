@@ -309,6 +309,40 @@ export function projectVerifiedExperienceLearningPromotionHealth(
   });
 }
 
+/**
+ * Recomputes both sides of the persisted promotion linkage and returns the
+ * canonical handle only when it belongs to the exact verified receipt.
+ * This projection grants no mutation or rollback authority.
+ */
+export function verifyExperienceLearningPromotionHandleBinding(
+  receiptValue: unknown,
+  handleValue: unknown
+): ExperienceLearningPromotionHandle | undefined {
+  const health = projectVerifiedExperienceLearningPromotionHealth(receiptValue);
+  const handle = parseExperienceLearningPromotionHandle(handleValue);
+  if (!health || !handle) return undefined;
+  const receipt = receiptValue as ExperienceLearningPromotionReceipt;
+  const audit = promotionAudit(receipt);
+  return handle.activeBehaviorDigestAfter === receipt.activeBehaviorDigestAfter
+    && handle.activeBehaviorDigestBefore === receipt.activeBehaviorDigestBefore
+    && handle.appliedAt === receipt.appliedAt
+    && handle.authority === receipt.authority
+    && handle.candidateId === receipt.candidateId
+    && handle.policyAfter.detail === receipt.policyAfter.detail
+    && handle.policyAfter.nextStep === receipt.policyAfter.nextStep
+    && handle.policyAfter.suppression === receipt.policyAfter.suppression
+    && handle.policyAfter.version === receipt.policyAfter.version
+    && handle.policyBefore.detail === receipt.policyBefore.detail
+    && handle.policyBefore.nextStep === receipt.policyBefore.nextStep
+    && handle.policyBefore.suppression === receipt.policyBefore.suppression
+    && handle.policyBefore.version === receipt.policyBefore.version
+    && handle.promotionAuditId === audit.id
+    && handle.promotionId === receipt.promotionId
+    && handle.threadId === receipt.scope.threadId
+    ? handle
+    : undefined;
+}
+
 function promotionAudit(
   receipt: ExperienceLearningPromotionReceipt
 ): ExperienceLearningPolicyAudit {

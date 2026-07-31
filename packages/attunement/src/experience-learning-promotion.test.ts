@@ -3,12 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   ActiveAttunementPolicyWriteBlockedError,
   compareExperienceLearningReplay,
+  createExperienceLearningPromotionHandle,
   ExperienceLearningPromotionError,
   fingerprintContinuityPolicy,
   projectVerifiedExperienceLearningPromotionHealth,
   proposeExperienceLearningCandidate,
+  verifyExperienceLearningPromotionHandleBinding,
   type ActiveAttunementPolicyWriteGate,
   type ExperienceLearningCandidate,
+  type ExperienceLearningPromotionHandle,
   type ExperienceReplayCase,
   type ContinuityPolicy
 } from "./index.js";
@@ -279,5 +282,37 @@ describe("experience learning promotion", () => {
     });
     expect(projectVerifiedExperienceLearningPromotionHealth(accessor)).toBeUndefined();
     expect(calls).toBe(0);
+  });
+
+  it("recomputes the exact persisted handle binding including its promotion audit", async () => {
+    const input = promotionInput();
+    let persistedHandle: ExperienceLearningPromotionHandle | undefined;
+    const receipt = await promoteExperienceLearningCandidate(input, gate, async (transition) => {
+      persistedHandle = transition.promotionHandle;
+      return true;
+    });
+    expect(persistedHandle).toBeDefined();
+    expect(verifyExperienceLearningPromotionHandleBinding(receipt, persistedHandle))
+      .toEqual(persistedHandle);
+
+    const forgedAuditHandle = createExperienceLearningPromotionHandle({
+      activeBehaviorDigestAfter: persistedHandle!.activeBehaviorDigestAfter,
+      activeBehaviorDigestBefore: persistedHandle!.activeBehaviorDigestBefore,
+      appliedAt: persistedHandle!.appliedAt,
+      authority: persistedHandle!.authority,
+      candidateId: persistedHandle!.candidateId,
+      policyAfter: persistedHandle!.policyAfter,
+      policyBefore: persistedHandle!.policyBefore,
+      promotionAuditId: `learning_policy_audit_${"0".repeat(64)}`,
+      promotionId: persistedHandle!.promotionId,
+      threadId: persistedHandle!.threadId
+    });
+    expect(forgedAuditHandle).toBeDefined();
+    expect(verifyExperienceLearningPromotionHandleBinding(receipt, forgedAuditHandle))
+      .toBeUndefined();
+    expect(verifyExperienceLearningPromotionHandleBinding(
+      { ...receipt, promotionId: "forged" },
+      persistedHandle
+    )).toBeUndefined();
   });
 });

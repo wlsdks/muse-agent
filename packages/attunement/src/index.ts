@@ -144,7 +144,8 @@ export {
   ExperienceLearningPromotionError,
   projectVerifiedExperienceLearningPromotionHealth,
   rollbackExperienceLearningPromotion,
-  rollbackExperienceLearningPromotionHandle
+  rollbackExperienceLearningPromotionHandle,
+  verifyExperienceLearningPromotionHandleBinding
 } from "./experience-learning-promotion.js";
 export {
   createExperienceLearningPromotionHandle,
