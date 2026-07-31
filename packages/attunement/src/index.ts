@@ -167,6 +167,9 @@ export type {
   ExperienceLearningRollbackProposal
 } from "./experience-learning-degradation.js";
 export {
+  projectExperienceLearningDegradationFromState
+} from "./experience-learning-degradation-state.js";
+export {
   promoteApprovedExperienceLearningContinuityPolicy,
   rollbackExperienceLearningContinuityPolicy,
   rollbackExperienceLearningContinuityPolicyByHandleId
