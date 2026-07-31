@@ -187,7 +187,7 @@ const squadSlug = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/gu,
  * `drift` case whose answer is the span from a DIFFERENT paragraph but cited to
  * THIS one (unsupported by the cited evidence → the gate must catch it as
  * UNGROUNDED). The Δ on the drift cases is the gate's faithfulness contribution
- * on a public dataset — the first improve-muse fire proved the naive
+ * on a public dataset — measurement proved the naive
  * SQuAD-unanswerable→refuse mapping yields Δ≈0 (refuse scores retrieval
  * confidence, which adversarial-similar unanswerables defeat), so the value lives
  * here, on the answer-grounding path.
