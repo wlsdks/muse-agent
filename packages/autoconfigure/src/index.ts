@@ -45,6 +45,17 @@ export {
 } from "./continuity-capsule-preparation-service.js";
 
 export {
+  createContinuityLearningPreparationService,
+  type ContinuityLearningEvaluator,
+  type ContinuityLearningEvaluatorInput,
+  type ContinuityLearningHeldOutCase,
+  type ContinuityLearningPreparationRequest,
+  type ContinuityLearningPreparationResult,
+  type ContinuityLearningPreparationService,
+  type CreateContinuityLearningPreparationServiceOptions
+} from "./continuity-learning-preparation-service.js";
+
+export {
   buildActiveContextProvider,
   buildCalendarRegistry,
   buildSkillRegistry,
