@@ -1,9 +1,13 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { createTriggerEnvelope } from "@muse/shared";
+import { TriggerControlFileStore } from "@muse/scheduler";
+import { DEFAULT_TRIGGER_ADMISSION_MAX_PENDING } from "@muse/stores";
 
 import { registerSchedulerCommands, type SchedulerSetupHelpers } from "./commands-scheduler-setup.js";
 import type { ProgramIO } from "./program.js";
@@ -18,20 +22,29 @@ const UNREACHABLE = (): never => {
   throw new Error("Muse API server is not running (tried http://127.0.0.1:3030) — start it with `pnpm --filter @muse/api dev`.");
 };
 
-function helpers(apiCalls: string[] = []): SchedulerSetupHelpers {
+function helpers(
+  apiCalls: string[] = [],
+  overrides: Partial<SchedulerSetupHelpers> = {}
+): SchedulerSetupHelpers {
   return {
     apiRequest: async (_io, _command, path: string) => {
       apiCalls.push(path);
       return UNREACHABLE();
     },
-    writeOutput: () => undefined
+    writeOutput: () => undefined,
+    ...overrides
   };
 }
 
-async function run(io: ProgramIO, apiCalls: string[], args: readonly string[]): Promise<void> {
+async function run(
+  io: ProgramIO,
+  apiCalls: string[],
+  args: readonly string[],
+  overrides: Partial<SchedulerSetupHelpers> = {}
+): Promise<void> {
   const program = new Command();
   program.exitOverride();
-  registerSchedulerCommands(program, io, helpers(apiCalls));
+  registerSchedulerCommands(program, io, helpers(apiCalls, overrides));
   await program.parseAsync(["node", "muse", ...args], { from: "node" });
 }
 
@@ -154,5 +167,102 @@ describe("muse scheduler list / remove — file-backed (AC4)", () => {
     expect(err.join("")).toContain("no job with id");
     expect(process.exitCode).toBe(1);
     process.exitCode = before;
+  });
+});
+
+describe("muse scheduler health — durable event-loop evidence", () => {
+  it("shows reason-coded admission/work health without mutating the trigger state", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-trigger-health-"));
+    const triggerControlFile = join(root, "trigger-control.json");
+    const store = new TriggerControlFileStore(triggerControlFile, {
+      maxPending: DEFAULT_TRIGGER_ADMISSION_MAX_PENDING
+    });
+    const now = new Date("2026-07-31T08:00:00.000Z");
+    const envelope = (generation: string) => createTriggerEnvelope({
+      generation,
+      occurredAt: now,
+      receivedAt: now,
+      source: "cron",
+      sourceId: "job-\u001b[31m"
+    });
+    await store.admit({ envelope: envelope("execute-1"), now });
+    const cancelled = envelope("cancelled-1");
+    await store.admit({ envelope: cancelled, now });
+    await store.claim({
+      at: now,
+      dedupKey: cancelled.dedupKey,
+      leaseDurationMs: 60_000,
+      leaseToken: "lease-cancelled",
+      maxAttempts: 2
+    });
+    await store.cancel({
+      at: now,
+      dedupKey: cancelled.dedupKey,
+      leaseToken: "lease-cancelled",
+      reason: "owner\u001b[31m\nstop"
+    });
+    await store.admit({ envelope: envelope("paused-1"), now, paused: true });
+    const before = readFileSync(triggerControlFile);
+
+    const { io, out } = captureIo();
+    const apiCalls: string[] = [];
+    await run(io, apiCalls, ["scheduler", "health"], {
+      now: () => now,
+      triggerControlFile
+    });
+
+    const rendered = out.join("");
+    expect(apiCalls).toEqual([]);
+    expect(rendered).toContain("Event loop: degraded");
+    expect(rendered).toContain("queued=1");
+    expect(rendered).toContain("rejected=1");
+    expect(rendered).toContain("event-work-state-missing");
+    expect(rendered).toContain("paused");
+    expect(rendered).toContain("reasons=none terminal=owner[31m stop");
+    expect(rendered).not.toContain("reasons=noneterminal=");
+    expect(rendered).not.toContain("\u001b");
+    expect(readFileSync(triggerControlFile)).toEqual(before);
+
+    const { io: jsonIo, out: jsonOut } = captureIo();
+    await run(jsonIo, [], ["scheduler", "health", "--json"], {
+      now: () => now,
+      triggerControlFile
+    });
+    const json = JSON.parse(jsonOut.join("")) as {
+      readonly event: { readonly level: string; readonly counts: { readonly rejected: number } };
+      readonly recent: readonly { readonly reasons: readonly string[] }[];
+    };
+    expect(json.event.level).toBe("degraded");
+    expect(json.event.counts.rejected).toBe(1);
+    expect(json.recent[0]?.reasons).toContain("paused");
+    expect(readFileSync(triggerControlFile)).toEqual(before);
+  });
+
+  it("fails loud on corrupt event state and does not rewrite it", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-trigger-health-corrupt-"));
+    const triggerControlFile = join(root, "trigger-control.json");
+    const corrupt = Buffer.from("{");
+    writeFileSync(triggerControlFile, corrupt, { mode: 0o600 });
+    const { err, io } = captureIo();
+    const beforeExitCode = process.exitCode;
+
+    await run(io, [], ["scheduler", "health"], { triggerControlFile });
+
+    expect(err.join("")).toContain("event health unavailable");
+    expect(process.exitCode).toBe(1);
+    expect(readFileSync(triggerControlFile)).toEqual(corrupt);
+    process.exitCode = beforeExitCode;
+  });
+
+  it("reports constructor/configuration failures instead of throwing past the CLI boundary", async () => {
+    const { err, io } = captureIo();
+    const beforeExitCode = process.exitCode;
+
+    await run(io, [], ["scheduler", "health"], { triggerControlFile: "" });
+
+    expect(err.join("")).toContain("event health unavailable");
+    expect(err.join("")).toContain("trigger control file must be non-empty");
+    expect(process.exitCode).toBe(1);
+    process.exitCode = beforeExitCode;
   });
 });

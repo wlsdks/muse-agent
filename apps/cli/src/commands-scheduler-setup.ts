@@ -1,4 +1,9 @@
-import { errorMessage, isErrorLike } from "@muse/shared";
+import {
+  createLoopSupervisorHealthSnapshot,
+  errorMessage,
+  isErrorLike,
+  stripUntrustedTerminalChars
+} from "@muse/shared";
 /**
  * `muse scheduler` and `muse setup` command groups, extracted from
  * apps/cli/src/program.ts.
@@ -11,11 +16,19 @@ import { errorMessage, isErrorLike } from "@muse/shared";
  */
 
 import { collectSetupStatusJson, resolveFollowupsFile, type SetupStatusSnapshot } from "@muse/autoconfigure";
-import { CADENCE_ACCEPTED_FORMS, defaultScheduledJobsFile, FileScheduledJobStore, parseCadence } from "@muse/scheduler";
+import {
+  CADENCE_ACCEPTED_FORMS,
+  defaultScheduledJobsFile,
+  FileScheduledJobStore,
+  parseCadence,
+  TriggerControlFileStore
+} from "@muse/scheduler";
 import {
   classifyDaemonLoopHeartbeat,
+  DEFAULT_TRIGGER_ADMISSION_MAX_PENDING,
   defaultProactiveHeartbeatDir,
   defaultSchedulerPauseFile,
+  defaultTriggerAdmissionJournalFile,
   readFollowups,
   readProactiveHeartbeat,
   readSchedulerPauseState,
@@ -23,6 +36,7 @@ import {
   type DaemonLoopHeartbeatVerdict
 } from "@muse/stores";
 import type { Command } from "commander";
+import { dirname, join } from "node:path";
 
 import { DEFAULT_DAEMON_INTERVAL_MS } from "./commands-daemon-loop.js";
 import { resolveCliLanguage, t } from "./cli-i18n.js";
@@ -82,6 +96,10 @@ export function formatDaemonLivenessNotice(
   ].join("\n");
 }
 
+function safeEventDisplay(value: string): string {
+  return stripUntrustedTerminalChars(value).replace(/\s+/gu, " ").trim();
+}
+
 function providerIdList(): string {
   return SETUP_MODEL_PROVIDER_SPECS.map((spec) => spec.id).join(" / ");
 }
@@ -99,6 +117,8 @@ export interface SchedulerSetupHelpers {
   readonly heartbeatDir?: string;
   /** Test seam — injectable clock for the `scheduler add` liveness check. */
   readonly now?: () => Date;
+  /** Test seam — override the durable trigger-control state file. */
+  readonly triggerControlFile?: string;
 }
 
 /**
@@ -198,6 +218,82 @@ export function registerSchedulerCommands(program: Command, io: ProgramIO, helpe
       for (const job of jobs) {
         const status = job.enabled ? job.lastStatus ?? "pending" : "disabled";
         io.stdout(`  ${job.id}  ${job.name}  cron=${job.cronExpression} (${job.timezone})  [${status}]\n`);
+      }
+    });
+
+  scheduler
+    .command("health")
+    .description("Show durable event-loop admission, work, retry, and dead-letter health")
+    .option("--limit <n>", "Recent trigger receipts to show (default 5)")
+    .option("--json", "Emit structured JSON")
+    .action(async (options: { readonly json?: boolean; readonly limit?: string }) => {
+      const now = helpers.now?.() ?? new Date();
+      const limit = Math.max(1, Math.min(50, Number.parseInt(options.limit ?? "5", 10) || 5));
+      const legacyJournalFile = defaultTriggerAdmissionJournalFile(process.env);
+      const configuredControlFile = process.env.MUSE_TRIGGER_CONTROL_FILE?.trim();
+      const controlFile = helpers.triggerControlFile
+        ?? (configuredControlFile && configuredControlFile.length > 0
+          ? configuredControlFile
+          : join(dirname(legacyJournalFile), "trigger-control.json"));
+      try {
+        const store = new TriggerControlFileStore(
+          controlFile,
+          { maxPending: DEFAULT_TRIGGER_ADMISSION_MAX_PENDING },
+          helpers.triggerControlFile ? {} : { legacyJournalFile }
+        );
+        const state = await store.snapshot();
+        const snapshot = createLoopSupervisorHealthSnapshot({
+          event: {
+            journal: state.journal,
+            workStates: state.workStates
+          },
+          generatedAt: now
+        });
+        const recent = [...state.journal.entries]
+          .slice(-limit)
+          .reverse()
+          .map((entry) => ({
+            action: entry.decision.action,
+            admittedAt: entry.admittedAt,
+            reasons: entry.decision.reasons,
+            source: entry.envelope.source,
+            sourceId: entry.envelope.sourceId,
+            state: entry.state,
+            ...(entry.terminalReason ? { terminalReason: entry.terminalReason } : {})
+          }));
+        if (options.json) {
+          io.stdout(`${JSON.stringify({
+            event: snapshot.event,
+            generatedAt: snapshot.generatedAt,
+            recent,
+            revision: state.revision,
+            stateId: state.stateId
+          }, null, 2)}\n`);
+          return;
+        }
+        const counts = snapshot.event.counts;
+        io.stdout(`Event loop: ${snapshot.event.level}\n`);
+        io.stdout(
+          `  queued=${counts.queued.toString()} leased=${counts.leased.toString()} retry-wait=${counts.retryWait.toString()} completed=${counts.completed.toString()} rejected=${counts.rejected.toString()} shadowed=${counts.shadowed.toString()} cancelled=${counts.cancelled.toString()} dead-lettered=${counts.deadLettered.toString()} overflow=${snapshot.event.overflowCount.toString()}\n`
+        );
+        io.stdout(`  reasons: ${snapshot.event.reasons.length > 0 ? snapshot.event.reasons.join(", ") : "none"}\n`);
+        if (recent.length === 0) {
+          io.stdout("  recent: no trigger receipts recorded\n");
+          return;
+        }
+        io.stdout("  recent:\n");
+        for (const entry of recent) {
+          const reasons = entry.reasons.length > 0 ? entry.reasons.join(",") : "none";
+          const terminal = entry.terminalReason
+            ? ` terminal=${safeEventDisplay(entry.terminalReason)}`
+            : "";
+          io.stdout(
+            `    ${safeEventDisplay(entry.admittedAt)} ${safeEventDisplay(entry.source)}:${safeEventDisplay(entry.sourceId)} action=${entry.action} state=${entry.state} reasons=${safeEventDisplay(reasons)}${terminal}\n`
+          );
+        }
+      } catch (cause) {
+        io.stderr(`muse scheduler health: event health unavailable (${safeEventDisplay(errorMessage(cause))})\n`);
+        process.exitCode = 1;
       }
     });
 

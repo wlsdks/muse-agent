@@ -934,6 +934,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
       "create-agent",
       "dry-run",
       "executions",
+      "health",
       "list",
       "next",
       "pause",
