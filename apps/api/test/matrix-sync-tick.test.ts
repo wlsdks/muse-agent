@@ -60,17 +60,19 @@ describe("startMatrixSyncTick", () => {
     } as unknown as MatrixProvider;
 
     const ingests: number[] = [];
+    const ingested = Promise.withResolvers<void>();
     const handle = startMatrixSyncTick({
       inboxFile,
       intervalMs: 60_000,
       longPollSeconds: 25,
       onIngested: (count) => {
         ingests.push(count);
+        ingested.resolve();
       },
       provider,
       relaunchDelayMs: 5
     });
-    await sleep(120);
+    await ingested.promise;
     handle.stop();
 
     expect(ingests).toEqual([2]);

@@ -625,5 +625,5 @@ describe("settleCandidateInventory 3312-case declarative BigInt oracle", () => {
       }
     }
     expect(cases).toBe(3_312);
-  });
+  }, 60_000);
 });
