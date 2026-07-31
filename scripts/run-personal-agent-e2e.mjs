@@ -22,15 +22,6 @@ import {
 import { installOwnedResourceSignalHandlers } from "./lib/owned-resource-signals.mjs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
-const artifactDir = join(
-  rootDir,
-  ".muse-dev",
-  "evals",
-  "personal-agent-roadmap",
-  "task-047-b",
-  "playwright"
-);
-
 export function createPersonalAgentE2eEnvironment({
   apiPort,
   browserExecutable,
@@ -60,7 +51,7 @@ export function createPersonalAgentE2eEnvironment({
     MUSE_ATTUNEMENT_FILE: join(root, "stores", "attunement.json"),
     MUSE_EMBED_MODEL: "personal-agent-fixture-embed",
     MUSE_PERSONAL_AGENT_API_URL: `http://127.0.0.1:${apiPort.toString()}`,
-    MUSE_PERSONAL_AGENT_ARTIFACT_DIR: artifactDir,
+    MUSE_PERSONAL_AGENT_ARTIFACT_DIR: join(root, "artifacts", "playwright"),
     MUSE_PERSONAL_AGENT_BROWSER_EXECUTABLE: executable,
     MUSE_PERSONAL_AGENT_EMBED_TRAFFIC_FILE: join(root, "embedding-traffic.jsonl"),
     MUSE_PERSONAL_AGENT_EMBED_URL: embedUrl,
@@ -115,7 +106,7 @@ async function main() {
     if (qualificationRunId) {
       env.MUSE_PERSONAL_AGENT_E2E_JSON_REPORT = qualificationReportPath;
     }
-    await mkdir(artifactDir, { recursive: true });
+    await mkdir(env.MUSE_PERSONAL_AGENT_ARTIFACT_DIR, { recursive: true });
     const playwrightArgs = [
       "--filter",
       "@muse/web",

@@ -23,7 +23,11 @@ test("personal-agent E2E environment is sparse, local-only, and owner-secret fre
   assert.match(env.MUSE_MODEL, /^diagnostic\//u);
   assert.equal(env.MUSE_ATTUNEMENT_FILE, "/tmp/muse-personal-agent-fixture/stores/attunement.json");
   assert.equal(env.MUSE_PERSONAL_AGENT_API_URL, "http://127.0.0.1:41001");
-  assert.match(env.MUSE_PERSONAL_AGENT_ARTIFACT_DIR, /task-047-b\/playwright$/u);
+  assert.equal(
+    env.MUSE_PERSONAL_AGENT_ARTIFACT_DIR,
+    "/tmp/muse-personal-agent-fixture/artifacts/playwright"
+  );
+  assert.equal(env.MUSE_PERSONAL_AGENT_ARTIFACT_DIR.includes(".muse-dev"), false);
   assert.equal(env.MUSE_PERSONAL_AGENT_EMBED_URL, "http://127.0.0.1:41003");
   assert.equal(env.MUSE_PERSONAL_AGENT_WEB_URL, "http://127.0.0.1:41002");
   assert.equal(env.MUSE_CORS_ALLOWED_ORIGINS, "http://127.0.0.1:41002");
@@ -55,6 +59,7 @@ test("runner and Playwright config forbid server reuse and broad process cleanup
   assert.match(config, /strictPort/gu);
   assert.match(config, /personal-agent-embedding-stub\.mjs/gu);
   assert.doesNotMatch(runner, /\b(?:pkill|killall)\b|process\.kill\(\s*-/u);
+  assert.doesNotMatch(runner, /\.muse-dev/u);
   assert.match(runner, /bindOwnedProcessGroup/u);
   assert.match(runner, /forceOwnedProcessGroup/u);
   assert.match(runner, /muse-personal-agent-e2e-/u);
