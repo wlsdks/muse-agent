@@ -1,7 +1,16 @@
 import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 
-import { mintWebhookTriggerToken, registerWebhookTriggerRoutes, WEBHOOK_FIRE_COOLDOWN_MS, WEBHOOK_PAYLOAD_BODY_LIMIT, WEBHOOK_PAYLOAD_PREVIEW_MAX, webhookTokensEqual } from "./webhook-trigger-routes.js";
+import {
+  mintWebhookTriggerToken,
+  registerWebhookTriggerRoutes,
+  resolveWebhookTriggerGeneration,
+  WEBHOOK_FIRE_COOLDOWN_MS,
+  WEBHOOK_IDEMPOTENCY_KEY_MAX_BYTES,
+  WEBHOOK_PAYLOAD_BODY_LIMIT,
+  WEBHOOK_PAYLOAD_PREVIEW_MAX,
+  webhookTokensEqual
+} from "./webhook-trigger-routes.js";
 
 import {
   DynamicScheduler,
@@ -124,6 +133,118 @@ describe("POST /api/hooks/flows/:token — the inbound trigger", () => {
     expect(service.list).not.toHaveBeenCalled();
     expect(service.trigger).not.toHaveBeenCalled();
     await server.close();
+  });
+
+  it("reuses one trigger identity for the same idempotency key across request ids and times", async () => {
+    const jobs = [job({ id: "job_a", webhookTriggerToken: "wht_idempotent_000000000000000" })];
+    const server = Fastify();
+    const service = fakeService(jobs);
+    let clock = Date.parse("2026-07-30T12:00:00.000Z");
+    registerWebhookTriggerRoutes(server, {
+      nowMs: () => clock,
+      requireAuthenticated: () => true,
+      scheduler: { service } as never
+    });
+    const request = {
+      headers: { "idempotency-key": "delivery-attempt-42" },
+      method: "POST" as const,
+      url: "/api/hooks/flows/wht_idempotent_000000000000000"
+    };
+
+    const firstResponse = await server.inject(request);
+    expect(firstResponse.statusCode).toBe(200);
+    clock += WEBHOOK_FIRE_COOLDOWN_MS + 1;
+    const secondResponse = await server.inject(request);
+    expect(secondResponse.statusCode).toBe(200);
+
+    const first = service.trigger.mock.calls[0]![1]!.trigger!;
+    const second = service.trigger.mock.calls[1]![1]!.trigger!;
+    expect(first.generation).toBe(second.generation);
+    expect(first.generation).toMatch(/^idempotency-key:[a-f0-9]{64}$/u);
+    expect(first.dedupKey).toBe(second.dedupKey);
+    expect(first.occurredAt).not.toBe(second.occurredAt);
+    expect(JSON.stringify(service.trigger.mock.calls)).not.toContain("delivery-attempt-42");
+    expect(firstResponse.body).not.toContain("delivery-attempt-42");
+    expect(secondResponse.body).not.toContain("delivery-attempt-42");
+    await server.close();
+  });
+
+  it("keeps distinct keys and jobs isolated while a missing key retains per-request identity", async () => {
+    const jobs = [
+      job({ id: "job_a", webhookTriggerToken: "wht_idem_job_a_000000000000000" }),
+      job({ id: "job_b", webhookTriggerToken: "wht_idem_job_b_000000000000000" })
+    ];
+    const server = Fastify();
+    const service = fakeService(jobs);
+    let clock = Date.parse("2026-07-30T12:00:00.000Z");
+    registerWebhookTriggerRoutes(server, {
+      nowMs: () => clock,
+      requireAuthenticated: () => true,
+      scheduler: { service } as never
+    });
+    const fire = async (token: string, idempotencyKey?: string) => {
+      const response = await server.inject({
+        ...(idempotencyKey === undefined ? {} : { headers: { "idempotency-key": idempotencyKey } }),
+        method: "POST",
+        url: `/api/hooks/flows/${token}`
+      });
+      clock += WEBHOOK_FIRE_COOLDOWN_MS + 1;
+      return response;
+    };
+
+    expect((await fire("wht_idem_job_a_000000000000000", "key-a")).statusCode).toBe(200);
+    expect((await fire("wht_idem_job_a_000000000000000", "key-b")).statusCode).toBe(200);
+    expect((await fire("wht_idem_job_b_000000000000000", "key-a")).statusCode).toBe(200);
+    expect((await fire("wht_idem_job_a_000000000000000")).statusCode).toBe(200);
+    expect((await fire("wht_idem_job_a_000000000000000")).statusCode).toBe(200);
+
+    const triggers = service.trigger.mock.calls.map((call) => call[1]!.trigger!);
+    expect(triggers[0]!.generation).not.toBe(triggers[1]!.generation);
+    expect(triggers[0]!.dedupKey).not.toBe(triggers[1]!.dedupKey);
+    expect(triggers[0]!.generation).toBe(triggers[2]!.generation);
+    expect(triggers[0]!.dedupKey).not.toBe(triggers[2]!.dedupKey);
+    expect(triggers[3]!.generation).not.toBe(triggers[4]!.generation);
+    expect(triggers[3]!.dedupKey).not.toBe(triggers[4]!.dedupKey);
+    await server.close();
+  });
+
+  it("rejects invalid idempotency keys with 400 before triggering", async () => {
+    const jobs = [job({ webhookTriggerToken: "wht_invalid_idem_00000000000000" })];
+    const { server, service } = serverWith(jobs);
+    const invalidHeaders = [
+      ["oversize", "x".repeat(WEBHOOK_IDEMPOTENCY_KEY_MAX_BYTES + 1)]
+    ] as const;
+
+    for (const [label, idempotencyKey] of invalidHeaders) {
+      const response = await server.inject({
+        headers: { "idempotency-key": idempotencyKey },
+        method: "POST",
+        url: "/api/hooks/flows/wht_invalid_idem_00000000000000"
+      });
+      expect(response.statusCode, label).toBe(400);
+    }
+    expect(service.trigger).not.toHaveBeenCalled();
+    await server.close();
+  });
+});
+
+describe("resolveWebhookTriggerGeneration", () => {
+  it.each([
+    ["empty", ""],
+    ["multiple", ["one", "two"]],
+    ["leading whitespace", " key"],
+    ["trailing whitespace", "key "],
+    ["control character", "key\u0001"],
+    ["oversize", "x".repeat(WEBHOOK_IDEMPOTENCY_KEY_MAX_BYTES + 1)]
+  ] as const)("rejects %s values", (_label, value) => {
+    expect(resolveWebhookTriggerGeneration(value, "fallback")).toEqual({ ok: false });
+  });
+
+  it("preserves the fallback only when the header is absent", () => {
+    expect(resolveWebhookTriggerGeneration(undefined, "occurred:req-1")).toEqual({
+      generation: "occurred:req-1",
+      ok: true
+    });
   });
 });
 

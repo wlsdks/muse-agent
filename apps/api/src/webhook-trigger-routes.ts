@@ -15,7 +15,7 @@
  * token (server-minted only, preserved across unrelated PATCHes).
  */
 
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
@@ -45,6 +45,32 @@ export const WEBHOOK_PAYLOAD_BODY_LIMIT = 16_384;
 
 /** Length of the neutralized payload preview stored on the execution record. */
 export const WEBHOOK_PAYLOAD_PREVIEW_MAX = 200;
+
+export const WEBHOOK_IDEMPOTENCY_KEY_MAX_BYTES = 255;
+
+type WebhookTriggerGeneration =
+  | Readonly<{ ok: true; generation: string }>
+  | Readonly<{ ok: false }>;
+
+export function resolveWebhookTriggerGeneration(
+  idempotencyKey: string | readonly string[] | undefined,
+  fallbackGeneration: string
+): WebhookTriggerGeneration {
+  if (idempotencyKey === undefined) {
+    return { ok: true, generation: fallbackGeneration };
+  }
+  if (typeof idempotencyKey !== "string"
+    || idempotencyKey.length === 0
+    || idempotencyKey.trim() !== idempotencyKey
+    || Buffer.byteLength(idempotencyKey, "utf8") > WEBHOOK_IDEMPOTENCY_KEY_MAX_BYTES
+    || /[\u0000-\u001f\u007f]/u.test(idempotencyKey)) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    generation: `idempotency-key:${createHash("sha256").update(idempotencyKey, "utf8").digest("hex")}`
+  };
+}
 
 /**
  * Build the per-run invocation from an inbound webhook request. Content-type
@@ -150,8 +176,16 @@ export function registerWebhookTriggerRoutes(server: FastifyInstance, options: W
     if (!matched || !matched.enabled) {
       return reply.status(404).send({ error: "Not found" });
     }
-    const previous = lastFiredAtMs.get(matched.id);
     const at = nowMs();
+    const occurredAt = new Date(at);
+    const triggerGeneration = resolveWebhookTriggerGeneration(
+      idempotencyKeyHeader(request),
+      `${occurredAt.toISOString()}:${request.id}`
+    );
+    if (!triggerGeneration.ok) {
+      return reply.status(400).send({ error: "Invalid Idempotency-Key" });
+    }
+    const previous = lastFiredAtMs.get(matched.id);
     if (previous !== undefined && at - previous < WEBHOOK_FIRE_COOLDOWN_MS) {
       return reply.status(429).send({ error: "Too many requests" });
     }
@@ -161,11 +195,10 @@ export function registerWebhookTriggerRoutes(server: FastifyInstance, options: W
     // logs, proxies) into an on-demand personal-data read channel; the
     // output flows solely to the owner's configured notification channel.
     const payloadInvocation = buildWebhookInvocation(request);
-    const occurredAt = new Date(at);
     const invocation: TriggerInvocation = {
       ...payloadInvocation,
       trigger: createTriggerEnvelope({
-        generation: `${occurredAt.toISOString()}:${request.id}`,
+        generation: triggerGeneration.generation,
         occurredAt,
         provenance: { kind: "capability-token", ref: matched.id },
         receivedAt: occurredAt,
@@ -176,6 +209,19 @@ export function registerWebhookTriggerRoutes(server: FastifyInstance, options: W
     await service.trigger(matched.id, invocation);
     return { fired: true, jobId: matched.id };
   });
+}
+
+function idempotencyKeyHeader(request: FastifyRequest): string | readonly string[] | undefined {
+  const values: string[] = [];
+  for (let index = 0; index < request.raw.rawHeaders.length; index += 2) {
+    if (request.raw.rawHeaders[index]?.toLowerCase() === "idempotency-key") {
+      values.push(request.raw.rawHeaders[index + 1] ?? "");
+    }
+  }
+  if (values.length > 1) {
+    return values;
+  }
+  return values[0] ?? request.headers["idempotency-key"];
 }
 
 /** Rebuild the full update-input a service.update needs from the stored job
