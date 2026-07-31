@@ -1,4 +1,4 @@
-import { isRecord } from "./json-utils.js";
+import { isRecord } from "./json-data.js";
 import {
   isDeliverySafetyResult,
   type DeliverySafetyResult

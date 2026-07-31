@@ -1,4 +1,4 @@
-import type { JsonValue } from "./json-utils.js";
+import type { JsonValue } from "./json-data.js";
 
 export interface StrictJsonOptions {
   readonly maxArrayItems?: number;

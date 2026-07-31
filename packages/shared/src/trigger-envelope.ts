@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { isRecord, type JsonValue } from "./json-utils.js";
+import { isRecord, type JsonValue } from "./json-data.js";
 
 export const TRIGGER_ENVELOPE_SCHEMA_VERSION = 1 as const;
 

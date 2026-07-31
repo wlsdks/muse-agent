@@ -1,4 +1,4 @@
-import { isRecord } from "./json-utils.js";
+import { isRecord } from "./json-data.js";
 
 export const RUN_GROUNDING_FRESHNESS_MS = 7 * 24 * 60 * 60 * 1_000;
 export const ATTUNEMENT_OUTCOME_FRESHNESS_MS = 30 * 24 * 60 * 60 * 1_000;
