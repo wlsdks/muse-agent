@@ -435,13 +435,6 @@ roadmap's own execution-order table and scope-specific gates outrank raw task nu
   readings lead to materially different work. If a task seems mistaken, say so briefly and continue
   as specified — never silently narrow, widen or transform it.
 
-### Model routing
-
-The 300-task productization program routes work across model tiers (controller/evaluator vs
-implementation vs low-risk transformation) and records maker, effort, risk tier and escalation
-trigger in every task activation header. That routing table lives with the program it governs:
-[`internal/goals/personal-agent-productization-roadmap.md`](internal/goals/personal-agent-productization-roadmap.md).
-
 ## Personal-domain primitives
 
 The agent ships file-backed personal loopback MCP servers (notes, tasks, calendar, reminders,

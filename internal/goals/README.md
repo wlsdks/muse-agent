@@ -41,8 +41,7 @@ rival-watch remembers where the next scout starts.**
   human-directed design/planning docs (a closed planning doc is deleted — remaining items become backlog records)
 - `attunegraph-roadmap.md` — **separate active long-running program.** Researches/builds/dogfoods
   Shadow Muse·Continuity Capsule·Policy Card and the
-  agent-native **AttuneGraph** in stages, without duplicating Core100/legacy-300's
-  general foundation work.
+  agent-native **AttuneGraph** in stages, without duplicating retired general-foundation work.
 - `personal-agent-successor-roadmap.md` — **current authoritative execution doc.** Core100-100
   concluded with the decision `continue-with-successor`, so PA-S001..S008 is the live order; the
   next task, lane, gate, and model choice follow this doc.
@@ -50,9 +49,6 @@ rival-watch remembers where the next scout starts.**
   `legacyRefs`.** It re-composed the remaining core into 100 ≤20-minute slices and its program is
   finished; do not activate from it. Both files claimed `active-authoritative` until 2026-07-30,
   which pointed agents at completed work.
-- `personal-agent-productization-roadmap.md` — historical reference for the 300-task legacy
-  requirements and stable IDs. Not used for new BUILD/EVIDENCE activation; consult a section only
-  when detailed rationale from Core100's `legacyRefs` is needed.
 
 ## Accumulating (ledger-style) docs outside `goals` — for a complete map (full 2026-07-17 survey)
 
