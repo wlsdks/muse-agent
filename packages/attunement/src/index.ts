@@ -155,6 +155,18 @@ export type {
   ExperienceLearningPromotionHandle
 } from "./experience-learning-promotion-handle.js";
 export {
+  assessExperienceLearningDegradation,
+  EXPERIENCE_LEARNING_DEGRADATION_REJECTED_RISE,
+  EXPERIENCE_LEARNING_DEGRADATION_USED_DROP,
+  EXPERIENCE_LEARNING_DEGRADATION_WINDOW_SIZE
+} from "./experience-learning-degradation.js";
+export type {
+  ExperienceLearningDegradationAssessment,
+  ExperienceLearningOutcomeEvidence,
+  ExperienceLearningOutcomeSummary,
+  ExperienceLearningRollbackProposal
+} from "./experience-learning-degradation.js";
+export {
   promoteApprovedExperienceLearningContinuityPolicy,
   rollbackExperienceLearningContinuityPolicy,
   rollbackExperienceLearningContinuityPolicyByHandleId
