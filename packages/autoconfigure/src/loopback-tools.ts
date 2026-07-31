@@ -21,7 +21,7 @@ import {
   createLocalExactArtifactResolver,
   fingerprintContinuityPolicy,
   promoteApprovedExperienceLearningContinuityPolicy,
-  rollbackExperienceLearningContinuityPolicy,
+  rollbackExperienceLearningContinuityPolicyByHandleId,
   proposeExperienceLearningFromDelivery,
   readAttunementState,
   readPreparedContinuityPack,
@@ -367,50 +367,44 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
                 },
                 policyWriteGate
               );
-              const policyAuditId = (await readAttunementState(deps.attunementFile!))
-                .experienceLearningPolicyAudits
-                ?.find((audit) =>
-                  audit.kind === "promotion"
+              const stateAfter = await readAttunementState(deps.attunementFile!);
+              const handles = (stateAfter.experienceLearningPromotionHandles ?? [])
+                .filter((handle) =>
+                  handle.promotionId === promotion.promotionId
+                  && handle.candidateId === promotion.candidateId
+                  && handle.threadId === promotion.scope.threadId
+                  && handle.activeBehaviorDigestAfter === promotion.activeBehaviorDigestAfter
+                );
+              if (handles.length !== 1) return undefined;
+              const handle = handles[0]!;
+              const policyAudit = (stateAfter.experienceLearningPolicyAudits ?? [])
+                .find((audit) =>
+                  audit.id === handle.promotionAuditId
+                  && audit.kind === "promotion"
                   && audit.candidateId === promotion.candidateId
                   && audit.policyAfter.version === promotion.policyAfter.version
-                )?.id;
-              return policyAuditId ? { approval, policyAuditId, promotion } : undefined;
+                );
+              return policyAudit
+                ? {
+                    approval,
+                    handleId: handle.handleId,
+                    policyAuditId: policyAudit.id,
+                    promotion
+                  }
+                : undefined;
             }
           }),
           createContinuityLearningRollbackTool({
-            rollback: async (promotion) => {
+            rollback: async (handleId) => {
               const stateBefore = await readAttunementState(deps.attunementFile!);
-              const samePolicy = (
-                left: typeof promotion.policyBefore,
-                right: typeof promotion.policyBefore
-              ) => left.detail === right.detail
-                && left.nextStep === right.nextStep
-                && left.suppression === right.suppression
-                && left.version === right.version;
-              const promotionAudits = (stateBefore.experienceLearningPolicyAudits ?? [])
-                .filter((audit) =>
-                  audit.kind === "promotion"
-                  && audit.authority === promotion.authority
-                  && audit.candidateId === promotion.candidateId
-                  && audit.threadId === promotion.scope.threadId
-                  && audit.sourceId === promotion.candidateId
-                  && audit.occurredAt === promotion.appliedAt
-                  && audit.activeBehaviorDigestBefore === promotion.activeBehaviorDigestBefore
-                  && audit.activeBehaviorDigestAfter === promotion.activeBehaviorDigestAfter
-                  && samePolicy(audit.policyBefore, promotion.policyBefore)
-                  && samePolicy(audit.policyAfter, promotion.policyAfter)
-                );
-              if (promotionAudits.length !== 1) return undefined;
-              const promotionAudit = promotionAudits[0]!;
-              if ((stateBefore.experienceLearningPolicyAudits ?? []).some((audit) =>
-                audit.kind === "rollback" && audit.sourceId === promotionAudit.id
-              )) {
-                return undefined;
-              }
+              const handles = (stateBefore.experienceLearningPromotionHandles ?? [])
+                .filter((handle) => handle.handleId === handleId);
+              if (handles.length !== 1) return undefined;
+              const handle = handles[0]!;
               const rolledBackAt = new Date().toISOString();
-              const rollback = await rollbackExperienceLearningContinuityPolicy(
+              const rollback = await rollbackExperienceLearningContinuityPolicyByHandleId(
                 deps.attunementFile!,
-                promotion,
+                handleId,
                 rolledBackAt,
                 policyWriteGate
               );
@@ -418,7 +412,7 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
                 .experienceLearningPolicyAudits
                 ?.find((audit) =>
                   audit.kind === "rollback"
-                  && audit.candidateId === promotion.candidateId
+                  && audit.sourceId === handle.promotionAuditId
                   && audit.policyAfter.version === rollback.policyAfter.version
                 )?.id;
               return policyAuditId ? { policyAuditId, rollback } : undefined;

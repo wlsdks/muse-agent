@@ -1,5 +1,4 @@
 import type {
-  ExperienceLearningPromotionReceipt,
   ExperienceLearningRollbackReceipt
 } from "@muse/attunement";
 import {
@@ -16,19 +15,22 @@ export interface ContinuityLearningRollbackResult {
 
 export interface ContinuityLearningRollbackToolDeps {
   readonly rollback: (
-    promotion: ExperienceLearningPromotionReceipt
+    handleId: string
   ) => Promise<ContinuityLearningRollbackResult | undefined>;
 }
 
-function parseInput(args: JsonObject): ExperienceLearningPromotionReceipt {
+const HANDLE_ID = /^learning_promotion_handle_[a-f0-9]{64}$/u;
+
+function parseInput(args: JsonObject): string {
   assertPlainDataTree(args, "continuityLearningRollbackInput");
   if (!isRecord(args)
     || Reflect.ownKeys(args).length !== 1
-    || !Object.hasOwn(args, "promotion")
-    || !isRecord(args.promotion)) {
-    throw new Error("continuity learning rollback requires one exact promotion receipt");
+    || !Object.hasOwn(args, "handleId")
+    || typeof args.handleId !== "string"
+    || !HANDLE_ID.test(args.handleId)) {
+    throw new Error("continuity learning rollback requires one exact promotion handleId");
   }
-  return args.promotion as unknown as ExperienceLearningPromotionReceipt;
+  return args.handleId;
 }
 
 function projectResult(value: ContinuityLearningRollbackResult): JsonObject {
@@ -51,13 +53,14 @@ export function createContinuityLearningRollbackTool(
       inputSchema: {
         additionalProperties: false,
         properties: {
-          promotion: {
+          handleId: {
             description:
-              "The exact prior promotion receipt whose bounded thread policy should be restored.",
-            type: "object"
+              "The exact durable promotion handle ID whose bounded thread policy should be restored.",
+            pattern: "^learning_promotion_handle_[a-f0-9]{64}$",
+            type: "string"
           }
         },
-        required: ["promotion"],
+        required: ["handleId"],
         type: "object"
       },
       keywords: ["continuity", "learning", "rollback", "restore", "학습", "되돌리기"],
@@ -65,8 +68,8 @@ export function createContinuityLearningRollbackTool(
       risk: "write"
     },
     execute: async (args): Promise<JsonObject> => {
-      const promotion = parseInput(args);
-      const result = await deps.rollback(promotion);
+      const handleId = parseInput(args);
+      const result = await deps.rollback(handleId);
       if (!result) {
         throw new Error("continuity learning rollback held: promotion is stale or mismatched");
       }

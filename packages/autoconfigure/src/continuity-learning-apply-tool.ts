@@ -19,6 +19,7 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 
 export interface ContinuityLearningApplyResult {
   readonly approval: ExperienceLearningApprovalReceipt;
+  readonly handleId: string;
   readonly policyAuditId: string;
   readonly promotion: ExperienceLearningPromotionReceipt;
 }
@@ -76,6 +77,7 @@ function parseInput(args: JsonObject): Readonly<{
 function projectResult(value: ContinuityLearningApplyResult): JsonObject {
   const output = {
     approval: value.approval,
+    handleId: value.handleId,
     policyAuditId: value.policyAuditId,
     promotion: value.promotion
   };

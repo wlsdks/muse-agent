@@ -6,10 +6,8 @@ import {
   createLocalArtifactValidator,
   createExperienceReplayEvidenceReceipt,
   createPersonalThread,
-  fingerprintContinuityPolicy,
   linkArtifact,
-  readAttunementState,
-  type ExperienceLearningPromotionReceipt
+  readAttunementState
 } from "@muse/attunement";
 import {
   createContinuityAttuneGraphProjector
@@ -17,7 +15,6 @@ import {
 import {
   captureContinuityObservation
 } from "@muse/attunegraph/continuity-observations";
-import { sha256Hex } from "@muse/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -296,6 +293,9 @@ describe("continuity learning preview tool", () => {
         authority: "owner-explicit",
         previewId: (result as { readonly previewId: string }).previewId
       },
+      handleId: expect.stringMatching(
+        /^learning_promotion_handle_[a-f0-9]{64}$/u
+      ),
       policyAuditId: expect.stringMatching(/^learning_policy_audit_[a-f0-9]{64}$/u),
       promotion: {
         policyAfter: {
@@ -325,42 +325,15 @@ describe("continuity learning preview tool", () => {
 
     const rollbackTool = tool("muse.continuity.learning.rollback");
     expect(rollbackTool.definition.risk).toBe("write");
-    const promotion = (
-      applied as { readonly promotion: ExperienceLearningPromotionReceipt }
-    ).promotion;
-    const forgedPolicyBefore = {
-      detail: "standard" as const,
-      nextStep: "direct" as const,
-      suppression: "none" as const,
-      version: promotion.policyBefore.version
-    };
-    const forgedDigestBefore = fingerprintContinuityPolicy(forgedPolicyBefore);
-    const forgedPromotionCore = [
-      promotion.candidateId,
-      promotion.replayInputHash,
-      forgedDigestBefore,
-      promotion.activeBehaviorDigestAfter,
-      promotion.scope.kind,
-      promotion.scope.threadId,
-      promotion.proposedBehavior,
-      promotion.proposedChange,
-      promotion.approvedAt,
-      promotion.appliedAt
-    ];
-    const forgedPromotion: ExperienceLearningPromotionReceipt = {
-      ...promotion,
-      activeBehaviorDigestBefore: forgedDigestBefore,
-      policyBefore: forgedPolicyBefore,
-      promotionId: `learning_promotion_${sha256Hex(JSON.stringify(forgedPromotionCore))}`
-    };
+    const handleId = (applied as { readonly handleId: string }).handleId;
     const beforeForgedRollback = await readFile(attunementFile);
     await expect(rollbackTool.execute(
-      { promotion: forgedPromotion },
+      { handleId: `learning_promotion_handle_${"f".repeat(64)}` },
       { runId: "forged-self-consistent-rollback" }
     )).rejects.toThrow(/held/u);
     expect(await readFile(attunementFile)).toEqual(beforeForgedRollback);
     const rolledBack = await rollbackTool.execute(
-      { promotion },
+      { handleId: handleId! },
       { runId: "rollback-learning" }
     );
     expect(rolledBack).toMatchObject({
@@ -379,11 +352,11 @@ describe("continuity learning preview tool", () => {
       .toMatchObject({ detail: "standard", nextStep: "contextual" });
     const afterRollback = await readFile(attunementFile);
     await expect(rollbackTool.execute(
-      { promotion },
+      { handleId: handleId! },
       { runId: "replay-rollback" }
     )).rejects.toThrow();
     await expect(rollbackTool.execute({
-      promotion: { ...promotion, candidateId: "forged-candidate" }
+      handleId: `learning_promotion_handle_${"e".repeat(64)}`
     }, { runId: "tampered-rollback" })).rejects.toThrow();
     expect(await readFile(attunementFile)).toEqual(afterRollback);
 
@@ -531,23 +504,24 @@ describe("continuity learning preview tool", () => {
     expect(apply).toHaveBeenCalledTimes(1);
   });
 
-  it("requires one plain promotion receipt before the rollback dependency", async () => {
+  it("requires one exact promotion handle ID before the rollback dependency", async () => {
     const rollback = vi.fn(async () => undefined);
     const tool = createContinuityLearningRollbackTool({ rollback });
     expect(tool.definition.risk).toBe("write");
     await expect(tool.execute({
-      promotion: { candidateId: "candidate" }
+      handleId: `learning_promotion_handle_${"a".repeat(64)}`
     }, { runId: "held" })).rejects.toThrow(/held/u);
     expect(rollback).toHaveBeenCalledTimes(1);
     for (const input of [
       {},
-      { promotion: [] },
-      { extra: true, promotion: {} }
+      { handleId: "learning_promotion_handle_invalid" },
+      { handleId: `learning_promotion_handle_${"b".repeat(64)}`, extra: true },
+      { promotion: {} }
     ]) {
       await expect(tool.execute(input as never, { runId: "invalid" })).rejects.toThrow();
     }
     await expect(tool.execute(
-      new Proxy({ promotion: {} }, {}),
+      new Proxy({ handleId: `learning_promotion_handle_${"c".repeat(64)}` }, {}),
       { runId: "proxy" }
     )).rejects.toThrow();
     expect(rollback).toHaveBeenCalledTimes(1);
