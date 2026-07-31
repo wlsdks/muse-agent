@@ -26,7 +26,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { constants, promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 import { computeLockRetryDelay, sleep, withFileLock, withFileMutationQueue } from "@muse/shared";
@@ -38,6 +38,42 @@ export interface AtomicWriteOptions {
   readonly fsync?: boolean;
   /** File mode for the tmp + final file. Default 0o600 (owner-only — these hold personal data). */
   readonly mode?: number;
+  /**
+   * Fail closed unless the still-open temporary file is an owner-private,
+   * single-link regular file that has been synced before rename.
+   */
+  readonly strictPrivate?: boolean;
+}
+
+function validateStrictPrivateOptions(options: AtomicWriteOptions, mode: number): void {
+  if (!options.strictPrivate) return;
+  if (mode !== 0o600) {
+    throw new RangeError("strictPrivate atomic writes require mode 0o600");
+  }
+  if (options.fsync === false) {
+    throw new RangeError("strictPrivate atomic writes require fsync");
+  }
+}
+
+function strictPrivateOpenFlags(): number {
+  return constants.O_WRONLY
+    | constants.O_CREAT
+    | constants.O_EXCL
+    | (process.platform === "win32" ? 0 : constants.O_NOFOLLOW);
+}
+
+async function assertStrictPrivateTemporaryFile(
+  handle: Awaited<ReturnType<typeof fs.open>>
+): Promise<void> {
+  const stat = await handle.stat();
+  if (
+    !stat.isFile()
+    || stat.nlink !== 1
+    || (process.platform !== "win32" && (stat.mode & 0o777) !== 0o600)
+    || (typeof process.getuid === "function" && stat.uid !== process.getuid())
+  ) {
+    throw new Error("strict-private atomic temporary file is unsafe");
+  }
 }
 
 /**
@@ -47,15 +83,23 @@ export interface AtomicWriteOptions {
  */
 export async function atomicWriteFile(file: string, contents: string | Uint8Array, options: AtomicWriteOptions = {}): Promise<void> {
   const mode = options.mode ?? 0o600;
+  validateStrictPrivateOptions(options, mode);
   const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
   await fs.mkdir(dirname(file), { recursive: true });
   try {
-    const handle = await fs.open(tmp, "w", mode);
+    const handle = await fs.open(
+      tmp,
+      options.strictPrivate ? strictPrivateOpenFlags() : "w",
+      mode
+    );
     try {
       await handle.writeFile(contents, "utf8");
       // fsync before rename: a crash can otherwise commit the rename pointing at
       // a zero-length / partial file (metadata and data journal separately).
       if (options.fsync !== false) await handle.sync();
+      if (options.strictPrivate) {
+        await assertStrictPrivateTemporaryFile(handle);
+      }
     } finally {
       await handle.close();
     }

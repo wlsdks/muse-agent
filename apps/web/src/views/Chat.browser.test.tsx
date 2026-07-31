@@ -466,7 +466,7 @@ test("renders the nudge for a resumable review fixture, and the mere render neve
   expect(post).not.toHaveBeenCalled();
 });
 
-test("prepares only after one explicit click and renders an honest seeded state", async () => {
+test("prepares only after one explicit click and renders the session-only seeded fallback", async () => {
   window.sessionStorage.removeItem(NUDGE_SUPPRESSION_KEY);
   const get = vi.fn(async () => ({ threads: [RESUMABLE_THREAD] }));
   const post = vi.fn(async () => ({
@@ -478,14 +478,59 @@ test("prepares only after one explicit click and renders an honest seeded state"
 
   await screen.getByRole("button", { name: "Prepare continuity capsule" }).click();
 
-  await expect.element(screen.getByText("Comparison baseline started")).toBeVisible();
+  await expect.element(screen.getByText("Session-only baseline started")).toBeVisible();
   await expect.element(screen.getByText(
-    "Muse saved a process-local starting point for this running session. No capsule or draft was prepared yet."
+    "Muse saved a process-local starting point for this running session only. No capsule or draft was prepared yet."
   )).toBeVisible();
   expect(post).toHaveBeenCalledTimes(1);
   expect(post).toHaveBeenCalledWith(
     "/api/attunement/threads/thread_life/capsule/prepare",
     { locale: "en" }
+  );
+});
+
+test("renders truthful English and Korean restart-safe seeded states after explicit clicks", async () => {
+  window.sessionStorage.removeItem(NUDGE_SUPPRESSION_KEY);
+  const get = vi.fn(async () => ({ threads: [RESUMABLE_THREAD] }));
+  const post = vi.fn(async () => ({
+    schemaVersion: 1,
+    status: "seeded",
+    baselineDurability: "durable-local"
+  }));
+  const screen = await renderNudge({
+    get,
+    languageSwitch: true,
+    post
+  });
+
+  await screen.getByRole("button", {
+    name: "Prepare continuity capsule"
+  }).click();
+  await expect.element(
+    screen.getByText("Restart-safe baseline saved")
+  ).toBeVisible();
+  await expect.element(screen.getByText(
+    "Muse saved this verified comparison baseline in local personal storage, so a later Muse process can use it after restart. No capsule or draft was prepared yet."
+  )).toBeVisible();
+
+  await screen.getByRole("button", { name: "Switch to Korean" }).click();
+  await screen.getByRole("button", { name: "연속성 캡슐 준비" }).click();
+  await expect.element(screen.getByText(
+    "재시작 후에도 유지되는 기준점을 저장했어요"
+  )).toBeVisible();
+  await expect.element(screen.getByText(
+    "검증된 비교 기준점을 로컬 개인 저장소에 저장해서 Muse가 재시작한 뒤에도 사용할 수 있어요. 아직 캡슐이나 초안은 만들지 않았어요."
+  )).toBeVisible();
+  expect(post).toHaveBeenCalledTimes(2);
+  expect(post).toHaveBeenNthCalledWith(
+    1,
+    "/api/attunement/threads/thread_life/capsule/prepare",
+    { locale: "en" }
+  );
+  expect(post).toHaveBeenNthCalledWith(
+    2,
+    "/api/attunement/threads/thread_life/capsule/prepare",
+    { locale: "ko" }
   );
 });
 

@@ -121,6 +121,60 @@ describe("atomicWriteFile", () => {
     const dirOpenCall = openMock.mock.calls.find((call) => call[0] === dirname(file) && call[1] === "r");
     expect(dirOpenCall).toBeUndefined();
   });
+
+  it("strict-private mode writes a synced owner-private single-link regular file", async () => {
+    const file = join(dir, "strict-private.json");
+    await atomicWriteFile(file, "private", { strictPrivate: true });
+    const info = await stat(file);
+    expect(info.isFile()).toBe(true);
+    expect(info.nlink).toBe(1);
+    if (process.platform !== "win32") expect(info.mode & 0o777).toBe(0o600);
+    if (typeof process.getuid === "function") expect(info.uid).toBe(process.getuid());
+  });
+
+  it("strict-private mode rejects non-private or unsynced options before touching the target", async () => {
+    const file = join(dir, "strict-private-invalid.json");
+    await expect(
+      atomicWriteFile(file, "unsafe", { mode: 0o644, strictPrivate: true })
+    ).rejects.toThrow("mode 0o600");
+    await expect(
+      atomicWriteFile(file, "unsafe", { fsync: false, strictPrivate: true })
+    ).rejects.toThrow("require fsync");
+    await expect(readFile(file, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("strict-private mode validates the still-open temporary file before rename", async () => {
+    const openMock = fsMocked.open as Mock;
+    const file = join(dir, "strict-private-rejected.json");
+    openMock.mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      const handle = await realOpen(...args);
+      if (typeof args[0] === "string" && args[0].startsWith(`${file}.tmp-`)) {
+        return {
+          ...handle,
+          close: handle.close.bind(handle),
+          stat: async () => new Proxy(await handle.stat(), {
+            get(target, property, receiver) {
+              return property === "nlink"
+                ? 2
+                : Reflect.get(target, property, receiver);
+            }
+          }),
+          sync: handle.sync.bind(handle),
+          writeFile: handle.writeFile.bind(handle)
+        } as Awaited<ReturnType<typeof realOpen>>;
+      }
+      return handle;
+    });
+    try {
+      await expect(
+        atomicWriteFile(file, "unsafe", { strictPrivate: true })
+      ).rejects.toThrow("temporary file is unsafe");
+      await expect(readFile(file, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      expect((await readdir(dir)).filter((entry) => entry.includes(".tmp-"))).toEqual([]);
+    } finally {
+      openMock.mockImplementation(realOpen);
+    }
+  });
 });
 
 describe("withFileMutationQueue", () => {

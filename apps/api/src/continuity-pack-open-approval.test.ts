@@ -24,9 +24,14 @@ afterEach(async () => {
 });
 
 describe("normal-chat Continuity Pack open approval", () => {
-  it("keeps preview/proposal receipt-free and opens exactly once after owner approval", async () => {
+  it("approval-gates the internal Preview write and opens exactly once after a separate owner approval", async () => {
     directory = await mkdtemp(join(tmpdir(), "muse-continuity-pack-approval-"));
     const attunementFile = join(directory, "attunement.json");
+    const baselineFile = join(
+      directory,
+      ".muse",
+      "continuity-resume-baselines.json"
+    );
     const notesDir = join(directory, "notes");
     const pendingFile = join(directory, "pending.json");
     const tasksFile = join(directory, "tasks.json");
@@ -45,7 +50,7 @@ describe("normal-chat Continuity Pack open approval", () => {
     await linkArtifact(attunementFile, {
       artifactId: "task_pack_open",
       artifactType: "task",
-      role: "context",
+      role: "next-step",
       threadId: thread.id
     }, {
       validateArtifact: createLocalArtifactValidator({ notesDir, tasksFile })
@@ -62,27 +67,131 @@ describe("normal-chat Continuity Pack open approval", () => {
     const preview = assembly.toolRegistry.list().find(
       (tool) => tool.definition.name === "muse.continuity.pack.preview"
     )!;
+    const prepare = assembly.toolRegistry.list().find(
+      (tool) => tool.definition.name === "muse.continuity.capsule.prepare"
+    )!;
     const open = assembly.toolRegistry.list().find(
       (tool) => tool.definition.name === "muse.continuity.pack.open"
     )!;
     const before = await readFile(attunementFile);
-    const previewed = await preview.execute(
-      { threadId: thread.id },
-      { runId: "preview" }
+    expect(CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST).toContain(
+      preview.definition.name
     );
-    expect(previewed).toMatchObject({
-      mutation: false,
-      previewDigest: expect.stringMatching(/^[a-f0-9]{64}$/u)
+    expect(CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST).toContain(
+      prepare.definition.name
+    );
+    const prepareWiring =
+      chatWriteApprovalWiring({ env } as ServerOptions)!;
+    expect(prepareWiring.toolApprovalGate({
+      risk: "write",
+      runId: "prepare_proposal",
+      toolCall: {
+        arguments: { locale: "en", threadId: thread.id },
+        id: "call_prepare",
+        name: prepare.definition.name
+      },
+      userId: "owner"
+    })).toMatchObject({ allowed: false });
+    await expect(readFile(baselineFile)).rejects.toMatchObject({
+      code: "ENOENT"
     });
     expect(await readFile(attunementFile)).toEqual(before);
 
-    const wiring = chatWriteApprovalWiring({ env } as ServerOptions)!;
+    const preparePending = await prepareWiring.persist("owner");
+    expect(preparePending).toHaveLength(1);
+    const prepareApproved = await executeChatApproval({
+      id: preparePending[0]!.id,
+      pendingFile,
+      requestUserId: "owner",
+      resolveTool: (name) =>
+        name === prepare.definition.name ? prepare : undefined
+    });
+    expect(prepareApproved).toMatchObject({
+      body: {
+        ran: true,
+        result: {
+          baselineDurability: "durable-local",
+          completed: true,
+          status: "seeded"
+        },
+        state: "succeeded",
+        tool: prepare.definition.name
+      },
+      statusCode: 200
+    });
+    const baselineAfterPrepare = await readFile(baselineFile, "utf8");
+    expect(JSON.parse(baselineAfterPrepare)).toMatchObject({
+      baselines: [{ scope: { threadId: thread.id } }],
+      schemaVersion: 1
+    });
+    expect(await readFile(attunementFile)).toEqual(before);
+
+    const previewWiring =
+      chatWriteApprovalWiring({ env } as ServerOptions)!;
+    expect(previewWiring.toolApprovalGate({
+      risk: "write",
+      runId: "preview_proposal",
+      toolCall: {
+        arguments: { threadId: thread.id },
+        id: "call_preview",
+        name: preview.definition.name
+      },
+      userId: "owner"
+    })).toMatchObject({ allowed: false });
+    expect(await readFile(baselineFile, "utf8")).toEqual(
+      baselineAfterPrepare
+    );
+    expect(await readFile(attunementFile)).toEqual(before);
+
+    const previewPending = await previewWiring.persist("owner");
+    expect(previewPending).toHaveLength(1);
+    const previewApproved = await executeChatApproval({
+      id: previewPending[0]!.id,
+      pendingFile,
+      requestUserId: "owner",
+      resolveTool: (name) =>
+        name === preview.definition.name ? preview : undefined
+    });
+    expect(previewApproved).toMatchObject({
+      body: {
+        ran: true,
+        result: {
+          completed: true,
+          mutation: true,
+          mutationScope: "internal-comparison-baseline",
+          sourceMutation: false
+        },
+        state: "succeeded",
+        tool: preview.definition.name
+      },
+      statusCode: 200
+    });
+    expect(await readFile(attunementFile)).toEqual(before);
+    const baselineAfterPreview = await readFile(baselineFile, "utf8");
+    const previewReplay = await executeChatApproval({
+      id: previewPending[0]!.id,
+      pendingFile,
+      requestUserId: "owner",
+      resolveTool: () => preview
+    });
+    expect(previewReplay).toMatchObject({
+      body: { state: "succeeded" },
+      statusCode: 409
+    });
+    expect(await readFile(baselineFile, "utf8")).toEqual(
+      baselineAfterPreview
+    );
+
+    const previewed = previewApproved.body["result"] as {
+      readonly previewDigest: string;
+    };
+    const openWiring = chatWriteApprovalWiring({ env } as ServerOptions)!;
     const arguments_ = {
-      previewDigest: (previewed as { readonly previewDigest: string }).previewDigest,
+      previewDigest: previewed.previewDigest,
       threadId: thread.id
     };
     expect(CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST).toContain(open.definition.name);
-    expect(wiring.toolApprovalGate({
+    expect(openWiring.toolApprovalGate({
       risk: "write",
       runId: "proposal",
       toolCall: {
@@ -94,7 +203,7 @@ describe("normal-chat Continuity Pack open approval", () => {
     })).toMatchObject({ allowed: false });
     expect(await readFile(attunementFile)).toEqual(before);
 
-    const pending = await wiring.persist("owner");
+    const pending = await openWiring.persist("owner");
     expect(pending).toHaveLength(1);
     expect((await readAttunementState(attunementFile)).deliveries).toEqual([]);
     const approved = await executeChatApproval({

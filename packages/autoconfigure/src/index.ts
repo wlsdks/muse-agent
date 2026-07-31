@@ -56,6 +56,11 @@ export {
 } from "./continuity-learning-preparation-service.js";
 
 export {
+  ContinuityResumeBaselineFileStore,
+  ContinuityResumeBaselineFileStoreUnavailableError
+} from "./continuity-resume-baseline-file-store.js";
+
+export {
   buildActiveContextProvider,
   buildCalendarRegistry,
   buildSkillRegistry,
@@ -69,6 +74,7 @@ export {
   resolveAttunementFile,
   resolveBrowsingFile,
   resolveContactsFile,
+  resolveContinuityResumeBaselinesFile,
   resolveEpisodesFile,
   resolveNoteProvenanceFile,
   resolveFadedMemoriesFile,

@@ -8,6 +8,32 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added AWG-040f restart-safe local comparison baselines for explicit Continuity Capsule
+  preparation. Production assembly now stores at most 16 exact verified Source/Graph baselines in
+  a strict-private local file, reloads and reverifies them before capture or model work, and
+  advances them with compare-and-set before publishing a result or mutating process memory. The
+  API and English/Korean Chat seeded state distinguish `durable-local` from the preserved
+  `process-local-only` library/test fallback. The bounded file serializes the verified Source
+  receipt needed for exact comparison: artifact/provider IDs; thread title/kind; presentation
+  policy/thread metadata; prior outcome; titles/summaries; generic `updatedAt`; and task/reminder/
+  calendar/contact/run/checkpoint/browsing/conversation/work metadata, including tags, dates/times,
+  locations, contact birthday/relationship, run tool names, browsing URL/`visitedAt`, conversation
+  last owner prompt/origin/`updatedAt`, and work counters/status. Exact artifact IDs are retained
+  verbatim and may themselves be provider-local paths or locator strings; exact serialized source
+  strings are potentially sensitive. The store adds
+  no separate whole-source snapshot, prepared Capsule draft, credential field, action authority,
+  inferred usefulness, or policy promotion; exact source strings must still be treated as
+  potentially sensitive. This closes process-restart comparison loss; it does not add exact stop
+  capture, current freshness, automatic timing or delivery, all-source ingestion, semantic
+  entailment, authenticated evidence witness, Admin write/repair, action execution, or organic
+  usefulness evidence.
+  The public Pack Preview and Capsule Prepare tools now declare `write` risk because either
+  invocation may project a durable rebuildable observation when configured and may persist the
+  internal comparison baseline; they still report each internal effect separately and report that
+  linked sources are not mutated. Model-driven API/inbound Chat exposes both only through
+  `MUSE_CHAT_WRITE_ENABLED` and draft-first approval, while the explicit local Capsule button
+  remains the owner action and does not add a second approval.
+
 - Added AWG-040e2, the first explicit Continuity Capsule product/API projection. An
   owner-gated `POST /api/attunement/threads/:threadId/capsule/prepare` calls the exact
   assembly-owned preparation service with its request abort signal and returns only a private,
@@ -15,7 +41,9 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   source key before exposing its bounded display fields and excludes raw references, receipt and
   evidence identities, provider/model details, and action payloads. Empty Chat now offers an
   explicit Prepare control for a reviewed resumable thread; it performs no request on render,
-  polling, or automatic retry, and its first request may establish only a process-local baseline.
+  polling, or automatic retry. In this original slice its first request established only a
+  process-local baseline; AWG-040f later made the assembled-host seed durable-local while direct
+  construction retained that fallback.
   The card makes citation binding, unverified semantic entailment, and display-only/new-approval
   boundaries visible; Continue writes only the existing local navigation handoff. Configured
   authentication rejects anonymous HTTP calls but is not an authenticated evidence witness. This
@@ -23,7 +51,8 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   semantic truth, Policy Card control, action execution, or usefulness evidence.
 
 - Added AWG-040e1, the evidence-bound model-preparation prerequisite for Continuity
-  Capsules. One assembly-scoped service reuses the existing process-local resume coordinator;
+  Capsules. One assembly-scoped service reuses the resume coordinator (process-local in this
+  original slice; durable-local in the assembled host after AWG-040f);
   the first qualifying call reports a truthful seeded state, and only an exact identity-bound
   compared result can make one configured-provider structured-output call. The canonical
   content-addressed evidence input contains exact observation receipt identities, available
@@ -33,11 +62,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   timeout/cancellation, late output, and dependency tampering reject the whole proposal.
   Separately versioned Manifest, Presentation, and preparation receipt expose verified citation
   binding, unverified semantic entailment, estimated minutes, deterministic English/Korean title,
-  and display-only/no-action authority. The new read-only
+  and display-only/no-action authority. The new
   `muse.continuity.capsule.prepare` tool accepts exactly `threadId` and `locale`; legacy
-  caller-declared Capsule bytes remain compatible. This is not an authenticated API/UI, durable
-  baseline, exact stop capture, all-source Capsule, automatic timing, semantic truth, Policy Card
-  control, or usefulness evidence.
+  caller-declared Capsule bytes remain compatible. AWG-040f later classified the assembled tool
+  as `write` risk, added the bounded durable comparison baseline, and made the already configured
+  rebuildable AttuneGraph observation projection part of the truthful mutation report. This is not an
+  authenticated evidence witness, exact stop capture, all-source Capsule, automatic timing,
+  semantic truth, Policy Card control, or usefulness evidence.
 
 - Added the AWG-050b4 read-only Shadow Return Inspector. The Muse integration reads one
   capability-authenticated persisted timing snapshot, orders at most 20 exact CLI-return
@@ -391,8 +422,10 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   lint, the public/private export probe, and adversarial provenance/dependency probes.
 
 - Added an independently verified, bounded **Continuity resume runtime** and connected it
-  only to the existing read-only `muse.continuity.pack.preview` path. One runtime assembly
-  now keeps at most 16 exact per-thread process-local baselines, admits at most four
+  only to the explicit `muse.continuity.pack.preview` path. This original slice used
+  process-local comparison state; AWG-040f later made the assembled tool write-risk and
+  restart-safe through its bounded private baseline store. At this slice one runtime assembly
+  kept at most 16 exact per-thread process-local baselines and admitted at most four
   captures globally, rejects same-scope overlap, caps Provider head revalidation at one
   second and the operation at five seconds, and prevents timed-out or superseded
   generations from writing late. The first qualifying Preview seeds a baseline; later
@@ -406,9 +439,10 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   `previewDigest` remains Pack-only and `pack.open` never invokes or advances the Graph
   runtime. Graph tests `312/312`, autoconfigure tests `1087/1087`, changed tests, both
   package builds/typechecks, built-output verification, lint, full workspace checks before
-  and after rebase, and fresh independent completion gates passed. This is controlled
-  process-local dogfooding—not durability, automatic stop capture/timing, Capsule product UI,
-  Shadow Muse, Policy Card, action authority, or organic usefulness evidence.
+  and after rebase, and fresh independent completion gates passed. That slice was controlled
+  process-local dogfooding; AWG-040f later added only bounded comparison durability. Automatic
+  stop capture/timing, Shadow Muse, Policy Card control, action authority, and organic usefulness
+  evidence remain outside this capability.
 
 - Added an independently verified, package-private **retained witness inventory** as the
   final evidence-retention prerequisite for a future `resumeContext`. The thread-rooted

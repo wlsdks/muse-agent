@@ -28,12 +28,14 @@ Muse*. Each entry is one definition plus where it lives. Exact verification evid
 - **Continuity Capsule** — the richer product form of today's Continuity Pack: the stopping point,
   what changed since, the exact evidence, the next step, prepared work and expected time, in one
   view. A shipped explicit Chat slice now invokes the assembly-owned preparation service only
-  after the owner selects Prepare, reports a truthful process-local seeded state when no earlier
-  observation exists, and otherwise shows a closed English/Korean display card. It verifies
-  citation membership for current task/note/reminder evidence and exposes timing, freshness,
-  entailment, and action caveats. Exact stop capture, durable baselines, all-source parity,
-  authenticated evidence witness, automatic timing/surfacing, semantic entailment, and organic
-  usefulness remain **roadmap**.
+  after the owner selects Prepare. The assembled host keeps a bounded durable-local comparison
+  baseline with at most 16 entries, allowing a fresh process to compare with an earlier
+  observation; direct library or test construction without a baseline store uses a process-local
+  fallback. When no earlier baseline exists it reports a truthful seeded state, and otherwise shows
+  a closed English/Korean display card. It verifies citation membership for current
+  task/note/reminder evidence and exposes timing, freshness, entailment, and action caveats. Exact
+  stop capture, current freshness, all-source parity, authenticated evidence witness, automatic
+  timing/surfacing, semantic entailment, and organic usefulness remain **roadmap**.
 - **Policy Card** — the surface that shows how Muse proposes to change the way it works with this
   person, with evidence and scope. A read-only, explicitly invoked AttuneGraph-backed render-data
   preview is available now; automatic surfacing, product UI, and trusted trial, edit, reject,

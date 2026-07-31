@@ -1,5 +1,9 @@
 import { homedir, userInfo } from "node:os";
-import { join as pathJoin } from "node:path";
+import {
+  isAbsolute,
+  join as pathJoin,
+  normalize as normalizePath
+} from "node:path";
 
 import type { MuseEnvironment } from "./index.js";
 
@@ -73,6 +77,29 @@ function resolveDotMusePath(env: MuseEnvironment, envKey: string, defaultName: s
 
 export function resolveNotesDir(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_NOTES_DIR", "notes");
+}
+
+export function resolveContinuityResumeBaselinesFile(
+  env: MuseEnvironment
+): string {
+  const override = env.MUSE_CONTINUITY_RESUME_BASELINES_FILE?.trim();
+  if (override) {
+    if (
+      override.includes("\0")
+      || !isAbsolute(override)
+      || normalizePath(override) !== override
+    ) {
+      throw new Error(
+        "MUSE_CONTINUITY_RESUME_BASELINES_FILE must be an absolute normalized NUL-free path"
+      );
+    }
+    return override;
+  }
+  return resolveDotMusePath(
+    env,
+    "MUSE_CONTINUITY_RESUME_BASELINES_FILE",
+    "continuity-resume-baselines.json"
+  );
 }
 
 /** File-backed token-usage ledger (JSONL) — where the no-DB mode persists

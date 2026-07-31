@@ -30,6 +30,7 @@ import {
 } from "./continuity-resume-context-orchestrator.js";
 import {
   captureContinuityResumeBoundary,
+  verifyContinuityResumeBoundaryWithDependencies,
   type ContinuityResumeBoundary
 } from "./continuity-resume-boundary.js";
 import {
@@ -117,10 +118,26 @@ export type ContinuityResumeRuntimeUnavailableReason =
   | "graph-projection-failed"
   | "observation-regressed"
   | "observation-conflict"
+  | "baseline-store-unavailable"
   | "resume-context-unavailable"
   | "runtime-generation-changed";
 
 type RuntimeAuthority = typeof AUTHORITY;
+
+export type ContinuityResumeRuntimeMutationReceiptV1 = Readonly<{
+  readonly schemaVersion: 1;
+  readonly summary: "none" | "committed" | "possible";
+  readonly effects: readonly Readonly<{
+    readonly target: "baseline" | "projection";
+    readonly durability: "process-local" | "durable-local";
+    readonly outcome:
+      | "committed"
+      | "unchanged"
+      | "conflict"
+      | "not-attempted"
+      | "outcome-unknown";
+  }>[];
+}>;
 
 export type ContinuityResumeRuntimeUnavailableV1 = Readonly<{
   readonly schemaVersion: 1;
@@ -129,13 +146,21 @@ export type ContinuityResumeRuntimeUnavailableV1 = Readonly<{
   readonly authority: RuntimeAuthority;
 }>;
 
-export type ContinuityResumeRuntimeSeededV1 = Readonly<{
-  readonly schemaVersion: 1;
-  readonly status: "partial";
-  readonly state: "process-local-baseline-seeded";
-  readonly reason: "no-prior-process-local-baseline";
-  readonly authority: RuntimeAuthority;
-}>;
+export type ContinuityResumeRuntimeSeededV1 =
+  | Readonly<{
+      readonly schemaVersion: 1;
+      readonly status: "partial";
+      readonly state: "process-local-baseline-seeded";
+      readonly reason: "no-prior-process-local-baseline";
+      readonly authority: RuntimeAuthority;
+    }>
+  | Readonly<{
+      readonly schemaVersion: 1;
+      readonly status: "partial";
+      readonly state: "durable-baseline-seeded";
+      readonly reason: "no-prior-durable-baseline";
+      readonly authority: RuntimeAuthority;
+    }>;
 
 export type ContinuityResumeRuntimeComparedV1 = Readonly<{
   readonly schemaVersion: 1;
@@ -237,16 +262,38 @@ export interface ContinuityResumeRuntimeCoordinatorDependencies {
    */
   readonly projectCurrentGraphObservation?: (
     observation: ContinuityObservationReceipt
-  ) => Promise<unknown>;
+  ) => Promise<Readonly<{ readonly status: "projected" | "replayed" }>>;
+  readonly baselineStore?: ContinuityResumeRuntimeBaselineStore;
   /** @internal deterministic-test seam */
   readonly monotonicNowMs?: () => number;
 }
 
-type Baseline = Readonly<{
+export const CONTINUITY_RESUME_RUNTIME_BASELINE_VERSION =
+  "muse.continuity-resume-baseline.v1" as const;
+
+export type ContinuityResumeRuntimeBaselineV1 = Readonly<{
+  readonly schemaVersion: 1;
+  readonly baselineVersion:
+    typeof CONTINUITY_RESUME_RUNTIME_BASELINE_VERSION;
+  readonly scope: Readonly<ContinuityScopedSourceObservationScope>;
   readonly boundary: ContinuityResumeBoundary;
-  readonly source: ContinuityScopedSourceObservationReceipt;
-  readonly graph: ContinuityObservationReceipt;
+  readonly sourceObservationReceipt:
+    ContinuityScopedSourceObservationReceipt;
+  readonly graphObservationReceipt: ContinuityObservationReceipt;
 }>;
+
+export interface ContinuityResumeRuntimeBaselineStore {
+  load(
+    scope: Readonly<ContinuityScopedSourceObservationScope>
+  ): Promise<unknown | undefined>;
+  compareAndSet(
+    scope: Readonly<ContinuityScopedSourceObservationScope>,
+    expectedBoundaryId: string | undefined,
+    proposed: ContinuityResumeRuntimeBaselineV1
+  ): Promise<"stored" | "unchanged" | "conflict">;
+}
+
+type Baseline = ContinuityResumeRuntimeBaselineV1;
 
 type BusyToken = { active: boolean };
 
@@ -263,6 +310,8 @@ const CONTINUITY_RESUME_RUNTIME_RESULT_PACKS =
   new WeakMap<object, ContinuityPack>();
 const CONTINUITY_RESUME_RUNTIME_RESULT_CAPSULE_EVIDENCE =
   new WeakMap<object, ContinuityResumeRuntimeCapsuleEvidence>();
+const CONTINUITY_RESUME_RUNTIME_RESULT_MUTATION_RECEIPTS =
+  new WeakMap<object, ContinuityResumeRuntimeMutationReceiptV1>();
 
 function frozenRecord<T extends Record<string, unknown>>(value: T): Readonly<T> {
   return Object.freeze(
@@ -292,6 +341,51 @@ function unavailable(
     reason,
     authority: AUTHORITY
   }) as ContinuityResumeRuntimeUnavailableV1;
+}
+
+function mutationReceipt(
+  projection: ContinuityResumeRuntimeMutationReceiptV1["effects"][number]["outcome"],
+  baseline: ContinuityResumeRuntimeMutationReceiptV1["effects"][number]["outcome"],
+  baselineDurability: "process-local" | "durable-local"
+): ContinuityResumeRuntimeMutationReceiptV1 {
+  const effects = Object.freeze([
+    frozenRecord({
+      target: "projection" as const,
+      durability: "durable-local" as const,
+      outcome: projection
+    }),
+    frozenRecord({
+      target: "baseline" as const,
+      durability: baselineDurability,
+      outcome: baseline
+    })
+  ]);
+  const summary = projection === "outcome-unknown"
+    || baseline === "outcome-unknown"
+    ? "possible" as const
+    : projection === "committed" || baseline === "committed"
+      ? "committed" as const
+      : "none" as const;
+  return frozenRecord({
+    schemaVersion: 1 as const,
+    summary,
+    effects
+  }) as ContinuityResumeRuntimeMutationReceiptV1;
+}
+
+function bindResultMutationReceipt<T extends ContinuityResumeRuntimeResultV1>(
+  result: T,
+  receipt: ContinuityResumeRuntimeMutationReceiptV1
+): T {
+  CONTINUITY_RESUME_RUNTIME_RESULT_MUTATION_RECEIPTS.set(result, receipt);
+  return result;
+}
+
+export function getContinuityResumeRuntimeMutationReceipt(
+  result: unknown
+): ContinuityResumeRuntimeMutationReceiptV1 | undefined {
+  if (typeof result !== "object" || result === null) return undefined;
+  return CONTINUITY_RESUME_RUNTIME_RESULT_MUTATION_RECEIPTS.get(result);
 }
 
 function bindResultPack<T extends ContinuityResumeRuntimeResultV1>(
@@ -667,6 +761,76 @@ function sameScope(
   return left.sourceId === right.sourceId && left.threadId === right.threadId;
 }
 
+export function verifyContinuityResumeRuntimeBaseline(
+  input: unknown
+): ContinuityResumeRuntimeBaselineV1 {
+  try {
+    if (typeof input !== "object" || input === null || Array.isArray(input)) {
+      throw new TypeError("baseline must be a record");
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(input);
+    const expected = [
+      "schemaVersion",
+      "baselineVersion",
+      "scope",
+      "boundary",
+      "sourceObservationReceipt",
+      "graphObservationReceipt"
+    ] as const;
+    const keys = Reflect.ownKeys(descriptors);
+    if (
+      keys.length !== expected.length
+      || keys.some((key) =>
+        typeof key !== "string"
+        || !expected.includes(key as (typeof expected)[number])
+        || !("value" in descriptors[key]!)
+      )
+    ) {
+      throw new TypeError("baseline fields are invalid");
+    }
+    if (
+      descriptors.schemaVersion?.value !== 1
+      || descriptors.baselineVersion?.value
+        !== CONTINUITY_RESUME_RUNTIME_BASELINE_VERSION
+    ) {
+      throw new TypeError("baseline version is unsupported");
+    }
+    const scope = safeScope(descriptors.scope?.value);
+    if (scope === undefined) throw new TypeError("baseline scope is invalid");
+    const verified =
+      verifyContinuityResumeBoundaryWithDependencies({
+        boundary: descriptors.boundary?.value,
+        previousSourceObservationReceipt:
+          descriptors.sourceObservationReceipt?.value,
+        previousGraphObservationReceipt:
+          descriptors.graphObservationReceipt?.value
+      });
+    if (
+      !sameScope(scope, verified.boundary.scope)
+      || !sameScope(
+        scope,
+        verified.previousSourceObservationReceipt.scope
+      )
+    ) {
+      throw new TypeError("baseline scope does not match its evidence");
+    }
+    return frozenRecord({
+      schemaVersion: 1 as const,
+      baselineVersion: CONTINUITY_RESUME_RUNTIME_BASELINE_VERSION,
+      scope,
+      boundary: verified.boundary,
+      sourceObservationReceipt:
+        verified.previousSourceObservationReceipt,
+      graphObservationReceipt:
+        verified.previousGraphObservationReceipt
+    }) as ContinuityResumeRuntimeBaselineV1;
+  } catch (cause) {
+    throw new TypeError("Continuity resume baseline is invalid", {
+      cause
+    });
+  }
+}
+
 function exactCurrentEvidence(
   scope: ContinuityScopedSourceObservationScope,
   capture: ContinuityResumeRuntimeCaptureV1
@@ -765,12 +929,15 @@ function baselineFrom(
   graph: ContinuityObservationReceipt
 ): Baseline {
   return frozenRecord({
+    schemaVersion: 1 as const,
+    baselineVersion: CONTINUITY_RESUME_RUNTIME_BASELINE_VERSION,
+    scope: source.scope,
     boundary: captureContinuityResumeBoundary({
       previousSourceObservationReceipt: source,
       previousGraphObservationReceipt: graph
     }),
-    source,
-    graph
+    sourceObservationReceipt: source,
+    graphObservationReceipt: graph
   }) as Baseline;
 }
 
@@ -824,10 +991,28 @@ export function createContinuityResumeRuntimeCoordinator(
     }
 
     const token: BusyToken = { active: true };
-    const capturedBaseline = baselines.get(key);
+    const capturedProcessBaseline = baselines.get(key);
+    const baselineStore = dependencies.baselineStore;
+    const baselineDurability = baselineStore === undefined
+      ? "process-local" as const
+      : "durable-local" as const;
+    let projection: ContinuityResumeRuntimeMutationReceiptV1["effects"][number]["outcome"] =
+      "not-attempted";
+    let baseline: ContinuityResumeRuntimeMutationReceiptV1["effects"][number]["outcome"] =
+      "not-attempted";
+    const currentMutationReceipt = () => mutationReceipt(
+      projection,
+      baseline,
+      baselineDurability
+    );
+    const unavailableAfterMutation = (
+      reason: ContinuityResumeRuntimeUnavailableReason
+    ) => bindResultMutationReceipt(unavailable(reason), currentMutationReceipt());
+    let capturedBaseline = capturedProcessBaseline;
+    let startedAt = now();
     busy.set(key, token);
     inFlight += 1;
-    const startedAt = now();
+    let baselineLoadFailed = false;
     let captureSettled = false;
     let previewSettled = false;
     const releaseBusyIfSettled = (): void => {
@@ -839,8 +1024,41 @@ export function createContinuityResumeRuntimeCoordinator(
         busy.delete(key);
       }
     };
-    const capturePromise = Promise.resolve()
-      .then(() => dependencies.captureCurrent(scope))
+    const capturePromise = (
+      baselineStore === undefined
+        ? Promise.resolve()
+            .then(() => dependencies.captureCurrent(scope))
+        : Promise.resolve()
+            .then(async () => {
+              let loaded: unknown | undefined;
+              try {
+                loaded = await baselineStore.load(scope);
+              } catch {
+                baselineLoadFailed = true;
+                throw new Error("continuity-resume-baseline-load-failed");
+              }
+              if (!token.active || busy.get(key) !== token) {
+                throw new Error("continuity-resume-runtime-generation-changed");
+              }
+              if (loaded === undefined) {
+                capturedBaseline = undefined;
+              } else {
+                try {
+                  const verified =
+                    verifyContinuityResumeRuntimeBaseline(loaded);
+                  if (!sameScope(scope, verified.scope)) {
+                    throw new TypeError("loaded baseline scope mismatch");
+                  }
+                  capturedBaseline = verified;
+                } catch {
+                  baselineLoadFailed = true;
+                  throw new Error("continuity-resume-baseline-invalid");
+                }
+              }
+              startedAt = now();
+              return dependencies.captureCurrent(scope);
+            })
+    )
       .finally(() => {
         captureSettled = true;
         inFlight -= 1;
@@ -864,9 +1082,19 @@ export function createContinuityResumeRuntimeCoordinator(
           cause instanceof Error
           && cause.message === "continuity-resume-runtime-timeout"
         ) {
-          return unavailable("operation-timeout");
+          return unavailableAfterMutation("operation-timeout");
         }
-        return unavailable("capture-failed");
+        if (baselineLoadFailed) {
+          return unavailableAfterMutation("baseline-store-unavailable");
+        }
+        if (
+          cause instanceof Error
+          && cause.message
+            === "continuity-resume-runtime-generation-changed"
+        ) {
+          return unavailableAfterMutation("runtime-generation-changed");
+        }
+        return unavailableAfterMutation("capture-failed");
       }
       if (timeout !== undefined) clearTimeout(timeout);
       const captureSpanMs = now() - startedAt;
@@ -876,7 +1104,7 @@ export function createContinuityResumeRuntimeCoordinator(
           > CONTINUITY_RESUME_RUNTIME_LIMITS.maxCaptureSpanMs
       ) {
         token.active = false;
-        return unavailable("capture-span-exceeded");
+        return unavailableAfterMutation("capture-span-exceeded");
       }
 
       let current;
@@ -886,22 +1114,22 @@ export function createContinuityResumeRuntimeCoordinator(
             capture.currentProviderResult
           )
         ) {
-          return unavailable("current-evidence-invalid");
+          return unavailableAfterMutation("current-evidence-invalid");
         }
         if (capture.currentProviderResult.status !== "partial") {
-          return unavailable("provider-not-partial");
+          return unavailableAfterMutation("provider-not-partial");
         }
         current = exactCurrentEvidence(scope, capture);
       } catch {
-        return unavailable("current-evidence-invalid");
+        return unavailableAfterMutation("current-evidence-invalid");
       }
-      if (current === undefined) return unavailable("current-evidence-invalid");
+      if (current === undefined) return unavailableAfterMutation("current-evidence-invalid");
       const revalidation = current.provider.revalidationReceipt;
       if (
         !("captureSpanMs" in revalidation)
         || typeof revalidation.captureSpanMs !== "number"
       ) {
-        return unavailable("current-evidence-invalid");
+        return unavailableAfterMutation("current-evidence-invalid");
       }
       const providerSpan = revalidation.captureSpanMs;
       if (
@@ -911,62 +1139,132 @@ export function createContinuityResumeRuntimeCoordinator(
         || revalidation.maxCaptureSpanMs
           > CONTINUITY_RESUME_RUNTIME_LIMITS.maxCaptureSpanMs
       ) {
-        return unavailable("capture-span-exceeded");
+        return unavailableAfterMutation("capture-span-exceeded");
       }
       if (!token.active || busy.get(key) !== token) {
-        return unavailable("runtime-generation-changed");
+        return unavailableAfterMutation("runtime-generation-changed");
       }
-      if (baselines.get(key) !== capturedBaseline) {
-        return unavailable("runtime-generation-changed");
+      if (baselines.get(key) !== capturedProcessBaseline) {
+        return unavailableAfterMutation("runtime-generation-changed");
       }
 
       if (capturedBaseline !== undefined) {
-        const previousAt = capturedBaseline.graph.observedAt;
+        const previousAt =
+          capturedBaseline.graphObservationReceipt.observedAt;
         const currentAt = current.graph.observedAt;
         if (currentAt < previousAt) {
-          return unavailable("observation-regressed");
+          return unavailableAfterMutation("observation-regressed");
         }
         const sameSource =
-          current.source.receiptId === capturedBaseline.source.receiptId;
+          current.source.receiptId
+            === capturedBaseline.sourceObservationReceipt.receiptId;
         const sameGraph =
-          current.graph.receiptId === capturedBaseline.graph.receiptId;
+          current.graph.receiptId
+            === capturedBaseline.graphObservationReceipt.receiptId;
         if (currentAt === previousAt && (!sameSource || !sameGraph)) {
-          return unavailable("observation-conflict");
+          return unavailableAfterMutation("observation-conflict");
         }
       }
 
       if (dependencies.projectCurrentGraphObservation !== undefined) {
         try {
-          await dependencies.projectCurrentGraphObservation(current.graph);
+          projection = (
+            await dependencies.projectCurrentGraphObservation(current.graph)
+          ).status === "projected"
+            ? "committed"
+            : "unchanged";
         } catch {
-          return unavailable("graph-projection-failed");
+          projection = "outcome-unknown";
+          return unavailableAfterMutation("graph-projection-failed");
         }
       }
-      if (!token.active || baselines.get(key) !== capturedBaseline) {
-        return unavailable("runtime-generation-changed");
+      if (
+        !token.active
+        || baselines.get(key) !== capturedProcessBaseline
+      ) {
+        return unavailableAfterMutation("runtime-generation-changed");
       }
+
+      const commitBaseline = async (
+        expectedBoundaryId: string | undefined,
+        next: Baseline
+      ): Promise<ContinuityResumeRuntimeUnavailableReason | undefined> => {
+        if (
+          !token.active
+          || busy.get(key) !== token
+          || baselines.get(key) !== capturedProcessBaseline
+        ) {
+          return "runtime-generation-changed";
+        }
+        if (dependencies.baselineStore !== undefined) {
+          let outcome: "stored" | "unchanged" | "conflict";
+          try {
+            outcome = await dependencies.baselineStore.compareAndSet(
+              scope,
+              expectedBoundaryId,
+              next
+            );
+          } catch {
+            baseline = "outcome-unknown";
+            return "baseline-store-unavailable";
+          }
+          if (outcome === "conflict") {
+            baseline = "conflict";
+            return "runtime-generation-changed";
+          }
+          if (outcome !== "stored" && outcome !== "unchanged") {
+            baseline = "outcome-unknown";
+            return "baseline-store-unavailable";
+          }
+          baseline = outcome === "stored" ? "committed" : "unchanged";
+          if (
+            !token.active
+            || busy.get(key) !== token
+            || baselines.get(key) !== capturedProcessBaseline
+          ) {
+            return "runtime-generation-changed";
+          }
+        } else {
+          baseline = capturedBaseline?.boundary.boundaryId
+            === next.boundary.boundaryId
+            ? "unchanged"
+            : "committed";
+        }
+        retain(key, next);
+        return undefined;
+      };
 
       if (capturedBaseline === undefined) {
         let next: Baseline;
         try {
           next = baselineFrom(current.source, current.graph);
         } catch {
-          return unavailable("resume-context-unavailable");
+          return unavailableAfterMutation("resume-context-unavailable");
         }
-        if (!token.active || baselines.has(key)) {
-          return unavailable("runtime-generation-changed");
-        }
-        retain(key, next);
-        return bindResultPack(frozenRecord({
-          schemaVersion: 1 as const,
-          status: "partial" as const,
-          state: "process-local-baseline-seeded" as const,
-          reason: "no-prior-process-local-baseline" as const,
-          authority: AUTHORITY
-        }) as ContinuityResumeRuntimeSeededV1, capture);
+        const commitFailure = await commitBaseline(undefined, next);
+        if (commitFailure !== undefined) return unavailableAfterMutation(commitFailure);
+        const durable = dependencies.baselineStore !== undefined;
+        return bindResultPack(
+          bindResultMutationReceipt(
+            frozenRecord({
+              schemaVersion: 1 as const,
+              status: "partial" as const,
+              state: durable
+                ? "durable-baseline-seeded" as const
+                : "process-local-baseline-seeded" as const,
+              reason: durable
+                ? "no-prior-durable-baseline" as const
+                : "no-prior-process-local-baseline" as const,
+              authority: AUTHORITY
+            }) as ContinuityResumeRuntimeSeededV1,
+            currentMutationReceipt()
+          ),
+          capture
+        );
       }
 
-      const previousAt = capturedBaseline.graph.observedAt;
+      const previousAt =
+        capturedBaseline.graphObservationReceipt.observedAt;
       const currentAt = current.graph.observedAt;
 
       let result: ReturnType<typeof compileContinuityResumeContext>;
@@ -974,17 +1272,19 @@ export function createContinuityResumeRuntimeCoordinator(
         result = compileContinuityResumeContext({
           schemaVersion: 1,
           boundary: capturedBaseline.boundary,
-          previousSourceObservationReceipt: capturedBaseline.source,
-          previousGraphObservationReceipt: capturedBaseline.graph,
+          previousSourceObservationReceipt:
+            capturedBaseline.sourceObservationReceipt,
+          previousGraphObservationReceipt:
+            capturedBaseline.graphObservationReceipt,
           currentProviderResult: current.provider,
           currentSourceObservationReceipt: current.source,
           budget: RESUME_BUDGET
         });
       } catch {
-        return unavailable("resume-context-unavailable");
+        return unavailableAfterMutation("resume-context-unavailable");
       }
       if (result.status !== "partial") {
-        return unavailable("resume-context-unavailable");
+        return unavailableAfterMutation("resume-context-unavailable");
       }
       const audit = getContinuityResumeContextAudit(result);
       if (
@@ -997,26 +1297,38 @@ export function createContinuityResumeRuntimeCoordinator(
         || audit.previous.boundary.boundaryId
           !== capturedBaseline.boundary.boundaryId
         || audit.previous.previousSourceObservationReceipt.receiptId
-          !== capturedBaseline.source.receiptId
+          !== capturedBaseline.sourceObservationReceipt.receiptId
         || audit.previous.previousGraphObservationReceipt.receiptId
-          !== capturedBaseline.graph.receiptId
+          !== capturedBaseline.graphObservationReceipt.receiptId
       ) {
-        return unavailable("resume-context-unavailable");
+        return unavailableAfterMutation("resume-context-unavailable");
       }
-      if (!token.active || baselines.get(key) !== capturedBaseline) {
-        return unavailable("runtime-generation-changed");
+      if (
+        !token.active
+        || baselines.get(key) !== capturedProcessBaseline
+      ) {
+        return unavailableAfterMutation("runtime-generation-changed");
       }
 
       if (currentAt === previousAt) {
-        retain(key, capturedBaseline);
+        const commitFailure = await commitBaseline(
+          capturedBaseline.boundary.boundaryId,
+          capturedBaseline
+        );
+        if (commitFailure !== undefined) return unavailableAfterMutation(commitFailure);
         const comparedResult = bindResultCapsuleEvidence(
           bindResultPack(
-            compared("compared-with-baseline-reused", result),
+            bindResultMutationReceipt(
+              compared("compared-with-baseline-reused", result),
+              currentMutationReceipt()
+            ),
             capture
           ),
           frozenRecord({
-            previousSourceObservationReceipt: capturedBaseline.source,
-            previousGraphObservationReceipt: capturedBaseline.graph,
+            previousSourceObservationReceipt:
+              capturedBaseline.sourceObservationReceipt,
+            previousGraphObservationReceipt:
+              capturedBaseline.graphObservationReceipt,
             currentSourceObservationReceipt: current.source,
             currentGraphObservationReceipt: current.graph
           }) as ContinuityResumeRuntimeCapsuleEvidence
@@ -1028,8 +1340,10 @@ export function createContinuityResumeRuntimeCoordinator(
           pack,
           packDigest: digestRuntimeEvidence(pack),
           resumeResultDigest: digestRuntimeEvidence(comparedResult),
-          previousSourceObservationReceipt: capturedBaseline.source,
-          previousGraphObservationReceipt: capturedBaseline.graph,
+          previousSourceObservationReceipt:
+            capturedBaseline.sourceObservationReceipt,
+          previousGraphObservationReceipt:
+            capturedBaseline.graphObservationReceipt,
           currentSourceObservationReceipt: current.source,
           currentGraphObservationReceipt: current.graph
         });
@@ -1038,20 +1352,32 @@ export function createContinuityResumeRuntimeCoordinator(
       try {
         next = baselineFrom(current.source, current.graph);
       } catch {
-        return unavailable("resume-context-unavailable");
+        return unavailableAfterMutation("resume-context-unavailable");
       }
-      if (!token.active || baselines.get(key) !== capturedBaseline) {
-        return unavailable("runtime-generation-changed");
+      if (
+        !token.active
+        || baselines.get(key) !== capturedProcessBaseline
+      ) {
+        return unavailableAfterMutation("runtime-generation-changed");
       }
-      retain(key, next);
+      const commitFailure = await commitBaseline(
+        capturedBaseline.boundary.boundaryId,
+        next
+      );
+      if (commitFailure !== undefined) return unavailableAfterMutation(commitFailure);
       const comparedResult = bindResultCapsuleEvidence(
         bindResultPack(
-          compared("compared-and-advanced", result),
+          bindResultMutationReceipt(
+            compared("compared-and-advanced", result),
+            currentMutationReceipt()
+          ),
           capture
         ),
         frozenRecord({
-          previousSourceObservationReceipt: capturedBaseline.source,
-          previousGraphObservationReceipt: capturedBaseline.graph,
+          previousSourceObservationReceipt:
+            capturedBaseline.sourceObservationReceipt,
+          previousGraphObservationReceipt:
+            capturedBaseline.graphObservationReceipt,
           currentSourceObservationReceipt: current.source,
           currentGraphObservationReceipt: current.graph
         }) as ContinuityResumeRuntimeCapsuleEvidence
@@ -1063,8 +1389,10 @@ export function createContinuityResumeRuntimeCoordinator(
         pack,
         packDigest: digestRuntimeEvidence(pack),
         resumeResultDigest: digestRuntimeEvidence(comparedResult),
-        previousSourceObservationReceipt: capturedBaseline.source,
-        previousGraphObservationReceipt: capturedBaseline.graph,
+        previousSourceObservationReceipt:
+          capturedBaseline.sourceObservationReceipt,
+        previousGraphObservationReceipt:
+          capturedBaseline.graphObservationReceipt,
         currentSourceObservationReceipt: current.source,
         currentGraphObservationReceipt: current.graph
       });

@@ -254,6 +254,48 @@ describe("Continuity Capsule preparation service", () => {
     expect(generate).toHaveBeenCalledTimes(1);
   });
 
+  it("maps the durable runtime seed without requiring model work", async () => {
+    const input = await fixture();
+    const preview = vi.fn(async (): Promise<
+      ContinuityResumeRuntimeResultV1
+    > => Object.freeze({
+      schemaVersion: 1,
+      status: "partial",
+      state: "durable-baseline-seeded",
+      reason: "no-prior-durable-baseline",
+      authority: Object.freeze({
+        canAssertCurrentWorldTruth: false,
+        canAssertSourceCompleteness: false,
+        canGrantActionAuthority: false
+      })
+    }));
+    const service = createContinuityCapsulePreparationService({
+      attunementFile: input.attunementFile,
+      sourceId: SOURCE_ID,
+      resumeCoordinator: { preview }
+    });
+
+    await expect(service.prepare({
+      locale: "en",
+      threadId: input.threadId
+    })).resolves.toEqual({
+      schemaVersion: 1,
+      status: "seeded",
+      state: "durable-baseline-seeded",
+      reason: "no-prior-durable-baseline",
+      baselineDurability: "durable-local",
+      authority: {
+        canAssertCurrentWorldTruth: false,
+        canAssertSourceCompleteness: false,
+        canGrantActionAuthority: false
+      }
+    });
+    expect(preview).toHaveBeenCalledWith({
+      sourceId: SOURCE_ID,
+      threadId: input.threadId
+    });
+  });
+
   it("rejects exact compared results from another private scope before model work", async () => {
     const input = await fixture();
     const otherThreadId = await addSupportedThread(
@@ -614,7 +656,7 @@ describe("Continuity Capsule preparation service", () => {
         required: ["threadId", "locale"]
       },
       name: "muse.continuity.capsule.prepare",
-      risk: "read"
+      risk: "write"
     });
 
     await expect(tool.execute({
@@ -628,6 +670,11 @@ describe("Continuity Capsule preparation service", () => {
       locale: "ko",
       threadId: "thread_tool_capsule"
     }, {} as never)).resolves.toEqual({
+      completed: true,
+      mutation: false,
+      mutationStatus: "none",
+      mutationScopes: [],
+      sourceMutation: false,
       schemaVersion: 1,
       status: "unavailable",
       reason: "thread-not-found"
@@ -635,6 +682,28 @@ describe("Continuity Capsule preparation service", () => {
     expect(prepare).toHaveBeenCalledWith({
       locale: "ko",
       threadId: "thread_tool_capsule"
+    });
+  });
+
+  it("projects the coordinator mutation receipt through Capsule preparation", async () => {
+    const input = await fixture();
+    const service = createContinuityCapsulePreparationService({
+      attunementFile: input.attunementFile,
+      sourceId: SOURCE_ID,
+      resumeCoordinator: realCoordinator(input)
+    });
+    const tool = createContinuityCapsulePrepareTool(service);
+
+    await expect(tool.execute({
+      locale: "en",
+      threadId: input.threadId
+    }, {} as never)).resolves.toMatchObject({
+      completed: true,
+      mutation: true,
+      mutationScope: "internal-comparison-baseline",
+      mutationStatus: "committed",
+      mutationScopes: ["internal-comparison-baseline"],
+      status: "seeded"
     });
   });
 });

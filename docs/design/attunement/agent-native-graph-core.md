@@ -655,9 +655,12 @@ Do not build the database first.
    document/assertion instances. **AWG-050a3d3a/b are independently verified:** one
    bounded coordinator now verifies a previous boundary and current Source/Graph pair,
    settles this pool exactly once under a fixed caller budget, and dogfoods the semantic
-   result through the existing explicit Pack Preview. Baselines remain assembly-local,
-   process-memory only; the tool exposes no raw receipts/audits, keeps its digest Pack-only,
-   and leaves open/delivery isolated. A strict optional request can present the verified
+   result through the existing explicit Pack Preview. The original AWG-050a3d3a/b
+   baseline was assembly-local and process-memory only. AWG-040f later added the
+   assembled host's bounded durable-local store (maximum 16 baselines), so a fresh
+   process can compare; direct construction without a store remains process-local. The
+   tool exposes no raw receipts/audits, keeps its digest Pack-only, and leaves
+   open/delivery isolated. A strict optional request can present the verified
    bilingual Capsule render-data contract only when the exact result also owns its Pack and
    Capsule receipt evidence; this is not automatic delivery or a product UI.
 4. **AWG-050b — Shadow-to-return evidence:** `AWG-050b1` preserves the bounded policy
@@ -702,17 +705,20 @@ traversal → local proof validation → focus-derived lane → fair opportunity
 subset feasibility → complete bounded witness retention → exact context bytes → verified
 process-local Provider ownership → bounded two-endpoint assessment → observation and
 receipt-bound graph evidence → exact previous boundary/current-pair settlement → semantic
-Pack Preview resume facts. This is an end-to-end claim only over one configured-local subject,
-bounded head assessments, and an assembly-local finite evidence pool; it is not
+Pack Preview resume facts → bounded durable-local assembled comparison baseline with a
+process-local direct-construction fallback. This is an end-to-end claim only over one
+configured-local subject, bounded head assessments, and a finite evidence pool; it is not
 continuous or current freshness, an automatically observed stopping point, semantic entailment,
-causality, completeness, persistence, or user value. AWG-040e1 is `verified-current` as an
+causality, completeness beyond that comparison baseline, or user value. AWG-040e1 is
+`verified-current` as an
 evidence-bound preparation/provenance substrate: its model-preparation path is limited to local
-task/note/reminder links and a process-local seeded baseline, with no authenticated evidence
-witness. AWG-040e2 projects that substrate through an explicit owner-gated API and Chat card,
+task/note/reminder links and, after AWG-040f assembly, a durable-local seeded baseline with no
+authenticated evidence witness. AWG-040e2 projects that substrate through an explicit owner-gated
+API and Chat card,
 but does not upgrade that evidence authority. It is independently verified only at
 that bounded scope of one evidence-bound, display-only proposal and does not extend this
-end-to-end claim to semantic entailment, continuous truth, automatic observation, persistence,
-or user value. It does
+end-to-end claim to semantic entailment, continuous truth, automatic observation, broader
+persistence, or user value. It does
 not implement or duplicate AWG-050 graph hardening or the Shadow decision/return ledger, AWG-060
 Policy Card learning controls, or the separate personal-agent 300-task productization program.
 The Provider-bound paths make no authoritative absence, permission, or action claim.

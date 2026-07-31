@@ -159,6 +159,21 @@ one runs more, and a clean tree runs nothing. Reach for it FIRST.
 - The gate ladder above still applies, but pick the **single rung that
   exposes your change** — not every rung.
 
+## Keep slow verification off the development critical path (Jinan, 2026-07-31)
+
+Foreground development checks have a hard five-minute budget per command. If a
+test or gate is expected to exceed five minutes, run it as a separate
+non-blocking evidence activity while implementation continues; do not repeatedly
+hold a source-changing slice open on the same broad suite.
+
+- A focused failing test may block the edit that caused it.
+- A slow broad gate may block merge/release when its contract requires it, but
+  it must not block unrelated implementation progress.
+- Do not rerun a green broad suite after documentation-only edits or a change
+  already covered by a narrower test.
+- Report slow-gate evidence separately from the fast focused result so neither
+  is mistaken for the other.
+
 ## Verify UI/web changes in a real browser (Jinan, 2026-06-22)
 
 The macOS desktop app renders the bundled `apps/web` in a WKWebView, so a

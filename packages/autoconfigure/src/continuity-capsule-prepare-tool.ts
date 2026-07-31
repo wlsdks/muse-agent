@@ -6,6 +6,9 @@ import type { MuseTool } from "@muse/tools";
 import type {
   ContinuityCapsulePreparationService
 } from "./continuity-capsule-preparation-service.js";
+import {
+  getContinuityCapsulePreparationMutationReceipt
+} from "./continuity-capsule-preparation-service.js";
 
 const THREAD_ID_PATTERN =
   /^thread_[A-Za-z0-9][A-Za-z0-9_-]{0,255}$/u;
@@ -61,13 +64,36 @@ function parseInput(
   return Object.freeze({ threadId, locale });
 }
 
+function projectMutation(result: object): JsonObject {
+  const receipt = getContinuityCapsulePreparationMutationReceipt(result);
+  const effects = receipt?.effects ?? [];
+  const mutationScopes = effects.flatMap((effect) => {
+    if (
+      effect.outcome !== "committed"
+      && effect.outcome !== "outcome-unknown"
+    ) {
+      return [];
+    }
+    return [effect.target === "projection"
+      ? "attunegraph-projection"
+      : "internal-comparison-baseline"];
+  });
+  const mutationStatus = receipt?.summary ?? "none";
+  return {
+    mutation: mutationStatus !== "none",
+    mutationStatus,
+    mutationScopes,
+    ...(mutationScopes.length === 1 ? { mutationScope: mutationScopes[0]! } : {})
+  };
+}
+
 export function createContinuityCapsulePrepareTool(
   service: ContinuityCapsulePreparationService
 ): MuseTool {
   return {
     definition: {
       description:
-        "Prepare one bounded, evidence-bound, display-only Continuity Capsule draft for an exact thread. The first call may only seed a process-local comparison baseline. The tool accepts no draft text, source IDs, model/provider, time, or action mode; it never delivers, executes, records feedback, changes policy, or grants action authority.",
+        "Use when the user explicitly asks to prepare one bounded, evidence-bound, display-only Continuity Capsule draft for an exact thread; do not use for background or automatic suggestions. The call may write bounded private internal state: the configured rebuildable AttuneGraph observation projection and the comparison baseline used by later resume preparation (durable-local in production assembly, process-local in fallback). It reports committed, unchanged, or uncertain effects separately. The tool accepts no draft text, source IDs, model/provider, time, or action mode; it never changes a linked source, delivers, executes, records feedback, changes policy, or grants action authority.",
       domain: "core",
       inputSchema: {
         additionalProperties: false,
@@ -97,12 +123,17 @@ export function createContinuityCapsulePrepareTool(
         "이어갈 초안"
       ],
       name: "muse.continuity.capsule.prepare",
-      risk: "read"
+      risk: "write"
     },
     execute: async (args): Promise<JsonObject> => {
       const input = parseInput(args);
       const result = await service.prepare(input);
-      return result as unknown as JsonObject;
+      return {
+        completed: true,
+        sourceMutation: false,
+        ...projectMutation(result),
+        ...(result as unknown as JsonObject)
+      };
     }
   };
 }

@@ -10,6 +10,7 @@ import type {
   ContinuityResumeRuntimeResultV1
 } from "@muse/attunegraph/continuity-resume-runtime";
 import {
+  getContinuityResumeRuntimeMutationReceipt,
   presentContinuityResumeRuntimeCapsule,
   validateContinuityResumeRuntimeCapsuleRequest
 } from "@muse/attunegraph/continuity-resume-runtime";
@@ -168,6 +169,29 @@ function projectResume(
   return JSON.parse(JSON.stringify(result)) as JsonObject;
 }
 
+function projectMutation(result: ContinuityResumeRuntimeResultV1): JsonObject {
+  const receipt = getContinuityResumeRuntimeMutationReceipt(result);
+  const effects = receipt?.effects ?? [];
+  const mutationScopes = effects.flatMap((effect) => {
+    if (
+      effect.outcome !== "committed"
+      && effect.outcome !== "outcome-unknown"
+    ) {
+      return [];
+    }
+    return [effect.target === "projection"
+      ? "attunegraph-projection"
+      : "internal-comparison-baseline"];
+  });
+  const mutationStatus = receipt?.summary ?? "none";
+  return {
+    mutation: mutationStatus !== "none",
+    mutationStatus,
+    mutationScopes,
+    ...(mutationScopes.length === 1 ? { mutationScope: mutationScopes[0]! } : {})
+  };
+}
+
 function digestMatches(left: string, right: string): boolean {
   const leftBytes = Buffer.from(left, "hex");
   const rightBytes = Buffer.from(right, "hex");
@@ -321,7 +345,7 @@ export function createContinuityPackPreviewTool(
   return {
     definition: {
       description:
-        "Preview a bounded Personal Continuity Pack for one exact thread. Read-only: it resolves current exact linked evidence and may seed or advance a bounded process-local resume baseline, but never opens the Pack, creates a delivery receipt, changes a source or policy, records an outcome, persists the baseline, or grants later authority.",
+        "Use when the user explicitly asks to preview one bounded Personal Continuity Pack for an exact thread; do not use for greetings, background monitoring, automatic suggestions, or opening or executing a Pack. It resolves current exact linked evidence and may write bounded private internal state: the configured rebuildable AttuneGraph observation projection and the comparison baseline used by later resume previews (durable-local in production assembly, process-local in fallback). It reports committed, unchanged, or uncertain effects separately. It never opens the Pack, executes it, creates a delivery receipt, changes a linked source or policy, records an outcome or feedback, or grants action authority.",
       domain: "core",
       inputSchema: inputSchema(false),
       keywords: [
@@ -332,16 +356,18 @@ export function createContinuityPackPreviewTool(
         "팩 미리보기"
       ],
       name: "muse.continuity.pack.preview",
-      risk: "read"
+      risk: "write"
     },
     execute: async (args): Promise<JsonObject> => {
       const { capsule, threadId } = parseInput(args, false);
       const preview = await inspectPackPreview(deps, threadId, capsule);
       return {
-        mutation: false,
+        completed: true,
+        ...projectMutation(preview.resume),
         pack: preview.pack,
         previewDigest: preview.digest,
         resume: projectResume(preview.resume),
+        sourceMutation: false,
         ...(preview.capsule === undefined ? {} : { capsule: preview.capsule })
       };
     }

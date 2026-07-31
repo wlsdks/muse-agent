@@ -3,7 +3,9 @@ import {
   type ArtifactType
 } from "@muse/attunement";
 import {
+  getContinuityResumeRuntimeMutationReceipt,
   prepareContinuityResumeRuntimeCapsule,
+  type ContinuityResumeRuntimeMutationReceiptV1,
   type ContinuityResumeRuntimeCapsulePreparationResultV1,
   type ContinuityResumeRuntimeCoordinator,
   type ContinuityResumeRuntimeUnavailableReason
@@ -17,6 +19,8 @@ const SUPPORTED_SOURCE_CLASSES = new Set<ArtifactType>([
 ]);
 const THREAD_ID_PATTERN =
   /^thread_[A-Za-z0-9][A-Za-z0-9_-]{0,255}$/u;
+const CONTINUITY_CAPSULE_PREPARATION_MUTATION_RECEIPTS =
+  new WeakMap<object, ContinuityResumeRuntimeMutationReceiptV1>();
 
 export const CONTINUITY_CAPSULE_PREPARATION_SERVICE_LIMITS =
   Object.freeze({
@@ -45,6 +49,18 @@ export type ContinuityCapsulePreparationServiceResult =
       readonly state: "process-local-baseline-seeded";
       readonly reason: "no-prior-process-local-baseline";
       readonly baselineDurability: "process-local-only";
+      readonly authority: {
+        readonly canAssertCurrentWorldTruth: false;
+        readonly canAssertSourceCompleteness: false;
+        readonly canGrantActionAuthority: false;
+      };
+    }>
+  | Readonly<{
+      readonly schemaVersion: 1;
+      readonly status: "seeded";
+      readonly state: "durable-baseline-seeded";
+      readonly reason: "no-prior-durable-baseline";
+      readonly baselineDurability: "durable-local";
       readonly authority: {
         readonly canAssertCurrentWorldTruth: false;
         readonly canAssertSourceCompleteness: false;
@@ -88,6 +104,23 @@ export interface ContinuityCapsulePreparationService {
   prepare(
     request: ContinuityCapsulePreparationRequest
   ): Promise<ContinuityCapsulePreparationServiceResult>;
+}
+
+function bindMutationReceipt<T extends object>(
+  result: T,
+  receipt: ContinuityResumeRuntimeMutationReceiptV1 | undefined
+): T {
+  if (receipt !== undefined) {
+    CONTINUITY_CAPSULE_PREPARATION_MUTATION_RECEIPTS.set(result, receipt);
+  }
+  return result;
+}
+
+export function getContinuityCapsulePreparationMutationReceipt(
+  result: unknown
+): ContinuityResumeRuntimeMutationReceiptV1 | undefined {
+  if (typeof result !== "object" || result === null) return undefined;
+  return CONTINUITY_CAPSULE_PREPARATION_MUTATION_RECEIPTS.get(result);
 }
 
 export interface CreateContinuityCapsulePreparationServiceOptions {
@@ -204,23 +237,36 @@ export function createContinuityCapsulePreparationService(
           sourceId: options.sourceId,
           threadId: request.threadId
         });
+        const mutationReceipt = getContinuityResumeRuntimeMutationReceipt(
+          resume
+        );
         if (resume.status === "unavailable") {
-          return Object.freeze({
+          return bindMutationReceipt(Object.freeze({
             schemaVersion: 1,
             status: "unavailable",
             reason: "resume-runtime-unavailable",
             runtimeReason: resume.reason
-          });
+          }), mutationReceipt);
         }
         if (resume.state === "process-local-baseline-seeded") {
-          return Object.freeze({
+          return bindMutationReceipt(Object.freeze({
             schemaVersion: 1,
             status: "seeded",
             state: resume.state,
             reason: resume.reason,
             baselineDurability: "process-local-only",
             authority: resume.authority
-          });
+          }), mutationReceipt);
+        }
+        if (resume.state === "durable-baseline-seeded") {
+          return bindMutationReceipt(Object.freeze({
+            schemaVersion: 1,
+            status: "seeded",
+            state: resume.state,
+            reason: resume.reason,
+            baselineDurability: "durable-local",
+            authority: resume.authority
+          }), mutationReceipt);
         }
         if (
           options.modelProvider === undefined
@@ -274,22 +320,24 @@ export function createContinuityCapsulePreparationService(
               : { timeoutMs: options.timeoutMs })
           }
         );
-        if (prepared.status === "ready") return prepared;
+        if (prepared.status === "ready") {
+          return bindMutationReceipt(prepared, mutationReceipt);
+        }
         if (prepared.reason === "unsupported-source-class") {
-          return Object.freeze({
+          return bindMutationReceipt(Object.freeze({
             schemaVersion: 1,
             status: "unavailable",
             reason: prepared.reason,
             unsupportedSourceClasses:
               prepared.unsupportedSourceClasses
-          });
+          }), mutationReceipt);
         }
-        return Object.freeze({
+        return bindMutationReceipt(Object.freeze({
           schemaVersion: 1,
           status: "unavailable",
           reason: "model-preparation-unavailable",
           preparationReason: prepared.reason
-        });
+        }), mutationReceipt);
       } finally {
         token.requestSettled = true;
         releaseIfSettled(key, token);

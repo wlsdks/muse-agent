@@ -191,7 +191,7 @@ piece got.
 | Area | Where it actually stands |
 | --- | --- |
 | AttuneGraph engine | Exact projection, *"what changed since I stopped"*, content-addressed receipts, bounded resume compilation, canonical `.atgx`, a worker-isolated SQLite journal, an explicit opt-in Continuity Preview writer, and the offline read-only `muse attunegraph inspect` Lens — verified engine substrate; write/repair/live-web Admin and default automatic ingestion/delivery remain roadmap |
-| Continuity Capsule | Legacy caller-declared render data remains available through the explicit API/Preview path. The runtime also has a new evidence-bound model-preparation substrate and read-only `muse.continuity.capsule.prepare` tool: after a process-local comparison exists, one configured-provider call may produce a display-only draft whose every claim cites exact current task/note/reminder source keys. Citation membership is verified; semantic entailment, source freshness, authenticated request witness, durable baseline, product UI, and automatic timing are not |
+| Continuity Capsule | The explicit Chat/API preparation path now keeps its verified comparison baseline in bounded local personal storage by default, so the first preparation after a Muse restart can compare instead of silently reseeding. Direct library/test construction without that store remains session-only. A compared task/note/reminder result may make one configured-provider call for a display-only draft whose claims cite exact current source keys. Citation membership is verified; exact stop capture, source freshness, authenticated request witness, semantic entailment, all-source support, automatic timing, and usefulness are not |
 | Shadow Muse | The ledger records the decision and, after an explicit CLI Pack open, a bounded return association. The Continuity screen can now show that source receipt and whether its exact two-relation AttuneGraph pair is active. It does not record Web returns, surface automatically, or treat return as feedback, usefulness, outcome, causality, permission, or success |
 | Policy Card | An explicit read-only compiler and `muse.continuity.learning.policy-card.preview` tool return English/Korean render data from one fresh local snapshot. No automatic surfacing, UI, edit/reject/trial write, policy mutation, or action |
 
@@ -256,10 +256,30 @@ What is verified today, and what those words do **not** mean:
 - Freshness is honest by construction: only exact endpoint equality under a bounded head
   revalidation becomes `fresh-at-assessment`. A single read stays `unassessed` and forces downstream
   abstention rather than a guess.
-- Resume baselines are still per-process, capped at 16 threads, and not persisted. The optional
-  AttuneGraph projection is durable but remains a rebuildable graph projection, not a durable
-  current-world or timing claim. None of this is action authority, automatic behaviour, or evidence
-  that it is useful in real life.
+- Explicit Capsule preparation keeps at most 16 verified resume baselines in
+  `~/.muse/continuity-resume-baselines.json` by default. This is bounded local personal data and
+  serializes the verified Source receipt needed for exact comparison: artifact/provider IDs;
+  thread title/kind; presentation policy/thread metadata; prior outcome; titles/summaries; generic
+  `updatedAt`; and task/reminder/calendar/contact/run/checkpoint/browsing/conversation/work
+  metadata, including tags, dates/times, locations, contact birthday/relationship, run tool names,
+  browsing URL/`visitedAt`, conversation last owner prompt/origin/`updatedAt`, and work
+  counters/status. Exact artifact IDs are retained verbatim and may themselves be provider-local
+  paths or locator strings; exact serialized source strings are potentially sensitive. The store
+  adds no separate whole-source snapshot, prepared Capsule draft, credential field, action
+  authority, inferred usefulness, or policy promotion. Direct library/test construction may omit the store
+  and remains process-local. A durable comparison baseline is not a durable current-world or
+  timing claim, action authority, automatic behaviour, or evidence that the feature is useful in
+  real life.
+- Pack Preview and Capsule Prepare can update two bounded private, rebuildable stores: the
+  comparison baseline and, when `MUSE_ATTUNEGRAPH_DATABASE` is configured, the AttuneGraph
+  observation projection attempted before baseline compare-and-set. Both public tool definitions
+  therefore declare `write` risk and report the effects separately, including an unknown outcome
+  when a failed dependency cannot prove whether it committed. They never mutate a linked source,
+  delivery, outcome, or policy. Model-driven API/inbound Chat exposes them only through the
+  existing `MUSE_CHAT_WRITE_ENABLED` draft-first approval path; a denied proposal creates neither
+  projection nor baseline bytes, and approval executes it once. The explicit local Capsule button
+  calls the same service directly—the click is the owner action—so it does not add a second chat
+  approval.
 - `@muse/attunegraph/policy-card` and
   `muse.continuity.learning.policy-card.preview` compile one inert Policy Card only after a
   process-minted provider head revalidation is still fresh. The card keeps authoritative owner
