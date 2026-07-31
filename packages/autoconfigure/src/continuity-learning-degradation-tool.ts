@@ -1,5 +1,6 @@
 import type {
-  ExperienceLearningDegradationAssessment
+  ExperienceLearningDegradationAssessment,
+  ExperienceLearningRollbackProposal
 } from "@muse/attunement";
 import {
   assertPlainDataTree,
@@ -12,6 +13,9 @@ export interface ContinuityLearningDegradationToolDeps {
   readonly assess: (
     handleId: string
   ) => Promise<ExperienceLearningDegradationAssessment | undefined>;
+  readonly observeProposal?: (
+    proposal: ExperienceLearningRollbackProposal
+  ) => void;
 }
 
 const HANDLE_ID = /^learning_promotion_handle_[a-f0-9]{64}$/u;
@@ -59,6 +63,13 @@ export function createContinuityLearningDegradationTool(
         throw new Error("continuity learning degradation held: promotion handle is unavailable");
       }
       assertPlainDataTree(result, "continuityLearningDegradationOutput");
+      if (result.proposal) {
+        try {
+          deps.observeProposal?.(result.proposal);
+        } catch {
+          // Health observation is deliberately fail-open for this read result.
+        }
+      }
       return result as unknown as JsonObject;
     }
   };

@@ -5,7 +5,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createApiServerOptions } from "../src/api-server-options.js";
-import { experienceLearningPromotionReceipt } from "./helpers/experience-learning-promotion-receipt.js";
+import {
+  experienceLearningPromotionHandle,
+  experienceLearningPromotionReceipt
+} from "./helpers/experience-learning-promotion-receipt.js";
 
 describe("API server loop health options", () => {
   it("passes the production assembly observer snapshot to the API surface", async () => {
@@ -30,7 +33,10 @@ describe("API server loop health options", () => {
         "2026-07-30T00:02:00.000Z",
         "api-options"
       );
-      options.experienceLearningPromotionObserver(promotion);
+      options.experienceLearningPromotionObserver(
+        promotion,
+        experienceLearningPromotionHandle(promotion)
+      );
       const result = await options.agentRuntime!.run({
         messages: [{ content: "wire loop health", role: "user" }],
         model: "diagnostic/smoke"

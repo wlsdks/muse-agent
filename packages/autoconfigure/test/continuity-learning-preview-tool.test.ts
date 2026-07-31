@@ -7,7 +7,8 @@ import {
   createExperienceReplayEvidenceReceipt,
   createPersonalThread,
   linkArtifact,
-  readAttunementState
+  readAttunementState,
+  type ExperienceLearningRollbackProposal
 } from "@muse/attunement";
 import {
   createContinuityAttuneGraphProjector
@@ -15,6 +16,7 @@ import {
 import {
   captureContinuityObservation
 } from "@muse/attunegraph/continuity-observations";
+import { sha256Hex } from "@muse/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -308,6 +310,13 @@ describe("continuity learning preview tool", () => {
         promotionApplied: true
       }
     });
+    expect(assembly.observability.adaptationLoopHealthSnapshot()).toEqual({
+      evidenceId: (
+        applied as { readonly promotion: { readonly promotionId: string } }
+      ).promotion.promotionId,
+      evidenceVerified: true,
+      status: "promoted"
+    });
     const appliedState = await readAttunementState(attunementFile);
     expect(appliedState.experienceLearningPolicyAudits).toHaveLength(1);
     expect(appliedState.threads.find((entry) => entry.id === thread.id)?.policy)
@@ -544,6 +553,33 @@ describe("continuity learning preview tool", () => {
 
   it("requires one exact promotion handle ID before read-only degradation assessment", async () => {
     const handleId = `learning_promotion_handle_${"a".repeat(64)}`;
+    const baselineOutcomeIds = Array.from(
+      { length: 5 },
+      (_, index) => `continuity_outcome_${sha256Hex(`baseline:${index}`)}`
+    );
+    const promotedOutcomeIds = Array.from(
+      { length: 5 },
+      (_, index) => `continuity_outcome_${sha256Hex(`promoted:${index}`)}`
+    );
+    const proposalCore = {
+      authority: "none" as const,
+      baselineOutcomeIds,
+      criteriaVersion: 1 as const,
+      effectPerformed: false as const,
+      handleId,
+      ownerApprovalRequired: true as const,
+      promotedOutcomeIds,
+      reason: "post-promotion-regression" as const,
+      schemaVersion: 1 as const,
+      status: "proposed" as const
+    };
+    const proposal: ExperienceLearningRollbackProposal = Object.freeze({
+      ...proposalCore,
+      baselineOutcomeIds: Object.freeze(baselineOutcomeIds),
+      promotedOutcomeIds: Object.freeze(promotedOutcomeIds),
+      proposalId:
+        `learning_rollback_proposal_${sha256Hex(JSON.stringify(proposalCore))}`
+    });
     const assess = vi.fn(async () => ({
       baseline: { adjusted: 0, ignored: 0, rejected: 0, total: 0, used: 0 },
       handleId,
@@ -552,10 +588,28 @@ describe("continuity learning preview tool", () => {
       requiredOutcomesPerWindow: 5 as const,
       status: "hold" as const
     }));
-    const tool = createContinuityLearningDegradationTool({ assess });
+    const observeProposal = vi.fn(() => {
+      throw new Error("health observer unavailable");
+    });
+    const tool = createContinuityLearningDegradationTool({
+      assess,
+      observeProposal
+    });
     expect(tool.definition.risk).toBe("read");
     await expect(tool.execute({ handleId }, { runId: "read" }))
       .resolves.toMatchObject({ handleId, status: "hold" });
+    assess.mockResolvedValueOnce({
+      baseline: { adjusted: 0, ignored: 0, rejected: 0, total: 5, used: 5 },
+      handleId,
+      promoted: { adjusted: 0, ignored: 0, rejected: 1, total: 5, used: 2 },
+      proposal,
+      reason: "post-promotion-regression",
+      requiredOutcomesPerWindow: 5,
+      status: "propose-rollback"
+    });
+    await expect(tool.execute({ handleId }, { runId: "proposal" }))
+      .resolves.toMatchObject({ proposal, status: "propose-rollback" });
+    expect(observeProposal).toHaveBeenCalledWith(proposal);
     assess.mockResolvedValueOnce(undefined);
     await expect(tool.execute({ handleId }, { runId: "missing" }))
       .rejects.toThrow(/unavailable/u);
@@ -571,6 +625,6 @@ describe("continuity learning preview tool", () => {
       new Proxy({ handleId }, {}),
       { runId: "proxy" }
     )).rejects.toThrow();
-    expect(assess).toHaveBeenCalledTimes(2);
+    expect(assess).toHaveBeenCalledTimes(3);
   });
 });

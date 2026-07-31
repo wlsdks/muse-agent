@@ -1,14 +1,14 @@
 import {
-  createExperienceLearningPromotionHandle,
-  type ExperienceLearningPromotionHandle,
-  type ExperienceLearningPromotionReceipt,
   type ExperienceLearningRollbackProposal
 } from "@muse/attunement";
 import { sha256Hex } from "@muse/shared";
 import { describe, expect, it } from "vitest";
 
 import { createLatestAdaptationLoopHealthObserver } from "../src/adaptation-loop-health-observer.js";
-import { experienceLearningPromotionReceipt } from "./helpers/experience-learning-promotion-receipt.js";
+import {
+  experienceLearningPromotionHandle,
+  experienceLearningPromotionReceipt
+} from "./helpers/experience-learning-promotion-receipt.js";
 
 describe("latest adaptation loop health observer", () => {
   it("accepts only verified receipts and keeps the newest immutable projection", () => {
@@ -48,7 +48,7 @@ describe("latest adaptation loop health observer", () => {
   it("binds a verified rollback proposal to the exact latest promotion handle", () => {
     const observer = createLatestAdaptationLoopHealthObserver();
     const receipt = experienceLearningPromotionReceipt("2026-07-30T00:02:00.000Z", "bound");
-    const handle = promotionHandle(receipt);
+    const handle = experienceLearningPromotionHandle(receipt);
     const proposal = rollbackProposal(handle.handleId, "bound");
 
     observer.observe(receipt, handle);
@@ -64,8 +64,8 @@ describe("latest adaptation loop health observer", () => {
   it("fails closed for mismatched handles and forged or unrelated proposals", () => {
     const observer = createLatestAdaptationLoopHealthObserver();
     const receipt = experienceLearningPromotionReceipt("2026-07-30T00:02:00.000Z", "expected");
-    const handle = promotionHandle(receipt);
-    const unrelated = promotionHandle(
+    const handle = experienceLearningPromotionHandle(receipt);
+    const unrelated = experienceLearningPromotionHandle(
       experienceLearningPromotionReceipt("2026-07-30T00:02:00.000Z", "unrelated")
     );
 
@@ -92,13 +92,13 @@ describe("latest adaptation loop health observer", () => {
       "2026-07-30T00:02:00.000Z",
       "older-bound"
     );
-    const olderHandle = promotionHandle(olderReceipt);
+    const olderHandle = experienceLearningPromotionHandle(olderReceipt);
     const proposal = rollbackProposal(olderHandle.handleId, "ordered");
     const newerReceipt = experienceLearningPromotionReceipt(
       "2026-07-30T00:02:01.000Z",
       "newer-bound"
     );
-    const newerHandle = promotionHandle(newerReceipt);
+    const newerHandle = experienceLearningPromotionHandle(newerReceipt);
 
     observer.observe(olderReceipt, olderHandle);
     observer.observeRollbackProposal(proposal);
@@ -116,37 +116,6 @@ describe("latest adaptation loop health observer", () => {
     });
   });
 });
-
-function promotionHandle(
-  receipt: ExperienceLearningPromotionReceipt
-): ExperienceLearningPromotionHandle {
-  const auditCore = {
-    activeBehaviorDigestAfter: receipt.activeBehaviorDigestAfter,
-    activeBehaviorDigestBefore: receipt.activeBehaviorDigestBefore,
-    authority: "owner-explicit" as const,
-    candidateId: receipt.candidateId,
-    kind: "promotion" as const,
-    occurredAt: receipt.appliedAt,
-    policyAfter: receipt.policyAfter,
-    policyBefore: receipt.policyBefore,
-    sourceId: receipt.candidateId,
-    threadId: receipt.scope.threadId
-  };
-  const handle = createExperienceLearningPromotionHandle({
-    activeBehaviorDigestAfter: receipt.activeBehaviorDigestAfter,
-    activeBehaviorDigestBefore: receipt.activeBehaviorDigestBefore,
-    appliedAt: receipt.appliedAt,
-    authority: receipt.authority,
-    candidateId: receipt.candidateId,
-    policyAfter: receipt.policyAfter,
-    policyBefore: receipt.policyBefore,
-    promotionAuditId: `learning_policy_audit_${sha256Hex(JSON.stringify(auditCore))}`,
-    promotionId: receipt.promotionId,
-    threadId: receipt.scope.threadId
-  });
-  if (!handle) throw new Error("expected a valid promotion handle fixture");
-  return handle;
-}
 
 function rollbackProposal(
   handleId: string,

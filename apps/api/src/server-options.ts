@@ -7,7 +7,10 @@
 
 import type { ActiveContextProvider, AgentInitiatedNoticeBroker, AgentRuntime } from "@muse/agent-core";
 import type { AgentSpecRegistry } from "@muse/agent-specs";
-import type { ExperienceLearningPromotionReceipt } from "@muse/attunement";
+import type {
+  ExperienceLearningPromotionHandle,
+  ExperienceLearningPromotionReceipt
+} from "@muse/attunement";
 import type { MuseAuth } from "@muse/auth";
 import type { CalendarCredentialStore, CalendarProviderRegistry } from "@muse/calendar";
 import type { NotesProviderRegistry, TasksProviderRegistry } from "@muse/domain-tools";
@@ -52,7 +55,10 @@ export interface ServerOptions {
   readonly eventLoopHealthSnapshot?: () =>
     EventLoopHealthInput | Promise<EventLoopHealthInput | undefined> | undefined;
   /** Fail-open observation only after an approved learning promotion commits. */
-  readonly experienceLearningPromotionObserver?: (receipt: ExperienceLearningPromotionReceipt) => void;
+  readonly experienceLearningPromotionObserver?: (
+    receipt: ExperienceLearningPromotionReceipt,
+    handle: ExperienceLearningPromotionHandle
+  ) => void;
   /** Lazy canonical projection shared by authenticated delivery-safety surfaces. */
   readonly deliverySafety?: DeliverySafetySupplier;
   /** Owner-only Personal Continuity ledger used by the read-only evaluation route. */

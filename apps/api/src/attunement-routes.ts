@@ -1,6 +1,6 @@
 import { realpath } from "node:fs/promises";
 
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, buildExperienceLearningProposalPreview, buildExperienceLearningReplayBundle, buildExperienceLearningReviewQueue, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, ExperienceLearningPromotionError, fingerprintContinuityPolicy, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TEMPLATE, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, promoteApprovedExperienceLearningContinuityPolicy, proposeExperienceLearningFromDelivery, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, verifyExperienceLearningApprovalReceipt, type ArtifactLinkValidator, type ExactArtifactResolver, type ExperienceLearningPromotionReceipt } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, buildExperienceLearningProposalPreview, buildExperienceLearningReplayBundle, buildExperienceLearningReviewQueue, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, ExperienceLearningPromotionError, fingerprintContinuityPolicy, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TEMPLATE, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, promoteApprovedExperienceLearningContinuityPolicy, proposeExperienceLearningFromDelivery, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, verifyExperienceLearningApprovalReceipt, verifyExperienceLearningPromotionHandleBinding, type ArtifactLinkValidator, type ExactArtifactResolver, type ExperienceLearningPromotionHandle, type ExperienceLearningPromotionReceipt } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
 import type { ContinuityOutcome, ExperienceLearningProposalDraft, ObserveConsentGrant, OpenPreparedContinuityPack } from "@muse/attunement";
 import { createQualificationLearningWriteGate, readConfiguredContinuityShadowReturns, type ShadowReturnInspectionReport } from "@muse/autoconfigure";
@@ -22,7 +22,10 @@ export interface AttunementRoutesGate {
   readonly contactsFile: string;
   readonly conversationsFile: string;
   readonly env?: NodeJS.ProcessEnv;
-  readonly experienceLearningPromotionObserver?: (receipt: ExperienceLearningPromotionReceipt) => void;
+  readonly experienceLearningPromotionObserver?: (
+    receipt: ExperienceLearningPromotionReceipt,
+    handle: ExperienceLearningPromotionHandle
+  ) => void;
   readonly notesDir: string;
   readonly now?: () => number;
   readonly openContinuityPack?: OpenPreparedContinuityPack;
@@ -660,9 +663,19 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
         createQualificationLearningWriteGate(gate.env ?? process.env)
       );
       try {
-        gate.experienceLearningPromotionObserver?.(promotion);
+        const observer = gate.experienceLearningPromotionObserver;
+        if (observer) {
+          const stateAfter = await readAttunementState(gate.attunementFile);
+          const handles = (stateAfter.experienceLearningPromotionHandles ?? [])
+            .filter((handle) =>
+              verifyExperienceLearningPromotionHandleBinding(promotion, handle)
+            );
+          if (handles.length === 1) {
+            observer(promotion, handles[0]!);
+          }
+        }
       } catch {
-        // Health observation is deliberately fail-open after the committed CAS.
+        // Observer lookup and invocation are fail-open after the committed CAS.
       }
       return { approval, promotion };
     } catch (cause) {

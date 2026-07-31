@@ -288,7 +288,10 @@ export interface MuseRuntimeAssembly {
     readonly adaptationLoopHealthSnapshot: () => import("@muse/shared").AdaptationLoopHealthInput | undefined;
     readonly agentLoopHealthSnapshot: () => import("@muse/shared").AgentLoopHealthInput | undefined;
     readonly eventLoopHealthSnapshot: () => Promise<import("@muse/shared").EventLoopHealthInput>;
-    readonly experienceLearningPromotionObserver: (receipt: unknown) => void;
+    readonly experienceLearningPromotionObserver: (
+      receipt: unknown,
+      handle: unknown
+    ) => void;
     readonly budgetTracker: MonthlyBudgetTracker;
     readonly driftDetector: PromptDriftDetector;
     readonly followupSuggestionStore: InMemoryFollowupSuggestionStore;
@@ -506,7 +509,14 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   // `agentRuntime` declaration.
   let contextReferenceLoopbackTools: readonly MuseTool[] = [];
 
-  const personalStores = buildPersonalStoreStack(env, options, modelProvider, defaultModel);
+  const adaptationLoopHealthObserver = createLatestAdaptationLoopHealthObserver();
+  const personalStores = buildPersonalStoreStack(
+    env,
+    options,
+    modelProvider,
+    defaultModel,
+    adaptationLoopHealthObserver
+  );
   const {
     notesDir,
     notesRegistry,
@@ -563,7 +573,6 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   } = hooksAndProviders;
   contextReferenceLoopbackTools = hooksAndProviders.contextReferenceLoopbackTools;
 
-  const adaptationLoopHealthObserver = createLatestAdaptationLoopHealthObserver();
   const agentLoopHealthObserver = createLatestAgentLoopHealthObserver();
   const agentRuntime = buildAgentRuntime({
     activeContextProvider,
@@ -910,7 +919,10 @@ function buildPersonalStoreStack(
   env: MuseEnvironment,
   options: ApiServerAssemblyOptions,
   modelProvider: ModelProvider | undefined,
-  defaultModel: string | undefined
+  defaultModel: string | undefined,
+  adaptationLoopHealthObserver: ReturnType<
+    typeof createLatestAdaptationLoopHealthObserver
+  >
 ) {
   const continuityAttuneGraphProjector =
     createConfiguredContinuityAttuneGraphProjector(env);
@@ -945,6 +957,9 @@ function buildPersonalStoreStack(
     defaultModel,
     env,
     episodesFile,
+    experienceLearningPromotionObserver: adaptationLoopHealthObserver.observe,
+    experienceLearningRollbackProposalObserver:
+      adaptationLoopHealthObserver.observeRollbackProposal,
     followupsFile,
     messagingRegistry,
     modelProvider,

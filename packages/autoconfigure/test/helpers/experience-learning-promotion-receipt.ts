@@ -1,5 +1,7 @@
 import {
+  createExperienceLearningPromotionHandle,
   fingerprintContinuityPolicy,
+  type ExperienceLearningPromotionHandle,
   type ExperienceLearningPromotionReceipt
 } from "@muse/attunement";
 import { sha256Hex } from "@muse/shared";
@@ -65,4 +67,35 @@ export function experienceLearningPromotionReceipt(
     schemaVersion: 2,
     scope: Object.freeze(scope)
   });
+}
+
+export function experienceLearningPromotionHandle(
+  receipt: ExperienceLearningPromotionReceipt
+): ExperienceLearningPromotionHandle {
+  const auditCore = {
+    activeBehaviorDigestAfter: receipt.activeBehaviorDigestAfter,
+    activeBehaviorDigestBefore: receipt.activeBehaviorDigestBefore,
+    authority: "owner-explicit" as const,
+    candidateId: receipt.candidateId,
+    kind: "promotion" as const,
+    occurredAt: receipt.appliedAt,
+    policyAfter: receipt.policyAfter,
+    policyBefore: receipt.policyBefore,
+    sourceId: receipt.candidateId,
+    threadId: receipt.scope.threadId
+  };
+  const handle = createExperienceLearningPromotionHandle({
+    activeBehaviorDigestAfter: receipt.activeBehaviorDigestAfter,
+    activeBehaviorDigestBefore: receipt.activeBehaviorDigestBefore,
+    appliedAt: receipt.appliedAt,
+    authority: receipt.authority,
+    candidateId: receipt.candidateId,
+    policyAfter: receipt.policyAfter,
+    policyBefore: receipt.policyBefore,
+    promotionAuditId: `learning_policy_audit_${sha256Hex(JSON.stringify(auditCore))}`,
+    promotionId: receipt.promotionId,
+    threadId: receipt.scope.threadId
+  });
+  if (!handle) throw new Error("expected a valid promotion handle fixture");
+  return handle;
 }

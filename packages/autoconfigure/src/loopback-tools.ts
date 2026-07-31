@@ -27,7 +27,11 @@ import {
   readAttunementState,
   readPreparedContinuityPack,
   retryContinuityTaskCompletionInteractions,
-  type ExperienceLearningProposalDraft
+  verifyExperienceLearningPromotionHandleBinding,
+  type ExperienceLearningPromotionHandle,
+  type ExperienceLearningPromotionReceipt,
+  type ExperienceLearningProposalDraft,
+  type ExperienceLearningRollbackProposal
 } from "@muse/attunement";
 import {
   createLocalAttunementSnapshotProvider,
@@ -82,6 +86,13 @@ import { continuityRuntimeSourceId } from "./continuity-attunegraph-composition.
 export interface LoopbackToolsDeps {
   readonly attunementFile?: string;
   readonly env: MuseEnvironment;
+  readonly experienceLearningPromotionObserver?: (
+    receipt: ExperienceLearningPromotionReceipt,
+    handle: ExperienceLearningPromotionHandle
+  ) => void;
+  readonly experienceLearningRollbackProposalObserver?: (
+    proposal: ExperienceLearningRollbackProposal
+  ) => void;
   readonly projectCurrentGraphObservation?: (
     observation: ContinuityObservationReceipt
   ) => Promise<unknown>;
@@ -374,10 +385,7 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
               const stateAfter = await readAttunementState(deps.attunementFile!);
               const handles = (stateAfter.experienceLearningPromotionHandles ?? [])
                 .filter((handle) =>
-                  handle.promotionId === promotion.promotionId
-                  && handle.candidateId === promotion.candidateId
-                  && handle.threadId === promotion.scope.threadId
-                  && handle.activeBehaviorDigestAfter === promotion.activeBehaviorDigestAfter
+                  verifyExperienceLearningPromotionHandleBinding(promotion, handle)
                 );
               if (handles.length !== 1) return undefined;
               const handle = handles[0]!;
@@ -388,14 +396,18 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
                   && audit.candidateId === promotion.candidateId
                   && audit.policyAfter.version === promotion.policyAfter.version
                 );
-              return policyAudit
-                ? {
-                    approval,
-                    handleId: handle.handleId,
-                    policyAuditId: policyAudit.id,
-                    promotion
-                  }
-                : undefined;
+              if (!policyAudit) return undefined;
+              try {
+                deps.experienceLearningPromotionObserver?.(promotion, handle);
+              } catch {
+                // Health observation is deliberately fail-open after committed CAS.
+              }
+              return {
+                approval,
+                handleId: handle.handleId,
+                policyAuditId: policyAudit.id,
+                promotion
+              };
             }
           }),
           createContinuityLearningDegradationTool({
@@ -403,7 +415,8 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
               projectExperienceLearningDegradationFromState(
                 await readAttunementState(deps.attunementFile!),
                 handleId
-              )
+              ),
+            observeProposal: deps.experienceLearningRollbackProposalObserver
           }),
           createContinuityLearningRollbackTool({
             rollback: async (handleId) => {

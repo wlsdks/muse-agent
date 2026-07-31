@@ -880,9 +880,11 @@ describe("POST /api/attunement/deliveries/:deliveryId/learning-apply", () => {
   it("applies only the exact owner-reviewed preview and replay once", async () => {
     let currentNow = Date.parse("2026-07-17T00:00:00.000Z");
     const observedPromotionIds: string[] = [];
+    const observedHandleIds: string[] = [];
     const app = server({
-      experienceLearningPromotionObserver: (promotion) => {
+      experienceLearningPromotionObserver: (promotion, handle) => {
         observedPromotionIds.push(promotion.promotionId);
+        observedHandleIds.push(handle.handleId);
         throw new Error("health observer unavailable");
       },
       now: () => currentNow
@@ -973,6 +975,9 @@ describe("POST /api/attunement/deliveries/:deliveryId/learning-apply", () => {
       }
     });
     expect(observedPromotionIds).toEqual([response.json().promotion.promotionId]);
+    expect(observedHandleIds).toEqual([
+      expect.stringMatching(/^learning_promotion_handle_[a-f0-9]{64}$/u)
+    ]);
     const applied = await readAttunementState(attunementFile);
     expect(applied.experienceLearningPolicyAudits).toHaveLength(1);
     expect(applied.threads.find((thread) => thread.id === threadId)?.policy)
@@ -985,6 +990,7 @@ describe("POST /api/attunement/deliveries/:deliveryId/learning-apply", () => {
     });
     expect(repeated.statusCode).toBe(422);
     expect(observedPromotionIds).toEqual([response.json().promotion.promotionId]);
+    expect(observedHandleIds).toHaveLength(1);
     expect((await readAttunementState(attunementFile)).experienceLearningPolicyAudits)
       .toHaveLength(1);
     await app.close();
