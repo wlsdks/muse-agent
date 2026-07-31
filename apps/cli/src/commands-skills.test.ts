@@ -81,6 +81,61 @@ describe("muse skills reward — manual reinforce/penalise", () => {
   });
 });
 
+describe("muse skills probation review", () => {
+  it("lists, approves, and reject-archives candidates through explicit owner commands", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-skill-review-"));
+    const authoredDir = join(root, "authored");
+    const previousDir = process.env.MUSE_AUTHORED_SKILLS_DIR;
+    const previousHold = process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE;
+    process.env.MUSE_AUTHORED_SKILLS_DIR = authoredDir;
+    process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE = join(root, "qualification-learning-hold.json");
+    try {
+      const store = new AuthoredSkillStore({ activeWriteGate, dir: authoredDir });
+      await store.stageDraft({
+        body: "1. Convert the document.\n2. Attach it.",
+        description: "Use when sending a document",
+        name: "export-then-attach"
+      });
+      await store.stageDraft({
+        body: "1. Draft a risky-looking but safe candidate.",
+        description: "Use when drafting a note\u001b[31m\n[terminal override]",
+        name: "draft-note"
+      });
+
+      const run = async (args: string[]): Promise<string> => {
+        const output: string[] = [];
+        const io = {
+          stderr: (message: string) => output.push(message),
+          stdout: (message: string) => output.push(message)
+        } as ProgramIO;
+        const program = new Command();
+        registerSkillsCommands(program, io);
+        await program.parseAsync(["node", "muse", "skills", ...args], { from: "node" });
+        return output.join("");
+      };
+
+      const listed = await run(["candidates"]);
+      expect(listed).toContain("export-then-attach");
+      expect(listed).toContain("draft-note");
+      expect(listed).not.toContain("\u001b");
+      expect(listed).not.toContain("\n[terminal override]");
+      expect(listed).toContain("Use when drafting a note[31m");
+
+      expect(await run(["approve", "export-then-attach"])).toContain("Approved");
+      expect((await store.listAuthored()).map((skill) => skill.name)).toEqual(["export-then-attach"]);
+
+      expect(await run(["reject", "draft-note"])).toContain("Rejected");
+      expect(await store.listProbation()).toEqual([]);
+      expect(await run(["approve", "missing"])).toContain("no probation candidate");
+    } finally {
+      if (previousDir === undefined) delete process.env.MUSE_AUTHORED_SKILLS_DIR;
+      else process.env.MUSE_AUTHORED_SKILLS_DIR = previousDir;
+      if (previousHold === undefined) delete process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE;
+      else process.env.MUSE_QUALIFICATION_LEARNING_HOLD_FILE = previousHold;
+    }
+  });
+});
+
 describe("isSafeSkillName", () => {
   it("accepts plain names, rejects traversal / odd chars", () => {
     expect(isSafeSkillName("weather")).toBe(true);

@@ -1015,13 +1015,16 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     "hasOptions": false,
     "subcommands": [
       "add",
+      "approve",
       "archived",
       "author",
       "authored",
+      "candidates",
       "consolidate",
       "curate",
       "list",
       "path",
+      "reject",
       "restore",
       "reward"
     ]

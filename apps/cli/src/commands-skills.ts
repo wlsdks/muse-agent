@@ -13,6 +13,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { createGateEmbedder, createMuseRuntimeAssembly, createQualificationLearningActiveSkillWriteGate, resolveAuthoredSkillsDir as sharedResolveAuthoredSkillsDir, resolveSkillRewardsFile as sharedResolveSkillRewardsFile } from "@muse/autoconfigure";
+import { stripUntrustedTerminalChars } from "@muse/shared";
 import { adjustSkillReward, isSkillAvoided, readSkillRewards } from "@muse/stores";
 import {
   AuthoredSkillStore,
@@ -59,13 +60,19 @@ export function isSafeSkillName(name: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9 _-]*$/u.test(name) && !name.includes("..");
 }
 
+function safeReviewDisplay(value: string): string {
+  return stripUntrustedTerminalChars(value).replace(/\s+/gu, " ").trim();
+}
+
 export function registerSkillsCommands(program: Command, io: ProgramIO): void {
   const skills = program.command("skills").description("List, add, and locate Muse skills (~/.muse/skills)");
   skills.addHelpText("after", `
 Examples:
   $ muse skills list                                          # show installed skills
   $ muse skills add weather --description "check the forecast" # scaffold a new skill folder
-  $ muse skills author                                        # turn last session's corrections into skills`);
+  $ muse skills author                                        # explicitly author from the last session
+  $ muse skills candidates                                    # review automatic probation candidates
+  $ muse skills approve export-then-attach                    # activate one candidate`);
 
   skills
     .command("list")
@@ -150,6 +157,74 @@ Examples:
         io.stdout(`  - ${skill.name} — ${skill.description}\n`);
         io.stdout(`    authored: ${authoredAt}  last used: ${lastUsedAt}${rewardLine}\n`);
       }
+    });
+
+  skills
+    .command("candidates")
+    .description("List inactive skill candidates awaiting explicit review")
+    .action(async () => {
+      const dir = resolveAuthoredSkillsDir();
+      const candidates = await new AuthoredSkillStore({
+        activeWriteGate: FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE,
+        dir
+      }).listProbation().catch(() => []);
+      if (candidates.length === 0) {
+        io.stdout(`No skill candidates awaiting review (dir: ${join(dir, ".probation")}).\n`);
+        return;
+      }
+      io.stdout(`Skill candidates (${candidates.length.toString()}):\n`);
+      for (const candidate of candidates) {
+        io.stdout(`  - ${safeReviewDisplay(candidate.name)} — ${safeReviewDisplay(candidate.description)}\n`);
+        io.stdout(`    file: ${safeReviewDisplay(candidate.sourceInfo.filePath)}\n`);
+      }
+    });
+
+  skills
+    .command("approve")
+    .description("Explicitly approve and activate one probation candidate")
+    .argument("<name>", "Candidate name from `muse skills candidates`")
+    .action(async (name: string) => {
+      if (!isSafeSkillName(name)) {
+        io.stderr("error: invalid skill candidate name.\n");
+        return;
+      }
+      const store = new AuthoredSkillStore({
+        activeWriteGate: createQualificationLearningActiveSkillWriteGate(process.env),
+        dir: resolveAuthoredSkillsDir()
+      });
+      try {
+        const result = await store.promoteProbation(name);
+        if (!result) {
+          io.stdout(`(no probation candidate named "${safeReviewDisplay(name)}")\n`);
+          return;
+        }
+        if (result.action === "quarantined") {
+          io.stdout(`Refused "${safeReviewDisplay(name)}": current candidate failed the risk scan and was quarantined.\n`);
+          return;
+        }
+        io.stdout(`Approved "${safeReviewDisplay(name)}" (${result.action}); it is now active.\n`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "active skill write blocked";
+        io.stderr(`Approval blocked for "${safeReviewDisplay(name)}": ${safeReviewDisplay(message)}\n`);
+      }
+    });
+
+  skills
+    .command("reject")
+    .description("Reject one probation candidate to a recoverable archive")
+    .argument("<name>", "Candidate name from `muse skills candidates`")
+    .action(async (name: string) => {
+      if (!isSafeSkillName(name)) {
+        io.stderr("error: invalid skill candidate name.\n");
+        return;
+      }
+      const rejected = await new AuthoredSkillStore({
+        activeWriteGate: FAIL_CLOSED_ACTIVE_SKILL_WRITE_GATE,
+        dir: resolveAuthoredSkillsDir()
+      }).rejectProbation(name).catch(() => false);
+      io.stdout(rejected
+        ? `Rejected "${safeReviewDisplay(name)}" to the recoverable archive.\n`
+        : `(no probation candidate named "${safeReviewDisplay(name)}")\n`);
     });
 
   skills

@@ -229,6 +229,41 @@ export class AuthoredSkillStore {
     };
   }
 
+  /**
+   * Promote one explicitly approved probation candidate. The candidate is
+   * parsed again at approval time, then routed through the normal risk scan and
+   * active-write gate. Successful/redundant candidates leave probation but are
+   * archived for audit; newly risky candidates are quarantined and archived as
+   * rejected.
+   */
+  async promoteProbation(
+    name: string
+  ): Promise<{ action: AuthorAction; skill: Skill; reasons?: readonly string[] } | undefined> {
+    return this.serializeMutation(async () => {
+      const candidate = (await this.listProbation()).find((skill) => skill.name === name);
+      if (!candidate) return undefined;
+
+      const result = await this.writeOrPatchUnlocked({
+        body: candidate.body,
+        description: candidate.description,
+        name: candidate.name
+      });
+      const archive = result.action === "quarantined" ? ".rejected" : ".probation-archive";
+      await this.archiveProbationCandidate(candidate, archive);
+      return result;
+    });
+  }
+
+  /** Reject one candidate without deleting it or touching active skills. */
+  async rejectProbation(name: string): Promise<boolean> {
+    return this.serializeMutation(async () => {
+      const candidate = (await this.listProbation()).find((skill) => skill.name === name);
+      if (!candidate) return false;
+      await this.archiveProbationCandidate(candidate, ".rejected");
+      return true;
+    });
+  }
+
   async writeOrPatch(draft: SkillDraft): Promise<{ action: AuthorAction; skill: Skill; reasons?: readonly string[] }> {
     return this.serializeMutation(() => this.writeOrPatchUnlocked(draft));
   }
@@ -742,6 +777,15 @@ export class AuthoredSkillStore {
     const dest = join(this.dir, ".archive", base);
     await fs.mkdir(dirname(dest), { recursive: true });
     return fs.rename(folder, dest).then(() => true).catch(() => false); // never delete
+  }
+
+  private async archiveProbationCandidate(skill: Skill, archiveDir: ".probation-archive" | ".rejected"): Promise<void> {
+    const slug = slugifySkillName(skill.name);
+    const timestamp = this.now().toISOString().replace(/[:.]/gu, "-");
+    const nonce = Math.random().toString(36).slice(2, 8);
+    const destination = join(this.dir, archiveDir, `${slug}-${timestamp}-${nonce}`);
+    await fs.mkdir(dirname(destination), { recursive: true });
+    await fs.rename(skill.sourceInfo.baseDir, destination);
   }
 
   private async enforceCap(): Promise<void> {
