@@ -2,8 +2,9 @@
 # project root down to the working directory, and it is the only way to ship the setting below
 # with the repo rather than relying on each machine's ~/.codex/config.toml.
 #
-# AGENTS.md carries a generated verbatim copy of CLAUDE.md + .claude/rules/ (~80 KB) so a
-# non-Claude agent gets the same instructions Claude Code is handed automatically. Codex
-# truncates a project doc at project_doc_max_bytes and says NOTHING — at the 32 KiB default the
-# outbound-safety contract, the push policy and the testing gates never reach the model.
+# AGENTS.md is sized to fit the 32 KiB default on its own — the rules that do not have to be
+# inlined live in .agents/skills/ instead. This raised budget is the safety net, not the
+# mechanism: a nested AGENTS.md composes on top of the root one, and codex truncates the
+# combined project doc saying NOTHING when it does. Anything that pushes the ROOT file over the
+# default is a build failure (`pnpm agents:build`), never something to fix by raising this.
 project_doc_max_bytes = 200000

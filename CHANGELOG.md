@@ -19,6 +19,22 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   graph status without writing, repairing, reviewing, promoting, or acting. This is not
   automatic return timing, usefulness evidence, a successful-return claim, or live-web
   AttuneGraph Admin.
+- Split the cross-agent instruction projection into an always-loaded contract and an
+  on-demand rule set, cutting AGENTS.md from 81 KB to 31 KB (~20k to ~7k tokens a session)
+  and bringing it under the 32 KiB budget codex applies when nothing raised it. `CLAUDE.md`
+  and the outbound-safety contract stay inlined because a revert cannot undo their breach;
+  the other ten rule files, grouped into nine skills — plus the harness contract, which no
+  agent auto-loaded before — are projected to `.agents/skills/<name>/SKILL.md`, where codex is
+  handed each name and description at session start and loads the body on match. The budget is
+  measured against the heaviest root-to-directory chain of `AGENTS.md` files, because codex
+  concatenates every one along that path and truncates the result; AGENTS.md's TypeScript 7 section was dropped
+  as a restatement of the inlined contract. The repo's six hand-written
+  workflow skills are copied there whole, with their relative paths re-aimed, because a
+  symlink materialises as a plain text file on a `core.symlinks=false` checkout. `.claude/` remains the single
+  source of truth; a rule assigned to neither layer now fails the build instead of silently
+  reaching Claude Code alone. Discovery was measured against codex 0.145 from a repo
+  subdirectory: `.agents/skills` is listed, `.claude/skills` is not, and symlinked skill
+  directories are followed.
 
 - Added AWG-050b3 durable, queryable Shadow-return relations. The new
   `@muse/attunegraph/continuity-shadow-returns` surface combines an unchanged

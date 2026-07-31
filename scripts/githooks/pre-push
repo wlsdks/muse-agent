@@ -180,8 +180,10 @@ for ((index = 0; index < changed_file_count; index += 1)); do
   fi
   case "$file" in
     # build-agents-md.mjs renders AGENTS.md, so a change to it can stale the projection
-    # without touching a single .md file.
-    *.md|.claude/rules/*|docs/*|scripts/build-agents-md.mjs) needs_doc_links=1 ;;
+    # without touching a single .md file. .agents/ and .claude/ are listed whole because a
+    # projected skill carries non-markdown files too, and a change to one of those must still
+    # face the gate.
+    *.md|.claude/*|.agents/*|docs/*|scripts/build-agents-md.mjs) needs_doc_links=1 ;;
   esac
   if [ -f "$file" ] && is_lintable_path "$file"; then
     lint_files[$lint_file_count]="$file"

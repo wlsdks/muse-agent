@@ -556,3 +556,41 @@ test("a markdown push in a tree without the checker says so instead of blocking"
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stderr, /reference gate skipped \(scripts\/check-doc-links\.mjs not in this tree\)/u);
 });
+
+// The reference gate is dispatched by a shell `case` over changed paths, and `*.md` never
+// matched `.agents/skills/<name>` — the linked workflow skills are extensionless symlinks.
+// The pushed range here contains NOTHING but the repointed symlink, so a pattern that misses
+// it skips the gate entirely.
+test("a change to an extensionless .agents symlink still runs the reference gate", () => {
+  const repoDir = makeTempRepo();
+  installDocLinkChecker(repoDir);
+  const skills = path.join(repoDir, ".claude", "skills");
+  for (const name of ["a", "b"]) {
+    fs.mkdirSync(path.join(skills, name), { recursive: true });
+    fs.writeFileSync(path.join(skills, name, "SKILL.md"), `---\nname: ${name}\n---\n`);
+  }
+  fs.mkdirSync(path.join(repoDir, ".agents", "skills"), { recursive: true });
+  fs.symlinkSync("../../.claude/skills/a", path.join(repoDir, ".agents", "skills", "a"));
+  execFileSync("git", ["add", "-A"], { cwd: repoDir });
+  execFileSync("git", ["commit", "--quiet", "-m", "base"], { cwd: repoDir });
+  const remoteSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir, encoding: "utf8" }).trim();
+
+  // The ONLY change in the pushed range: the symlink now points at a different skill.
+  fs.unlinkSync(path.join(repoDir, ".agents", "skills", "a"));
+  fs.symlinkSync("../../.claude/skills/b", path.join(repoDir, ".agents", "skills", "a"));
+  execFileSync("git", ["add", "-A"], { cwd: repoDir });
+  execFileSync("git", ["commit", "--quiet", "-m", "repoint"], { cwd: repoDir });
+  const localSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir, encoding: "utf8" }).trim();
+  const changed = execFileSync("git", ["diff", "--name-only", `${remoteSha}..${localSha}`], {
+    cwd: repoDir, encoding: "utf8",
+  }).trim();
+  assert.equal(changed, ".agents/skills/a", "the range must isolate the symlink");
+
+  const result = runHook(repoDir, {
+    pathDirs: [path.dirname(process.execPath), realGitDir, "/usr/bin", "/bin"],
+    env: { MUSE_SKIP_PREPUSH: "1" },
+    input: refUpdateStdin(localSha, remoteSha),
+  });
+
+  assert.match(result.stderr, /reference gate — node scripts\/check-doc-links\.mjs/u);
+});
