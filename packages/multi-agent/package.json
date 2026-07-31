@@ -28,7 +28,6 @@
   "devDependencies": {
     "@muse/attunement": "workspace:*",
     "@muse/tools": "workspace:*",
-    "@fast-check/vitest": "^0.4.1",
-    "fast-check": "^4.9.0"
+    "@fast-check/vitest": "^0.4.1"
   }
 }

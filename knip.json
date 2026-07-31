@@ -1,9 +1,13 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": ["scripts/**", "apps/cli/scripts/**", "apps/desktop/scripts/**"],
+  "ignore": ["scripts/**", "apps/*/scripts/**", "packages/*/scripts/**"],
+  "ignoreBinaries": ["ps", "plutil", "rec"],
   "workspaces": {
     "apps/cli": {
       "entry": ["src/job-worker.ts"]
+    },
+    "apps/web": {
+      "entry": ["src/**/*.test.ts", "src/**/*.test.tsx"]
     },
     "packages/mcp": {
       "entry": ["bin/*.mjs"]

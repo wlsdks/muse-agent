@@ -735,9 +735,6 @@ importers:
       '@muse/tools':
         specifier: workspace:*
         version: link:../tools
-      fast-check:
-        specifier: ^4.9.0
-        version: 4.9.0
 
   packages/muse-attunegraph:
     dependencies:
