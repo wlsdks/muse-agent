@@ -1,15 +1,13 @@
 ---
 name: loop-creator
 version: 3.1.1
-description: Use when 진안 wants to start (register) an autonomous improvement loop on the Muse repo — "루프 돌려줘" ("run a loop"), "loop 등록" ("register a loop"), "X를 계속 강화하는 루프" ("a loop that keeps strengthening X"), or just a theme to iterate on. Generates a principle-compliant recurring loop prompt from its bundled loop-engineering.md contract AND registers the cron itself, then reports the prompt + cron id + how to stop. The autonomous successor to hand-written ad-hoc loop prompts.
+description: Use when 진안 wants to start (register) an autonomous improvement loop on the Muse repo — "루프 돌려줘" ("run a loop"), "loop 등록" ("register a loop"), "X를 계속 강화하는 루프" ("a loop that keeps strengthening X"), or just a theme to iterate on. Generates a principle-compliant recurring loop prompt from its bundled loop-engineering.md contract AND registers the cron itself, then reports the prompt + cron id + how to stop.
 ---
 
-> **Versioning.** Any change to this skill or `references/loop-engineering.md`
-> bumps `version` (patch=wording, minor=new guard, major=restructure) + a
-> `CHANGELOG.md` entry. Every per-loop journal entry stamps `skill vX.Y.Z` so
-> fire outcomes ↔ skill version stay correlatable. Re-evaluation triggers:
-> ~100 accumulated fires / new primary research / a repeated failure class
-> (contract §6). History: [`CHANGELOG.md`](CHANGELOG.md).
+> **Versioning.** Changing this skill or `references/loop-engineering.md` bumps
+> `version` and adds a [`CHANGELOG.md`](CHANGELOG.md) entry; each journal entry
+> stamps the version so a fire's outcome stays attributable to the revision that
+> produced it. When to re-evaluate the contract is contract §6's call.
 
 # loop-creator — generate and register principle-compliant autonomous loops
 
@@ -201,18 +199,13 @@ on what each fire does ④ the first fire's result ⑤ how to stop
 - Push is governed entirely by the tier rules — never a main push without owner
   approval.
 
-## Lineage (verified sources only — details and numbers in contract §5·§7)
+## Lineage
 
-The 2026-06 "Loop Engineering" consensus (Steinberger · Cherny · Osmani) +
-Huntley's Ralph pattern (fresh context per iteration, disk is memory —
-ghuntley.com/loop) + Anthropic Claude Code best practices (deterministic
-verifier · maker≠judge · phase separation) + our own 489-fire mining
-((pkg,kind) ratchet · worktree hygiene · mutation-first) + verified public
-research (unverified retries repeat the same failure 85.36% — 2510.18254 ·
-judge reliability ≠ validity — 2606.19544 · self-confirmation/diversity-collapse
-failure-mode survey — 2607.07663). Subagent-sourced research numbers live in
-this document only after independent verification — unverified claims are
-quarantined in contract §7 as "unverified".
+Every principle above is sourced in contract §5·§7 — published loop-engineering
+practice, the Ralph pattern, Anthropic's Claude Code guidance, and 489 fires of
+our own mining — with the numbers and citations there rather than restated here.
+A research number reaches the contract only after independent verification;
+anything still unverified stays quarantined in §7 and may not become a guard.
 
 ## Stopping
 

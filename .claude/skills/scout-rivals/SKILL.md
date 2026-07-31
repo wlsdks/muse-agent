@@ -20,22 +20,24 @@ DELTA, never the base.
 
 1. **ANCHOR** — run `date` (never assume); read the watermark block at the
    top of `internal/goals/rival-watch.md` (last scout date, per-repo upstream
-   SHAs, roster + reference shelf). Resolve the operator-configured rival root
-   as `$MUSE_RIVAL_ROOT`, then `git -C "$MUSE_RIVAL_ROOT/<name>" fetch origin`
-   for EVERY roster and shelf clone now — the fire reads today's
-   upstream, never a stale checkout. Everything below is scoped to changes
+   SHAs, roster + reference shelf). That file records each clone's path — the
+   owner designated `$HOME/ai/<name>` — and is the only place they are written
+   down. `git -C <path> fetch origin` EVERY roster and shelf clone now: the
+   fire reads today's upstream, never a stale checkout. **A clone the roster
+   names but that is not on disk is a STOP** — say which, and do not scout a
+   partial roster as if it were whole. Everything below is scoped to changes
    AFTER the watermark.
 
 2. **SWEEP (delta only, verify-in-code)** —
    - **Named rivals** (roster in rival-watch.md carries repo URLs, SHAs, and
-     the persistent local clones under `$MUSE_RIVAL_ROOT/<name>` — `git -C`
-     fetch them, never re-clone; a NEW roster member gets a blobless clone
-     there). High-velocity repos ship
+     each persistent local clone's path — `git -C` fetch them, never re-clone;
+     a NEW roster member gets a blobless clone beside the others, and its path
+     goes into the roster in the same fire). High-velocity repos ship
      thousands of commits per window — sweep RELEASES + CHANGELOG first
      (observed fire 1: 7.8k commits in 3.5 weeks; raw log is for locating an
      implementing file, never the survey) → list genuinely NEW capabilities
      and notable architecture changes. **Sweep legwork may fan out to cheap
-     subagents** (model: haiku — one per repo, release/changelog digestion
+     subagents** (on a cheaper model tier — one per repo, release/changelog digestion
      and delta listing only); their outputs are DATA to spot-check.
      **JUDGE never delegates** — fit/verdict/edge and roster decisions stay
      with the invoking model. Read the implementing file for

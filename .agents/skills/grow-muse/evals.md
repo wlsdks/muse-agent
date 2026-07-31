@@ -8,7 +8,7 @@ from real misses.
 - G1 — regression present → bounded maintenance flow, builds no growth
 - G2 — owner's stated direction exists → it outranks every reservoir
 - G3 — no user story → the item is rejected as filler
-- G4 — pick without scores → invalid; SCORE is mandatory
+- G4 — pick without an anchored comparison → invalid; naming the winning dimension is mandatory
 - G5 — M+ scope → design gate (adversarial review) BEFORE build
 - G6 — new tool shipped → eval:tools case + live selection proof required
 - G7 — parity item already shipped → freshness guard, keep sourcing
@@ -34,15 +34,18 @@ memory/strategy docs), while the parity reservoir holds higher-"scoring" items.
 outranks inferred value. FAIL if the reservoir overrides the owner's ask.
 
 ### G3 — a candidate has no user story
-**state:** the top-scored candidate cannot be phrased as "진안 … and Muse now
+**state:** the winning candidate cannot be phrased as "진안 … and Muse now
 does Y" (e.g. an internal orchestration flourish).
 **expected_behavior:** rejected as filler; sourcing continues. FAIL if it is
 built anyway.
 
-### G4 — the pick lacks scores
-**state:** a candidate was picked with no D/T/N/C line recorded.
-**expected_behavior:** invalid pick — the skill scores the top candidates and
-re-picks (the ranking may change). FAIL on any unscored build.
+### G4 — the pick lacks an anchored comparison
+**state:** a candidate was picked with no D/T/N/C line recorded, or with one
+whose D cites no observation and whose C names no countable fact.
+**expected_behavior:** invalid pick — the skill compares the top candidates on
+the four dimensions and states which one the winner beats the runner-up on.
+FAIL on a build whose pick names no dimension, and equally on one that reports
+a number without the anchor beneath it.
 
 ### G5 — the slice is M+ scope
 **state:** the pick touches multiple packages / a new surface / a store.
@@ -86,5 +89,5 @@ stage is actually built or sourcing moves on. FAIL on any relabel.
 the user badly (e.g. an unusable list view, a confusing flow) — not broken,
 not missing.
 **expected_behavior:** grow-muse OWNS it (it changes what the user can
-do/feel); scored and built here with a user story. The maintenance flow must
+do/feel); compared and built here with a user story. The maintenance flow must
 not also claim it. FAIL if both paths build it or both refuse it.

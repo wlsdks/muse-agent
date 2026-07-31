@@ -6,7 +6,7 @@ description: Use when deciding what NEW user-facing capability to build next for
 # grow-muse — the growth cycle
 
 One invocation = one new user-visible capability slice, end-to-end: source →
-score → design-gate → build → verify → push. Existing defects follow the
+compare → design-gate → build → verify → push. Existing defects follow the
 bounded maintenance flow in `muse-dev-patterns`.
 
 Every slice MUST carry a one-sentence **user story** — "Jinan asks X / lives
@@ -50,16 +50,23 @@ not a stub.
       run — never a deeper dig through stale ground, and never scout as a
       routine prelude: rungs 1–2 (the owner's life) outrank rivals by design.
 
-3. **SCORE (anti-vibes gate)** — score top candidates 1–5 each and record
-   the line: **D** daily felt value · **T** trust-floor effect · **N**
-   north-star advance (a generic-assistant feature any product could ship
-   scores low) · **C** cost+risk inverse (one-shot local-model tool
-   feasibility, surface area, deps). **Anchors or the pick is INVALID:**
-   D cites the concrete observation/owner quote (no evidence ⇒ D≤2); C
-   names countable facts (packages touched, new deps, new tools). Pick =
-   max(D×T×N/C), one-line justification per rejected runner-up.
-   Interactive: show the scored top-3, then proceed. Loop: scores go in
-   the commit body.
+3. **COMPARE (anti-vibes gate)** — judge the top candidates on four
+   dimensions and record the line: **D** daily felt value · **T**
+   trust-floor effect · **N** north-star advance (a generic-assistant
+   feature any product could ship rates low) · **C** cost+risk (one-shot
+   local-model tool feasibility, surface area, deps). **Anchors or the pick
+   is INVALID:** D quotes the concrete observation or owner sentence — no
+   evidence ⇒ D is weak by definition, not by opinion; C names countable
+   facts (packages touched, new deps, new tools).
+
+   State in one sentence **why the pick beats the runner-up on the dimension
+   where they differ most**, and one line for each other rejection. That
+   sentence is the artifact — an arithmetic score is not, because a formula
+   over four self-assigned 1–5 numbers reliably produces whatever ranking
+   was already intended and reads as rigour while doing it. Comparison on
+   named dimensions with cited anchors is the part that catches a bad pick.
+   Interactive: show the compared top-3, then proceed. Loop: the comparison
+   goes in the commit body.
 
 4. **DESIGN GATE (M+ scope)** — acceptance criteria + seam sketch first
    (`.claude/harness/handoff.md`), then an independent adversarial
@@ -75,7 +82,7 @@ not a stub.
    MANDATORY (growth is user-visible by definition). **Gate-delta:** the
    named gate/battery moved, or it's `⚠ shipped-but-insufficient`.
 
-6. **SHIP + CURATE** — one Conventional Commit (user story + scores +
+6. **SHIP + CURATE** — one Conventional Commit (user story + the comparison +
    evidence in body), push on green. Flip the source row ✓ (growth-backlog)
    or move it to `backlog-archive.md` (backlog items); prune ≥1 stale line.
 
@@ -84,8 +91,8 @@ not a stub.
 | Excuse | Reality |
 |---|---|
 | "The user story can come later" | No user story ⇒ filler. Write the sentence or drop it. |
-| "Pick by gut feel, no score" | Unscored or unanchored pick = invalid. Re-pick. |
-| "It's in the reservoir, so it's valuable" | Reservoir is rung 4 and still needs SCORE + freshness. |
+| "Pick by gut feel" | An uncompared or unanchored pick is invalid. Name the dimension it wins on. |
+| "It's in the reservoir, so it's valuable" | Reservoir is rung 4 and still needs the comparison + freshness. |
 | "Relabel substrate as attunement" | ROADMAP ≠ shipped claim. Build the missing stage. |
 | "Unit tests are green, so it's delivered" | Live-path proof or it doesn't exist for the user. |
 
