@@ -47,6 +47,9 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
 import { resolveLearningPauseFile } from "./provider-paths.js";
+import type {
+  ContinuityCapsulePreparationService
+} from "./continuity-capsule-preparation-service.js";
 import { createCompactionAuxiliary } from "./compaction-auxiliary.js";
 import {
   configuredModelLoopOutcomeRepairer,
@@ -279,6 +282,13 @@ export interface MuseRuntimeAssembly {
     readonly externalServerInputs: readonly McpServerInput[];
   };
   readonly modelProvider?: ModelProvider;
+  /**
+   * Assembly-scoped owner of the single process-local Continuity comparison
+   * coordinator and evidence-bound Capsule preparer. API/UI surfaces must
+   * reuse this service rather than create a second baseline.
+   */
+  readonly continuityCapsulePreparation?:
+    ContinuityCapsulePreparationService;
   readonly debugReplayCaptureStore: DebugReplayCaptureStore;
   readonly conversationSummaryStore: ConversationSummaryStore;
   readonly sessionTagStore: SessionTagStore;
@@ -683,6 +693,12 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     hookTraceStore,
     mcp,
     modelProvider,
+    ...(loopback.continuityCapsulePreparation === undefined
+      ? {}
+      : {
+          continuityCapsulePreparation:
+            loopback.continuityCapsulePreparation
+        }),
     debugReplayCaptureStore,
     conversationSummaryStore,
     sessionTagStore,

@@ -619,6 +619,19 @@ function artifactSourceKey(
   )}`;
 }
 
+/**
+ * Stable citation key for one exact artifact snapshot in a Capsule evidence
+ * view. Model-prepared Capsules may cite only `current` keys produced by this
+ * function; the key is an identifier, not evidence or a freshness claim.
+ */
+export function continuityCapsuleArtifactSourceKey(
+  observation: ArtifactObservation,
+  observedAt: string,
+  reference: ArtifactReference
+): string {
+  return artifactSourceKey(observation, observedAt, reference);
+}
+
 function graphReferenceKey(reference: GraphEvidenceRef): string {
   return canonicalJson([
     reference.namespace,

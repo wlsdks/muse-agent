@@ -225,6 +225,91 @@ describe("buildLoopbackTools — gating", () => {
     });
   });
 
+  it("shares one assembled coordinator between the Capsule service and tool", async () => {
+    const testDir = mkdtempSync(
+      join(tmpdir(), "muse-loopback-capsule-preparation-")
+    );
+    const attunementFile = join(testDir, "attunement.json");
+    const notesDir = join(testDir, "notes");
+    const tasksFile = join(testDir, "tasks.json");
+    await writeTasks(tasksFile, [{
+      createdAt: "2026-01-01T00:00:00.000Z",
+      id: "task_capsule_assembly",
+      status: "open",
+      title: "Resume the assembled Capsule"
+    }]);
+    const thread = await createPersonalThread(attunementFile, {
+      kind: "work",
+      title: "Assembled Capsule"
+    });
+    await linkArtifact(attunementFile, {
+      artifactId: "task_capsule_assembly",
+      artifactType: "task",
+      role: "next-step",
+      threadId: thread.id
+    }, {
+      validateArtifact: createLocalArtifactValidator({
+        notesDir,
+        tasksFile
+      })
+    });
+    const generate = vi.fn(async (request: unknown) => {
+      const messages = (request as {
+        readonly messages: readonly { readonly content: string }[];
+      }).messages;
+      const marker = "Prepare from this JSON DATA:\n";
+      const content = messages[1]!.content;
+      const body = JSON.parse(
+        content.slice(content.indexOf(marker) + marker.length)
+      ) as { readonly currentNextStepSourceKey: string };
+      return {
+        id: "assembled-capsule-response",
+        model: "gemma4:12b",
+        output: JSON.stringify({
+          claims: [{
+            text: "Review the exact assembled next step.",
+            sourceKeys: [body.currentNextStepSourceKey]
+          }],
+          expectedMinutes: 9
+        })
+      };
+    });
+    const bundle = buildLoopbackTools(baseDeps({
+      attunementFile,
+      defaultModel: "ollama/gemma4:12b",
+      modelProvider: {
+        id: "ollama",
+        generate
+      } as never,
+      notesDir,
+      tasksFile
+    }));
+    const prepareTool = bundle.continuity.find((tool) =>
+      tool.definition.name === "muse.continuity.capsule.prepare"
+    );
+    expect(prepareTool).toBeDefined();
+    expect(bundle.continuity.filter((tool) =>
+      tool.definition.name === "muse.continuity.capsule.prepare"
+    )).toHaveLength(1);
+    expect(bundle.continuityCapsulePreparation).toBeDefined();
+
+    await expect(bundle.continuityCapsulePreparation!.prepare({
+      locale: "en",
+      threadId: thread.id
+    })).resolves.toMatchObject({ status: "seeded" });
+    await expect(prepareTool!.execute({
+      locale: "en",
+      threadId: thread.id
+    }, {} as never)).resolves.toMatchObject({
+      status: "ready",
+      receipt: {
+        requestedModel: "ollama/gemma4:12b",
+        responseModel: "gemma4:12b"
+      }
+    });
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
   it("retries a pending loopback completion without rewriting the already-done task timestamp", async () => {
     const testDir = mkdtempSync(join(tmpdir(), "muse-loopback-continuity-retry-"));
     const tasksFile = join(testDir, "tasks.json");

@@ -5,6 +5,7 @@ import {
   ARTIFACT_TYPES,
   isCoherentArtifactProvider,
   prepareContinuityPack,
+  type ArtifactType,
   type ContinuityPack,
   type ExactArtifactResolver
 } from "@muse/attunement";
@@ -47,7 +48,16 @@ import {
   presentContinuityCapsule,
   type ContinuityCapsulePresentation
 } from "./continuity-capsule-presentation.js";
+import {
+  prepareEvidenceBoundContinuityCapsule,
+  type ContinuityCapsuleModelPreparationResultV1,
+  type EvidenceBoundContinuityCapsuleManifestV3,
+  type EvidenceBoundContinuityCapsulePresentationV2,
+  type ContinuityCapsulePreparationReceiptV1,
+  type ContinuityCapsuleEvidenceInputV1
+} from "./continuity-capsule-model-preparation.js";
 import { CONTINUITY_CAPSULE_MANIFEST_LIMITS } from "./continuity-capsule-manifest.js";
+import type { ModelProvider } from "@muse/model";
 import {
   bindAttuneGraphShadowDecisionCoordinator,
   bindAttuneGraphShadowDecisionRuntimeEvidence
@@ -56,6 +66,8 @@ import {
 const SOURCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const PREPARED_TITLE_CONTROL = /[\u0000-\u001F\u007F]/u;
 const PREPARED_CONTENT_CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u;
+const CAPSULE_PREPARATION_SUPPORTED_SOURCE_CLASSES =
+  new Set<ArtifactType>(["task", "note", "reminder"]);
 
 export const CONTINUITY_RESUME_RUNTIME_LIMITS = Object.freeze({
   maxBaselines: 16,
@@ -149,6 +161,48 @@ export interface ContinuityResumeRuntimeCoordinator {
   preview(
     scope: ContinuityScopedSourceObservationScope
   ): Promise<ContinuityResumeRuntimeResultV1>;
+}
+
+export type ContinuityResumeRuntimeCapsulePreparationResultV1 =
+  | Readonly<{
+      readonly schemaVersion: 1;
+      readonly status: "ready";
+      readonly evidenceInput: ContinuityCapsuleEvidenceInputV1;
+      readonly receipt: ContinuityCapsulePreparationReceiptV1;
+      readonly manifest: EvidenceBoundContinuityCapsuleManifestV3;
+      readonly presentation: EvidenceBoundContinuityCapsulePresentationV2;
+    }>
+  | Readonly<{
+      readonly schemaVersion: 1;
+      readonly status: "unavailable";
+      readonly reason: "unsupported-source-class";
+      readonly unsupportedSourceClasses: readonly ArtifactType[];
+    }>
+  | Readonly<{
+      readonly schemaVersion: 1;
+      readonly status: "unavailable";
+      readonly reason:
+        | "invalid-exact-result"
+        | Extract<
+            ContinuityCapsuleModelPreparationResultV1,
+            { readonly status: "unavailable" }
+          >["reason"];
+    }>;
+
+export interface ContinuityResumeRuntimeCapsulePreparationOptions {
+  /**
+   * The caller-requested Source scope. The private previous/current receipt
+   * sidecars must both match it before any provider call is admitted.
+   */
+  readonly expectedScope: ContinuityScopedSourceObservationScope;
+  readonly locale: "en" | "ko";
+  readonly modelProvider: Pick<ModelProvider, "id" | "generate">;
+  readonly model: string;
+  readonly signal?: AbortSignal;
+  /** @internal deterministic-test seam */
+  readonly now?: () => Date;
+  /** @internal deterministic-test seam */
+  readonly timeoutMs?: number;
 }
 
 /**
@@ -473,6 +527,90 @@ export function presentContinuityResumeRuntimeCapsule(
   }
 }
 
+/**
+ * Generates an evidence-bound, display-only draft only for this exact compared
+ * result object. The four receipt dependencies stay in the same private
+ * identity sidecar used by caller-declared Capsules, so copied, cloned,
+ * wrapped, seeded, and unavailable values make zero provider calls.
+ */
+export async function prepareContinuityResumeRuntimeCapsule(
+  result: unknown,
+  options: ContinuityResumeRuntimeCapsulePreparationOptions
+): Promise<ContinuityResumeRuntimeCapsulePreparationResultV1> {
+  if (typeof result !== "object" || result === null) {
+    return frozenRecord({
+      schemaVersion: 1 as const,
+      status: "unavailable" as const,
+      reason: "invalid-exact-result" as const
+    });
+  }
+  const pack = CONTINUITY_RESUME_RUNTIME_RESULT_PACKS.get(result);
+  const evidence =
+    CONTINUITY_RESUME_RUNTIME_RESULT_CAPSULE_EVIDENCE.get(result);
+  if (pack === undefined || evidence === undefined) {
+    return frozenRecord({
+      schemaVersion: 1 as const,
+      status: "unavailable" as const,
+      reason: "invalid-exact-result" as const
+    });
+  }
+  const expectedScope = safeScope(options.expectedScope);
+  if (
+    expectedScope === undefined
+    || !sameScope(
+      expectedScope,
+      evidence.previousSourceObservationReceipt.scope
+    )
+    || !sameScope(
+      expectedScope,
+      evidence.currentSourceObservationReceipt.scope
+    )
+  ) {
+    return frozenRecord({
+      schemaVersion: 1 as const,
+      status: "unavailable" as const,
+      reason: "invalid-exact-result" as const
+    });
+  }
+  const unsupportedSourceClasses = [
+    ...new Set(
+      evidence.currentSourceObservationReceipt.observation.projection
+        .evidence
+        .map((entry) => entry.reference.artifactType)
+        .filter((artifactType) =>
+          !CAPSULE_PREPARATION_SUPPORTED_SOURCE_CLASSES.has(artifactType)
+        )
+    )
+  ].sort();
+  if (unsupportedSourceClasses.length > 0) {
+    return frozenRecord({
+      schemaVersion: 1 as const,
+      status: "unavailable" as const,
+      reason: "unsupported-source-class" as const,
+      unsupportedSourceClasses: Object.freeze(unsupportedSourceClasses)
+    });
+  }
+  return prepareEvidenceBoundContinuityCapsule({
+    schemaVersion: 1,
+    locale: options.locale,
+    modelProvider: options.modelProvider,
+    model: options.model,
+    previousSourceObservationReceipt:
+      evidence.previousSourceObservationReceipt,
+    previousGraphObservationReceipt:
+      evidence.previousGraphObservationReceipt,
+    currentSourceObservationReceipt:
+      evidence.currentSourceObservationReceipt,
+    currentGraphObservationReceipt:
+      evidence.currentGraphObservationReceipt,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+    ...(options.now === undefined ? {} : { now: options.now }),
+    ...(options.timeoutMs === undefined
+      ? {}
+      : { timeoutMs: options.timeoutMs })
+  });
+}
+
 function bindResultCapsuleEvidence<T extends ContinuityResumeRuntimeComparedV1>(
   result: T,
   evidence: ContinuityResumeRuntimeCapsuleEvidence
@@ -690,12 +828,23 @@ export function createContinuityResumeRuntimeCoordinator(
     busy.set(key, token);
     inFlight += 1;
     const startedAt = now();
-    let settled = false;
+    let captureSettled = false;
+    let previewSettled = false;
+    const releaseBusyIfSettled = (): void => {
+      if (
+        captureSettled
+        && previewSettled
+        && busy.get(key) === token
+      ) {
+        busy.delete(key);
+      }
+    };
     const capturePromise = Promise.resolve()
       .then(() => dependencies.captureCurrent(scope))
       .finally(() => {
-        settled = true;
+        captureSettled = true;
         inFlight -= 1;
+        releaseBusyIfSettled();
       });
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
@@ -921,8 +1070,9 @@ export function createContinuityResumeRuntimeCoordinator(
       });
     } finally {
       if (timeout !== undefined) clearTimeout(timeout);
-      if (!settled) token.active = false;
-      if (busy.get(key) === token) busy.delete(key);
+      previewSettled = true;
+      if (!captureSettled) token.active = false;
+      releaseBusyIfSettled();
     }
   }
 

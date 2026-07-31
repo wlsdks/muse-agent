@@ -692,8 +692,8 @@ Do not build the database first.
    usefulness, reconstruction cost, policy correction, and silence quality stay separate.
 
 AWG-045a, AWG-045b, AWG-050a1, AWG-050a2a, AWG-050a2b1, AWG-050a2b2, AWG-050a2c,
-AWG-050a3a, AWG-050a3b, AWG-050a3c, AWG-050a3d1, AWG-050a3d3a, AWG-050a3d3b, and
-AWG-040d are
+AWG-050a3a, AWG-050a3b, AWG-050a3c, AWG-050a3d1, AWG-050a3d3a, AWG-050a3d3b,
+and AWG-040d are
 independently verified bounded kernels, trusted-host seams, or the explicit read-only
 application dogfood path. They retain no Provider-bound graph root export or existing v1
 codec expansion.
@@ -702,11 +702,18 @@ traversal → local proof validation → focus-derived lane → fair opportunity
 subset feasibility → complete bounded witness retention → exact context bytes → verified
 process-local Provider ownership → bounded two-endpoint assessment → observation and
 receipt-bound graph evidence → exact previous boundary/current-pair settlement → semantic
-Pack Preview resume facts. This is an end-to-end claim only over one configured-local
-subject, bounded head assessments, and an assembly-local finite evidence pool; it is not
-continuous or current freshness, an automatically observed stopping point, causality,
-completeness, persistence, or user value. The Provider-bound paths make no authoritative
-absence, permission, or action claim.
+Pack Preview resume facts. This is an end-to-end claim only over one configured-local subject,
+bounded head assessments, and an assembly-local finite evidence pool; it is not
+continuous or current freshness, an automatically observed stopping point, semantic entailment,
+causality, completeness, persistence, or user value. AWG-040e1 is `verified-current` as an
+evidence-bound preparation/provenance substrate: its model-preparation path is limited to local
+task/note/reminder links and a process-local seeded baseline, with no authenticated API/UI
+witness. It is independently verified only at that bounded scope of one evidence-bound,
+display-only proposal and does not extend this end-to-end claim to semantic entailment,
+continuous truth, automatic observation, persistence, or user value. It does
+not implement or duplicate AWG-050 graph hardening or the Shadow decision/return ledger, AWG-060
+Policy Card learning controls, or the separate personal-agent 300-task productization program.
+The Provider-bound paths make no authoritative absence, permission, or action claim.
 The durable projection-journal foundation and its typed Worker boundary are independently
 verified. Muse default-path composition,
 portable export/rebuild, destructive migration, backup, physical forget/compaction, the

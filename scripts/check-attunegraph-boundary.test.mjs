@@ -12,11 +12,14 @@ const coreExports = [
   "./testing", "./extension-kit"
 ];
 const integrationExports = [
-  "./continuity", "./continuity-changes", "./continuity-observations", "./continuity-capsules",
+  "./continuity", "./continuity-capsule-preparation", "./continuity-changes",
+  "./continuity-observations", "./continuity-capsules",
   "./continuity-resume-runtime", "./continuity-durable-projection",
   "./continuity-shadow-returns", "./policy-card", "./shadow-decision-receipt", "./loop-lineage"
 ];
-const integrationDependencies = ["@attunegraph/core", "@muse/attunement", "@muse/shared"];
+const integrationDependencies = [
+  "@attunegraph/core", "@muse/attunement", "@muse/model", "@muse/shared"
+];
 const legacyPackage = join("packages", ["attunement", "graph"].join("-"));
 
 function gitFiles(path) {
@@ -60,9 +63,9 @@ export function assertAttuneGraphBoundary({ workspaceRoot = root } = {}) {
   const duplicates = localCore.filter((path) => localIntegration.includes(path));
   assert.deepEqual(duplicates, [], "implementation/test/script appears in both packages");
   assert.equal(localCore.length, 71, "core src/script split ledger changed");
-  assert.equal(localIntegration.length, 75, "integration src/script split ledger changed");
+  assert.equal(localIntegration.length, 77, "integration src/script split ledger changed");
   assert.equal(gitFiles("packages/attunegraph").length, 85, "core package ledger changed");
-  assert.equal(gitFiles("packages/muse-attunegraph").length, 80, "integration package ledger changed");
+  assert.equal(gitFiles("packages/muse-attunegraph").length, 82, "integration package ledger changed");
 }
 
 test("AttuneGraph package boundary is neutral and acyclic", () => assertAttuneGraphBoundary());

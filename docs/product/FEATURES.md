@@ -553,8 +553,12 @@ thread, not a hidden global preference.
   returns. Today an authenticated read-only Continuity card can inspect exact explicit-CLI return
   receipts and whether their factual two-relation AttuneGraph pair is active; automatic timing and
   usefulness evidence remain roadmap.
-- **Continuity Capsule** — restores the stopping point, changes, grounds, next steps, prepared
-  work, and estimated time.
+- **Continuity Capsule** — aims to restore the stopping point, changes, grounds, next steps,
+  prepared work, and estimated time. Today, legacy caller-declared render data is joined by an
+  evidence-bound preparation substrate: after an exact process-local comparison, one configured
+  model may return a display-only draft whose claims cite exact current task/note/reminder source
+  keys. Citation membership is verified; semantic entailment, exact stop capture, durable
+  baseline, authenticated API/UI presentation, automatic timing, and usefulness remain roadmap.
 - **Policy Card** — today, an explicit read-only preview shows the grounds and thread scope of a
   proposed collaboration rule while separating authoritative experience, caller-supplied replay
   claims, and AttuneGraph explanation. Automatic surfacing and trusted try/edit/reject/undo
@@ -569,8 +573,9 @@ The key sentence: **Muse doesn't remember apps; it remembers the state I meant t
 The detailed product contract and module design follow [Attunement](../strategy/attunement.md),
 [AttuneGraph](../design/attunement/attunegraph.md), and the
 [separate execution roadmap](../../internal/goals/attunegraph-roadmap.md). The complete automatic
-three-part experience is not shipped; its current engine, Capsule render-data, Shadow receipt, and
-inert Policy Card preview substrates are individually bounded and documented.
+three-part experience is not shipped; its current engine, caller-declared and evidence-bound
+Capsule render-data, Shadow receipt, and inert Policy Card preview substrates are individually
+bounded and documented.
 
 The first flow: **user picks a life thread → context pack prepared → usage recorded → next pack
 improved.** Observation, rhythm analysis, and recurring-friction discovery are follow-on slices

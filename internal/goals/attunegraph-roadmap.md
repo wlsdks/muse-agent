@@ -381,6 +381,27 @@ Shadow ledger or durable database:
   presentation. Preparation time is bound to the current Source observation; callers
   cannot supply timing or action authority. Seeded/unavailable/copied/cloned/wrapped/forged
   results receive one bounded `exact-compared-evidence-unavailable` Capsule result.
+- **AWG-040e1 (`verified-current` evidence-bound preparation/provenance substrate):** the
+  independently verified implementation adds an assembly-scoped service that
+  reuses the process-local coordinator and exposes the read-only
+  `muse.continuity.capsule.prepare` tool with exactly `threadId` and `locale`. Its bounded scope is
+  one evidence-bound, display-only proposal; it does not implement or duplicate AWG-050 graph
+  hardening or the Shadow decision/return ledger, AWG-060 Policy Card learning controls, or the
+  separate personal-agent 300-task productization program. Only an exact scope-bound compared
+  result reaches one configured-provider structured-output call; the
+  content-addressed evidence input admits only available current
+  task/note/reminder source keys; and every ordered model claim cites those keys while
+  provider substitution, unknown/duplicate citations, extra/action fields, tool calls,
+  timeout/cancellation, late output, and dependency tampering reject the proposal. The
+  separately versioned Manifest/Presentation/preparation receipt records
+  `model-generated-proposal`, citation-binding verification, `entailment: not-verified`, an
+  estimated minutes value, fixed system title, and display-only/no-action authority. Unsupported
+  source classes must fail the state preflight before coordinator/model work and must be
+  revalidated from the exact captured result before any provider call. Genuine cross-thread and
+  cross-source substitutions fail with zero provider calls. Durable baseline, all-source parity,
+  authenticated API/UI,
+  exact stop capture, automatic timing, Policy Card controls, semantic entailment, and usefulness
+  remain roadmap work.
 
 The full decision and dissent are in
 [Muse Agent-Native Graph Core](../../docs/design/attunement/agent-native-graph-core.md). Those earlier
@@ -395,7 +416,7 @@ shell-before-hidden-state verification, closed Graph binding-receipt semantics, 
 scope-derived seed verification before passing. AWG-050b now owns the actual Shadow
 `silent | digest | offer` decision receipt and counterfactual.
 
-## Completed slices: AWG-050a3d3a/b and AWG-040d
+## Completed slices: AWG-050a3d3a/b, AWG-040d, and AWG-040e1
 
 - **Product meaning:** call this capability **AttuneGraph-backed explicit resume preview**. The
   first qualifying Preview seeds one exact process-local baseline; later calls return
@@ -406,17 +427,22 @@ scope-derived seed verification before passing. AWG-050b now owns the actual Sha
 - **Identity and fallback:** successful exact results privately bind the immutable Pack
   used for their Source receipt. All twelve unavailable reasons use the ordinary Pack;
   copied, spread, cloned, wrapped, or proxy results cannot recover side state.
-- **Tool compatibility:** no new tool was added. `previewDigest` hashes only the Pack,
+- **Tool compatibility:** the completed Pack Preview contract remains compatible:
+  `previewDigest` hashes only the Pack,
   `pack.open` stays on its ordinary Pack dependency and records no Graph baseline work, and
   the Preview remains read-only with no delivery/outcome/policy write. The optional
   Capsule contains verified render data and content-addressed source-drawer receipt IDs,
   never raw receipts, audits, boundaries, retained inventories, or authority.
-- **Verification:** Graph `312/312`, autoconfigure `1087/1087`, focused and changed suites,
-  package/root typechecks and builds, lint, built-output verifier, full workspace checks
-  before and after rebase, and separate independent completion gates passed.
+- **AWG-040e1 completion status:** the no-caller-text prepare tool and evidence-bound
+  model-proposal path are independently verified at their process-local, task/note/reminder-only
+  boundary. Focused, full-package, changed-scope, typecheck, lint, documentation, boundary,
+  self-eval, strict local-model `pass^3`, and fresh independent-evaluator gates passed on the
+  landed candidate. This is component evidence for citation-bound proposal preparation, not
+  semantic entailment or organic usefulness evidence.
 - **Still not shipped:** cross-process/durable baseline storage, continuous/current-world
-  freshness, exact automatic stop capture, automatic surfacing, Capsule product UI, Shadow/Policy,
-  action authority, and organic usefulness qualification remain pending.
+  freshness, exact automatic stop capture, automatic surfacing, Capsule authenticated API/product
+  UI, non-local source parity, semantic entailment verification, Shadow/Policy controls, action
+  authority, and organic usefulness qualification remain pending.
 
 ## Completed slice: AWG-050a3d1
 

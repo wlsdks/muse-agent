@@ -10,7 +10,10 @@
 > and reversible. A procedural skill improves how an agent performs a task; an Attunement
 > Policy improves how Muse collaborates with this person. The proposed AttuneGraph
 > Engine connects time, relationship, provenance, policy, and authority as a lightweight
-> personal context compiler. See [the product contract](../attunement.md),
+> personal context compiler. Its current Capsule preparation substrate can require exact current
+> source-key citations from a configured model while refusing to label those claims semantically
+> verified; the product UI and automatic timing remain roadmap. See
+> [the product contract](../attunement.md),
 > [graph design](../../design/attunement/attunegraph.md), and
 > [separate execution roadmap](../../../internal/goals/attunegraph-roadmap.md).
 >

@@ -744,6 +744,9 @@ importers:
       '@muse/attunement':
         specifier: workspace:*
         version: link:../attunement
+      '@muse/model':
+        specifier: workspace:*
+        version: link:../model
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared

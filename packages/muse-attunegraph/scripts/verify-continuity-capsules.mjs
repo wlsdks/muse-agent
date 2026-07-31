@@ -10,6 +10,7 @@ const expectedRuntimeExports = Object.freeze([
   "CONTINUITY_CAPSULE_PRESENTATION_FORMAT_VERSION",
   "CONTINUITY_CAPSULE_PRESENTATION_LIMITS",
   "ContinuityCapsulePresentationError",
+  "continuityCapsuleArtifactSourceKey",
   "presentContinuityCapsule",
   "verifyContinuityCapsulePresentation"
 ]);
