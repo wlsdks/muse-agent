@@ -125,3 +125,38 @@ relations. The Engine also refuses an observation older than its active head. Ti
 forget removes the receipts from the source ledger, and the next configured full rebuild removes
 their relations from the active graph head. Historical SQLite journal bytes are not physically
 erased by this logical rebuild.
+
+## Read-only Shadow Return inspection
+
+```ts
+import {
+  inspectContinuityShadowReturns
+} from "@muse/attunegraph/continuity-shadow-returns";
+
+const report = await inspectContinuityShadowReturns({
+  databasePath,
+  limit: 20,
+  maxEstimatedTokens: 12_000,
+  now,
+  timingState: persistedTimingState
+});
+```
+
+The inspector accepts only the capability-authenticated frozen snapshot returned by
+`readTimingState`, selects at most 20 receipts by newest `openedAt` and stable receipt id, and
+deduplicates the optional Working Graph read by thread. Each detached, recursively frozen row
+keeps the full source receipt primary and reports one graph status:
+
+- `linked` — one complete, untruncated reserved-scope read contains exactly one active
+  receipt-derived `PRECEDED` assertion and one active `OBSERVED_DURING` assertion;
+- `not-linked` — a complete read does not contain that exact pair;
+- `incomplete` — the bounded operator was partial, truncated, abstained, or structurally
+  insufficient to prove cardinality;
+- `unavailable` — the configured graph could not be read for that thread;
+- `not-configured` — the database setting is absent or exactly empty.
+
+The inspector never writes either store, retries a repair, returns a database path or raw graph
+error, or promotes temporal proximity into feedback, outcome, usefulness, causality, policy,
+permission, action, or a successful-return claim. Muse's authenticated Continuity API and
+English/Korean card are product adapters over this surface; they are not the physical
+`@attunegraph/core/admin` Interface.

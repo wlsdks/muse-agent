@@ -11,23 +11,70 @@ import {
   OpenedPackCard,
   PendingReviewCard,
   RecentDeliveryCard,
+  ShadowReturnCard,
   type InteractionReport,
-  type OpenedPack
+  type OpenedPack,
+  type ShadowReturnReport
 } from "./ContinuityReview.js";
 import { writePersonalStatusFocus } from "./personal-status-navigation.js";
 
 test("personal-status feedback intent is consumed once after the destination review loads", async () => {
   window.localStorage.setItem("muse.lang", "en");
   writePersonalStatusFocus("continuity", "continuity-feedback-review");
-  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
-    ? interactionReport({ includeDelivery: false })
-    : reminderLinkReview(false));
+  const get = vi.fn(async (path: string) => continuityRead(path, reminderLinkReview(false), interactionReport({ includeDelivery: false })));
   const client = { baseUrl: "http://continuity-focus.test", get, post: vi.fn() } as unknown as ApiClient;
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await render(<QueryClientProvider client={queryClient}><I18nProvider><ContinuityReviewView client={client} /></I18nProvider></QueryClientProvider>);
 
   await expect.poll(() => document.activeElement?.id).toBe("continuity-feedback-review");
   expect(window.sessionStorage.getItem("muse.personal-status.focus.v1")).toBeNull();
+});
+
+test("Shadow Return card exposes factual timing, every graph state, and a native source drawer without actions", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const screen = await render(<I18nProvider><ShadowReturnCard
+    error={false}
+    loading={false}
+    locale="en-US"
+    report={shadowReturnReport(["linked", "not-linked", "incomplete", "unavailable", "not-configured"])}
+  /></I18nProvider>);
+
+  await expect.element(screen.getByText("Recorded because an explicit CLI Pack open matched the latest strictly earlier unreturned Shadow candidate.")).toBeVisible();
+  await expect.element(screen.getByText("This is a factual timing link, not evidence that the Pack was used, useful, successful, or saved time. It grants no permission or action.")).toBeVisible();
+  for (const label of [
+    "Exact AttuneGraph pair active",
+    "Exact graph pair not active",
+    "Graph read was incomplete",
+    "Graph could not be read",
+    "AttuneGraph not configured"
+  ]) await expect.element(screen.getByText(label)).toBeVisible();
+
+  const details = screen.getByRole("article", { name: /explicit cli pack open recorded/i }).first();
+  await expect.element(details.getByText("Receipt shadow_return_0 · session session_0 · Thread thread_0 · candidate candidate_0 · delivery delivery_0")).not.toBeVisible();
+  await details.getByText("Source details").click();
+  await expect.element(details.getByText("Receipt shadow_return_0 · session session_0 · Thread thread_0 · candidate candidate_0 · delivery delivery_0")).toBeVisible();
+  await expect.element(screen.getByRole("button")).not.toBeInTheDocument();
+});
+
+test("Shadow Return card keeps loading, failure, and empty states separate", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const loading = await render(<I18nProvider><ShadowReturnCard error={false} loading locale="en-US" /></I18nProvider>);
+  await expect.element(loading.getByRole("status")).toHaveTextContent("Loading Shadow Return records…");
+
+  const failed = await render(<I18nProvider><ShadowReturnCard error loading={false} locale="en-US" /></I18nProvider>);
+  await expect.element(failed.getByRole("alert")).toHaveTextContent("Shadow Return records could not be loaded. Other Continuity information remains available.");
+
+  const empty = await render(<I18nProvider><ShadowReturnCard error={false} loading={false} locale="en-US" report={shadowReturnReport([])} /></I18nProvider>);
+  await expect.element(empty.getByText("No explicit CLI return records yet.")).toBeVisible();
+});
+
+test("Shadow Return card uses approved Korean factual copy", async () => {
+  window.localStorage.setItem("muse.lang", "ko");
+  const screen = await render(<I18nProvider><ShadowReturnCard error={false} loading={false} locale="ko-KR" report={shadowReturnReport(["linked"])} /></I18nProvider>);
+
+  await expect.element(screen.getByText("명시적인 CLI Pack 열기가 가장 최근의 엄격히 이전이며 아직 연결되지 않은 Shadow 후보와 일치해 기록했습니다.")).toBeVisible();
+  await expect.element(screen.getByText("이것은 사실적인 시간 연결이며 Pack을 사용했거나, 유용했거나, 성공했거나, 시간을 절약했다는 근거가 아닙니다. 어떤 권한이나 행동도 부여하지 않습니다.")).toBeVisible();
+  await expect.element(screen.getByText("정확한 AttuneGraph 관계 쌍 활성")).toBeVisible();
 });
 
 test("recent deliveries cannot bypass the canonical provenance-aware review queue", async () => {
@@ -127,6 +174,44 @@ function interactionReport(input: {
       }
     }
   };
+}
+
+function shadowReturnReport(statuses: readonly ShadowReturnReport["rows"][number]["graph"]["status"][] = ["linked"]): ShadowReturnReport {
+  return {
+    limit: 20,
+    rows: statuses.map((status, index) => ({
+      graph: { status },
+      receipt: {
+        authority: {
+          actionGranted: false,
+          causality: "not-claimed",
+          feedback: "not-inferred",
+          outcome: "not-inferred",
+          reconstructionBenefit: "unassessed"
+        },
+        candidateId: `candidate_${index}`,
+        decisionAt: "2026-07-16T09:00:00.000Z",
+        deliveryId: `delivery_${index}`,
+        elapsedMs: 90_000,
+        formatVersion: "muse.attunegraph.shadow-return.v1",
+        id: `shadow_return_${index}`,
+        matchRule: "latest-strictly-earlier-unreturned-candidate",
+        openedAt: "2026-07-16T09:01:30.000Z",
+        schemaVersion: 1,
+        sessionId: `session_${index}`,
+        threadId: `thread_${index}`,
+        trigger: "cli-continue"
+      },
+      schemaVersion: 1
+    })),
+    schemaVersion: 1
+  };
+}
+
+function continuityRead(path: string, review: unknown, interactions: InteractionReport): unknown {
+  if (path === "/api/attunement/shadow-returns") return shadowReturnReport();
+  if (path === "/api/attunement/interactions") return interactions;
+  return review;
 }
 
 function opened(nextStep: "direct" | "hidden"): OpenedPack {
@@ -581,9 +666,7 @@ test("an opened Pack renders only the bounded exact conversation projection with
 test("a reminder can be explicitly linked and unlinked only as context", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let linked = false;
-  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
-    ? interactionReport({ includeDelivery: false })
-    : reminderLinkReview(linked));
+  const get = vi.fn(async (path: string) => continuityRead(path, reminderLinkReview(linked), interactionReport({ includeDelivery: false })));
   const post = vi.fn(async (path: string, body: unknown) => {
     if (path === "/api/attunement/threads/thread_life/links") {
       expect(body).toEqual({ artifactId: "reminder_den", artifactType: "reminder", role: "context" });
@@ -621,9 +704,7 @@ test("a reminder can be explicitly linked and unlinked only as context", async (
 test("a contact requires a pasted exact id and can be linked only as context", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let linked = false;
-  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
-    ? interactionReport({ includeDelivery: false })
-    : contactLinkReview(linked));
+  const get = vi.fn(async (path: string) => continuityRead(path, contactLinkReview(linked), interactionReport({ includeDelivery: false })));
   const post = vi.fn(async (path: string, body: unknown) => {
     if (path === "/api/attunement/threads/thread_life/links") {
       if ((body as { artifactId?: string }).artifactId === " person_김민지_Aa ") throw new Error("non-canonical contact id");
@@ -666,9 +747,7 @@ test("a contact requires a pasted exact id and can be linked only as context", a
 test("a run requires a pasted exact reference and can be linked only as context", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let linked = false;
-  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
-    ? interactionReport({ includeDelivery: false })
-    : runLinkReview(linked));
+  const get = vi.fn(async (path: string) => continuityRead(path, runLinkReview(linked), interactionReport({ includeDelivery: false })));
   const post = vi.fn(async (path: string, body: unknown) => {
     if (path === "/api/attunement/threads/thread_life/links") {
       if ((body as { artifactId?: string }).artifactId !== RUN_REFERENCE) throw new Error("non-canonical run reference");
@@ -712,9 +791,7 @@ test("a run requires a pasted exact reference and can be linked only as context"
 test("a checkpoint is paste-only, byte-exact, and context-only", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let linked = false;
-  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
-    ? interactionReport({ includeDelivery: false })
-    : checkpointLinkReview(linked));
+  const get = vi.fn(async (path: string) => continuityRead(path, checkpointLinkReview(linked), interactionReport({ includeDelivery: false })));
   const post = vi.fn(async (path: string, body: unknown) => {
     if (path === "/api/attunement/threads/thread_life/links") {
       if ((body as { artifactId?: string }).artifactId !== CHECKPOINT_REFERENCE) throw new Error("non-canonical checkpoint reference");
@@ -750,9 +827,7 @@ test("a checkpoint is paste-only, byte-exact, and context-only", async () => {
 test("a browsing visit is exact-id-only and context-only in the web link flow", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let linked = false;
-  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
-    ? interactionReport({ includeDelivery: false })
-    : browsingVisitLinkReview(linked));
+  const get = vi.fn(async (path: string) => continuityRead(path, browsingVisitLinkReview(linked), interactionReport({ includeDelivery: false })));
   const post = vi.fn(async (path: string, body: unknown) => {
     if (path === "/api/attunement/threads/thread_life/links") {
       if ((body as { artifactId?: string }).artifactId === ` ${BROWSING_VISIT_ID} `) throw new Error("non-canonical browsing visit id");
@@ -788,9 +863,7 @@ test("a browsing visit is exact-id-only and context-only in the web link flow", 
 test("a conversation is paste-only, byte-exact, and context-only in the web link flow", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let linked = false;
-  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
-    ? interactionReport({ includeDelivery: false })
-    : conversationLinkReview(linked));
+  const get = vi.fn(async (path: string) => continuityRead(path, conversationLinkReview(linked), interactionReport({ includeDelivery: false })));
   const post = vi.fn(async (path: string, body: unknown) => {
     if (path === "/api/attunement/threads/thread_life/links") {
       if ((body as { artifactId?: string }).artifactId !== CONVERSATION_ID) throw new Error("non-canonical conversation id");
@@ -826,9 +899,7 @@ test("a conversation is paste-only, byte-exact, and context-only in the web link
 test("a Work is full-id-only and context-only in the web link flow", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let linked = false;
-  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
-    ? interactionReport({ includeDelivery: false })
-    : workLinkReview(linked));
+  const get = vi.fn(async (path: string) => continuityRead(path, workLinkReview(linked), interactionReport({ includeDelivery: false })));
   const post = vi.fn(async (path: string, body: unknown) => {
     if (path === "/api/attunement/threads/thread_life/links") {
       if ((body as { artifactId?: string }).artifactId !== WORK_ID) throw new Error("non-canonical Work id");
@@ -864,9 +935,7 @@ test("a Work is full-id-only and context-only in the web link flow", async () =>
 test("a calendar occurrence requires an explicit configured provider and can be linked and unlinked", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let linked = false;
-  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions"
-    ? interactionReport({ includeDelivery: false })
-    : calendarLinkReview(linked));
+  const get = vi.fn(async (path: string) => continuityRead(path, calendarLinkReview(linked), interactionReport({ includeDelivery: false })));
   const post = vi.fn(async (path: string, body: unknown) => {
     if (path === "/api/attunement/threads/thread_life/links") {
       expect(body).toEqual({ artifactId: "cev1_exact", artifactType: "calendar-event", providerId: "work-calendar", role: "context" });
@@ -1045,6 +1114,7 @@ test("opening a Pack then completing its canonical current next step refreshes e
     }]
   });
   const get = vi.fn(async (path: string) => {
+    if (path === "/api/attunement/shadow-returns") return shadowReturnReport();
     if (path === "/api/attunement/interactions") {
       if (!packOpened) return interactionReport({ includeDelivery: false });
       return interactionReport({ exact: taskDone ? 1 : 0, interactionState: taskDone ? "exact" : "none" });
@@ -1122,7 +1192,7 @@ test("a complete organic window renders the API measurement contract instead of 
     measurementStatus: "available" as const
   };
   const response = { ...review, evaluation: { ...review.evaluation, byKind: { ...review.evaluation.byKind, life } } };
-  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions" ? interactionReport({ includeDelivery: false }) : response);
+  const get = vi.fn(async (path: string) => continuityRead(path, response, interactionReport({ includeDelivery: false })));
   const client = { baseUrl: "http://decision-metric.test", get, post: vi.fn() } as unknown as ApiClient;
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const screen = await render(<QueryClientProvider client={queryClient}>
@@ -1139,7 +1209,7 @@ test("a complete organic window renders the API measurement contract instead of 
 test("Korean Continuity copy labels insufficient evidence and the safe review action", async () => {
   window.localStorage.setItem("muse.lang", "ko");
   const response = reminderLinkReview(true);
-  const get = vi.fn(async (path: string) => path === "/api/attunement/interactions" ? interactionReport({ includeDelivery: false }) : response);
+  const get = vi.fn(async (path: string) => continuityRead(path, response, interactionReport({ includeDelivery: false })));
   const client = { baseUrl: "http://decision-metric-ko.test", get, post: vi.fn() } as unknown as ApiClient;
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const screen = await render(<QueryClientProvider client={queryClient}>
@@ -1199,6 +1269,7 @@ test("an interaction query failure stays scoped and fail-closes task completion 
   const client = {
     baseUrl: "http://continuity-error.test",
     get: vi.fn(async (path: string) => {
+      if (path === "/api/attunement/shadow-returns") return shadowReturnReport();
       if (path === "/api/attunement/interactions") throw new Error("interaction unavailable");
       return review;
     }),
@@ -1293,7 +1364,7 @@ test("explicit feedback advances the shared oldest-pending review to the next de
   });
   const client = {
     baseUrl: "http://continuity.test",
-    get: vi.fn(async (path: string) => path === "/api/attunement/interactions" ? interactionReport() : response()),
+    get: vi.fn(async (path: string) => continuityRead(path, response(), interactionReport())),
     post: vi.fn(async (path: string) => {
       if (path === "/api/attunement/deliveries/delivery_first/outcome") advanced = true;
       return {};

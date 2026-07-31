@@ -26,7 +26,7 @@ import { writeBrowsingStore } from "@muse/recall";
 import { encodeLocalCheckpointReference, encodeLocalRunReference } from "@muse/shared";
 import { activateQualificationLearningHold, addWorkOutcome, createWork, writeContacts, writeReminders, writeTasks, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import Fastify from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerAttunementRoutes, type AttunementRoutesGate } from "./attunement-routes.js";
 
@@ -177,6 +177,103 @@ async function writeStrictCheckpoint(workspaceDir: string, runId = "run_api_inte
   });
   return encodeLocalCheckpointReference({ runId, step, workspaceRealpath });
 }
+
+describe("GET /api/attunement/shadow-returns", () => {
+  function report(limit: number) {
+    return {
+      limit,
+      rows: [],
+      schemaVersion: 1
+    } as never;
+  }
+
+  it("requires authentication before its timing source and returns the injected bounded report", async () => {
+    const reader = vi.fn(async (input: { readonly limit: number }) => report(input.limit));
+    const unauthorized = server({ authService: {} as never, readContinuityShadowReturns: reader });
+    const rejected = await unauthorized.inject({ method: "GET", url: "/api/attunement/shadow-returns" });
+    expect(rejected.statusCode).toBe(401);
+    expect(reader).not.toHaveBeenCalled();
+    await unauthorized.close();
+
+    const app = server({ readContinuityShadowReturns: reader });
+    const response = await app.inject({ method: "GET", url: "/api/attunement/shadow-returns?limit=7" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ limit: 7, rows: [], schemaVersion: 1 });
+    expect(reader).toHaveBeenLastCalledWith(expect.objectContaining({
+      limit: 7,
+      now: "2026-07-17T00:00:00.000Z",
+      timingFile: `${attunementFile}.timing.json`
+    }));
+    await app.close();
+  });
+
+  it("accepts both bounds and rejects every non-exact query before the timing source is read", async () => {
+    const reader = vi.fn(async (input: { readonly limit: number }) => report(input.limit));
+    const app = server({ readContinuityShadowReturns: reader });
+    for (const [url, limit] of [
+      ["/api/attunement/shadow-returns?limit=1", 1],
+      ["/api/attunement/shadow-returns?limit=20", 20]
+    ] as const) {
+      const response = await app.inject({ method: "GET", url });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(report(limit));
+    }
+    expect(reader).toHaveBeenCalledTimes(2);
+    reader.mockClear();
+
+    const unknown = await app.inject({ method: "GET", url: "/api/attunement/shadow-returns?other=1" });
+    expect(unknown.statusCode).toBe(400);
+    expect(unknown.json()).toEqual({ errorMessage: "shadow return query has unknown fields" });
+    for (const url of [
+      "/api/attunement/shadow-returns?limit=01",
+      "/api/attunement/shadow-returns?limit=%2D1",
+      "/api/attunement/shadow-returns?limit=%201",
+      "/api/attunement/shadow-returns?limit=%2B1",
+      "/api/attunement/shadow-returns?limit=1.0",
+      "/api/attunement/shadow-returns?limit=1e1",
+      "/api/attunement/shadow-returns?limit=0",
+      "/api/attunement/shadow-returns?limit=21",
+      "/api/attunement/shadow-returns?limit=9999999999999999999999999999999999999999",
+      "/api/attunement/shadow-returns?limit=1&limit=2"
+    ]) {
+      const response = await app.inject({ method: "GET", url });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({ errorMessage: "limit must be one canonical integer from 1 through 20" });
+    }
+    expect(reader).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("uses the default bound and sanitizes timing-source failures", async () => {
+    const reader = vi.fn(async (input: { readonly limit: number }) => report(input.limit));
+    const app = server({ readContinuityShadowReturns: reader });
+    const response = await app.inject({ method: "GET", url: "/api/attunement/shadow-returns" });
+    expect(response.statusCode).toBe(200);
+    expect(reader).toHaveBeenCalledWith(expect.objectContaining({ limit: 20 }));
+    await app.close();
+
+    const failing = server({ readContinuityShadowReturns: async () => { throw new Error("private timing ledger path"); } });
+    const unavailable = await failing.inject({ method: "GET", url: "/api/attunement/shadow-returns" });
+    expect(unavailable.statusCode).toBe(500);
+    expect(unavailable.json()).toEqual({ errorMessage: "shadow return source is unavailable" });
+    expect(unavailable.body).not.toContain("private timing ledger path");
+    await failing.close();
+  });
+
+  it("sanitizes a real malformed timing ledger without altering its bytes", async () => {
+    const timingFile = `${attunementFile}.timing.json`;
+    const malformed = Buffer.from("{not valid timing JSON\n", "utf8");
+    await writeFile(timingFile, malformed);
+    const app = server();
+
+    const response = await app.inject({ method: "GET", url: "/api/attunement/shadow-returns" });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({ errorMessage: "shadow return source is unavailable" });
+    expect(await readFile(timingFile)).toEqual(malformed);
+    await app.close();
+  });
+});
 
 describe("Observe O1 API", () => {
   it("requires exact consent and exposes only collection controls", async () => {

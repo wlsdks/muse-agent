@@ -9,7 +9,9 @@ import {
   captureContinuityObservation
 } from "@muse/attunegraph/continuity-observations";
 import {
-  captureContinuityShadowReturnObservation
+  captureContinuityShadowReturnObservation,
+  inspectContinuityShadowReturns,
+  type ShadowReturnInspectionReport
 } from "@muse/attunegraph/continuity-shadow-returns";
 import {
   readAttunementState,
@@ -25,6 +27,79 @@ export const continuityRuntimeSourceId =
 export interface ProjectConfiguredContinuityAttuneGraphInput {
   readonly sourceObservedAt: string;
   readonly threadId: string;
+}
+
+export interface ReadConfiguredContinuityShadowReturnsInput {
+  readonly limit?: number;
+  readonly now: string;
+  readonly timingFile: string;
+}
+
+const SHADOW_RETURN_INSPECTION_MAX_ESTIMATED_TOKENS = 12_000;
+
+function normalizeShadowReturnInspectionInput(
+  value: unknown
+): Readonly<{ readonly limit: number; readonly now: string; readonly timingFile: string }> {
+  if (
+    typeof value !== "object"
+    || value === null
+    || Array.isArray(value)
+    || nodeTypes.isProxy(value)
+  ) {
+    throw new TypeError("configured Shadow Return inspection input must be a plain object");
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError("configured Shadow Return inspection input must be a plain object");
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Reflect.ownKeys(descriptors);
+  const allowed = ["limit", "now", "timingFile"] as const;
+  if (
+    keys.some((key) =>
+      typeof key !== "string"
+      || !allowed.includes(key as (typeof allowed)[number])
+      || !("value" in descriptors[key]!)
+    )
+    || !Object.hasOwn(descriptors, "now")
+    || !Object.hasOwn(descriptors, "timingFile")
+  ) {
+    throw new TypeError("configured Shadow Return inspection input has invalid fields");
+  }
+  const timingFile = descriptors.timingFile!.value;
+  const now = descriptors.now!.value;
+  const limit = descriptors.limit?.value ?? 20;
+  if (
+    typeof timingFile !== "string"
+    || timingFile.length === 0
+    || typeof now !== "string"
+    || !Number.isSafeInteger(limit)
+    || limit < 1
+    || limit > 20
+  ) {
+    throw new TypeError("configured Shadow Return inspection input is invalid");
+  }
+  return Object.freeze({ limit, now, timingFile });
+}
+
+/**
+ * Reads one capability-authenticated timing snapshot, then inspects that exact
+ * frozen snapshot. This is intentionally read-only and never accepts a
+ * caller-provided receipt or timing-state structure.
+ */
+export async function readConfiguredContinuityShadowReturns(
+  env: MuseEnvironment,
+  input: ReadConfiguredContinuityShadowReturnsInput
+): Promise<ShadowReturnInspectionReport> {
+  const normalized = normalizeShadowReturnInspectionInput(input);
+  const timingState = await readTimingState(normalized.timingFile);
+  return inspectContinuityShadowReturns({
+    databasePath: env.MUSE_ATTUNEGRAPH_DATABASE,
+    limit: normalized.limit,
+    maxEstimatedTokens: SHADOW_RETURN_INSPECTION_MAX_ESTIMATED_TOKENS,
+    now: normalized.now,
+    timingState
+  });
 }
 
 function normalizeCurrentStateInput(

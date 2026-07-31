@@ -8,6 +8,18 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Added the AWG-050b4 read-only Shadow Return Inspector. The Muse integration reads one
+  capability-authenticated persisted timing snapshot, orders at most 20 exact CLI-return
+  receipts, and optionally corroborates each receipt through the bounded Working Graph. A
+  receipt is `linked` only when one complete, untruncated reserved-scope read contains the
+  exact active `Decision PRECEDED Delivery` and `Evidence OBSERVED_DURING Thread` pair;
+  partial reads are `incomplete`, configured failures are isolated as `unavailable`, and an
+  absent database is `not-configured`. The authenticated API and English/Korean Continuity
+  card expose the source receipt, elapsed decision-to-open interval, authority denials, and
+  graph status without writing, repairing, reviewing, promoting, or acting. This is not
+  automatic return timing, usefulness evidence, a successful-return claim, or live-web
+  AttuneGraph Admin.
+
 - Added AWG-050b3 durable, queryable Shadow-return relations. The new
   `@muse/attunegraph/continuity-shadow-returns` surface combines an unchanged
   provider/source v1 observation with exact current Attunement state and an

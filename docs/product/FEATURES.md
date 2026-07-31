@@ -550,7 +550,9 @@ execute." A reaction like "not now, this evening" becomes a Policy Card proposal
 thread, not a hidden global preference.
 
 - **Shadow Muse** — does not intervene first; compares suggestion/silence candidates against actual
-  returns.
+  returns. Today an authenticated read-only Continuity card can inspect exact explicit-CLI return
+  receipts and whether their factual two-relation AttuneGraph pair is active; automatic timing and
+  usefulness evidence remain roadmap.
 - **Continuity Capsule** — restores the stopping point, changes, grounds, next steps, prepared
   work, and estimated time.
 - **Policy Card** — today, an explicit read-only preview shows the grounds and thread scope of a

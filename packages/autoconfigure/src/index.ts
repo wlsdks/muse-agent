@@ -28,8 +28,12 @@ export {
   continuityRuntimeSourceId,
   createConfiguredContinuityAttuneGraphProjector,
   projectConfiguredContinuityAttuneGraphCurrentState,
-  type ProjectConfiguredContinuityAttuneGraphInput
+  readConfiguredContinuityShadowReturns,
+  type ProjectConfiguredContinuityAttuneGraphInput,
+  type ReadConfiguredContinuityShadowReturnsInput
 } from "./continuity-attunegraph-composition.js";
+
+export type { ShadowReturnInspectionReport } from "@muse/attunegraph/continuity-shadow-returns";
 
 export {
   buildActiveContextProvider,
