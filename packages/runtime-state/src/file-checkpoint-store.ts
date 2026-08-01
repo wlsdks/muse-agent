@@ -430,6 +430,13 @@ async function hasEquivalentRealpath(path: string): Promise<boolean> {
   const canonical = await realpath(path);
   if (process.platform !== "win32") return relative(path, canonical) === "";
 
+  const root = parse(path).root;
+  let componentPath = root;
+  for (const component of relative(root, path).split(/[\\/]+/u).filter(Boolean)) {
+    componentPath = join(componentPath, component);
+    if ((await lstat(componentPath)).isSymbolicLink()) return false;
+  }
+
   const comparableWindowsPath = (value: string): string => {
     const devicePrefix = "\\\\?\\";
     const uncDevicePrefix = "\\\\?\\UNC\\";
@@ -439,10 +446,7 @@ async function hasEquivalentRealpath(path: string): Promise<boolean> {
       : folded.startsWith(devicePrefix.toLowerCase())
         ? value.slice(devicePrefix.length)
         : value;
-    const normalized = normalize(withoutDevicePrefix);
-    return /^[A-Za-z]:\\/u.test(normalized)
-      ? `${normalized[0]!.toLowerCase()}${normalized.slice(1)}`
-      : normalized;
+    return normalize(withoutDevicePrefix).toLowerCase();
   };
 
   return comparableWindowsPath(path) === comparableWindowsPath(canonical);

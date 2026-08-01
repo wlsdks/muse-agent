@@ -833,6 +833,11 @@ function orphanApiCommand(row: ProcessRow): boolean {
     && /(?:^|[\s/])tsx(?:\/dist\/cli\.mjs)?(?:\s|$)[\s\S]*\bsrc\/index\.ts(?:\s|$)/u.test(row.command);
 }
 
+function isApiWorkspacePath(path: string): boolean {
+  const native = process.platform === "win32" ? path.replaceAll("\\", "/") : path;
+  return native.replace(/\/+$/u, "").endsWith("/apps/api");
+}
+
 async function inspectProcessPath(
   pid: number,
   descriptor: "cwd",
@@ -913,7 +918,7 @@ async function inspectResidentMuseProcesses(
   for (const row of orphanCandidates) {
     const cwd = await inspectProcessPath(row.pid, "cwd", run);
     if (cwd === undefined) return unverified();
-    if (cwd.replace(/\/+$/u, "").endsWith("/apps/api")) orphanRoots.add(row.pid);
+    if (isApiWorkspacePath(cwd)) orphanRoots.add(row.pid);
   }
   const orphanPids = descendants(rows, orphanRoots);
   const candidatePids = new Set([...residentPids, ...orphanPids]);
@@ -973,7 +978,7 @@ export async function inspectResidentOrphanApiProcesses(
     if (cwd.code !== 0 || !lines.includes(`p${candidate.pid.toString()}`) || paths.length !== 1) {
       return { orphanProbe: "unverified", orphanProcessCount: 0, orphanRootCount: 0 };
     }
-    if (paths[0]!.replace(/\/+$/u, "").endsWith("/apps/api")) roots.add(candidate.pid);
+    if (isApiWorkspacePath(paths[0]!)) roots.add(candidate.pid);
   }
   return { orphanProbe: "ok", orphanProcessCount: descendants(rows, roots).size, orphanRootCount: roots.size };
 }

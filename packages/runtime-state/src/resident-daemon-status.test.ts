@@ -982,6 +982,32 @@ describe("resident daemon read-only authority", () => {
     expect(privacySafe).not.toMatch(/4321|4322|4330|5000|5001/u);
   });
 
+  it.runIf(process.platform !== "win32")("does not treat literal backslashes as Darwin path separators", async () => {
+    const state = inventoryFixture({ orphanTree: true });
+    const deceptiveCwd = join(state.root, "foreign\\apps\\api");
+    mkdirSync(deceptiveCwd);
+    const run: ReadOnlyProcessRunner = async (executable, args, options) => {
+      if (executable === "lsof" && args.includes("cwd") && args.includes("5000")) {
+        return { code: 0, stderr: "", stdout: `p5000\nfcwd\nn${deceptiveCwd}\n` };
+      }
+      return state.run(executable, args, options);
+    };
+    const result = await inspectResidentDaemon({
+      daemonTemporaryRoots: [],
+      env: { HOME: state.root, MUSE_DAEMON_PLIST_FILE: state.plistFile },
+      now: () => NOW,
+      platform: "darwin",
+      run,
+      uid: 501
+    });
+
+    expect(result.processInventory).toMatchObject({
+      conditions: ["healthy"],
+      museProcessCount: 1,
+      residentProcessCount: 1
+    });
+  });
+
   it("fails the bounded inventory closed when a process identity path cannot be proven", async () => {
     const state = inventoryFixture();
     const run: ReadOnlyProcessRunner = async (executable, args, options) => {

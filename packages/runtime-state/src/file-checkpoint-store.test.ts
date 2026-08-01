@@ -23,6 +23,21 @@ function checkpointFileName(runId: string): string {
 }
 
 describe("FileCheckpointStore — durable local checkpoints so a crashed run can resume", () => {
+  it("rejects a checkpoint directory reached through a symlinked ancestor", async () => {
+    const dir = tmpDir();
+    try {
+      const target = join(dir, "target");
+      const linked = join(dir, "linked");
+      mkdirSync(target);
+      symlinkSync(target, linked, process.platform === "win32" ? "junction" : "dir");
+      const store = new FileCheckpointStore(join(linked, "checkpoints"));
+      await expect(store.save({ runId: "linked-ancestor", state: state("blocked"), step: 0 }))
+        .rejects.toThrow("checkpoint directory ancestor is not canonical");
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   it.runIf(process.platform === "win32")("accepts canonical Windows drive-letter spelling", async () => {
     const dir = tmpDir();
     try {
