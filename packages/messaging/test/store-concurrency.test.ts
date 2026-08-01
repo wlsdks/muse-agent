@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { appendAckCursor, readAckCursor } from "../src/inbox-ack-cursor.js";
 import { advanceInboxInjectionCursor, readInboxInjectionCursor } from "../src/inbox-injection-cursor.js";
@@ -155,12 +155,13 @@ describe("recordPendingApproval under concurrency — no crash / corruption (tmp
     if (!claim.claimedByThisCall) throw new Error("expected claim");
     expect((await beginPendingApprovalExecution(file, "p88", claim.claimToken)).transitioned).toBe(true);
 
-    const parent = join(dir, "finalize-failure");
-    await fs.chmod(parent, 0o500);
+    const rename = vi.spyOn(fs, "rename").mockRejectedValueOnce(
+      Object.assign(new Error("injected terminal atomic write failure"), { code: "EIO" })
+    );
     try {
       await expect(finalizePendingApprovalExecution(file, "p88", claim.claimToken, "succeeded")).rejects.toThrow();
     } finally {
-      await fs.chmod(parent, 0o700);
+      rename.mockRestore();
     }
 
     expect(await claimPendingApproval(file, "p88", { surface: "cli" })).toEqual({ claimedByThisCall: false, state: "executing" });
