@@ -186,6 +186,41 @@ describe("Continuity durable AttuneGraph projection", () => {
       scope: { sourceId: SOURCE_ID, threadId: THREAD_ID }
     });
     await expect(graph.head()).resolves.toEqual(second.snapshot);
+    const threadRoot = continuityThreadGraphRef({
+      sourceId: SOURCE_ID,
+      threadId: THREAD_ID
+    });
+    await expect(graph.queryAuthority({
+      operator: "authority-query@1",
+      scope: { sourceId: SOURCE_ID, threadId: THREAD_ID },
+      action: { kind: "action", id: "muse-action:continuity-resume" },
+      threadRoot: { kind: "thread", id: threadRoot.id },
+      asOf: SECOND_AT,
+      head: {
+        mode: "exact",
+        generation: second.snapshot.generation,
+        commitId: second.snapshot.commitId
+      },
+      freshness: { require: "fresh" },
+      budget: { maxEstimatedTokens: 4_000 }
+    })).resolves.toMatchObject({
+      operator: "authority-query@1",
+      status: "abstained",
+      authority: "undetermined",
+      sourceFreshness: {
+        state: "unknown",
+        observedAt: SECOND_AT
+      },
+      witness: { assertionIds: [], sourceRefs: [] },
+      conflicts: [],
+      diagnostics: {
+        consideredAssertions: 0,
+        terminalReasons: ["source-not-fresh"],
+        truncationReasons: [],
+        authorityClosure: "incomplete",
+        conflictClosure: "incomplete"
+      }
+    });
     await graph.close();
   });
 

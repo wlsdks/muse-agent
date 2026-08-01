@@ -87,6 +87,14 @@ export/rebuild clears the default-persistence gate. This Module does not read
 Attunement, Notes, Tasks, Notion, or Obsidian stores itself; applications remain
 the composition root and authoritative sources remain authoritative.
 
+The pinned Engine also exposes the typed `authority-query@1` contract. The
+current Continuity writer deliberately records freshness as `unknown`, so an
+authority query against its exact SQLite head abstains with `source-not-fresh`
+before inspecting graph relations. Muse does not yet produce the fresh,
+source-authoritative action-policy-evidence frontier required for an authorized
+result, and no product surface invokes this query. Fresh composition and any
+Policy Card use remain roadmap work rather than a wrapper claim.
+
 ## Durable Shadow-return relations
 
 The provider/source-revalidated v1 observation remains unchanged. Muse then reads one immutable
