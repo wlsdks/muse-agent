@@ -131,7 +131,7 @@ describe("AuthoredSkillStore — probation staging", () => {
     });
 
     expect(staged.action).toBe("stage-create");
-    expect(staged.skill.sourceInfo.filePath).toContain("/.probation/");
+    expect(staged.skill.sourceInfo.filePath).toMatch(/[\\/]\.probation[\\/]/u);
     expect(await store.listAuthored()).toEqual([]);
     expect((await store.listProbation()).map((skill) => skill.name)).toEqual(["summarise-with-bullets"]);
   });
@@ -160,7 +160,7 @@ describe("AuthoredSkillStore — probation staging", () => {
     });
 
     expect(staged.action).toBe("quarantined");
-    expect(staged.skill.sourceInfo.filePath).toContain("/.quarantine/");
+    expect(staged.skill.sourceInfo.filePath).toMatch(/[\\/]\.quarantine[\\/]/u);
     expect(await store.listProbation()).toEqual([]);
     expect(await store.listAuthored()).toEqual([]);
   });
