@@ -44,6 +44,7 @@ import { registerReminderTriageCommands } from "./commands-remind-triage.js";
  * typos with the closest-match hint.
  */
 const REMIND_STATUS_VALUES = ["pending", "fired", "all", "due"] as const;
+const REMINDER_CANARY_PROVIDER_IDS = ["log", "macos-notification", "linux-libnotify"] as const;
 
 function assertReminderStatusInput(raw: string): void {
   const trimmed = raw.trim().toLowerCase();
@@ -481,7 +482,8 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
 
   remind
     .command("run")
-    .description("Phase B firing loop: deliver every due reminder via messaging then mark fired")
+    .description("Deliver due reminders via messaging then mark fired; --canary limits delivery to one local reminder")
+    .option("--canary <ref>", "Deliver exactly one reminder selected by id, id prefix, or text using a local provider")
     .option(
       "--via <provider>",
       "Messaging provider id (telegram | discord | slack | line). Required unless --dry-run."
@@ -503,6 +505,7 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
     )
     .action(async (
       options: {
+        readonly canary?: string;
         readonly via?: string;
         readonly destination?: string;
         readonly dryRun?: boolean;
@@ -512,6 +515,9 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         readonly watchInterval?: string;
       }
     ) => {
+      if (options.watch && options.canary !== undefined) {
+        throw new Error("--canary and --watch are mutually exclusive");
+      }
       if (options.watch && options.dryRun) {
         throw new Error("--watch and --dry-run are mutually exclusive (watch needs real delivery to advance reminders)");
       }
@@ -562,10 +568,32 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       }
 
       const file = localRemindersFile();
+      let canaryReminder: PersistedReminder | undefined;
+      if (options.canary !== undefined) {
+        const requestedProvider = options.via?.trim() ?? "log";
+        if (!(REMINDER_CANARY_PROVIDER_IDS as readonly string[]).includes(requestedProvider)) {
+          throw new Error(
+            `--canary only permits local providers: ${REMINDER_CANARY_PROVIDER_IDS.join(", ")} (got '${requestedProvider}')`
+          );
+        }
+        const all = existsSync(file) ? await readRemindersStrict(file) : [];
+        const reminderId = resolveLocalReminderId(options.canary, all);
+        canaryReminder = all.find((reminder) => reminder.id === reminderId);
+        if (!canaryReminder) {
+          throw new Error(`reminder not found: ${options.canary}`);
+        }
+        const provider = canaryReminder.via?.providerId ?? requestedProvider;
+        if (!(REMINDER_CANARY_PROVIDER_IDS as readonly string[]).includes(provider)) {
+          throw new Error(
+            `--canary only permits local providers: ${REMINDER_CANARY_PROVIDER_IDS.join(", ")} (got '${provider}')`
+          );
+        }
+      }
 
       if (options.dryRun) {
         const all = await readReminders(file);
-        const due = filterReminders(all, "due", () => new Date());
+        const candidates = canaryReminder ? [canaryReminder] : all;
+        const due = filterReminders(candidates, "due", () => new Date());
         const summary = {
           delivered: 0,
           due: due.length,
@@ -587,8 +615,8 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         return;
       }
 
-      const provider = options.via?.trim();
-      const destination = options.destination?.trim();
+      const provider = options.via?.trim() || (canaryReminder ? "log" : undefined);
+      const destination = options.destination?.trim() || (canaryReminder ? "@owner" : undefined);
       if (!provider || !destination) {
         throw new Error("--via and --destination are required (or use --dry-run for a preview)");
       }
@@ -601,7 +629,13 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         effectFile: localReminderEffectFile(),
         file,
         providerId: provider,
-        registry
+        registry,
+        ...(canaryReminder
+          ? {
+              allowedProviderIds: REMINDER_CANARY_PROVIDER_IDS,
+              reminderId: canaryReminder.id
+            }
+          : {})
       });
 
       if (options.json) {

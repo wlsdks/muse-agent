@@ -91,6 +91,88 @@ function options(
 }
 
 describe("runDueReminders durable occurrence effect", () => {
+  it("filters an exact selected reminder under lock and leaves every other due reminder untouched", async () => {
+    const p = paths();
+    await writeReminders(p.remindersFile, [
+      reminder({ id: "rem-selected", text: "Selected reminder" }),
+      reminder({ id: "rem-unselected", text: "Must remain pending" })
+    ]);
+    const sent: OutboundMessage[] = [];
+
+    const summary = await runDueReminders({
+      ...options(p, registry(async (message) => {
+        sent.push(message);
+        return { destination: message.destination, messageId: "accepted-selected", providerId: "telegram" };
+      })),
+      allowedProviderIds: ["telegram"],
+      reminderId: "rem-selected"
+    });
+
+    expect(summary).toMatchObject({ delivered: 1, due: 1, errors: [] });
+    expect(sent.map(({ text }) => text)).toEqual(["Selected reminder"]);
+    expect((await readReminders(p.remindersFile)).map(({ id, status }) => ({ id, status }))).toEqual([
+      { id: "rem-selected", status: "fired" },
+      { id: "rem-unselected", status: "pending" }
+    ]);
+    expect(await readOutboundEffects(p.effectFile)).toHaveLength(1);
+    expect(await readReminderHistory(p.historyFile)).toEqual([
+      expect.objectContaining({ reminderId: "rem-selected", status: "delivered" })
+    ]);
+  });
+
+  it("rejects a missing exact selection and a disallowed per-reminder route before effects or mutation", async () => {
+    const p = paths();
+    await writeReminders(p.remindersFile, [reminder()]);
+    const original = readFileSync(p.remindersFile, "utf8");
+    let providerCalls = 0;
+    const messaging = registry(async (message) => {
+      providerCalls += 1;
+      return { destination: message.destination, messageId: "must-not-send", providerId: "telegram" };
+    });
+
+    await expect(runDueReminders({
+      ...options(p, messaging),
+      allowedProviderIds: ["telegram"],
+      reminderId: "rem-missing"
+    })).rejects.toThrow("selected reminder not found");
+
+    await writeReminders(p.remindersFile, [
+      reminder({ via: { destination: "remote-destination", providerId: "slack" } })
+    ]);
+    const overridden = readFileSync(p.remindersFile, "utf8");
+    await expect(runDueReminders({
+      ...options(p, messaging),
+      allowedProviderIds: ["telegram"],
+      reminderId: "rem-effect-1"
+    })).rejects.toThrow("provider 'slack' is not permitted");
+
+    expect(original).not.toBe(overridden);
+    expect(readFileSync(p.remindersFile, "utf8")).toBe(overridden);
+    expect(providerCalls).toBe(0);
+    expect(existsSync(p.effectFile)).toBe(false);
+    expect(existsSync(p.historyFile)).toBe(false);
+  });
+
+  it("rejects a provider allowlist without an exact selection before store mutation or effects", async () => {
+    const p = paths();
+    await writeReminders(p.remindersFile, [reminder()]);
+    const original = readFileSync(p.remindersFile, "utf8");
+    let providerCalls = 0;
+
+    await expect(runDueReminders({
+      ...options(p, registry(async (message) => {
+        providerCalls += 1;
+        return { destination: message.destination, messageId: "must-not-send", providerId: "telegram" };
+      })),
+      allowedProviderIds: ["telegram"]
+    })).rejects.toThrow("requires an exact selected reminder id");
+
+    expect(readFileSync(p.remindersFile, "utf8")).toBe(original);
+    expect(providerCalls).toBe(0);
+    expect(existsSync(p.effectFile)).toBe(false);
+    expect(existsSync(p.historyFile)).toBe(false);
+  });
+
   it("binds one exact occurrence and records accepted history before firing", async () => {
     const p = paths();
     await writeReminders(p.remindersFile, [reminder()]);

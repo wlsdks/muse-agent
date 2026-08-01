@@ -1,7 +1,8 @@
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { errorMessage } from "@muse/shared";
+import { readOutboundEffects } from "@muse/messaging";
 
 import { readReminders, recordProactiveHeartbeat, writeReminders, type PersistedReminder } from "@muse/stores";
 import { Command } from "commander";
@@ -49,6 +50,185 @@ async function runRemind(
   }
   return { apiCalls, error, stderr: stderr.join(""), stdout: stdout.join("") };
 }
+
+describe("muse remind run --canary — one local controlled delivery", () => {
+  const environmentKeys = [
+    "MUSE_ACTION_LOG_FILE",
+    "MUSE_LOCAL_ONLY",
+    "MUSE_MESSAGING_LIBNOTIFY_ENABLED",
+    "MUSE_MESSAGING_LOG_ENABLED",
+    "MUSE_MESSAGING_LOG_FILE",
+    "MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED",
+    "MUSE_REMINDER_HISTORY_FILE",
+    "MUSE_REMINDERS_FILE"
+  ] as const;
+  const previousEnvironment = new Map<string, string | undefined>();
+  let dir: string;
+  let effectsFile: string;
+  let historyFile: string;
+  let logFile: string;
+  let remindersFile: string;
+
+  const dueReminder = (id: string, text: string, overrides: Partial<PersistedReminder> = {}): PersistedReminder => ({
+    createdAt: "2020-01-01T00:00:00.000Z",
+    dueAt: "2020-01-02T00:00:00.000Z",
+    id,
+    status: "pending",
+    text,
+    ...overrides
+  });
+
+  beforeEach(() => {
+    for (const key of environmentKeys) previousEnvironment.set(key, process.env[key]);
+    dir = mkdtempSync(join(tmpdir(), "muse-rem-canary-"));
+    remindersFile = join(dir, "reminders.json");
+    effectsFile = join(dir, "outbound-effects.json");
+    historyFile = join(dir, "reminder-history.json");
+    logFile = join(dir, "notifications.log");
+    process.env.MUSE_ACTION_LOG_FILE = join(dir, "action-log.json");
+    process.env.MUSE_LOCAL_ONLY = "true";
+    process.env.MUSE_MESSAGING_LIBNOTIFY_ENABLED = "false";
+    process.env.MUSE_MESSAGING_LOG_ENABLED = "true";
+    process.env.MUSE_MESSAGING_LOG_FILE = logFile;
+    process.env.MUSE_MESSAGING_MACOS_NOTIFICATION_ENABLED = "false";
+    process.env.MUSE_REMINDER_HISTORY_FILE = historyFile;
+    process.env.MUSE_REMINDERS_FILE = remindersFile;
+  });
+
+  afterEach(() => {
+    for (const key of environmentKeys) {
+      const previous = previousEnvironment.get(key);
+      if (previous === undefined) delete process.env[key];
+      else process.env[key] = previous;
+    }
+    previousEnvironment.clear();
+  });
+
+  it("delivers exactly one selected due reminder with default log/@owner and leaves the other pending", async () => {
+    await writeReminders(remindersFile, [
+      dueReminder("rem_alpha", "alpha canary"),
+      dueReminder("rem_beta", "beta must remain pending")
+    ]);
+
+    const result = await runRemind(["run", "--canary", "alpha", "--json"]);
+
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(result.stdout)).toEqual({ delivered: 1, due: 1, errors: [] });
+    expect((await readReminders(remindersFile)).map(({ id, status }) => ({ id, status }))).toEqual([
+      { id: "rem_alpha", status: "fired" },
+      { id: "rem_beta", status: "pending" }
+    ]);
+    expect(readFileSync(logFile, "utf8")).toContain("(@owner) alpha canary");
+    expect(readFileSync(logFile, "utf8")).not.toContain("beta must remain pending");
+    expect(await readOutboundEffects(effectsFile)).toHaveLength(1);
+    expect(existsSync(historyFile)).toBe(false);
+  });
+
+  it.each([
+    { label: "missing", ref: "absent", reminders: [dueReminder("rem_alpha", "alpha")] },
+    {
+      label: "ambiguous",
+      ref: "review",
+      reminders: [dueReminder("rem_review_a", "review budget"), dueReminder("rem_review_b", "review roadmap")]
+    }
+  ])("rejects a $label ref before any send, effect, history, or reminder mutation", async ({ ref, reminders }) => {
+    await writeReminders(remindersFile, reminders);
+    const before = readFileSync(remindersFile, "utf8");
+
+    const result = await runRemind(["run", "--canary", ref]);
+
+    expect(result.error).toBeDefined();
+    expect(readFileSync(remindersFile, "utf8")).toBe(before);
+    expect(existsSync(logFile)).toBe(false);
+    expect(existsSync(effectsFile)).toBe(false);
+    expect(existsSync(historyFile)).toBe(false);
+  });
+
+  it("rejects explicit and per-reminder remote providers before any durable or delivery effect", async () => {
+    await writeReminders(remindersFile, [dueReminder("rem_remote", "remote canary")]);
+    const before = readFileSync(remindersFile, "utf8");
+    const explicit = await runRemind(["run", "--canary", "rem_remote", "--via", "telegram"]);
+    expect(explicit.error).toContain("only permits local providers");
+
+    await writeReminders(remindersFile, [
+      dueReminder("rem_remote", "remote canary", {
+        via: { destination: "third-party", providerId: "telegram" }
+      })
+    ]);
+    const overridden = readFileSync(remindersFile, "utf8");
+    const perReminder = await runRemind(["run", "--canary", "rem_remote"]);
+    expect(perReminder.error).toContain("only permits local providers");
+    expect(before).not.toBe(overridden);
+    expect(readFileSync(remindersFile, "utf8")).toBe(overridden);
+    expect(existsSync(logFile)).toBe(false);
+    expect(existsSync(effectsFile)).toBe(false);
+    expect(existsSync(historyFile)).toBe(false);
+  });
+
+  it("returns a no-op for a selected reminder that is not due", async () => {
+    await writeReminders(remindersFile, [
+      dueReminder("rem_future", "future canary", { dueAt: "2099-01-01T00:00:00.000Z" })
+    ]);
+    const before = readFileSync(remindersFile, "utf8");
+
+    const result = await runRemind(["run", "--canary", "future", "--json"]);
+
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(result.stdout)).toEqual({ delivered: 0, due: 0, errors: [] });
+    expect(readFileSync(remindersFile, "utf8")).toBe(before);
+    expect(existsSync(logFile)).toBe(false);
+    expect(existsSync(effectsFile)).toBe(false);
+  });
+
+  it("previews only the selected reminder under --dry-run without send or mutation", async () => {
+    await writeReminders(remindersFile, [
+      dueReminder("rem_alpha", "alpha preview"),
+      dueReminder("rem_beta", "beta hidden")
+    ]);
+    const before = readFileSync(remindersFile, "utf8");
+
+    const result = await runRemind(["run", "--canary", "alpha", "--dry-run", "--json"]);
+
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(result.stdout)).toEqual({
+      delivered: 0,
+      due: 1,
+      errors: [],
+      previews: [{ id: "rem_alpha", text: "alpha preview" }]
+    });
+    expect(readFileSync(remindersFile, "utf8")).toBe(before);
+    expect(existsSync(logFile)).toBe(false);
+    expect(existsSync(effectsFile)).toBe(false);
+  });
+
+  it("rejects --watch with --canary before entering the watch loop", async () => {
+    const result = await runRemind(["run", "--watch", "--canary", "anything"]);
+    expect(result.error).toContain("--canary and --watch are mutually exclusive");
+  });
+
+  it("preserves ordinary run behavior by delivering every due reminder", async () => {
+    await writeReminders(remindersFile, [
+      dueReminder("rem_alpha", "ordinary alpha"),
+      dueReminder("rem_beta", "ordinary beta")
+    ]);
+
+    const result = await runRemind([
+      "run",
+      "--via",
+      "log",
+      "--destination",
+      "@owner",
+      "--json"
+    ]);
+
+    expect(result.error).toBeUndefined();
+    expect(JSON.parse(result.stdout)).toEqual({ delivered: 2, due: 2, errors: [] });
+    expect((await readReminders(remindersFile)).every(({ status }) => status === "fired")).toBe(true);
+    expect(readFileSync(logFile, "utf8")).toContain("ordinary alpha");
+    expect(readFileSync(logFile, "utf8")).toContain("ordinary beta");
+    expect(await readOutboundEffects(effectsFile)).toHaveLength(2);
+  });
+});
 
 describe("muse remind add — past-time guard (a date typo would fire immediately)", () => {
   // --local resolves the reminders file from MUSE_REMINDERS_FILE; without this

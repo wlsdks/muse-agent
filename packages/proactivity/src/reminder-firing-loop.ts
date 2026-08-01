@@ -62,6 +62,10 @@ export interface RunDueRemindersOptions {
   readonly registry: Pick<MessagingProviderRegistry, "has" | "send">;
   readonly providerId: string;
   readonly destination: string;
+  /** Exact optional reminder selection, resolved by the caller before entry. */
+  readonly reminderId?: string;
+  /** Optional exact provider ids allowed for the selected reminder's resolved route. */
+  readonly allowedProviderIds?: readonly string[];
   /** Canonical outbound-effect ledger. Production callers place it beside the action log. */
   readonly effectFile?: string;
   readonly now?: () => Date;
@@ -112,6 +116,9 @@ export interface ReminderTriggerEnvelope extends TriggerEnvelope {
 }
 
 export async function runDueReminders(options: RunDueRemindersOptions): Promise<RunDueRemindersSummary> {
+  if (options.allowedProviderIds !== undefined && options.reminderId === undefined) {
+    throw new Error("a reminder provider allowlist requires an exact selected reminder id");
+  }
   const has = options.registry.has;
   const send = options.registry.send;
   const stable = {
@@ -150,7 +157,33 @@ async function runDueRemindersUnderLock(
   const tickNow = () => tickAt;
   let summary: RunDueRemindersSummary = { delivered: 0, due: 0, errors: [], fired: [] };
   await mutateRemindersValidated(options.file, async (all) => {
-    const due = filterReminders(all, "due", tickNow);
+    let candidates = all;
+    if (options.reminderId !== undefined) {
+      if (options.reminderId.length === 0 || options.reminderId !== options.reminderId.trim()) {
+        throw new Error("selected reminder id must be a non-empty exact id");
+      }
+      const selected = all.find((reminder) => reminder.id === options.reminderId);
+      if (!selected) {
+        throw new Error(`selected reminder not found: ${options.reminderId}`);
+      }
+      if (options.allowedProviderIds !== undefined) {
+        const allowed = options.allowedProviderIds;
+        if (
+          allowed.length === 0
+          || allowed.some((providerId) => providerId.length === 0 || providerId !== providerId.trim())
+        ) {
+          throw new Error("selected reminder provider allowlist is invalid");
+        }
+        const selectedProviderId = selected.via?.providerId ?? options.providerId;
+        if (!allowed.includes(selectedProviderId)) {
+          throw new Error(
+            `selected reminder provider '${selectedProviderId}' is not permitted for this run`
+          );
+        }
+      }
+      candidates = [selected];
+    }
+    const due = filterReminders(candidates, "due", tickNow);
     if (due.length === 0) return all;
 
     const errors: string[] = [];
