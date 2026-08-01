@@ -475,9 +475,15 @@ This creates four agent-native advantages:
 ### Muse's special move: verified personal temporal operators
 
 The differentiator should not be “the model can query a graph.” Arbitrary graph querying
-pushes schema knowledge, cost control, and correctness back into the model. Muse should
-instead expose a small, versioned operator algebra whose results are deterministic,
-bounded, content-addressed, and source-resolvable:
+pushes schema knowledge, cost control, and correctness back into the model. The neutral
+Engine now ships one deliberately fixed `decision-query@1` profile, accepted as a canonical
+object or bounded AttuneQL. Callers select only seed, scope, time, current/exact head, and
+token budget; they cannot remove relationship families, add writes, or turn proximity into
+permission. Its receipt is evidence-only and explicitly leaves authority and conflict closure
+`not-performed`.
+
+Muse should build its stricter, versioned operator algebra above that honest core boundary,
+with results that are deterministic, bounded, content-addressed, and source-resolvable:
 
 - `changesSince(exactBoundary, thread)` — distinguish world-valid changes from facts Muse
   learned later, then return an exact explanation path or abstain;
@@ -671,15 +677,18 @@ interface AttuneGraph {
   head(): Promise<AttuneGraphSnapshot | undefined>;
   project(command: AttuneGraphProjectCommand): Promise<AttuneGraphSnapshot>;
   execute(command: AttuneGraphExecuteCommand): Promise<AttuneGraphOperatorResult>;
+  query(command: AttuneGraphDecisionQuery): Promise<AttuneGraphDecisionQueryResult>;
   close(): Promise<void>;
 }
 ```
 
 `openAttuneGraph` requires one explicit Store capability, binds the instance to one
-scope, accepts `canonical-projection@1`, and executes `working-graph@1`. The explicit
-in-memory Store is a semantic oracle, never a durability fallback.
+scope, accepts `canonical-projection@1|2`, executes `working-graph@1`, and compiles the
+fixed evidence-only `decision-query@1`. `parseAttuneQL()` is only a bounded parser into
+that same canonical query; arbitrary traversal, joins, analytics, and writes are absent.
+The explicit in-memory Store is a semantic oracle, never a durability fallback.
 `openLocalAttuneGraph` ships from `@attunegraph/core/local` for the capability-gated
-SQLite profile. Exact operators for `changes-since`, `resume-context`,
+SQLite profile. Proof-closed Muse operators for `changes-since`, `resume-context`,
 `decision-counterfactual`, `policy-evidence`, and `forget-impact` remain roadmap work.
 Expert Source and Store Adapter Interfaces stay in separate subpaths. Raw assertion
 mutation, SQL/Cypher, and arbitrary traversal plans do not become product Interfaces.

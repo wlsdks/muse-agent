@@ -8,6 +8,17 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Advanced Muse's pinned AttuneGraph submodule to standalone main commit
+  `2f76c59`. The neutral core now ships fixed-profile `decision-query@1`
+  through a canonical object or bounded AttuneQL, with exact/current-head,
+  fresh-source, token-budget, deterministic partiality, and content-addressed
+  evidence-only receipt semantics. Ill-formed Unicode is rejected before Store
+  I/O and partial evidence ordering is locale-independent. Muse's existing
+  receipt-bound witness and Continuity proof layers remain separate: the new
+  core receipt explicitly does not claim authority or conflict closure, and
+  this pin does not add default ingestion, automatic Capsule surfacing, action
+  authority, or a general Cypher-style query interface.
+
 - Updated Muse's exact AttuneGraph Git submodule pin to standalone main commit
   `4298c13` and moved durable Continuity projection to Thread-rooted Admission
   `canonical-projection@2`. The canonical observation now binds the exact opaque

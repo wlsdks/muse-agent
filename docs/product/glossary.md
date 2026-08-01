@@ -40,14 +40,21 @@ Muse*. Each entry is one definition plus where it lives. Exact verification evid
   person, with evidence and scope. A read-only, explicitly invoked AttuneGraph-backed render-data
   preview is available now; automatic surfacing, product UI, and trusted trial, edit, reject,
   apply, and rollback controls remain **roadmap**.
-- **AttuneGraph** — the official name for the agent-native graph architecture Muse
-  consumes and dogfoods, and its future standalone open-source product. It does not replace existing personal stores; it
+- **AttuneGraph** — the official name for the standalone open-source agent-native graph product Muse
+  consumes and dogfoods. It does not replace existing personal stores; it
   links time, relationships, provenance, change, return and policy, and compiles only the relations
   one turn needs into a Working Graph. Its neutral engine package is `@attunegraph/core`;
   Muse-specific composition lives in `@muse/attunegraph`.
 - **AttuneGraph Engine** — the execution layer combining AttuneGraph's ontology, receipt projection,
   temporal/relationship indexes, bounded operators, completeness/abstention and the Working Graph
   compiler.
+- **Decision Query** — the shipped fixed-profile `decision-query@1` boundary that compiles one
+  exact/current-head, fresh-source, token-bounded evidence frontier. Its receipt is evidence-only;
+  `complete` means the fixed traversal completed, not that an action is authorized or every conflict
+  is closed.
+- **AttuneQL** — the bounded textual spelling of the same Decision Query. It lets an agent name the
+  seed, scope, time, head posture and budget, but exposes no arbitrary predicates, joins, traversal,
+  analytics or writes. Text and typed objects normalize to the same canonical query.
 - **AttuneGraph Store** — the engine's embedded persistence layer, with `node:sqlite`
   selected as the default physical store and synchronous work isolated from the application
   thread. PostgreSQL is an optional future adapter; an external graph DB, Redis and MySQL are
@@ -62,7 +69,8 @@ Muse*. Each entry is one definition plus where it lives. Exact verification evid
 - **Evidence Graph** — the long-lived layer of facts, time, provenance and relationships,
   regenerable from receipts and authoritative sources.
 - **Working Graph** — the short-lived layer compiled out of the Evidence Graph, within a token
-  budget, for one agent decision. Not the whole personal graph, and not chain-of-thought.
+  budget, for one agent decision. Not the whole personal graph, not chain-of-thought, and not by
+  itself proof of permission or conflict closure.
 - **Activation Subgraph** — the short-lived graph handed to the agent carrying only the current
   thread, changes, evidence, policy and authority boundary within the token budget. Not the whole
   personal graph, and not chain-of-thought.

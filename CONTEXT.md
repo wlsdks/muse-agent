@@ -55,12 +55,14 @@ invariants and adds the dependency direction that code must not violate.
   built-in durable journal and index layer whose selected default is capability-gated
   `node:sqlite`. The AWG-070a1 worker-isolated projection-journal foundation exists;
   the explicit `MUSE_ATTUNEGRAPH_DATABASE` Continuity Preview writer now performs restart-safe
-  optimistic projection through the public Engine Interface. Export/rebuild, backup, physical
+  optimistic projection through the public Engine Interface. The core also ships fixed-profile
+  `decision-query@1` through typed input or bounded AttuneQL; its receipt is evidence-only and
+  explicitly does not complete authority/conflict evaluation. Export/rebuild, backup, physical
   forget, complete benchmarks, and automatic/default Muse composition remain. PostgreSQL is
   optional; Redis/MySQL/external Graph DBs are not required. A
   receipt is evidence projected into AttuneGraph, not a database.
-- AttuneGraph is an independently extractable product Module developed inside Muse until its
-  clean-room package gate passes. Muse applications depend on the AttuneGraph public Interface;
+- AttuneGraph is a standalone public product Module developed in its own repository and consumed
+  here through an exact submodule pin. Muse applications depend on the AttuneGraph public Interface;
   the Engine never depends on Muse API/web/CLI/scheduler/autoconfigure/model/UI packages.
   Planned Markdown, Obsidian, and Notion integrations are Source Adapters, not Store
   Implementations; their AttuneGraph-specific contracts are not shipped. See

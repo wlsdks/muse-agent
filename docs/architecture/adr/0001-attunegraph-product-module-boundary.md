@@ -39,6 +39,7 @@ The public product Interface converges on a small lifecycle:
 const attuneGraph = await openAttuneGraph(options);
 await attuneGraph.project(command);
 const result = await attuneGraph.execute(command);
+const evidence = await attuneGraph.query(decisionQuery);
 await attuneGraph.close();
 ```
 
@@ -50,7 +51,7 @@ Source naming follows one contract:
 
 - prose/product: `AttuneGraph`;
 - TypeScript symbols: `AttuneGraphScope`, `AttuneGraphSnapshot`, `AttuneGraphStore`, `AttuneGraphSourceAdapter`,
-  `AttuneGraphOperatorResult`, and `AttuneGraphError`;
+  `AttuneGraphOperatorResult`, `AttuneGraphDecisionQueryResult`, and `AttuneGraphError`;
 - factories and values: `openAttuneGraph`, `openLocalAttuneGraph`, `createAttuneGraphEngine`;
 - packages: neutral `@attunegraph/core`, Muse integration `@muse/attunegraph`;
 - durable identifiers: lower-case versioned keys such as `resume-context@2`;
@@ -60,6 +61,7 @@ The Interface is intentionally closed:
 
 - callers select one explicit `AttuneGraphScope` and immutable `AttuneGraphSnapshot`;
 - projectors turn verified observations into deterministic AttuneGraph projections;
+- `decision-query@1` compiles one fixed evidence frontier from typed input or bounded AttuneQL;
 - versioned operators answer agent questions such as `changes-since`, `resume-context`,
   `decision-counterfactual`, `policy-evidence`, and `forget-impact`;
 - results report freshness and `complete | partial | abstained`;
@@ -70,7 +72,7 @@ The Interface is intentionally closed:
 
 | Module | Package or subpath | Status | Responsibility |
 | --- | --- | --- | --- |
-| AttuneGraph Engine | `@attunegraph/core` | shipped in the monorepo | Canonical values, projections, versioned operators, proof closure, completeness, errors |
+| AttuneGraph Engine | `@attunegraph/core` | shipped standalone and pinned here | Canonical values, projections, versioned operators, explicit completeness/non-closure, errors |
 | Local AttuneGraph | `@attunegraph/core/local` | shipped | `openLocalAttuneGraph()` with SQLite isolated behind a worker boundary |
 | Read-only Admin | `@attunegraph/core/admin` | shipped offline Interface | Summary, integrity, and exact-head inspection from an explicitly closed/quiescent snapshot |
 | Store Kit | `@attunegraph/core/backend` | shipped expert seam | Transactional journal/snapshot adapter contract |
@@ -153,9 +155,11 @@ Attunement bridge. The split must not copy or fork Attunement validation.
 - Portable export and deterministic rebuild exist before the SQLite format becomes a
   default user-data commitment.
 
-## Standalone qualification gate
+## Standalone split outcome and remaining qualification
 
-AttuneGraph is ready to split into its own repository only when all of the following are true:
+The original split gate tracked the following evidence. The repository split is complete; items
+that remain incomplete are still explicit product or release qualification work rather than reasons
+to describe AttuneGraph as an in-tree or future standalone module:
 
 1. the AttuneGraph package builds and tests from a generated clean-room workspace without the Muse
    application graph;
