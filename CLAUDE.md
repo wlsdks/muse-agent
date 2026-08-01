@@ -50,6 +50,15 @@ TypeScript/toolchain work follows [`docs/development/typescript-7.md`](docs/deve
 builds use TS7, the `typescript` dependency stays the TS6 compiler-API alias for tooling, and
 migration diagnostics are never masked with compiler-option relaxations.
 
+## CodeGraph (conditional)
+
+When CodeGraph MCP is exposed and this project has a usable `.codegraph/` index, follow the
+v1.5 contract in [`.claude/rules/engineering/codegraph.md`](.claude/rules/engineering/codegraph.md):
+use `codegraph_explore` first for indexed source, treat its returned line-numbered source as Read,
+and use native tools for literals, docs/config, unindexed code, or specifically stale files. Never
+assume optional CodeGraph tools exist, and never initialize, rebuild, or sync an index without an
+explicit owner request. Compiler, tests, and lint — not the index — prove correctness.
+
 **Deciding what to do next:** follow `muse-dev-patterns` for maintenance of existing behavior
 (regression → failing evidence → smallest verified repair), and use `grow-muse` only for a NEW
 user-facing capability. One bounded slice end-to-end; do not invent work merely to keep a loop busy.
