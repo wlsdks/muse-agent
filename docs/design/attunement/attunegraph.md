@@ -128,8 +128,11 @@ has its own grammar rather than impersonating a graph commit or generation. A si
 capture is always `unassessed`; that pairing forces graph settlement to abstain while its
 receipts still bind the exact source scope, observation, evidence, budget, retained
 nominations, and digest-counted overflow. The module is private and process-local. No
-runtime, Capsule, durable store, continuous/current freshness claim, or action path
-consumes it yet.
+caller-declared or unassessed path upgrades this evidence to fresh. The fresh head-revalidated
+resume runtime now adds one ephemeral canonical projection and exact-head `decision-query@1`, then
+cross-binds its evidence-only receipt to the existing receipt-bound graph receipt. This is a
+model-context membership boundary, not durable storage, continuous/current freshness, authority,
+permission, conflict closure, action, automatic delivery, or a Capsule usefulness claim.
 The independently verified thread-rooted retained-witness seam conserves the complete
 bounded pre-settlement pool behind the exact compilation object. It uses separate
 content-addressed core/optional entries, body-bound focus digests, and a compact manifest
@@ -480,7 +483,10 @@ Engine now ships one deliberately fixed `decision-query@1` profile, accepted as 
 object or bounded AttuneQL. Callers select only seed, scope, time, current/exact head, and
 token budget; they cannot remove relationship families, add writes, or turn proximity into
 permission. Its receipt is evidence-only and explicitly leaves authority and conflict closure
-`not-performed`.
+`not-performed`. Muse now dogfoods this boundary on the fresh explicit Continuity resume path:
+current change assertions must be in the exact Decision Query witness, and optional supporting
+facts outside that witness are omitted. The existing receipt-bound witness and fair settlement
+remain the stronger proof layer rather than being replaced by the neutral traversal receipt.
 
 Muse should build its stricter, versioned operator algebra above that honest core boundary,
 with results that are deterministic, bounded, content-addressed, and source-resolvable:

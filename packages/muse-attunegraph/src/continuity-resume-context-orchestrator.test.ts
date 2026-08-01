@@ -524,6 +524,37 @@ describe("continuity resume-context orchestrator", () => {
         (change) => !("sourceRefs" in change.after)
       )
     ).toBe(true);
+    const audit = getContinuityResumeContextAudit(result);
+    if (audit === undefined) throw new Error("exact result audit required");
+    const decision = currentProviderResult.status === "partial"
+      ? currentProviderResult.graphEvidence.decisionEvidence
+      : undefined;
+    if (decision === undefined) throw new Error("Decision Query evidence required");
+    expect(audit.decisionQueryReceiptId)
+      .toBe(decision.decisionQuery.receipt.receiptId);
+    expect(audit.decisionWitnessAssertionIds)
+      .toEqual(decision.decisionQuery.receipt.witness.assertionIds);
+    const witnessIds = new Set(audit.decisionWitnessAssertionIds);
+    expect(
+      audit.changeResult.changes.every(
+        (change) => witnessIds.has(change.assertion.id)
+      )
+    ).toBe(true);
+    for (const support of result.agentContext.supportingFacts) {
+      const assertion = audit.currentGraphObservationReceipt.projection.assertions
+        .find((candidate) =>
+          candidate.subject.kind === support.subject.kind
+          && candidate.subject.id === support.subject.id
+          && candidate.predicate === support.predicate
+          && candidate.object.kind === support.object.kind
+          && candidate.object.id === support.object.id
+          && candidate.epistemicClass === support.epistemicClass
+          && candidate.validFrom === support.validFrom
+          && candidate.validTo === support.validTo
+        );
+      expect(assertion).toBeDefined();
+      expect(witnessIds.has(assertion!.id)).toBe(true);
+    }
   });
 
   it("pins exact and N-1 mandatory admission on all six cost axes", async () => {

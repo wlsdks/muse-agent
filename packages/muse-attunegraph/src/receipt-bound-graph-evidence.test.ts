@@ -375,6 +375,7 @@ describe("receipt-bound AttuneGraph evidence compiler", () => {
     expect(result.receipt.activationEvidenceId).toBe(
       result.activationEvidence.evidenceId
     );
+    expect(result.decisionEvidence).toBeUndefined();
     expect(result.receipt.legacyWitnessReceiptId).toBe(
       result.legacyCompilation.receipt.receiptId
     );
@@ -425,6 +426,86 @@ describe("receipt-bound AttuneGraph evidence compiler", () => {
       result.activationEvidence.evidenceId
     );
     expect(replay).toStrictEqual(result);
+  });
+
+  it("cross-binds one fresh exact-head Decision Query without changing the legacy receipt", async () => {
+    const input = request();
+    const pair = headRevalidatedPair();
+    input.snapshot = pair.snapshot;
+    input.declaredFreshness = pair.freshness;
+
+    const first = await compileReceiptBoundGraphEvidence(input);
+    const second = await compileReceiptBoundGraphEvidence(clone(input));
+    const decision = first.decisionEvidence;
+    if (decision === undefined) throw new Error("Decision Query evidence required");
+    const core = first.receipt.dispositions.find((item) => item.role === "core");
+    if (core === undefined) throw new Error("core disposition required");
+
+    expect(decision.receipt).toMatchObject({
+      status: "bound",
+      use: "evidence-only",
+      graphEvidenceReceiptId: first.receipt.receiptId,
+      sourceObservationReceiptId: first.receipt.sourceObservationReceiptId,
+      decisionQueryReceiptId: decision.decisionQuery.receipt.receiptId,
+      decisionQueryStatus: decision.decisionQuery.status,
+      scope: SCOPE,
+      actualSeed: first.receipt.actualSeed,
+      coreAssertionId: core.assertionId,
+      coverage: {
+        coreAssertionWitnessed: true,
+        canAssertAbsenceWithinSnapshot: false,
+        canAssertCurrentWorldAbsence: false,
+        canGrantActionAuthority: false,
+        authorityEvaluation: "not-performed",
+        conflictClosure: "not-performed"
+      }
+    });
+    expect(decision.decisionQuery).toMatchObject({
+      operator: "decision-query@1",
+      use: "evidence-only",
+      sourceFreshness: {
+        state: "fresh",
+        observedAt: OBSERVED_AT
+      }
+    });
+    expect(decision.decisionQuery.receipt.query).toMatchObject({
+      scope: SCOPE,
+      seed: first.receipt.actualSeed,
+      asOf: OBSERVED_AT,
+      head: { mode: "exact" },
+      freshness: { require: "fresh" }
+    });
+    expect(decision.decisionQuery.receipt.witness.assertionIds)
+      .toContain(core.assertionId);
+    expect(decision.decisionQuery.receipt.diagnostics).toMatchObject({
+      authorityEvaluation: "not-performed",
+      conflictClosure: "not-performed"
+    });
+    expect(second.receipt.receiptId).toBe(first.receipt.receiptId);
+    expect(second.activationEvidence.evidenceId)
+      .toBe(first.activationEvidence.evidenceId);
+    expect(second.decisionEvidence?.receipt.receiptId)
+      .toBe(decision.receipt.receiptId);
+    expect(second.decisionEvidence?.decisionQuery.receipt.receiptId)
+      .toBe(decision.decisionQuery.receipt.receiptId);
+    expectDeepFrozen(decision);
+  });
+
+  it("rejects a fresh Decision Query boundary that cannot express the legacy cutoff", async () => {
+    const input = request();
+    const pair = headRevalidatedPair();
+    input.snapshot = pair.snapshot;
+    input.declaredFreshness = pair.freshness;
+    input.recordedAtOrBefore = new Date(
+      Date.parse(OBSERVED_AT) - 1
+    ).toISOString();
+
+    await expectEvidenceError(
+      compileReceiptBoundGraphEvidence(input),
+      "DEPENDENCY_MISMATCH",
+      "decision-query-time-boundary-mismatch",
+      "/recordedAtOrBefore"
+    );
   });
 
   it("detaches admitted bytes before the first async store operation", async () => {

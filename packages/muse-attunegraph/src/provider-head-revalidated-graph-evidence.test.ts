@@ -383,6 +383,21 @@ describe("provider head-revalidated Graph evidence", () => {
     expect(result.stage).toBe("graph-evidence");
     if (result.status !== "partial") throw new Error("partial required");
     expect(result.graphEvidence.receipt.status).toBe("partial");
+    const decision = result.graphEvidence.decisionEvidence;
+    if (decision === undefined) throw new Error("Decision Query evidence required");
+    expect(decision.receipt).toMatchObject({
+      status: "bound",
+      graphEvidenceReceiptId: result.graphEvidence.receipt.receiptId,
+      sourceObservationReceiptId: result.graphObservationReceipt.receiptId,
+      decisionQueryReceiptId: decision.decisionQuery.receipt.receiptId,
+      use: "evidence-only",
+      coverage: {
+        coreAssertionWitnessed: true,
+        canGrantActionAuthority: false,
+        authorityEvaluation: "not-performed",
+        conflictClosure: "not-performed"
+      }
+    });
     expect(result.graphEvidence.receipt.coverage.reasons.slice(0, 6)).toEqual([
       "provider-head-revalidated-observation-integrity-only",
       "fresh-at-assessment-only",

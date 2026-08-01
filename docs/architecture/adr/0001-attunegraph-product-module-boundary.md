@@ -62,6 +62,8 @@ The Interface is intentionally closed:
 - callers select one explicit `AttuneGraphScope` and immutable `AttuneGraphSnapshot`;
 - projectors turn verified observations into deterministic AttuneGraph projections;
 - `decision-query@1` compiles one fixed evidence frontier from typed input or bounded AttuneQL;
+- Muse integrations may cross-bind that evidence-only receipt to stricter host proof artifacts, but
+  must not reinterpret it as authority, conflict closure, persistence, retention, or permission;
 - versioned operators answer agent questions such as `changes-since`, `resume-context`,
   `decision-counterfactual`, `policy-evidence`, and `forget-impact`;
 - results report freshness and `complete | partial | abstained`;

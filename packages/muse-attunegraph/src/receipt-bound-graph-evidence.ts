@@ -24,6 +24,10 @@ import { AttuneGraphDataError } from "@attunegraph/core";
 import {
   type FairWitnessFrontierDisposition
 } from "./fair-witness-frontier-settlement.js";
+import {
+  compileReceiptBoundDecisionEvidence,
+  type ReceiptBoundDecisionEvidenceV1
+} from "./receipt-bound-decision-evidence.js";
 import { InMemoryAttuneGraphDataStore } from "@attunegraph/core";
 import {
   GraphSnapshotProvenanceError,
@@ -217,6 +221,7 @@ export type ReceiptBoundGraphEvidenceReceiptV1 = Readonly<{
 
 export type ReceiptBoundGraphEvidenceV1 = Readonly<{
   readonly activationEvidence: ActivationEvidenceV1;
+  readonly decisionEvidence?: ReceiptBoundDecisionEvidenceV1;
   readonly legacyCompilation: ThreadRootedWitnessCompilationV1;
   readonly receipt: ReceiptBoundGraphEvidenceReceiptV1;
 }>;
@@ -242,10 +247,12 @@ export type ReceiptBoundGraphEvidenceErrorReason =
   | "observation-receipt-integrity-mismatch"
   | "scope-receipt-mismatch"
   | "cutoff-after-observation"
+  | "decision-query-time-boundary-mismatch"
   | "nomination-off-receipt"
   | "nomination-not-admissible"
   | "graph-append-failed"
   | "activation-failed"
+  | "decision-query-binding-failed"
   | "legacy-compilation-failed"
   | "traversal-count-mismatch"
   | "traversal-plan-mismatch"
@@ -1210,6 +1217,16 @@ export async function compileReceiptBoundGraphEvidence(
   ) {
     invalid("invalid-freshness", "/declaredFreshness/observedAt");
   }
+  const headRevalidated =
+    requested.snapshot.authority === "receipt-integrity-only"
+    && requested.snapshot.kind
+      === "process-local-provider-head-revalidation";
+  if (headRevalidated && requested.cutoff !== receipt.observedAt) {
+    dependency(
+      "decision-query-time-boundary-mismatch",
+      "/recordedAtOrBefore"
+    );
+  }
   const actualSeed = continuityThreadGraphRef(receipt.projection.scope);
   if (
     actualSeed.kind !== "thread"
@@ -1300,10 +1317,6 @@ export async function compileReceiptBoundGraphEvidence(
     sourceId: receipt.projection.scope.sourceId,
     threadId: actualSeed.id
   }) as ContinuityProjectionScope;
-  const headRevalidated =
-    requested.snapshot.authority === "receipt-integrity-only"
-    && requested.snapshot.kind
-      === "process-local-provider-head-revalidation";
   const legacyScope = headRevalidated
     ? requested.scope
     : compatibilityScope;
@@ -1488,8 +1501,26 @@ export async function compileReceiptBoundGraphEvidence(
   ) {
     internal("result-postcondition-failed", "/receipt");
   }
+  let decisionEvidence: ReceiptBoundDecisionEvidenceV1 | undefined;
+  if (headRevalidated) {
+    try {
+      decisionEvidence = await compileReceiptBoundDecisionEvidence({
+        scope: requested.scope,
+        actualSeed,
+        observedAt: receipt.observedAt,
+        sourceObservationReceiptId: receipt.receiptId,
+        graphEvidenceReceiptId: bindingReceipt.receiptId,
+        coreAssertionId: coreRepresentative.assertionId,
+        maxEstimatedTokens: requested.budget.maxEstimatedTokens,
+        assertions: admissibleAssertions
+      });
+    } catch {
+      internal("decision-query-binding-failed", "/decisionEvidence");
+    }
+  }
   return freezeTree(freezeRecord({
     activationEvidence: linkedActivation,
+    ...(decisionEvidence === undefined ? {} : { decisionEvidence }),
     legacyCompilation: legacy,
     receipt: bindingReceipt
   })) as ReceiptBoundGraphEvidenceV1;

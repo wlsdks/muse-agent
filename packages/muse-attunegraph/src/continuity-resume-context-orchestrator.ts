@@ -47,6 +47,10 @@ import {
   type ProviderHeadRevalidatedGraphEvidenceV1
 } from "./provider-head-revalidated-graph-evidence.js";
 import {
+  decisionEvidenceCoversAssertionIds,
+  type ReceiptBoundDecisionEvidenceV1
+} from "./receipt-bound-decision-evidence.js";
+import {
   getThreadRootedRetainedWitnessInventory,
   type ThreadRootedRetainedWitnessInventoryV1
 } from "./thread-rooted-witness-documents.js";
@@ -114,6 +118,7 @@ type AbstentionReason =
   | "current-provider-abstained"
   | "change-comparison-abstained"
   | "no-usable-change-facts"
+  | "decision-query-evidence-incomplete"
   | "mandatory-resume-context-does-not-fit";
 
 export type ContinuityResumeContextAbstainedV1 = Readonly<{
@@ -148,6 +153,8 @@ type ContinuityResumeContextAuditV1 = Readonly<{
       readonly status: "partial";
     }>;
   readonly currentGraphObservationReceipt: ContinuityObservationReceipt;
+  readonly decisionQueryReceiptId: string;
+  readonly decisionWitnessAssertionIds: readonly string[];
   readonly changeResult: ExplainedContinuityChangeResult;
   readonly reservation: AdmittedResumeBudgetReservation;
   readonly inventory: ThreadRootedRetainedWitnessInventoryV1;
@@ -348,8 +355,29 @@ function assertProviderCrossLinks(
     readonly status: "partial";
   }>,
   graph: ContinuityObservationReceipt
-): void {
+): Readonly<{
+  readonly status: "bound" | "abstained";
+  readonly evidence: ReceiptBoundDecisionEvidenceV1;
+  readonly decisionQueryReceiptId: string;
+  readonly witnessAssertionIds: readonly string[];
+}> {
   const { receipt, graphEvidence, revalidationReceipt } = provider;
+  const decision = graphEvidence.decisionEvidence;
+  if (decision === undefined) {
+    internal("provider-cross-link-mismatch", "/currentProviderResult/graphEvidence/decisionEvidence");
+  }
+  const binding = decision.receipt;
+  const query = decision.decisionQuery;
+  const coreDisposition = graphEvidence.receipt.dispositions.find(
+    (item) => item.role === "core"
+  );
+  const witnessAssertionIds = query.receipt.witness.assertionIds;
+  const witnessSet = new Set(witnessAssertionIds);
+  const sourceAssertionIds = new Set(
+    graph.projection.assertions.map((assertion) => assertion.id)
+  );
+  const coreWitnessed = coreDisposition !== undefined
+    && witnessSet.has(coreDisposition.assertionId);
   if (
     receipt.status !== "partial"
     || receipt.stage !== "graph-evidence"
@@ -364,9 +392,45 @@ function assertProviderCrossLinks(
     || !sameScope(graph.projection.scope, receipt.providerScope)
     || !sameScope(graphEvidence.receipt.sourceScope, receipt.providerScope)
     || !sameJson(receipt.graphActualSeed, graphEvidence.receipt.actualSeed)
+    || binding.graphEvidenceReceiptId !== graphEvidence.receipt.receiptId
+    || binding.sourceObservationReceiptId !== graph.receiptId
+    || binding.decisionQueryReceiptId !== query.receipt.receiptId
+    || binding.decisionQueryStatus !== query.status
+    || binding.use !== "evidence-only"
+    || !sameScope(binding.scope, receipt.providerScope)
+    || !sameJson(binding.actualSeed, graphEvidence.receipt.actualSeed)
+    || coreDisposition === undefined
+    || binding.coreAssertionId !== coreDisposition.assertionId
+    || binding.coverage.coreAssertionWitnessed !== coreWitnessed
+    || binding.status !== (coreWitnessed ? "bound" : "abstained")
+    || binding.coverage.canAssertAbsenceWithinSnapshot !== false
+    || binding.coverage.canAssertCurrentWorldAbsence !== false
+    || binding.coverage.canGrantActionAuthority !== false
+    || binding.coverage.authorityEvaluation !== "not-performed"
+    || binding.coverage.conflictClosure !== "not-performed"
+    || query.operator !== "decision-query@1"
+    || query.use !== "evidence-only"
+    || !sameScope(query.receipt.query.scope, receipt.providerScope)
+    || !sameJson(query.receipt.query.seed, graphEvidence.receipt.actualSeed)
+    || query.receipt.query.head.mode !== "exact"
+    || query.snapshot === undefined
+    || query.receipt.query.head.generation !== query.snapshot.generation
+    || query.receipt.query.head.commitId !== query.snapshot.commitId
+    || query.sourceFreshness?.state !== "fresh"
+    || query.sourceFreshness.observedAt !== graph.observedAt
+    || query.receipt.diagnostics.authorityEvaluation !== "not-performed"
+    || query.receipt.diagnostics.conflictClosure !== "not-performed"
+    || witnessSet.size !== witnessAssertionIds.length
+    || witnessAssertionIds.some((id) => !sourceAssertionIds.has(id))
   ) {
     internal("provider-cross-link-mismatch", "/currentProviderResult");
   }
+  return record({
+    status: binding.status,
+    evidence: decision,
+    decisionQueryReceiptId: query.receipt.receiptId,
+    witnessAssertionIds
+  });
 }
 
 function assertInventoryCrossLinks(
@@ -431,7 +495,8 @@ function semanticKey(value: ResumeFactAtomV1 | ResumeSupportingFactV1): string {
 function supportingFacts(
   facts: ResumeContextFactsV1,
   inventory: ThreadRootedRetainedWitnessInventoryV1,
-  frontier: FairWitnessFrontierCompositionV1
+  frontier: FairWitnessFrontierCompositionV1,
+  decisionWitnessAssertionIds: ReadonlySet<string>
 ): readonly ResumeSupportingFactV1[] {
   if (frontier.settlement.status !== "partial") return array([]);
   const seen = new Set<string>();
@@ -441,6 +506,7 @@ function supportingFacts(
   }
   const output: ResumeSupportingFactV1[] = [];
   const admit = (assertion: GraphAssertion): void => {
+    if (!decisionWitnessAssertionIds.has(assertion.id)) return;
     const support = atom(assertion);
     const key = semanticKey(support);
     if (seen.has(key)) return;
@@ -583,7 +649,7 @@ export function compileContinuityResumeContext(
     outer.values.currentSourceObservationReceipt
   );
   const currentGraph = verifyCurrentGraph(provider.graphObservationReceipt);
-  assertProviderCrossLinks(provider, currentGraph);
+  const decisionEvidence = assertProviderCrossLinks(provider, currentGraph);
   if (
     !sameScope(currentSource.scope, provider.receipt.providerScope)
     || !continuitySourceGraphPairMatches(currentSource, currentGraph)
@@ -604,6 +670,17 @@ export function compileContinuityResumeContext(
   }
   if (changeResult.status === "partial" && changeResult.changes.length === 0) {
     return abstained(provider, "no-usable-change-facts");
+  }
+  const decisionWitnessAssertionIds = new Set(
+    decisionEvidence.witnessAssertionIds
+  );
+  if (
+    !decisionEvidenceCoversAssertionIds(
+      decisionEvidence.evidence,
+      changeResult.changes.map((change) => change.assertion.id)
+    )
+  ) {
+    return abstained(provider, "decision-query-evidence-incomplete");
   }
 
   let compilation;
@@ -689,7 +766,12 @@ export function compileContinuityResumeContext(
       throw cause;
     }
   }
-  const supports = supportingFacts(compilation.facts, inventory, frontier);
+  const supports = supportingFacts(
+    compilation.facts,
+    inventory,
+    frontier,
+    decisionWitnessAssertionIds
+  );
   const context = agentContext(compilation.facts, supports, requested);
   const witnessStatus = frontier.settlement.status === "invalid-input"
     ? "capacity-invalid" as const
@@ -699,6 +781,8 @@ export function compileContinuityResumeContext(
     currentSourceObservationReceipt: currentSource,
     currentProviderResult: provider,
     currentGraphObservationReceipt: currentGraph,
+    decisionQueryReceiptId: decisionEvidence.decisionQueryReceiptId,
+    decisionWitnessAssertionIds: decisionEvidence.witnessAssertionIds,
     changeResult,
     reservation,
     inventory,
