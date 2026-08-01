@@ -572,7 +572,8 @@ thread, not a hidden global preference.
   controls remain roadmap.
 - **AttuneGraph** — an agent-native module that links time, relations,
   provenance, and policy on top of existing stores, building only the small Working Graph a turn
-  needs. The Engine, SQLite journal, offline Lens, and explicit opt-in Continuity Preview writer
+  needs. The Engine now includes fixed-profile `decision-query@1`, bounded AttuneQL, and an
+  evidence-only receipt; the SQLite journal, offline Lens, and explicit opt-in Continuity Preview writer
   are implemented substrates; automatic/default ingestion, the complete Admin, and a standalone
   release remain roadmap.
 

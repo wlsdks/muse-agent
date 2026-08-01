@@ -297,7 +297,7 @@ required external Graph DB.
 AWG-070a1 implements the durable projection-journal foundation behind
 `@attunegraph/core/local`. `openLocalAttuneGraph` accepts an explicit absolute
 `databasePath` and exact `AttuneGraphScope`, privately owns one Worker-backed Adapter, and returns
-the same closed `project | execute | close` Interface as `openAttuneGraph`. The local Module
+the same closed `project | execute | query | close` Interface as `openAttuneGraph`. The local Module
 composes the existing Engine rather than reimplementing graph meaning.
 
 The shipped physical profile is intentionally narrow and fails closed:

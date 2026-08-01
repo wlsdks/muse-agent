@@ -203,7 +203,7 @@ piece got.
 
 | Area | Where it actually stands |
 | --- | --- |
-| [AttuneGraph engine](https://github.com/wlsdks/attunegraph) | Public standalone `@attunegraph/core` source consumed here as a pinned submodule: exact projection, *"what changed since I stopped"*, content-addressed receipts, bounded resume compilation, canonical `.atgx`, a worker-isolated SQLite journal, an explicit opt-in Continuity Preview writer, and the offline read-only `muse attunegraph inspect` Lens. Registry publication, write/repair/live-web Admin, Agent Bridge/MCP, and default automatic ingestion/delivery remain roadmap |
+| [AttuneGraph engine](https://github.com/wlsdks/attunegraph) | Public standalone `@attunegraph/core` source consumed here as a pinned submodule: exact projection, fixed-profile `decision-query@1`, bounded AttuneQL, deterministic evidence-only receipts, *"what changed since I stopped"*, bounded resume compilation, canonical `.atgx`, a worker-isolated SQLite journal, an explicit opt-in Continuity Preview writer, and the offline read-only `muse attunegraph inspect` Lens. Proof-closed authority/conflict evaluation, registry publication, write/repair/live-web Admin, Agent Bridge/MCP, and default automatic ingestion/delivery remain roadmap |
 | Continuity Capsule | The explicit Chat/API preparation path now keeps its verified comparison baseline in bounded local personal storage by default, so the first preparation after a Muse restart can compare instead of silently reseeding. Direct library/test construction without that store remains session-only. A compared task/note/reminder result may make one configured-provider call for a display-only draft whose claims cite exact current source keys. Citation membership is verified; exact stop capture, source freshness, authenticated request witness, semantic entailment, all-source support, automatic timing, and usefulness are not |
 | Shadow Muse | The ledger records the decision and, after an explicit CLI Pack open, a bounded return association. The Continuity screen can now show that source receipt and whether its exact two-relation AttuneGraph pair is active. It does not record Web returns, surface automatically, or treat return as feedback, usefulness, outcome, causality, permission, or success |
 | Policy Card | An explicit read-only compiler and `muse.continuity.learning.policy-card.preview` tool return English/Korean render data from one fresh local snapshot. No automatic surfacing, UI, edit/reject/trial write, policy mutation, or action |
@@ -246,13 +246,18 @@ Muse's Continuity, Shadow, Capsule, evidence, and lineage integration.
 
 What is verified today, and what those words do **not** mean:
 
-- The neutral lifecycle `openAttuneGraph({ scope, store }) → head/project → execute → close`, plus a durable
+- The neutral lifecycle `openAttuneGraph({ scope, store }) → head/project → execute/query → close`, plus a durable
   projection journal and typed worker boundary. New writes can use `canonical-projection@2`, whose
   canonical bytes name the exact thread root and whose admission rejects any disconnected assertion
   before storage; byte-compatible v1 data remains readable as legacy root-unverified evidence.
   Portable export/rebuild activation, backup, and physical forget remain roadmap work. A
   revision-bound measurement-only 10K/100K/1M harness now exists; clean 100K/1M evidence,
   qualification thresholds, and any 90/100 readiness verdict remain pending.
+- `graph.query()` accepts the canonical `decision-query@1` object produced directly or by
+  `parseAttuneQL()`. It fixes scope, exact/current head posture, canonical time, fresh-source
+  requirement, and token budget while keeping relationship families out of model control. Its
+  content-addressed receipt is evidence-only: authority and conflict closure are explicitly
+  `not-performed`, so Muse's stricter receipt-bound witness layers remain separate.
 - `MUSE_ATTUNEGRAPH_DATABASE=/absolute/path/attunegraph.sqlite` explicitly connects the existing
   provider-revalidated Continuity Pack Preview path to
   `@muse/attunegraph/continuity-durable-projection`. The configured composition revalidates current
