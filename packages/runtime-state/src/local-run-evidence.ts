@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { lstat, open, realpath } from "node:fs/promises";
+import { lstat, open } from "node:fs/promises";
 import { join, sep } from "node:path";
 
 import {
@@ -10,6 +10,8 @@ import {
   parseStrictJson,
   type CanonicalRunOutcome
 } from "@muse/shared";
+
+import { hasCanonicalPathIdentity } from "./canonical-path-identity.js";
 
 const MAX_FILE_BYTES = 1_048_576;
 const MAX_LINES = 128;
@@ -115,19 +117,19 @@ export async function readLocalRunEvidenceStrict(input: {
     return { kind: "invalid", reason: "run reference is not canonical for the configured workspace" };
   }
 
-  let workspaceActual: string;
   try {
-    workspaceActual = await realpath(reference.workspaceRealpath);
+    if (!await hasCanonicalPathIdentity(reference.workspaceRealpath)) {
+      return { kind: "invalid", reason: "workspace authority is not its canonical realpath" };
+    }
   } catch (cause) {
     return ioCode(cause) === "ENOENT" ? { kind: "absent" } : { kind: "unreadable", reason: "workspace cannot be resolved" };
   }
-  if (workspaceActual !== reference.workspaceRealpath) return { kind: "invalid", reason: "workspace authority is not its canonical realpath" };
 
   const runsDir = join(reference.workspaceRealpath, ".muse", "runs");
   let runsStat;
   try {
     runsStat = await lstat(runsDir);
-    if (!runsStat.isDirectory() || runsStat.isSymbolicLink() || await realpath(runsDir) !== runsDir) {
+    if (!runsStat.isDirectory() || runsStat.isSymbolicLink() || !await hasCanonicalPathIdentity(runsDir)) {
       return { kind: "invalid", reason: "run evidence root is not a canonical real directory" };
     }
   } catch (cause) {
@@ -139,7 +141,7 @@ export async function readLocalRunEvidenceStrict(input: {
   let pathStat;
   try {
     pathStat = await lstat(target);
-    if (!pathStat.isFile() || pathStat.isSymbolicLink() || await realpath(target) !== target) {
+    if (!pathStat.isFile() || pathStat.isSymbolicLink() || !await hasCanonicalPathIdentity(target)) {
       return { kind: "invalid", reason: "run evidence target is not a canonical regular file" };
     }
   } catch (cause) {

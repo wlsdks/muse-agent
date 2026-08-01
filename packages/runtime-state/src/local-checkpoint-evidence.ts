@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { lstat, open, realpath } from "node:fs/promises";
+import { lstat, open } from "node:fs/promises";
 import { join, sep } from "node:path";
 
 import {
@@ -9,6 +9,7 @@ import {
 } from "@muse/shared";
 
 import { CHECKPOINT_V3_DIRECTORY, checkpointV3FileName, parseCheckpointV3Envelope } from "./checkpoint-v3.js";
+import { hasCanonicalPathIdentity } from "./canonical-path-identity.js";
 
 const MAX_FILE_BYTES = 4 * 1_048_576;
 
@@ -38,7 +39,7 @@ function sameFile(left: { dev: number; ino: number; size: number; mtimeMs: numbe
 async function canonicalDirectory(path: string, label: string): Promise<LocalCheckpointEvidenceReadResult | undefined> {
   try {
     const info = await lstat(path);
-    if (!info.isDirectory() || info.isSymbolicLink() || await realpath(path) !== path) {
+    if (!info.isDirectory() || info.isSymbolicLink() || !await hasCanonicalPathIdentity(path)) {
       return { kind: "invalid", reason: `${label} is not a canonical real directory` };
     }
     return undefined;
@@ -65,7 +66,7 @@ export async function readLocalCheckpointEvidenceStrict(input: {
   }
 
   try {
-    if (await realpath(reference.workspaceRealpath) !== reference.workspaceRealpath) {
+    if (!await hasCanonicalPathIdentity(reference.workspaceRealpath)) {
       return { kind: "invalid", reason: "workspace authority is not its canonical realpath" };
     }
   } catch (cause) {
@@ -83,7 +84,7 @@ export async function readLocalCheckpointEvidenceStrict(input: {
   let pathStat;
   try {
     pathStat = await lstat(target);
-    if (!pathStat.isFile() || pathStat.isSymbolicLink() || await realpath(target) !== target) {
+    if (!pathStat.isFile() || pathStat.isSymbolicLink() || !await hasCanonicalPathIdentity(target)) {
       return { kind: "invalid", reason: "checkpoint evidence target is not a canonical regular file" };
     }
   } catch (cause) {
