@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -226,18 +227,23 @@ function fingerprint(file: string): string {
 
 describe("stable Muse CLI entry authority", () => {
   it("accepts only the canonical current Node regular executable", () => {
-    expect(validateStableMuseRuntimeExecutable(process.execPath)).toMatchObject({
-      executable: realpathSync(process.execPath),
-      ok: true
-    });
-    expect(validateStableMuseRuntimeExecutable("/bin/echo")).toMatchObject({
-      ok: false,
-      reason: expect.stringContaining("does not match the current Node runtime")
-    });
-    expect(validateStableMuseRuntimeExecutable("/usr")).toMatchObject({
-      ok: false,
-      reason: expect.stringContaining("not a regular file")
-    });
+    const directory = mkdtempSync(join(tmpdir(), "muse-stable-runtime-"));
+    try {
+      expect(validateStableMuseRuntimeExecutable(process.execPath)).toMatchObject({
+        executable: realpathSync(process.execPath),
+        ok: true
+      });
+      expect(validateStableMuseRuntimeExecutable(fileURLToPath(import.meta.url))).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining("does not match the current Node runtime")
+      });
+      expect(validateStableMuseRuntimeExecutable(directory)).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining("not a regular file")
+      });
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
   });
 
   it("accepts only the canonical declared muse bin of an @muse/cli package", () => {
@@ -398,6 +404,11 @@ function inventoryFixture(options: {
   const root = mkdtempSync(join(tmpdir(), "muse-resident-inventory-"));
   const apiCwd = join(root, "apps", "api");
   const cliEntry = stableCliPackage(root);
+  const runtimeExecutable = join(root, "node");
+  writeFileSync(runtimeExecutable, "");
+  const runtimeCommand = realpathSync(runtimeExecutable).replaceAll("\\", "/");
+  const cliCommand = realpathSync(cliEntry).replaceAll("\\", "/");
+  const rootCommand = root.replaceAll("\\", "/");
   const plistFile = join(root, "daemon.plist");
   const sidecar = join(root, "proactive-sidecar.json");
   const heartbeat = join(root, "proactive-heartbeat-daemon-loop.json");
@@ -416,12 +427,15 @@ function inventoryFixture(options: {
   writeResidentRestart(root);
   const launchdRunning = options.launchdRunning ?? true;
   const residentPids = options.residentPids ?? (launchdRunning ? [4321] : []);
+  const useFallbackResidentRuntime = options.artifact === "missing" && !launchdRunning;
+  const residentRuntime = useFallbackResidentRuntime ? runtimeCommand : process.execPath;
+  const residentCliEntry = useFallbackResidentRuntime ? cliCommand : cliEntry;
   const rows = [
-    ...residentPids.map((pid) => `${pid.toString()} 1 ${process.execPath} ${cliEntry} daemon`),
+    ...residentPids.map((pid) => `${pid.toString()} 1 ${residentRuntime} ${residentCliEntry} daemon`),
     ...(options.orphanTree
       ? [
-          `5000 1 ${process.execPath} ${root}/node_modules/.bin/tsx src/index.ts`,
-          `5001 5000 ${process.execPath} worker.mjs`
+          `5000 1 ${runtimeCommand} ${rootCommand}/node_modules/.bin/tsx src/index.ts`,
+          `5001 5000 ${runtimeCommand} worker.mjs`
         ]
       : [])
   ];
@@ -452,12 +466,14 @@ function inventoryFixture(options: {
     if (executable === "lsof") {
       const pid = Number(args[args.indexOf("-p") + 1]);
       const descriptor = args[args.indexOf("-d") + 1];
-      const path = descriptor === "txt" ? process.execPath : pid >= 5000 ? apiCwd : root;
+      const path = descriptor === "txt"
+        ? pid >= 5000 || useFallbackResidentRuntime ? runtimeExecutable : process.execPath
+        : pid >= 5000 ? apiCwd : root;
       return { code: 0, stderr: "", stdout: `p${pid.toString()}\nf${descriptor}\nn${path}\n` };
     }
     return { code: 1, stderr: "unexpected", stdout: "" };
   };
-  return { cliEntry, plistFile, root, run };
+  return { cliCommand, cliEntry, plistFile, root, run, runtimeCommand };
 }
 
 describe("resident daemon read-only authority", () => {
@@ -1292,7 +1308,7 @@ describe("resident daemon read-only authority", () => {
         return {
           code: 0,
           stderr: "",
-          stdout: `4330 42 ${process.execPath} ${state.cliEntry} daemon --interval 60 --provider log --print\n`
+          stdout: `4330 42 ${state.runtimeCommand} ${state.cliCommand} daemon --interval 60 --provider log --print\n`
         };
       }
       return state.run(executable, args, options);

@@ -11,7 +11,7 @@
 
 import { createHash } from "node:crypto";
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join, parse, relative, resolve } from "node:path";
+import { dirname, join, normalize, parse, relative, resolve } from "node:path";
 
 import { createRunId, isCanonicalWorkspaceRealpath, withFileLock, withFileMutationQueue, type JsonObject } from "@muse/shared";
 
@@ -427,7 +427,25 @@ async function ensureCanonicalDirectory(path: string): Promise<void> {
 }
 
 async function hasEquivalentRealpath(path: string): Promise<boolean> {
-  return relative(path, await realpath(path)) === "";
+  const canonical = await realpath(path);
+  if (process.platform !== "win32") return relative(path, canonical) === "";
+
+  const comparableWindowsPath = (value: string): string => {
+    const devicePrefix = "\\\\?\\";
+    const uncDevicePrefix = "\\\\?\\UNC\\";
+    const folded = value.toLowerCase();
+    const withoutDevicePrefix = folded.startsWith(uncDevicePrefix.toLowerCase())
+      ? `\\\\${value.slice(uncDevicePrefix.length)}`
+      : folded.startsWith(devicePrefix.toLowerCase())
+        ? value.slice(devicePrefix.length)
+        : value;
+    const normalized = normalize(withoutDevicePrefix);
+    return /^[A-Za-z]:\\/u.test(normalized)
+      ? `${normalized[0]!.toLowerCase()}${normalized.slice(1)}`
+      : normalized;
+  };
+
+  return comparableWindowsPath(path) === comparableWindowsPath(canonical);
 }
 
 function ioCode(cause: unknown): string | undefined {
