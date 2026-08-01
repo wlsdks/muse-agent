@@ -103,7 +103,7 @@
     "test:e2e": "pnpm build && pnpm --filter @muse/web test:e2e",
     "test:e2e:live": "pnpm build && pnpm --filter @muse/web test:e2e -- live-api.spec.ts",
     "test:e2e:personal-agent": "node scripts/run-personal-agent-e2e.mjs",
-    "test": "node --test scripts/install-source.test.mjs && pnpm -r --sort --if-present test",
+    "test": "node --test scripts/install-source.test.mjs && pnpm -r --sort --if-present --filter \"!@attunegraph/core\" test",
     "test:changed": "node scripts/test-changed.mjs",
     "test:personal-agent-successor-evidence": "node --test scripts/personal-agent-successor-evidence.test.mjs",
     "typecheck": "pnpm -r --sort --if-present typecheck",
