@@ -46,6 +46,10 @@ export function hasAttuneGraphGitlinkChange(rawDiff) {
   });
 }
 
+export function isVitestBrowserConfig(file) {
+  return file === "vitest.browser.config.ts";
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   // Union of staged + unstaged + UNTRACKED (a brand-new file — e.g. a freshly added
   // `*.test.ts` — is NOT in `git diff`, so without ls-files it would be silently
@@ -138,7 +142,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const standardPlaywrightFiles = playwrightFiles.filter((file) =>
     !personalAgentPlaywrightFiles.includes(file)
   );
-  const vitestFiles = files.filter((file) => !playwrightFiles.includes(file));
+  const browserConfigFiles = files.filter(isVitestBrowserConfig);
+  const vitestFiles = files.filter(
+    (file) => !playwrightFiles.includes(file) && !browserConfigFiles.includes(file)
+  );
   if (vitestFiles.length > 0) {
     console.log(`\n── ${name} ── vitest related ${vitestFiles.join(" ")}`);
     try {
@@ -151,14 +158,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       failed = true; // a non-zero exit (a failing/erroring test) — surface it, keep going across packages
     }
   }
-  if (hasBrowserConfig && vitestFiles.length > 0) {
+  if (hasBrowserConfig && (vitestFiles.length > 0 || browserConfigFiles.length > 0)) {
     console.log(`\n── ${name} browser ── vitest Browser Mode related`);
     try {
-      execFileSync(
-        "pnpm",
-        ["--filter", name, "exec", "vitest", "related", ...vitestFiles, "--run", "--config", "vitest.browser.config.ts"],
-        { cwd: ROOT, stdio: "inherit" }
-      );
+      const args = browserConfigFiles.length > 0
+        ? ["--filter", name, "test:browser"]
+        : ["--filter", name, "exec", "vitest", "related", ...vitestFiles, "--run", "--config", "vitest.browser.config.ts"];
+      execFileSync("pnpm", args, { cwd: ROOT, stdio: "inherit" });
     } catch {
       failed = true;
     }

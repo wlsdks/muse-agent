@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ATTUNEGRAPH_SUBMODULE_GATE_PACKAGES,
-  hasAttuneGraphGitlinkChange
+  hasAttuneGraphGitlinkChange,
+  isVitestBrowserConfig
 } from "./test-changed.mjs";
 
 test("AttuneGraph gitlink changes select the conservative compatibility gates", () => {
@@ -22,4 +23,10 @@ test("ordinary tree changes do not select the gitlink gates", () => {
     hasAttuneGraphGitlinkChange(":100644 100644 before after M\tpackages/attunegraph/src/index.ts"),
     false
   );
+});
+
+test("only the package browser config selects the full Browser Mode suite", () => {
+  assert.equal(isVitestBrowserConfig("vitest.browser.config.ts"), true);
+  assert.equal(isVitestBrowserConfig("src/view.browser.test.tsx"), false);
+  assert.equal(isVitestBrowserConfig("vitest.config.ts"), false);
 });
