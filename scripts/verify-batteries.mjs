@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 // verify-batteries — run the workspace verification batteries nothing else runs.
 //
-// packages/*/scripts/verify-*.mjs are deterministic, offline, sub-second checks of the
-// AttuneGraph canonical formats. Twelve exist; six were reachable through a `verify:*` script in
-// their own package.json and six were reachable only by someone typing the path. Nothing ran any
-// of them, so THREE had been failing silently — the same disease self-eval already records twice
-// ("a guard nobody runs is not a guard"), found a third time.
+// Muse-owned packages/*/scripts/verify-*.mjs are deterministic, offline checks of integration
+// formats. The AttuneGraph gitlink owns its internal qualification in standalone CI: Muse supports
+// Node 22 while the reviewed local SQLite profile requires Node 24.15, so running the core's
+// internal batteries here would make the host gate depend on a profile it does not advertise.
 //
 // Known failures are declared rather than skipped. A battery in BASELINE is reported and does not
 // fail the gate; a battery NOT in it that fails does; and a baseline entry that starts passing
@@ -32,29 +31,20 @@ export const BASELINE = new Map([
     "2026-07-31: independent receipt-digest disagrees with thread-rooted-witness-documents.ts"],
 ]);
 
-/** Tracked verifier utilities whose no-argument rejection is mechanically pinned by the test. */
-export const NON_BATTERIES = new Map([
-  [
-    "packages/attunegraph/scripts/verify-attunegraph-performance-regression.mjs",
-    {
-      reason: "2026-08-01: requires --manifest to compare recorded performance data",
-      noArgumentFailure: {
-        blocker: "integrity-rejected:--manifest is required",
-        exitCode: 1,
-        schema: "attunegraph-performance-regression@1",
-      },
-    },
-  ],
+export const INDEPENDENT_PACKAGE_PREFIXES = Object.freeze([
+  "packages/attunegraph/",
 ]);
 
-/** Every workspace battery, discovered rather than listed, so a new one is covered on arrival. */
+/** Every Muse-owned workspace battery, discovered rather than listed. */
 export function discoverBatteries() {
   return execFileSync(
     "git",
     ["ls-files", "--recurse-submodules", "--", "packages/*/scripts/verify-*.mjs"],
     { cwd: ROOT, encoding: "utf8" }
   ).split("\n").filter(Boolean)
-    .filter((battery) => !battery.endsWith(".test.mjs") && !NON_BATTERIES.has(battery))
+    .filter((battery) =>
+      !battery.endsWith(".test.mjs")
+      && !INDEPENDENT_PACKAGE_PREFIXES.some((prefix) => battery.startsWith(prefix)))
     .sort();
 }
 

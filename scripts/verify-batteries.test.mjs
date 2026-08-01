@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import {
   BASELINE,
-  NON_BATTERIES,
+  INDEPENDENT_PACKAGE_PREFIXES,
   classify,
   discoverBatteries,
   owningWorkspaces,
@@ -15,7 +15,7 @@ const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "
 
 // Listing batteries by hand is how six of them came to have no caller at all. Discovery means a
 // battery is covered the moment it exists, without anyone remembering to register it.
-test("every workspace battery on disk is discovered", () => {
+test("every Muse-owned workspace battery on disk is discovered", () => {
   const found = discoverBatteries();
   const tracked = execFileSync(
     "git",
@@ -23,11 +23,15 @@ test("every workspace battery on disk is discovered", () => {
     { cwd: ROOT, encoding: "utf8" },
   ).split("\n").filter(Boolean).sort();
   const expected = tracked.filter(
-    (battery) => !battery.endsWith(".test.mjs") && !NON_BATTERIES.has(battery),
+    (battery) =>
+      !battery.endsWith(".test.mjs")
+      && !INDEPENDENT_PACKAGE_PREFIXES.some((prefix) => battery.startsWith(prefix)),
   );
   assert.deepEqual(found, expected);
-  assert.ok(found.some((battery) => battery.startsWith("packages/attunegraph/scripts/")), "tracked AttuneGraph submodule batteries must be discovered");
-  assert.ok(found.length >= 12, `expected the AttuneGraph batteries, got ${found.length}`);
+  assert.ok(
+    found.some((battery) => battery.startsWith("packages/muse-attunegraph/scripts/")),
+    "Muse integration batteries must remain discovered",
+  );
 });
 
 test("test modules are not executed directly as batteries", () => {
@@ -43,51 +47,80 @@ test("test modules are not executed directly as batteries", () => {
   }
 });
 
-test("each explicit non-battery entry proves its no-argument failure contract", () => {
+test("standalone AttuneGraph remains present and owns an executable CI qualification boundary", () => {
   const found = new Set(discoverBatteries());
-  const tracked = new Set(execFileSync(
+  const tracked = execFileSync(
     "git",
     ["ls-files", "--recurse-submodules", "--", "packages/*/scripts/verify-*.mjs"],
     { cwd: ROOT, encoding: "utf8" },
-  ).split("\n").filter(Boolean));
-  assert.ok(
-    NON_BATTERIES.has("packages/attunegraph/scripts/verify-attunegraph-performance-regression.mjs"),
-    "the --manifest performance verifier must stay classified as a non-battery",
-  );
-  for (const [nonBattery, contract] of NON_BATTERIES) {
-    assert.deepEqual(Object.keys(contract).sort(), ["noArgumentFailure", "reason"]);
-    assert.deepEqual(
-      Object.keys(contract.noArgumentFailure).sort(),
-      ["blocker", "exitCode", "schema"],
-    );
-    assert.ok(existsSync(path.join(ROOT, nonBattery)), `${nonBattery} is listed but absent`);
-    assert.ok(tracked.has(nonBattery), `${nonBattery} is listed but untracked`);
-    assert.equal(found.has(nonBattery), false, `${nonBattery} must not run as a battery`);
-    assert.match(contract.reason, /^\d{4}-\d{2}-\d{2}: /u, `${nonBattery} needs a dated reason`);
-    assert.ok(
-      Number.isInteger(contract.noArgumentFailure.exitCode)
-        && contract.noArgumentFailure.exitCode > 0,
-      `${nonBattery} needs a nonzero no-argument exit code`,
-    );
-
-    const result = spawnSync(process.execPath, [path.join(ROOT, nonBattery)], {
-      cwd: ROOT,
-      encoding: "utf8",
-      timeout: 10_000,
-    });
-    assert.equal(result.error, undefined, `${nonBattery} must execute without a spawn error`);
-    assert.equal(result.signal, null, `${nonBattery} must exit rather than receive a signal`);
-    assert.equal(result.status, contract.noArgumentFailure.exitCode);
-    assert.equal(result.stderr, "", `${nonBattery} must emit its structured rejection on stdout`);
-    const rejection = JSON.parse(result.stdout);
-    assert.equal(rejection.schema, contract.noArgumentFailure.schema);
-    assert.deepEqual(rejection.blockers, [contract.noArgumentFailure.blocker]);
+  ).split("\n").filter(Boolean)
+    .filter((battery) => battery.startsWith("packages/attunegraph/scripts/"))
+    .sort();
+  assert.deepEqual(INDEPENDENT_PACKAGE_PREFIXES, ["packages/attunegraph/"]);
+  assert.deepEqual(tracked, [
+    "packages/attunegraph/scripts/verify-attunegraph-local.mjs",
+    "packages/attunegraph/scripts/verify-attunegraph-performance-regression.mjs",
+    "packages/attunegraph/scripts/verify-attunegraph-performance-regression.test.mjs",
+    "packages/attunegraph/scripts/verify-attunegraph-portable-fixtures.mjs",
+    "packages/attunegraph/scripts/verify-candidate-settlement-ledger.mjs",
+    "packages/attunegraph/scripts/verify-canonical-immutable-envelope.mjs",
+    "packages/attunegraph/scripts/verify-clean-room-consumer.mjs",
+    "packages/attunegraph/scripts/verify-working-graph-golden-corpus.mjs",
+    "packages/attunegraph/scripts/verify-working-graph-golden-corpus.test.mjs",
+  ]);
+  for (const battery of tracked) {
+    assert.equal(found.has(battery), false, `${battery} belongs to the standalone package boundary`);
   }
+  const packageRoot = join(ROOT, "packages/attunegraph");
+  const workflowPath = join(packageRoot, ".github/workflows/ci.yml");
+  const packageJsonPath = join(packageRoot, "package.json");
+  assert.equal(existsSync(workflowPath), true, "standalone CI must remain inspectable");
+  assert.equal(existsSync(packageJsonPath), true, "standalone package scripts must remain inspectable");
+
+  const workflow = readFileSync(workflowPath, "utf8");
+  const packageScripts = JSON.parse(readFileSync(packageJsonPath, "utf8")).scripts;
+  const requiredQualification = [
+    "check:naming",
+    "typecheck",
+    "test:focused",
+    "test:performance",
+    "test:readiness",
+    "verify:working-graph-golden",
+    "verify:clean-room-consumer",
+    "test:cross-platform",
+    "test:local-profile",
+  ];
+  for (const script of requiredQualification) {
+    assert.equal(
+      typeof packageScripts[script],
+      "string",
+      `standalone qualification script ${script} must remain declared`,
+    );
+    assert.match(
+      workflow,
+      new RegExp(
+        `^\\s+(?:- )?run: pnpm ${script.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`,
+        "mu",
+      ),
+      `standalone CI must execute pnpm ${script}`,
+    );
+  }
+  for (const job of [
+    "core-compatibility",
+    "readiness-contract",
+    "clean-room-consumer",
+    "cross-platform",
+    "local-profile",
+  ]) {
+    assert.match(workflow, new RegExp(`^  ${job}:$`, "mu"), `${job} CI job must remain declared`);
+  }
+  assert.match(workflow, /os: \[ubuntu-latest, macos-latest, windows-latest\]/u);
+  assert.match(workflow, /os: \[ubuntu-latest, macos-15-intel\]/u);
 });
 
 test("each baseline entry names a battery that exists, with a dated reason", () => {
   for (const [battery, reason] of BASELINE) {
-    assert.ok(existsSync(path.join(ROOT, battery)), `${battery} is listed but absent`);
+    assert.ok(existsSync(join(ROOT, battery)), `${battery} is listed but absent`);
     assert.match(reason, /^\d{4}-\d{2}-\d{2}: /u, `${battery} needs a dated reason`);
   }
 });

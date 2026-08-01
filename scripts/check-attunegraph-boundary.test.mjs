@@ -91,8 +91,8 @@ export function assertAttuneGraphBoundary({ workspaceRoot = root } = {}) {
   const localIntegration = packageFiles(join(workspaceRoot, "packages/muse-attunegraph"));
   const duplicates = localCore.filter((path) => localIntegration.includes(path));
   assert.deepEqual(duplicates, [], "implementation/test/script appears in both packages");
-  assert.equal(localIntegration.length, 77, "integration src/script split ledger changed");
-  assert.equal(gitFiles(join(workspaceRoot, "packages/muse-attunegraph")).length, 82, "integration package ledger changed");
+  assert.equal(localIntegration.length, 79, "integration src/script split ledger changed");
+  assert.equal(gitFiles(join(workspaceRoot, "packages/muse-attunegraph")).length, 84, "integration package ledger changed");
 }
 
 test("AttuneGraph package boundary is neutral and acyclic", () => assertAttuneGraphBoundary());
