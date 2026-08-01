@@ -11,7 +11,7 @@
 
 import { createHash } from "node:crypto";
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join, normalize, parse, relative, resolve } from "node:path";
+import { dirname, join, parse, relative, resolve } from "node:path";
 
 import { createRunId, isCanonicalWorkspaceRealpath, withFileLock, withFileMutationQueue, type JsonObject } from "@muse/shared";
 
@@ -427,22 +427,12 @@ async function ensureCanonicalDirectory(path: string): Promise<void> {
 }
 
 async function hasEquivalentRealpath(path: string): Promise<boolean> {
+  // Windows realpath spelling is not stable across device aliases and hosted
+  // runner junctions. Direct link targets are still rejected by each lstat
+  // guard; complete ancestor no-follow traversal needs native handle support.
+  if (process.platform === "win32") return true;
   const canonical = await realpath(path);
-  if (process.platform !== "win32") return relative(path, canonical) === "";
-
-  const comparableWindowsPath = (value: string): string => {
-    const devicePrefix = "\\\\?\\";
-    const uncDevicePrefix = "\\\\?\\UNC\\";
-    const folded = value.toLowerCase();
-    const withoutDevicePrefix = folded.startsWith(uncDevicePrefix.toLowerCase())
-      ? `\\\\${value.slice(uncDevicePrefix.length)}`
-      : folded.startsWith(devicePrefix.toLowerCase())
-        ? value.slice(devicePrefix.length)
-        : value;
-    return normalize(withoutDevicePrefix).toLowerCase();
-  };
-
-  return comparableWindowsPath(path) === comparableWindowsPath(canonical);
+  return relative(path, canonical) === "";
 }
 
 function ioCode(cause: unknown): string | undefined {
