@@ -96,7 +96,7 @@ optional reading material — they are the same contract, indexed by task.
 | [`muse-architecture`](.agents/skills/muse-architecture/SKILL.md) | adding a package, a provider adapter, a database call, or a project reference |
 | [`muse-tool-design`](.agents/skills/muse-tool-design/SKILL.md) | adding or reshaping a tool the local model must select in one shot |
 | [`muse-code-style`](.agents/skills/muse-code-style/SKILL.md) | writing source — the lint rules that are errors, and the comment policy |
-| [`muse-codegraph`](.agents/skills/muse-codegraph/SKILL.md) | searching for a symbol, instead of reaching for grep |
+| [`muse-codegraph`](.agents/skills/muse-codegraph/SKILL.md) | using optional CodeGraph v1.5 for indexed structural-code retrieval |
 | [`muse-cli-surface`](.agents/skills/muse-cli-surface/SKILL.md) | adding or changing a `muse` CLI command |
 
 The same directory carries this repo's hand-written workflow skills too, projected from

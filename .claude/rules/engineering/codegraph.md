@@ -1,43 +1,104 @@
-# CodeGraph — conditional indexed-code navigation
+# CodeGraph v1.5 — structural-code retrieval
 
-Apply this rule only when CodeGraph MCP tools are exposed in the current client
-and the target project has a usable `.codegraph/` index. If either condition is
-false, use native search and Read without treating CodeGraph as a requirement.
+This rule is conditional. Apply it only when CodeGraph is installed and the
+current checkout has its own healthy index. If the CLI is installed but this
+in-scope Muse checkout is uninitialized or borrowing another worktree's index,
+the owner's standing indexing permission authorizes `codegraph init` here; use
+native tools until initialization succeeds. If CodeGraph is unavailable, or
+freshness cannot be restored, ignore this rule and use the native search/read
+tools. Never report a symbol as absent from an unavailable or known-stale index.
 
-## CodeGraph v1.5 default
+CodeGraph v1.5 exposes `codegraph_explore` as the default MCP surface. Its MCP
+instructions are the source of truth for retrieval behavior; this repository
+rule adds the edit, test-selection, and freshness decisions that agents have
+historically missed.
 
-CodeGraph v1.5 exposes only `codegraph_explore` by default. Use it before native
-search or Read for indexed source-code questions: architecture, task or bug
-context, a named symbol or file, a flow, or the blast radius of a proposed edit.
-It accepts either a natural-language question or relevant symbol/file names and
-returns line-numbered source with structural relationships. Treat returned
-source as already Read; do not repeat the same exploration with grep or a
-delegated file-reading exploration.
+## One structural entry point
 
-Use only tools actually exposed by the current client. Additional tools such as
-`codegraph_node`, `codegraph_trace`, or `codegraph_impact` may be enabled through
-`CODEGRAPH_MCP_TOOLS`, but no workflow may assume they exist. When present, they
-are optional narrow views; `codegraph_explore` remains the default.
+Use one MCP `codegraph_explore` call, or its
+`codegraph explore "<query>"` CLI equivalent, before native file exploration
+when the question concerns indexed code structure: definitions, callers,
+callees, flows, architecture, or the blast radius of a change. It accepts
+either a natural-language question or a bag of symbol/file names. When exact
+targets are known, pass only a short bag of exact symbols, qualified names, or
+file paths; omit generic prose that can broaden retrieval. Use natural language
+when the relevant names are not yet known, and do not invent a name just to
+avoid it.
 
-## Native-tool boundary
+First check that the returned heading, source declaration/signature, qualified
+name, and file path match what was requested. When they match and no freshness
+warning applies, treat the returned line-numbered source as already read. Do
+not re-run grep or open the same source merely to repeat a positive result. If
+identity is ambiguous or wrong, retry once with the qualified symbol plus file
+path, then fall back to a targeted native read/search if the ambiguity remains.
 
-Use `rg` or Read directly for literal strings, configuration, documentation,
-generated files, unindexed code, or a specific detail CodeGraph did not return.
-After an edit, obey freshness banners precisely:
+Native `rg`/Read remains correct for literal strings, comments, docs, config,
+generated or unsupported files, and files named by a staleness banner. It is
+also correct after CodeGraph explicitly says the current checkout has no usable
+index.
 
-- A pending-files banner makes only the named files stale; Read those files.
-- An auto-sync-disabled banner makes the whole index potentially stale; Read
-  changed files directly until the owner restores sync.
+## Before editing and choosing tests
 
-CodeGraph freshness is not correctness. Cross-file resolution is best-effort;
-the compiler, tests, and lint remain the validation authority. For an optional
-changed-file-to-test projection, the v1.5 CLI provides `codegraph affected`, but
-it supplements rather than replaces Muse's `pnpm test:changed` contract.
+- Put the symbol or file you will change in `codegraph_explore` so the returned
+  relationship map and blast-radius summary are in view before editing.
+- If an exact, deeper impact listing is still needed for a symbol whose source
+  identity was already confirmed, use the optional CLI fallback
+  `codegraph impact <symbol>`; narrow MCP tools are not part of the v1.5 default
+  surface.
+- After source edits, `codegraph affected [files...]` may suggest tests by
+  tracing import dependencies. It supplements, but never replaces, Muse's
+  `pnpm test:changed`, package gates, compiler, lint, browser, or end-to-end
+  requirements. An empty `affected` result is not proof that no test can fail.
+- Treat `not found`, `no callers`, `no covering tests`, and an empty blast
+  radius as non-exhaustive hints. v1.5.0 remains affected by reported fuzzy
+  symbol substitution, stale line-range attribution, incomplete alias
+  traversal, and direct-only covering-test detection. Fixes for stale
+  line-range attribution and direct-only covering-test detection were merged
+  after v1.5.0, so do not assume they are installed until a later release that
+  includes them is verified. A safety-, deletion-, rename-, public API-, or
+  test-coverage decision that depends on absence must be confirmed by the
+  compiler/language tools, the required test gates, or a narrow native search
+  aimed specifically at that negative claim.
 
-## Index ownership
+Example diagnostic:
 
-If CodeGraph reports no usable index for this project, stop calling it for this
-project for the rest of the session and use native tools. Do not run
-`codegraph init`, `codegraph index`, or `codegraph sync` unless the owner
-explicitly requests that index mutation. Another indexed project can still be
-queried through an exposed `projectPath` parameter.
+```bash
+git diff --name-only HEAD | codegraph affected --stdin --quiet
+```
+
+## Freshness and indexing
+
+Auto-sync is the v1.5 default. Do not run `codegraph sync` after every edit,
+merge, pull, or branch switch.
+
+1. With no warning, use positive results after checking returned identity.
+2. If a response names pending files, read only those files for live content;
+   other returned files remain trustworthy.
+3. If freshness is uncertain, run `codegraph status` before taking action.
+4. Run `codegraph sync` only when pending changes persist, auto-sync is
+   unavailable, or a non-MCP script needs a preflight refresh.
+5. Run a full `codegraph index` when status or upgrade reports an older
+   extraction-version stamp, status reports a partial/truncated graph, or a
+   verified graph inconsistency requires a rebuild. `--force` is not the normal
+   rebuild flag; it only overrides CodeGraph's root/home-directory safety.
+
+The owner grants standing permission to initialize, sync, or rebuild a
+CodeGraph index for an in-scope checkout. This permission does not install
+CodeGraph for contributors who do not use it. Indexing never substitutes for
+build, typecheck, lint, or tests; CodeGraph provides structural context, not
+runtime correctness proof.
+
+Official v1.5 baseline:
+
+- <https://github.com/colbymchenry/codegraph/blob/v1.5.0/src/mcp/server-instructions.ts>
+- <https://github.com/colbymchenry/codegraph/blob/v1.5.0/README.md>
+- <https://github.com/colbymchenry/codegraph/releases/tag/v1.5.0>
+
+v1.5.0 limitations reflected above:
+
+- [Open: fuzzy symbol substitution](https://github.com/colbymchenry/codegraph/issues/1473)
+- [Fixed after v1.5.0: stale line-range attribution](https://github.com/colbymchenry/codegraph/issues/1474)
+- [Fixed after v1.5.0: direct-only covering-test detection](https://github.com/colbymchenry/codegraph/issues/1475)
+- [Open: TypeScript alias impact gap](https://github.com/colbymchenry/codegraph/issues/1482)
+
+Full rationale: [`docs/development/codegraph-usage.md`](../../../docs/development/codegraph-usage.md).
