@@ -11,7 +11,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { computeTrustScore, readTrustLedger, recordOutcome, type ProactiveOutcome, type TrustLedgerEntry } from "@muse/stores";
+import { computeTrustScore, readTrustLedger, recordLatestOutcome, recordOutcome, type ProactiveOutcome, type TrustLedgerEntry } from "@muse/stores";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -38,7 +38,7 @@ export function renderTrustScoreboard(entries: readonly TrustLedgerEntry[], limi
   const mutedAhead = entries.filter((e) => e.recordedWithoutSurface === true && e.outcome === "vetoed");
   if (score.precision === null) {
     lines.push("  No proactive notices yet — nothing surfaced, nothing to score.");
-    lines.push("  Once Muse surfaces a due item, it's logged here and you can keep or veto it.");
+    lines.push("  Once Muse surfaces a due item, rate it without copying a key: muse proactive keep latest.");
     if (mutedAhead.length > 0) {
       lines.push(`\n  Muted ahead of time (never surfaced): ${mutedAhead.map((e) => e.sourceKey).join(", ")}`);
     }
@@ -59,7 +59,8 @@ export function renderTrustScoreboard(entries: readonly TrustLedgerEntry[], limi
   if (mutedAhead.length > 0) {
     lines.push(`\nMuted ahead of time (never surfaced): ${mutedAhead.map((e) => e.sourceKey).join(", ")}`);
   }
-  lines.push("\nSilence a source you don't want:  muse proactive veto <source>");
+  lines.push("\nRate the latest unrated surface:  muse proactive acted|keep|veto latest");
+  lines.push("Silence a source you don't want:  muse proactive veto <source>");
   lines.push("Mark one useful:                  muse proactive keep <source>");
   return lines.join("\n");
 }
@@ -80,16 +81,28 @@ export function registerProactiveTrustSubcommands(proactive: Command, io: Progra
 
   const rate = (verb: string, outcome: ProactiveOutcome, blurb: string): void => {
     proactive
-      .command(`${verb} <source>`)
-      .description(blurb)
+      .command(`${verb} <source|latest>`)
+      .description(`${blurb}; use 'latest' for the latest unrated surface`)
       .action(async (source: string) => {
-        const key = source.trim();
-        if (key.length === 0) {
+        const requestedSource = source.trim();
+        if (requestedSource.length === 0) {
           io.stderr("Provide a source key, e.g. `muse proactive veto calendar:evt-42` (see `muse proactive scoreboard`).\n");
           process.exitCode = 1;
           return;
         }
-        const res = await recordOutcome(trustLedgerFile(), key, outcome, Date.now());
+        const ledgerFile = trustLedgerFile();
+        const latestResult = requestedSource === "latest"
+          ? await recordLatestOutcome(ledgerFile, outcome, Date.now())
+          : undefined;
+        if (requestedSource === "latest" && latestResult === undefined) {
+          io.stderr("No unrated proactive surface is available (see `muse proactive scoreboard`).\n");
+          process.exitCode = 1;
+          return;
+        }
+        const key = latestResult?.sourceKey ?? requestedSource;
+        const res = latestResult === undefined
+          ? await recordOutcome(ledgerFile, key, outcome, Date.now())
+          : { matched: true, title: latestResult.title };
         const note = outcome === "vetoed"
           ? `🔕 Silenced ${key} — Muse won't surface "${res.title}" again.`
           : `👍 Marked ${key} as ${outcome} ("${res.title}").`;

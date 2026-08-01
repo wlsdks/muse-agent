@@ -207,7 +207,7 @@ export {
 export type { RejectedProposal } from "./automation-rejected-proposals-store.js";
 export { firedKey, legacyCalendarWildcardKey, ProactiveFiredStoreError, readProactiveFired, readSessionLock, writeProactiveFired, writeSessionLock } from "./proactive-notice-store.js";
 export type { LegacyCalendarProactiveFiredEntry, ProactiveFiredEntry, ProactiveFiredKind, QualifiedCalendarProactiveFiredEntry, SessionLockPayload, TaskProactiveFiredEntry } from "./proactive-notice-store.js";
-export { appendSurfaced, avoidedSourceKeys, computeTrustScore, isSourceAvoided, readTrustLedger, recordOutcome, sourceKey, withinDailyCap } from "./proactive-trust-ledger.js";
+export { appendSurfaced, avoidedSourceKeys, computeTrustScore, isSourceAvoided, readTrustLedger, recordLatestOutcome, recordOutcome, sourceKey, withinDailyCap } from "./proactive-trust-ledger.js";
 export type { ProactiveOutcome, TrustLedgerEntry } from "./proactive-trust-ledger.js";
 export { addReflections, listReflections, readReflections, selectReflectionsForRecall } from "./reflections-store.js";
 export type { NewReflection, StoredReflection } from "./reflections-store.js";

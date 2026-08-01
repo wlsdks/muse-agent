@@ -21,6 +21,9 @@
  */
 
 import { promises as fs } from "node:fs";
+import { dirname } from "node:path";
+
+import { withPrivateFileLock } from "@muse/shared";
 
 import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
@@ -127,6 +130,13 @@ async function writeTrustLedger(file: string, entries: readonly TrustLedgerEntry
   await atomicWriteFile(file, `${JSON.stringify({ surfaced: trimmed }, null, 2)}\n`);
 }
 
+async function withTrustLedgerMutation<T>(file: string, operation: () => Promise<T>): Promise<T> {
+  return withFileMutationQueue(file, async () => {
+    await fs.mkdir(dirname(file), { mode: 0o700, recursive: true });
+    return withPrivateFileLock(`${file}.lock`, operation, { reclaimDeadProcess: true });
+  });
+}
+
 /** Append one surfaced-notice record. */
 export async function appendSurfaced(
   file: string,
@@ -135,7 +145,7 @@ export async function appendSurfaced(
   // Serialise the read-modify-write: the trust score that GATES proactivity is
   // computed from this ledger, so a clobbered append corrupts the precision the
   // gate reads — concurrent surfaces (overlapping daemon ticks) must not lose one.
-  await withFileMutationQueue(file, async () => {
+  await withTrustLedgerMutation(file, async () => {
     const existing = await readTrustLedger(file);
     await writeTrustLedger(file, [
       ...existing,
@@ -160,7 +170,7 @@ export async function recordOutcome(
   outcome: ProactiveOutcome,
   atMs: number
 ): Promise<{ readonly matched: boolean; readonly title: string }> {
-  return withFileMutationQueue(file, async () => {
+  return withTrustLedgerMutation(file, async () => {
     const existing = await readTrustLedger(file);
     let matchedIndex = -1;
     for (let i = existing.length - 1; i >= 0; i -= 1) {
@@ -183,6 +193,28 @@ export async function recordOutcome(
       { kind, outcome, outcomeAtMs: atMs, recordedWithoutSurface: true, sourceKey: key, surfacedAtMs: atMs, title: key }
     ]);
     return { matched: false, title: key };
+  });
+}
+
+export async function recordLatestOutcome(
+  file: string,
+  outcome: ProactiveOutcome,
+  atMs: number
+): Promise<{ readonly sourceKey: string; readonly title: string } | undefined> {
+  return withTrustLedgerMutation(file, async () => {
+    const existing = await readTrustLedger(file);
+    let latestIndex = -1;
+    for (let i = 0; i < existing.length; i += 1) {
+      const entry = existing[i]!;
+      if (entry.recordedWithoutSurface === true || entry.outcome !== undefined) continue;
+      if (latestIndex < 0 || entry.surfacedAtMs >= existing[latestIndex]!.surfacedAtMs) latestIndex = i;
+    }
+    if (latestIndex < 0) return undefined;
+    const target = existing[latestIndex]!;
+    await writeTrustLedger(file, existing.map((entry, i) =>
+      i === latestIndex ? { ...entry, outcome, outcomeAtMs: atMs } : entry
+    ));
+    return { sourceKey: target.sourceKey, title: target.title };
   });
 }
 
