@@ -13,7 +13,7 @@
  * collapses the same way. This is code, never a prompt instruction.
  */
 
-import { realpath } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
@@ -109,6 +109,9 @@ async function canonicalize(input: string, baseDir: string): Promise<string> {
   for (;;) {
     try {
       const real = await realpath(current);
+      if (tail.length > 0 && !(await stat(current)).isDirectory()) {
+        throw new Error("cannot append a missing path beneath a non-directory ancestor");
+      }
       return tail.length > 0 ? join(real, ...tail.reverse()) : real;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
