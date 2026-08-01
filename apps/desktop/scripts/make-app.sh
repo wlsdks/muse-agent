@@ -11,6 +11,11 @@ cd "$(dirname "$0")/.."   # → apps/desktop
 APP="Muse.app"
 EXE="MuseDesktop"
 BUNDLE_ID="com.muse.desktop"
+REPO="$(cd ../.. && pwd)"
+METADATA_VERIFIER="$PWD/scripts/verify-app-metadata.mjs"
+VERSION="$(node "$METADATA_VERIFIER" --field version)"
+BUILD_NUMBER="$(node "$METADATA_VERIFIER" --field build-number)"
+MINIMUM_SYSTEM_VERSION="$(node "$METADATA_VERIFIER" --field minimum-system-version)"
 
 echo "building release…"
 swift build -c release
@@ -35,7 +40,6 @@ cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 # repo, or node_modules — it works wherever the .app is moved/distributed. The
 # Swift app resolves this binary relative to its bundle at runtime (MuseBridge),
 # so there is no baked absolute path to break on move.
-REPO="$(cd ../.. && pwd)"
 [ -f "$REPO/apps/cli/dist/index.js" ] || { echo "CLI dist missing — run 'pnpm --filter @muse/cli build' first" >&2; exit 1; }
 command -v bun >/dev/null || { echo "bun is required to build the self-contained CLI binary (https://bun.sh)" >&2; exit 1; }
 echo "building self-contained CLI binary…"
@@ -70,10 +74,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>Muse</string>
   <key>CFBundleExecutable</key><string>${EXE}</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleVersion</key><string>${BUILD_NUMBER}</string>
   <key>MuseBuildId</key><string>${BUILD_ID}</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>CFBundleShortVersionString</key><string>${VERSION}</string>
+  <key>LSMinimumSystemVersion</key><string>${MINIMUM_SYSTEM_VERSION}</string>
   <key>LSUIElement</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Muse listens to your voice so you can ask about your notes hands-free. Audio is transcribed on-device and never leaves your Mac.</string>
   <key>NSSpeechRecognitionUsageDescription</key><string>Muse turns your spoken question into text on-device. Your speech never leaves your Mac.</string>
@@ -112,4 +116,5 @@ fi
 
 # Validate the plist so a typo can't silently break TCC.
 plutil -lint "$APP/Contents/Info.plist"
+node "$METADATA_VERIFIER" "$APP"
 echo "built $APP — open it with:  open $APP"
