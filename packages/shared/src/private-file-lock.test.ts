@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
-import { chmod, link, lstat, mkdir, mkdtemp, readFile, symlink, unlink, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, mkdtemp, readFile, rename, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -11,6 +11,16 @@ import { withPrivateFileLock } from "./private-file-lock.js";
 
 const execFileAsync = promisify(execFile);
 
+async function replaceOpenLockPath(lockFile: string, contents: string): Promise<void> {
+  if (process.platform === "win32") {
+    await rename(lockFile, `${lockFile}.displaced`);
+  } else {
+    await unlink(lockFile);
+  }
+  await writeFile(lockFile, contents, { mode: 0o600 });
+  await chmod(lockFile, 0o600);
+}
+
 describe("withPrivateFileLock", () => {
   it("runs the operation and removes the privately-created direct lock file", async () => {
     const directory = await mkdtemp(join(tmpdir(), "muse-private-lock-"));
@@ -19,7 +29,7 @@ describe("withPrivateFileLock", () => {
     const result = await withPrivateFileLock(lockFile, async () => {
       const stat = await lstat(lockFile);
       expect(stat.isFile()).toBe(true);
-      expect(stat.mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32") expect(stat.mode & 0o777).toBe(0o600);
       expect((await readFile(lockFile, "utf8")).length).toBeGreaterThan(0);
       return "complete";
     });
@@ -162,9 +172,7 @@ describe("withPrivateFileLock", () => {
     await expect(
       withPrivateFileLock(lockFile, async () => {
         copiedNonce = await readFile(lockFile, "utf8");
-        await unlink(lockFile);
-        await writeFile(lockFile, copiedNonce, { mode: 0o600 });
-        await chmod(lockFile, 0o600);
+        await replaceOpenLockPath(lockFile, copiedNonce);
       })
     ).rejects.toMatchObject({ code: "PRIVATE_FILE_LOCK_OWNERSHIP_LOST" });
 
@@ -306,9 +314,7 @@ describe("withPrivateFileLock", () => {
         Object.defineProperty(opened, "writeFile", {
           configurable: true,
           value: async () => {
-            await unlink(lockFile);
-            await writeFile(lockFile, "foreign-owner", { mode: 0o600 });
-            await chmod(lockFile, 0o600);
+            await replaceOpenLockPath(lockFile, "foreign-owner");
             throw Object.assign(new Error("injected replacement"), { code: "EIO" });
           }
         });

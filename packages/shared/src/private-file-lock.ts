@@ -41,6 +41,9 @@ export class PrivateFileLockError extends Error {
 
 const DEFAULT_GIVE_UP_MS = 30_000;
 const ownerUid = (): number | undefined => process.getuid?.();
+// Node cannot distinguish owner/group/other permissions on Windows; keep the
+// structural and identity checks there without treating synthetic mode bits as ACL proof.
+const hasPosixPermissionModel = (): boolean => process.platform !== "win32";
 
 type LockStat = Readonly<{
   dev: number | bigint;
@@ -63,13 +66,13 @@ function sameIdentity(left: FileIdentity, right: FileIdentity): boolean {
 }
 
 function isOwnedByCurrentUser(stat: LockStat): boolean {
-  return ownerUid() === undefined || Number(stat.uid) === ownerUid();
+  return !hasPosixPermissionModel() || ownerUid() === undefined || Number(stat.uid) === ownerUid();
 }
 
 function isPrivateRegularFile(stat: LockStat): boolean {
   return stat.isFile()
     && Number(stat.nlink) === 1
-    && (Number(stat.mode) & 0o777) === 0o600
+    && (!hasPosixPermissionModel() || (Number(stat.mode) & 0o777) === 0o600)
     && isOwnedByCurrentUser(stat);
 }
 
@@ -78,7 +81,9 @@ function isOwnedRegularFile(stat: LockStat): boolean {
 }
 
 function isPrivateDirectory(stat: LockStat): boolean {
-  return stat.isDirectory() && (Number(stat.mode) & 0o022) === 0 && isOwnedByCurrentUser(stat);
+  return stat.isDirectory()
+    && (!hasPosixPermissionModel() || (Number(stat.mode) & 0o022) === 0)
+    && isOwnedByCurrentUser(stat);
 }
 
 function resolveGiveUpMs(value: number | undefined): number {
