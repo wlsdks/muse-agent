@@ -28,6 +28,7 @@ import type {
 import type { VoiceProviderRegistry } from "@muse/voice";
 import type {
   ContinuityCapsulePreparationService,
+  OwnerTaughtPolicyCardPreviewService,
   ResolvedIntegrationEnvironment
 } from "@muse/autoconfigure";
 
@@ -71,6 +72,8 @@ export interface ServerOptions {
    * instance because it owns the process-local comparison baseline.
    */
   readonly continuityCapsulePreparation?: ContinuityCapsulePreparationService;
+  /** Assembly-owned read-only owner-taught Policy Card preparation seam. */
+  readonly ownerTaughtPolicyCardPreview?: OwnerTaughtPolicyCardPreviewService;
   /** Opt-in local browsing archive used only for exact Continuity visit resolution. */
   readonly browsingFile?: string;
   /**

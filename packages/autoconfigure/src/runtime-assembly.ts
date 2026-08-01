@@ -50,6 +50,9 @@ import { resolveLearningPauseFile } from "./provider-paths.js";
 import type {
   ContinuityCapsulePreparationService
 } from "./continuity-capsule-preparation-service.js";
+import type {
+  OwnerTaughtPolicyCardPreviewService
+} from "./owner-taught-policy-card-preview-service.js";
 import { createCompactionAuxiliary } from "./compaction-auxiliary.js";
 import {
   configuredModelLoopOutcomeRepairer,
@@ -293,6 +296,9 @@ export interface MuseRuntimeAssembly {
    */
   readonly continuityCapsulePreparation?:
     ContinuityCapsulePreparationService;
+  /** Read-only, owner-taught Policy Card preview shared with the API. */
+  readonly ownerTaughtPolicyCardPreview?:
+    OwnerTaughtPolicyCardPreviewService;
   readonly debugReplayCaptureStore: DebugReplayCaptureStore;
   readonly conversationSummaryStore: ConversationSummaryStore;
   readonly sessionTagStore: SessionTagStore;
@@ -702,6 +708,12 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       : {
           continuityCapsulePreparation:
             loopback.continuityCapsulePreparation
+        }),
+    ...(loopback.ownerTaughtPolicyCardPreview === undefined
+      ? {}
+      : {
+          ownerTaughtPolicyCardPreview:
+            loopback.ownerTaughtPolicyCardPreview
         }),
     debugReplayCaptureStore,
     conversationSummaryStore,

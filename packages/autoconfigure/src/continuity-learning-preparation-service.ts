@@ -59,6 +59,13 @@ export interface CreateContinuityLearningPreparationServiceOptions {
 
 export interface ContinuityLearningPreparationRequest {
   readonly draft: ExperienceLearningProposalDraft;
+  /** Exact owner-selected queue item. Omitted only by legacy oldest-first callers. */
+  readonly opportunityId?: string;
+}
+
+interface ParsedRequest {
+  readonly draft: ExperienceLearningProposalDraft;
+  readonly opportunityId?: string;
 }
 
 interface ReviewOnlyAuthority {
@@ -140,9 +147,10 @@ const REVIEW_ONLY_AUTHORITY = Object.freeze({
 });
 
 /**
- * Runs one frozen controlled replay for the oldest current organic learning
- * opportunity. The service owns no approval, write, promotion, or rollback
- * capability; its strongest result is an inert recommendation for review.
+ * Runs one frozen controlled replay for an exact current organic learning
+ * opportunity. Legacy callers that omit the id retain oldest-first behavior.
+ * The service owns no approval, write, promotion, or rollback capability; its
+ * strongest result is an inert recommendation for review.
  */
 export function createContinuityLearningPreparationService(
   options: CreateContinuityLearningPreparationServiceOptions
@@ -153,12 +161,16 @@ export function createContinuityLearningPreparationService(
       request: ContinuityLearningPreparationRequest
     ): Promise<ContinuityLearningPreparationResult> {
       if (!parsed) return unavailable("invalid-configuration");
-      const draft = parseRequest(request);
-      if (!draft) return unavailable("invalid-request");
+      const parsedRequest = parseRequest(request);
+      if (!parsedRequest) return unavailable("invalid-request");
+      const { draft } = parsedRequest;
 
       const initial = await readState(parsed.readState);
       if (!initial) return unavailable("state-unavailable");
-      const opportunity = buildExperienceLearningReviewQueue(initial).items[0];
+      const opportunity = selectOpportunity(
+        buildExperienceLearningReviewQueue(initial).items,
+        parsedRequest.opportunityId
+      );
       if (!opportunity) return unavailable("no-opportunity");
       const delivery = initial.deliveries.find((entry) =>
         entry.id === opportunity.deliveryId
@@ -198,8 +210,10 @@ export function createContinuityLearningPreparationService(
 
       const current = await readState(parsed.readState);
       if (!current) return unavailable("state-unavailable");
-      const currentOpportunity =
-        buildExperienceLearningReviewQueue(current).items[0];
+      const currentOpportunity = selectOpportunity(
+        buildExperienceLearningReviewQueue(current).items,
+        parsedRequest.opportunityId
+      );
       const currentThread = current.threads.find((entry) =>
         entry.id === opportunity.scope.threadId
       );
@@ -431,9 +445,16 @@ function parseRegistry(
 
 function parseRequest(
   value: unknown
-): ExperienceLearningProposalDraft | undefined {
+): ParsedRequest | undefined {
   try {
-    const request = exactRecord(value, ["draft"]);
+    const request = exactRecord(value, ["draft"])
+      ?? exactRecord(value, ["draft", "opportunityId"]);
+    const opportunityId = request?.opportunityId;
+    if (opportunityId !== undefined
+      && (typeof opportunityId !== "string"
+        || !/^learning_opportunity_[a-f0-9]{64}$/u.test(opportunityId))) {
+      return undefined;
+    }
     const draft = request
       ? exactRecord(request.draft, [
           "expectedBenefit",
@@ -467,21 +488,34 @@ function parseRequest(
       scope.kind as ExperienceLearningScope
     );
     if (!proposedChange) return undefined;
-    return Object.freeze({
-      expectedBenefit: draft.expectedBenefit,
+    const parsedDraft = Object.freeze({
+      expectedBenefit: draft.expectedBenefit as string,
       expiresAt: draft.expiresAt,
-      experienceId: draft.experienceId,
+      experienceId: draft.experienceId as string,
       proposedAt: draft.proposedAt,
-      proposedBehavior: draft.proposedBehavior,
+      proposedBehavior: draft.proposedBehavior as string,
       proposedChange,
       scope: Object.freeze({
         kind: scope.kind as ExperienceLearningScope,
-        threadId: scope.threadId
+        threadId: scope.threadId as string
       })
+    });
+    return Object.freeze({
+      draft: parsedDraft,
+      ...(opportunityId === undefined ? {} : { opportunityId })
     });
   } catch {
     return undefined;
   }
+}
+
+function selectOpportunity(
+  items: readonly ExperienceLearningReviewOpportunity[],
+  opportunityId: string | undefined
+): ExperienceLearningReviewOpportunity | undefined {
+  if (opportunityId === undefined) return items[0];
+  const matches = items.filter((item) => item.opportunityId === opportunityId);
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 async function readState(

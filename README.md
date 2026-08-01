@@ -206,11 +206,18 @@ piece got.
 | [AttuneGraph engine](https://github.com/wlsdks/attunegraph) | Public standalone `@attunegraph/core` source consumed here as a pinned submodule: exact projection, fixed-profile `decision-query@1`, bounded AttuneQL, deterministic evidence-only receipts, *"what changed since I stopped"*, bounded resume compilation, canonical `.atgx`, a worker-isolated SQLite journal, an explicit opt-in Continuity Preview writer, and the offline read-only `muse attunegraph inspect` Lens. Proof-closed authority/conflict evaluation, registry publication, write/repair/live-web Admin, Agent Bridge/MCP, and default automatic ingestion/delivery remain roadmap |
 | Continuity Capsule | The explicit Chat/API preparation path now keeps its verified comparison baseline in bounded local personal storage by default, so the first preparation after a Muse restart can compare instead of silently reseeding. Direct library/test construction without that store remains session-only. A compared task/note/reminder result may make one configured-provider call for a display-only draft whose claims cite exact current source keys. Citation membership is verified; exact stop capture, source freshness, authenticated request witness, semantic entailment, all-source support, automatic timing, and usefulness are not |
 | Shadow Muse | The ledger records the decision and, after an explicit CLI Pack open, a bounded return association. The Continuity screen can now show that source receipt and whether its exact two-relation AttuneGraph pair is active. It does not record Web returns, surface automatically, or treat return as feedback, usefulness, outcome, causality, permission, or success |
-| Policy Card | An explicit read-only compiler and `muse.continuity.learning.policy-card.preview` tool return English/Korean render data from one fresh local snapshot. No automatic surfacing, UI, edit/reject/trial write, policy mutation, or action |
+| Policy Card | The authenticated Continuity Review now lets the owner explicitly choose summary density and next-step presentation for one exact organic learning opportunity. Muse runs a fixed ten-case boundary replay, revalidates a fresh local snapshot, and renders the English/Korean AttuneGraph card with experience, replay, graph proof, scope, and authority limits kept separate. The existing `muse.continuity.learning.policy-card.preview` tool reuses the same compiler service. The card is inert: no automatic surfacing, usefulness claim, approval, policy mutation, or action |
+
+The shipped owner-taught path is deliberately narrow:
+
+`explicit owner outcome → owner selects display policy → deterministic boundary replay → fresh AttuneGraph Policy Card`
+
+The controls shown on the card are disabled evidence of the intended boundary, not decorative
+buttons that secretly act.
 
 ### Roadmap
 
-Automatic Policy Card surfacing and interactive controls · automatic thread detection · a durable
+Automatic Policy Card surfacing and trusted write/undo controls · automatic thread detection · a durable
 current-world graph · AttuneGraph Agent Bridge/MCP and registry release · organic-use evidence.
 
 <details>

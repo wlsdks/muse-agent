@@ -566,10 +566,14 @@ thread, not a hidden global preference.
   without executing anything. Citation membership is verified; semantic entailment, current
   freshness, authenticated observation witness, all-source parity, exact stop capture, automatic
   timing/surfacing, and usefulness remain roadmap.
-- **Policy Card** — today, an explicit read-only preview shows the grounds and thread scope of a
-  proposed collaboration rule while separating authoritative experience, caller-supplied replay
-  claims, and AttuneGraph explanation. Automatic surfacing and trusted try/edit/reject/undo
-  controls remain roadmap.
+- **Policy Card** — today, the authenticated Continuity Review lets the owner teach one bounded
+  `thread-display` change by selecting summary density and next-step presentation for an exact
+  organic learning opportunity. Muse builds no inferred free-form preference: it runs a fixed
+  ten-case contract replay, revalidates one fresh local snapshot, and renders the bilingual
+  AttuneGraph card while separating authoritative experience, structurally validated replay
+  claims, graph explanation, scope, and authority limits. The preview is read-only; automatic
+  surfacing, usefulness qualification, and trusted try/edit/reject/apply/undo controls remain
+  roadmap.
 - **AttuneGraph** — an agent-native module that links time, relations,
   provenance, and policy on top of existing stores, building only the small Working Graph a turn
   needs. The Engine now includes fixed-profile `decision-query@1`, bounded AttuneQL, and an
@@ -584,7 +588,7 @@ The detailed product contract and module design follow [Attunement](../strategy/
 [AttuneGraph](../design/attunement/attunegraph.md), and the
 [separate execution roadmap](../../internal/goals/attunegraph-roadmap.md). The complete automatic
 three-part experience is not shipped; its current engine, caller-declared and evidence-bound
-Capsule render-data, Shadow receipt, and inert Policy Card preview substrates are individually
+Capsule render-data, Shadow receipt, and owner-taught inert Policy Card preview are individually
 bounded and documented.
 
 The first flow: **user picks a life thread → context pack prepared → usage recorded → next pack

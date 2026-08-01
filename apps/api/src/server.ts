@@ -42,6 +42,7 @@ import { registerStaticWeb } from "./static-web.js";
 import { registerAdminRoutes } from "./admin-routes.js";
 import { registerAttunementRoutes } from "./attunement-routes.js";
 import { registerContinuityCapsuleRoutes } from "./continuity-capsule-routes.js";
+import { registerPolicyCardRoutes } from "./policy-card-routes.js";
 import { registerMcpRoutes } from "./mcp-routes.js";
 import { registerMultiAgentRoutes, resolveWorkerTimeoutMs } from "./multi-agent-routes.js";
 import { registerCompatibilityRoutes } from "./compat-routes.js";
@@ -393,6 +394,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authService,
     ...(options.continuityCapsulePreparation
       ? { preparation: options.continuityCapsulePreparation }
+      : {})
+  });
+  registerPolicyCardRoutes(server, {
+    authService,
+    ...(options.ownerTaughtPolicyCardPreview
+      ? { preview: options.ownerTaughtPolicyCardPreview }
       : {})
   });
   registerPersonalStatusRoutes(server, {

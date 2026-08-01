@@ -5,6 +5,7 @@ import type { DecisionMetric } from "@muse/shared/browser";
 import { AsyncBlock, Badge, Button, Card, Stat } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { consumePersonalStatusFocus, focusPersonalStatusTarget } from "./personal-status-navigation.js";
+import { OwnerTaughtPolicyCard } from "./PolicyCardPreview.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { TaskRow } from "../api/types.js";
@@ -814,6 +815,7 @@ export function ContinuityReviewView({ client }: { readonly client: ApiClient })
               }}
               reviewQueue={data.reviewQueue}
             />
+            <OwnerTaughtPolicyCard client={client} threads={data.threads} />
 
             <h2 className="page-title" style={{ fontSize: 20, marginTop: 32 }}>{t("continuity.threads")}</h2>
             <Card>

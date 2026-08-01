@@ -83,6 +83,9 @@ export function createApiServerOptions(options: CreateApiServerOptionsOptions = 
     ...(assembly.continuityCapsulePreparation
       ? { continuityCapsulePreparation: assembly.continuityCapsulePreparation }
       : {}),
+    ...(assembly.ownerTaughtPolicyCardPreview
+      ? { ownerTaughtPolicyCardPreview: assembly.ownerTaughtPolicyCardPreview }
+      : {}),
     ...((options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE)
       ? { continuityWorkspaceDir: options.continuityWorkspaceDir ?? env.MUSE_CONTINUITY_WORKSPACE }
       : {}),

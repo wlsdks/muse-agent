@@ -82,7 +82,7 @@ The Interface is intentionally closed:
 | Extension Kit | `@attunegraph/core/extension-kit` | shipped narrow seam | Canonical envelopes, settlement, normalization, and witness-path helpers |
 | Muse integration | `@muse/attunegraph/*` | shipped explicit subpaths | Continuity, Shadow, Capsule, Policy Card, evidence, and lineage composition |
 | Muse durable projection | `@muse/attunegraph/continuity-durable-projection` | shipped explicit opt-in | Verified Continuity Graph receipts to the embedded Store; serialized writer, restart head recovery, unknown freshness, no source authority |
-| Muse Policy Card preview | `@muse/attunegraph/policy-card` | shipped explicit read-only | One fresh provider-matched Attunement snapshot to inert bilingual render data; authoritative experience, caller replay claims, and graph explanation stay separate; no mutation or action |
+| Muse Policy Card preview | `@muse/attunegraph/policy-card` + `@muse/autoconfigure` | shipped explicit read-only | One owner-selected thread-display change and fixed boundary replay over a fresh provider-matched Attunement snapshot to inert bilingual render data; tool/API/UI share the compiler service; authoritative experience, caller replay claims, and graph explanation stay separate; no mutation or action |
 | Markdown source | future standalone adapter | target | Portable Markdown/frontmatter/link observations |
 | Obsidian source | future standalone adapter | target | Vault-relative wiki-link, embed, heading, and stable block-ref observations |
 | Notion source | future standalone adapter | target | Opt-in sync preserving workspace/database/page/block identities |

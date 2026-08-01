@@ -56,6 +56,21 @@ export {
 } from "./continuity-learning-preparation-service.js";
 
 export {
+  createContinuityLearningPolicyCardPreviewService,
+  type ContinuityLearningPolicyCardPreviewInput,
+  type ContinuityLearningPolicyCardPreviewService,
+  type CreateContinuityLearningPolicyCardPreviewServiceOptions
+} from "./continuity-learning-policy-card-preview-service.js";
+
+export {
+  createOwnerTaughtPolicyCardPreviewService,
+  type CreateOwnerTaughtPolicyCardPreviewServiceOptions,
+  type OwnerTaughtPolicyCardPreviewInput,
+  type OwnerTaughtPolicyCardPreviewResult,
+  type OwnerTaughtPolicyCardPreviewService
+} from "./owner-taught-policy-card-preview-service.js";
+
+export {
   ContinuityResumeBaselineFileStore,
   ContinuityResumeBaselineFileStoreUnavailableError
 } from "./continuity-resume-baseline-file-store.js";

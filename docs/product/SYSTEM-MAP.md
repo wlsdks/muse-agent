@@ -51,7 +51,9 @@ using it for pack delivery, automatic linking, and timing improvements are all s
 The signature experience path is **Shadow Muse → Continuity Capsule → Policy Card**: Muse first
 learns in silence, then restores the state the user meant to continue along with what changed since,
 then shows the next collaboration rule with its evidence, scope and rollback. The complete
-automatic path remains roadmap; an explicit inert Policy Card render-data preview is available
+automatic path remains roadmap. The authenticated Continuity Review now exposes an owner-taught,
+inert Policy Card: one explicit display-policy selection for one exact organic opportunity is
+checked by a deterministic boundary replay and compiled from a fresh local AttuneGraph snapshot,
 without policy mutation or action. The existing Continuity screen also has a bounded read-only
 Shadow Return inspector for exact explicit-CLI source receipts and graph-pair status; it does not
 record returns or claim usefulness. A separate runtime preparation substrate may now bind one

@@ -55,9 +55,11 @@ The roadmap experience has three consumers of the existing Attunement loop:
   projection; render alone performs no preparation. Exact stop capture, current freshness,
   authenticated observation witness, all-source parity, automatic timing/surfacing, and usefulness
   remain roadmap.
-- **Policy Card** proposes a scoped, reversible policy delta; its current explicit preview is
-  inert and keeps authority, caller replay claims, and graph explanation separate. It never hides
-  learning in a prompt or silently widens observation or authority. Trusted interactive controls
+- **Policy Card** proposes a scoped, reversible policy delta. Its authenticated owner-taught UI
+  accepts only an explicit display-policy selection for one current organic opportunity, runs a
+  fixed contract replay, and renders a fresh AttuneGraph-backed preview. The preview remains inert
+  and keeps authority, caller replay claims, and graph explanation separate. It never hides
+  learning in a prompt or silently widens observation or authority. Trusted write/undo controls
   remain roadmap.
 
 Their shared relationship/time/provenance layer is

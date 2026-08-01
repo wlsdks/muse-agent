@@ -97,8 +97,9 @@ Muse how to collaborate with this person better.
 The complete three-part experience remains target architecture rather than a shipped wow claim.
 Its underlying [AttuneGraph](../design/attunement/attunegraph.md) now has bounded
 library/runtime substrates, including the worker-isolated durable projection journal, an explicit
-opt-in Continuity projection writer, a claim-safe read-only Policy Card compiler/tool, and a
-content-addressed factual return receipt emitted after an explicit CLI Pack open. The neutral core
+opt-in Continuity projection writer, a claim-safe Policy Card compiler/tool, an authenticated
+owner-taught read-only Policy Card UI, and a content-addressed factual return receipt emitted
+after an explicit CLI Pack open. The neutral core
 also ships fixed-profile `decision-query@1` through typed input or bounded AttuneQL, with exact-head,
 freshness, token-budget and evidence-only receipt semantics. The fresh explicit Continuity resume
 path now consumes and cross-binds that receipt, restricting current change/support context to its
@@ -111,10 +112,16 @@ queryable as `Decision PRECEDED Delivery` plus `Evidence OBSERVED_DURING Thread`
 the receipt's authority. An authenticated read-only Continuity card can now show the exact
 persisted receipt and whether a complete bounded Working Graph contains that active pair; partial
 reads remain visibly incomplete, and the card does not infer that the Pack helped. AttuneGraph
-does not yet have the complete Source Adapter, automatic
-Policy Card surface and controls, maintenance, qualification, or product-composition program.
+does not yet have the complete Source Adapter, automatic Policy Card surfacing, trusted Policy
+Card write/undo controls, maintenance, qualification, or product-composition program.
 Dependency-ordered work lives in the
 [wow + graph roadmap](../../internal/goals/attunegraph-roadmap.md).
+
+The shipped owner-taught seam accepts only an explicit summary-density and next-step choice for
+one exact organic learning opportunity. It builds no inferred preference prose, runs a fixed
+ten-case boundary replay, captures a fresh local snapshot, and returns an inert bilingual card.
+Its replay is a structural contract check—not usefulness proof—and the card grants no approval,
+mutation, or action authority.
 
 ## The compounding loop
 

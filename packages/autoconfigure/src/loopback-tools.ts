@@ -48,9 +48,6 @@ import {
 import type {
   ContinuityObservationReceipt
 } from "@muse/attunegraph/continuity-observations";
-import {
-  compileAttuneGraphPolicyCard
-} from "@muse/attunegraph/policy-card";
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { createCalendarMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createHistoryMcpServer, createMathMcpServer, createMessagingMcpServer, createNotesMcpServer, createNotesRegistryMcpServer, createPatternsMcpServer, createProactiveMcpServer, createRemindersMcpServer, createStatusMcpServer, createTasksMcpServer, createTasksRegistryMcpServer, createSearchMcpServer, createWebReadMcpServer, type MessageApprovalGate } from "@muse/domain-tools";
 import { mirrorNoteToApple, mirrorReminderToApple } from "@muse/macos";
@@ -84,6 +81,13 @@ import { createContinuityLearningApplyTool } from "./continuity-learning-apply-t
 import {
   createContinuityLearningDegradationTool
 } from "./continuity-learning-degradation-tool.js";
+import {
+  createContinuityLearningPolicyCardPreviewService
+} from "./continuity-learning-policy-card-preview-service.js";
+import {
+  createOwnerTaughtPolicyCardPreviewService,
+  type OwnerTaughtPolicyCardPreviewService
+} from "./owner-taught-policy-card-preview-service.js";
 import { createContinuityLearningRollbackTool } from "./continuity-learning-rollback-tool.js";
 import { createQualificationLearningWriteGate } from "./qualification-learning-active-skill-write-gate.js";
 import { resolveWeaknessesFile } from "./provider-paths.js";
@@ -160,6 +164,8 @@ export interface LoopbackToolsBundle {
   readonly search: readonly MuseTool[];
   readonly continuityCapsulePreparation?:
     ContinuityCapsulePreparationService;
+  readonly ownerTaughtPolicyCardPreview?:
+    OwnerTaughtPolicyCardPreviewService;
 }
 
 export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle {
@@ -189,6 +195,8 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
     : [];
   let continuityCapsulePreparation:
     ContinuityCapsulePreparationService | undefined;
+  let ownerTaughtPolicyCardPreview:
+    OwnerTaughtPolicyCardPreviewService | undefined;
   const continuity: readonly MuseTool[] = deps.attunementFile
     ? (() => {
         const resolveExactArtifact = createLocalExactArtifactResolver({
@@ -200,6 +208,19 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
           attunementFile: deps.attunementFile!,
           sourceId: continuityRuntimeSourceId
         });
+        const policyCardPreview =
+          createContinuityLearningPolicyCardPreviewService({
+            captureHeadRevalidation:
+              snapshotProvider.captureHeadRevalidation,
+            readState: () => readAttunementState(deps.attunementFile!),
+            sourceId: continuityRuntimeSourceId
+          });
+        ownerTaughtPolicyCardPreview =
+          createOwnerTaughtPolicyCardPreviewService({
+            now: () => new Date(),
+            policyCardPreview,
+            readState: () => readAttunementState(deps.attunementFile!)
+          });
         const resumeCoordinator =
           createContinuityResumeRuntimeCoordinator({
             ...(deps.continuityResumeBaselineStore === undefined
@@ -340,41 +361,7 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
             }
           }),
           createContinuityLearningPolicyCardTool({
-            previewPolicyCard: async ({
-              draft,
-              evidenceCases,
-              locale,
-              opportunityId
-            }) => {
-              const queue = buildExperienceLearningReviewQueue(
-                await readAttunementState(deps.attunementFile!)
-              );
-              const matches = queue.items.filter((item) =>
-                item.opportunityId === opportunityId
-              );
-              if (matches.length !== 1) {
-                return Object.freeze({
-                  reason: "opportunity-not-found" as const,
-                  status: "held" as const
-                });
-              }
-              const headRevalidation =
-                await snapshotProvider.captureHeadRevalidation(
-                  {
-                    sourceId: continuityRuntimeSourceId,
-                    threadId: matches[0]!.scope.threadId
-                  },
-                  { maxCaptureSpanMs: 1_000 }
-                );
-              return compileAttuneGraphPolicyCard({
-                schemaVersion: 1,
-                draft,
-                evidenceCases,
-                headRevalidation,
-                locale,
-                opportunityId
-              });
-            }
+            previewPolicyCard: (input) => policyCardPreview.preview(input)
           }),
           createContinuityLearningApplyTool({
             apply: async ({
@@ -686,6 +673,9 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
     webRead,
     ...(continuityCapsulePreparation === undefined
       ? {}
-      : { continuityCapsulePreparation })
+      : { continuityCapsulePreparation }),
+    ...(ownerTaughtPolicyCardPreview === undefined
+      ? {}
+      : { ownerTaughtPolicyCardPreview })
   };
 }
