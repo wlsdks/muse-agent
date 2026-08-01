@@ -32,13 +32,30 @@ export const BASELINE = new Map([
     "2026-07-31: independent receipt-digest disagrees with thread-rooted-witness-documents.ts"],
 ]);
 
+/** Tracked verifier utilities whose no-argument rejection is mechanically pinned by the test. */
+export const NON_BATTERIES = new Map([
+  [
+    "packages/attunegraph/scripts/verify-attunegraph-performance-regression.mjs",
+    {
+      reason: "2026-08-01: requires --manifest to compare recorded performance data",
+      noArgumentFailure: {
+        blocker: "integrity-rejected:--manifest is required",
+        exitCode: 1,
+        schema: "attunegraph-performance-regression@1",
+      },
+    },
+  ],
+]);
+
 /** Every workspace battery, discovered rather than listed, so a new one is covered on arrival. */
 export function discoverBatteries() {
   return execFileSync(
     "git",
     ["ls-files", "--recurse-submodules", "--", "packages/*/scripts/verify-*.mjs"],
     { cwd: ROOT, encoding: "utf8" }
-  ).split("\n").filter(Boolean).sort();
+  ).split("\n").filter(Boolean)
+    .filter((battery) => !battery.endsWith(".test.mjs") && !NON_BATTERIES.has(battery))
+    .sort();
 }
 
 /**
