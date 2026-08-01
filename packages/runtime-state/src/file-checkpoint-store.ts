@@ -408,7 +408,7 @@ async function ensureCanonicalDirectory(path: string): Promise<void> {
   while (true) {
     try {
       const info = await lstat(ancestor);
-      if (!info.isDirectory() || info.isSymbolicLink() || await realpath(ancestor) !== ancestor) {
+      if (!info.isDirectory() || info.isSymbolicLink() || !await hasEquivalentRealpath(ancestor)) {
         throw new Error("checkpoint directory ancestor is not canonical");
       }
       break;
@@ -421,9 +421,13 @@ async function ensureCanonicalDirectory(path: string): Promise<void> {
   }
   await mkdir(path, { recursive: true });
   const info = await lstat(path);
-  if (!info.isDirectory() || info.isSymbolicLink() || await realpath(path) !== path) {
+  if (!info.isDirectory() || info.isSymbolicLink() || !await hasEquivalentRealpath(path)) {
     throw new Error("checkpoint directory is not canonical");
   }
+}
+
+async function hasEquivalentRealpath(path: string): Promise<boolean> {
+  return relative(path, await realpath(path)) === "";
 }
 
 function ioCode(cause: unknown): string | undefined {
@@ -457,7 +461,7 @@ async function listScopedCheckpointRunIds(dir: string, workspaceRealpath: string
   try {
     const v3Dir = join(dir, CHECKPOINT_V3_DIRECTORY);
     const info = await lstat(v3Dir);
-    if (!info.isDirectory() || info.isSymbolicLink() || await realpath(v3Dir) !== v3Dir) return [];
+    if (!info.isDirectory() || info.isSymbolicLink() || !await hasEquivalentRealpath(v3Dir)) return [];
     names = (await readdir(v3Dir)).filter((name) => name.endsWith(".json"));
   } catch {
     return [];
@@ -555,7 +559,7 @@ export async function pruneCheckpointFilesByAge(
   }
   try {
     const root = await lstat(dir);
-    if (!root.isDirectory() || root.isSymbolicLink() || await realpath(dir) !== dir) return { dropped: 0, droppedFiles: [], kept: 0 };
+    if (!root.isDirectory() || root.isSymbolicLink() || !await hasEquivalentRealpath(dir)) return { dropped: 0, droppedFiles: [], kept: 0 };
   } catch (cause) {
     if (ioCode(cause) === "ENOENT") return { dropped: 0, droppedFiles: [], kept: 0 };
     throw cause;
@@ -564,7 +568,7 @@ export async function pruneCheckpointFilesByAge(
   for (const parent of [dir, join(dir, V2_DIRECTORY), join(dir, CHECKPOINT_V3_DIRECTORY)]) {
     try {
       const parentInfo = await lstat(parent);
-      if (!parentInfo.isDirectory() || parentInfo.isSymbolicLink() || await realpath(parent) !== parent) continue;
+      if (!parentInfo.isDirectory() || parentInfo.isSymbolicLink() || !await hasEquivalentRealpath(parent)) continue;
       for (const name of await readdir(parent)) {
         if (!name.endsWith(".json")) continue;
         const file = join(parent, name);

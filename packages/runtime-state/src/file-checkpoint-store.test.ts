@@ -23,6 +23,22 @@ function checkpointFileName(runId: string): string {
 }
 
 describe("FileCheckpointStore — durable local checkpoints so a crashed run can resume", () => {
+  it.runIf(process.platform === "win32")("accepts canonical Windows drive-letter spelling", async () => {
+    const dir = tmpDir();
+    try {
+      const drive = dir[0]!;
+      const alternateDrive = drive === drive.toLowerCase() ? drive.toUpperCase() : drive.toLowerCase();
+      const checkpointsDir = join(`${alternateDrive}${dir.slice(1)}`, "checkpoints");
+      const store = new FileCheckpointStore(checkpointsDir);
+      await expect(store.save({ runId: "windows-canonical", state: state("saved"), step: 0 })).resolves.toMatchObject({
+        runId: "windows-canonical",
+        step: 0
+      });
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   it("namespaces future v3 checkpoints by workspace and never lets an authority-less store discover them", async () => {
     const dir = tmpDir();
     try {
