@@ -42,6 +42,15 @@ const QUALIFY_NOW = new Date("2026-07-21T12:00:00.000Z");
 const QUALIFY_SOURCE = { revision: "a".repeat(40), tree: "clean" as const };
 const QUALIFY_ARTIFACTS = { count: 12, digest: "b".repeat(64), status: "ok" as const };
 
+function psLocalStart(instant: Date): string {
+  const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+  const time = [instant.getHours(), instant.getMinutes(), instant.getSeconds()]
+    .map((value) => value.toString().padStart(2, "0"))
+    .join(":");
+  return `${weekdays[instant.getDay()]} ${months[instant.getMonth()]} ${instant.getDate().toString()} ${time} ${instant.getFullYear().toString()}`;
+}
+
 function capabilityReport() {
   return {
     capabilities: AGENT_CAPABILITY_REQUIREMENTS.map((requirement) => ({
@@ -272,7 +281,11 @@ function qualificationFixture(options: {
         : { code: 0, stderr: "", stdout: launchctlPrint };
     }
     if (executable === "ps" && args[0] === "-p") {
-      return { code: 0, stderr: "", stdout: "Tue Jul 21 20:00:00 2026\n" };
+      return {
+        code: 0,
+        stderr: "",
+        stdout: `${psLocalStart(new Date("2026-07-21T11:00:00.000Z"))}\n`
+      };
     }
     if (executable === "ps" && args[0] === "-axo") {
       return { code: 0, stderr: "", stdout: `4321 1 ${process.execPath} ${cliEntry} daemon\n` };
