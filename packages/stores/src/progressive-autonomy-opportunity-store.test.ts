@@ -385,7 +385,7 @@ describe("FileProgressiveAutonomyOpportunityStore public evidence contract", () 
     const { file, store } = await fixture();
     const first = receipt();
     await store.record(first);
-    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(file)).mode & 0o777).toBe(0o600);
 
     const exactBytes = await readFile(file, "utf8");
     await store.record({ ...first, recordedAt: "2026-07-17T04:00:00.000Z" });

@@ -1,7 +1,7 @@
 import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -178,7 +178,7 @@ describe("FileConversationStore — round-trip persistence", () => {
 
     const raw = await readFile(file, "utf8");
     expect(() => JSON.parse(raw)).not.toThrow();
-    const dir = file.slice(0, file.lastIndexOf("/"));
+    const dir = dirname(file);
     const siblings = readdirSync(dir).filter((name) => name.startsWith("conversations.json.tmp-"));
     expect(siblings).toEqual([]);
   });
@@ -225,7 +225,7 @@ describe("FileConversationStore — round-trip persistence", () => {
     const store = new FileConversationStore({ file });
     expect(await store.list()).toEqual([]);
 
-    const dir = file.slice(0, file.lastIndexOf("/"));
+    const dir = dirname(file);
     const siblings = readdirSync(dir);
     expect(siblings.some((name) => name.startsWith("conversations.json.corrupt-"))).toBe(true);
   });

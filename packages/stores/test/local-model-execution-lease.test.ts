@@ -55,8 +55,10 @@ describe("FileLocalModelExecutionLeaseCoordinator", () => {
       sequence: 1,
       version: 1
     });
-    expect(lstatSync(leaseRoot).mode & 0o077).toBe(0);
-    expect(lstatSync(join(leaseRoot, "active.json")).mode & 0o077).toBe(0);
+    if (process.platform !== "win32") {
+      expect(lstatSync(leaseRoot).mode & 0o077).toBe(0);
+      expect(lstatSync(join(leaseRoot, "active.json")).mode & 0o077).toBe(0);
+    }
 
     await lease.release();
     await lease.release();

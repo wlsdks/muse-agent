@@ -65,8 +65,10 @@ describe("one-file encrypted backup", () => {
       sha256: expect.stringMatching(/^[0-9a-f]{64}$/u)
     });
     expect(await readFile(join(targetDirectory, "state", "source.bin"))).toEqual(sourceBytes);
-    expect((await stat(backupFile)).mode & 0o777).toBe(0o600);
-    expect((await stat(join(targetDirectory, "state", "source.bin"))).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await stat(backupFile)).mode & 0o777).toBe(0o600);
+      expect((await stat(join(targetDirectory, "state", "source.bin"))).mode & 0o777).toBe(0o600);
+    }
     expect(await readFile(sourceFile)).toEqual(sourceBytes);
     expect((await stat(sourceFile)).mode & 0o777).toBe(0o640);
     expect(await readFile(backupFile, "utf8")).not.toContain(sourceBytes.toString("base64"));

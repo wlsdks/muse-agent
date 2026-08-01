@@ -79,7 +79,7 @@ describe("reminder backlog triage transaction", () => {
     expect(ledgerRaw).not.toContain(preview.confirmToken);
     const bearerSecret = preview.confirmToken.slice(`rt1_${preview.operationId}_`.length);
     expect(ledgerRaw).not.toContain(bearerSecret);
-    expect((await stat(f.ledgerFile)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(f.ledgerFile)).mode & 0o777).toBe(0o600);
     expect((await readReminderTriageLedgerStrict(f.ledgerFile)).events).toHaveLength(1);
   });
 

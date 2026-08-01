@@ -41,7 +41,7 @@ describe("FileTriggerAdmissionJournalStore", () => {
     const admission = await store.admit({ envelope: envelope("g1"), now: NOW });
 
     expect(admission.decision.action).toBe("execute");
-    expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
     expect(await store.read()).toEqual(admission.journal);
   });
 

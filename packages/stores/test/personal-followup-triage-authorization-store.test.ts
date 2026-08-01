@@ -110,7 +110,7 @@ describe("follow-up triage persisted authorization", () => {
     expect(raw).not.toContain(tokenSecret);
     expect(raw).not.toContain("do not persist this summary");
     expect(raw).not.toContain("owner");
-    expect((await stat(f.ledgerFile)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(f.ledgerFile)).mode & 0o777).toBe(0o600);
     const ledger = await readFollowupTriageLedgerStrict(f.ledgerFile);
     expect(ledger.events).toHaveLength(1);
     expect(ledger.events[0]).toMatchObject({

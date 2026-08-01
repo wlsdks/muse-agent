@@ -37,7 +37,7 @@ describe("qualification learning hold store", () => {
 
     expect(second).toEqual(first);
     expect(after).toEqual(before);
-    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(file)).mode & 0o777).toBe(0o600);
     expect(await inspectQualificationLearningHold(file)).toEqual({
       engaged: true,
       record: first,
