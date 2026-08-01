@@ -430,14 +430,7 @@ async function hasEquivalentRealpath(path: string): Promise<boolean> {
   const canonical = await realpath(path);
   if (process.platform !== "win32") return relative(path, canonical) === "";
 
-  const root = parse(path).root;
-  let componentPath = root;
-  for (const component of relative(root, path).split(/[\\/]+/u).filter(Boolean)) {
-    componentPath = join(componentPath, component);
-    if ((await lstat(componentPath)).isSymbolicLink()) return false;
-  }
-
-  const comparableWindowsPath = (value: string): string => {
+  const comparableWindowsPath = (value: string): { readonly folded: string; readonly normalized: string } => {
     const devicePrefix = "\\\\?\\";
     const uncDevicePrefix = "\\\\?\\UNC\\";
     const folded = value.toLowerCase();
@@ -446,10 +439,28 @@ async function hasEquivalentRealpath(path: string): Promise<boolean> {
       : folded.startsWith(devicePrefix.toLowerCase())
         ? value.slice(devicePrefix.length)
         : value;
-    return normalize(withoutDevicePrefix).toLowerCase();
+    const normalized = normalize(withoutDevicePrefix);
+    return { folded: normalized.toLowerCase(), normalized };
   };
 
-  return comparableWindowsPath(path) === comparableWindowsPath(canonical);
+  const requested = comparableWindowsPath(path);
+  const resolved = comparableWindowsPath(canonical);
+  if (requested.folded !== resolved.folded) return false;
+
+  // Windows realpath may canonicalize harmless casing, while hosted runners can
+  // contain trusted junctions above the caller-controlled path. Only inspect a
+  // component when realpath actually changed that component's spelling; this
+  // still rejects a case-only link inside a case-sensitive Windows directory.
+  const requestedRoot = parse(requested.normalized).root;
+  const requestedParts = relative(requestedRoot, requested.normalized).split(/[\\/]+/u).filter(Boolean);
+  const resolvedRoot = parse(resolved.normalized).root;
+  const resolvedParts = relative(resolvedRoot, resolved.normalized).split(/[\\/]+/u).filter(Boolean);
+  let componentPath = requestedRoot;
+  for (let index = 0; index < requestedParts.length; index += 1) {
+    componentPath = join(componentPath, requestedParts[index]!);
+    if (requestedParts[index] !== resolvedParts[index] && (await lstat(componentPath)).isSymbolicLink()) return false;
+  }
+  return true;
 }
 
 function ioCode(cause: unknown): string | undefined {
