@@ -172,13 +172,13 @@ export const SKILL_SPECS = [
   },
   {
     name: "muse-codegraph",
-    summary: "searching for a symbol, instead of reaching for grep",
+    summary: "using optional CodeGraph v1.5 for indexed structural-code retrieval",
     sources: [".claude/rules/engineering/codegraph.md"],
     description:
-      "Use before reaching for grep/rg or opening a file to FIND a symbol in the Muse repo — it"
-      + " decides when the CodeGraph index answers a structural question and when plain text search"
-      + " is the correct tool. Not for literal text such as a log string, env-var name, or config"
-      + " value, where grep is right.",
+      "Use before native file exploration for an indexed structural-code question in Muse — it"
+      + " defines the CodeGraph v1.5 explore-first path, result-identity and negative-claim"
+      + " guardrails, freshness recovery, and affected-test limits. Ignore it when CodeGraph is"
+      + " unavailable or the current checkout has no usable index; literal text still uses grep.",
   },
   {
     name: "muse-cli-surface",
