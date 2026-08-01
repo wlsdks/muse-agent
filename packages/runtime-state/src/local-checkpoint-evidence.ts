@@ -98,10 +98,10 @@ export async function readLocalCheckpointEvidenceStrict(input: {
     if (!before.isFile() || !sameFile(pathStat, before) || before.size > MAX_FILE_BYTES) {
       return { kind: "invalid", reason: "checkpoint evidence changed or exceeds the file limit" };
     }
-    await input.testHooks?.afterOpen?.(target);
     let bytes: Buffer;
     let after;
     try {
+      await input.testHooks?.afterOpen?.(target);
       bytes = await handle.readFile();
       after = await handle.stat();
     } catch {
