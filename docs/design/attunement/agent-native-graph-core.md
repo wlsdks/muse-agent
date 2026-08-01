@@ -648,6 +648,12 @@ Do not build the database first.
    Graph document/context fields. The subject remains the Graph observation and the head
    is only the assessment instant. This is not ABA detection, continuous stability,
    durable source authority, or freshness after assessment.
+   **Decision Query cross-binding is implemented on the fresh resume path:** the verified current
+   observation is projected into an ephemeral exact AttuneGraph head, queried through the fixed
+   `decision-query@1` profile, and linked to the existing graph receipt by a separate immutable
+   binding artifact. Current change facts must be witnessed by that query; supporting facts are
+   intersected with the same witness. Unassessed paths mint no Decision Query receipt, and the
+   artifact retains `authorityEvaluation=not-performed` and `conflictClosure=not-performed`.
    **AWG-050a3d1 is independently verified:** the exact final thread-rooted compilation
    object now owns a process-local retained-witness inventory. Separate
    content-addressed core/optional entries and one compact manifest conserve the complete
@@ -707,7 +713,7 @@ traversal → local proof validation → focus-derived lane → fair opportunity
 subset feasibility → complete bounded witness retention → exact context bytes → verified
 process-local Provider ownership → bounded two-endpoint assessment → observation and
 receipt-bound graph evidence → exact previous boundary/current-pair settlement → semantic
-Pack Preview resume facts → bounded durable-local assembled comparison baseline with a
+Decision Query-bounded Pack Preview resume facts → bounded durable-local assembled comparison baseline with a
 process-local direct-construction fallback. This is an end-to-end claim only over one
 configured-local subject, bounded head assessments, and a finite evidence pool; it is not
 continuous or current freshness, an automatically observed stopping point, semantic entailment,

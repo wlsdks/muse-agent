@@ -257,7 +257,10 @@ What is verified today, and what those words do **not** mean:
   `parseAttuneQL()`. It fixes scope, exact/current head posture, canonical time, fresh-source
   requirement, and token budget while keeping relationship families out of model control. Its
   content-addressed receipt is evidence-only: authority and conflict closure are explicitly
-  `not-performed`, so Muse's stricter receipt-bound witness layers remain separate.
+  `not-performed`. Muse's fresh explicit Continuity resume path now cross-binds that exact receipt
+  to its stricter receipt-bound witness/settlement layer and allows only Decision Query-witnessed
+  current change and support assertions into model context. Caller-declared or unassessed evidence
+  does not run the query or invent its required freshness.
 - `MUSE_ATTUNEGRAPH_DATABASE=/absolute/path/attunegraph.sqlite` explicitly connects the existing
   provider-revalidated Continuity Pack Preview path to
   `@muse/attunegraph/continuity-durable-projection`. The configured composition revalidates current

@@ -573,7 +573,9 @@ thread, not a hidden global preference.
 - **AttuneGraph** — an agent-native module that links time, relations,
   provenance, and policy on top of existing stores, building only the small Working Graph a turn
   needs. The Engine now includes fixed-profile `decision-query@1`, bounded AttuneQL, and an
-  evidence-only receipt; the SQLite journal, offline Lens, and explicit opt-in Continuity Preview writer
+  evidence-only receipt. Muse's fresh explicit Continuity resume path cross-binds that receipt and
+  restricts current change/support facts to its witness; unassessed evidence does not fabricate the
+  required freshness. The SQLite journal, offline Lens, and explicit opt-in Continuity Preview writer
   are implemented substrates; automatic/default ingestion, the complete Admin, and a standalone
   release remain roadmap.
 

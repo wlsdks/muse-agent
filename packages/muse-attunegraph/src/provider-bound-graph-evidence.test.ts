@@ -254,6 +254,7 @@ describe("provider-bound graph evidence", () => {
     expect(first.providerReceipt.receiptId).toBe(source.receipt.receiptId);
     expect(first.graphObservationReceipt.observedAt).toBe(AT);
     expect(first.graphEvidence.receipt.status).toBe("abstained");
+    expect(first.graphEvidence.decisionEvidence).toBeUndefined();
     expect(first.graphEvidence.legacyCompilation.status).toBe("abstained");
     expect(first.receipt).toMatchObject({
       stage: "graph-evidence",

@@ -51,7 +51,8 @@ Muse*. Each entry is one definition plus where it lives. Exact verification evid
 - **Decision Query** — the shipped fixed-profile `decision-query@1` boundary that compiles one
   exact/current-head, fresh-source, token-bounded evidence frontier. Its receipt is evidence-only;
   `complete` means the fixed traversal completed, not that an action is authorized or every conflict
-  is closed.
+  is closed. Muse's fresh Continuity resume path uses its witness as a membership boundary for
+  current change/support context and cross-binds it to a separate stricter Muse proof receipt.
 - **AttuneQL** — the bounded textual spelling of the same Decision Query. It lets an agent name the
   seed, scope, time, head posture and budget, but exposes no arbitrary predicates, joins, traversal,
   analytics or writes. Text and typed objects normalize to the same canonical query.

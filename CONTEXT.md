@@ -39,7 +39,10 @@ invariants and adds the dependency direction that code must not violate.
   persistence, source/store join, policy mutation, or action authority.
 - A **Continuity Resume Runtime** is the bounded, assembly-local process-memory bridge from
   one exact previous Source/Graph boundary to a current Provider-revalidated pair. The
-  existing explicit Pack Preview dogfoods its semantic result. Its LRU and side registries
+  fresh path now cross-binds a standalone fixed-profile Decision Query receipt and admits
+  current change/support facts to model context only from that exact witness; unassessed
+  evidence never fabricates the query's required freshness. The existing explicit Pack
+  Preview dogfoods its semantic result. Its LRU and side registries
   are not a durable graph, and its successful or unavailable result grants no source
   completeness, current-world, timing, policy, or action authority. An optional explicit
   request may present a verified bilingual Capsule only when the exact result owns both its
@@ -57,7 +60,9 @@ invariants and adds the dependency direction that code must not violate.
   the explicit `MUSE_ATTUNEGRAPH_DATABASE` Continuity Preview writer now performs restart-safe
   optimistic projection through the public Engine Interface. The core also ships fixed-profile
   `decision-query@1` through typed input or bounded AttuneQL; its receipt is evidence-only and
-  explicitly does not complete authority/conflict evaluation. Export/rebuild, backup, physical
+  explicitly does not complete authority/conflict evaluation. Muse's fresh Continuity resume
+  composition consumes that receipt as a model-context membership boundary while retaining its
+  stricter witness and settlement proof. Export/rebuild, backup, physical
   forget, complete benchmarks, and automatic/default Muse composition remain. PostgreSQL is
   optional; Redis/MySQL/external Graph DBs are not required. A
   receipt is evidence projected into AttuneGraph, not a database.

@@ -8,6 +8,17 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Cross-bound the standalone AttuneGraph `decision-query@1` receipt into Muse's
+  fresh provider-head Continuity resume path. Muse now projects the verified
+  current observation through an ephemeral exact head, runs the fixed-profile
+  Decision Query, and permits current change/support facts into model context
+  only when their assertion IDs occur in that query witness. A separate
+  content-addressed binding links the query receipt to the existing graph
+  evidence receipt without changing the latter's v1 bytes. Caller-declared or
+  unassessed evidence does not mint this receipt; authority, conflict closure,
+  completeness, persistence, permission, action and automatic surfacing remain
+  explicitly unclaimed.
+
 ## [0.3.0] - 2026-08-01
 
 This release turns the work since `v0.2.42` into one deliberate product boundary:

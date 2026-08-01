@@ -100,8 +100,10 @@ library/runtime substrates, including the worker-isolated durable projection jou
 opt-in Continuity projection writer, a claim-safe read-only Policy Card compiler/tool, and a
 content-addressed factual return receipt emitted after an explicit CLI Pack open. The neutral core
 also ships fixed-profile `decision-query@1` through typed input or bounded AttuneQL, with exact-head,
-freshness, token-budget and evidence-only receipt semantics; proof-closed authority/conflict remains
-separate Muse integration work. The return
+freshness, token-budget and evidence-only receipt semantics. The fresh explicit Continuity resume
+path now consumes and cross-binds that receipt, restricting current change/support context to its
+witness while preserving Muse's stronger proof settlement. Proof-closed authority/conflict remains
+separate work. The return
 receipt records only a temporal association with a prior Shadow timing candidate; it does not
 infer feedback, outcome, usefulness, causality, reconstruction benefit, or permission. With the
 explicit database opt-in, a separately versioned full projection now makes that fact durable and
