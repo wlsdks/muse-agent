@@ -593,7 +593,10 @@ export async function pruneCheckpointFilesByAge(
         return false;
       }
     });
-    if (dropped) droppedFiles.push(relative(dir, candidate.file));
+    if (dropped) {
+      const receiptPath = relative(dir, candidate.file);
+      droppedFiles.push(process.platform === "win32" ? receiptPath.replaceAll("\\", "/") : receiptPath);
+    }
     else kept += 1;
   }
   return { dropped: droppedFiles.length, droppedFiles, kept };
