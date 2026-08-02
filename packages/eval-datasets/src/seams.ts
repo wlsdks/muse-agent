@@ -122,7 +122,9 @@ async function executeContinuity(record: Extract<EvalRecord, { family: "continui
     threadId,
   };
   const state: AttunementState = {
-    schemaVersion: 3,
+    schemaVersion: 13,
+    experienceLearningPolicyAudits: [],
+    experienceLearningPromotionHandles: [],
     nextPolicyVersion: 1,
     threads: [{
       id: threadId,
