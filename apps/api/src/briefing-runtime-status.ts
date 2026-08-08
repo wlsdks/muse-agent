@@ -76,13 +76,14 @@ export function createBriefingRuntimeStatusStore(): BriefingRuntimeStatusStore {
 export function recordBriefingRuntimeStartup(
   runtimeStatus: BriefingRuntimeStatusStore | undefined,
   availability: Exclude<BriefingRuntimeAvailability, "observed">,
-  observedAtIso = new Date().toISOString()
+  observedAtIso = new Date().toISOString(),
+  lastRoute?: MessagingRouteResolution
 ): void {
   try {
     runtimeStatus?.record({
       availability,
       decision: "startup",
-      lastRoute: unavailableMessagingRouteReceipt(),
+      lastRoute: lastRoute ?? unavailableMessagingRouteReceipt(),
       observedAtIso,
       phase: "startup"
     });

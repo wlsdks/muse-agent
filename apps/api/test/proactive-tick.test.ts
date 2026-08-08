@@ -269,6 +269,7 @@ describe("startProactiveTick route refresh", () => {
       return resolution;
     };
     const handle = startProactiveTick({
+      localOnly: false,
       messagingRegistry: registry,
       now: () => now,
       resolveRoute,

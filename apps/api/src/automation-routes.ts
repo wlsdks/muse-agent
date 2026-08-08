@@ -21,6 +21,7 @@ import {
   type DeliveryQueueSnapshot,
   type MessagingRouteResolution
 } from "@muse/autoconfigure";
+import { isLocalOnlyEnabled } from "@muse/model";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { DEFAULT_DIGEST_HOUR, readInterruptionBudgetStatus, type InterruptionBudgetStatus } from "@muse/proactivity";
 import { compareRemindersByDueAt, readInterruptionLedger, readReminders } from "@muse/stores";
@@ -37,6 +38,7 @@ import type { FollowupRuntimeStatus } from "./followup-runtime-status.js";
 import type { ProactiveRuntimeStatus } from "./proactive-runtime-status.js";
 import type { ReminderRuntimeStatus } from "./reminder-runtime-status.js";
 import type { PatternRuntimeStatus } from "./pattern-runtime-status.js";
+import { admitAutomationRoute, type AutomationRouteAdmission } from "./automation-route-admission.js";
 import { sanitizeMessagingRouteReceipt } from "./messaging-route-receipt.js";
 
 const MAX_UPCOMING_JOBS = 5;
@@ -159,9 +161,9 @@ export function registerAutomationRoutes(server: FastifyInstance, gate: Automati
     }
 
     const now = new Date();
-    const gateway = await resolveGatewayRouteStatus(gate).catch(() => unavailableGatewayRouteStatus(gate));
+    const gatewayAdmission = resolveGatewayRouteAdmission(gate);
     const [digest, budget, scheduledJobs, nextReminder, deliveryQueueSnapshot] = await Promise.all([
-      resolveDigestStatus(gate.env, now, gateway),
+      resolveDigestStatus(gate.env, now, gatewayAdmission),
       resolveBudgetStatus(gate.env, now).catch(() => null),
       resolveScheduledJobs(gate.scheduler, now).catch(() => []),
       resolveNextReminder(gate.remindersFile).catch(() => null),
@@ -182,7 +184,7 @@ export function registerAutomationRoutes(server: FastifyInstance, gate: Automati
       briefingRuntime,
       digestRuntime,
       followupRuntime,
-      gateway,
+      gateway: gatewayAdmission.route,
       nextReminder,
       patternRuntime,
       proactiveRuntime,
@@ -335,23 +337,15 @@ function safeGeneratedAt(value: string): string {
   return Number.isFinite(Date.parse(value)) ? value : "unavailable";
 }
 
-async function resolveGatewayRouteStatus(gate: AutomationRoutesGate): Promise<GatewayRouteStatus> {
-  return resolveProactiveMessagingRoute(gate.env, {
-    // API compatibility for the legacy situational-briefing pair: canonical
-    // MUSE_PROACTIVE_* wins; MUSE_BRIEFING_* is used only when neither
-    // canonical key is present. The briefing tick uses the same option.
+function resolveGatewayRouteAdmission(gate: AutomationRoutesGate): AutomationRouteAdmission {
+  const localOnly = gate.localOnly ?? isLocalOnlyEnabled(gate.env);
+  const resolveRoute = (): unknown => resolveProactiveMessagingRoute(gate.env, {
     allowBriefingFallback: true,
     ...(gate.channelOwnersFile ? { ownersFile: gate.channelOwnersFile } : {}),
-    ...(gate.localOnly !== undefined ? { localOnly: gate.localOnly } : {}),
+    localOnly,
     ...(gate.messagingRegistry ? { registry: gate.messagingRegistry } : {})
   });
-}
-
-function unavailableGatewayRouteStatus(gate: AutomationRoutesGate): GatewayRouteStatus {
-  return resolveProactiveMessagingRoute(gate.env, {
-    allowBriefingFallback: true,
-    ...(gate.localOnly !== undefined ? { localOnly: gate.localOnly } : {})
-  });
+  return admitAutomationRoute({ localOnly, resolveRoute });
 }
 
 /**
@@ -374,10 +368,10 @@ function unavailableGatewayRouteStatus(gate: AutomationRoutesGate): GatewayRoute
 function resolveDigestStatus(
   env: NodeJS.ProcessEnv,
   now: Date,
-  route: MessagingRouteResolution
+  admission: AutomationRouteAdmission
 ): UpcomingDigest | null {
   try {
-    if (route.status !== "resolved") {
+    if (!admission.admitted) {
       return null;
     }
     const enabled = parseBoolean(env.MUSE_DIGEST_ENABLED, true);

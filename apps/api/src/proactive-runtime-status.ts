@@ -86,13 +86,14 @@ export function createProactiveRuntimeStatusStore(): ProactiveRuntimeStatusStore
 export function recordProactiveRuntimeStartup(
   runtimeStatus: ProactiveRuntimeStatusStore | undefined,
   availability: Exclude<ProactiveRuntimeAvailability, "observed">,
-  observedAtIso = new Date().toISOString()
+  observedAtIso = new Date().toISOString(),
+  lastRoute?: MessagingRouteResolution
 ): void {
   try {
     runtimeStatus?.record({
       availability,
       decision: "startup",
-      lastRoute: unavailableMessagingRouteReceipt(),
+      lastRoute: lastRoute ?? unavailableMessagingRouteReceipt(),
       observedAtIso,
       phase: "startup"
     });

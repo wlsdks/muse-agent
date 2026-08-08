@@ -14,6 +14,14 @@ import { createProactiveRuntimeStatusStore } from "../src/proactive-runtime-stat
 import { startProactiveTick } from "../src/proactive-tick.js";
 
 const NOW = new Date("2026-08-08T01:02:03.000Z");
+const RESOLVED_ROUTE = {
+  destination: "owner",
+  localOnly: false,
+  providerId: "log",
+  reason: null,
+  source: "explicit-config" as const,
+  status: "resolved" as const
+};
 
 function summary(overrides: Partial<RunDueProactiveNoticesSummary> = {}): RunDueProactiveNoticesSummary {
   return { errors: [], fired: 0, imminent: 0, ...overrides };
@@ -30,11 +38,11 @@ async function observe(
   }
   const runtimeStatus = createProactiveRuntimeStatusStore();
   const handle = startProactiveTick({
-    destination: "owner",
     messagingRegistry: {} as MessagingProviderRegistry,
     now: () => NOW,
+    localOnly: false,
+    resolveRoute: options.route === false ? () => undefined : () => RESOLVED_ROUTE,
     ...(options.quietHours ? { quietHours: options.quietHours } : {}),
-    ...(options.route === false ? {} : { providerId: "log" }),
     runtimeStatus,
     sidecarFile: "/tmp/muse-proactive-runtime-status.json"
   });
@@ -70,10 +78,10 @@ describe("startProactiveTick runtime status classification", () => {
     }));
     const runtimeStatus = createProactiveRuntimeStatusStore();
     const handle = startProactiveTick({
-      destination: "owner",
       messagingRegistry: {} as MessagingProviderRegistry,
       now: () => NOW,
-      providerId: "log",
+      localOnly: false,
+      resolveRoute: () => RESOLVED_ROUTE,
       runtimeStatus,
       sidecarFile: "/tmp/muse-proactive-runtime-status-concurrent.json"
     });
@@ -94,11 +102,11 @@ describe("startProactiveTick runtime status classification", () => {
     mockedProactivity.runDueProactiveNotices.mockRejectedValueOnce(new Error("secret delivery detail"));
     const runtimeStatus = createProactiveRuntimeStatusStore();
     const handle = startProactiveTick({
-      destination: "owner",
       errorLogger: vi.fn(),
       messagingRegistry: {} as MessagingProviderRegistry,
       now: () => NOW,
-      providerId: "log",
+      localOnly: false,
+      resolveRoute: () => RESOLVED_ROUTE,
       runtimeStatus,
       sidecarFile: "/tmp/muse-proactive-runtime-status-error.json"
     });
@@ -119,6 +127,7 @@ describe("startProactiveTick runtime status classification", () => {
       errorLogger,
       messagingRegistry: {} as MessagingProviderRegistry,
       now: () => NOW,
+      localOnly: false,
       resolveRoute: () => { throw new Error("secret route detail"); },
       runtimeStatus,
       sidecarFile: "/tmp/muse-proactive-runtime-status-route-throw.json"
@@ -148,6 +157,7 @@ describe("startProactiveTick runtime status classification", () => {
     const handle = startProactiveTick({
       messagingRegistry: {} as MessagingProviderRegistry,
       now: () => NOW,
+      localOnly: false,
       resolveRoute: () => ({
         destination: null,
         localOnly: false,
@@ -181,6 +191,7 @@ describe("startProactiveTick runtime status classification", () => {
     const handle = startProactiveTick({
       messagingRegistry: {} as MessagingProviderRegistry,
       now: () => NOW,
+      localOnly: true,
       resolveRoute: () => ({
         destination: "owner",
         localOnly: true,
@@ -213,25 +224,62 @@ describe("startProactiveTick runtime status classification", () => {
       status: "resolved" as const
     };
     let quiet = false;
+    let resolveCalls = 0;
     const runtimeStatus = createProactiveRuntimeStatusStore();
     const handle = startProactiveTick({
       messagingRegistry: {} as MessagingProviderRegistry,
       now: () => NOW,
+      localOnly: false,
       quietHours: () => quiet ? { endHour: 23, startHour: 0 } : undefined,
-      resolveRoute: () => route,
+      resolveRoute: () => {
+        resolveCalls += 1;
+        return route;
+      },
       runtimeStatus,
       sidecarFile: "/tmp/muse-proactive-runtime-status-route-reentry.json"
     });
     try {
       await handle.tickOnce();
+      expect(resolveCalls).toBe(1);
       expect(runtimeStatus.get()?.lastRoute.destination).toBe("owner-a");
       quiet = true;
       await handle.tickOnce();
+      expect(resolveCalls).toBe(1);
       expect(runtimeStatus.get()?.lastRoute.destination).toBe("owner-a");
       quiet = false;
       route = { ...route, destination: "owner-b" };
       await handle.tickOnce();
+      expect(resolveCalls).toBe(2);
       expect(runtimeStatus.get()?.lastRoute.destination).toBe("owner-b");
+    } finally {
+      handle.stop();
+    }
+  });
+
+  it("admits a resolved route once without recording a transient route-unavailable state", async () => {
+    mockedProactivity.runDueProactiveNotices.mockReset();
+    mockedProactivity.runDueProactiveNotices.mockResolvedValueOnce(summary());
+    const decisions: string[] = [];
+    let resolveCalls = 0;
+    const handle = startProactiveTick({
+      messagingRegistry: {} as MessagingProviderRegistry,
+      now: () => NOW,
+      localOnly: false,
+      resolveRoute: () => {
+        resolveCalls += 1;
+        return RESOLVED_ROUTE;
+      },
+      runtimeStatus: {
+        get: () => null,
+        record: (update) => decisions.push(update.decision)
+      },
+      sidecarFile: "/tmp/muse-proactive-runtime-status-route-admitted.json"
+    });
+    try {
+      await handle.tickOnce();
+      expect(resolveCalls).toBe(1);
+      expect(mockedProactivity.runDueProactiveNotices).toHaveBeenCalledTimes(1);
+      expect(decisions).not.toContain("route-unavailable");
     } finally {
       handle.stop();
     }
@@ -241,10 +289,10 @@ describe("startProactiveTick runtime status classification", () => {
     mockedProactivity.runDueProactiveNotices.mockReset();
     mockedProactivity.runDueProactiveNotices.mockResolvedValue(summary());
     const handle = startProactiveTick({
-      destination: "owner",
       messagingRegistry: {} as MessagingProviderRegistry,
       now: () => NOW,
-      providerId: "log",
+      localOnly: false,
+      resolveRoute: () => RESOLVED_ROUTE,
       runtimeStatus: { get: () => null, record: () => { throw new Error("status store failure"); } },
       sidecarFile: "/tmp/muse-proactive-runtime-status-store-throw.json"
     });
@@ -261,11 +309,18 @@ describe("startProactiveTick runtime status classification", () => {
     mockedProactivity.runDueProactiveNotices.mockRejectedValueOnce(new Error("secret provider detail"));
     const runtimeStatus = createProactiveRuntimeStatusStore();
     const handle = startProactiveTick({
-      destination: "owner-a",
       errorLogger: vi.fn(),
       messagingRegistry: {} as MessagingProviderRegistry,
       now: () => NOW,
-      providerId: "log",
+      localOnly: false,
+      resolveRoute: () => ({
+        destination: "owner-a",
+        localOnly: false,
+        providerId: "log",
+        reason: null,
+        source: "explicit-config",
+        status: "resolved"
+      }),
       runtimeStatus,
       sidecarFile: "/tmp/muse-proactive-runtime-status-provider-throw.json"
     });

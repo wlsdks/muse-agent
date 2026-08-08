@@ -45,9 +45,38 @@ describe("startSituationalBriefingDaemonIfConfigured — P9-b2 child 2/2 (briefi
     startSituationalBriefingDaemonIfConfigured(ENV, server, configuredOptions(), false, runtimeStatus);
     const onClose = hooks.filter((h) => h.name === "onClose");
     expect(onClose).toHaveLength(1);
-    expect(runtimeStatus.get()).toMatchObject({ availability: "dormant", lastDecision: "startup", phase: "startup" });
+    expect(runtimeStatus.get()).toMatchObject({
+      availability: "dormant",
+      lastDecision: "startup",
+      lastRoute: {
+        destination: "555",
+        localOnly: false,
+        providerId: "telegram",
+        reason: null,
+        source: "explicit-config",
+        status: "resolved"
+      },
+      phase: "startup"
+    });
     // The registered stop hook runs cleanly (the daemon is real + stoppable).
     expect(() => onClose[0]!.fn()).not.toThrow();
+  });
+
+  it("uses the canonical proactive pair before the legacy briefing fallback", () => {
+    const { server } = fakeServer();
+    const runtimeStatus = createBriefingRuntimeStatusStore();
+    startSituationalBriefingDaemonIfConfigured({
+      ...ENV,
+      MUSE_PROACTIVE_DESTINATION: "canonical-owner",
+      MUSE_PROACTIVE_PROVIDER: "telegram"
+    }, server, configuredOptions(), false, runtimeStatus);
+
+    expect(runtimeStatus.get()?.lastRoute).toMatchObject({
+      destination: "canonical-owner",
+      providerId: "telegram",
+      source: "explicit-config",
+      status: "resolved"
+    });
   });
 
   it("absent env ⇒ starts a dormant resident rider so a later paired route can be adopted", () => {

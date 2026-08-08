@@ -11,6 +11,7 @@ vi.mock("@muse/domain-tools", () => ({ runDueSituationalBriefing: mockedDomainTo
 
 import { createBriefingRuntimeStatusStore } from "../src/briefing-runtime-status.js";
 import { startSituationalBriefingTick } from "../src/situational-briefing-tick.js";
+import type { BriefingRuntimeStatusStore } from "../src/briefing-runtime-status.js";
 
 const NOW = new Date("2026-08-08T01:02:03.000Z");
 const RESOLVED_ROUTE = {
@@ -22,15 +23,29 @@ const RESOLVED_ROUTE = {
   status: "resolved" as const
 };
 
-function start(options: { readonly runtimeStatus: ReturnType<typeof createBriefingRuntimeStatusStore>; readonly resolveRoute?: () => unknown; readonly quietHours?: { readonly endHour: number; readonly startHour: number }; readonly errorLogger?: (message: string) => void }) {
+const UNAVAILABLE_ROUTE_CASES: readonly (readonly [string, () => unknown])[] = [
+  ["missing route", () => undefined],
+  ["blocked route", () => ({
+    destination: "owner-a",
+    localOnly: true,
+    providerId: "telegram",
+    reason: "remote-route-blocked-by-local-only",
+    source: "explicit-config",
+    status: "blocked-local-only"
+  })],
+  ["malformed route", () => ({ route: "not-a-route" })]
+];
+
+function start(options: { readonly runtimeStatus: BriefingRuntimeStatusStore; readonly resolveRoute?: () => unknown; readonly quietHours?: { readonly endHour: number; readonly startHour: number }; readonly errorLogger?: (message: string) => void }) {
   const root = mkdtempSync(join(tmpdir(), "muse-brief-runtime-status-"));
   return startSituationalBriefingTick({
     errorLogger: options.errorLogger,
+    localOnly: false,
     now: () => NOW,
     objectivesFile: join(root, "objectives.json"),
     quietHours: options.quietHours,
     registry: new MessagingProviderRegistry([]),
-    resolveRoute: options.resolveRoute as (() => typeof RESOLVED_ROUTE | undefined) | undefined,
+    resolveRoute: options.resolveRoute ?? (() => RESOLVED_ROUTE),
     runtimeStatus: options.runtimeStatus,
     sidecarFile: join(root, "briefing-fired.json"),
     windowMs: 0
@@ -68,18 +83,7 @@ describe("startSituationalBriefingTick runtime status", () => {
     }
   });
 
-  it.each([
-    ["missing route", () => undefined],
-    ["blocked route", () => ({
-      destination: "owner-a",
-      localOnly: true,
-      providerId: "telegram",
-      reason: "remote-route-blocked-by-local-only",
-      source: "explicit-config",
-      status: "blocked-local-only"
-    })],
-    ["malformed route", () => ({ route: "not-a-route" })]
-  ] as const)("records route-unavailable for %s without entering briefing core", async (_label, resolveRoute) => {
+  it.each(UNAVAILABLE_ROUTE_CASES)("records route-unavailable for %s without entering briefing core", async (_label, resolveRoute) => {
     const runtimeStatus = createBriefingRuntimeStatusStore();
     const handle = start({ resolveRoute, runtimeStatus });
 
@@ -88,6 +92,30 @@ describe("startSituationalBriefingTick runtime status", () => {
       expect(mockedDomainTools.runDueSituationalBriefing).not.toHaveBeenCalled();
       expect(runtimeStatus.get()).toMatchObject({ availability: "observed", lastDecision: "route-unavailable", phase: "tick" });
       expect(runtimeStatus.get()?.lastRoute.status).not.toBe("resolved");
+    } finally {
+      handle.stop();
+    }
+  });
+
+  it("keeps a normal unavailable paired inspection quiet", async () => {
+    const errors: string[] = [];
+    const runtimeStatus = createBriefingRuntimeStatusStore();
+    const handle = start({
+      errorLogger: (message) => errors.push(message),
+      resolveRoute: () => ({
+        destination: null,
+        localOnly: false,
+        providerId: null,
+        reason: "paired-route-inspection-unavailable",
+        source: null,
+        status: "unconfigured"
+      }),
+      runtimeStatus
+    });
+
+    try {
+      await handle.tickOnce();
+      expect(errors).toEqual([]);
     } finally {
       handle.stop();
     }
@@ -123,12 +151,18 @@ describe("startSituationalBriefingTick runtime status", () => {
 
   it("records quiet-hours and already-running terminal decisions", async () => {
     const quietStatus = createBriefingRuntimeStatusStore();
+    let quietResolveCalls = 0;
     const quietHandle = start({
       quietHours: { endHour: 23, startHour: 0 },
+      resolveRoute: () => {
+        quietResolveCalls += 1;
+        return RESOLVED_ROUTE;
+      },
       runtimeStatus: quietStatus
     });
     try {
       await quietHandle.tickOnce();
+      expect(quietResolveCalls).toBe(0);
       expect(quietStatus.get()?.lastDecision).toBe("quiet-hours");
     } finally {
       quietHandle.stop();
@@ -149,6 +183,36 @@ describe("startSituationalBriefingTick runtime status", () => {
       expect(runningStatus.get()?.lastDecision).toBe("delivered");
     } finally {
       runningHandle.stop();
+    }
+  });
+
+  it("admits a resolved route once without recording a transient route-unavailable state", async () => {
+    mockedDomainTools.runDueSituationalBriefing.mockResolvedValueOnce({ delivered: 0, reason: "nothing-to-say" });
+    const decisions: string[] = [];
+    let resolveCalls = 0;
+    const runtimeStatus = createBriefingRuntimeStatusStore();
+    const recordingStatus: BriefingRuntimeStatusStore = {
+      get: runtimeStatus.get,
+      record: (update) => {
+        decisions.push(update.decision);
+        runtimeStatus.record(update);
+      }
+    };
+    const handle = start({
+      resolveRoute: () => {
+        resolveCalls += 1;
+        return RESOLVED_ROUTE;
+      },
+      runtimeStatus: recordingStatus
+    });
+
+    try {
+      await handle.tickOnce();
+      expect(resolveCalls).toBe(1);
+      expect(mockedDomainTools.runDueSituationalBriefing).toHaveBeenCalledTimes(1);
+      expect(decisions).not.toContain("route-unavailable");
+    } finally {
+      handle.stop();
     }
   });
 

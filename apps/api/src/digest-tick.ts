@@ -27,20 +27,16 @@ import type {
   DigestRuntimeStatus,
   DigestRuntimeStatusStore
 } from "./digest-runtime-status.js";
-import {
-  explicitMessagingRouteReceipt,
-  sanitizeMessagingRouteReceipt,
-  unavailableMessagingRouteReceipt
-} from "./messaging-route-receipt.js";
+import { admitAutomationRoute } from "./automation-route-admission.js";
 
 export interface DigestTickOptions {
   readonly registry: MessagingProviderRegistry;
   readonly digestFile: string;
   readonly sentFile: string;
-  readonly providerId?: string;
-  readonly destination?: string;
-  /** Re-resolves the canonical route immediately before delivery. */
-  readonly resolveRoute?: () => MessagingRouteResolution | undefined;
+  /** Canonical route resolver, invoked once immediately before delivery. */
+  readonly resolveRoute: () => unknown;
+  /** Captured effective local-only posture for bounded fallback receipts. */
+  readonly localOnly: boolean;
   /** Local hour the digest fires at. Default 18 (`MUSE_DIGEST_HOUR`). */
   readonly digestHour?: number;
   readonly intervalMs?: number;
@@ -109,22 +105,18 @@ export function startDigestTick(options: DigestTickOptions): DigestTickHandle {
       return;
     }
     firing = true;
+    let attemptedRoute: MessagingRouteResolution | undefined;
     try {
-      let route: MessagingRouteResolution;
-      try {
-        const resolved = options.resolveRoute
-          ? options.resolveRoute()
-          : options.providerId !== undefined && options.destination !== undefined
-            ? explicitMessagingRouteReceipt(options.providerId, options.destination)
-            : undefined;
-        route = sanitizeMessagingRouteReceipt(resolved ?? unavailableMessagingRouteReceipt());
-      } catch {
-        route = unavailableMessagingRouteReceipt();
-      }
-      observe("route-unavailable", at, 0, 0, route);
-      if (route.status !== "resolved" || !route.providerId || !route.destination) {
+      const admission = admitAutomationRoute({
+        localOnly: options.localOnly,
+        resolveRoute: options.resolveRoute
+      });
+      attemptedRoute = admission.route;
+      if (!admission.admitted) {
+        observe("route-unavailable", at, 0, 0, admission.route);
         return;
       }
+      const route = admission.route;
       const summary = await runDigestFlushIfDue({
         destination: route.destination,
         digestFile: options.digestFile,
@@ -142,7 +134,7 @@ export function startDigestTick(options: DigestTickOptions): DigestTickHandle {
         }
       }
     } catch (cause) {
-      observe("error", at, 0, 1);
+      observe("error", at, 0, 1, attemptedRoute);
       const message = errorMessage(cause);
       options.errorLogger?.(`digest-tick: ${message}`);
     } finally {

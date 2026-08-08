@@ -367,6 +367,34 @@ describe("GET /api/automation/upcoming — populated stores", () => {
     expect(canonical.gateway).toMatchObject({ destination: "proactive-999", providerId: "telegram", status: "resolved" });
   });
 
+  it("adopts a throwing route resolver once and exposes only the captured unavailable receipt", async () => {
+    let resolverReads = 0;
+    const env = { MUSE_INTERRUPTION_LEDGER_FILE: ledgerFile } as NodeJS.ProcessEnv;
+    Object.defineProperty(env, "MUSE_PROACTIVE_PROVIDER", {
+      configurable: true,
+      get: () => {
+        resolverReads += 1;
+        throw new Error("private route detail");
+      }
+    });
+    const server = Fastify();
+    registerAutomationRoutes(server, { authService: undefined, env });
+
+    const response = await server.inject({ method: "GET", url: "/api/automation/upcoming" });
+    const body = JSON.parse(response.body) as AutomationUpcomingResponse;
+    expect(resolverReads).toBe(1);
+    expect(body.digest).toBeNull();
+    expect(body.gateway).toEqual({
+      destination: null,
+      localOnly: false,
+      providerId: null,
+      reason: "paired-route-inspection-unavailable",
+      source: null,
+      status: "unconfigured"
+    });
+    expect(response.body).not.toContain("private route detail");
+  });
+
   it("surfaces the digest config, the counted budget, the soonest pending reminder, and the soonest enabled job", async () => {
     await writeReminders(remindersFile, [FIRED_REMINDER, LATER_PENDING_REMINDER, PENDING_REMINDER]);
     await appendInterruptionDelivery(ledgerFile, { at: new Date(), source: "pattern-firing" });

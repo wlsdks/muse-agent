@@ -73,13 +73,14 @@ export function createDigestRuntimeStatusStore(): DigestRuntimeStatusStore {
 export function recordDigestRuntimeStartup(
   runtimeStatus: DigestRuntimeStatusStore | undefined,
   availability: Exclude<DigestRuntimeAvailability, "observed">,
-  observedAtIso = new Date().toISOString()
+  observedAtIso = new Date().toISOString(),
+  lastRoute?: MessagingRouteResolution
 ): void {
   try {
     runtimeStatus?.record({
       availability,
       decision: "startup",
-      lastRoute: unavailableMessagingRouteReceipt(),
+      lastRoute: lastRoute ?? unavailableMessagingRouteReceipt(),
       observedAtIso,
       phase: "startup"
     });

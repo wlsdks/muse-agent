@@ -53,6 +53,7 @@ function startWithRoute(
     registry: options.registry
   });
   return startSituationalBriefingTick({
+    localOnly: false,
     objectivesFile,
     registry: options.registry,
     resolveRoute,
@@ -117,6 +118,7 @@ describe("startSituationalBriefingTick — Gateway route gate", () => {
     const handle = startSituationalBriefingTick({
       errorLogger: (message) => errors.push(message),
       objectivesFile,
+      localOnly: false,
       registry,
       resolveRoute: () => {
         throw new Error("owner-secret-must-not-leak");

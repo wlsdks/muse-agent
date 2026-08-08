@@ -15,6 +15,7 @@ const ROUTE_REASONS = new Set<NonNullable<MessagingRouteResolution["reason"]>>([
   "explicit-provider-not-registered",
   "remote-route-blocked-by-local-only",
   "paired-route-inspection-unavailable",
+  "malformed-paired-route",
   "no-single-paired-route",
   "multiple-paired-routes"
 ]);
@@ -30,9 +31,9 @@ export function unavailableMessagingRouteReceipt(localOnly = false): MessagingRo
   };
 }
 
-export function sanitizeMessagingRouteReceipt(value: unknown): MessagingRouteResolution {
+export function sanitizeMessagingRouteReceipt(value: unknown, fallbackLocalOnly = false): MessagingRouteResolution {
   if (typeof value !== "object" || value === null) {
-    return unavailableMessagingRouteReceipt();
+    return unavailableMessagingRouteReceipt(fallbackLocalOnly);
   }
 
   try {
@@ -51,28 +52,17 @@ export function sanitizeMessagingRouteReceipt(value: unknown): MessagingRouteRes
       || typeof localOnly !== "boolean"
       || (reason !== null && (typeof reason !== "string" || !ROUTE_REASONS.has(reason as NonNullable<MessagingRouteResolution["reason"]>)))
     ) {
-      return unavailableMessagingRouteReceipt();
+      return unavailableMessagingRouteReceipt(fallbackLocalOnly);
     }
     return {
-      destination: destination as string | null,
+      destination: destination === null ? null : (destination as string).trim(),
       localOnly,
-      providerId: providerId as string | null,
+      providerId: providerId === null ? null : (providerId as string).trim(),
       reason: reason as MessagingRouteResolution["reason"],
       source: source as MessagingRouteResolution["source"],
       status: status as MessagingRouteResolution["status"]
     };
   } catch {
-    return unavailableMessagingRouteReceipt();
+    return unavailableMessagingRouteReceipt(fallbackLocalOnly);
   }
-}
-
-export function explicitMessagingRouteReceipt(providerId: string, destination: string): MessagingRouteResolution {
-  return {
-    destination,
-    localOnly: false,
-    providerId,
-    reason: null,
-    source: "explicit-config",
-    status: "resolved"
-  };
 }

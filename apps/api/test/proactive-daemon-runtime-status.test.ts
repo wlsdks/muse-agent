@@ -1,3 +1,7 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { MessagingProviderRegistry } from "@muse/messaging";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -39,6 +43,34 @@ describe("startProactiveDaemonIfConfigured runtime lifecycle", () => {
     expect(hooks.filter((hook) => hook.name === "onClose")).toHaveLength(1);
     expect(runtimeStatus.get()).toMatchObject({ availability: "dormant", lastDecision: "startup", phase: "startup" });
     hooks.find((hook) => hook.name === "onClose")?.fn();
+  });
+
+  it("records the startup route receipt without claiming delivery", () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-proactive-runtime-route-"));
+    const ownersFile = join(root, "channel-owners.json");
+    writeFileSync(ownersFile, JSON.stringify({ owners: { telegram: "owner-a" }, version: 1 }));
+    const { server } = fakeServer();
+    const runtimeStatus = createProactiveRuntimeStatusStore();
+    const options = {
+      ...configuredOptions(),
+      integrationEnv: { localOnly: true, messaging: { ownersFile } }
+    } as unknown as ServerOptions;
+
+    startProactiveDaemonIfConfigured({}, server as never, options, phaseD, runtimeStatus);
+
+    expect(runtimeStatus.get()).toMatchObject({
+      availability: "dormant",
+      lastDecision: "startup",
+      lastRoute: {
+        destination: "owner-a",
+        localOnly: true,
+        providerId: "telegram",
+        reason: "remote-route-blocked-by-local-only",
+        source: "paired-owner",
+        status: "blocked-local-only"
+      },
+      phase: "startup"
+    });
   });
 
   it("records missing messaging or signal as not-configured without creating a timer", () => {
