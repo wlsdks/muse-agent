@@ -102,12 +102,14 @@ export function startSituationalBriefingTick(
   ): void => {
     try {
       options.runtimeStatus?.record({
+        availability: "observed",
         decision,
         deliveredCount,
         errorCount,
         imminentCount,
         lastRoute,
-        observedAtIso: at.toISOString()
+        observedAtIso: at.toISOString(),
+        phase: "tick"
       });
     } catch {
     }

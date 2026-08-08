@@ -254,9 +254,12 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
   };
 }
 
-function recordRuntimeStatus(options: ProactiveTickOptions, update: ProactiveRuntimeStatusUpdate): void {
+function recordRuntimeStatus(
+  options: ProactiveTickOptions,
+  update: Omit<ProactiveRuntimeStatusUpdate, "availability" | "phase">
+): void {
   try {
-    options.runtimeStatus?.record(update);
+    options.runtimeStatus?.record({ availability: "observed", phase: "tick", ...update });
   } catch {
   }
 }

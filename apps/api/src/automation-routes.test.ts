@@ -428,6 +428,7 @@ describe("GET /api/automation/upcoming — briefing runtime status", () => {
   it("projects the latest bounded briefing observation through the route sanitizer", async () => {
     const runtimeStatus = createBriefingRuntimeStatusStore();
     runtimeStatus.record({
+      availability: "observed",
       decision: "route-unavailable",
       errorCount: 10_000,
       imminentCount: -2,
@@ -441,7 +442,8 @@ describe("GET /api/automation/upcoming — briefing runtime status", () => {
         credential: "must-not-leak",
         rawError: "private route detail"
       } as never,
-      observedAtIso: "2026-08-08T01:02:03.000Z"
+      observedAtIso: "2026-08-08T01:02:03.000Z",
+      phase: "tick"
     });
     const server = Fastify();
     registerAutomationRoutes(server, {
@@ -454,6 +456,7 @@ describe("GET /api/automation/upcoming — briefing runtime status", () => {
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body) as AutomationUpcomingResponse;
     expect(body.briefingRuntime).toEqual({
+      availability: "observed",
       lastDecision: "route-unavailable",
       lastDeliveredCount: 0,
       lastErrorCount: 9_999,
@@ -466,7 +469,8 @@ describe("GET /api/automation/upcoming — briefing runtime status", () => {
         reason: "remote-route-blocked-by-local-only",
         source: "explicit-config",
         status: "blocked-local-only"
-      }
+      },
+      phase: "tick"
     });
     expect(response.body).not.toContain("must-not-leak");
     expect(response.body).not.toContain("private route detail");
@@ -477,6 +481,7 @@ describe("GET /api/automation/upcoming — proactive runtime status", () => {
   it("returns the bounded process-local observation without raw runtime fields", async () => {
     const runtimeStatus = createProactiveRuntimeStatusStore();
     runtimeStatus.record({
+      availability: "observed",
       decision: "fired",
       observedAtIso: "2026-08-08T01:02:03.000Z",
       imminentCount: 2,
@@ -491,7 +496,8 @@ describe("GET /api/automation/upcoming — proactive runtime status", () => {
         source: "explicit-config",
         status: "resolved"
       },
-      sessionLockedUntilIso: "2026-08-08T01:12:03.000Z"
+      sessionLockedUntilIso: "2026-08-08T01:12:03.000Z",
+      phase: "tick"
     });
     const server = Fastify();
     registerAutomationRoutes(server, {
@@ -504,6 +510,7 @@ describe("GET /api/automation/upcoming — proactive runtime status", () => {
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body) as AutomationUpcomingResponse;
     expect(body.proactiveRuntime).toEqual({
+      availability: "observed",
       lastDecision: "fired",
       lastObservedAtIso: "2026-08-08T01:02:03.000Z",
       lastRoute: {
@@ -518,7 +525,8 @@ describe("GET /api/automation/upcoming — proactive runtime status", () => {
       lastFiredCount: 1,
       lastSuppressedCount: 1,
       lastErrorCount: 0,
-      sessionLockedUntilIso: "2026-08-08T01:12:03.000Z"
+      sessionLockedUntilIso: "2026-08-08T01:12:03.000Z",
+      phase: "tick"
     });
     expect(response.body).not.toContain("raw error");
     expect(response.body).not.toContain("notice text");
@@ -532,6 +540,7 @@ describe("GET /api/automation/upcoming — proactive runtime status", () => {
       authService: undefined,
       env: { MUSE_INTERRUPTION_LEDGER_FILE: ledgerFile },
       digestRuntimeStatus: () => ({
+        availability: "observed",
         lastDecision: "sent",
         lastErrorCount: 0,
         lastItemCount: 1,
@@ -545,9 +554,11 @@ describe("GET /api/automation/upcoming — proactive runtime status", () => {
           status: "resolved",
           rawError: "secret error",
           provider: { credential: "secret credential" }
-        }
+        },
+        phase: "tick"
       } as never),
       proactiveRuntimeStatus: () => ({
+        availability: "observed",
         lastDecision: "fired",
         lastErrorCount: 0,
         lastFiredCount: 1,
@@ -563,7 +574,8 @@ describe("GET /api/automation/upcoming — proactive runtime status", () => {
           status: "blocked-local-only",
           message: "private content",
           path: "/private/path"
-        }
+        },
+        phase: "tick"
       } as never)
     });
 

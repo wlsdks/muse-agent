@@ -54,12 +54,14 @@ describe("startSituationalBriefingTick runtime status", () => {
     try {
       await handle.tickOnce();
       expect(runtimeStatus.get()).toMatchObject({
+        availability: "observed",
         lastDecision: expectedDecision,
         lastDeliveredCount: summary.delivered,
         lastErrorCount: 0,
         lastImminentCount: 0,
         lastObservedAtIso: NOW.toISOString(),
-        lastRoute: RESOLVED_ROUTE
+        lastRoute: RESOLVED_ROUTE,
+        phase: "tick"
       });
     } finally {
       handle.stop();
@@ -84,7 +86,7 @@ describe("startSituationalBriefingTick runtime status", () => {
     try {
       await handle.tickOnce();
       expect(mockedDomainTools.runDueSituationalBriefing).not.toHaveBeenCalled();
-      expect(runtimeStatus.get()?.lastDecision).toBe("route-unavailable");
+      expect(runtimeStatus.get()).toMatchObject({ availability: "observed", lastDecision: "route-unavailable", phase: "tick" });
       expect(runtimeStatus.get()?.lastRoute.status).not.toBe("resolved");
     } finally {
       handle.stop();

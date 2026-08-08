@@ -18,6 +18,7 @@ test("route receipts show current Gateway B versus last execution A in EN/KO, sa
     budget: null,
     digest: { enabled: true, hour: 9, nextAtIso: "2099-01-01T09:00:00.000Z" },
     digestRuntime: {
+      availability: "observed",
       lastDecision: "sent" as const,
       lastErrorCount: 0,
       lastItemCount: 1,
@@ -29,16 +30,19 @@ test("route receipts show current Gateway B versus last execution A in EN/KO, sa
         reason: null,
         source: "paired-owner" as const,
         status: "resolved" as const
-      }
+      },
+      phase: "tick" as const
     },
     proactiveRuntime: {
+      availability: "observed",
       lastDecision: "route-unavailable" as const,
       lastErrorCount: 0,
       lastFiredCount: 0,
       lastImminentCount: 0,
       lastObservedAtIso: "2099-01-01T09:00:00.000Z",
       lastSuppressedCount: 0,
-      lastRoute: { status: "not-a-route", rawError: "do not render" } as never
+      lastRoute: { status: "not-a-route", rawError: "do not render" } as never,
+      phase: "tick" as const
     },
     gateway: {
       destination: "desktop",
@@ -285,10 +289,12 @@ test("UpcomingTab refetches digest runtime from no observation to sent without o
   const after: AutomationUpcomingResponse = {
     ...before,
     digestRuntime: {
+      availability: "observed",
       lastDecision: "sent",
       lastErrorCount: 0,
       lastItemCount: 1,
-      lastObservedAtIso: "2099-01-01T09:00:00.000Z"
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z",
+      phase: "tick"
     },
     proactiveRuntime: null
   };
@@ -348,6 +354,7 @@ test("UpcomingTab renders situational briefing runtime in EN/KO through GET only
   const after: AutomationUpcomingResponse = {
     ...before,
     briefingRuntime: {
+      availability: "observed",
       lastDecision: "delivered",
       lastObservedAtIso: "2099-01-01T09:00:00.000Z",
       lastImminentCount: 3,
@@ -360,7 +367,8 @@ test("UpcomingTab renders situational briefing runtime in EN/KO through GET only
         reason: null,
         source: "explicit-config",
         status: "resolved"
-      }
+      },
+      phase: "tick"
     }
   };
   const get = vi.fn(async (path: string) => {
@@ -420,6 +428,92 @@ test("UpcomingTab renders situational briefing runtime in EN/KO through GET only
   }
 });
 
+test("UpcomingTab renders startup availability without presenting a last execution route", async () => {
+  const data: AutomationUpcomingResponse = {
+    budget: null,
+    briefingRuntime: {
+      availability: "dormant",
+      lastDecision: "startup",
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z",
+      lastImminentCount: 0,
+      lastDeliveredCount: 0,
+      lastErrorCount: 0,
+      phase: "startup"
+    },
+    digest: null,
+    digestRuntime: {
+      availability: "disabled",
+      lastDecision: "startup",
+      lastErrorCount: 0,
+      lastItemCount: 0,
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z",
+      phase: "startup"
+    },
+    proactiveRuntime: {
+      availability: "blocked",
+      lastDecision: "startup",
+      lastErrorCount: 0,
+      lastFiredCount: 0,
+      lastImminentCount: 0,
+      lastSuppressedCount: 0,
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z",
+      phase: "startup"
+    },
+    gateway: {
+      destination: "desktop",
+      localOnly: true,
+      providerId: "log",
+      reason: null,
+      source: "explicit-config",
+      status: "resolved"
+    },
+    nextReminder: null,
+    scheduledJobs: []
+  };
+  const get = vi.fn(async (path: string) => {
+    expect(path).toBe("/api/automation/upcoming");
+    return data;
+  });
+  const post = vi.fn();
+  const client = { baseUrl: "http://startup-runtime.test", get, post } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  try {
+    window.localStorage.setItem("muse.lang", "en");
+    const english = await render(
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider><UpcomingTab client={client} /></I18nProvider>
+      </QueryClientProvider>
+    );
+    await expect.element(english.getByText("Configured · waiting for first tick", { exact: true })).toBeVisible();
+    await expect.element(english.getByText("Disabled", { exact: true })).toBeVisible();
+    await expect.element(english.getByText("Blocked by delivery safety", { exact: true })).toBeVisible();
+    await expect.element(english.getByText("No execution has been observed yet", { exact: true }).first()).toBeVisible();
+    await expect.element(english.getByText("Current Gateway route", { exact: true })).toBeVisible();
+    await expect.element(english.getByText("Last execution route", { exact: true })).not.toBeInTheDocument();
+
+    window.localStorage.setItem("muse.lang", "ko");
+    const koreanQueryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    try {
+      const korean = await render(
+        <QueryClientProvider client={koreanQueryClient}>
+          <I18nProvider><UpcomingTab client={client} /></I18nProvider>
+        </QueryClientProvider>
+      );
+      await expect.element(korean.getByText("구성됨 · 첫 틱 대기 중", { exact: true })).toBeVisible();
+      await expect.element(korean.getByText("비활성화됨", { exact: true })).toBeVisible();
+      await expect.element(korean.getByText("전달 안전장치로 차단됨", { exact: true })).toBeVisible();
+      await expect.element(korean.getByText("아직 실행이 관찰되지 않음", { exact: true }).first()).toBeVisible();
+      expect(get).toHaveBeenCalledTimes(2);
+      expect(post).not.toHaveBeenCalled();
+    } finally {
+      koreanQueryClient.clear();
+    }
+  } finally {
+    queryClient.clear();
+  }
+});
+
 test("UpcomingTab refetches proactive runtime from null to fired through the existing GET query without POST", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let responseIndex = 0;
@@ -441,12 +535,14 @@ test("UpcomingTab refetches proactive runtime from null to fired through the exi
   const after: AutomationUpcomingResponse = {
     ...before,
     proactiveRuntime: {
+      availability: "observed",
       lastDecision: "fired",
       lastObservedAtIso: "2099-01-01T09:00:00.000Z",
       lastImminentCount: 1,
       lastFiredCount: 1,
       lastSuppressedCount: 0,
-      lastErrorCount: 0
+      lastErrorCount: 0,
+      phase: "tick"
     }
   };
   const get = vi.fn(async (path: string) => {

@@ -8,14 +8,17 @@ describe("createBriefingRuntimeStatusStore", () => {
 
     expect(store.get()).toBeNull();
     store.record({
+      availability: "observed",
       decision: "error",
       deliveredCount: -4,
       errorCount: 10_000,
       imminentCount: Number.POSITIVE_INFINITY,
-      observedAtIso: "2026-08-08T01:02:03.000Z"
+      observedAtIso: "2026-08-08T01:02:03.000Z",
+      phase: "tick"
     });
 
     expect(store.get()).toEqual({
+      availability: "observed",
       lastDecision: "error",
       lastDeliveredCount: 0,
       lastErrorCount: 9_999,
@@ -28,7 +31,8 @@ describe("createBriefingRuntimeStatusStore", () => {
         reason: "paired-route-inspection-unavailable",
         source: null,
         status: "unconfigured"
-      }
+      },
+      phase: "tick"
     });
   });
 
@@ -46,7 +50,9 @@ describe("createBriefingRuntimeStatusStore", () => {
         provider: { credential: "secret" },
         rawError: "private detail"
       } as never,
-      observedAtIso: "2026-08-08T01:02:03.000Z"
+      observedAtIso: "2026-08-08T01:02:03.000Z",
+      phase: "tick",
+      availability: "observed"
     });
 
     expect(store.get()?.lastRoute).toEqual({
@@ -64,6 +70,7 @@ describe("createBriefingRuntimeStatusStore", () => {
   it("preserves the last route across a terminal observation without route data", () => {
     const store = createBriefingRuntimeStatusStore();
     store.record({
+      availability: "observed",
       decision: "delivered",
       deliveredCount: 1,
       lastRoute: {
@@ -74,14 +81,28 @@ describe("createBriefingRuntimeStatusStore", () => {
         source: "explicit-config",
         status: "resolved"
       },
-      observedAtIso: "2026-08-08T01:02:03.000Z"
+      observedAtIso: "2026-08-08T01:02:03.000Z",
+      phase: "tick"
     });
-    store.record({ decision: "quiet-hours", observedAtIso: "2026-08-08T01:03:03.000Z" });
+    store.record({ availability: "observed", decision: "quiet-hours", observedAtIso: "2026-08-08T01:03:03.000Z", phase: "tick" });
 
     expect(store.get()).toMatchObject({
       lastDecision: "quiet-hours",
       lastObservedAtIso: "2026-08-08T01:03:03.000Z",
       lastRoute: { destination: "owner-a", providerId: "telegram" }
     });
+  });
+
+  it("records startup availability without presenting a route as an execution", () => {
+    const store = createBriefingRuntimeStatusStore();
+    store.record({
+      availability: "dormant",
+      decision: "startup",
+      observedAtIso: "2026-08-08T01:02:03.000Z",
+      phase: "startup"
+    });
+
+    expect(store.get()).toMatchObject({ availability: "dormant", lastDecision: "startup", phase: "startup" });
+    expect(store.get()?.lastRoute.status).toBe("unconfigured");
   });
 });

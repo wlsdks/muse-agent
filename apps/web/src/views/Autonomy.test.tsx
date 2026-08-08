@@ -99,6 +99,7 @@ function renderSectionsWith(data: AutomationUpcomingResponse, t: Translate, loca
 }
 
 const DIGEST_RUNTIME_DECISION_COPY: Readonly<Record<UpcomingDigestRuntimeDecision, string>> = {
+  startup: DICTIONARIES.en["auto.upcoming.runtime.availability.dormant"],
   "already-running": DICTIONARIES.en["auto.upcoming.digestRuntime.decision.alreadyRunning"],
   "already-sent-today": DICTIONARIES.en["auto.upcoming.digestRuntime.decision.alreadySentToday"],
   "cancelled-before-claim": DICTIONARIES.en["auto.upcoming.digestRuntime.decision.cancelledBeforeClaim"],
@@ -115,6 +116,7 @@ const DIGEST_RUNTIME_DECISION_COPY: Readonly<Record<UpcomingDigestRuntimeDecisio
 };
 
 const PROACTIVE_RUNTIME_DECISION_COPY: Readonly<Record<UpcomingProactiveRuntimeDecision, string>> = {
+  startup: DICTIONARIES.en["auto.upcoming.runtime.availability.dormant"],
   "already-running": DICTIONARIES.en["auto.upcoming.proactiveRuntime.decision.alreadyRunning"],
   "quiet-hours": DICTIONARIES.en["auto.upcoming.proactiveRuntime.decision.quietHours"],
   "route-unavailable": DICTIONARIES.en["auto.upcoming.proactiveRuntime.decision.routeUnavailable"],
@@ -164,10 +166,12 @@ describe("UpcomingSections — digest runtime presentation", () => {
     const html = renderSections({
       ...POPULATED,
       digestRuntime: {
+        availability: "observed",
         lastDecision: "sent",
         lastErrorCount: 0,
         lastItemCount: 1,
-        lastObservedAtIso: "2099-01-01T18:00:00.000Z"
+        lastObservedAtIso: "2099-01-01T18:00:00.000Z",
+        phase: "tick"
       }
     });
     expect(html).toContain(DICTIONARIES.en["auto.upcoming.digestRuntime.decision.sent"]);
@@ -178,13 +182,16 @@ describe("UpcomingSections — digest runtime presentation", () => {
   });
 
   it.each(Object.entries(DIGEST_RUNTIME_DECISION_COPY))("maps %s to human-readable copy", (decision, copy) => {
+    const startup = decision === "startup";
     const html = renderSections({
       ...POPULATED,
       digestRuntime: {
+        availability: startup ? "dormant" : "observed",
         lastDecision: decision as UpcomingDigestRuntimeDecision,
         lastErrorCount: 2,
         lastItemCount: 3,
-        lastObservedAtIso: "2099-01-01T18:00:00.000Z"
+        lastObservedAtIso: "2099-01-01T18:00:00.000Z",
+        phase: startup ? "startup" : "tick"
       }
     });
     expect(html).toContain(copy);
@@ -195,10 +202,12 @@ describe("UpcomingSections — digest runtime presentation", () => {
     const html = renderSections({
       ...POPULATED,
       digestRuntime: {
+        availability: "observed",
         lastDecision: "future-decision" as UpcomingDigestRuntimeDecision,
         lastErrorCount: 0,
         lastItemCount: 0,
-        lastObservedAtIso: "2099-01-01T18:00:00.000Z"
+        lastObservedAtIso: "2099-01-01T18:00:00.000Z",
+        phase: "tick"
       }
     });
     expect(html).toContain(DICTIONARIES.en["auto.upcoming.digestRuntime.decision.unknown"]);
@@ -282,15 +291,18 @@ describe("UpcomingSections — proactive runtime presentation", () => {
   });
 
   it.each(Object.entries(PROACTIVE_RUNTIME_DECISION_COPY))("maps %s to human-readable copy", (decision, copy) => {
+    const startup = decision === "startup";
     const html = renderSections({
       ...POPULATED,
       proactiveRuntime: {
+        availability: startup ? "dormant" : "observed",
         lastDecision: decision as UpcomingProactiveRuntimeDecision,
         lastObservedAtIso: "2099-01-01T18:00:00.000Z",
         lastImminentCount: 3,
         lastFiredCount: 1,
         lastSuppressedCount: 1,
-        lastErrorCount: 0
+        lastErrorCount: 0,
+        phase: startup ? "startup" : "tick"
       }
     });
     expect(html).toContain(copy);
@@ -301,13 +313,15 @@ describe("UpcomingSections — proactive runtime presentation", () => {
     const html = renderSections({
       ...POPULATED,
       proactiveRuntime: {
+        availability: "observed",
         lastDecision: "future-decision" as UpcomingProactiveRuntimeDecision,
         lastObservedAtIso: "not-a-date",
         lastImminentCount: 9_999,
         lastFiredCount: 9_999,
         lastSuppressedCount: 9_999,
         lastErrorCount: 9_999,
-        sessionLockedUntilIso: "not-a-date"
+        sessionLockedUntilIso: "not-a-date",
+        phase: "tick"
       }
     });
     expect(html).toContain(DICTIONARIES.en["auto.upcoming.proactiveRuntime.decision.unknown"]);
@@ -598,6 +612,7 @@ describe("UpcomingSections — situational briefing runtime presentation", () =>
 
   it("renders observed decision, time, counts, and route in English and Korean", () => {
     const runtime = {
+      availability: "observed" as const,
       lastDecision: "delivered" as const,
       lastObservedAtIso: "2099-01-01T09:00:00.000Z",
       lastImminentCount: 3,
@@ -610,7 +625,8 @@ describe("UpcomingSections — situational briefing runtime presentation", () =>
         reason: null,
         source: "explicit-config" as const,
         status: "resolved" as const
-      }
+      },
+      phase: "tick" as const
     };
     const data = { ...POPULATED, briefingRuntime: runtime };
     const english = renderSectionsWith(data, enT, "en-US");
@@ -635,6 +651,34 @@ describe("UpcomingSections — situational briefing runtime presentation", () =>
     }, enT, "en-US");
     expect(invalidRoute).toContain(DICTIONARIES.en["auto.upcoming.runtimeRoute.unavailable"]);
     expect(invalidRoute).not.toContain("do not render");
+  });
+
+  it.each([
+    ["dormant", "Configured · waiting for first tick", "구성됨 · 첫 틱 대기 중"],
+    ["not-configured", "Not configured", "구성되지 않음"],
+    ["disabled", "Disabled", "비활성화됨"],
+    ["blocked", "Blocked by delivery safety", "전달 안전장치로 차단됨"]
+  ] as const)("renders startup/%s without calling it an execution", (availability, english, korean) => {
+    const runtime = {
+      availability,
+      lastDecision: "startup" as const,
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z",
+      lastImminentCount: 0,
+      lastDeliveredCount: 0,
+      lastErrorCount: 0,
+      phase: "startup" as const
+    };
+    const englishHtml = renderSectionsWith({ ...POPULATED, briefingRuntime: runtime }, enT, "en-US");
+    const koreanHtml = renderSectionsWith({ ...POPULATED, briefingRuntime: runtime }, koT, "ko-KR");
+
+    expect(englishHtml).toContain(english);
+    expect(englishHtml).toContain("Startup state · ");
+    expect(englishHtml).toContain("No execution has been observed yet");
+    expect(englishHtml).not.toContain("Last execution route");
+    expect(koreanHtml).toContain(korean);
+    expect(koreanHtml).toContain("시작 상태 · ");
+    expect(koreanHtml).toContain("아직 실행이 관찰되지 않음");
+    expect(koreanHtml).not.toContain("마지막 실행 경로");
   });
 });
 

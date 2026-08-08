@@ -54,6 +54,8 @@ const CHANNEL_DAEMON_KINDS = [
 
 type ChannelDaemonKind = (typeof CHANNEL_DAEMON_KINDS)[number];
 type ChannelRuntimeStatus = "observed" | "degraded" | "unconfigured";
+type RuntimePhase = "startup" | "tick";
+type RuntimeAvailability = "dormant" | "observed" | "not-configured" | "disabled" | "blocked";
 
 interface ChannelRuntimeDaemon {
   readonly kind: ChannelDaemonKind;
@@ -213,29 +215,34 @@ function resolveChannelRuntime(gate: AutomationRoutesGate): ChannelRuntime {
 function projectDigestRuntimeStatus(status: DigestRuntimeStatus | null): DigestRuntimeStatus | null {
   if (!status) return null;
   return {
+    availability: projectRuntimeAvailability(status.availability),
     lastDecision: status.lastDecision,
     lastErrorCount: status.lastErrorCount,
     lastItemCount: status.lastItemCount,
     lastObservedAtIso: status.lastObservedAtIso,
-    lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute)
+    lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute),
+    phase: projectRuntimePhase(status.phase)
   };
 }
 
 function projectBriefingRuntimeStatus(status: BriefingRuntimeStatus | null): BriefingRuntimeStatus | null {
   if (!status) return null;
   return {
+    availability: projectRuntimeAvailability(status.availability),
     lastDecision: status.lastDecision,
     lastDeliveredCount: status.lastDeliveredCount,
     lastErrorCount: status.lastErrorCount,
     lastImminentCount: status.lastImminentCount,
     lastObservedAtIso: status.lastObservedAtIso,
-    lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute)
+    lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute),
+    phase: projectRuntimePhase(status.phase)
   };
 }
 
 function projectProactiveRuntimeStatus(status: ProactiveRuntimeStatus | null): ProactiveRuntimeStatus | null {
   if (!status) return null;
   return {
+    availability: projectRuntimeAvailability(status.availability),
     lastDecision: status.lastDecision,
     lastErrorCount: status.lastErrorCount,
     lastFiredCount: status.lastFiredCount,
@@ -243,8 +250,26 @@ function projectProactiveRuntimeStatus(status: ProactiveRuntimeStatus | null): P
     lastObservedAtIso: status.lastObservedAtIso,
     lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute),
     lastSuppressedCount: status.lastSuppressedCount,
+    phase: projectRuntimePhase(status.phase),
     ...(status.sessionLockedUntilIso ? { sessionLockedUntilIso: status.sessionLockedUntilIso } : {})
   };
+}
+
+function projectRuntimePhase(value: unknown): RuntimePhase {
+  return value === "tick" ? "tick" : "startup";
+}
+
+function projectRuntimeAvailability(value: unknown): RuntimeAvailability {
+  switch (value) {
+    case "blocked":
+    case "disabled":
+    case "dormant":
+    case "not-configured":
+    case "observed":
+      return value;
+    default:
+      return "dormant";
+  }
 }
 
 function projectChannelRuntimeDaemon(kind: ChannelDaemonKind, status: ChannelDaemonStatus): ChannelRuntimeDaemon {

@@ -76,6 +76,7 @@ describe("GET /api/automation/upcoming — briefing runtime projection", () => {
   it("projects the observed callback status without exposing raw route error details", async () => {
     const runtimeStatus = createBriefingRuntimeStatusStore();
     runtimeStatus.record({
+      availability: "observed",
       decision: "route-unavailable",
       errorCount: 10_000,
       imminentCount: -2,
@@ -88,7 +89,8 @@ describe("GET /api/automation/upcoming — briefing runtime projection", () => {
         status: "blocked-local-only",
         rawError: "private route failure details"
       } as never,
-      observedAtIso: "2026-08-08T01:02:03.000Z"
+      observedAtIso: "2026-08-08T01:02:03.000Z",
+      phase: "tick"
     });
     const getRuntimeStatus = vi.fn(runtimeStatus.get);
     const server = Fastify();
@@ -105,6 +107,7 @@ describe("GET /api/automation/upcoming — briefing runtime projection", () => {
 
       expect(response.statusCode).toBe(200);
       expect(body.briefingRuntime).toEqual({
+        availability: "observed",
         lastDecision: "route-unavailable",
         lastDeliveredCount: 0,
         lastErrorCount: 9_999,
@@ -117,7 +120,8 @@ describe("GET /api/automation/upcoming — briefing runtime projection", () => {
           reason: "remote-route-blocked-by-local-only",
           source: "explicit-config",
           status: "blocked-local-only"
-        }
+        },
+        phase: "tick"
       });
       expect(body.gateway.status).toBe("resolved");
       expect(response.body).not.toContain("private route failure details");

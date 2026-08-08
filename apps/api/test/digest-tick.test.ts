@@ -69,9 +69,11 @@ describe("startDigestTick", () => {
       expect(sent).toEqual([]);
       expect(await readDigestQueue(digestFile)).toHaveLength(1);
       expect(runtimeStatus.get()).toMatchObject({
+        availability: "observed",
         lastDecision: "quiet-hours",
         lastErrorCount: 0,
-        lastItemCount: 0
+        lastItemCount: 0,
+        phase: "tick"
       });
     } finally {
       handle.stop();
@@ -210,10 +212,12 @@ describe("startDigestTick", () => {
     try {
       await handle.tickOnce();
       expect(runtimeStatus.get()).toMatchObject({
+        availability: "observed",
         lastDecision: "route-unavailable",
         lastErrorCount: 0,
         lastItemCount: 0,
-        lastObservedAtIso: "2026-05-12T09:00:00.000Z"
+        lastObservedAtIso: "2026-05-12T09:00:00.000Z",
+        phase: "tick"
       });
     } finally {
       handle.stop();
@@ -337,14 +341,26 @@ describe("startDigestDaemonIfConfigured — env-gated registration", () => {
 
   it("registers an onClose stop hook when MUSE_DIGEST_ENABLED defaults to true and the proactive channel is configured", () => {
     const { hooks, server } = fakeServer();
-    startDigestDaemonIfConfigured(env, server as never, options);
+    const runtimeStatus = createDigestRuntimeStatusStore();
+    startDigestDaemonIfConfigured(env, server as never, options, runtimeStatus);
     expect(hooks.filter((h) => h.name === "onClose")).toHaveLength(1);
+    expect(runtimeStatus.get()).toMatchObject({ availability: "dormant", lastDecision: "startup", phase: "startup" });
   });
 
   it("MUSE_DIGEST_ENABLED=false ⇒ NOT started", () => {
     const { hooks, server } = fakeServer();
-    startDigestDaemonIfConfigured({ ...env, MUSE_DIGEST_ENABLED: "false" } as NodeJS.ProcessEnv, server as never, options);
+    const runtimeStatus = createDigestRuntimeStatusStore();
+    startDigestDaemonIfConfigured({ ...env, MUSE_DIGEST_ENABLED: "false" } as NodeJS.ProcessEnv, server as never, options, runtimeStatus);
     expect(hooks).toHaveLength(0);
+    expect(runtimeStatus.get()).toMatchObject({ availability: "disabled", lastDecision: "startup", phase: "startup" });
+  });
+
+  it("delivery brake records blocked startup without creating a timer or close hook", () => {
+    const { hooks, server } = fakeServer();
+    const runtimeStatus = createDigestRuntimeStatusStore();
+    startDigestDaemonIfConfigured(env, server as never, options, runtimeStatus, true);
+    expect(hooks).toHaveLength(0);
+    expect(runtimeStatus.get()).toMatchObject({ availability: "blocked", lastDecision: "startup", phase: "startup" });
   });
 
   it("no explicit route starts a paired daemon dormant until an owner exists", async () => {

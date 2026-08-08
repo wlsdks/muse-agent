@@ -6,6 +6,7 @@ import {
 } from "./messaging-route-receipt.js";
 
 export type ProactiveRuntimeDecision =
+  | "startup"
   | "already-running"
   | "quiet-hours"
   | "route-unavailable"
@@ -18,7 +19,16 @@ export type ProactiveRuntimeDecision =
   | "completed"
   | "error";
 
+export type ProactiveRuntimePhase = "startup" | "tick";
+export type ProactiveRuntimeAvailability =
+  | "dormant"
+  | "observed"
+  | "not-configured"
+  | "disabled"
+  | "blocked";
+
 export interface ProactiveRuntimeStatus {
+  readonly availability: ProactiveRuntimeAvailability;
   readonly lastDecision: ProactiveRuntimeDecision;
   readonly lastObservedAtIso: string;
   readonly lastImminentCount: number;
@@ -27,9 +37,11 @@ export interface ProactiveRuntimeStatus {
   readonly lastErrorCount: number;
   readonly sessionLockedUntilIso?: string;
   readonly lastRoute: MessagingRouteResolution;
+  readonly phase: ProactiveRuntimePhase;
 }
 
 export interface ProactiveRuntimeStatusUpdate {
+  readonly availability: ProactiveRuntimeAvailability;
   readonly decision: ProactiveRuntimeDecision;
   readonly observedAtIso: string;
   readonly imminentCount?: number;
@@ -38,6 +50,7 @@ export interface ProactiveRuntimeStatusUpdate {
   readonly errorCount?: number;
   readonly sessionLockedUntilIso?: string;
   readonly lastRoute?: MessagingRouteResolution;
+  readonly phase: ProactiveRuntimePhase;
 }
 
 export interface ProactiveRuntimeStatusStore {
@@ -53,6 +66,7 @@ export function createProactiveRuntimeStatusStore(): ProactiveRuntimeStatusStore
     get: () => status,
     record: (update) => {
       status = {
+        availability: update.availability,
         lastDecision: update.decision,
         lastObservedAtIso: update.observedAtIso,
         lastImminentCount: boundedCount(update.imminentCount ?? 0),
@@ -62,10 +76,28 @@ export function createProactiveRuntimeStatusStore(): ProactiveRuntimeStatusStore
         lastRoute: update.lastRoute
           ? sanitizeMessagingRouteReceipt(update.lastRoute)
           : status?.lastRoute ?? unavailableMessagingRouteReceipt(),
-        ...(update.sessionLockedUntilIso ? { sessionLockedUntilIso: update.sessionLockedUntilIso } : {})
+        ...(update.sessionLockedUntilIso ? { sessionLockedUntilIso: update.sessionLockedUntilIso } : {}),
+        phase: update.phase
       };
     }
   };
+}
+
+export function recordProactiveRuntimeStartup(
+  runtimeStatus: ProactiveRuntimeStatusStore | undefined,
+  availability: Exclude<ProactiveRuntimeAvailability, "observed">,
+  observedAtIso = new Date().toISOString()
+): void {
+  try {
+    runtimeStatus?.record({
+      availability,
+      decision: "startup",
+      lastRoute: unavailableMessagingRouteReceipt(),
+      observedAtIso,
+      phase: "startup"
+    });
+  } catch {
+  }
 }
 
 function boundedCount(value: number): number {

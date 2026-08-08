@@ -85,11 +85,13 @@ export function startDigestTick(options: DigestTickOptions): DigestTickHandle {
   ): void => {
     try {
       options.runtimeStatus?.record({
+        availability: "observed",
         decision,
         errorCount,
         itemCount,
         lastRoute,
-        observedAtIso: at.toISOString()
+        observedAtIso: at.toISOString(),
+        phase: "tick"
       });
     } catch {
     }

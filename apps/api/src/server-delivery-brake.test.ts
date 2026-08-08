@@ -85,6 +85,14 @@ describe("API delivery brake construction boundary", () => {
         for (const starter of outboundStarters) expect(starter).not.toHaveBeenCalled();
         expect(mocks.createActivityTracker).not.toHaveBeenCalled();
         expect(mocks.createInboundAgentRun).not.toHaveBeenCalled();
+        const runtime = (await server.inject({ method: "GET", url: "/api/automation/upcoming" })).json() as {
+          readonly briefingRuntime: { readonly availability: string; readonly lastDecision: string; readonly phase: string } | null;
+          readonly digestRuntime: { readonly availability: string; readonly lastDecision: string; readonly phase: string } | null;
+          readonly proactiveRuntime: { readonly availability: string; readonly lastDecision: string; readonly phase: string } | null;
+        };
+        expect(runtime.briefingRuntime).toMatchObject({ availability: "blocked", lastDecision: "startup", phase: "startup" });
+        expect(runtime.digestRuntime).toMatchObject({ availability: "blocked", lastDecision: "startup", phase: "startup" });
+        expect(runtime.proactiveRuntime).toMatchObject({ availability: "blocked", lastDecision: "startup", phase: "startup" });
       } finally {
         await server.close();
       }

@@ -34,6 +34,8 @@ import type {
   UpcomingChannelRuntime,
   UpcomingBriefingRuntimeDecision,
   UpcomingBriefingRuntimeStatus,
+  UpcomingRuntimeAvailability,
+  UpcomingRuntimePhase,
   VetoesResponse
 } from "../api/types.js";
 import type { StringKey, Translate } from "../i18n/index.js";
@@ -544,6 +546,40 @@ function boundedDeliveryQueueAge(value: number | null): number | null {
   return Math.min(1000 * 60 * 60 * 24 * 365 * 100, Math.max(0, Math.trunc(value)));
 }
 
+function runtimePhaseKey(phase: UpcomingRuntimePhase | string): StringKey {
+  return phase === "tick"
+    ? "auto.upcoming.runtime.phase.tick"
+    : "auto.upcoming.runtime.phase.startup";
+}
+
+function runtimeAvailabilityKey(availability: UpcomingRuntimeAvailability | string): StringKey {
+  switch (availability) {
+    case "blocked": return "auto.upcoming.runtime.availability.blocked";
+    case "disabled": return "auto.upcoming.runtime.availability.disabled";
+    case "observed": return "auto.upcoming.runtime.availability.observed";
+    case "not-configured": return "auto.upcoming.runtime.availability.notConfigured";
+    default: return "auto.upcoming.runtime.availability.dormant";
+  }
+}
+
+function runtimeLifecycleSummary(
+  phase: UpcomingRuntimePhase | string,
+  availability: UpcomingRuntimeAvailability | string,
+  t: Translate
+): string {
+  return `${t(runtimePhaseKey(phase))} · ${t(runtimeAvailabilityKey(availability))}`;
+}
+
+function runtimeRouteLine(
+  phase: UpcomingRuntimePhase | string,
+  route: unknown,
+  t: Translate
+): string {
+  return phase === "tick"
+    ? `${t("auto.upcoming.runtimeRoute.lastExecution")}: ${formatRuntimeRoute(route, t)}`
+    : t("auto.upcoming.runtimeRoute.noExecution");
+}
+
 function digestRuntimeDecisionKey(decision: UpcomingDigestRuntimeDecision | string): StringKey {
   switch (decision) {
     case "already-running": return "auto.upcoming.digestRuntime.decision.alreadyRunning";
@@ -782,15 +818,13 @@ function DigestRuntimeStatus({
     <div style={{ marginTop: 8 }}>
       <div className="row">
         <div className="row-main">
-          <div className="row-title">{t(digestRuntimeDecisionKey(runtime.lastDecision))}</div>
+          <div className="row-title">{runtime.phase === "tick" ? t(digestRuntimeDecisionKey(runtime.lastDecision)) : t(runtimeAvailabilityKey(runtime.availability))}</div>
+          <div className="row-meta">{runtimeLifecycleSummary(runtime.phase, runtime.availability, t)}</div>
           <div className="row-meta">{t("auto.upcoming.digestRuntime.observed", { when: observedAt })}</div>
           <div className="row-meta">
             {t("auto.upcoming.digestRuntime.counts", { errors: runtime.lastErrorCount, items: runtime.lastItemCount })}
           </div>
-          <div className="row-meta">
-            <span className="label">{t("auto.upcoming.runtimeRoute.lastExecution")}: </span>
-            {formatRuntimeRoute(runtime.lastRoute, t)}
-          </div>
+          <div className="row-meta">{runtimeRouteLine(runtime.phase, runtime.lastRoute, t)}</div>
         </div>
         <Badge tone="neutral">{t("auto.upcoming.digestRuntime.previewBadge")}</Badge>
       </div>
@@ -837,7 +871,8 @@ function BriefingRuntimeStatus({
     <div>
       <div className="row">
         <div className="row-main">
-          <div className="row-title">{t(briefingRuntimeDecisionKey(runtime.lastDecision))}</div>
+          <div className="row-title">{runtime.phase === "tick" ? t(briefingRuntimeDecisionKey(runtime.lastDecision)) : t(runtimeAvailabilityKey(runtime.availability))}</div>
+          <div className="row-meta">{runtimeLifecycleSummary(runtime.phase, runtime.availability, t)}</div>
           <div className="row-meta">{t("auto.upcoming.briefingRuntime.observed", { when: observedAt })}</div>
           <div className="row-meta">
             {t("auto.upcoming.briefingRuntime.counts", {
@@ -846,10 +881,7 @@ function BriefingRuntimeStatus({
               imminent: runtime.lastImminentCount
             })}
           </div>
-          <div className="row-meta">
-            <span className="label">{t("auto.upcoming.runtimeRoute.lastExecution")}: </span>
-            {formatRuntimeRoute(runtime.lastRoute, t)}
-          </div>
+          <div className="row-meta">{runtimeRouteLine(runtime.phase, runtime.lastRoute, t)}</div>
         </div>
         <Badge tone="neutral">{t("auto.upcoming.briefingRuntime.previewBadge")}</Badge>
       </div>
@@ -899,7 +931,8 @@ function ProactiveRuntimeStatus({
     <div>
       <div className="row">
         <div className="row-main">
-          <div className="row-title">{t(proactiveRuntimeDecisionKey(runtime.lastDecision))}</div>
+          <div className="row-title">{runtime.phase === "tick" ? t(proactiveRuntimeDecisionKey(runtime.lastDecision)) : t(runtimeAvailabilityKey(runtime.availability))}</div>
+          <div className="row-meta">{runtimeLifecycleSummary(runtime.phase, runtime.availability, t)}</div>
           <div className="row-meta">{t("auto.upcoming.proactiveRuntime.observed", { when: observedAt })}</div>
           <div className="row-meta">
             {t("auto.upcoming.proactiveRuntime.counts", {
@@ -914,10 +947,7 @@ function ProactiveRuntimeStatus({
               {t("auto.upcoming.proactiveRuntime.sessionLockedUntil", { when: sessionLockedUntil })}
             </div>
           )}
-          <div className="row-meta">
-            <span className="label">{t("auto.upcoming.runtimeRoute.lastExecution")}: </span>
-            {formatRuntimeRoute(runtime.lastRoute, t)}
-          </div>
+          <div className="row-meta">{runtimeRouteLine(runtime.phase, runtime.lastRoute, t)}</div>
         </div>
         <Badge tone="neutral">{t("auto.upcoming.proactiveRuntime.previewBadge")}</Badge>
       </div>

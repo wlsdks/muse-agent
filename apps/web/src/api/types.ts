@@ -392,6 +392,7 @@ export interface UpcomingDeliveryQueueSnapshot {
   readonly status: "observed" | "unverified";
 }
 export type UpcomingDigestRuntimeDecision =
+  | "startup"
   | "already-running"
   | "already-sent-today"
   | "cancelled-before-claim"
@@ -406,7 +407,10 @@ export type UpcomingDigestRuntimeDecision =
   | "send-failed"
   | "sent";
 export type UpcomingMessagingRoute = GatewayRouteStatus;
+export type UpcomingRuntimePhase = "startup" | "tick";
+export type UpcomingRuntimeAvailability = "dormant" | "observed" | "not-configured" | "disabled" | "blocked";
 export type UpcomingBriefingRuntimeDecision =
+  | "startup"
   | "already-running"
   | "quiet-hours"
   | "route-unavailable"
@@ -415,21 +419,26 @@ export type UpcomingBriefingRuntimeDecision =
   | "delivered"
   | "error";
 export interface UpcomingBriefingRuntimeStatus {
+  readonly availability: UpcomingRuntimeAvailability;
   readonly lastDecision: UpcomingBriefingRuntimeDecision;
   readonly lastObservedAtIso: string;
   readonly lastImminentCount: number;
   readonly lastDeliveredCount: number;
   readonly lastErrorCount: number;
   readonly lastRoute?: UpcomingMessagingRoute;
+  readonly phase: UpcomingRuntimePhase;
 }
 export interface UpcomingDigestRuntimeStatus {
+  readonly availability: UpcomingRuntimeAvailability;
   readonly lastDecision: UpcomingDigestRuntimeDecision;
   readonly lastErrorCount: number;
   readonly lastItemCount: number;
   readonly lastObservedAtIso: string;
   readonly lastRoute?: UpcomingMessagingRoute;
+  readonly phase: UpcomingRuntimePhase;
 }
 export type UpcomingProactiveRuntimeDecision =
+  | "startup"
   | "already-running"
   | "quiet-hours"
   | "route-unavailable"
@@ -442,6 +451,7 @@ export type UpcomingProactiveRuntimeDecision =
   | "completed"
   | "error";
 export interface UpcomingProactiveRuntimeStatus {
+  readonly availability: UpcomingRuntimeAvailability;
   readonly lastDecision: UpcomingProactiveRuntimeDecision;
   readonly lastObservedAtIso: string;
   readonly lastImminentCount: number;
@@ -450,6 +460,7 @@ export interface UpcomingProactiveRuntimeStatus {
   readonly lastErrorCount: number;
   readonly sessionLockedUntilIso?: string;
   readonly lastRoute?: UpcomingMessagingRoute;
+  readonly phase: UpcomingRuntimePhase;
 }
 export type UpcomingReminderRuntimeDecision =
   | "not-configured"

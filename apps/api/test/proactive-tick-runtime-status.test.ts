@@ -39,8 +39,8 @@ async function observe(
     sidecarFile: "/tmp/muse-proactive-runtime-status.json"
   });
   try {
-    await handle.tickOnce();
-    expect(runtimeStatus.get()?.lastDecision).toBe(expectedDecision);
+      await handle.tickOnce();
+      expect(runtimeStatus.get()).toMatchObject({ availability: "observed", lastDecision: expectedDecision, phase: "tick" });
   } finally {
     handle.stop();
   }
