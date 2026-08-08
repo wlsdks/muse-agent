@@ -31,16 +31,6 @@ export async function readChannelOwner(file: string, providerId: string): Promis
   return parseChannelOwner(text, providerId);
 }
 
-function readChannelOwnerSync(file: string, providerId: string): string | undefined {
-  let text: string;
-  try {
-    text = readFileSync(file, "utf8");
-  } catch {
-    return undefined;
-  }
-  return parseChannelOwner(text, providerId);
-}
-
 function parseChannelOwner(text: string, providerId: string): string | undefined {
   const parsed = parseJson(text);
   if (!isRecord(parsed) || !isRecord(parsed.owners)) {
@@ -66,7 +56,8 @@ export interface PairedChannel {
 export type PairedChannelInspection =
   | { readonly status: "none"; readonly candidates: readonly [] }
   | { readonly status: "resolved"; readonly candidates: readonly [PairedChannel]; readonly channel: PairedChannel }
-  | { readonly status: "ambiguous"; readonly candidates: readonly PairedChannel[] };
+  | { readonly status: "ambiguous"; readonly candidates: readonly PairedChannel[] }
+  | { readonly status: "malformed"; readonly candidates: readonly [] };
 
 export type MessagingRouteResolution = {
   readonly status: "resolved" | "unconfigured" | "ambiguous" | "blocked-local-only";
@@ -79,6 +70,7 @@ export type MessagingRouteResolution = {
     | "explicit-provider-not-registered"
     | "remote-route-blocked-by-local-only"
     | "paired-route-inspection-unavailable"
+    | "malformed-paired-route"
     | "no-single-paired-route"
     | "multiple-paired-routes"
     | null;
@@ -190,6 +182,16 @@ export function resolveProactiveMessagingRoute(
         status: "unconfigured"
       };
     }
+    if (inspection.status === "malformed") {
+      return {
+        destination: null,
+        localOnly,
+        providerId: null,
+        reason: "malformed-paired-route",
+        source: null,
+        status: "unconfigured"
+      };
+    }
 
     return {
       destination: inspection.channel.destination,
@@ -222,6 +224,16 @@ export function resolveProactiveMessagingRoute(
       localOnly,
       providerId: null,
       reason: "no-single-paired-route",
+      source: null,
+      status: "unconfigured"
+    };
+  }
+  if (inspection.status === "malformed") {
+    return {
+      destination: null,
+      localOnly,
+      providerId: null,
+      reason: "malformed-paired-route",
       source: null,
       status: "unconfigured"
     };
@@ -260,15 +272,18 @@ function inspectPairedChannelsSync(
   ownersFile: string,
   registry?: Pick<MessagingRouteRegistry, "has">
 ): PairedChannelInspection {
+  const owners = readPairedOwnersSync(ownersFile);
+  if (owners.status === "malformed") return { candidates: [], status: "malformed" };
+  if (owners.status === "unavailable") return { candidates: [], status: "none" };
   const candidates: PairedChannel[] = [];
   for (const providerId of PAIRABLE_MESSAGING_PROVIDER_IDS) {
     if (registry && !registry.has(providerId)) {
       continue;
     }
-    const owner = readChannelOwnerSync(ownersFile, providerId);
-    if (owner) {
-      candidates.push({ destination: owner, providerId });
-    }
+    if (!Object.hasOwn(owners.owners, providerId)) continue;
+    const owner = owners.owners[providerId];
+    if (typeof owner !== "string" || owner.trim().length === 0) return { candidates: [], status: "malformed" };
+    candidates.push({ destination: owner, providerId });
   }
   if (candidates.length === 0) {
     return { candidates: [], status: "none" };
@@ -289,15 +304,18 @@ export async function inspectPairedChannels(
   ownersFile: string,
   registry: { readonly has: (providerId: string) => boolean }
 ): Promise<PairedChannelInspection> {
+  const owners = await readPairedOwners(ownersFile);
+  if (owners.status === "malformed") return { candidates: [], status: "malformed" };
+  if (owners.status === "unavailable") return { candidates: [], status: "none" };
   const candidates: PairedChannel[] = [];
   for (const providerId of PAIRABLE_MESSAGING_PROVIDER_IDS) {
     if (!registry.has(providerId)) {
       continue;
     }
-    const owner = await readChannelOwner(ownersFile, providerId);
-    if (owner) {
-      candidates.push({ destination: owner, providerId });
-    }
+    if (!Object.hasOwn(owners.owners, providerId)) continue;
+    const owner = owners.owners[providerId];
+    if (typeof owner !== "string" || owner.trim().length === 0) return { candidates: [], status: "malformed" };
+    candidates.push({ destination: owner, providerId });
   }
   if (candidates.length === 0) {
     return { candidates: [], status: "none" };
@@ -322,4 +340,35 @@ export async function resolveSinglePairedChannel(
 ): Promise<PairedChannel | undefined> {
   const inspection = await inspectPairedChannels(ownersFile, registry);
   return inspection.status === "resolved" ? inspection.channel : undefined;
+}
+
+type PairedOwnerRead =
+  | { readonly status: "valid"; readonly owners: Record<string, unknown> }
+  | { readonly status: "malformed" }
+  | { readonly status: "unavailable" };
+
+function readPairedOwnersSync(file: string): PairedOwnerRead {
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    return { status: "unavailable" };
+  }
+  return parsePairedOwners(text);
+}
+
+async function readPairedOwners(file: string): Promise<PairedOwnerRead> {
+  let text: string;
+  try {
+    text = await fs.readFile(file, "utf8");
+  } catch {
+    return { status: "unavailable" };
+  }
+  return parsePairedOwners(text);
+}
+
+function parsePairedOwners(text: string): PairedOwnerRead {
+  const parsed = parseJson(text);
+  if (!isRecord(parsed) || !isRecord(parsed.owners)) return { status: "malformed" };
+  return { owners: parsed.owners, status: "valid" };
 }

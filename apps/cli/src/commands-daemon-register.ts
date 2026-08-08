@@ -2055,8 +2055,11 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       if (!await markDaemonTerminalStable(io, terminalJournal, signal, "heartbeat-established")) return;
       const proactiveTick = makeProactiveTick({
         calendarRegistry,
+        channelOwnersFile,
         dailyCap,
+        dayRhythmConfigFile,
         destination,
+        env: e,
         effectFile: join(dirname(resolveActionLogFile(e)), "outbound-effects.json"),
         historyFile,
         leadMinutes,
@@ -2306,6 +2309,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         digestHourRaw,
         digestQueueFile,
         digestSentFile,
+        env: e,
         messagingRegistry,
         provider,
         quietHours,

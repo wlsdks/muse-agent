@@ -23,7 +23,6 @@ import {
   resolveLearningPauseFile,
   resolvePlaybookFile,
   resolveRecallHitsFile,
-  resolveSinglePairedChannel,
   resolveSuppressedLessonsFile,
   parseBoolean,
   type DecayContradictedDeps,
@@ -46,6 +45,7 @@ import { consolidatePlaybook } from "./playbook-consolidate.js";
 import { runMemoryConsolidationTick } from "./memory-consolidate-tick.js";
 import { promoteRecalledMemories, resolveMemoryUserId } from "./commands-memory.js";
 import type { FollowupModel } from "./commands-daemon-connections.js";
+import { resolveCliMessagingRoute, routeSkipLabel } from "./daemon-messaging-route.js";
 
 /**
  * Unattended learning is ON by default (진안, 2026-07-13). It stays OFF only if
@@ -428,6 +428,7 @@ export function makeRecapTick(deps: MakeRecapTickDeps): GovernedDaemonTick {
 }
 
 export interface MakeDigestFlushTickDeps {
+  readonly env: NodeJS.ProcessEnv;
   readonly stdout: (message: string) => void;
   readonly messagingRegistry: MessagingProviderRegistry;
   readonly provider: string;
@@ -463,14 +464,40 @@ export interface MakeDigestFlushTickDeps {
  * never a silent log-sink send (fail-close).
  */
 export function makeDigestFlushTick(deps: MakeDigestFlushTickDeps): GovernedDaemonTick {
-  const { stdout, messagingRegistry, provider, destination, digestEnabled, quietHours, digestQueueFile, digestHourRaw, digestSentFile, dayRhythmConfigFile, channelOwnersFile } = deps;
+  const { stdout, messagingRegistry, provider, destination, digestEnabled, quietHours, digestQueueFile, digestHourRaw, digestSentFile, dayRhythmConfigFile, channelOwnersFile, env } = deps;
   const digestFlush = deps.digestFlush ?? runDigestFlushIfDue;
   return async (claim): ReturnType<GovernedDaemonTick> => {
-    if (!digestEnabled) return daemonWorkloadNotReady("disabled");
-    const activeQuietHours = resolveQuietHoursOption(quietHours);
     const now = deps.now?.() ?? new Date();
-    if (activeQuietHours && isQuietHour(now.getHours(), activeQuietHours)) return daemonWorkloadNotReady("internal-brake");
+    const activeQuietHours = resolveQuietHoursOption(quietHours);
     const dayRhythm = await readDayRhythmConfigSafe(dayRhythmConfigFile);
+    let route;
+    try {
+      route = resolveCliMessagingRoute({
+        channelOwnersFile,
+        dayRhythmEnabled: dayRhythm.enabled,
+        destination,
+        env,
+        messagingRegistry,
+        provider
+      });
+    } catch {
+      if (!digestEnabled) return daemonWorkloadNotReady("disabled");
+      if (activeQuietHours && isQuietHour(now.getHours(), activeQuietHours)) {
+        return daemonWorkloadNotReady("internal-brake");
+      }
+      stdout(`[${new Date().toISOString()}] digest: skipped (route-unavailable)\n`);
+      return daemonWorkloadNotReady("unconfigured");
+    }
+    if (!digestEnabled) return daemonWorkloadNotReady("disabled");
+    if (activeQuietHours && isQuietHour(now.getHours(), activeQuietHours)) return daemonWorkloadNotReady("internal-brake");
+    if (route.status !== "resolved" || !route.providerId || !route.destination) {
+      if (dayRhythm.enabled && provider === "log" && route.reason === "no-single-paired-route") {
+        stdout(`[${new Date().toISOString()}] digest: day rhythm on but no channel paired\n`);
+        return daemonWorkloadNotReady("unconfigured");
+      }
+      stdout(`[${new Date().toISOString()}] digest: skipped (route-${routeSkipLabel(route)})\n`);
+      return daemonWorkloadNotReady("unconfigured");
+    }
     let effectiveProvider = provider;
     let effectiveDestination = destination;
     let effectiveDigestHour = digestHourRaw;
@@ -478,15 +505,8 @@ export function makeDigestFlushTick(deps: MakeDigestFlushTickDeps): GovernedDaem
       if (effectiveDigestHour === undefined) {
         effectiveDigestHour = dayRhythm.eveningHour;
       }
-      if (provider === "log") {
-        const paired = await resolveSinglePairedChannel(channelOwnersFile, messagingRegistry);
-        if (!paired) {
-          stdout(`[${new Date().toISOString()}] digest: day rhythm on but no channel paired\n`);
-          return daemonWorkloadNotReady("unconfigured");
-        }
-        effectiveProvider = paired.providerId;
-        effectiveDestination = paired.destination;
-      }
+      effectiveProvider = route.providerId;
+      effectiveDestination = route.destination;
     }
     const digestHour = effectiveDigestHour ?? DEFAULT_DIGEST_HOUR;
     if (now.getHours() !== digestHour) return daemonWorkloadNotReady("not-due");

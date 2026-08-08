@@ -232,5 +232,21 @@ describe("daemon messaging provider lock", () => {
     expect(runOptions !== undefined && ts.isObjectLiteralExpression(runOptions)).toBe(true);
     if (!runOptions || !ts.isObjectLiteralExpression(runOptions)) return;
     expect(objectPropertyExpression(tickSource, runOptions, "effectFile")).toBe("effectFile");
+
+    expect(objectPropertyExpression(registerSource, proactiveOptions, "env")).toBe("e");
+    expect(objectPropertyExpression(registerSource, proactiveOptions, "channelOwnersFile")).toBe("channelOwnersFile");
+    expect(objectPropertyExpression(registerSource, proactiveOptions, "dayRhythmConfigFile")).toBe("dayRhythmConfigFile");
+  });
+
+  it("wires the digest production factory to live route inputs", () => {
+    const registerSource = parseSource("./commands-daemon-register.ts");
+    const digestCalls = callsNamed(registerSource, "makeDigestFlushTick");
+    expect(digestCalls).toHaveLength(1);
+    const digestOptions = digestCalls[0]?.arguments[0];
+    expect(digestOptions !== undefined && ts.isObjectLiteralExpression(digestOptions)).toBe(true);
+    if (!digestOptions || !ts.isObjectLiteralExpression(digestOptions)) return;
+    expect(objectPropertyExpression(registerSource, digestOptions, "env")).toBe("e");
+    expect(objectPropertyExpression(registerSource, digestOptions, "channelOwnersFile")).toBe("channelOwnersFile");
+    expect(objectPropertyExpression(registerSource, digestOptions, "dayRhythmConfigFile")).toBe("dayRhythmConfigFile");
   });
 });

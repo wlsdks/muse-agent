@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -1049,6 +1049,91 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]!.destination).toBe("555");
     expect(sent[0]!.text).toContain("Ship the memo");
+  });
+
+  it("production factory passes the live env and explicit route to proactive delivery", async () => {
+    const env = tmpEnv();
+    env.MUSE_DIGEST_ENABLED = "false";
+    await writeDayRhythmConfig(env.MUSE_CLI_CONFIG_FILE!, { enabled: true, eveningHour: 18, morningHour: 8 });
+    writeFileSync(env.MUSE_CHANNEL_OWNERS_FILE!, JSON.stringify({ owners: { discord: "B" }, version: 1 }), "utf8");
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
+      tasks: [{ id: "route-a", title: "Route A", status: "open", dueAt: new Date(Date.now() + 5 * 60_000).toISOString(), createdAt: "2026-01-01T00:00:00Z" }]
+    }), "utf8");
+    const telegramSent: OutboundMessage[] = [];
+    const discordSent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([
+      capturingProvider(telegramSent, "telegram"),
+      capturingProvider(discordSent, "discord")
+    ]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "A"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(telegramSent.map((message) => message.destination)).toEqual(["A"]);
+    expect(discordSent).toHaveLength(0);
+  });
+
+  it("production factory passes the live day-rhythm config to proactive delivery", async () => {
+    const env = tmpEnv();
+    env.MUSE_DIGEST_ENABLED = "false";
+    await writeDayRhythmConfig(env.MUSE_CLI_CONFIG_FILE!, { enabled: true, eveningHour: 18, morningHour: 8 });
+    writeFileSync(env.MUSE_CHANNEL_OWNERS_FILE!, JSON.stringify({ owners: { telegram: "A" }, version: 1 }), "utf8");
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
+      tasks: [{ id: "paired-route-a", title: "Paired route A", status: "open", dueAt: new Date(Date.now() + 5 * 60_000).toISOString(), createdAt: "2026-01-01T00:00:00Z" }]
+    }), "utf8");
+    const logSent: OutboundMessage[] = [];
+    const telegramSent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([
+      capturingProvider(logSent, "log"),
+      capturingProvider(telegramSent, "telegram")
+    ]);
+
+    const res = await runDaemon(["--once", "--provider", "log"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(logSent).toHaveLength(0);
+    expect(telegramSent.map((message) => message.destination)).toEqual(["A"]);
+  });
+
+  it("production digest ticks refresh the paired route from A to B in one resident process", async () => {
+    const env = tmpEnv();
+    const currentHour = new Date().getHours();
+    env.MUSE_DIGEST_HOUR = currentHour.toString();
+    await writeDayRhythmConfig(env.MUSE_CLI_CONFIG_FILE!, { enabled: true, eveningHour: currentHour, morningHour: 8 });
+    writeFileSync(env.MUSE_CHANNEL_OWNERS_FILE!, JSON.stringify({ owners: { telegram: "A" }, version: 1 }), "utf8");
+    await appendDigestItem(env.MUSE_DIGEST_QUEUE_FILE!, { at: new Date(), source: "route-a", text: "digest A" });
+    const telegramSent: OutboundMessage[] = [];
+    const discordSent: OutboundMessage[] = [];
+    const logSent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([
+      capturingProvider(logSent, "log"),
+      capturingProvider(telegramSent, "telegram"),
+      capturingProvider(discordSent, "discord")
+    ]);
+    let tickError: unknown;
+
+    const res = await runDaemon(["--interval", "5", "--provider", "log"], {
+      env,
+      registry,
+      runDaemonLoop: async ({ signal, tick }) => {
+        try {
+          await tick();
+          rmSync(env.MUSE_DIGEST_SENT_FILE!, { force: true });
+          writeFileSync(env.MUSE_CHANNEL_OWNERS_FILE!, JSON.stringify({ owners: { discord: "B" }, version: 1 }), "utf8");
+          await appendDigestItem(env.MUSE_DIGEST_QUEUE_FILE!, { at: new Date(), source: "route-b", text: "digest B" });
+          await tick();
+          signal.stop();
+        } catch (cause) {
+          tickError = cause;
+        }
+        return 2;
+      }
+    });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(tickError).toBeUndefined();
+    expect(telegramSent.map((message) => message.destination)).toEqual(["A"]);
+    expect(discordSent.map((message) => message.destination)).toEqual(["B"]);
   });
 
   it("--once with no imminent task fires nothing (quiet tick, no send)", async () => {
@@ -2876,14 +2961,14 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
       expect(sent).toHaveLength(0);
     });
 
-    it("day rhythm on: outside the morning window, the briefing is held (not delivered)", async () => {
+    it("day rhythm on: outside the morning window, the briefing is held while proactive delivery remains active", async () => {
       const env = tmpEnv();
       const dueSoon = new Date(Date.now() + 5 * 60_000).toISOString();
       writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
         tasks: [{ id: "t1", title: "Held memo", status: "open", dueAt: dueSoon, createdAt: "2026-01-01T00:00:00Z" }]
       }), "utf8");
       writeFileSync(env.MUSE_CHANNEL_OWNERS_FILE!, JSON.stringify({ owners: { telegram: "555" }, version: 1 }), "utf8");
-      // Well clear of the current hour's [morningHour, morningHour+2) window either direction.
+      // Well clear of the current hour's [morningHour, morningHour+2) briefing window.
       const heldMorningHour = (new Date().getHours() + 6) % 24;
       await writeDayRhythmConfig(env.MUSE_CLI_CONFIG_FILE!, { enabled: true, eveningHour: 18, morningHour: heldMorningHour });
       const sent: OutboundMessage[] = [];
@@ -2893,7 +2978,9 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
 
       expect(res.exitCode).toBeUndefined();
       expect(res.stdout).toMatch(/briefing: held \(day rhythm morning window/);
-      expect(sent).toHaveLength(0);
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.destination).toBe("555");
+      expect(sent[0]?.text).toContain("Held memo");
     });
 
     it("MUSE_BRIEFING_ENABLED stays byte-compatible even when day rhythm is ALSO on (env path wins: no window gate, no channel override)", async () => {

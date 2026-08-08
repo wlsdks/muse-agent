@@ -85,11 +85,14 @@ import { runSchedulerJobAndWait, type SchedulerJobOutcome } from "./scheduler-jo
 import { isScheduledJobDue } from "./scheduler-tick-due.js";
 import { createIndexedProactiveInvestigator } from "./proactive-notes-recall.js";
 import { buildLocalTodayText } from "./today-local-sources.js";
+import { resolveCliMessagingRoute, routeSkipLabel } from "./daemon-messaging-route.js";
 
 import type { TickRunState } from "./daemon-selflearn-ticks.js";
 
 export interface MakeProactiveTickDeps {
   readonly calendarRegistry: CalendarProviderRegistry;
+  readonly channelOwnersFile: string;
+  readonly dayRhythmConfigFile: string;
   readonly destination: string;
   readonly effectFile: string;
   readonly historyFile: string;
@@ -101,6 +104,7 @@ export interface MakeProactiveTickDeps {
   readonly tasksFile: string;
   readonly trustLedgerFile: string;
   readonly dailyCap: number;
+  readonly env: NodeJS.ProcessEnv;
   readonly stdout: (message: string) => void;
 }
 
@@ -110,19 +114,38 @@ export interface MakeProactiveTickDeps {
  * so a recurring item's identical finding isn't re-shown every tick.
  */
 export function makeProactiveTick(deps: MakeProactiveTickDeps): () => Promise<void> {
-  const { calendarRegistry, destination, effectFile, historyFile, leadMinutes, messagingRegistry, provider, quietHours, sidecarFile, tasksFile, trustLedgerFile, dailyCap, stdout } = deps;
+  const { calendarRegistry, channelOwnersFile, dayRhythmConfigFile, destination, effectFile, historyFile, leadMinutes, messagingRegistry, provider, quietHours, sidecarFile, tasksFile, trustLedgerFile, dailyCap, env, stdout } = deps;
   const proactiveInvestigator = createIndexedProactiveInvestigator();
   return async (): Promise<void> => {
+    const dayRhythm = await readDayRhythmConfigSafe(dayRhythmConfigFile);
+    let route;
+    try {
+      route = resolveCliMessagingRoute({
+        channelOwnersFile,
+        dayRhythmEnabled: dayRhythm.enabled,
+        destination,
+        env,
+        messagingRegistry,
+        provider
+      });
+    } catch {
+      stdout(`[${new Date().toISOString()}] proactive: skipped (route-unavailable)\n`);
+      return;
+    }
+    if (route.status !== "resolved" || !route.providerId || !route.destination) {
+      stdout(`[${new Date().toISOString()}] proactive: skipped (route-${routeSkipLabel(route)})\n`);
+      return;
+    }
     const activeQuietHours = resolveQuietHoursOption(quietHours);
     const summary = await runDueProactiveNotices({
       ...(calendarRegistry.list().length > 0 ? { calendarRegistry } : {}),
-      destination,
+      destination: route.destination,
       effectFile,
       historyFile,
       investigate: proactiveInvestigator,
       leadMinutes,
       messagingRegistry,
-      providerId: provider,
+      providerId: route.providerId,
       ...(activeQuietHours ? { quietHours: activeQuietHours } : {}),
       sidecarFile,
       tasksFile,

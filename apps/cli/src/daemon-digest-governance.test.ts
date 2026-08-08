@@ -11,6 +11,11 @@ function makeTick(
   digestFlush: NonNullable<MakeDigestFlushTickDeps["digestFlush"]>,
   stdout: (message: string) => void = () => undefined
 ) {
+  const registry = new MessagingProviderRegistry([{
+    describe: () => ({ description: "log", displayName: "log", id: "log", local: true }),
+    id: "log",
+    send: async (message) => ({ destination: message.destination, messageId: "log", providerId: "log" })
+  }]);
   return makeDigestFlushTick({
     channelOwnersFile: "/tmp/muse-test-channel-owners.json",
     dayRhythmConfigFile: "/tmp/muse-test-day-rhythm.json",
@@ -20,7 +25,8 @@ function makeTick(
     digestHourRaw: 18,
     digestQueueFile: "/tmp/muse-test-digest-queue.json",
     digestSentFile: "/tmp/muse-test-digest-sent.json",
-    messagingRegistry: new MessagingProviderRegistry(),
+    env: {},
+    messagingRegistry: registry,
     now: () => NOW,
     provider: "log",
     quietHours: undefined,
