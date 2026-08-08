@@ -327,6 +327,99 @@ test("UpcomingTab refetches digest runtime from no observation to sent without o
   }
 });
 
+test("UpcomingTab renders situational briefing runtime in EN/KO through GET only", async () => {
+  let responseIndex = 0;
+  const before: AutomationUpcomingResponse = {
+    budget: null,
+    briefingRuntime: null,
+    digest: null,
+    proactiveRuntime: null,
+    gateway: {
+      destination: "desktop",
+      localOnly: true,
+      providerId: "log",
+      reason: null,
+      source: "explicit-config",
+      status: "resolved"
+    },
+    nextReminder: null,
+    scheduledJobs: []
+  };
+  const after: AutomationUpcomingResponse = {
+    ...before,
+    briefingRuntime: {
+      lastDecision: "delivered",
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z",
+      lastImminentCount: 3,
+      lastDeliveredCount: 2,
+      lastErrorCount: 1,
+      lastRoute: {
+        destination: "briefing-owner",
+        localOnly: true,
+        providerId: "log",
+        reason: null,
+        source: "explicit-config",
+        status: "resolved"
+      }
+    }
+  };
+  const get = vi.fn(async (path: string) => {
+    expect(path).toBe("/api/automation/upcoming");
+    return responseIndex === 0 ? before : after;
+  });
+  const post = vi.fn();
+  const client = {
+    baseUrl: "http://briefing-runtime.test",
+    get,
+    post
+  } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  try {
+    window.localStorage.setItem("muse.lang", "en");
+    const screen = await render(
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider><UpcomingTab client={client} /></I18nProvider>
+      </QueryClientProvider>
+    );
+
+    await expect.element(screen.getByText("Situational briefing runtime", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("No situational briefing daemon decision has been observed since this server started.", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Current Gateway route", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("log:desktop", { exact: true })).toBeVisible();
+
+    responseIndex = 1;
+    await queryClient.refetchQueries({ queryKey: ["automation-upcoming", client.baseUrl] });
+
+    await expect.element(screen.getByText("Briefing delivered", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText(/^Observed 1\/1\/2099/u)).toBeVisible();
+    await expect.element(screen.getByText("Imminent: 3 · delivered: 2 · errors: 1", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Last execution route: log:briefing-owner · ready", { exact: true })).toBeVisible();
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(post).not.toHaveBeenCalled();
+
+    window.localStorage.setItem("muse.lang", "ko");
+    const koreanQueryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    try {
+      const korean = await render(
+        <QueryClientProvider client={koreanQueryClient}>
+          <I18nProvider><UpcomingTab client={client} /></I18nProvider>
+        </QueryClientProvider>
+      );
+      await expect.element(korean.getByText("상황 브리핑 런타임", { exact: true })).toBeVisible();
+      await expect.element(korean.getByText(/^관찰 시각 2099/u)).toBeVisible();
+      await expect.element(korean.getByText("임박: 3 · 전달: 2 · 오류: 1", { exact: true })).toBeVisible();
+      await expect.element(korean.getByText("마지막 실행 경로: log:briefing-owner · 사용 가능", { exact: true })).toBeVisible();
+      expect(get).toHaveBeenCalledTimes(3);
+      expect(post).not.toHaveBeenCalled();
+    } finally {
+      koreanQueryClient.clear();
+    }
+  } finally {
+    queryClient.clear();
+  }
+});
+
 test("UpcomingTab refetches proactive runtime from null to fired through the existing GET query without POST", async () => {
   window.localStorage.setItem("muse.lang", "en");
   let responseIndex = 0;

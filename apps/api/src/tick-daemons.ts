@@ -54,6 +54,7 @@ import { startObjectivesTick } from "./objectives-tick.js";
 import { startPatternTick } from "./pattern-tick.js";
 import { recordPatternRuntimeNotConfigured, type PatternRuntimeStatusStore } from "./pattern-runtime-status.js";
 import { startSituationalBriefingTick } from "./situational-briefing-tick.js";
+import type { BriefingRuntimeStatusStore } from "./briefing-runtime-status.js";
 import type { DigestRuntimeStatusStore } from "./digest-runtime-status.js";
 import type { FollowupRuntimeStatusStore } from "./followup-runtime-status.js";
 import type { ProactiveRuntimeStatusStore } from "./proactive-runtime-status.js";
@@ -446,7 +447,8 @@ export function startSituationalBriefingDaemonIfConfigured(
   env: NodeJS.ProcessEnv,
   server: FastifyInstance,
   options: ServerOptions,
-  localOnly: boolean = options.integrationEnv?.localOnly ?? options.localOnly ?? isLocalOnlyEnabled(env)
+  localOnly: boolean = options.integrationEnv?.localOnly ?? options.localOnly ?? isLocalOnlyEnabled(env),
+  runtimeStatus?: BriefingRuntimeStatusStore
 ): void {
   if (!options.messaging || !options.objectivesFile || !options.briefingSidecarFile) {
     return;
@@ -561,6 +563,7 @@ export function startSituationalBriefingDaemonIfConfigured(
     quietHours: briefingQuietHours,
     registry: briefingRegistry,
     resolveRoute,
+    ...(runtimeStatus ? { runtimeStatus } : {}),
     sidecarFile: options.briefingSidecarFile,
     ...weatherOpt,
     ...emailOpt,

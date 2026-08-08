@@ -27,6 +27,16 @@ const enT = ((key: keyof typeof DICTIONARIES.en, vars?: Record<string, string | 
   return out;
 }) as unknown as Translate;
 
+const koT = ((key: keyof typeof DICTIONARIES.ko, vars?: Record<string, string | number>) => {
+  let out: string = DICTIONARIES.ko[key];
+  if (vars) {
+    for (const [name, value] of Object.entries(vars)) {
+      out = out.replace(`{${name}}`, String(value));
+    }
+  }
+  return out;
+}) as unknown as Translate;
+
 const POPULATED: AutomationUpcomingResponse = {
   budget: { dayCap: 6, dayUsed: 2, hourCap: 2, hourUsed: 1 },
   digest: { enabled: true, hour: 18, nextAtIso: "2099-01-01T18:00:00.000Z" },
@@ -77,9 +87,13 @@ const EMPTY: AutomationUpcomingResponse = {
 };
 
 function renderSections(data: AutomationUpcomingResponse): string {
+  return renderSectionsWith(data, enT, "en-US");
+}
+
+function renderSectionsWith(data: AutomationUpcomingResponse, t: Translate, locale: string): string {
   return renderToStaticMarkup(
     <I18nProvider>
-      <UpcomingSections data={data} t={enT} locale="en-US" />
+      <UpcomingSections data={data} t={t} locale={locale} />
     </I18nProvider>
   );
 }
@@ -562,6 +576,65 @@ describe("UpcomingSections — channel runtime preview", () => {
       DICTIONARIES.en["auto.upcoming.channelRuntime.title"]
     );
     expect(DICTIONARIES.ko["auto.upcoming.channelRuntime.previewOnly"]).toContain("폴링");
+  });
+});
+
+describe("UpcomingSections — situational briefing runtime presentation", () => {
+  it("renders null observation in English and Korean without hiding the Gateway preview", () => {
+    const data = { ...POPULATED, briefingRuntime: null };
+    const english = renderSectionsWith(data, enT, "en-US");
+    const korean = renderSectionsWith(data, koT, "ko-KR");
+
+    expect(english).toContain(DICTIONARIES.en["auto.upcoming.briefingRuntime.title"]);
+    expect(english).toContain(DICTIONARIES.en["auto.upcoming.briefingRuntime.noObservation"]);
+    expect(english).toContain(DICTIONARIES.en["auto.upcoming.gateway.currentRoute"]);
+    expect(english).toContain("telegram:12345");
+
+    expect(korean).toContain(DICTIONARIES.ko["auto.upcoming.briefingRuntime.title"]);
+    expect(korean).toContain(DICTIONARIES.ko["auto.upcoming.briefingRuntime.noObservation"]);
+    expect(korean).toContain(DICTIONARIES.ko["auto.upcoming.gateway.currentRoute"]);
+    expect(korean).toContain("telegram:12345");
+  });
+
+  it("renders observed decision, time, counts, and route in English and Korean", () => {
+    const runtime = {
+      lastDecision: "delivered" as const,
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z",
+      lastImminentCount: 3,
+      lastDeliveredCount: 2,
+      lastErrorCount: 1,
+      lastRoute: {
+        destination: "briefing-owner",
+        localOnly: true,
+        providerId: "log",
+        reason: null,
+        source: "explicit-config" as const,
+        status: "resolved" as const
+      }
+    };
+    const data = { ...POPULATED, briefingRuntime: runtime };
+    const english = renderSectionsWith(data, enT, "en-US");
+    const korean = renderSectionsWith(data, koT, "ko-KR");
+
+    expect(english).toContain(DICTIONARIES.en["auto.upcoming.briefingRuntime.decision.delivered"]);
+    expect(english).toMatch(/Observed .*2099/u);
+    expect(english).toContain("Imminent: 3 · delivered: 2 · errors: 1");
+    expect(english).toContain(DICTIONARIES.en["auto.upcoming.runtimeRoute.lastExecution"]);
+    expect(english).toContain("log:briefing-owner · ready");
+    expect(english).toMatch(/Preview only .*latest decision; this view does not send a message\./u);
+
+    expect(korean).toContain(DICTIONARIES.ko["auto.upcoming.briefingRuntime.decision.delivered"]);
+    expect(korean).toMatch(/관찰 시각 .*2099/u);
+    expect(korean).toContain("임박: 3 · 전달: 2 · 오류: 1");
+    expect(korean).toContain(DICTIONARIES.ko["auto.upcoming.runtimeRoute.lastExecution"]);
+    expect(korean).toContain("log:briefing-owner · 사용 가능");
+
+    const invalidRoute = renderSectionsWith({
+      ...data,
+      briefingRuntime: { ...runtime, lastRoute: { status: "invalid", rawError: "do not render" } as never }
+    }, enT, "en-US");
+    expect(invalidRoute).toContain(DICTIONARIES.en["auto.upcoming.runtimeRoute.unavailable"]);
+    expect(invalidRoute).not.toContain("do not render");
   });
 });
 

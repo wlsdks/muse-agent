@@ -13,6 +13,7 @@ import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { registerAutomationRoutes, type AutomationUpcomingResponse } from "./automation-routes.js";
+import { createBriefingRuntimeStatusStore } from "./briefing-runtime-status.js";
 import { createFollowupRuntimeStatusStore } from "./followup-runtime-status.js";
 import { createPatternRuntimeStatusStore } from "./pattern-runtime-status.js";
 import { createProactiveRuntimeStatusStore } from "./proactive-runtime-status.js";
@@ -82,6 +83,7 @@ describe("GET /api/automation/upcoming — empty stores", () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body) as AutomationUpcomingResponse;
     expect(body).toEqual({
+      briefingRuntime: null,
       budget: { dayCap: 6, dayUsed: 0, hourCap: 2, hourUsed: 0 },
       channelRuntime: { daemons: [], status: "unconfigured" },
       deliveryQueueSnapshot: {
@@ -419,6 +421,55 @@ describe("GET /api/automation/upcoming — populated stores", () => {
     expect(body.scheduledJobs).toHaveLength(1);
     expect(body.scheduledJobs[0]).toMatchObject({ label: "Morning brief" });
     expect(typeof body.scheduledJobs[0]!.nextRunAtIso).toBe("string");
+  });
+});
+
+describe("GET /api/automation/upcoming — briefing runtime status", () => {
+  it("projects the latest bounded briefing observation through the route sanitizer", async () => {
+    const runtimeStatus = createBriefingRuntimeStatusStore();
+    runtimeStatus.record({
+      decision: "route-unavailable",
+      errorCount: 10_000,
+      imminentCount: -2,
+      lastRoute: {
+        destination: null,
+        localOnly: true,
+        providerId: null,
+        reason: "remote-route-blocked-by-local-only",
+        source: "explicit-config",
+        status: "blocked-local-only",
+        credential: "must-not-leak",
+        rawError: "private route detail"
+      } as never,
+      observedAtIso: "2026-08-08T01:02:03.000Z"
+    });
+    const server = Fastify();
+    registerAutomationRoutes(server, {
+      authService: undefined,
+      briefingRuntimeStatus: runtimeStatus.get,
+      env: { MUSE_INTERRUPTION_LEDGER_FILE: ledgerFile }
+    });
+
+    const response = await server.inject({ method: "GET", url: "/api/automation/upcoming" });
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body) as AutomationUpcomingResponse;
+    expect(body.briefingRuntime).toEqual({
+      lastDecision: "route-unavailable",
+      lastDeliveredCount: 0,
+      lastErrorCount: 9_999,
+      lastImminentCount: 0,
+      lastObservedAtIso: "2026-08-08T01:02:03.000Z",
+      lastRoute: {
+        destination: null,
+        localOnly: true,
+        providerId: null,
+        reason: "remote-route-blocked-by-local-only",
+        source: "explicit-config",
+        status: "blocked-local-only"
+      }
+    });
+    expect(response.body).not.toContain("must-not-leak");
+    expect(response.body).not.toContain("private route detail");
   });
 });
 

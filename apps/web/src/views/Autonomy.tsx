@@ -32,6 +32,8 @@ import type {
   UpcomingDeliveryQueueSnapshot,
   UpcomingChannelDaemonKind,
   UpcomingChannelRuntime,
+  UpcomingBriefingRuntimeDecision,
+  UpcomingBriefingRuntimeStatus,
   VetoesResponse
 } from "../api/types.js";
 import type { StringKey, Translate } from "../i18n/index.js";
@@ -358,17 +360,19 @@ export function UpcomingSections({
   const hasDigest = data.digest !== null;
   const hasDigestRuntime = data.digestRuntime !== null && data.digestRuntime !== undefined;
   const hasDigestCard = hasDigest || hasDigestRuntime;
+  const hasBriefingRuntime = data.briefingRuntime !== null && data.briefingRuntime !== undefined;
   const hasBudget = data.budget !== null;
   const hasJobs = data.scheduledJobs.length > 0;
   const hasReminder = data.nextReminder !== null;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {!hasDigestCard && !hasBudget && !hasJobs && !hasReminder && (
+      {!hasDigestCard && !hasBriefingRuntime && !hasBudget && !hasJobs && !hasReminder && (
         <Empty icon={<Icon.clock />} hint={t("auto.upcoming.emptyHint")}>
           {t("auto.upcoming.emptyTitle")}
         </Empty>
       )}
       <GatewayCard gateway={data.gateway} t={t} />
+      <BriefingRuntimeCard runtime={data.briefingRuntime ?? null} t={t} locale={locale} />
       <ChannelRuntimeCard runtime={data.channelRuntime ?? null} t={t} locale={locale} />
       <DeliveryQueueCard snapshot={data.deliveryQueueSnapshot ?? null} t={t} locale={locale} />
       {hasDigestCard && <DigestCard digest={data.digest} digestRuntime={data.digestRuntime ?? null} t={t} locale={locale} />}
@@ -576,6 +580,19 @@ function proactiveRuntimeDecisionKey(decision: UpcomingProactiveRuntimeDecision 
   }
 }
 
+function briefingRuntimeDecisionKey(decision: UpcomingBriefingRuntimeDecision | string): StringKey {
+  switch (decision) {
+    case "already-running": return "auto.upcoming.briefingRuntime.decision.alreadyRunning";
+    case "quiet-hours": return "auto.upcoming.briefingRuntime.decision.quietHours";
+    case "route-unavailable": return "auto.upcoming.briefingRuntime.decision.routeUnavailable";
+    case "nothing-to-say": return "auto.upcoming.briefingRuntime.decision.nothingToSay";
+    case "in-window": return "auto.upcoming.briefingRuntime.decision.inWindow";
+    case "delivered": return "auto.upcoming.briefingRuntime.decision.delivered";
+    case "error": return "auto.upcoming.briefingRuntime.decision.error";
+    default: return "auto.upcoming.briefingRuntime.decision.unknown";
+  }
+}
+
 function reminderRuntimeDecisionKey(decision: UpcomingReminderRuntimeDecision | string): StringKey {
   switch (decision) {
     case "not-configured": return "auto.upcoming.reminderRuntime.decision.notConfigured";
@@ -779,6 +796,65 @@ function DigestRuntimeStatus({
       </div>
       <p className="subtle" style={{ fontSize: 12, marginTop: 8 }}>
         {t("auto.upcoming.digestRuntime.previewOnly")}
+      </p>
+    </div>
+  );
+}
+
+function BriefingRuntimeCard({
+  runtime,
+  t,
+  locale
+}: {
+  runtime: UpcomingBriefingRuntimeStatus | null;
+  t: Translate;
+  locale: string;
+}) {
+  return (
+    <Card title={t("auto.upcoming.briefingRuntime.title")}>
+      {runtime ? (
+        <BriefingRuntimeStatus runtime={runtime} t={t} locale={locale} />
+      ) : (
+        <p className="subtle" style={{ fontSize: 12 }}>
+          {t("auto.upcoming.briefingRuntime.noObservation")}
+        </p>
+      )}
+    </Card>
+  );
+}
+
+function BriefingRuntimeStatus({
+  runtime,
+  t,
+  locale
+}: {
+  runtime: UpcomingBriefingRuntimeStatus;
+  t: Translate;
+  locale: string;
+}) {
+  const observedAt = safeDateTime(runtime.lastObservedAtIso, locale) || t("auto.upcoming.briefingRuntime.timeUnavailable");
+  return (
+    <div>
+      <div className="row">
+        <div className="row-main">
+          <div className="row-title">{t(briefingRuntimeDecisionKey(runtime.lastDecision))}</div>
+          <div className="row-meta">{t("auto.upcoming.briefingRuntime.observed", { when: observedAt })}</div>
+          <div className="row-meta">
+            {t("auto.upcoming.briefingRuntime.counts", {
+              delivered: runtime.lastDeliveredCount,
+              errors: runtime.lastErrorCount,
+              imminent: runtime.lastImminentCount
+            })}
+          </div>
+          <div className="row-meta">
+            <span className="label">{t("auto.upcoming.runtimeRoute.lastExecution")}: </span>
+            {formatRuntimeRoute(runtime.lastRoute, t)}
+          </div>
+        </div>
+        <Badge tone="neutral">{t("auto.upcoming.briefingRuntime.previewBadge")}</Badge>
+      </div>
+      <p className="subtle" style={{ fontSize: 12, marginTop: 8 }}>
+        {t("auto.upcoming.briefingRuntime.previewOnly")}
       </p>
     </div>
   );

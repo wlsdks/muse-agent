@@ -406,6 +406,22 @@ export type UpcomingDigestRuntimeDecision =
   | "send-failed"
   | "sent";
 export type UpcomingMessagingRoute = GatewayRouteStatus;
+export type UpcomingBriefingRuntimeDecision =
+  | "already-running"
+  | "quiet-hours"
+  | "route-unavailable"
+  | "nothing-to-say"
+  | "in-window"
+  | "delivered"
+  | "error";
+export interface UpcomingBriefingRuntimeStatus {
+  readonly lastDecision: UpcomingBriefingRuntimeDecision;
+  readonly lastObservedAtIso: string;
+  readonly lastImminentCount: number;
+  readonly lastDeliveredCount: number;
+  readonly lastErrorCount: number;
+  readonly lastRoute?: UpcomingMessagingRoute;
+}
 export interface UpcomingDigestRuntimeStatus {
   readonly lastDecision: UpcomingDigestRuntimeDecision;
   readonly lastErrorCount: number;
@@ -542,6 +558,7 @@ export interface UpcomingChannelRuntime {
 }
 export interface AutomationUpcomingResponse {
   readonly digest: UpcomingDigest | null;
+  readonly briefingRuntime?: UpcomingBriefingRuntimeStatus | null;
   readonly digestRuntime?: UpcomingDigestRuntimeStatus | null;
   readonly followupRuntime?: UpcomingFollowupRuntimeStatus | null;
   readonly patternRuntime?: UpcomingPatternRuntimeStatus | null;

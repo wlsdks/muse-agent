@@ -31,6 +31,7 @@ import { resolveInterruptionBudgetWiring } from "./tick-daemons.js";
 import type { ChannelDaemonStatus } from "./channel-daemon-supervisor.js";
 import type { SchedulerRouteScheduler } from "./scheduler-routes.js";
 import type { ServerOptions } from "./server.js";
+import type { BriefingRuntimeStatus } from "./briefing-runtime-status.js";
 import type { DigestRuntimeStatus } from "./digest-runtime-status.js";
 import type { FollowupRuntimeStatus } from "./followup-runtime-status.js";
 import type { ProactiveRuntimeStatus } from "./proactive-runtime-status.js";
@@ -78,6 +79,8 @@ export interface AutomationRoutesGate {
   /** The live registry and pairing file used by daemon auto-routing. */
   readonly messagingRegistry?: MessagingProviderRegistry;
   readonly channelOwnersFile?: string;
+  /** Read-only in-memory status from the API situational-briefing daemon, if it has ticked. */
+  readonly briefingRuntimeStatus?: () => BriefingRuntimeStatus | null;
   /** Read-only in-memory status from the API digest daemon, if it has ticked. */
   readonly digestRuntimeStatus?: () => DigestRuntimeStatus | null;
   /** Read-only in-memory status from the API follow-up daemon, if it has ticked. */
@@ -133,6 +136,7 @@ export type GatewayRouteStatus = MessagingRouteResolution;
 
 export interface AutomationUpcomingResponse {
   readonly digest: UpcomingDigest | null;
+  readonly briefingRuntime: BriefingRuntimeStatus | null;
   readonly digestRuntime: DigestRuntimeStatus | null;
   readonly followupRuntime: FollowupRuntimeStatus | null;
   readonly proactiveRuntime: ProactiveRuntimeStatus | null;
@@ -163,6 +167,7 @@ export function registerAutomationRoutes(server: FastifyInstance, gate: Automati
     ]);
 
     const digestRuntime = projectDigestRuntimeStatus(gate.digestRuntimeStatus?.() ?? null);
+    const briefingRuntime = projectBriefingRuntimeStatus(gate.briefingRuntimeStatus?.() ?? null);
     const followupRuntime = gate.followupRuntimeStatus?.() ?? null;
     const proactiveRuntime = projectProactiveRuntimeStatus(gate.proactiveRuntimeStatus?.() ?? null);
     const reminderRuntime = gate.reminderRuntimeStatus?.() ?? null;
@@ -172,6 +177,7 @@ export function registerAutomationRoutes(server: FastifyInstance, gate: Automati
       budget,
       deliveryQueueSnapshot,
       digest,
+      briefingRuntime,
       digestRuntime,
       followupRuntime,
       gateway,
@@ -210,6 +216,18 @@ function projectDigestRuntimeStatus(status: DigestRuntimeStatus | null): DigestR
     lastDecision: status.lastDecision,
     lastErrorCount: status.lastErrorCount,
     lastItemCount: status.lastItemCount,
+    lastObservedAtIso: status.lastObservedAtIso,
+    lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute)
+  };
+}
+
+function projectBriefingRuntimeStatus(status: BriefingRuntimeStatus | null): BriefingRuntimeStatus | null {
+  if (!status) return null;
+  return {
+    lastDecision: status.lastDecision,
+    lastDeliveredCount: status.lastDeliveredCount,
+    lastErrorCount: status.lastErrorCount,
+    lastImminentCount: status.lastImminentCount,
     lastObservedAtIso: status.lastObservedAtIso,
     lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute)
   };

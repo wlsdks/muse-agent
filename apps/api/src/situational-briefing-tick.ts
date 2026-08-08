@@ -26,6 +26,10 @@ import {
   sanitizeMessagingRouteReceipt,
   unavailableMessagingRouteReceipt
 } from "./messaging-route-receipt.js";
+import type {
+  BriefingRuntimeDecision,
+  BriefingRuntimeStatusStore
+} from "./briefing-runtime-status.js";
 
 export interface SituationalBriefingTickOptions {
   readonly objectivesFile: string;
@@ -69,6 +73,7 @@ export interface SituationalBriefingTickOptions {
   readonly errorLogger?: (message: string) => void;
   readonly quietHours?: QuietHoursOption;
   readonly now?: () => Date;
+  readonly runtimeStatus?: BriefingRuntimeStatusStore;
 }
 
 const DEFAULT_INTERVAL_MS = 30 * 60_000;
@@ -87,17 +92,42 @@ export function startSituationalBriefingTick(
   const now = options.now ?? (() => new Date());
   let firing = false;
 
+  const observe = (
+    decision: BriefingRuntimeDecision,
+    at: Date,
+    imminentCount = 0,
+    deliveredCount = 0,
+    errorCount = 0,
+    lastRoute?: MessagingRouteResolution
+  ): void => {
+    try {
+      options.runtimeStatus?.record({
+        decision,
+        deliveredCount,
+        errorCount,
+        imminentCount,
+        lastRoute,
+        observedAtIso: at.toISOString()
+      });
+    } catch {
+    }
+  };
+
   const tickOnce = async (): Promise<void> => {
     if (firing) {
+      observe("already-running", now());
       return;
     }
+    const at = now();
     const activeQuietHours = resolveQuietHoursOption(options.quietHours);
-    if (activeQuietHours && isQuietHour(now().getHours(), activeQuietHours)) {
+    if (activeQuietHours && isQuietHour(at.getHours(), activeQuietHours)) {
+      observe("quiet-hours", at);
       return;
     }
     firing = true;
+    let route = unavailableMessagingRouteReceipt();
+    let imminentCount = 0;
     try {
-      let route: MessagingRouteResolution;
       try {
         const resolved = options.resolveRoute
           ? options.resolveRoute()
@@ -110,6 +140,7 @@ export function startSituationalBriefingTick(
         options.errorLogger?.("situational-briefing-tick: route-unavailable");
       }
       if (route.status !== "resolved" || !route.providerId || !route.destination) {
+        observe("route-unavailable", at, 0, 0, 0, route);
         if (route.status !== "unconfigured" || route.reason !== "paired-route-inspection-unavailable") {
           options.errorLogger?.(`situational-briefing-tick: route-unavailable (${route.reason ?? route.status})`);
         }
@@ -123,6 +154,7 @@ export function startSituationalBriefingTick(
           imminent = [];
         }
       }
+      imminentCount = imminent.length;
       const summary = await runDueSituationalBriefing({
         destination: route.destination,
         imminent,
@@ -143,10 +175,15 @@ export function startSituationalBriefingTick(
         ...(options.availabilityLine ? { availabilityLine: options.availabilityLine } : {}),
         ...(options.windowMs !== undefined ? { windowMs: options.windowMs } : {})
       });
+      const decision: BriefingRuntimeDecision = summary.delivered > 0
+        ? "delivered"
+        : summary.reason ?? "error";
+      observe(decision, at, imminentCount, summary.delivered, 0, route);
       if (summary.delivered > 0) {
         options.logger?.(`situational-briefing-tick: delivered via ${route.providerId}`);
       }
     } catch (cause) {
+      observe("error", at, imminentCount, 0, 1, route);
       const message = errorMessage(cause);
       options.errorLogger?.(`situational-briefing-tick: ${message}`);
     } finally {

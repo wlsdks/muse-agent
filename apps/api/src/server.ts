@@ -113,6 +113,7 @@ import { registerProgressiveAutonomyRoutes } from "./progressive-autonomy-routes
 import { registerUserModelReconfirmRoutes } from "./user-model-reconfirm-routes.js";
 import { registerPersonalStatusRoutes, resolveProposedActionsStatusFile } from "./personal-status-routes.js";
 import type { ConsolidateTickHandle } from "./consolidate-tick.js";
+import { createBriefingRuntimeStatusStore } from "./briefing-runtime-status.js";
 import { createDigestRuntimeStatusStore } from "./digest-runtime-status.js";
 import { createFollowupRuntimeStatusStore, recordFollowupRuntimeNotConfigured } from "./followup-runtime-status.js";
 import { createProactiveRuntimeStatusStore } from "./proactive-runtime-status.js";
@@ -202,6 +203,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const conversationStore = new FileConversationStore({ file: options.conversationsFile ?? defaultConversationsFile(env) });
   const runtimeSettings =
     options.runtimeSettings ?? new RuntimeSettings(new InMemoryRuntimeSettingsStore());
+  const briefingRuntimeStatus = createBriefingRuntimeStatusStore();
   const digestRuntimeStatus = createDigestRuntimeStatusStore();
   const followupRuntimeStatus = createFollowupRuntimeStatusStore();
   const proactiveRuntimeStatus = createProactiveRuntimeStatusStore();
@@ -596,6 +598,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     ...(options.messaging ? { messagingRegistry: options.messaging } : {}),
     channelOwnersFile: integrationEnv.messaging.ownersFile,
     channelDaemonStatus: () => channelDaemons.status(),
+    briefingRuntimeStatus: briefingRuntimeStatus.get,
     digestRuntimeStatus: digestRuntimeStatus.get,
     followupRuntimeStatus: followupRuntimeStatus.get,
     patternRuntimeStatus: patternRuntimeStatus.get,
@@ -810,7 +813,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     startProactiveDaemonIfConfigured(env, server, options, phaseDWiring, proactiveRuntimeStatus);
     startFollowupDaemonIfConfigured(env, server, options, followupRuntimeStatus);
     startPatternDaemonIfConfigured(env, server, options, patternRuntimeStatus);
-    startSituationalBriefingDaemonIfConfigured(env, server, options, integrationEnv.localOnly);
+    startSituationalBriefingDaemonIfConfigured(env, server, options, integrationEnv.localOnly, briefingRuntimeStatus);
     startObjectivesDaemonIfConfigured(env, server, options);
     startAmbientDaemonIfConfigured(env, server, options);
     startWebWatchDaemonIfConfigured(env, server, options);
