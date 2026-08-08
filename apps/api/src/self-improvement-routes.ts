@@ -1,7 +1,9 @@
-import { readPlaybook, readWeaknesses, readSkillRewards, adjustSkillReward, isSkillAvoided, readReflections, listReflections, type PlaybookEntry, type WeaknessEntry, type StoredReflection } from "@muse/stores";
+import { isLearningPaused, readPendingLearnEvents, readPlaybook, readWeaknesses, readSkillRewards, adjustSkillReward, isSkillAvoided, readReflections, listReflections, type PlaybookEntry, type WeaknessEntry, type StoredReflection } from "@muse/stores";
 import { loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import type { FastifyInstance } from "fastify";
 
+import { CONSOLIDATE_IDLE_FLAG, resolveConsolidateIdleEnabled } from "./consolidate-idle-flag.js";
+import type { ConsolidateTickDecision, ConsolidateTickStatus } from "./consolidate-tick.js";
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
 
@@ -143,6 +145,39 @@ export interface ReflectionsResponse {
   readonly entries: readonly ReflectionView[];
 }
 
+export type SelfImprovementRuntimeState = "dormant" | "running" | "unconfigured";
+
+export interface SelfImprovementStatusResponse {
+  readonly configured: boolean;
+  readonly enabled: boolean;
+  readonly paused: boolean;
+  readonly pendingCorrections: number;
+  readonly state: SelfImprovementRuntimeState;
+  readonly lastObservedAtIso: string | null;
+  readonly lastDecision: ConsolidateTickDecision | null;
+}
+
+export interface SelfImprovementStatusInput {
+  readonly configured: boolean;
+  readonly enabled: boolean;
+  readonly paused: boolean;
+  readonly pendingCorrections: number;
+  readonly daemonStatus?: ConsolidateTickStatus;
+}
+
+export function shapeSelfImprovementStatus(input: SelfImprovementStatusInput): SelfImprovementStatusResponse {
+  const daemonAvailable = input.daemonStatus !== undefined;
+  return {
+    configured: input.configured,
+    enabled: input.enabled,
+    paused: input.paused,
+    pendingCorrections: input.pendingCorrections,
+    state: !input.configured ? "unconfigured" : daemonAvailable && input.enabled ? "running" : "dormant",
+    lastObservedAtIso: input.daemonStatus?.lastObservedAtIso ?? null,
+    lastDecision: input.daemonStatus?.lastDecision ?? null
+  };
+}
+
 export function shapeReflections(reflections: readonly StoredReflection[]): ReflectionsResponse {
   const ordered = listReflections(reflections);
   return {
@@ -159,6 +194,12 @@ export function shapeReflections(reflections: readonly StoredReflection[]): Refl
 
 export interface SelfImprovementRoutesGate {
   readonly authService: ServerOptions["authService"];
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly runtimeSettings?: ServerOptions["runtimeSettings"];
+  readonly configured: boolean;
+  readonly learnQueueFile: string;
+  readonly learningPauseFile: string;
+  readonly consolidateStatus?: () => ConsolidateTickStatus | undefined;
   readonly weaknessesFile: string;
   readonly playbookFile: string;
   readonly authoredSkillsDir: string;
@@ -208,6 +249,31 @@ export function registerSelfImprovementRoutes(server: FastifyInstance, gate: Sel
     }
     const reflections = await readReflections(gate.reflectionsFile);
     return shapeReflections(reflections);
+  });
+
+  server.get("/api/self-improvement/status", async (request, reply) => {
+    if (!authed(request, reply)) {
+      return reply;
+    }
+
+    let runtimeSetting;
+    let runtimeSettingReadFailed = false;
+    try {
+      runtimeSetting = await gate.runtimeSettings?.find(CONSOLIDATE_IDLE_FLAG);
+    } catch {
+      runtimeSettingReadFailed = true;
+    }
+    const [pending, paused] = await Promise.all([
+      readPendingLearnEvents(gate.learnQueueFile),
+      isLearningPaused(gate.learningPauseFile)
+    ]);
+    return shapeSelfImprovementStatus({
+      configured: gate.configured,
+      daemonStatus: gate.consolidateStatus?.(),
+      enabled: runtimeSettingReadFailed ? false : resolveConsolidateIdleEnabled(gate.env, runtimeSetting),
+      paused,
+      pendingCorrections: pending.length
+    });
   });
 
   // Adjust a skill's learned reward (thumbs up/down). Local self-tuning —

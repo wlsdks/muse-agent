@@ -4,9 +4,10 @@ import { errorMessage } from "@muse/shared";
  * Sibling of reminder-tick.ts — same setInterval-on-the-API-server
  * pattern, calendar-imminence-driven signal source.
  *
- * Off by default. Activates only when:
- *   - `MUSE_PROACTIVE_PROVIDER` and `MUSE_PROACTIVE_DESTINATION` are set,
- *   - the messaging registry has the named provider,
+ * Activates only when the daemon wiring has a configured or paired route,
+ * though a paired route may be absent at startup. Each tick can resolve the
+ * route again so pairing changes take effect without restarting the API.
+ * The messaging registry has the selected provider,
  *   - a calendar registry is wired (some provider registered), and
  *   - a sidecar file is configured.
  *
@@ -20,12 +21,23 @@ import { dirname } from "node:path";
 
 import type { AgentInitiatedNoticeBroker } from "@muse/agent-core";
 import { buildGroundingReverify } from "@muse/agent-core";
-import { runDueProactiveNotices, type ProactiveActivitySource, type ProactiveAgentRuntimeLike, type ProactiveModelProviderLike } from "@muse/proactivity";
+import {
+  runDueProactiveNotices,
+  type ProactiveActivitySource,
+  type ProactiveAgentRuntimeLike,
+  type ProactiveModelProviderLike,
+  type RunDueProactiveNoticesSummary
+} from "@muse/proactivity";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 
 import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
+import type {
+  ProactiveRuntimeDecision,
+  ProactiveRuntimeStatusStore,
+  ProactiveRuntimeStatusUpdate
+} from "./proactive-runtime-status.js";
 
 export interface ProactiveTickOptions {
   readonly calendarRegistry?: CalendarProviderRegistry;
@@ -48,14 +60,17 @@ export interface ProactiveTickOptions {
     readonly factSheet: string;
   }) => Promise<string | undefined>;
   readonly messagingRegistry: MessagingProviderRegistry;
-  readonly providerId: string;
-  readonly destination: string;
+  readonly providerId?: string;
+  readonly destination?: string;
+  /** Re-resolves the canonical route immediately before delivery. */
+  readonly resolveRoute?: () => { readonly providerId: string; readonly destination: string } | undefined;
   readonly effectFile?: string;
   readonly sidecarFile: string;
   readonly leadMinutes?: number;
   readonly intervalMs?: number;
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
+  readonly runtimeStatus?: ProactiveRuntimeStatusStore;
   /**
    * Phase D — agent-initiated turn. Pass `modelProvider` (preferred,
    * raw text gen without tool registry) OR `agentRuntime` (legacy,
@@ -124,15 +139,27 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
   let firing = false;
 
   const tickOnce = async (): Promise<void> => {
+    const observedAt = now();
     if (firing) {
+      recordRuntimeStatus(options, { decision: "already-running", observedAtIso: observedAt.toISOString() });
       return;
     }
     const activeQuietHours = resolveQuietHoursOption(options.quietHours);
-    if (activeQuietHours && isQuietHour(now().getHours(), activeQuietHours)) {
+    if (activeQuietHours && isQuietHour(observedAt.getHours(), activeQuietHours)) {
+      recordRuntimeStatus(options, { decision: "quiet-hours", observedAtIso: observedAt.toISOString() });
       return;
     }
     firing = true;
     try {
+      const route = options.resolveRoute
+        ? options.resolveRoute()
+        : options.providerId !== undefined && options.destination !== undefined
+          ? { destination: options.destination, providerId: options.providerId }
+          : undefined;
+      if (!route) {
+        recordRuntimeStatus(options, { decision: "route-unavailable", observedAtIso: observedAt.toISOString() });
+        return;
+      }
       const summary = await runDueProactiveNotices({
         ...(options.activeSessionWindowMs !== undefined ? { activeSessionWindowMs: options.activeSessionWindowMs } : {}),
         ...(options.activitySource ? { activitySource: options.activitySource } : {}),
@@ -149,17 +176,26 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
         ...(options.calendarRegistry ? { calendarRegistry: options.calendarRegistry } : {}),
         ...(options.effectFile ? { effectFile: options.effectFile } : {}),
         ...(options.investigate ? { investigate: options.investigate } : {}),
-        destination: options.destination,
+        destination: route.destination,
         ...(options.historyFile ? { historyFile: options.historyFile } : {}),
         ...(options.leadMinutes !== undefined ? { leadMinutes: options.leadMinutes } : {}),
         messagingRegistry: options.messagingRegistry,
         now,
-        providerId: options.providerId,
+        providerId: route.providerId,
         ...(options.sessionLockFile ? { sessionLockFile: options.sessionLockFile } : {}),
         sidecarFile: options.sidecarFile,
         ...(options.tasksFile ? { tasksFile: options.tasksFile } : {}),
         ...(options.trustLedgerFile ? { trustLedgerFile: options.trustLedgerFile } : {}),
         ...(options.dailyCap !== undefined && options.dailyCap > 0 ? { dailyCap: options.dailyCap } : {})
+      });
+      recordRuntimeStatus(options, {
+        decision: classifyRuntimeDecision(summary),
+        observedAtIso: observedAt.toISOString(),
+        imminentCount: summary.imminent,
+        firedCount: summary.fired,
+        suppressedCount: summary.suppressions?.length ?? 0,
+        errorCount: summary.errors.length,
+        ...(summary.sessionLockedUntil ? { sessionLockedUntilIso: summary.sessionLockedUntil } : {})
       });
       if (summary.sessionLockedUntil) {
         // One log per tick — audit trail without user spam.
@@ -168,7 +204,7 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
         );
       } else if (summary.fired > 0 || summary.errors.length > 0) {
         options.logger?.(
-          `proactive-tick: fired ${summary.fired.toString()} of ${summary.imminent.toString()} imminent via ${options.providerId}` +
+          `proactive-tick: fired ${summary.fired.toString()} of ${summary.imminent.toString()} imminent via ${route.providerId}` +
             (summary.errors.length > 0 ? `, ${summary.errors.length.toString()} error(s)` : "")
         );
         for (const error of summary.errors) {
@@ -176,6 +212,11 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
         }
       }
     } catch (cause) {
+      recordRuntimeStatus(options, {
+        decision: "error",
+        observedAtIso: observedAt.toISOString(),
+        errorCount: 1
+      });
       const message = errorMessage(cause);
       options.errorLogger?.(`proactive-tick: ${message}`);
     } finally {
@@ -194,6 +235,24 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
     stop: () => clearInterval(handle),
     tickOnce
   };
+}
+
+function recordRuntimeStatus(options: ProactiveTickOptions, update: ProactiveRuntimeStatusUpdate): void {
+  try {
+    options.runtimeStatus?.record(update);
+  } catch {
+  }
+}
+
+function classifyRuntimeDecision(summary: RunDueProactiveNoticesSummary): ProactiveRuntimeDecision {
+  if (summary.outcome === "lock-held") return "lock-held";
+  if (summary.outcome === "lock-error") return "lock-error";
+  if (summary.sessionLockedUntil) return "session-locked";
+  if (summary.errors.length > 0) return "error";
+  if (summary.fired > 0) return "fired";
+  if ((summary.suppressions?.length ?? 0) > 0) return "suppressed";
+  if (summary.imminent === 0) return "no-imminent";
+  return "completed";
 }
 
 function clampInterval(raw: number): number {

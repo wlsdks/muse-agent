@@ -7,8 +7,9 @@
  * pulling each into its own `*IfConfigured` function keeps that
  * file focused on Fastify wiring + routes.
  *
- * No behaviour change — every env key, default, conditional gate,
- * and option destructure matches the prior inline code line-for-line.
+ * Every env key, default, and conditional gate stays explicit here; the
+ * proactive and digest route is deliberately re-resolved by their tick
+ * adapters so pairing changes do not require an API restart.
  *
  * Telegram / Slack / Discord polling daemons stay inline in
  * server.ts for now; their wiring has enough unique pre-checks
@@ -17,11 +18,13 @@
  */
 
 import { homedir } from "node:os";
+import { accessSync, constants, lstatSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, createQualificationLearningWriteGate, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveAuthoredSkillsDir, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveHomeAssistantEnvironment, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, createQualificationLearningWriteGate, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveAuthoredSkillsDir, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveHomeAssistantEnvironment, resolveIntegrationEnvironment, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveProactiveMessagingRoute, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
 import { isLocalOnlyEnabled } from "@muse/model";
+import type { RuntimeSettings } from "@muse/runtime-settings";
 import type { FastifyInstance } from "fastify";
 
 import type { ServerOptions } from "./server.js";
@@ -33,21 +36,28 @@ import {
   startProactiveTick,
   type InMemoryActivityTracker
 } from "./proactive-tick.js";
-import { startConsolidateTick } from "./consolidate-tick.js";
+import { startConsolidateTick, type ConsolidateTickHandle } from "./consolidate-tick.js";
+import { CONSOLIDATE_IDLE_FLAG, resolveConsolidateIdleEnabled } from "./consolidate-idle-flag.js";
 import { distillQueuedCorrections } from "./distill-queue.js";
 import { isModelResidentLive } from "./model-resident.js";
 import { osIdleMs } from "./os-idle.js";
 import { isOnAcPower } from "./power-state.js";
-import { readTasks, readReminders, queryActionLog, resolveTasksDueLine, formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, resolveLearnQueueFile, decayStalePlaybookRewards } from "@muse/stores";
+import { readTasks, readReminders, queryActionLog, resolveTasksDueLine, formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, resolveLearnQueueFile, decayStalePlaybookRewards, parseFollowupsStrict } from "@muse/stores";
 import { createMessagingObjectiveActuator, createModelObjectiveEvaluator, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, MacOsActiveWindowSource, resolveDayShapeLine, resolveEffectiveQuietHours, parseAmbientNoticeRules, webWatchesFromConfig, type BriefingImminent, type QuietHourRange } from "@muse/proactivity";
 import { createNotesInvestigator, extractEmailAddress, GmailEmailProvider, LocalDirNotesProvider, LocalFileTasksProvider, OpenMeteoWeatherProvider, homeWatchesFromConfig, parseHomeAlertChecks, resolveHomeAlertLine } from "@muse/domain-tools";
 import { startAmbientTick } from "./ambient-tick.js";
 import { startWebWatchTick } from "./web-watch-tick.js";
 import { startDigestTick } from "./digest-tick.js";
 import { startFollowupTick } from "./followup-tick.js";
+import { recordFollowupRuntimeNotConfigured } from "./followup-runtime-status.js";
 import { startObjectivesTick } from "./objectives-tick.js";
 import { startPatternTick } from "./pattern-tick.js";
+import { recordPatternRuntimeNotConfigured, type PatternRuntimeStatusStore } from "./pattern-runtime-status.js";
 import { startSituationalBriefingTick } from "./situational-briefing-tick.js";
+import type { DigestRuntimeStatusStore } from "./digest-runtime-status.js";
+import type { FollowupRuntimeStatusStore } from "./followup-runtime-status.js";
+import type { ProactiveRuntimeStatusStore } from "./proactive-runtime-status.js";
+import type { ReminderRuntimeStatusStore } from "./reminder-runtime-status.js";
 
 function stopOnClose(server: FastifyInstance, handle: { stop(): void }): void {
   server.addHook("onClose", async () => {
@@ -113,20 +123,102 @@ function resolveMessagingTarget(
   return { providerId, destination, registry: options.messaging };
 }
 
+function resolveProactiveMessagingTarget(
+  env: NodeJS.ProcessEnv,
+  options: ServerOptions
+): { readonly providerId: string; readonly destination: string } | undefined {
+  const registry = options.messaging;
+  if (!registry) {
+    return undefined;
+  }
+  const ownersFile = options.integrationEnv?.messaging.ownersFile
+    ?? resolveIntegrationEnvironment(env).messaging.ownersFile;
+  const localOnly = options.integrationEnv?.localOnly ?? options.localOnly;
+  const resolution = resolveProactiveMessagingRoute(env, {
+    ownersFile,
+    registry,
+    ...(localOnly !== undefined ? { localOnly } : {})
+  });
+  if (resolution.status !== "resolved" || !resolution.providerId || !resolution.destination) {
+    return undefined;
+  }
+  return { destination: resolution.destination, providerId: resolution.providerId };
+}
+
+function hasExplicitProactiveMessagingRoute(env: NodeJS.ProcessEnv): boolean {
+  return Boolean(env.MUSE_PROACTIVE_PROVIDER?.trim() || env.MUSE_PROACTIVE_DESTINATION?.trim());
+}
+
+function isReadableReminderFile(file: string): boolean {
+  try {
+    if (!statSync(file).isFile()) {
+      return false;
+    }
+    accessSync(file, constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isReadableFollowupFile(file: string): boolean {
+  try {
+    if (!statSync(file).isFile()) {
+      return false;
+    }
+    accessSync(file, constants.R_OK);
+    parseFollowupsStrict(readFileSync(file, "utf8"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isReadablePatternFile(file: string): boolean {
+  try {
+    lstatSync(file);
+  } catch (cause) {
+    return (cause as NodeJS.ErrnoException).code === "ENOENT";
+  }
+  try {
+    if (!statSync(file).isFile()) {
+      return false;
+    }
+    accessSync(file, constants.R_OK);
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { fired?: unknown }).fired)) {
+      return false;
+    }
+    return (parsed as { fired: unknown[] }).fired.every((entry) => {
+      if (!entry || typeof entry !== "object") return false;
+      const record = entry as { patternId?: unknown; firedAtMs?: unknown; dismissed?: unknown };
+      return typeof record.patternId === "string"
+        && typeof record.firedAtMs === "number"
+        && Number.isFinite(record.firedAtMs)
+        && (record.dismissed === undefined || typeof record.dismissed === "boolean");
+    });
+  } catch {
+    return false;
+  }
+}
+
 export interface PhaseDActivityWiring {
   readonly phaseDReminderOn: boolean;
   readonly phaseDProactiveOn: boolean;
   readonly sharedActivityTracker?: InMemoryActivityTracker;
+  readonly runtimeSettings?: RuntimeSettings;
 }
 
 export function startReminderDaemonIfConfigured(
   env: NodeJS.ProcessEnv,
   server: FastifyInstance,
   options: ServerOptions,
-  phaseD: PhaseDActivityWiring
+  phaseD: PhaseDActivityWiring,
+  runtimeStatus?: ReminderRuntimeStatusStore
 ): void {
   const target = resolveMessagingTarget(env.MUSE_REMINDER_DEFAULT_PROVIDER, env.MUSE_REMINDER_DEFAULT_DESTINATION, options);
-  if (!target || !options.remindersFile) {
+  if (!target || !options.remindersFile || !isReadableReminderFile(options.remindersFile)) {
+    recordReminderRuntimeStatus(runtimeStatus, "not-configured");
     return;
   }
   const { providerId: tickProvider, destination: tickDestination, registry: tickRegistry } = target;
@@ -150,26 +242,39 @@ export function startReminderDaemonIfConfigured(
     providerId: tickProvider,
     ...(quietHours ? { quietHours } : {}),
     registry: tickRegistry,
-    remindersFile: options.remindersFile
+    remindersFile: options.remindersFile,
+    ...(runtimeStatus ? { runtimeStatus } : {})
   });
   stopOnClose(server, tickHandle);
+}
+
+function recordReminderRuntimeStatus(
+  runtimeStatus: ReminderRuntimeStatusStore | undefined,
+  decision: "not-configured"
+): void {
+  try {
+    runtimeStatus?.record({ decision, observedAtIso: new Date().toISOString() });
+  } catch {
+  }
 }
 
 export function startProactiveDaemonIfConfigured(
   env: NodeJS.ProcessEnv,
   server: FastifyInstance,
   options: ServerOptions,
-  phaseD: PhaseDActivityWiring
+  phaseD: PhaseDActivityWiring,
+  runtimeStatus?: ProactiveRuntimeStatusStore
 ): void {
   const proactiveCalendar = options.calendar && options.calendar.list().length > 0
     ? options.calendar
     : undefined;
   const proactiveHasSignal = Boolean(proactiveCalendar) || Boolean(options.tasksFile);
-  const target = resolveMessagingTarget(env.MUSE_PROACTIVE_PROVIDER, env.MUSE_PROACTIVE_DESTINATION, options);
-  if (!target || !proactiveHasSignal) {
+  const resolveRoute = () => resolveProactiveMessagingTarget(env, options);
+  const target = resolveRoute();
+  if (!options.messaging || !proactiveHasSignal || (hasExplicitProactiveMessagingRoute(env) && !target)) {
     return;
   }
-  const { providerId: proactiveProvider, destination: proactiveDestination, registry: proactiveRegistry } = target;
+  const proactiveRegistry = options.messaging;
   const proactiveTickMsRaw = optionalNumber(env.MUSE_PROACTIVE_TICK_MS);
   const proactiveLeadRaw = optionalNumber(env.MUSE_PROACTIVE_LEAD_MINUTES);
   const proactiveQuietHours = liveQuietHours(env, server, env.MUSE_PROACTIVE_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
@@ -211,7 +316,7 @@ export function startProactiveDaemonIfConfigured(
     ...(options.proactiveHistoryFile ? { historyFile: options.proactiveHistoryFile } : {}),
     ...(proactiveCalendar ? { calendarRegistry: proactiveCalendar } : {}),
     ...(options.tasksFile ? { tasksFile: options.tasksFile } : {}),
-    destination: proactiveDestination,
+    ...(target ? { destination: target.destination, providerId: target.providerId } : {}),
     effectFile: join(
       dirname(options.actionLogFile ?? resolveActionLogFile(env)),
       "outbound-effects.json"
@@ -221,7 +326,8 @@ export function startProactiveDaemonIfConfigured(
     ...(proactiveLeadRaw !== undefined ? { leadMinutes: proactiveLeadRaw } : {}),
     logger: (message) => server.log.info(message),
     messagingRegistry: proactiveRegistry,
-    providerId: proactiveProvider,
+    ...(runtimeStatus ? { runtimeStatus } : {}),
+    resolveRoute,
     quietHours: proactiveQuietHours,
     ...(options.sessionLockFile ? { sessionLockFile: options.sessionLockFile } : {}),
     sidecarFile: proactiveSidecarFile,
@@ -243,47 +349,51 @@ export function startProactiveDaemonIfConfigured(
 export function startDigestDaemonIfConfigured(
   env: NodeJS.ProcessEnv,
   server: FastifyInstance,
-  options: ServerOptions
+  options: ServerOptions,
+  runtimeStatus?: DigestRuntimeStatusStore
 ): void {
-  const digestProvider = env.MUSE_PROACTIVE_PROVIDER?.trim();
-  const digestDestination = env.MUSE_PROACTIVE_DESTINATION?.trim();
-  if (
-    !parseBoolean(env.MUSE_DIGEST_ENABLED, true)
-    || !digestProvider || digestProvider.length === 0
-    || !digestDestination || digestDestination.length === 0
-    || !options.messaging
-    || !options.messaging.has(digestProvider)
-  ) {
+  if (!parseBoolean(env.MUSE_DIGEST_ENABLED, true)) {
     return;
   }
+  const resolveRoute = () => resolveProactiveMessagingTarget(env, options);
+  const target = resolveRoute();
+  if (!options.messaging || (hasExplicitProactiveMessagingRoute(env) && !target)) {
+    return;
+  }
+  const digestRegistry = options.messaging;
   const tickMsRaw = env.MUSE_DIGEST_TICK_MS ? Number(env.MUSE_DIGEST_TICK_MS) : undefined;
   const digestHourRaw = env.MUSE_DIGEST_HOUR ? Number(env.MUSE_DIGEST_HOUR) : undefined;
   const digestQuietHours = liveQuietHours(env, server, env.MUSE_PROACTIVE_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const digestHandle = startDigestTick({
-    destination: digestDestination,
+    ...(target ? { destination: target.destination, providerId: target.providerId } : {}),
     digestFile: resolveDigestQueueFile(env),
     ...(digestHourRaw !== undefined ? { digestHour: digestHourRaw } : {}),
     errorLogger: (message) => server.log.warn(message),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     logger: (message) => server.log.info(message),
-    providerId: digestProvider,
+    ...(options.digestTick?.now ? { now: options.digestTick.now } : {}),
+    resolveRoute,
+    ...(runtimeStatus ? { runtimeStatus } : {}),
     quietHours: digestQuietHours,
-    registry: options.messaging,
+    registry: digestRegistry,
     sentFile: resolveDigestSentFile(env)
   });
   server.addHook("onClose", async () => {
     digestHandle.stop();
   });
+  options.digestTick?.onHandle?.(digestHandle);
 }
 
 export function startFollowupDaemonIfConfigured(
   env: NodeJS.ProcessEnv,
   server: FastifyInstance,
-  options: ServerOptions
+  options: ServerOptions,
+  runtimeStatus?: FollowupRuntimeStatusStore
 ): void {
   const followupModelProvider = backgroundModelProvider(options);
   const target = resolveMessagingTarget(env.MUSE_FOLLOWUP_DEFAULT_PROVIDER, env.MUSE_FOLLOWUP_DEFAULT_DESTINATION, options);
-  if (!target || !options.followupsFile || !followupModelProvider || !options.defaultModel) {
+  if (!target || !options.followupsFile || !isReadableFollowupFile(options.followupsFile) || !followupModelProvider || !options.defaultModel) {
+    recordFollowupRuntimeNotConfigured(runtimeStatus);
     return;
   }
   const { providerId: followupProvider, destination: followupDestination, registry: followupRegistry } = target;
@@ -303,10 +413,12 @@ export function startFollowupDaemonIfConfigured(
     modelProvider: followupModelProvider,
     providerId: followupProvider,
     quietHours: followupQuietHours,
-    registry: followupRegistry
+    registry: followupRegistry,
+    ...(runtimeStatus ? { runtimeStatus } : {})
   });
   stopOnClose(server, followupHandle);
 }
+
 
 /**
  * Build the shared knowledge enricher (unified live corpus + cached
@@ -519,11 +631,13 @@ export function startObjectivesDaemonIfConfigured(
 export function startPatternDaemonIfConfigured(
   env: NodeJS.ProcessEnv,
   server: FastifyInstance,
-  options: ServerOptions
+  options: ServerOptions,
+  runtimeStatus?: PatternRuntimeStatusStore
 ): void {
   const patternEnabled = parseBoolean(env.MUSE_PROACTIVE_PATTERN_ENABLED, false);
   const target = resolveMessagingTarget(env.MUSE_PROACTIVE_PATTERN_PROVIDER, env.MUSE_PROACTIVE_PATTERN_DESTINATION, options);
-  if (!patternEnabled || !target || !options.patternsFiredFile) {
+  if (!patternEnabled || !target || !options.patternsFiredFile || !isReadablePatternFile(options.patternsFiredFile)) {
+    recordPatternRuntimeNotConfigured(runtimeStatus);
     return;
   }
   const { providerId: patternProvider, destination: patternDestination, registry: patternRegistry } = target;
@@ -550,34 +664,41 @@ export function startPatternDaemonIfConfigured(
     patternsFiredFile: options.patternsFiredFile,
     providerId: patternProvider,
     quietHours: patternQuietHours,
-    registry: patternRegistry
+    registry: patternRegistry,
+    ...(runtimeStatus ? { runtimeStatus } : {})
   });
   stopOnClose(server, patternHandle);
 }
 
 /**
- * N1c — idle-gated curator daemon. Off by default; activates when
- * `MUSE_SKILL_CONSOLIDATE_IDLE_ENABLED=true` AND a model provider + default
- * model are wired (the umbrella merge is a local-Qwen call). Folds overlapping
- * authored skills into umbrellas autonomously while the user is idle, instead
- * of only at chat session-end. The idle signal reuses the shared activity
- * tracker when phaseD already runs one; otherwise it stands up its own (+ an
- * onRequest hook) so "idle" reflects real /api/chat traffic regardless.
+ * N1c — idle-gated curator daemon. A model provider + default model start a
+ * dormant tick loop; the selected flag is resolved at every tick. Folds
+ * overlapping authored skills into umbrellas autonomously while the user is
+ * idle, instead of only at chat session-end. The idle signal reuses the shared
+ * activity tracker when phaseD already runs one; otherwise it stands up its
+ * own (+ an onRequest hook) so "idle" reflects real /api/chat traffic.
  */
 export function startConsolidateDaemonIfConfigured(
   env: NodeJS.ProcessEnv,
   server: FastifyInstance,
   options: ServerOptions,
   phaseD: PhaseDActivityWiring
-): void {
+): ConsolidateTickHandle | undefined {
   const consolidateProvider = backgroundModelProvider(options);
-  if (
-    !parseBoolean(env.MUSE_SKILL_CONSOLIDATE_IDLE_ENABLED, false)
-    || !consolidateProvider
-    || !options.defaultModel
-  ) {
-    return;
+  if (!consolidateProvider || !options.defaultModel) {
+    return undefined;
   }
+  const runtimeSettings = phaseD.runtimeSettings ?? options.runtimeSettings;
+  const isConsolidateEnabled = async (): Promise<boolean> => {
+    try {
+      const runtimeSetting = runtimeSettings
+        ? await runtimeSettings.find(CONSOLIDATE_IDLE_FLAG)
+        : undefined;
+      return resolveConsolidateIdleEnabled(env, runtimeSetting);
+    } catch {
+      return false;
+    }
+  };
   let source = phaseD.sharedActivityTracker;
   if (!source) {
     const presenceFile = env.MUSE_PROACTIVE_PRESENCE_FILE?.trim();
@@ -606,6 +727,7 @@ export function startConsolidateDaemonIfConfigured(
     authoredSkillsDir,
     ...(Number.isFinite(curateIdleDays) && curateIdleDays > 0 ? { curateMaxIdleDays: curateIdleDays } : {}),
     errorLogger: (message) => server.log.warn(message),
+    isEnabled: isConsolidateEnabled,
     lastActivityMs: () => activitySource.lastActivityMs(),
     logger: (message) => server.log.info(message),
     model: options.defaultModel,
@@ -642,6 +764,7 @@ export function startConsolidateDaemonIfConfigured(
     quietHours: consolidateQuietHours
   });
   stopOnClose(server, consolidateHandle);
+  return consolidateHandle;
 }
 
 /**

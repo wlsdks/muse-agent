@@ -11,12 +11,15 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { resolveProactiveMessagingRoute } from "@muse/autoconfigure";
+import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
+import { writeTasks, withFileLock } from "@muse/stores";
 import { describe, expect, it } from "vitest";
-import { withFileLock } from "@muse/stores";
 
 import {
   createFileBackedActivityTracker,
-  createInMemoryActivityTracker
+  createInMemoryActivityTracker,
+  startProactiveTick
 } from "../src/proactive-tick.js";
 
 async function waitForFile(file: string): Promise<void> {
@@ -237,3 +240,71 @@ describe("createFileBackedActivityTracker", () => {
     expect(tracker.lastActivityMs()).toBeUndefined();
   });
 });
+
+describe("startProactiveTick route refresh", () => {
+  it("re-resolves the paired owner before each delivery and no-ops when pairing is invalid", async () => {
+    const root = await mkdtemp(join(tmpdir(), "muse-proactive-route-refresh-"));
+    const ownersFile = join(root, "channel-owners.json");
+    const sidecarFile = join(root, "proactive-fired.json");
+    const tasksFile = join(root, "tasks.json");
+    await writeFile(ownersFile, JSON.stringify({ owners: { telegram: "owner-a" }, version: 1 }));
+    const now = new Date("2026-05-18T09:00:00.000Z");
+    const task = (id: string) => ({
+      createdAt: now.toISOString(),
+      dueAt: "2026-05-18T09:05:00.000Z",
+      id,
+      status: "open" as const,
+      title: `Task ${id}`
+    });
+    await writeTasks(tasksFile, [task("first")]);
+    const sent: Array<{ readonly destination: string; readonly providerId: string }> = [];
+    const registry = new MessagingProviderRegistry([
+      routeRefreshProvider("telegram", sent),
+      routeRefreshProvider("discord", sent)
+    ]);
+    const resolveRoute = () => {
+      const resolution = resolveProactiveMessagingRoute({}, { ownersFile, registry });
+      return resolution.status === "resolved" && resolution.providerId && resolution.destination
+        ? { destination: resolution.destination, providerId: resolution.providerId }
+        : undefined;
+    };
+    const handle = startProactiveTick({
+      messagingRegistry: registry,
+      now: () => now,
+      resolveRoute,
+      sidecarFile,
+      tasksFile
+    });
+    try {
+      await handle.tickOnce();
+      await writeFile(ownersFile, JSON.stringify({ owners: { discord: "owner-b" }, version: 1 }));
+      await writeTasks(tasksFile, [task("second")]);
+      await handle.tickOnce();
+      expect(sent).toEqual([
+        { destination: "owner-a", providerId: "telegram" },
+        { destination: "owner-b", providerId: "discord" }
+      ]);
+
+      await writeFile(ownersFile, JSON.stringify({ owners: { discord: "owner-b", telegram: "owner-a" }, version: 1 }));
+      await writeTasks(tasksFile, [task("third")]);
+      await handle.tickOnce();
+      await writeFile(ownersFile, JSON.stringify({ owners: {}, version: 1 }));
+      await writeTasks(tasksFile, [task("fourth")]);
+      await handle.tickOnce();
+      expect(sent).toHaveLength(2);
+    } finally {
+      handle.stop();
+    }
+  });
+});
+
+function routeRefreshProvider(id: "telegram" | "discord", sent: Array<{ readonly destination: string; readonly providerId: string }>): MessagingProvider {
+  return {
+    describe: () => ({ description: "route-refresh-test", displayName: id, id }),
+    id,
+    async send(message: OutboundMessage): Promise<OutboundReceipt> {
+      sent.push({ destination: message.destination, providerId: id });
+      return { destination: message.destination, messageId: `${id}-message`, providerId: id };
+    }
+  };
+}

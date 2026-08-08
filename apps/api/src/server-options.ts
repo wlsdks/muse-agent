@@ -130,6 +130,11 @@ export interface ServerOptions {
   readonly personaFilePath?: string;
   readonly requireAuth?: boolean;
   readonly runtimeSettings?: RuntimeSettings;
+  /** Deterministic API digest-daemon seam used by focused integration tests. */
+  readonly digestTick?: {
+    readonly now?: () => Date;
+    readonly onHandle?: (handle: import("./digest-tick.js").DigestTickHandle) => void;
+  };
   readonly scheduler?: SchedulerRouteScheduler;
   readonly sessionTagStore?: SessionTagStore;
   readonly taskMemoryMaintenance?: TaskMemoryMaintenance;

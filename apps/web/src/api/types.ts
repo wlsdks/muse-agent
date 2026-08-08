@@ -374,6 +374,118 @@ interface UpcomingDigest {
   readonly hour: number;
   readonly nextAtIso: string;
 }
+export interface UpcomingDeliveryQueueBucket {
+  readonly count: number;
+  readonly oldestAgeMs: number | null;
+}
+export interface UpcomingDeliveryQueueSnapshot {
+  readonly generatedAt: string;
+  readonly pendingDrafts: UpcomingDeliveryQueueBucket;
+  readonly followups: {
+    readonly overdue: UpcomingDeliveryQueueBucket;
+    readonly scheduled: UpcomingDeliveryQueueBucket;
+  };
+  readonly reminders: {
+    readonly overdue: UpcomingDeliveryQueueBucket;
+    readonly scheduled: UpcomingDeliveryQueueBucket;
+  };
+  readonly status: "observed" | "unverified";
+}
+export type UpcomingDigestRuntimeDecision =
+  | "already-running"
+  | "already-sent-today"
+  | "cancelled-before-claim"
+  | "empty"
+  | "error"
+  | "lock-error"
+  | "lock-held"
+  | "not-due"
+  | "preflight-failed"
+  | "quiet-hours"
+  | "route-unavailable"
+  | "send-failed"
+  | "sent";
+export interface UpcomingDigestRuntimeStatus {
+  readonly lastDecision: UpcomingDigestRuntimeDecision;
+  readonly lastErrorCount: number;
+  readonly lastItemCount: number;
+  readonly lastObservedAtIso: string;
+}
+export type UpcomingProactiveRuntimeDecision =
+  | "already-running"
+  | "quiet-hours"
+  | "route-unavailable"
+  | "session-locked"
+  | "lock-held"
+  | "lock-error"
+  | "no-imminent"
+  | "suppressed"
+  | "fired"
+  | "completed"
+  | "error";
+export interface UpcomingProactiveRuntimeStatus {
+  readonly lastDecision: UpcomingProactiveRuntimeDecision;
+  readonly lastObservedAtIso: string;
+  readonly lastImminentCount: number;
+  readonly lastFiredCount: number;
+  readonly lastSuppressedCount: number;
+  readonly lastErrorCount: number;
+  readonly sessionLockedUntilIso?: string;
+}
+export type UpcomingReminderRuntimeDecision =
+  | "not-configured"
+  | "already-running"
+  | "quiet-hours"
+  | "lock-held"
+  | "lock-error"
+  | "no-due"
+  | "fired"
+  | "completed"
+  | "error";
+export interface UpcomingReminderRuntimeStatus {
+  readonly lastDecision: UpcomingReminderRuntimeDecision;
+  readonly lastObservedAtIso: string;
+  readonly lastDueCount: number;
+  readonly lastDeliveredCount: number;
+  readonly lastFiredCount: number;
+  readonly lastErrorCount: number;
+}
+export type UpcomingFollowupRuntimeDecision =
+  | "not-configured"
+  | "already-running"
+  | "quiet-hours"
+  | "lock-held"
+  | "lock-error"
+  | "no-due"
+  | "fired"
+  | "completed"
+  | "error";
+export interface UpcomingFollowupRuntimeStatus {
+  readonly lastDecision: UpcomingFollowupRuntimeDecision;
+  readonly lastObservedAtIso: string;
+  readonly lastDueCount: number;
+  readonly lastDeliveredCount: number;
+  readonly lastFiredCount: number;
+  readonly lastErrorCount: number;
+}
+export type UpcomingPatternRuntimeDecision =
+  | "not-configured"
+  | "already-running"
+  | "quiet-hours"
+  | "lock-held"
+  | "lock-error"
+  | "no-fireable"
+  | "fired"
+  | "completed"
+  | "error";
+export interface UpcomingPatternRuntimeStatus {
+  readonly lastDecision: UpcomingPatternRuntimeDecision;
+  readonly lastObservedAtIso: string;
+  readonly lastFireableCount: number;
+  readonly lastDeliveredCount: number;
+  readonly lastFiredCount: number;
+  readonly lastErrorCount: number;
+}
 interface UpcomingBudget {
   readonly hourUsed: number;
   readonly hourCap: number;
@@ -390,11 +502,54 @@ interface UpcomingReminder {
   readonly text: string;
   readonly dueAtIso: string;
 }
+export interface GatewayRouteStatus {
+  readonly status: "resolved" | "unconfigured" | "ambiguous" | "blocked-local-only";
+  readonly source: "explicit-config" | "paired-owner" | null;
+  readonly providerId: string | null;
+  readonly destination: string | null;
+  readonly localOnly: boolean;
+  readonly reason:
+    | "explicit-route-incomplete"
+    | "explicit-provider-not-registered"
+    | "remote-route-blocked-by-local-only"
+    | "paired-route-inspection-unavailable"
+    | "no-single-paired-route"
+    | "multiple-paired-routes"
+    | null;
+}
+export type UpcomingChannelDaemonKind =
+  | "telegram-poll"
+  | "matrix-sync"
+  | "inbound-reply"
+  | "matrix-inbound-reply"
+  | "slack-poll"
+  | "discord-poll";
+export type UpcomingChannelRuntimeStatus = "observed" | "degraded" | "unconfigured";
+export interface UpcomingChannelRuntimeDaemon {
+  readonly kind: UpcomingChannelDaemonKind;
+  readonly running: boolean;
+  readonly hasError: boolean;
+  readonly lastIngestCount: number | null;
+  readonly lastIngestAtIso: string | null;
+  readonly lastErrorAtIso: string | null;
+}
+export interface UpcomingChannelRuntime {
+  readonly status: UpcomingChannelRuntimeStatus;
+  readonly daemons: readonly UpcomingChannelRuntimeDaemon[];
+}
 export interface AutomationUpcomingResponse {
   readonly digest: UpcomingDigest | null;
+  readonly digestRuntime?: UpcomingDigestRuntimeStatus | null;
+  readonly followupRuntime?: UpcomingFollowupRuntimeStatus | null;
+  readonly patternRuntime?: UpcomingPatternRuntimeStatus | null;
+  readonly proactiveRuntime: UpcomingProactiveRuntimeStatus | null;
+  readonly reminderRuntime?: UpcomingReminderRuntimeStatus | null;
   readonly budget: UpcomingBudget | null;
   readonly scheduledJobs: readonly UpcomingScheduledJob[];
   readonly nextReminder: UpcomingReminder | null;
+  readonly gateway: GatewayRouteStatus;
+  readonly deliveryQueueSnapshot?: UpcomingDeliveryQueueSnapshot | null;
+  readonly channelRuntime?: UpcomingChannelRuntime | null;
 }
 
 // Mirrors `apps/api`'s `FlowProjection`/`FlowNode`/`FlowEdge` (flow-projection.ts).
@@ -669,6 +824,29 @@ interface WeaknessView {
 export interface WeaknessesResponse {
   total: number;
   entries: WeaknessView[];
+}
+
+export type SelfImprovementRuntimeState = "dormant" | "running" | "unconfigured";
+export type SelfImprovementTickDecision =
+  | "already-running"
+  | "completed"
+  | "disabled"
+  | "error"
+  | "waiting-for-ac-power"
+  | "waiting-for-foreground"
+  | "waiting-for-idle"
+  | "waiting-for-model"
+  | "waiting-for-os-idle"
+  | "waiting-for-quiet-hours";
+
+export interface SelfImprovementStatusResponse {
+  configured: boolean;
+  enabled: boolean;
+  paused: boolean;
+  pendingCorrections: number;
+  state: SelfImprovementRuntimeState;
+  lastObservedAtIso: string | null;
+  lastDecision: SelfImprovementTickDecision | null;
 }
 
 interface PlaybookStrategyView {

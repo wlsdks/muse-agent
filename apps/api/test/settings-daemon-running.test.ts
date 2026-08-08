@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { shapeDaemonFlags } from "../src/settings-routes.js";
+import { CONSOLIDATE_IDLE_FLAG } from "../src/consolidate-idle-flag.js";
+import { InMemoryRuntimeSettingsStore, RuntimeSettings } from "@muse/runtime-settings";
 
 // Truthful daemon status: the flags surface must report whether a daemon is
 // ACTUALLY running (live handle via the supervisor), not just whether its
@@ -106,5 +108,75 @@ describe("PATCH /api/settings/daemon-flags", () => {
       url: "/api/settings/daemon-flags"
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it("GET resolves env first and PATCH round-trips a typed runtime override", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const Fastify = (await import("fastify")).default;
+    const { registerSettingsRoutes } = await import("../src/settings-routes.js");
+    const dir = mkdtempSync(join(tmpdir(), "muse-runtime-dpatch-"));
+    const settingsFile = join(dir, "daemon-settings.json");
+    const runtimeSettings = new RuntimeSettings(new InMemoryRuntimeSettingsStore());
+    const server = Fastify({ logger: false });
+    registerSettingsRoutes(server, {
+      authService: undefined,
+      daemonSettingsFile: settingsFile,
+      env: { [CONSOLIDATE_IDLE_FLAG]: "true" },
+      runtimeSettings
+    });
+
+    const fromEnv = await server.inject({ method: "GET", url: "/api/settings/daemon-flags" });
+    expect(fromEnv.statusCode).toBe(200);
+    expect(fromEnv.json().flags.find((flag: { key: string }) => flag.key === CONSOLIDATE_IDLE_FLAG)?.enabled).toBe(true);
+
+    const patched = await server.inject({
+      method: "PATCH",
+      payload: { enabled: false, key: CONSOLIDATE_IDLE_FLAG },
+      url: "/api/settings/daemon-flags"
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json()).toMatchObject({ appliedLive: true, enabled: false, key: CONSOLIDATE_IDLE_FLAG });
+    expect(await runtimeSettings.find(CONSOLIDATE_IDLE_FLAG)).toMatchObject({
+      key: CONSOLIDATE_IDLE_FLAG,
+      type: "boolean",
+      value: "false"
+    });
+
+    const afterPatch = await server.inject({ method: "GET", url: "/api/settings/daemon-flags" });
+    expect(afterPatch.json().flags.find((flag: { key: string }) => flag.key === CONSOLIDATE_IDLE_FLAG)?.enabled).toBe(false);
+    const { readDaemonSettingsSync } = await import("../src/daemon-settings-store.js");
+    expect(readDaemonSettingsSync(settingsFile)).toEqual({});
+  });
+
+  it("rejects invalid selected-key requests without changing the prior runtime value", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const Fastify = (await import("fastify")).default;
+    const { registerSettingsRoutes } = await import("../src/settings-routes.js");
+    const runtimeSettings = new RuntimeSettings(new InMemoryRuntimeSettingsStore());
+    await runtimeSettings.set({ key: CONSOLIDATE_IDLE_FLAG, type: "boolean", value: "false" });
+    const server = Fastify({ logger: false });
+    registerSettingsRoutes(server, {
+      authService: undefined,
+      daemonSettingsFile: join(mkdtempSync(join(tmpdir(), "muse-runtime-invalid-")), "daemon-settings.json"),
+      runtimeSettings
+    });
+
+    const unknown = await server.inject({
+      method: "PATCH",
+      payload: { enabled: true, key: "MUSE_NOT_A_DAEMON_FLAG" },
+      url: "/api/settings/daemon-flags"
+    });
+    expect(unknown.statusCode).toBe(404);
+    const nonBoolean = await server.inject({
+      method: "PATCH",
+      payload: { enabled: "true", key: CONSOLIDATE_IDLE_FLAG },
+      url: "/api/settings/daemon-flags"
+    });
+    expect(nonBoolean.statusCode).toBe(400);
+    expect(await runtimeSettings.find(CONSOLIDATE_IDLE_FLAG)).toMatchObject({ value: "false", type: "boolean" });
   });
 });

@@ -60,10 +60,12 @@ describe("startDiscordPollTick", () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-disc-poll-"));
     const inboxFile = join(dir, "discord-inbox.json");
     const logged: string[] = [];
+    const ingests: number[] = [];
     const handle = startDiscordPollTick({
       channels: ["ch-1", "ch-2"],
       inboxFile,
       logger: (m) => logged.push(m),
+      onIngested: (count) => ingests.push(count),
       provider: fakeProvider({
         "ch-1": [[makeMessage("1", "ch-1", "hi")]],
         "ch-2": [[makeMessage("2", "ch-2", "yo"), makeMessage("3", "ch-2", "hey")]]
@@ -74,6 +76,7 @@ describe("startDiscordPollTick", () => {
       const inbox = JSON.parse(readFileSync(inboxFile, "utf8")) as { inbox: InboundMessage[] };
       expect(inbox.inbox.map((m) => m.messageId).sort()).toEqual(["1", "2", "3"]);
       expect(logged).toEqual(["discord-poll: ingested 3 message(s) across 2 channel(s)"]);
+      expect(ingests).toEqual([1, 2]);
     } finally {
       handle.stop();
     }
@@ -102,10 +105,12 @@ describe("startDiscordPollTick", () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-disc-mixed-"));
     const inboxFile = join(dir, "discord-inbox.json");
     const errors: string[] = [];
+    const observedErrors: string[] = [];
     const handle = startDiscordPollTick({
       channels: ["ch-bad", "ch-ok"],
       errorLogger: (m) => errors.push(m),
       inboxFile,
+      onError: (message) => observedErrors.push(message),
       provider: fakeProvider({
         "ch-bad": [new Error("Missing Access")],
         "ch-ok": [[makeMessage("9", "ch-ok", "still works")]]
@@ -116,6 +121,7 @@ describe("startDiscordPollTick", () => {
       const inbox = JSON.parse(readFileSync(inboxFile, "utf8")) as { inbox: InboundMessage[] };
       expect(inbox.inbox.map((m) => m.messageId)).toEqual(["9"]);
       expect(errors.some((e) => e.includes("ch-bad") && e.includes("Missing Access"))).toBe(true);
+      expect(observedErrors).toEqual(["Missing Access"]);
     } finally {
       handle.stop();
     }
@@ -152,4 +158,3 @@ describe("startDiscordPollTick", () => {
     }
   });
 });
-

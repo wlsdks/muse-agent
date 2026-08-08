@@ -1,8 +1,16 @@
+import { mkdtempSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import Fastify from "fastify";
 import type { PlaybookEntry, StoredReflection, WeaknessEntry } from "@muse/stores";
 import type { Skill } from "@muse/skills";
+import { InMemoryRuntimeSettingsStore, RuntimeSettings } from "@muse/runtime-settings";
 import { describe, expect, it } from "vitest";
 
-import { parseRewardDelta, shapePlaybook, shapeReflections, shapeSkills, shapeWeaknesses } from "./self-improvement-routes.js";
+import { CONSOLIDATE_IDLE_FLAG } from "./consolidate-idle-flag.js";
+import { parseRewardDelta, registerSelfImprovementRoutes, shapePlaybook, shapeReflections, shapeSelfImprovementStatus, shapeSkills, shapeWeaknesses } from "./self-improvement-routes.js";
 
 describe("parseRewardDelta", () => {
   it("returns a positive finite number when delta is valid", () => {
@@ -304,5 +312,153 @@ describe("shapeReflections", () => {
 
   it("an empty list is total 0, not a crash", () => {
     expect(shapeReflections([])).toEqual({ total: 0, entries: [] });
+  });
+});
+
+describe("shapeSelfImprovementStatus", () => {
+  it("reports an unconfigured loop without implying activity", () => {
+    expect(shapeSelfImprovementStatus({
+      configured: false,
+      enabled: false,
+      paused: false,
+      pendingCorrections: 0
+    })).toEqual({
+      configured: false,
+      enabled: false,
+      paused: false,
+      pendingCorrections: 0,
+      state: "unconfigured",
+      lastObservedAtIso: null,
+      lastDecision: null
+    });
+  });
+
+  it("keeps a configured but disabled daemon dormant and preserves its safe tick snapshot", () => {
+    expect(shapeSelfImprovementStatus({
+      configured: true,
+      enabled: false,
+      paused: true,
+      pendingCorrections: 2,
+      daemonStatus: {
+        lastDecision: "disabled",
+        lastObservedAtIso: "2026-08-08T00:00:00.000Z"
+      }
+    })).toMatchObject({
+      configured: true,
+      enabled: false,
+      paused: true,
+      pendingCorrections: 2,
+      state: "dormant",
+      lastDecision: "disabled"
+    });
+  });
+});
+
+describe("GET /api/self-improvement/status", () => {
+  it("counts valid queue events, skips malformed lines, and treats missing pause state as unpaused", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-self-improvement-status-"));
+    const queueFile = join(root, "learn-queue.jsonl");
+    await writeFile(queueFile, [
+      "not-json",
+      JSON.stringify({
+        correction: "Prefer bullets",
+        enqueuedAtMs: 1,
+        id: "learn-1",
+        priorAnswer: "A paragraph",
+        userId: "u1"
+      }),
+      JSON.stringify({ id: "incomplete" })
+    ].join("\n"));
+    const server = Fastify({ logger: false });
+    registerSelfImprovementRoutes(server, {
+      authService: undefined,
+      authoredSkillsDir: root,
+      configured: true,
+      env: { [CONSOLIDATE_IDLE_FLAG]: "true" },
+      learnQueueFile: queueFile,
+      learningPauseFile: join(root, "missing-pause.json"),
+      playbookFile: join(root, "playbook.json"),
+      reflectionsFile: join(root, "reflections.json"),
+      skillRewardsFile: join(root, "skill-rewards.json"),
+      weaknessesFile: join(root, "weaknesses.json")
+    });
+
+    const response = await server.inject({ method: "GET", url: "/api/self-improvement/status" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      configured: true,
+      enabled: true,
+      paused: false,
+      pendingCorrections: 1,
+      state: "dormant",
+      lastObservedAtIso: null,
+      lastDecision: null
+    });
+    await server.close();
+  });
+
+  it("uses a valid runtime setting before env and safely falls back when the runtime setting is malformed", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-self-improvement-runtime-status-"));
+    const runtimeSettings = new RuntimeSettings(new InMemoryRuntimeSettingsStore());
+    await runtimeSettings.set({ key: CONSOLIDATE_IDLE_FLAG, type: "boolean", value: "false" });
+    const server = Fastify({ logger: false });
+    registerSelfImprovementRoutes(server, {
+      authService: undefined,
+      authoredSkillsDir: root,
+      configured: true,
+      env: { [CONSOLIDATE_IDLE_FLAG]: "true" },
+      learnQueueFile: join(root, "missing-queue.jsonl"),
+      learningPauseFile: join(root, "missing-pause.json"),
+      playbookFile: join(root, "playbook.json"),
+      reflectionsFile: join(root, "reflections.json"),
+      runtimeSettings,
+      skillRewardsFile: join(root, "skill-rewards.json"),
+      weaknessesFile: join(root, "weaknesses.json")
+    });
+
+    const overridden = await server.inject({ method: "GET", url: "/api/self-improvement/status" });
+    expect(overridden.json().enabled).toBe(false);
+    await runtimeSettings.set({ key: CONSOLIDATE_IDLE_FLAG, type: "boolean", value: "maybe" });
+    const malformed = await server.inject({ method: "GET", url: "/api/self-improvement/status" });
+    expect(malformed.json().enabled).toBe(true);
+    await server.close();
+  });
+
+  it("fails closed when runtime settings cannot be read, even if the environment enables it", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-self-improvement-runtime-status-failure-"));
+    const runtimeSettings = new RuntimeSettings({
+      delete: () => undefined,
+      find: () => {
+        throw new Error("runtime settings unavailable");
+      },
+      findValue: () => undefined,
+      list: () => [],
+      upsert: () => {
+        throw new Error("not used");
+      }
+    });
+    const server = Fastify({ logger: false });
+    registerSelfImprovementRoutes(server, {
+      authService: undefined,
+      authoredSkillsDir: root,
+      configured: true,
+      env: { [CONSOLIDATE_IDLE_FLAG]: "true" },
+      learnQueueFile: join(root, "missing-queue.jsonl"),
+      learningPauseFile: join(root, "missing-pause.json"),
+      playbookFile: join(root, "playbook.json"),
+      reflectionsFile: join(root, "reflections.json"),
+      runtimeSettings,
+      skillRewardsFile: join(root, "skill-rewards.json"),
+      weaknessesFile: join(root, "weaknesses.json")
+    });
+
+    const response = await server.inject({ method: "GET", url: "/api/self-improvement/status" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      configured: true,
+      enabled: false,
+      state: "dormant"
+    });
+    await server.close();
   });
 });

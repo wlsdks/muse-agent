@@ -119,6 +119,39 @@ describe("startChannelPollTick", () => {
     expect(logs).toHaveLength(0);
   });
 
+  it("keeps polling and persistence unchanged when optional status callbacks throw", async () => {
+    const errors: string[] = [];
+    const observations: string[] = [];
+    const file = inboxFile();
+    const handle = startChannelPollTick({
+      channels: ["bad", "good"],
+      errorLogger: (message) => errors.push(message),
+      inboxFile: file,
+      logPrefix: "CALLBACKS",
+      onError: (message) => {
+        observations.push(`error:${message}`);
+        throw new Error("observer failure");
+      },
+      onIngested: (count) => {
+        observations.push(`ingest:${count.toString()}`);
+        throw new Error("observer failure");
+      },
+      provider: {
+        pollUpdates: async (options) => {
+          if (options?.source === "bad") throw new Error("bad channel");
+          return [msg("good-message", "good")];
+        }
+      }
+    });
+
+    await expect(handle.tickOnce()).resolves.toBeUndefined();
+    handle.stop();
+
+    expect(errors).toEqual(["CALLBACKS: channel bad: bad channel"]);
+    expect(observations).toEqual(["error:bad channel", "ingest:1"]);
+    expect((await readInbox(file)).map((message) => message.messageId)).toEqual(["good-message"]);
+  });
+
   it("is single-flight — a concurrent tickOnce returns early instead of overlapping", async () => {
     let active = 0;
     let maxActive = 0;

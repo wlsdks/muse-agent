@@ -28,6 +28,7 @@ import {
   resolveWeaknessesFile,
   resolveAuthoredSkillsDir,
   resolveReflectionsFile,
+  resolveLearningPauseFile,
   resolveTasksFile,
   resolveSkillRewardsFile,
   resolveWorksFile
@@ -92,7 +93,7 @@ import { createComposeChatReply } from "./inbound-chat-reply.js";
 import { startInboundReplyTick } from "./inbound-reply-tick.js";
 import { createThreadedInboundRunner, type InboundAgentRunner } from "@muse/messaging";
 import { conversationStoreThreadedTurnStore, migrateLegacyThreadFile } from "./threaded-conversation-store.js";
-import { defaultConversationsFile, FileConversationStore } from "@muse/stores";
+import { defaultConversationsFile, FileConversationStore, resolveLearnQueueFile } from "@muse/stores";
 import { defaultBrowsingFile } from "@muse/recall";
 
 import { DiscordProvider, MatrixProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
@@ -111,6 +112,12 @@ import { registerPromptRoutes } from "./prompt-routes.js";
 import { registerProgressiveAutonomyRoutes } from "./progressive-autonomy-routes.js";
 import { registerUserModelReconfirmRoutes } from "./user-model-reconfirm-routes.js";
 import { registerPersonalStatusRoutes, resolveProposedActionsStatusFile } from "./personal-status-routes.js";
+import type { ConsolidateTickHandle } from "./consolidate-tick.js";
+import { createDigestRuntimeStatusStore } from "./digest-runtime-status.js";
+import { createFollowupRuntimeStatusStore, recordFollowupRuntimeNotConfigured } from "./followup-runtime-status.js";
+import { createProactiveRuntimeStatusStore } from "./proactive-runtime-status.js";
+import { createReminderRuntimeStatusStore } from "./reminder-runtime-status.js";
+import { createPatternRuntimeStatusStore, recordPatternRuntimeNotConfigured } from "./pattern-runtime-status.js";
 import { registerAgentNoticesRoutes } from "./agent-notices-routes.js";
 import { registerSetupRoutes } from "./setup-routes.js";
 import { registerTodayRoutes } from "./today-routes.js";
@@ -195,6 +202,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const conversationStore = new FileConversationStore({ file: options.conversationsFile ?? defaultConversationsFile(env) });
   const runtimeSettings =
     options.runtimeSettings ?? new RuntimeSettings(new InMemoryRuntimeSettingsStore());
+  const digestRuntimeStatus = createDigestRuntimeStatusStore();
+  const followupRuntimeStatus = createFollowupRuntimeStatusStore();
+  const proactiveRuntimeStatus = createProactiveRuntimeStatusStore();
+  const reminderRuntimeStatus = createReminderRuntimeStatusStore();
+  const patternRuntimeStatus = createPatternRuntimeStatusStore();
   const authService = options.authService;
   const server = Fastify({
     logger: options.logger ?? true
@@ -581,6 +593,15 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   registerAutomationRoutes(server, {
     authService,
     env,
+    ...(options.messaging ? { messagingRegistry: options.messaging } : {}),
+    channelOwnersFile: integrationEnv.messaging.ownersFile,
+    channelDaemonStatus: () => channelDaemons.status(),
+    digestRuntimeStatus: digestRuntimeStatus.get,
+    followupRuntimeStatus: followupRuntimeStatus.get,
+    patternRuntimeStatus: patternRuntimeStatus.get,
+    proactiveRuntimeStatus: proactiveRuntimeStatus.get,
+    reminderRuntimeStatus: reminderRuntimeStatus.get,
+    localOnly: integrationEnv.localOnly,
     scheduler: options.scheduler,
     ...(options.remindersFile ? { remindersFile: options.remindersFile } : {})
   });
@@ -666,8 +687,15 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     vetoesFile: options.vetoesFile ?? resolveVetoesFile(env)
   });
 
+  const consolidateHandle: { current: ConsolidateTickHandle | undefined } = { current: undefined };
   registerSelfImprovementRoutes(server, {
     authService,
+    configured: Boolean((options.backgroundModelProvider ?? options.modelProvider) && options.defaultModel),
+    consolidateStatus: () => consolidateHandle.current?.getStatus(),
+    env,
+    learnQueueFile: resolveLearnQueueFile(env),
+    learningPauseFile: resolveLearningPauseFile(env),
+    runtimeSettings,
     weaknessesFile: options.weaknessesFile ?? resolveWeaknessesFile(env),
     playbookFile: options.playbookFile ?? resolvePlaybookFile(env),
     authoredSkillsDir: options.authoredSkillsDir ?? resolveAuthoredSkillsDir(env),
@@ -722,7 +750,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authService,
     daemonSettingsFile,
     daemonStatus: () => channelDaemons.status(),
-    env
+    env,
+    runtimeSettings
   });
 
   registerSwarmRoutes(server, { authService });
@@ -775,20 +804,23 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // options line up. The four function calls below replace ~200
   // lines of inline env-parsing scaffolding that all five blocks
   // shared the same shape of.
-  const phaseDWiring = { phaseDProactiveOn, phaseDReminderOn, sharedActivityTracker };
+  const phaseDWiring = { phaseDProactiveOn, phaseDReminderOn, runtimeSettings, sharedActivityTracker };
   if (!deliveryBrakeDecision.engaged) {
-    startReminderDaemonIfConfigured(env, server, options, phaseDWiring);
-    startProactiveDaemonIfConfigured(env, server, options, phaseDWiring);
-    startFollowupDaemonIfConfigured(env, server, options);
-    startPatternDaemonIfConfigured(env, server, options);
+    startReminderDaemonIfConfigured(env, server, options, phaseDWiring, reminderRuntimeStatus);
+    startProactiveDaemonIfConfigured(env, server, options, phaseDWiring, proactiveRuntimeStatus);
+    startFollowupDaemonIfConfigured(env, server, options, followupRuntimeStatus);
+    startPatternDaemonIfConfigured(env, server, options, patternRuntimeStatus);
     startSituationalBriefingDaemonIfConfigured(env, server, options, integrationEnv.localOnly);
     startObjectivesDaemonIfConfigured(env, server, options);
     startAmbientDaemonIfConfigured(env, server, options);
     startWebWatchDaemonIfConfigured(env, server, options);
     startHomeWatchDaemonIfConfigured(env, server, options, integrationEnv.localOnly);
-    startDigestDaemonIfConfigured(env, server, options);
+    startDigestDaemonIfConfigured(env, server, options, digestRuntimeStatus);
+  } else {
+    recordFollowupRuntimeNotConfigured(followupRuntimeStatus);
+    recordPatternRuntimeNotConfigured(patternRuntimeStatus);
   }
-  startConsolidateDaemonIfConfigured(env, server, options, phaseDWiring);
+  consolidateHandle.current = startConsolidateDaemonIfConfigured(env, server, options, phaseDWiring);
   startObserveDaemonIfConfigured(env, server, resolveAttunementFile(env));
   warmUpModelIfConfigured(env, options);
 
@@ -1045,11 +1077,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         inboxFile: options.slackInboxFile,
         ...(pollMsRaw !== undefined ? { intervalMs: pollMsRaw } : {}),
         logger: (message) => server.log.info(message),
+        onError: (message) => channelDaemons.noteError("slack-poll", message),
+        onIngested: (count) => channelDaemons.noteIngest("slack-poll", count),
         provider: slack
       });
-      server.addHook("onClose", async () => {
-        pollHandle.stop();
-      });
+      channelDaemons.adopt("slack-poll", pollHandle);
     }
   }
 
@@ -1078,11 +1110,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         inboxFile: options.discordInboxFile,
         ...(pollMsRaw !== undefined ? { intervalMs: pollMsRaw } : {}),
         logger: (message) => server.log.info(message),
+        onError: (message) => channelDaemons.noteError("discord-poll", message),
+        onIngested: (count) => channelDaemons.noteIngest("discord-poll", count),
         provider: discord
       });
-      server.addHook("onClose", async () => {
-        pollHandle.stop();
-      });
+      channelDaemons.adopt("discord-poll", pollHandle);
     }
   }
 

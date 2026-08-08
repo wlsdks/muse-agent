@@ -1,7 +1,9 @@
 import { parseBoolean } from "@muse/autoconfigure";
 import { parseQuietHours } from "@muse/proactivity";
+import type { RuntimeSettings } from "@muse/runtime-settings";
 
 import { readDaemonSettingsSync, readQuietHoursSettingSync, UnsupportedDaemonSettingsFormatError, writeDaemonSetting, writeQuietHoursSetting, type DaemonSettings } from "./daemon-settings-store.js";
+import { CONSOLIDATE_IDLE_FLAG, CONSOLIDATE_IDLE_FLAG_LABEL, resolveConsolidateIdleEnabled } from "./consolidate-idle-flag.js";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -31,6 +33,7 @@ const DAEMON_FLAGS: readonly (readonly [string, string, boolean, string?])[] = [
   ["MUSE_CONFLICT_WATCH_ENABLED", "Calendar conflict watch", false],
   ["MUSE_PROACTIVE_AGENT_TURN", "Proactive agent turn", false],
   ["MUSE_BACKGROUND_REVIEW_ENABLED", "Background review (skill learning)", false],
+  [CONSOLIDATE_IDLE_FLAG, CONSOLIDATE_IDLE_FLAG_LABEL, false],
   ["MUSE_KNOWLEDGE_SEARCH_ENABLED", "Knowledge search", false],
   ["MUSE_TELEGRAM_POLL_ENABLED", "Telegram inbound polling", false, "telegram-poll"],
   ["MUSE_MATRIX_POLL_ENABLED", "Matrix inbound sync", false, "matrix-sync"],
@@ -100,6 +103,8 @@ export interface SettingsRoutesGate {
   readonly env?: NodeJS.ProcessEnv;
   /** Where PATCHed toggles persist; enables the PATCH route when set. */
   readonly daemonSettingsFile?: string;
+  /** Shared typed runtime settings store for the one runtime-live flag. */
+  readonly runtimeSettings?: RuntimeSettings;
   /** Applies a toggle to the RUNNING process (start/stop the daemon); returns whether it took effect live. */
   readonly applyDaemonToggle?: (key: string, enabled: boolean) => boolean;
 }
@@ -113,14 +118,17 @@ export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRo
     if (!authed(request, reply)) {
       return reply;
     }
-    return shapeDaemonFlags(
-      env,
-      gate.daemonStatus,
-      gate.daemonSettingsFile ? readDaemonSettingsSync(gate.daemonSettingsFile) : {}
-    );
+    const fileSettings = gate.daemonSettingsFile ? readDaemonSettingsSync(gate.daemonSettingsFile) : {};
+    const runtimeSetting = gate.runtimeSettings
+      ? await gate.runtimeSettings.find(CONSOLIDATE_IDLE_FLAG)
+      : undefined;
+    const effectiveSettings = gate.runtimeSettings
+      ? { ...fileSettings, [CONSOLIDATE_IDLE_FLAG]: resolveConsolidateIdleEnabled(env, runtimeSetting) }
+      : fileSettings;
+    return shapeDaemonFlags(env, gate.daemonStatus, effectiveSettings);
   });
 
-  if (gate.daemonSettingsFile) {
+  if (gate.daemonSettingsFile || gate.runtimeSettings) {
     const settingsFile = gate.daemonSettingsFile;
     server.patch("/api/settings/daemon-flags", async (request, reply) => {
       if (!authed(request, reply)) {
@@ -133,6 +141,19 @@ export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRo
       }
       if (typeof body.enabled !== "boolean") {
         return reply.status(400).send({ reason: "enabled must be a boolean" });
+      }
+      if (key === CONSOLIDATE_IDLE_FLAG && gate.runtimeSettings) {
+        await gate.runtimeSettings.set({
+          category: "daemon",
+          description: CONSOLIDATE_IDLE_FLAG_LABEL,
+          key,
+          type: "boolean",
+          value: body.enabled.toString()
+        });
+        return { appliedLive: true, enabled: body.enabled, key };
+      }
+      if (!settingsFile) {
+        return reply.status(409).send({ reason: "daemon settings file is not configured" });
       }
       try {
         await writeDaemonSetting(settingsFile, key, body.enabled);

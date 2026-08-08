@@ -6,7 +6,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { describe, expect, it, vi } from "vitest";
 
-import { isQuietHour, parseQuietHours, startReminderTick } from "../src/reminder-tick.js";
+import { classifyReminderRuntimeDecision, isQuietHour, parseQuietHours, startReminderTick } from "../src/reminder-tick.js";
+import { createReminderRuntimeStatusStore } from "../src/reminder-runtime-status.js";
 
 interface MessageSent {
   readonly providerId: string;
@@ -89,11 +90,13 @@ describe("startReminderTick", () => {
     const file = join(dir, "reminders.json");
     seedReminders(file, "1970-01-01T00:00:00Z");
     const sent: MessageSent[] = [];
+    const runtimeStatus = createReminderRuntimeStatusStore();
     const handle = startReminderTick({
       destination: "@me",
       providerId: "telegram",
       registry: fakeRegistry(sent),
-      remindersFile: file
+      remindersFile: file,
+      runtimeStatus
     });
     try {
       await handle.tickOnce();
@@ -102,9 +105,17 @@ describe("startReminderTick", () => {
         reminders: Array<{ id: string; status: string; firedAt?: string }>;
       };
       expect(after.reminders[0]?.status).toBe("fired");
+      expect(runtimeStatus.get()).toMatchObject({
+        lastDecision: "fired",
+        lastDeliveredCount: 1,
+        lastDueCount: 1,
+        lastErrorCount: 0,
+        lastFiredCount: 1
+      });
       // Second tick is a no-op (no due reminders left).
       await handle.tickOnce();
       expect(sent).toHaveLength(1);
+      expect(runtimeStatus.get()?.lastDecision).toBe("no-due");
     } finally {
       handle.stop();
     }
@@ -129,11 +140,16 @@ describe("startReminderTick", () => {
         return { destination: "@me", messageId: "stub", providerId: "telegram" };
       }
     } as unknown as MessagingProviderRegistry;
+    const statusUpdates: string[] = [];
     const handle = startReminderTick({
       destination: "@me",
       providerId: "telegram",
       registry: slowRegistry,
-      remindersFile: file
+      remindersFile: file,
+      runtimeStatus: {
+        get: () => null,
+        record: ({ decision }) => statusUpdates.push(decision)
+      }
     });
     try {
       const a = handle.tickOnce();
@@ -143,6 +159,8 @@ describe("startReminderTick", () => {
       // `firing=true` and bailed.
       expect(sent).toBe(1);
       expect(peakInflight).toBe(1);
+      expect(statusUpdates).toContain("already-running");
+      expect(statusUpdates).toContain("fired");
     } finally {
       handle.stop();
     }
@@ -153,6 +171,7 @@ describe("startReminderTick", () => {
     const file = join(dir, "reminders.json");
     seedReminders(file, "1970-01-01T00:00:00Z");
     const errors: string[] = [];
+    const runtimeStatus = createReminderRuntimeStatusStore();
     const failingRegistry: MessagingProviderRegistry = {
       has: (providerId: string) => providerId === "telegram",
       send: async () => {
@@ -164,7 +183,8 @@ describe("startReminderTick", () => {
       errorLogger: (message) => errors.push(message),
       providerId: "telegram",
       registry: failingRegistry,
-      remindersFile: file
+      remindersFile: file,
+      runtimeStatus
     });
     try {
       await handle.tickOnce();
@@ -177,6 +197,7 @@ describe("startReminderTick", () => {
         reminders: Array<{ status: string }>;
       };
       expect(after.reminders[0]?.status).toBe("pending");
+      expect(runtimeStatus.get()).toMatchObject({ lastDecision: "error", lastErrorCount: 1, lastDueCount: 1 });
     } finally {
       handle.stop();
     }
@@ -187,6 +208,7 @@ describe("startReminderTick", () => {
     const file = join(dir, "reminders.json");
     seedReminders(file, "1970-01-01T00:00:00Z");
     const sent: MessageSent[] = [];
+    const statusUpdates: string[] = [];
     let fakeHour = 2; // 02:00 — inside 23-7 window
     const handle = startReminderTick({
       destination: "@me",
@@ -198,12 +220,17 @@ describe("startReminderTick", () => {
       providerId: "telegram",
       quietHours: { endHour: 7, startHour: 23 },
       registry: fakeRegistry(sent),
-      remindersFile: file
+      remindersFile: file,
+      runtimeStatus: {
+        get: () => null,
+        record: ({ decision }) => statusUpdates.push(decision)
+      }
     });
     try {
       // 02:00 → quiet, skip.
       await handle.tickOnce();
       expect(sent).toHaveLength(0);
+      expect(statusUpdates).toEqual(["quiet-hours"]);
       const after1 = JSON.parse(readFileSync(file, "utf8")) as { reminders: Array<{ status: string }> };
       expect(after1.reminders[0]?.status).toBe("pending");
 
@@ -211,11 +238,47 @@ describe("startReminderTick", () => {
       fakeHour = 9;
       await handle.tickOnce();
       expect(sent).toHaveLength(1);
+      expect(statusUpdates).toContain("fired");
       const after2 = JSON.parse(readFileSync(file, "utf8")) as { reminders: Array<{ status: string }> };
       expect(after2.reminders[0]?.status).toBe("fired");
     } finally {
       handle.stop();
     }
+  });
+
+  it("swallows a runtime-status recording failure without changing delivery", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-tick-status-failure-"));
+    const file = join(dir, "reminders.json");
+    seedReminders(file, "1970-01-01T00:00:00Z");
+    const sent: MessageSent[] = [];
+    const handle = startReminderTick({
+      destination: "@me",
+      providerId: "telegram",
+      registry: fakeRegistry(sent),
+      remindersFile: file,
+      runtimeStatus: {
+        get: () => null,
+        record: () => { throw new Error("status store unavailable"); }
+      }
+    });
+    try {
+      await handle.tickOnce();
+      expect(sent).toHaveLength(1);
+      expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ reminders: [{ status: "fired" }] });
+    } finally {
+      handle.stop();
+    }
+  });
+
+  it.each([
+    ["lock-held", { delivered: 0, due: 0, errors: [], fired: [], outcome: "lock-held" }],
+    ["lock-error", { delivered: 0, due: 0, errors: ["lock failed"], fired: [], outcome: "lock-error" }],
+    ["error", { delivered: 1, due: 1, errors: ["partial failure"], fired: [{}], outcome: undefined }],
+    ["fired", { delivered: 1, due: 1, errors: [], fired: [{}], outcome: undefined }],
+    ["no-due", { delivered: 0, due: 0, errors: [], fired: [], outcome: undefined }],
+    ["completed", { delivered: 0, due: 1, errors: [], fired: [], outcome: undefined }]
+  ] as const)("classifies the real reminder summary outcome as %s", (expected, summary) => {
+    expect(classifyReminderRuntimeDecision(summary)).toBe(expected);
   });
 
   it("uses one injected clock snapshot for quiet hours and due selection", async () => {

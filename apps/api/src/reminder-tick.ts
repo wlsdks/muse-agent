@@ -17,8 +17,10 @@ import { errorMessage } from "@muse/shared";
  * upstream messenger or stalling firing forever.
  */
 
-import { isQuietHour, parseQuietHours, resolveEffectiveQuietHours, resolveQuietHoursOption, runDueReminders, type ProactiveActivitySource, type ProactiveAgentRuntimeLike, type QuietHourRange, type QuietHoursOption } from "@muse/proactivity";
+import { isQuietHour, parseQuietHours, resolveEffectiveQuietHours, resolveQuietHoursOption, runDueReminders, type ProactiveActivitySource, type ProactiveAgentRuntimeLike, type QuietHourRange, type QuietHoursOption, type RunDueRemindersSummary } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
+
+import type { ReminderRuntimeDecision, ReminderRuntimeStatusStore, ReminderRuntimeStatusUpdate } from "./reminder-runtime-status.js";
 
 export interface ReminderTickOptions {
   readonly registry: MessagingProviderRegistry;
@@ -56,6 +58,7 @@ export interface ReminderTickOptions {
   readonly activitySource?: ProactiveActivitySource;
   /** Phase D session window. Default 5 minutes (300_000 ms). */
   readonly activeSessionWindowMs?: number;
+  readonly runtimeStatus?: ReminderRuntimeStatusStore;
 }
 
 // Quiet-hours parsing/checking now lives in @muse/mcp so the CLI daemon and
@@ -79,16 +82,13 @@ export function startReminderTick(options: ReminderTickOptions): ReminderTickHan
   let firing = false;
 
   const tickOnce = async (): Promise<void> => {
-    // Single-flight guard: a slow upstream shouldn't pile up overlapping
-    // ticks. Skipped ticks just wait for the next interval.
+    const observedAt = now();
     if (firing) {
+      recordRuntimeStatus(options, { decision: "already-running", observedAt });
       return;
     }
-    const tickAt = now();
-    // Quiet hours: skip the firing call entirely. Reminders queue up
-    // (status stays pending) and flush on the first tick after the
-    // window ends.
-    if (options.quietHours && isQuietHour(tickAt.getHours(), options.quietHours)) {
+    if (options.quietHours && isQuietHour(observedAt.getHours(), options.quietHours)) {
+      recordRuntimeStatus(options, { decision: "quiet-hours", observedAt });
       return;
     }
     firing = true;
@@ -101,10 +101,18 @@ export function startReminderTick(options: ReminderTickOptions): ReminderTickHan
         destination: options.destination,
         ...(options.effectFile ? { effectFile: options.effectFile } : {}),
         file: options.remindersFile,
-        now: () => tickAt,
+        now: () => observedAt,
         providerId: options.providerId,
         registry: options.registry,
         ...(options.historyFile ? { historyFile: options.historyFile } : {})
+      });
+      recordRuntimeStatus(options, {
+        decision: classifyReminderRuntimeDecision(summary),
+        deliveredCount: summary.delivered,
+        dueCount: summary.due,
+        errorCount: summary.errors.length,
+        firedCount: summary.fired.length,
+        observedAt
       });
       if (summary.delivered > 0 || summary.errors.length > 0) {
         options.logger?.(
@@ -116,6 +124,7 @@ export function startReminderTick(options: ReminderTickOptions): ReminderTickHan
         }
       }
     } catch (cause) {
+      recordRuntimeStatus(options, { decision: "error", errorCount: 1, observedAt });
       const message = errorMessage(cause);
       options.errorLogger?.(`reminder-tick: ${message}`);
     } finally {
@@ -137,6 +146,29 @@ export function startReminderTick(options: ReminderTickOptions): ReminderTickHan
     stop: () => clearInterval(handle),
     tickOnce
   };
+}
+
+export function classifyReminderRuntimeDecision(summary: RunDueRemindersSummary): ReminderRuntimeDecision {
+  if (summary.outcome === "lock-held") return "lock-held";
+  if (summary.outcome === "lock-error") return "lock-error";
+  if (summary.errors.length > 0) return "error";
+  if (summary.delivered > 0 || summary.fired.length > 0) return "fired";
+  if (summary.due === 0) return "no-due";
+  return "completed";
+}
+
+function recordRuntimeStatus(
+  options: ReminderTickOptions,
+  update: Omit<ReminderRuntimeStatusUpdate, "observedAtIso"> & { readonly observedAt: Date }
+): void {
+  try {
+    const { observedAt, ...statusUpdate } = update;
+    options.runtimeStatus?.record({
+      ...statusUpdate,
+      observedAtIso: observedAt.toISOString()
+    });
+  } catch {
+  }
 }
 
 function clampInterval(raw: number): number {

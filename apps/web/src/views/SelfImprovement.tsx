@@ -1,12 +1,44 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { AsyncBlock, Badge, Card, Stat } from "../components/ui.js";
-import { useI18n } from "../i18n/index.js";
+import { useI18n, type StringKey, type Translate } from "../i18n/index.js";
 import { formatProbabilityPct } from "../lib/percent.js";
 import { strategyStatusLabel, summarizeReflections, summarizeStrategies, summarizeWeaknesses, weaknessAxisLabel } from "./self-improvement.js";
 
 import type { ApiClient } from "../api/client.js";
-import type { PlaybookStrategiesResponse, ReflectionsResponse, WeaknessesResponse } from "../api/types.js";
+import type {
+  PlaybookStrategiesResponse,
+  ReflectionsResponse,
+  SelfImprovementRuntimeState,
+  SelfImprovementStatusResponse,
+  SelfImprovementTickDecision,
+  WeaknessesResponse
+} from "../api/types.js";
+
+const runtimeStateKeys: Record<SelfImprovementRuntimeState, StringKey> = {
+  dormant: "si.runtime.dormant",
+  running: "si.runtime.running",
+  unconfigured: "si.runtime.unconfigured"
+};
+
+const tickDecisionKeys: Record<SelfImprovementTickDecision, StringKey> = {
+  "already-running": "si.decision.alreadyRunning",
+  completed: "si.decision.completed",
+  disabled: "si.decision.disabled",
+  error: "si.decision.error",
+  "waiting-for-ac-power": "si.decision.waitingForAcPower",
+  "waiting-for-foreground": "si.decision.waitingForForeground",
+  "waiting-for-idle": "si.decision.waitingForIdle",
+  "waiting-for-model": "si.decision.waitingForModel",
+  "waiting-for-os-idle": "si.decision.waitingForOsIdle",
+  "waiting-for-quiet-hours": "si.decision.waitingForQuietHours"
+};
+
+const SELF_IMPROVEMENT_STATUS_REFETCH_INTERVAL_MS = 10_000;
+
+function decisionLabel(t: Translate, decision: SelfImprovementTickDecision | null): string {
+  return decision ? t(tickDecisionKeys[decision]) : t("si.noTickObserved");
+}
 
 export function SelfImprovementView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
@@ -23,6 +55,11 @@ export function SelfImprovementView({ client }: { client: ApiClient }) {
     queryFn: () => client.get<ReflectionsResponse>("/api/self-improvement/reflections"),
     queryKey: ["self-improvement-reflections", client.baseUrl]
   });
+  const status = useQuery({
+    queryFn: () => client.get<SelfImprovementStatusResponse>("/api/self-improvement/status"),
+    queryKey: ["self-improvement-status", client.baseUrl],
+    refetchInterval: SELF_IMPROVEMENT_STATUS_REFETCH_INTERVAL_MS
+  });
 
   const entries = weaknesses.data?.entries ?? [];
   const { total, axes } = summarizeWeaknesses(entries);
@@ -38,6 +75,42 @@ export function SelfImprovementView({ client }: { client: ApiClient }) {
       <p className="muted" style={{ marginTop: 4 }}>
         {t("si.subtitle", { n: total, a: axes })}
       </p>
+
+      <h2 className="page-title" style={{ marginTop: 32, fontSize: 20 }}>
+        {t("si.statusTitle")}
+      </h2>
+      <p className="muted" style={{ marginTop: 4 }}>
+        {t("si.statusSubtitle")}
+      </p>
+      <div style={{ marginTop: 16 }}>
+        <AsyncBlock loading={status.isLoading} error={status.error}>
+          {status.data ? (
+            <Card>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <Badge tone={status.data.enabled ? "ok" : "neutral"}>
+                  {status.data.enabled ? t("si.enabled") : t("si.disabled")}
+                </Badge>
+                <Badge tone={status.data.paused ? "warn" : "ok"}>
+                  {status.data.paused ? t("si.paused") : t("si.notPaused")}
+                </Badge>
+                <Badge tone={status.data.state === "running" ? "ok" : status.data.state === "unconfigured" ? "err" : "neutral"}>
+                  {t(runtimeStateKeys[status.data.state])}
+                </Badge>
+              </div>
+              <p style={{ margin: "10px 0 0" }}>
+                {t("si.pendingCorrections", { n: status.data.pendingCorrections })}
+              </p>
+              <p className="muted" style={{ margin: "4px 0 0", fontSize: 13 }}>
+                {status.data.pendingCorrections === 0 ? t("si.pendingNone") : t("si.pendingSome")}
+              </p>
+              <p className="muted" style={{ margin: "10px 0 0", fontSize: 13 }}>
+                {t("si.lastDecision", { decision: decisionLabel(t, status.data.lastDecision) })}
+                {status.data.lastObservedAtIso ? <span className="mono"> · {status.data.lastObservedAtIso}</span> : null}
+              </p>
+            </Card>
+          ) : null}
+        </AsyncBlock>
+      </div>
 
       <div style={{ marginTop: 16 }}>
         <AsyncBlock loading={weaknesses.isLoading} error={weaknesses.error} empty={entries.length === 0}>

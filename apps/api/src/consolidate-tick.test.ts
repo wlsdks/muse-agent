@@ -104,6 +104,35 @@ describe("startConsolidateTick.tickOnce — idle gate", () => {
   });
 });
 
+describe("startConsolidateTick.tickOnce — live consolidation flag", () => {
+  it("blocks every self-improvement side effect while off, then permits the path on the next tick", async () => {
+    let enabled = false;
+    let curated = 0;
+    let distilled = 0;
+    let decayed = 0;
+    let consolidated = 0;
+    const handle = startConsolidateTick(baseOptions({
+      curateMaxIdleDays: 90,
+      distillQueued: async () => { distilled += 1; return 1; },
+      isEnabled: () => enabled,
+      lastActivityMs: () => NOW.getTime() - IDLE_MS - 1,
+      decayStale: async () => { decayed += 1; return 1; },
+      runConsolidate: async () => { consolidated += 1; return []; },
+      runCurate: async () => { curated += 1; return ["stale-skill"]; }
+    }));
+
+    await handle.tickOnce();
+    expect({ curated, decayed, distilled, consolidated }).toEqual({ curated: 0, decayed: 0, distilled: 0, consolidated: 0 });
+    expect(handle.getStatus()).toMatchObject({ lastDecision: "disabled", lastObservedAtIso: NOW.toISOString() });
+
+    enabled = true;
+    await handle.tickOnce();
+    handle.stop();
+    expect({ curated, decayed, distilled, consolidated }).toEqual({ curated: 1, decayed: 1, distilled: 1, consolidated: 1 });
+    expect(handle.getStatus()).toMatchObject({ lastDecision: "completed", lastObservedAtIso: NOW.toISOString() });
+  });
+});
+
 describe("startConsolidateTick.tickOnce — REAL OS-idle brake (B1 brake-first)", () => {
   // API-idle holds in all three; only the OS-idle probe varies.
   const apiIdle = { lastActivityMs: () => NOW.getTime() - IDLE_MS - 1 };

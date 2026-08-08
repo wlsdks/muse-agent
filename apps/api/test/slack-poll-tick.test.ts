@@ -55,10 +55,12 @@ describe("startSlackPollTick", () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-slack-poll-"));
     const inboxFile = join(dir, "slack-inbox.json");
     const logged: string[] = [];
+    const ingests: number[] = [];
     const handle = startSlackPollTick({
       channels: ["C-A", "C-B"],
       inboxFile,
       logger: (m) => logged.push(m),
+      onIngested: (count) => ingests.push(count),
       provider: fakeProvider({
         "C-A": [[makeMessage("1700000001.000100", "C-A", "hi")]],
         "C-B": [[makeMessage("1700000002.000200", "C-B", "yo"), makeMessage("1700000003.000300", "C-B", "hey")]]
@@ -73,6 +75,7 @@ describe("startSlackPollTick", () => {
         "1700000003.000300"
       ]);
       expect(logged).toEqual(["slack-poll: ingested 3 message(s) across 2 channel(s)"]);
+      expect(ingests).toEqual([1, 2]);
     } finally {
       handle.stop();
     }
@@ -101,10 +104,12 @@ describe("startSlackPollTick", () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-slack-mixed-"));
     const inboxFile = join(dir, "slack-inbox.json");
     const errors: string[] = [];
+    const observedErrors: string[] = [];
     const handle = startSlackPollTick({
       channels: ["C-bad", "C-ok"],
       errorLogger: (m) => errors.push(m),
       inboxFile,
+      onError: (message) => observedErrors.push(message),
       provider: fakeProvider({
         "C-bad": [new Error("channel_not_found")],
         "C-ok": [[makeMessage("1700000010.000000", "C-ok", "still works")]]
@@ -115,6 +120,7 @@ describe("startSlackPollTick", () => {
       const inbox = JSON.parse(readFileSync(inboxFile, "utf8")) as { inbox: InboundMessage[] };
       expect(inbox.inbox.map((m) => m.messageId)).toEqual(["1700000010.000000"]);
       expect(errors.some((e) => e.includes("C-bad") && e.includes("channel_not_found"))).toBe(true);
+      expect(observedErrors).toEqual(["channel_not_found"]);
     } finally {
       handle.stop();
     }
@@ -150,4 +156,3 @@ describe("startSlackPollTick", () => {
     }
   });
 });
-

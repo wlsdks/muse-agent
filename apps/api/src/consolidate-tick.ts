@@ -31,6 +31,8 @@ export interface ConsolidateTickOptions {
   readonly model: string;
   readonly modelProvider: Pick<ModelProvider, "generate">;
   readonly authoredSkillsDir: string;
+  /** Live feature gate checked before every tick; false blocks every write phase. */
+  readonly isEnabled?: () => boolean | Promise<boolean>;
   /** Environment seam for resolving the persisted qualification learning hold. */
   readonly env?: NodeJS.ProcessEnv;
   /** Idle signal: ms-epoch of the last user activity, or undefined if never. */
@@ -122,6 +124,23 @@ export interface ConsolidateTickOptions {
   readonly runConsolidate?: () => Promise<readonly ConsolidateMergeOutcome[]>;
 }
 
+export type ConsolidateTickDecision =
+  | "already-running"
+  | "completed"
+  | "disabled"
+  | "error"
+  | "waiting-for-ac-power"
+  | "waiting-for-foreground"
+  | "waiting-for-idle"
+  | "waiting-for-model"
+  | "waiting-for-os-idle"
+  | "waiting-for-quiet-hours";
+
+export interface ConsolidateTickStatus {
+  readonly lastObservedAtIso: string | null;
+  readonly lastDecision: ConsolidateTickDecision | null;
+}
+
 const DEFAULT_INTERVAL_MS = 30 * 60_000;
 const MIN_INTERVAL_MS = 60_000;
 const MAX_INTERVAL_MS = 6 * 60 * 60_000;
@@ -130,6 +149,7 @@ const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60_000;
 export interface ConsolidateTickHandle {
   readonly stop: () => void;
   readonly tickOnce: () => Promise<void>;
+  readonly getStatus: () => ConsolidateTickStatus;
 }
 
 /**
@@ -153,6 +173,11 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
   const now = options.now ?? (() => new Date());
   const env = options.env ?? process.env;
   let firing = false;
+  let status: ConsolidateTickStatus = { lastDecision: null, lastObservedAtIso: null };
+
+  const observe = (lastDecision: ConsolidateTickDecision | null): void => {
+    status = { lastDecision, lastObservedAtIso: now().toISOString() };
+  };
 
   const runConsolidate =
     options.runConsolidate ??
@@ -216,13 +241,27 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
     });
 
   const tickOnce = async (): Promise<void> => {
-    if (firing) return;
-    const at = now();
-    const activeQuietHours = resolveQuietHoursOption(options.quietHours);
-    if (activeQuietHours && isQuietHour(at.getHours(), activeQuietHours)) return;
-    if (!isIdleForConsolidate(at.getTime(), options.lastActivityMs(), idleThresholdMs)) return;
+    if (firing) {
+      observe("already-running");
+      return;
+    }
     firing = true;
+    observe(null);
     try {
+      if (options.isEnabled && !(await options.isEnabled())) {
+        observe("disabled");
+        return;
+      }
+      const at = now();
+      const activeQuietHours = resolveQuietHoursOption(options.quietHours);
+      if (activeQuietHours && isQuietHour(at.getHours(), activeQuietHours)) {
+        observe("waiting-for-quiet-hours");
+        return;
+      }
+      if (!isIdleForConsolidate(at.getTime(), options.lastActivityMs(), idleThresholdMs)) {
+        observe("waiting-for-idle");
+        return;
+      }
       // Deterministic curate phase: archive skills idle past the threshold.
       // Cheap + model-free, so it runs behind ONLY the idle gate — BEFORE the
       // LLM brakes below — pruning stale skills even when the model is cold or
@@ -240,14 +279,26 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
       // Brake-first: when a real OS-idle probe is wired, the LLM merge ALSO
       // requires the MACHINE to be idle (not just Muse's /api), fail-closed —
       // so it never strains the laptop while the user works in another app.
-      if (options.osIdleMs && !isOsIdleEnough(options.osIdleMs(), idleThresholdMs)) return;
+      if (options.osIdleMs && !isOsIdleEnough(options.osIdleMs(), idleThresholdMs)) {
+        observe("waiting-for-os-idle");
+        return;
+      }
       // Brake-first: a heavy LLM merge must not drain the battery — AC only.
-      if (options.isOnAcPower && !isPowerOkForLlm(options.isOnAcPower())) return;
+      if (options.isOnAcPower && !isPowerOkForLlm(options.isOnAcPower())) {
+        observe("waiting-for-ac-power");
+        return;
+      }
       // Brake-first: never contend with a live foreground call for Ollama.
-      if (options.isForegroundBusy && (await options.isForegroundBusy())) return;
+      if (options.isForegroundBusy && (await options.isForegroundBusy())) {
+        observe("waiting-for-foreground");
+        return;
+      }
       // Brake-first: never COLD-load the multi-GB model in the background — only
       // merge when it's already resident (a foreground call warmed it).
-      if (options.isModelResident && !(await options.isModelResident())) return;
+      if (options.isModelResident && !(await options.isModelResident())) {
+        observe("waiting-for-model");
+        return;
+      }
       // Idle REM phase: distill ONE queued correction into a
       // learned strategy while idle — the felt "grows-with-you" payoff. Runs
       // behind the same brakes as the skill merge.
@@ -268,7 +319,9 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
       for (const m of merged) {
         options.logger?.(`consolidate-tick: folded ${m.merged.length.toString()} skills → ${m.umbrella}`);
       }
+      observe("completed");
     } catch (cause) {
+      observe("error");
       const message = errorMessage(cause);
       options.errorLogger?.(`consolidate-tick: ${message}`);
     } finally {
@@ -284,6 +337,7 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
   }
 
   return {
+    getStatus: () => status,
     stop: () => clearInterval(handle),
     tickOnce
   };

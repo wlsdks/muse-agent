@@ -18,10 +18,16 @@ import { errorMessage } from "@muse/shared";
  * filesystem-walk cost trivial. Clamped to [60s, 1h].
  */
 
-import { runDuePatternNotices, type AgentInitiatedNoticeBrokerLike, type InterruptionBudgetWiring } from "@muse/proactivity";
+import {
+  runDuePatternNotices,
+  type AgentInitiatedNoticeBrokerLike,
+  type InterruptionBudgetWiring,
+  type RunDuePatternNoticesSummary
+} from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
+import type { PatternRuntimeDecision, PatternRuntimeStatusStore, PatternRuntimeStatusUpdate } from "./pattern-runtime-status.js";
 
 export interface PatternTickOptions {
   readonly registry: MessagingProviderRegistry;
@@ -48,6 +54,7 @@ export interface PatternTickOptions {
   readonly now?: () => Date;
   /** Opt-in interruption budget — forwarded verbatim to `runDuePatternNotices`. */
   readonly interruptionBudget?: InterruptionBudgetWiring;
+  readonly runtimeStatus?: PatternRuntimeStatusStore;
 }
 
 const DEFAULT_INTERVAL_MS = 15 * 60_000;
@@ -65,9 +72,14 @@ export function startPatternTick(options: PatternTickOptions): PatternTickHandle
   let firing = false;
 
   const tickOnce = async (): Promise<void> => {
-    if (firing) return;
+    const observedAt = now();
+    if (firing) {
+      recordRuntimeStatus(options, { decision: "already-running", observedAt });
+      return;
+    }
     const activeQuietHours = resolveQuietHoursOption(options.quietHours);
-    if (activeQuietHours && isQuietHour(now().getHours(), activeQuietHours)) {
+    if (activeQuietHours && isQuietHour(observedAt.getHours(), activeQuietHours)) {
+      recordRuntimeStatus(options, { decision: "quiet-hours", observedAt });
       return;
     }
     firing = true;
@@ -75,7 +87,7 @@ export function startPatternTick(options: PatternTickOptions): PatternTickHandle
       const summary = await runDuePatternNotices({
         destination: options.destination,
         effectFile: options.effectFile,
-        now,
+        now: () => observedAt,
         patternsFiredFile: options.patternsFiredFile,
         providerId: options.providerId,
         registry: options.registry,
@@ -93,6 +105,14 @@ export function startPatternTick(options: PatternTickOptions): PatternTickHandle
           ...(options.tasksFile ? { tasksFile: options.tasksFile } : {})
         }
       });
+      recordRuntimeStatus(options, {
+        decision: classifyPatternRuntimeDecision(summary),
+        deliveredCount: summary.delivered,
+        errorCount: summary.errors.length,
+        fireableCount: summary.fireable,
+        firedCount: summary.fired.length,
+        observedAt
+      });
       if (summary.delivered > 0 || summary.errors.length > 0) {
         options.logger?.(
           `pattern-tick: fired ${summary.delivered.toString()} of ${summary.fireable.toString()} fireable via ${options.providerId}` +
@@ -103,6 +123,7 @@ export function startPatternTick(options: PatternTickOptions): PatternTickHandle
         }
       }
     } catch (cause) {
+      recordRuntimeStatus(options, { decision: "error", errorCount: 1, observedAt });
       const message = errorMessage(cause);
       options.errorLogger?.(`pattern-tick: ${message}`);
     } finally {
@@ -121,6 +142,29 @@ export function startPatternTick(options: PatternTickOptions): PatternTickHandle
     stop: () => clearInterval(handle),
     tickOnce
   };
+}
+
+export function classifyPatternRuntimeDecision(summary: RunDuePatternNoticesSummary): PatternRuntimeDecision {
+  if (summary.outcome === "lock-held") return "lock-held";
+  if (summary.outcome === "lock-error") return "lock-error";
+  if (summary.errors.length > 0) return "error";
+  if (summary.fired.length > 0) return "fired";
+  if (summary.fireable === 0) return "no-fireable";
+  return "completed";
+}
+
+function recordRuntimeStatus(
+  options: PatternTickOptions,
+  update: Omit<PatternRuntimeStatusUpdate, "observedAtIso"> & { readonly observedAt: Date }
+): void {
+  try {
+    const { observedAt, ...statusUpdate } = update;
+    options.runtimeStatus?.record({
+      ...statusUpdate,
+      observedAtIso: observedAt.toISOString()
+    });
+  } catch {
+  }
 }
 
 function clampInterval(raw: number): number {

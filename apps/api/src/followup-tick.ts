@@ -18,10 +18,11 @@ import { errorMessage } from "@muse/shared";
  * to [5s, 1h] for the same reason the other ticks clamp.
  */
 
-import { runDueFollowups, type InterruptionBudgetWiring, type ProactiveModelProviderLike } from "@muse/proactivity";
+import { runDueFollowups, type InterruptionBudgetWiring, type ProactiveModelProviderLike, type RunDueFollowupsSummary } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
+import type { FollowupRuntimeDecision, FollowupRuntimeStatusStore, FollowupRuntimeStatusUpdate } from "./followup-runtime-status.js";
 
 export interface FollowupTickOptions {
   readonly registry: MessagingProviderRegistry;
@@ -46,6 +47,7 @@ export interface FollowupTickOptions {
   readonly now?: () => Date;
   /** Opt-in interruption budget — forwarded verbatim to `runDueFollowups`. */
   readonly interruptionBudget?: InterruptionBudgetWiring;
+  readonly runtimeStatus?: FollowupRuntimeStatusStore;
 }
 
 const DEFAULT_INTERVAL_MS = 60_000;
@@ -63,11 +65,14 @@ export function startFollowupTick(options: FollowupTickOptions): FollowupTickHan
   let firing = false;
 
   const tickOnce = async (): Promise<void> => {
+    const observedAt = now();
     if (firing) {
+      recordRuntimeStatus(options, { decision: "already-running", observedAt });
       return;
     }
     const activeQuietHours = resolveQuietHoursOption(options.quietHours);
-    if (activeQuietHours && isQuietHour(now().getHours(), activeQuietHours)) {
+    if (activeQuietHours && isQuietHour(observedAt.getHours(), activeQuietHours)) {
+      recordRuntimeStatus(options, { decision: "quiet-hours", observedAt });
       return;
     }
     firing = true;
@@ -80,9 +85,17 @@ export function startFollowupTick(options: FollowupTickOptions): FollowupTickHan
         ...(options.maxPerTick !== undefined ? { maxPerTick: options.maxPerTick } : {}),
         model: options.model,
         modelProvider: options.modelProvider,
-        now,
+        now: () => observedAt,
         providerId: options.providerId,
         registry: options.registry
+      });
+      recordRuntimeStatus(options, {
+        decision: classifyFollowupRuntimeDecision(summary),
+        deliveredCount: summary.delivered,
+        dueCount: summary.due,
+        errorCount: summary.errors.length,
+        firedCount: summary.fired.length,
+        observedAt
       });
       if (summary.delivered > 0 || summary.errors.length > 0) {
         options.logger?.(
@@ -94,6 +107,7 @@ export function startFollowupTick(options: FollowupTickOptions): FollowupTickHan
         }
       }
     } catch (cause) {
+      recordRuntimeStatus(options, { decision: "error", errorCount: 1, observedAt });
       const message = errorMessage(cause);
       options.errorLogger?.(`followup-tick: ${message}`);
     } finally {
@@ -112,6 +126,29 @@ export function startFollowupTick(options: FollowupTickOptions): FollowupTickHan
     stop: () => clearInterval(handle),
     tickOnce
   };
+}
+
+export function classifyFollowupRuntimeDecision(summary: RunDueFollowupsSummary): FollowupRuntimeDecision {
+  if (summary.outcome === "lock-held") return "lock-held";
+  if (summary.outcome === "lock-error") return "lock-error";
+  if (summary.errors.length > 0) return "error";
+  if (summary.fired.length > 0) return "fired";
+  if (summary.due === 0) return "no-due";
+  return "completed";
+}
+
+function recordRuntimeStatus(
+  options: FollowupTickOptions,
+  update: Omit<FollowupRuntimeStatusUpdate, "observedAtIso"> & { readonly observedAt: Date }
+): void {
+  try {
+    const { observedAt, ...statusUpdate } = update;
+    options.runtimeStatus?.record({
+      ...statusUpdate,
+      observedAtIso: observedAt.toISOString()
+    });
+  } catch {
+  }
 }
 
 function clampInterval(raw: number): number {

@@ -40,7 +40,6 @@ import {
   avoidedSourceKeys,
   compareFollowupsByScheduledFor,
   markFollowupFired,
-  readFollowups,
   readFollowupsStrict,
   readTrustLedger,
   withRequiredProcessLock,
@@ -162,7 +161,7 @@ async function runDueFollowupsUnderLock(options: RunDueFollowupsOptions): Promis
   // for non-finite values, matching the scheduler's clampInterval guard.
   const requested = Number.isFinite(options.maxPerTick) ? Math.trunc(options.maxPerTick!) : DEFAULT_MAX_PER_TICK;
   const max = Math.max(1, requested);
-  const all = await readFollowups(options.file);
+  const all = await readFollowupsStrict(options.file);
   const cutoffMs = now().getTime();
   // Sort soonest-scheduledFor-first (= most-overdue-first for past times) BEFORE the
   // per-tick cap, so when a backlog exceeds maxPerTick the genuinely most-overdue

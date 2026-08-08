@@ -31,6 +31,8 @@ export interface DiscordPollOptions {
   readonly fetchLimit?: number;
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
+  readonly onIngested?: (count: number) => void;
+  readonly onError?: (message: string) => void;
 }
 
 export type DiscordPollHandle = ChannelPollHandle;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { shapeDaemonFlags, type DaemonFlagView } from "./settings-routes.js";
 
 // parseBoolean truthy set: "true", "1", "yes", "on" (case-insensitive, trimmed).
-// All eight DAEMON_FLAGS have default false.
+// All ten DAEMON_FLAGS have default false.
 
 const ALL_KEYS = [
   "MUSE_EPISODIC_MEMORY_ENABLED",
@@ -10,6 +10,7 @@ const ALL_KEYS = [
   "MUSE_CONFLICT_WATCH_ENABLED",
   "MUSE_PROACTIVE_AGENT_TURN",
   "MUSE_BACKGROUND_REVIEW_ENABLED",
+  "MUSE_SKILL_CONSOLIDATE_IDLE_ENABLED",
   "MUSE_KNOWLEDGE_SEARCH_ENABLED",
   "MUSE_TELEGRAM_POLL_ENABLED",
   "MUSE_MATRIX_POLL_ENABLED",
@@ -17,9 +18,9 @@ const ALL_KEYS = [
 ];
 
 describe("shapeDaemonFlags", () => {
-  it("empty env → all flags disabled, all 9 keys present in order", () => {
+  it("empty env → all flags disabled, all 10 keys present in order", () => {
     const { flags } = shapeDaemonFlags({});
-    expect(flags).toHaveLength(9);
+    expect(flags).toHaveLength(10);
     for (let i = 0; i < ALL_KEYS.length; i++) {
       const flag = flags[i] as DaemonFlagView;
       expect(flag.key).toBe(ALL_KEYS[i]);

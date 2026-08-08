@@ -3,9 +3,511 @@ import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
 
 import type { ApiClient } from "../api/client.js";
-import { I18nProvider } from "../i18n/index.js";
-import { AutonomyView } from "./Autonomy.js";
+import type { AutomationUpcomingResponse } from "../api/types.js";
+import { I18nProvider, useI18n } from "../i18n/index.js";
+import { AutonomyView, UpcomingSections, UpcomingTab } from "./Autonomy.js";
 import { writePersonalStatusFocus } from "./personal-status-navigation.js";
+
+function UpcomingFixture({ data }: { data: AutomationUpcomingResponse }) {
+  const { locale, t } = useI18n();
+  return <UpcomingSections data={data} locale={locale} t={t} />;
+}
+
+test("Gateway preview shows the exact route and keeps sending out of the view", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const screen = await render(
+    <I18nProvider>
+      <UpcomingFixture data={{
+        budget: null,
+        digest: null,
+        proactiveRuntime: null,
+        gateway: {
+          destination: "desktop",
+          localOnly: true,
+          providerId: "log",
+          reason: null,
+          source: "explicit-config",
+          status: "resolved"
+        },
+        nextReminder: null,
+        scheduledJobs: []
+      }} />
+    </I18nProvider>
+  );
+
+  await expect.element(screen.getByText("log:desktop", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Preview only — no message is sent from this view.", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("ready", { exact: true })).toBeVisible();
+});
+
+test("Gateway preview shows the source and reason for a held route", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const screen = await render(
+    <I18nProvider>
+        <UpcomingFixture data={{
+          budget: null,
+          digest: null,
+          proactiveRuntime: null,
+          gateway: {
+          destination: null,
+          localOnly: false,
+          providerId: null,
+          reason: "multiple-paired-routes",
+          source: null,
+          status: "ambiguous"
+        },
+        nextReminder: null,
+        scheduledJobs: []
+      }} />
+    </I18nProvider>
+  );
+
+  await expect.element(screen.getByText("No route source is active. · Multiple paired channels exist, so Muse will not guess.", { exact: true })).toBeVisible();
+  await expect.element(screen.getByText("Preview only — no message is sent from this view.", { exact: true })).toBeVisible();
+});
+
+test("UpcomingTab refetches live Gateway and digest state while it stays open", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let responseIndex = 0;
+  const held: AutomationUpcomingResponse = {
+    budget: null,
+    digest: null,
+    proactiveRuntime: null,
+    gateway: {
+      destination: null,
+      localOnly: false,
+      providerId: null,
+      reason: "paired-route-inspection-unavailable",
+      source: null,
+      status: "unconfigured"
+    },
+    nextReminder: null,
+    scheduledJobs: []
+  };
+  const resolved: AutomationUpcomingResponse = {
+    ...held,
+    digest: { enabled: true, hour: 9, nextAtIso: "2099-01-01T09:00:00.000Z" },
+    gateway: {
+      destination: "desktop",
+      localOnly: true,
+      providerId: "log",
+      reason: null,
+      source: "explicit-config",
+      status: "resolved"
+    }
+  };
+  const get = vi.fn(async (path: string) => {
+    expect(path).toBe("/api/automation/upcoming");
+    return responseIndex === 0 ? held : resolved;
+  });
+  const client = {
+    baseUrl: "http://automation-live.test",
+    get,
+    post: vi.fn()
+  } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  try {
+    const screen = await render(
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider><UpcomingTab client={client} /></I18nProvider>
+      </QueryClientProvider>
+    );
+
+    await expect.element(screen.getByText("not configured", { exact: true }).first()).toBeVisible();
+    await expect.element(screen.getByText("Preview only — no message is sent from this view.", { exact: true })).toBeVisible();
+
+    responseIndex = 1;
+    await queryClient.refetchQueries({ queryKey: ["automation-upcoming", client.baseUrl] });
+
+    await expect.element(screen.getByText("log:desktop", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText(/daily at 9:00/u)).toBeVisible();
+    await expect.element(screen.getByText("ready", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Preview only — no message is sent from this view.", { exact: true })).toBeVisible();
+    expect(get).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+    queryClient.clear();
+  }
+});
+
+test("UpcomingTab renders channel runtime through GET only and never POSTs", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const get = vi.fn(async (path: string) => {
+    expect(path).toBe("/api/automation/upcoming");
+    return {
+      budget: null,
+      channelRuntime: {
+        daemons: [{
+          hasError: true,
+          kind: "slack-poll",
+          lastErrorAtIso: "not-a-date",
+          lastIngestAtIso: "not-a-date",
+          lastIngestCount: Number.POSITIVE_INFINITY,
+          running: true
+        }],
+        status: "degraded"
+      },
+      digest: null,
+      proactiveRuntime: null,
+      gateway: {
+        destination: null,
+        localOnly: false,
+        providerId: null,
+        reason: "paired-route-inspection-unavailable",
+        source: null,
+        status: "unconfigured"
+      },
+      nextReminder: null,
+      scheduledJobs: []
+    } satisfies AutomationUpcomingResponse;
+  });
+  const post = vi.fn();
+  const client = {
+    baseUrl: "http://channel-runtime.test",
+    get,
+    post
+  } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  try {
+    const screen = await render(
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider><UpcomingTab client={client} /></I18nProvider>
+      </QueryClientProvider>
+    );
+
+    await expect.element(screen.getByText("Channel runtime", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("degraded", { exact: true }).first()).toBeVisible();
+    await expect.element(screen.getByText("Slack poll", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Last ingest: count unavailable · time unavailable", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Operational error observed time unavailable", { exact: true })).toBeVisible();
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(post).not.toHaveBeenCalled();
+  } finally {
+    queryClient.clear();
+  }
+});
+
+test("UpcomingTab refetches digest runtime from no observation to sent without outbound effects", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let responseIndex = 0;
+  const before: AutomationUpcomingResponse = {
+    budget: null,
+    digest: { enabled: true, hour: 9, nextAtIso: "2099-01-01T09:00:00.000Z" },
+    digestRuntime: null,
+    proactiveRuntime: null,
+    gateway: {
+      destination: "desktop",
+      localOnly: true,
+      providerId: "log",
+      reason: null,
+      source: "explicit-config",
+      status: "resolved"
+    },
+    nextReminder: null,
+    scheduledJobs: []
+  };
+  const after: AutomationUpcomingResponse = {
+    ...before,
+    digestRuntime: {
+      lastDecision: "sent",
+      lastErrorCount: 0,
+      lastItemCount: 1,
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z"
+    },
+    proactiveRuntime: null
+  };
+  const get = vi.fn(async (path: string) => {
+    expect(path).toBe("/api/automation/upcoming");
+    return responseIndex === 0 ? before : after;
+  });
+  const post = vi.fn();
+  const client = {
+    baseUrl: "http://digest-runtime.test",
+    get,
+    post
+  } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  try {
+    const screen = await render(
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider><UpcomingTab client={client} /></I18nProvider>
+      </QueryClientProvider>
+    );
+
+    await expect.element(screen.getByText("No digest daemon decision has been observed since this server started.", { exact: true })).toBeVisible();
+
+    responseIndex = 1;
+    await queryClient.refetchQueries({ queryKey: ["automation-upcoming", client.baseUrl] });
+
+    await expect.element(screen.getByText("Digest sent", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Items: 1 · errors: 0", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Preview only — follow-up status is informational; this view does not send a message.", { exact: true })).toBeVisible();
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(post).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+    queryClient.clear();
+  }
+});
+
+test("UpcomingTab refetches proactive runtime from null to fired through the existing GET query without POST", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let responseIndex = 0;
+  const before: AutomationUpcomingResponse = {
+    budget: null,
+    digest: null,
+    proactiveRuntime: null,
+    gateway: {
+      destination: "desktop",
+      localOnly: true,
+      providerId: "log",
+      reason: null,
+      source: "explicit-config",
+      status: "resolved"
+    },
+    nextReminder: null,
+    scheduledJobs: []
+  };
+  const after: AutomationUpcomingResponse = {
+    ...before,
+    proactiveRuntime: {
+      lastDecision: "fired",
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z",
+      lastImminentCount: 1,
+      lastFiredCount: 1,
+      lastSuppressedCount: 0,
+      lastErrorCount: 0
+    }
+  };
+  const get = vi.fn(async (path: string) => {
+    expect(path).toBe("/api/automation/upcoming");
+    return responseIndex === 0 ? before : after;
+  });
+  const post = vi.fn();
+  const client = {
+    baseUrl: "http://proactive-runtime.test",
+    get,
+    post
+  } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  try {
+    const screen = await render(
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider><UpcomingTab client={client} /></I18nProvider>
+      </QueryClientProvider>
+    );
+
+    await expect.element(screen.getByText("No proactive daemon decision has been observed since this server started.", { exact: true })).toBeVisible();
+    responseIndex = 1;
+    await queryClient.refetchQueries({ queryKey: ["automation-upcoming", client.baseUrl] });
+    await expect.element(screen.getByText("Proactive notice fired", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Imminent: 1 · fired: 1 · suppressed: 0 · errors: 0", { exact: true })).toBeVisible();
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(post).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+    queryClient.clear();
+  }
+});
+
+test("UpcomingTab refetches reminder runtime from null to fired through the existing GET query without POST", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let responseIndex = 0;
+  const before: AutomationUpcomingResponse = {
+    budget: null,
+    digest: null,
+    proactiveRuntime: null,
+    gateway: {
+      destination: "desktop",
+      localOnly: true,
+      providerId: "log",
+      reason: null,
+      source: "explicit-config",
+      status: "resolved"
+    },
+    nextReminder: null,
+    scheduledJobs: []
+  };
+  const after: AutomationUpcomingResponse = {
+    ...before,
+    reminderRuntime: {
+      lastDecision: "fired",
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z",
+      lastDueCount: 1,
+      lastDeliveredCount: 1,
+      lastFiredCount: 1,
+      lastErrorCount: 0
+    }
+  };
+  const get = vi.fn(async (path: string) => {
+    expect(path).toBe("/api/automation/upcoming");
+    return responseIndex === 0 ? before : after;
+  });
+  const post = vi.fn();
+  const client = {
+    baseUrl: "http://reminder-runtime.test",
+    get,
+    post
+  } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  try {
+    const screen = await render(
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider><UpcomingTab client={client} /></I18nProvider>
+      </QueryClientProvider>
+    );
+
+    await expect.element(screen.getByText("No reminder daemon decision has been observed since this server started.", { exact: true })).toBeVisible();
+    responseIndex = 1;
+    await queryClient.refetchQueries({ queryKey: ["automation-upcoming", client.baseUrl] });
+    await expect.element(screen.getByText("Reminder fired", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Due: 1 · delivered: 1 · fired: 1 · errors: 0", { exact: true })).toBeVisible();
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(post).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+    queryClient.clear();
+  }
+});
+
+test("UpcomingTab refetches follow-up runtime from null to completed through the existing GET query without POST", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let responseIndex = 0;
+  const before: AutomationUpcomingResponse = {
+    budget: null,
+    digest: null,
+    proactiveRuntime: null,
+    gateway: {
+      destination: "desktop",
+      localOnly: true,
+      providerId: "log",
+      reason: null,
+      source: "explicit-config",
+      status: "resolved"
+    },
+    nextReminder: null,
+    scheduledJobs: []
+  };
+  const after: AutomationUpcomingResponse = {
+    ...before,
+    followupRuntime: {
+      lastDecision: "completed",
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z",
+      lastDueCount: 1,
+      lastDeliveredCount: 0,
+      lastFiredCount: 0,
+      lastErrorCount: 0
+    }
+  };
+  const get = vi.fn(async (path: string) => {
+    expect(path).toBe("/api/automation/upcoming");
+    return responseIndex === 0 ? before : after;
+  });
+  const post = vi.fn();
+  const client = {
+    baseUrl: "http://followup-runtime.test",
+    get,
+    post
+  } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  try {
+    const screen = await render(
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider><UpcomingTab client={client} /></I18nProvider>
+      </QueryClientProvider>
+    );
+
+    await expect.element(screen.getByText("No follow-up daemon decision has been observed since this server started.", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Not configured", { exact: true }).last()).toBeVisible();
+
+    responseIndex = 1;
+    await queryClient.refetchQueries({ queryKey: ["automation-upcoming", client.baseUrl] });
+    await expect.element(screen.getByText("Follow-up check completed", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Due: 1 · delivered: 0 · fired: 0 · errors: 0", { exact: true })).toBeVisible();
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(post).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+    queryClient.clear();
+  }
+});
+
+test("UpcomingTab refetches the delivery queue snapshot through GET without POST", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  let responseIndex = 0;
+  const before: AutomationUpcomingResponse = {
+    budget: null,
+    digest: null,
+    proactiveRuntime: null,
+    gateway: {
+      destination: null,
+      localOnly: false,
+      providerId: null,
+      reason: "paired-route-inspection-unavailable",
+      source: null,
+      status: "unconfigured"
+    },
+    nextReminder: null,
+    scheduledJobs: []
+  };
+  const after: AutomationUpcomingResponse = {
+    ...before,
+    deliveryQueueSnapshot: {
+      followups: {
+        overdue: { count: 1, oldestAgeMs: 24 * 60 * 60_000 },
+        scheduled: { count: 2, oldestAgeMs: 2 * 24 * 60 * 60_000 }
+      },
+      generatedAt: "2099-01-01T09:00:00.000Z",
+      pendingDrafts: { count: 1, oldestAgeMs: 60 * 60_000 },
+      reminders: {
+        overdue: { count: 1, oldestAgeMs: 30 * 60_000 },
+        scheduled: { count: 1, oldestAgeMs: 3 * 60 * 60_000 }
+      },
+      status: "observed"
+    }
+  };
+  const get = vi.fn(async (path: string) => {
+    expect(path).toBe("/api/automation/upcoming");
+    return responseIndex === 0 ? before : after;
+  });
+  const post = vi.fn();
+  const client = {
+    baseUrl: "http://delivery-queue.test",
+    get,
+    post
+  } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  try {
+    const screen = await render(
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider><UpcomingTab client={client} /></I18nProvider>
+      </QueryClientProvider>
+    );
+
+    await expect.element(screen.getByText("Delivery queue snapshot unavailable", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("unverified", { exact: true }).first()).toBeVisible();
+
+    responseIndex = 1;
+    await queryClient.refetchQueries({ queryKey: ["automation-upcoming", client.baseUrl] });
+
+    await expect.element(screen.getByText("Pending drafts: 1 · oldest 1h", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Follow-ups · scheduled 2 · oldest 2d · overdue 1 · oldest 1d", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Reminders · scheduled 1 · oldest 3h · overdue 1 · oldest 30m", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("observed", { exact: true }).first()).toBeVisible();
+    expect(get).toHaveBeenCalledTimes(2);
+    expect(post).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+    queryClient.clear();
+  }
+});
 
 test("personal-status veto intent is consumed once by the destination view and focuses the veto panel", async () => {
   window.localStorage.setItem("muse.lang", "en");

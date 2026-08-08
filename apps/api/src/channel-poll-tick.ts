@@ -39,6 +39,10 @@ export interface ChannelPollOptions {
   readonly fetchLimit?: number;
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
+  /** Optional observation seam; failures here must not affect polling. */
+  readonly onIngested?: (count: number) => void;
+  /** Optional observation seam; failures here must not affect polling. */
+  readonly onError?: (message: string) => void;
 }
 
 export interface ChannelPollHandle {
@@ -62,6 +66,7 @@ export function startChannelPollTick(options: ChannelPollOptions): ChannelPollHa
     try {
       let totalIngested = 0;
       for (const channel of options.channels) {
+        let channelIngested = 0;
         try {
           const inbound = await options.provider.pollUpdates({
             source: channel,
@@ -70,7 +75,9 @@ export function startChannelPollTick(options: ChannelPollOptions): ChannelPollHa
           });
           try {
             for (const message of inbound) {
-              totalIngested += Number(await appendInbound(options.inboxFile, message));
+              const ingested = Number(await appendInbound(options.inboxFile, message));
+              channelIngested += ingested;
+              totalIngested += ingested;
             }
           } catch (cause) {
             options.provider.discardPolledInbound?.({ source: channel });
@@ -79,8 +86,12 @@ export function startChannelPollTick(options: ChannelPollOptions): ChannelPollHa
           // Even an all-filtered provider batch must commit: it may contain
           // remote entries intentionally omitted from the text-only inbox.
           await options.provider.commitPolledInbound?.({ source: channel });
+          if (channelIngested > 0) {
+            safelyReport(options.onIngested, channelIngested);
+          }
         } catch (cause) {
           const message = errorMessage(cause);
+          safelyReport(options.onError, message);
           options.errorLogger?.(`${options.logPrefix}: channel ${channel}: ${message}`);
         }
       }
@@ -105,6 +116,15 @@ export function startChannelPollTick(options: ChannelPollOptions): ChannelPollHa
     stop: () => clearInterval(handle),
     tickOnce
   };
+}
+
+function safelyReport<T>(callback: ((value: T) => void) | undefined, value: T): void {
+  if (!callback) return;
+  try {
+    callback(value);
+  } catch {
+    return;
+  }
 }
 
 /**

@@ -5,12 +5,11 @@ import { errorMessage } from "@muse/shared";
  * wired into apps/api as a `setInterval` rider, mirroring `reminder-tick.ts` /
  * `proactive-tick.ts`.
  *
- * Off by default. Activates only when:
- *   - `MUSE_DIGEST_ENABLED` is true (default true — see wiring),
- *   - `MUSE_PROACTIVE_PROVIDER` + `MUSE_PROACTIVE_DESTINATION` are set (the
- *     digest rides the SAME channel as the proactive daemon — a second
- *     configured destination for one occasional daily message is needless),
- *   - the messaging registry has the named provider, and
+ * `MUSE_DIGEST_ENABLED` is true (default true — see wiring), and the daemon
+ * wiring has a configured or paired route. The digest rides the SAME channel
+ * as the proactive daemon, and re-resolves that route before every delivery
+ * so pairing changes take effect without restarting the API.
+ * The messaging registry has the selected provider, and
  *   - a `digestFile` / `sentFile` are configured.
  *
  * Tick cadence: `MUSE_DIGEST_TICK_MS` (default 60_000), clamped to [5s, 1h] —
@@ -22,13 +21,20 @@ import { runDigestFlushIfDue, type RunDigestFlushOutcome } from "@muse/proactivi
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
+import type {
+  DigestRuntimeDecision,
+  DigestRuntimeStatus,
+  DigestRuntimeStatusStore
+} from "./digest-runtime-status.js";
 
 export interface DigestTickOptions {
   readonly registry: MessagingProviderRegistry;
   readonly digestFile: string;
   readonly sentFile: string;
-  readonly providerId: string;
-  readonly destination: string;
+  readonly providerId?: string;
+  readonly destination?: string;
+  /** Re-resolves the canonical route immediately before delivery. */
+  readonly resolveRoute?: () => { readonly providerId: string; readonly destination: string } | undefined;
   /** Local hour the digest fires at. Default 18 (`MUSE_DIGEST_HOUR`). */
   readonly digestHour?: number;
   readonly intervalMs?: number;
@@ -45,6 +51,8 @@ export interface DigestTickOptions {
   readonly quietHours?: QuietHoursOption;
   /** Injectable clock for tests; default `() => new Date()`. */
   readonly now?: () => Date;
+  /** In-memory read seam shared with the assembled Upcoming route. */
+  readonly runtimeStatus?: DigestRuntimeStatusStore;
 }
 
 const DEFAULT_INTERVAL_MS = 60_000;
@@ -52,6 +60,7 @@ const MIN_INTERVAL_MS = 5_000;
 const MAX_INTERVAL_MS = 60 * 60_000;
 
 export interface DigestTickHandle {
+  readonly getStatus: () => DigestRuntimeStatus | null;
   readonly stop: () => void;
   readonly tickOnce: () => Promise<void>;
 }
@@ -61,32 +70,60 @@ export function startDigestTick(options: DigestTickOptions): DigestTickHandle {
   const now = options.now ?? (() => new Date());
   let firing = false;
 
+  const observe = (
+    decision: DigestRuntimeDecision,
+    at: Date,
+    itemCount = 0,
+    errorCount = 0
+  ): void => {
+    options.runtimeStatus?.record({
+      decision,
+      errorCount,
+      itemCount,
+      observedAtIso: at.toISOString()
+    });
+  };
+
   const tickOnce = async (): Promise<void> => {
     if (firing) {
+      observe("already-running", now());
       return;
     }
+    const at = now();
     const activeQuietHours = resolveQuietHoursOption(options.quietHours);
-    if (activeQuietHours && isQuietHour(now().getHours(), activeQuietHours)) {
+    if (activeQuietHours && isQuietHour(at.getHours(), activeQuietHours)) {
+      observe("quiet-hours", at);
       return;
     }
     firing = true;
     try {
+      const route = options.resolveRoute
+        ? options.resolveRoute()
+        : options.providerId !== undefined && options.destination !== undefined
+          ? { destination: options.destination, providerId: options.providerId }
+          : undefined;
+      if (!route) {
+        observe("route-unavailable", at);
+        return;
+      }
       const summary = await runDigestFlushIfDue({
-        destination: options.destination,
+        destination: route.destination,
         digestFile: options.digestFile,
         ...(options.digestHour !== undefined ? { digestHour: options.digestHour } : {}),
-        now,
-        providerId: options.providerId,
+        now: () => at,
+        providerId: route.providerId,
         registry: options.registry,
         sentFile: options.sentFile
       });
+      observe(summary.outcome, at, summary.itemCount, summary.errors.length);
       if (LOGGED_OUTCOMES.has(summary.outcome) || summary.errors.length > 0) {
-        options.logger?.(`digest-tick: ${summary.outcome} (${summary.itemCount.toString()} item(s)) via ${options.providerId}`);
+        options.logger?.(`digest-tick: ${summary.outcome} (${summary.itemCount.toString()} item(s)) via ${route.providerId}`);
         for (const error of summary.errors) {
           options.errorLogger?.(`digest-tick: ${error}`);
         }
       }
     } catch (cause) {
+      observe("error", at, 0, 1);
       const message = errorMessage(cause);
       options.errorLogger?.(`digest-tick: ${message}`);
     } finally {
@@ -102,6 +139,7 @@ export function startDigestTick(options: DigestTickOptions): DigestTickHandle {
   }
 
   return {
+    getStatus: () => options.runtimeStatus?.get() ?? null,
     stop: () => clearInterval(handle),
     tickOnce
   };
@@ -115,4 +153,3 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
-
