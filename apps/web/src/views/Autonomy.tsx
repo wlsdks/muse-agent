@@ -705,6 +705,7 @@ function GatewayCard({ gateway, t }: { gateway: GatewayRouteStatus; t: Translate
     <Card title={t("auto.upcoming.gatewayTitle")}>
       <div className="row">
         <div className="row-main">
+          <div className="label">{t("auto.upcoming.gateway.currentRoute")}</div>
           <div className="row-title">{route ?? t(gatewayStatusKey(gateway.status))}</div>
           <div className="row-meta">{detail}</div>
         </div>
@@ -768,6 +769,10 @@ function DigestRuntimeStatus({
           <div className="row-meta">{t("auto.upcoming.digestRuntime.observed", { when: observedAt })}</div>
           <div className="row-meta">
             {t("auto.upcoming.digestRuntime.counts", { errors: runtime.lastErrorCount, items: runtime.lastItemCount })}
+          </div>
+          <div className="row-meta">
+            <span className="label">{t("auto.upcoming.runtimeRoute.lastExecution")}: </span>
+            {formatRuntimeRoute(runtime.lastRoute, t)}
           </div>
         </div>
         <Badge tone="neutral">{t("auto.upcoming.digestRuntime.previewBadge")}</Badge>
@@ -833,6 +838,10 @@ function ProactiveRuntimeStatus({
               {t("auto.upcoming.proactiveRuntime.sessionLockedUntil", { when: sessionLockedUntil })}
             </div>
           )}
+          <div className="row-meta">
+            <span className="label">{t("auto.upcoming.runtimeRoute.lastExecution")}: </span>
+            {formatRuntimeRoute(runtime.lastRoute, t)}
+          </div>
         </div>
         <Badge tone="neutral">{t("auto.upcoming.proactiveRuntime.previewBadge")}</Badge>
       </div>
@@ -841,6 +850,50 @@ function ProactiveRuntimeStatus({
       </p>
     </div>
   );
+}
+
+function formatRuntimeRoute(route: unknown, t: Translate): string {
+  if (!isRuntimeRoute(route)) return t("auto.upcoming.runtimeRoute.unavailable");
+  const target = route.providerId && route.destination
+    ? `${route.providerId}:${route.destination}`
+    : t("auto.upcoming.runtimeRoute.noDestination");
+  const status = runtimeRouteStatusKey(route.status);
+  const reason = route.reason ? runtimeRouteReason(route.reason, t) : null;
+  return [target, t(status), reason].filter((part): part is string => part !== null).join(" · ");
+}
+
+function isRuntimeRoute(value: unknown): value is GatewayRouteStatus {
+  if (typeof value !== "object" || value === null) return false;
+  const route = value as Record<string, unknown>;
+  return (
+    (route.status === "resolved" || route.status === "unconfigured" || route.status === "ambiguous" || route.status === "blocked-local-only")
+    && (route.source === null || route.source === "explicit-config" || route.source === "paired-owner")
+    && (route.providerId === null || typeof route.providerId === "string")
+    && (route.destination === null || typeof route.destination === "string")
+    && typeof route.localOnly === "boolean"
+    && (route.reason === null || typeof route.reason === "string")
+  );
+}
+
+function runtimeRouteStatusKey(status: GatewayRouteStatus["status"]): StringKey {
+  switch (status) {
+    case "resolved": return "auto.upcoming.gateway.resolved";
+    case "ambiguous": return "auto.upcoming.gateway.ambiguous";
+    case "blocked-local-only": return "auto.upcoming.gateway.blockedLocalOnly";
+    case "unconfigured": return "auto.upcoming.gateway.unconfigured";
+  }
+}
+
+function runtimeRouteReason(reason: string, t: Translate): string | null {
+  switch (reason) {
+    case "explicit-route-incomplete": return t("auto.upcoming.gateway.reason.explicitRouteIncomplete");
+    case "explicit-provider-not-registered": return t("auto.upcoming.gateway.reason.explicitProviderNotRegistered");
+    case "remote-route-blocked-by-local-only": return t("auto.upcoming.gateway.reason.remoteBlockedLocalOnly");
+    case "paired-route-inspection-unavailable": return t("auto.upcoming.gateway.reason.inspectionUnavailable");
+    case "no-single-paired-route": return t("auto.upcoming.gateway.reason.noSinglePairedRoute");
+    case "multiple-paired-routes": return t("auto.upcoming.gateway.reason.multiplePairedRoutes");
+    default: return null;
+  }
 }
 
 function BudgetCard({ budget, t }: { budget: NonNullable<AutomationUpcomingResponse["budget"]>; t: Translate }) {

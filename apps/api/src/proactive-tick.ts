@@ -30,6 +30,7 @@ import {
 } from "@muse/proactivity";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
+import type { MessagingRouteResolution } from "@muse/autoconfigure";
 import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 
 import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
@@ -38,6 +39,11 @@ import type {
   ProactiveRuntimeStatusStore,
   ProactiveRuntimeStatusUpdate
 } from "./proactive-runtime-status.js";
+import {
+  explicitMessagingRouteReceipt,
+  sanitizeMessagingRouteReceipt,
+  unavailableMessagingRouteReceipt
+} from "./messaging-route-receipt.js";
 
 export interface ProactiveTickOptions {
   readonly calendarRegistry?: CalendarProviderRegistry;
@@ -63,7 +69,7 @@ export interface ProactiveTickOptions {
   readonly providerId?: string;
   readonly destination?: string;
   /** Re-resolves the canonical route immediately before delivery. */
-  readonly resolveRoute?: () => { readonly providerId: string; readonly destination: string } | undefined;
+  readonly resolveRoute?: () => MessagingRouteResolution | undefined;
   readonly effectFile?: string;
   readonly sidecarFile: string;
   readonly leadMinutes?: number;
@@ -151,13 +157,23 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
     }
     firing = true;
     try {
-      const route = options.resolveRoute
-        ? options.resolveRoute()
-        : options.providerId !== undefined && options.destination !== undefined
-          ? { destination: options.destination, providerId: options.providerId }
-          : undefined;
-      if (!route) {
-        recordRuntimeStatus(options, { decision: "route-unavailable", observedAtIso: observedAt.toISOString() });
+      let route: MessagingRouteResolution;
+      try {
+        const resolved = options.resolveRoute
+          ? options.resolveRoute()
+          : options.providerId !== undefined && options.destination !== undefined
+            ? explicitMessagingRouteReceipt(options.providerId, options.destination)
+            : undefined;
+        route = sanitizeMessagingRouteReceipt(resolved ?? unavailableMessagingRouteReceipt());
+      } catch {
+        route = unavailableMessagingRouteReceipt();
+      }
+      recordRuntimeStatus(options, {
+        decision: "route-unavailable",
+        lastRoute: route,
+        observedAtIso: observedAt.toISOString()
+      });
+      if (route.status !== "resolved" || !route.providerId || !route.destination) {
         return;
       }
       const summary = await runDueProactiveNotices({
@@ -195,6 +211,7 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
         firedCount: summary.fired,
         suppressedCount: summary.suppressions?.length ?? 0,
         errorCount: summary.errors.length,
+        lastRoute: route,
         ...(summary.sessionLockedUntil ? { sessionLockedUntilIso: summary.sessionLockedUntil } : {})
       });
       if (summary.sessionLockedUntil) {

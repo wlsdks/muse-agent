@@ -21,7 +21,7 @@ import { homedir } from "node:os";
 import { accessSync, constants, lstatSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, createQualificationLearningWriteGate, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveAuthoredSkillsDir, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveHomeAssistantEnvironment, resolveIntegrationEnvironment, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveProactiveMessagingRoute, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, createQualificationLearningWriteGate, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveAuthoredSkillsDir, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveHomeAssistantEnvironment, resolveIntegrationEnvironment, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveProactiveMessagingRoute, resolveSuppressedLessonsFile, type MessagingRouteResolution } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
 import { isLocalOnlyEnabled } from "@muse/model";
 import type { RuntimeSettings } from "@muse/runtime-settings";
@@ -126,27 +126,16 @@ function resolveMessagingTarget(
 function resolveProactiveMessagingTarget(
   env: NodeJS.ProcessEnv,
   options: ServerOptions
-): { readonly providerId: string; readonly destination: string } | undefined {
+): MessagingRouteResolution | undefined {
   const registry = options.messaging;
-  if (!registry) {
-    return undefined;
-  }
   const ownersFile = options.integrationEnv?.messaging.ownersFile
     ?? resolveIntegrationEnvironment(env).messaging.ownersFile;
   const localOnly = options.integrationEnv?.localOnly ?? options.localOnly;
-  const resolution = resolveProactiveMessagingRoute(env, {
+  return resolveProactiveMessagingRoute(env, {
     ownersFile,
     registry,
     ...(localOnly !== undefined ? { localOnly } : {})
   });
-  if (resolution.status !== "resolved" || !resolution.providerId || !resolution.destination) {
-    return undefined;
-  }
-  return { destination: resolution.destination, providerId: resolution.providerId };
-}
-
-function hasExplicitProactiveMessagingRoute(env: NodeJS.ProcessEnv): boolean {
-  return Boolean(env.MUSE_PROACTIVE_PROVIDER?.trim() || env.MUSE_PROACTIVE_DESTINATION?.trim());
 }
 
 function isReadableReminderFile(file: string): boolean {
@@ -271,7 +260,7 @@ export function startProactiveDaemonIfConfigured(
   const proactiveHasSignal = Boolean(proactiveCalendar) || Boolean(options.tasksFile);
   const resolveRoute = () => resolveProactiveMessagingTarget(env, options);
   const target = resolveRoute();
-  if (!options.messaging || !proactiveHasSignal || (hasExplicitProactiveMessagingRoute(env) && !target)) {
+  if (!options.messaging || !proactiveHasSignal) {
     return;
   }
   const proactiveRegistry = options.messaging;
@@ -316,7 +305,9 @@ export function startProactiveDaemonIfConfigured(
     ...(options.proactiveHistoryFile ? { historyFile: options.proactiveHistoryFile } : {}),
     ...(proactiveCalendar ? { calendarRegistry: proactiveCalendar } : {}),
     ...(options.tasksFile ? { tasksFile: options.tasksFile } : {}),
-    ...(target ? { destination: target.destination, providerId: target.providerId } : {}),
+    ...(target?.status === "resolved" && target.providerId && target.destination
+      ? { destination: target.destination, providerId: target.providerId }
+      : {}),
     effectFile: join(
       dirname(options.actionLogFile ?? resolveActionLogFile(env)),
       "outbound-effects.json"
@@ -357,7 +348,7 @@ export function startDigestDaemonIfConfigured(
   }
   const resolveRoute = () => resolveProactiveMessagingTarget(env, options);
   const target = resolveRoute();
-  if (!options.messaging || (hasExplicitProactiveMessagingRoute(env) && !target)) {
+  if (!options.messaging) {
     return;
   }
   const digestRegistry = options.messaging;
@@ -365,7 +356,9 @@ export function startDigestDaemonIfConfigured(
   const digestHourRaw = env.MUSE_DIGEST_HOUR ? Number(env.MUSE_DIGEST_HOUR) : undefined;
   const digestQuietHours = liveQuietHours(env, server, env.MUSE_PROACTIVE_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const digestHandle = startDigestTick({
-    ...(target ? { destination: target.destination, providerId: target.providerId } : {}),
+    ...(target?.status === "resolved" && target.providerId && target.destination
+      ? { destination: target.destination, providerId: target.providerId }
+      : {}),
     digestFile: resolveDigestQueueFile(env),
     ...(digestHourRaw !== undefined ? { digestHour: digestHourRaw } : {}),
     errorLogger: (message) => server.log.warn(message),

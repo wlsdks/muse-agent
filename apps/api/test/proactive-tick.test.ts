@@ -21,6 +21,7 @@ import {
   createInMemoryActivityTracker,
   startProactiveTick
 } from "../src/proactive-tick.js";
+import { createProactiveRuntimeStatusStore } from "../src/proactive-runtime-status.js";
 
 async function waitForFile(file: string): Promise<void> {
   const deadline = Date.now() + 5_000;
@@ -258,28 +259,40 @@ describe("startProactiveTick route refresh", () => {
     });
     await writeTasks(tasksFile, [task("first")]);
     const sent: Array<{ readonly destination: string; readonly providerId: string }> = [];
+    const runtimeStatus = createProactiveRuntimeStatusStore();
     const registry = new MessagingProviderRegistry([
       routeRefreshProvider("telegram", sent),
       routeRefreshProvider("discord", sent)
     ]);
     const resolveRoute = () => {
       const resolution = resolveProactiveMessagingRoute({}, { ownersFile, registry });
-      return resolution.status === "resolved" && resolution.providerId && resolution.destination
-        ? { destination: resolution.destination, providerId: resolution.providerId }
-        : undefined;
+      return resolution;
     };
     const handle = startProactiveTick({
       messagingRegistry: registry,
       now: () => now,
       resolveRoute,
+      runtimeStatus,
       sidecarFile,
       tasksFile
     });
     try {
       await handle.tickOnce();
+      expect(runtimeStatus.get()?.lastRoute).toEqual(expect.objectContaining({
+        destination: "owner-a",
+        providerId: "telegram",
+        source: "paired-owner",
+        status: "resolved"
+      }));
       await writeFile(ownersFile, JSON.stringify({ owners: { discord: "owner-b" }, version: 1 }));
       await writeTasks(tasksFile, [task("second")]);
       await handle.tickOnce();
+      expect(runtimeStatus.get()?.lastRoute).toEqual(expect.objectContaining({
+        destination: "owner-b",
+        providerId: "discord",
+        source: "paired-owner",
+        status: "resolved"
+      }));
       expect(sent).toEqual([
         { destination: "owner-a", providerId: "telegram" },
         { destination: "owner-b", providerId: "discord" }
@@ -288,9 +301,21 @@ describe("startProactiveTick route refresh", () => {
       await writeFile(ownersFile, JSON.stringify({ owners: { discord: "owner-b", telegram: "owner-a" }, version: 1 }));
       await writeTasks(tasksFile, [task("third")]);
       await handle.tickOnce();
+      expect(runtimeStatus.get()?.lastRoute).toEqual(expect.objectContaining({
+        destination: null,
+        providerId: null,
+        reason: "multiple-paired-routes",
+        status: "ambiguous"
+      }));
       await writeFile(ownersFile, JSON.stringify({ owners: {}, version: 1 }));
       await writeTasks(tasksFile, [task("fourth")]);
       await handle.tickOnce();
+      expect(runtimeStatus.get()?.lastRoute).toEqual(expect.objectContaining({
+        destination: null,
+        providerId: null,
+        reason: "no-single-paired-route",
+        status: "unconfigured"
+      }));
       expect(sent).toHaveLength(2);
     } finally {
       handle.stop();

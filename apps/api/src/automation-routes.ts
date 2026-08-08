@@ -36,6 +36,7 @@ import type { FollowupRuntimeStatus } from "./followup-runtime-status.js";
 import type { ProactiveRuntimeStatus } from "./proactive-runtime-status.js";
 import type { ReminderRuntimeStatus } from "./reminder-runtime-status.js";
 import type { PatternRuntimeStatus } from "./pattern-runtime-status.js";
+import { sanitizeMessagingRouteReceipt } from "./messaging-route-receipt.js";
 
 const MAX_UPCOMING_JOBS = 5;
 const MAX_DELIVERY_QUEUE_COUNT = 9_999;
@@ -161,9 +162,9 @@ export function registerAutomationRoutes(server: FastifyInstance, gate: Automati
       collectDeliveryQueueSnapshot({ env: gate.env }).then(projectDeliveryQueueSnapshot)
     ]);
 
-    const digestRuntime = gate.digestRuntimeStatus?.() ?? null;
+    const digestRuntime = projectDigestRuntimeStatus(gate.digestRuntimeStatus?.() ?? null);
     const followupRuntime = gate.followupRuntimeStatus?.() ?? null;
-    const proactiveRuntime = gate.proactiveRuntimeStatus?.() ?? null;
+    const proactiveRuntime = projectProactiveRuntimeStatus(gate.proactiveRuntimeStatus?.() ?? null);
     const reminderRuntime = gate.reminderRuntimeStatus?.() ?? null;
     const patternRuntime = gate.patternRuntimeStatus?.() ?? null;
     const channelRuntime = resolveChannelRuntime(gate);
@@ -200,6 +201,31 @@ function resolveChannelRuntime(gate: AutomationRoutesGate): ChannelRuntime {
   return {
     daemons,
     status: daemons.length === 0 ? "unconfigured" : daemons.some((daemon) => daemon.hasError) ? "degraded" : "observed"
+  };
+}
+
+function projectDigestRuntimeStatus(status: DigestRuntimeStatus | null): DigestRuntimeStatus | null {
+  if (!status) return null;
+  return {
+    lastDecision: status.lastDecision,
+    lastErrorCount: status.lastErrorCount,
+    lastItemCount: status.lastItemCount,
+    lastObservedAtIso: status.lastObservedAtIso,
+    lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute)
+  };
+}
+
+function projectProactiveRuntimeStatus(status: ProactiveRuntimeStatus | null): ProactiveRuntimeStatus | null {
+  if (!status) return null;
+  return {
+    lastDecision: status.lastDecision,
+    lastErrorCount: status.lastErrorCount,
+    lastFiredCount: status.lastFiredCount,
+    lastImminentCount: status.lastImminentCount,
+    lastObservedAtIso: status.lastObservedAtIso,
+    lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute),
+    lastSuppressedCount: status.lastSuppressedCount,
+    ...(status.sessionLockedUntilIso ? { sessionLockedUntilIso: status.sessionLockedUntilIso } : {})
   };
 }
 

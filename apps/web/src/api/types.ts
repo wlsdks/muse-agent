@@ -405,11 +405,13 @@ export type UpcomingDigestRuntimeDecision =
   | "route-unavailable"
   | "send-failed"
   | "sent";
+export type UpcomingMessagingRoute = GatewayRouteStatus;
 export interface UpcomingDigestRuntimeStatus {
   readonly lastDecision: UpcomingDigestRuntimeDecision;
   readonly lastErrorCount: number;
   readonly lastItemCount: number;
   readonly lastObservedAtIso: string;
+  readonly lastRoute?: UpcomingMessagingRoute;
 }
 export type UpcomingProactiveRuntimeDecision =
   | "already-running"
@@ -431,6 +433,7 @@ export interface UpcomingProactiveRuntimeStatus {
   readonly lastSuppressedCount: number;
   readonly lastErrorCount: number;
   readonly sessionLockedUntilIso?: string;
+  readonly lastRoute?: UpcomingMessagingRoute;
 }
 export type UpcomingReminderRuntimeDecision =
   | "not-configured"

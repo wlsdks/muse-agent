@@ -19,6 +19,7 @@ import { errorMessage } from "@muse/shared";
 
 import { runDigestFlushIfDue, type RunDigestFlushOutcome } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
+import type { MessagingRouteResolution } from "@muse/autoconfigure";
 
 import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
 import type {
@@ -26,6 +27,11 @@ import type {
   DigestRuntimeStatus,
   DigestRuntimeStatusStore
 } from "./digest-runtime-status.js";
+import {
+  explicitMessagingRouteReceipt,
+  sanitizeMessagingRouteReceipt,
+  unavailableMessagingRouteReceipt
+} from "./messaging-route-receipt.js";
 
 export interface DigestTickOptions {
   readonly registry: MessagingProviderRegistry;
@@ -34,7 +40,7 @@ export interface DigestTickOptions {
   readonly providerId?: string;
   readonly destination?: string;
   /** Re-resolves the canonical route immediately before delivery. */
-  readonly resolveRoute?: () => { readonly providerId: string; readonly destination: string } | undefined;
+  readonly resolveRoute?: () => MessagingRouteResolution | undefined;
   /** Local hour the digest fires at. Default 18 (`MUSE_DIGEST_HOUR`). */
   readonly digestHour?: number;
   readonly intervalMs?: number;
@@ -74,14 +80,19 @@ export function startDigestTick(options: DigestTickOptions): DigestTickHandle {
     decision: DigestRuntimeDecision,
     at: Date,
     itemCount = 0,
-    errorCount = 0
+    errorCount = 0,
+    lastRoute?: MessagingRouteResolution
   ): void => {
-    options.runtimeStatus?.record({
-      decision,
-      errorCount,
-      itemCount,
-      observedAtIso: at.toISOString()
-    });
+    try {
+      options.runtimeStatus?.record({
+        decision,
+        errorCount,
+        itemCount,
+        lastRoute,
+        observedAtIso: at.toISOString()
+      });
+    } catch {
+    }
   };
 
   const tickOnce = async (): Promise<void> => {
@@ -97,13 +108,19 @@ export function startDigestTick(options: DigestTickOptions): DigestTickHandle {
     }
     firing = true;
     try {
-      const route = options.resolveRoute
-        ? options.resolveRoute()
-        : options.providerId !== undefined && options.destination !== undefined
-          ? { destination: options.destination, providerId: options.providerId }
-          : undefined;
-      if (!route) {
-        observe("route-unavailable", at);
+      let route: MessagingRouteResolution;
+      try {
+        const resolved = options.resolveRoute
+          ? options.resolveRoute()
+          : options.providerId !== undefined && options.destination !== undefined
+            ? explicitMessagingRouteReceipt(options.providerId, options.destination)
+            : undefined;
+        route = sanitizeMessagingRouteReceipt(resolved ?? unavailableMessagingRouteReceipt());
+      } catch {
+        route = unavailableMessagingRouteReceipt();
+      }
+      observe("route-unavailable", at, 0, 0, route);
+      if (route.status !== "resolved" || !route.providerId || !route.destination) {
         return;
       }
       const summary = await runDigestFlushIfDue({
@@ -115,7 +132,7 @@ export function startDigestTick(options: DigestTickOptions): DigestTickHandle {
         registry: options.registry,
         sentFile: options.sentFile
       });
-      observe(summary.outcome, at, summary.itemCount, summary.errors.length);
+      observe(summary.outcome, at, summary.itemCount, summary.errors.length, route);
       if (LOGGED_OUTCOMES.has(summary.outcome) || summary.errors.length > 0) {
         options.logger?.(`digest-tick: ${summary.outcome} (${summary.itemCount.toString()} item(s)) via ${route.providerId}`);
         for (const error of summary.errors) {

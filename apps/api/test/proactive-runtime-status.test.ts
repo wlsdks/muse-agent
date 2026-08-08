@@ -20,6 +20,14 @@ describe("createProactiveRuntimeStatusStore", () => {
     expect(store.get()).toEqual({
       lastDecision: "error",
       lastObservedAtIso: "2026-08-08T01:02:03.000Z",
+      lastRoute: {
+        destination: null,
+        localOnly: false,
+        providerId: null,
+        reason: "paired-route-inspection-unavailable",
+        source: null,
+        status: "unconfigured"
+      },
       lastImminentCount: 0,
       lastFiredCount: 0,
       lastSuppressedCount: 9_999,
@@ -40,6 +48,14 @@ describe("createProactiveRuntimeStatusStore", () => {
     expect(store.get()).toEqual({
       lastDecision: "no-imminent",
       lastObservedAtIso: "2026-08-08T01:13:03.000Z",
+      lastRoute: {
+        destination: null,
+        localOnly: false,
+        providerId: null,
+        reason: "paired-route-inspection-unavailable",
+        source: null,
+        status: "unconfigured"
+      },
       lastImminentCount: 0,
       lastFiredCount: 0,
       lastSuppressedCount: 0,

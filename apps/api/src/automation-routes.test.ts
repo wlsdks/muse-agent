@@ -130,11 +130,24 @@ describe("GET /api/automation/upcoming — empty stores", () => {
 
   it("keeps the delivery queue snapshot behind the existing authentication gate", async () => {
     const server = Fastify();
+    let statusGetterCalls = 0;
     registerAutomationRoutes(server, { authService: {} as never, env: { MUSE_INTERRUPTION_LEDGER_FILE: ledgerFile } });
 
     const res = await server.inject({ method: "GET", url: "/api/automation/upcoming" });
 
     expect(res.statusCode).toBe(401);
+
+    const guardedServer = Fastify();
+    registerAutomationRoutes(guardedServer, {
+      authService: {} as never,
+      env: { MUSE_INTERRUPTION_LEDGER_FILE: ledgerFile },
+      proactiveRuntimeStatus: () => {
+        statusGetterCalls += 1;
+        return null;
+      }
+    });
+    expect((await guardedServer.inject({ method: "GET", url: "/api/automation/upcoming" })).statusCode).toBe(401);
+    expect(statusGetterCalls).toBe(0);
   });
 
   it("projects every delivery bucket without exposing source fields", async () => {
@@ -383,6 +396,14 @@ describe("GET /api/automation/upcoming — proactive runtime status", () => {
       firedCount: 1,
       suppressedCount: 1,
       errorCount: 0,
+      lastRoute: {
+        destination: "owner-a",
+        localOnly: false,
+        providerId: "telegram",
+        reason: null,
+        source: "explicit-config",
+        status: "resolved"
+      },
       sessionLockedUntilIso: "2026-08-08T01:12:03.000Z"
     });
     const server = Fastify();
@@ -398,6 +419,14 @@ describe("GET /api/automation/upcoming — proactive runtime status", () => {
     expect(body.proactiveRuntime).toEqual({
       lastDecision: "fired",
       lastObservedAtIso: "2026-08-08T01:02:03.000Z",
+      lastRoute: {
+        destination: "owner-a",
+        localOnly: false,
+        providerId: "telegram",
+        reason: null,
+        source: "explicit-config",
+        status: "resolved"
+      },
       lastImminentCount: 2,
       lastFiredCount: 1,
       lastSuppressedCount: 1,
@@ -408,6 +437,67 @@ describe("GET /api/automation/upcoming — proactive runtime status", () => {
     expect(response.body).not.toContain("notice text");
     expect(response.body).not.toContain("provider-id");
     expect(response.body).not.toContain("credential");
+  });
+
+  it("projects both runtime receipts through the exact nested six-field allowlist", async () => {
+    const server = Fastify();
+    registerAutomationRoutes(server, {
+      authService: undefined,
+      env: { MUSE_INTERRUPTION_LEDGER_FILE: ledgerFile },
+      digestRuntimeStatus: () => ({
+        lastDecision: "sent",
+        lastErrorCount: 0,
+        lastItemCount: 1,
+        lastObservedAtIso: "2026-08-08T01:02:03.000Z",
+        lastRoute: {
+          destination: "owner-a",
+          localOnly: false,
+          providerId: "telegram",
+          reason: null,
+          source: "explicit-config",
+          status: "resolved",
+          rawError: "secret error",
+          provider: { credential: "secret credential" }
+        }
+      } as never),
+      proactiveRuntimeStatus: () => ({
+        lastDecision: "fired",
+        lastErrorCount: 0,
+        lastFiredCount: 1,
+        lastImminentCount: 1,
+        lastObservedAtIso: "2026-08-08T01:02:03.000Z",
+        lastSuppressedCount: 0,
+        lastRoute: {
+          destination: null,
+          localOnly: true,
+          providerId: null,
+          reason: "remote-route-blocked-by-local-only",
+          source: "explicit-config",
+          status: "blocked-local-only",
+          message: "private content",
+          path: "/private/path"
+        }
+      } as never)
+    });
+
+    const body = (await server.inject({ method: "GET", url: "/api/automation/upcoming" })).json() as AutomationUpcomingResponse;
+    expect(Object.keys(body.digestRuntime?.lastRoute ?? {}).sort()).toEqual([
+      "destination",
+      "localOnly",
+      "providerId",
+      "reason",
+      "source",
+      "status"
+    ]);
+    expect(Object.keys(body.proactiveRuntime?.lastRoute ?? {}).sort()).toEqual([
+      "destination",
+      "localOnly",
+      "providerId",
+      "reason",
+      "source",
+      "status"
+    ]);
+    expect(JSON.stringify(body)).not.toMatch(/secret error|secret credential|private content|private\/path/iu);
   });
 });
 

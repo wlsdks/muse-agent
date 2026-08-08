@@ -1,4 +1,10 @@
 import type { RunDigestFlushOutcome } from "@muse/proactivity";
+import type { MessagingRouteResolution } from "@muse/autoconfigure";
+
+import {
+  sanitizeMessagingRouteReceipt,
+  unavailableMessagingRouteReceipt
+} from "./messaging-route-receipt.js";
 
 export type DigestRuntimeDecision =
   | RunDigestFlushOutcome
@@ -12,6 +18,7 @@ export interface DigestRuntimeStatus {
   readonly lastErrorCount: number;
   readonly lastItemCount: number;
   readonly lastObservedAtIso: string;
+  readonly lastRoute: MessagingRouteResolution;
 }
 
 export interface DigestRuntimeStatusUpdate {
@@ -19,6 +26,7 @@ export interface DigestRuntimeStatusUpdate {
   readonly errorCount?: number;
   readonly itemCount?: number;
   readonly observedAtIso: string;
+  readonly lastRoute?: MessagingRouteResolution;
 }
 
 export interface DigestRuntimeStatusStore {
@@ -38,7 +46,10 @@ export function createDigestRuntimeStatusStore(): DigestRuntimeStatusStore {
         lastDecision: update.decision,
         lastErrorCount: boundedCount(update.errorCount ?? 0, MAX_ERROR_COUNT),
         lastItemCount: boundedCount(update.itemCount ?? 0, MAX_ITEM_COUNT),
-        lastObservedAtIso: update.observedAtIso
+        lastObservedAtIso: update.observedAtIso,
+        lastRoute: update.lastRoute
+          ? sanitizeMessagingRouteReceipt(update.lastRoute)
+          : status?.lastRoute ?? unavailableMessagingRouteReceipt()
       };
     }
   };

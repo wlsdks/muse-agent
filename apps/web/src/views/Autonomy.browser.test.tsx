@@ -13,6 +13,80 @@ function UpcomingFixture({ data }: { data: AutomationUpcomingResponse }) {
   return <UpcomingSections data={data} locale={locale} t={t} />;
 }
 
+test("route receipts show current Gateway B versus last execution A in EN/KO, safely handle invalid values, and stay GET-only", async () => {
+  const data = {
+    budget: null,
+    digest: { enabled: true, hour: 9, nextAtIso: "2099-01-01T09:00:00.000Z" },
+    digestRuntime: {
+      lastDecision: "sent" as const,
+      lastErrorCount: 0,
+      lastItemCount: 1,
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z",
+      lastRoute: {
+        destination: "owner-a",
+        localOnly: false,
+        providerId: "telegram",
+        reason: null,
+        source: "paired-owner" as const,
+        status: "resolved" as const
+      }
+    },
+    proactiveRuntime: {
+      lastDecision: "route-unavailable" as const,
+      lastErrorCount: 0,
+      lastFiredCount: 0,
+      lastImminentCount: 0,
+      lastObservedAtIso: "2099-01-01T09:00:00.000Z",
+      lastSuppressedCount: 0,
+      lastRoute: { status: "not-a-route", rawError: "do not render" } as never
+    },
+    gateway: {
+      destination: "desktop",
+      localOnly: true,
+      providerId: "log",
+      reason: null,
+      source: "explicit-config" as const,
+      status: "resolved" as const
+    },
+    nextReminder: null,
+    scheduledJobs: []
+  } satisfies AutomationUpcomingResponse;
+  const get = vi.fn(async (path: string) => {
+    expect(path).toBe("/api/automation/upcoming");
+    return data;
+  });
+  const post = vi.fn();
+  const client = { baseUrl: "http://route-receipt.test", get, post } as unknown as ApiClient;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  try {
+    window.localStorage.setItem("muse.lang", "en");
+    const screen = await render(
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider><UpcomingTab client={client} /></I18nProvider>
+      </QueryClientProvider>
+    );
+    await expect.element(screen.getByText("Current Gateway route", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("log:desktop", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Last execution route: telegram:owner-a · ready", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Last execution route: No route receipt available", { exact: true })).toBeVisible();
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(post).not.toHaveBeenCalled();
+
+    window.localStorage.setItem("muse.lang", "ko");
+    const korean = await render(
+      <I18nProvider><UpcomingFixture data={data} /></I18nProvider>
+    );
+    await expect.element(korean.getByText("현재 Gateway 경로", { exact: true })).toBeVisible();
+    await expect.element(korean.getByText("마지막 실행 경로: telegram:owner-a · 사용 가능", { exact: true })).toBeVisible();
+    await expect.element(korean.getByText("마지막 실행 경로: 경로 영수증 없음", { exact: true })).toBeVisible();
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(post).not.toHaveBeenCalled();
+  } finally {
+    queryClient.clear();
+  }
+});
+
 test("Gateway preview shows the exact route and keeps sending out of the view", async () => {
   window.localStorage.setItem("muse.lang", "en");
   const screen = await render(

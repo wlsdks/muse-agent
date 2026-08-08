@@ -1,3 +1,10 @@
+import type { MessagingRouteResolution } from "@muse/autoconfigure";
+
+import {
+  sanitizeMessagingRouteReceipt,
+  unavailableMessagingRouteReceipt
+} from "./messaging-route-receipt.js";
+
 export type ProactiveRuntimeDecision =
   | "already-running"
   | "quiet-hours"
@@ -19,6 +26,7 @@ export interface ProactiveRuntimeStatus {
   readonly lastSuppressedCount: number;
   readonly lastErrorCount: number;
   readonly sessionLockedUntilIso?: string;
+  readonly lastRoute: MessagingRouteResolution;
 }
 
 export interface ProactiveRuntimeStatusUpdate {
@@ -29,6 +37,7 @@ export interface ProactiveRuntimeStatusUpdate {
   readonly suppressedCount?: number;
   readonly errorCount?: number;
   readonly sessionLockedUntilIso?: string;
+  readonly lastRoute?: MessagingRouteResolution;
 }
 
 export interface ProactiveRuntimeStatusStore {
@@ -50,6 +59,9 @@ export function createProactiveRuntimeStatusStore(): ProactiveRuntimeStatusStore
         lastFiredCount: boundedCount(update.firedCount ?? 0),
         lastSuppressedCount: boundedCount(update.suppressedCount ?? 0),
         lastErrorCount: boundedCount(update.errorCount ?? 0),
+        lastRoute: update.lastRoute
+          ? sanitizeMessagingRouteReceipt(update.lastRoute)
+          : status?.lastRoute ?? unavailableMessagingRouteReceipt(),
         ...(update.sessionLockedUntilIso ? { sessionLockedUntilIso: update.sessionLockedUntilIso } : {})
       };
     }

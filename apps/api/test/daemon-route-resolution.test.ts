@@ -84,14 +84,28 @@ describe("proactive and digest daemon starters", () => {
       registry
     });
 
-    const proactiveResolve = captured.proactive[0]!.resolveRoute as () => { readonly providerId: string; readonly destination: string } | undefined;
-    const digestResolve = captured.digest[0]!.resolveRoute as () => { readonly providerId: string; readonly destination: string } | undefined;
+    const proactiveResolve = captured.proactive[0]!.resolveRoute as () => unknown;
+    const digestResolve = captured.digest[0]!.resolveRoute as () => unknown;
     await writeFile(ownersFile, JSON.stringify({ owners: { telegram: "paired-666" }, version: 1 }));
-    expect(proactiveResolve?.()).toEqual({ destination: "paired-666", providerId: "telegram" });
-    expect(digestResolve?.()).toEqual({ destination: "paired-666", providerId: "telegram" });
+    expect(proactiveResolve()).toEqual({
+      destination: "paired-666",
+      localOnly: false,
+      providerId: "telegram",
+      reason: null,
+      source: "paired-owner",
+      status: "resolved"
+    });
+    expect(digestResolve()).toEqual({
+      destination: "paired-666",
+      localOnly: false,
+      providerId: "telegram",
+      reason: null,
+      source: "paired-owner",
+      status: "resolved"
+    });
     await writeFile(ownersFile, JSON.stringify({ owners: {}, version: 1 }));
-    expect(proactiveResolve?.()).toBeUndefined();
-    expect(digestResolve?.()).toBeUndefined();
+    expect(proactiveResolve()).toEqual(expect.objectContaining({ status: "unconfigured", reason: "no-single-paired-route" }));
+    expect(digestResolve()).toEqual(expect.objectContaining({ status: "unconfigured", reason: "no-single-paired-route" }));
   });
 
   it("starts paired auto-routing dormant and adopts a later owner", async () => {
@@ -112,12 +126,12 @@ describe("proactive and digest daemon starters", () => {
     expect(captured.digest).toHaveLength(1);
     const resolveProactive = captured.proactive[0]!.resolveRoute as () => unknown;
     const resolveDigest = captured.digest[0]!.resolveRoute as () => unknown;
-    expect(resolveProactive()).toBeUndefined();
-    expect(resolveDigest()).toBeUndefined();
+    expect(resolveProactive()).toEqual(expect.objectContaining({ status: "unconfigured", reason: "no-single-paired-route" }));
+    expect(resolveDigest()).toEqual(expect.objectContaining({ status: "unconfigured", reason: "no-single-paired-route" }));
 
     await writeFile(ownersFile, JSON.stringify({ owners: { telegram: "adopted-owner" }, version: 1 }));
-    expect(resolveProactive()).toEqual({ destination: "adopted-owner", providerId: "telegram" });
-    expect(resolveDigest()).toEqual({ destination: "adopted-owner", providerId: "telegram" });
+    expect(resolveProactive()).toEqual(expect.objectContaining({ destination: "adopted-owner", providerId: "telegram", status: "resolved" }));
+    expect(resolveDigest()).toEqual(expect.objectContaining({ destination: "adopted-owner", providerId: "telegram", status: "resolved" }));
   });
 
   it("does not let a partial explicit route fall through to the paired owner", async () => {
@@ -135,7 +149,8 @@ describe("proactive and digest daemon starters", () => {
       fakeServer().server as never,
       options
     );
-    expect(captured.digest).toHaveLength(0);
+    expect(captured.digest).toHaveLength(1);
+    expect((captured.digest[0]!.resolveRoute as () => { readonly status: string })()).toEqual(expect.objectContaining({ status: "unconfigured" }));
   });
 
   it("does not replace an unavailable explicit provider with a paired owner", async () => {
@@ -154,7 +169,9 @@ describe("proactive and digest daemon starters", () => {
 
     startProactiveDaemonIfConfigured(env, fakeServer().server as never, options, { phaseDProactiveOn: false, phaseDReminderOn: false });
     startDigestDaemonIfConfigured(env, fakeServer().server as never, options);
-    expect(captured.proactive).toHaveLength(0);
-    expect(captured.digest).toHaveLength(0);
+    expect(captured.proactive).toHaveLength(1);
+    expect(captured.digest).toHaveLength(1);
+    expect((captured.proactive[0]!.resolveRoute as () => { readonly status: string })()).toEqual(expect.objectContaining({ status: "unconfigured" }));
+    expect((captured.digest[0]!.resolveRoute as () => { readonly status: string })()).toEqual(expect.objectContaining({ status: "unconfigured" }));
   });
 });
