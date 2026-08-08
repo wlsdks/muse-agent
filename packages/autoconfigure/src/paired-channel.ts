@@ -7,8 +7,9 @@
  * either app, because apps/api cannot depend on apps/cli.
  */
 
-import { promises as fs } from "node:fs";
+import { promises as fs, readFileSync } from "node:fs";
 
+import { isLocalOnlyEnabled } from "@muse/model";
 import { isRecord, parseJson } from "@muse/shared";
 
 /**
@@ -27,6 +28,20 @@ export async function readChannelOwner(file: string, providerId: string): Promis
   } catch {
     return undefined;
   }
+  return parseChannelOwner(text, providerId);
+}
+
+function readChannelOwnerSync(file: string, providerId: string): string | undefined {
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch {
+    return undefined;
+  }
+  return parseChannelOwner(text, providerId);
+}
+
+function parseChannelOwner(text: string, providerId: string): string | undefined {
   const parsed = parseJson(text);
   if (!isRecord(parsed) || !isRecord(parsed.owners)) {
     return undefined;
@@ -38,9 +53,260 @@ export async function readChannelOwner(file: string, providerId: string): Promis
 /** The channel-pairing surface's connectable provider ids (mirrors apps/api's `CONNECTABLE`). */
 export const PAIRABLE_MESSAGING_PROVIDER_IDS = ["telegram", "discord", "slack", "line", "matrix"] as const;
 
+export interface MessagingRouteRegistry {
+  readonly has: (providerId: string) => boolean;
+  readonly describe?: () => readonly { readonly id: string; readonly local?: boolean }[];
+}
+
 export interface PairedChannel {
   readonly providerId: string;
   readonly destination: string;
+}
+
+export type PairedChannelInspection =
+  | { readonly status: "none"; readonly candidates: readonly [] }
+  | { readonly status: "resolved"; readonly candidates: readonly [PairedChannel]; readonly channel: PairedChannel }
+  | { readonly status: "ambiguous"; readonly candidates: readonly PairedChannel[] };
+
+export type MessagingRouteResolution = {
+  readonly status: "resolved" | "unconfigured" | "ambiguous" | "blocked-local-only";
+  readonly source: "explicit-config" | "paired-owner" | null;
+  readonly providerId: string | null;
+  readonly destination: string | null;
+  readonly localOnly: boolean;
+  readonly reason:
+    | "explicit-route-incomplete"
+    | "explicit-provider-not-registered"
+    | "remote-route-blocked-by-local-only"
+    | "paired-route-inspection-unavailable"
+    | "no-single-paired-route"
+    | "multiple-paired-routes"
+    | null;
+};
+
+export interface ResolveProactiveMessagingRouteOptions {
+  readonly registry?: MessagingRouteRegistry;
+  readonly ownersFile?: string;
+  readonly localOnly?: boolean;
+}
+
+/**
+ * Resolves the shared proactive/digest route used by the Gateway preview.
+ * Explicit provider and destination values are authoritative: a partial pair
+ * never falls through to a paired owner. Without explicit values, non-local
+ * mode requires one live-registered paired owner. Local-only mode reads the
+ * owners file without probing the remote registry, because pairable channels
+ * are remote.
+ */
+export function resolveProactiveMessagingRoute(
+  env: Readonly<Record<string, string | undefined>>,
+  options: ResolveProactiveMessagingRouteOptions = {}
+): MessagingRouteResolution {
+  const localOnly = options.localOnly ?? isLocalOnlyEnabled(env);
+  const providerId = env.MUSE_PROACTIVE_PROVIDER?.trim() || "";
+  const destination = env.MUSE_PROACTIVE_DESTINATION?.trim() || "";
+  const hasExplicitProvider = providerId.length > 0;
+  const hasExplicitDestination = destination.length > 0;
+
+  if (hasExplicitProvider || hasExplicitDestination) {
+    if (!hasExplicitProvider || !hasExplicitDestination) {
+      return {
+        destination: hasExplicitDestination ? destination : null,
+        localOnly,
+        providerId: hasExplicitProvider ? providerId : null,
+        reason: "explicit-route-incomplete",
+        source: "explicit-config",
+        status: "unconfigured"
+      };
+    }
+
+    if (localOnly && isRemoteMessagingProvider(providerId)) {
+      return {
+        destination,
+        localOnly,
+        providerId,
+        reason: "remote-route-blocked-by-local-only",
+        source: "explicit-config",
+        status: "blocked-local-only"
+      };
+    }
+
+    if (!options.registry?.has(providerId)) {
+      return {
+        destination,
+        localOnly,
+        providerId,
+        reason: "explicit-provider-not-registered",
+        source: "explicit-config",
+        status: "unconfigured"
+      };
+    }
+
+    if (localOnly && !isLocalMessagingProvider(options.registry, providerId)) {
+      return {
+        destination,
+        localOnly,
+        providerId,
+        reason: "remote-route-blocked-by-local-only",
+        source: "explicit-config",
+        status: "blocked-local-only"
+      };
+    }
+
+    return {
+      destination,
+      localOnly,
+      providerId,
+      reason: null,
+      source: "explicit-config",
+      status: "resolved"
+    };
+  }
+
+  if (localOnly) {
+    const ownersFile = options.ownersFile;
+    if (!ownersFile) {
+      return unavailableMessagingRoute(localOnly);
+    }
+
+    const inspection = inspectPairedChannelsSync(ownersFile);
+    if (inspection.status === "ambiguous") {
+      return {
+        destination: null,
+        localOnly,
+        providerId: null,
+        reason: "multiple-paired-routes",
+        source: null,
+        status: "ambiguous"
+      };
+    }
+    if (inspection.status === "none") {
+      return {
+        destination: null,
+        localOnly,
+        providerId: null,
+        reason: "no-single-paired-route",
+        source: null,
+        status: "unconfigured"
+      };
+    }
+
+    return {
+      destination: inspection.channel.destination,
+      localOnly,
+      providerId: inspection.channel.providerId,
+      reason: "remote-route-blocked-by-local-only",
+      source: "paired-owner",
+      status: "blocked-local-only"
+    };
+  }
+
+  if (!options.registry || !options.ownersFile) {
+    return unavailableMessagingRoute(localOnly);
+  }
+
+  const inspection = inspectPairedChannelsSync(options.ownersFile, options.registry);
+  if (inspection.status === "ambiguous") {
+    return {
+      destination: null,
+      localOnly,
+      providerId: null,
+      reason: "multiple-paired-routes",
+      source: null,
+      status: "ambiguous"
+    };
+  }
+  if (inspection.status === "none") {
+    return {
+      destination: null,
+      localOnly,
+      providerId: null,
+      reason: "no-single-paired-route",
+      source: null,
+      status: "unconfigured"
+    };
+  }
+
+  return {
+    destination: inspection.channel.destination,
+    localOnly,
+    providerId: inspection.channel.providerId,
+    reason: null,
+    source: "paired-owner",
+    status: "resolved"
+  };
+}
+
+function isLocalMessagingProvider(registry: MessagingRouteRegistry, providerId: string): boolean {
+  return registry.describe?.().some((provider) => provider.id === providerId && provider.local === true) ?? false;
+}
+
+function isRemoteMessagingProvider(providerId: string): boolean {
+  return (PAIRABLE_MESSAGING_PROVIDER_IDS as readonly string[]).includes(providerId);
+}
+
+function unavailableMessagingRoute(localOnly: boolean): MessagingRouteResolution {
+  return {
+    destination: null,
+    localOnly,
+    providerId: null,
+    reason: "paired-route-inspection-unavailable",
+    source: null,
+    status: "unconfigured"
+  };
+}
+
+function inspectPairedChannelsSync(
+  ownersFile: string,
+  registry?: Pick<MessagingRouteRegistry, "has">
+): PairedChannelInspection {
+  const candidates: PairedChannel[] = [];
+  for (const providerId of PAIRABLE_MESSAGING_PROVIDER_IDS) {
+    if (registry && !registry.has(providerId)) {
+      continue;
+    }
+    const owner = readChannelOwnerSync(ownersFile, providerId);
+    if (owner) {
+      candidates.push({ destination: owner, providerId });
+    }
+  }
+  if (candidates.length === 0) {
+    return { candidates: [], status: "none" };
+  }
+  if (candidates.length > 1) {
+    return { candidates, status: "ambiguous" };
+  }
+  const channel = candidates[0]!;
+  return { candidates: [channel], channel, status: "resolved" };
+}
+
+/**
+ * Inspects all live-registered paired channels without choosing a target.
+ * The structured result lets read-only surfaces explain why auto-routing is
+ * unavailable while the existing resolver keeps its fail-closed API.
+ */
+export async function inspectPairedChannels(
+  ownersFile: string,
+  registry: { readonly has: (providerId: string) => boolean }
+): Promise<PairedChannelInspection> {
+  const candidates: PairedChannel[] = [];
+  for (const providerId of PAIRABLE_MESSAGING_PROVIDER_IDS) {
+    if (!registry.has(providerId)) {
+      continue;
+    }
+    const owner = await readChannelOwner(ownersFile, providerId);
+    if (owner) {
+      candidates.push({ destination: owner, providerId });
+    }
+  }
+  if (candidates.length === 0) {
+    return { candidates: [], status: "none" };
+  }
+  if (candidates.length > 1) {
+    return { candidates, status: "ambiguous" };
+  }
+  const channel = candidates[0]!;
+  return { candidates: [channel], channel, status: "resolved" };
 }
 
 /**
@@ -54,15 +320,6 @@ export async function resolveSinglePairedChannel(
   ownersFile: string,
   registry: { readonly has: (providerId: string) => boolean }
 ): Promise<PairedChannel | undefined> {
-  const candidates: PairedChannel[] = [];
-  for (const providerId of PAIRABLE_MESSAGING_PROVIDER_IDS) {
-    if (!registry.has(providerId)) {
-      continue;
-    }
-    const owner = await readChannelOwner(ownersFile, providerId);
-    if (owner) {
-      candidates.push({ destination: owner, providerId });
-    }
-  }
-  return candidates.length === 1 ? candidates[0] : undefined;
+  const inspection = await inspectPairedChannels(ownersFile, registry);
+  return inspection.status === "resolved" ? inspection.channel : undefined;
 }

@@ -286,9 +286,15 @@ export {
 
 export {
   PAIRABLE_MESSAGING_PROVIDER_IDS,
+  inspectPairedChannels,
   readChannelOwner,
+  resolveProactiveMessagingRoute,
   resolveSinglePairedChannel,
-  type PairedChannel
+  type PairedChannel,
+  type PairedChannelInspection,
+  type MessagingRouteRegistry,
+  type MessagingRouteResolution,
+  type ResolveProactiveMessagingRouteOptions
 } from "./paired-channel.js";
 
 export {
