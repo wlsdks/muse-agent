@@ -176,7 +176,7 @@ hermes's `session_search_tool.py` (FTS5 trigram, CJK), openclaw's `memory-search
 
 ### Gap 2 — skill curator lifecycle (currently only quarantine)
 hermes's `curator.py` (usage tracking·automatic stale/archive transition·consolidation·backups), openclaw's `workshop/service.ts` (proposal->scan->apply/quarantine/rollback). Muse's `AuthoredSkillStore` only has a risk-scan + quarantine, no lifecycle.
-- [open] :: S1: a deterministic skill-usage sidecar store (use_count·last_activity·view_count) + vitest. MUTATION-FIRST.
+- [done] 2026-08-09 commit=85eb2acf8 :: S1: deterministic skill-usage sidecar store (use_count·last_activity·view_count) + Vitest. Mutation-first, authored-only wiring, API/UI evidence projection, and independent Luna evaluation.
 - [done] 2026-06-27 :: S2: automatic stale->archive transition — DONE (freshness-guard 2026-06-27): `authored-skill-store.ts` has lastUsedAt + auto-archive(stale) + cap-by-archiving + restore (line 289), and the curator daemon runs periodic stale-skill auto-archive (`08827dd75`). The whole Gap-2 lifecycle (S1 usage sidecar / S2 stale-archive) is covered (cf. line 39).
 - [open] :: S3: duplicate authored-skill consolidation (overlap detection -> propose an umbrella merge, draft-first, never auto-activate).
 
