@@ -903,6 +903,9 @@ interface SkillView {
   source: string;
   reward: number;
   avoided: boolean;
+  useCount: number;
+  viewCount: number;
+  lastActivity: string | null;
 }
 
 export interface SkillsResponse {

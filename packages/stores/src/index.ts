@@ -5,6 +5,15 @@
 
 export { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 export {
+  MAX_SKILL_USAGE_COUNT,
+  MAX_SKILL_USAGE_ENTRIES,
+  readSkillUsage,
+  recordSkillUse,
+  recordSkillView,
+  SKILL_USAGE_SCHEMA_VERSION
+} from "./skill-usage-store.js";
+export type { SkillUsageMap, SkillUsageMutationOptions, SkillUsageRecord } from "./skill-usage-store.js";
+export {
   DEFAULT_TRIGGER_ADMISSION_MAX_PENDING,
   defaultTriggerAdmissionJournalFile,
   FileTriggerAdmissionJournalStore

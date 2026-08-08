@@ -2,12 +2,14 @@ import {
   createSkillListTool,
   createSkillReadTool,
   createSkillRunTool,
-  type MuseTool
+  type MuseTool,
+  type SkillRegistryView
 } from "@muse/tools";
 import type { SkillRegistry } from "@muse/skills";
+import { recordSkillView } from "@muse/stores";
 
 import { parseBoolean } from "./env-parsers.js";
-import { buildSkillRegistry } from "./personal-providers.js";
+import { buildSkillRegistry, resolveSkillUsageFile } from "./personal-providers.js";
 
 import type { MuseEnvironment } from "./index.js";
 
@@ -40,7 +42,7 @@ export function createSkillRuntime(env: MuseEnvironment): SkillRuntime {
   // call rather than reading a cache that may still be unset — an early
   // `list()`/`get()` used to silently see an empty registry and report a
   // populated skills directory as empty.
-  const skillRegistryView = {
+  const skillRegistryView: SkillRegistryView = {
     list: async () => {
       const registry = await skillRegistryPromise;
       if (!registry) return [];
@@ -67,8 +69,13 @@ export function createSkillRuntime(env: MuseEnvironment): SkillRuntime {
         ...(skill.frontmatter.requires?.anyBins
           ? { requiresAnyBins: [...skill.frontmatter.requires.anyBins] }
           : {}),
-        ...(skill.frontmatter.requires?.bins ? { requiresBins: [...skill.frontmatter.requires.bins] } : {})
+        ...(skill.frontmatter.requires?.bins ? { requiresBins: [...skill.frontmatter.requires.bins] } : {}),
+        source: skill.sourceInfo.source
       };
+    },
+    onRead: async (skill) => {
+      if (skill.source !== "authored") return;
+      await recordSkillView(resolveSkillUsageFile(env), skill.name);
     }
   };
 

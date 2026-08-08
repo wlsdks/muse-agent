@@ -30,11 +30,13 @@ export interface SkillCatalogToolEntry {
   readonly body: string;
   readonly requiresBins?: readonly string[];
   readonly requiresAnyBins?: readonly string[];
+  readonly source?: string;
 }
 
 export interface SkillRegistryView {
   list(): readonly SkillCatalogToolEntry[] | Promise<readonly SkillCatalogToolEntry[]>;
   get(name: string): SkillCatalogToolEntry | undefined | Promise<SkillCatalogToolEntry | undefined>;
+  onRead?(skill: SkillCatalogToolEntry): void | Promise<void>;
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -64,7 +66,8 @@ export function createSkillListTool(registry: SkillRegistryView): MuseTool {
         description: skill.description,
         name: skill.name,
         ...(skill.requiresBins ? { requiresBins: [...skill.requiresBins] } : {}),
-        ...(skill.requiresAnyBins ? { requiresAnyBins: [...skill.requiresAnyBins] } : {})
+        ...(skill.requiresAnyBins ? { requiresAnyBins: [...skill.requiresAnyBins] } : {}),
+        ...(skill.source ? { source: skill.source } : {})
       })) as JsonValue
     })
   };
@@ -97,13 +100,19 @@ export function createSkillReadTool(registry: SkillRegistryView): MuseTool {
       if (!skill) {
         return { error: `skill not found: ${name}` };
       }
+      try {
+        await registry.onRead?.(skill);
+      } catch {
+        // Usage telemetry is observational; a failed sidecar must not fail a read.
+      }
       return {
         body: skill.body,
         description: skill.description,
         ...(skill.emoji ? { emoji: skill.emoji } : {}),
         name: skill.name,
         ...(skill.requiresBins ? { requiresBins: [...skill.requiresBins] } : {}),
-        ...(skill.requiresAnyBins ? { requiresAnyBins: [...skill.requiresAnyBins] } : {})
+        ...(skill.requiresAnyBins ? { requiresAnyBins: [...skill.requiresAnyBins] } : {}),
+        ...(skill.source ? { source: skill.source } : {})
       };
     }
   };

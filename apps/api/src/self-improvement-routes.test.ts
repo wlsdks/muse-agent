@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -258,8 +258,59 @@ describe("shapeSkills", () => {
     expect(out.entries).toHaveLength(3);
   });
 
+  it("projects sanitized zero/null usage defaults and durable telemetry", () => {
+    const out = shapeSkills(
+      [skillEntry({ name: "used" }), skillEntry({ name: "new" })],
+      {},
+      { used: { lastActivity: "2026-08-09T00:00:00.000Z", useCount: 2, viewCount: 1 } }
+    );
+    expect(out.entries.find((entry) => entry.name === "used")).toMatchObject({
+      lastActivity: "2026-08-09T00:00:00.000Z",
+      useCount: 2,
+      viewCount: 1
+    });
+    expect(out.entries.find((entry) => entry.name === "new")).toMatchObject({
+      lastActivity: null,
+      useCount: 0,
+      viewCount: 0
+    });
+  });
+
   it("an empty skill list is total 0, not a crash", () => {
     expect(shapeSkills([], {})).toEqual({ total: 0, entries: [] });
+  });
+});
+
+describe("GET /api/self-improvement/skills usage projection", () => {
+  it("joins sidecar evidence to the canonical authored skill list", async () => {
+    const root = mkdtempSync(join(tmpdir(), "muse-self-improvement-skills-"));
+    const authoredDir = join(root, "authored");
+    mkdirSync(join(authoredDir, "release"), { recursive: true });
+    await writeFile(join(authoredDir, "release", "SKILL.md"), "---\nname: release\ndescription: Release safely\n---\nSteps.\n", "utf8");
+    const usageFile = join(root, "skill-usage.json");
+    await writeFile(usageFile, JSON.stringify({
+      skills: { release: { lastActivity: "2026-08-09T00:00:00.000Z", useCount: 2, viewCount: 3 } },
+      version: 1
+    }), "utf8");
+    const server = Fastify({ logger: false });
+    registerSelfImprovementRoutes(server, {
+      authService: undefined,
+      authoredSkillsDir: authoredDir,
+      configured: true,
+      env: {},
+      learnQueueFile: join(root, "learn.jsonl"),
+      learningPauseFile: join(root, "pause.json"),
+      playbookFile: join(root, "playbook.json"),
+      reflectionsFile: join(root, "reflections.json"),
+      skillRewardsFile: join(root, "rewards.json"),
+      skillUsageFile: usageFile,
+      weaknessesFile: join(root, "weaknesses.json")
+    });
+
+    const response = await server.inject({ method: "GET", url: "/api/self-improvement/skills" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().entries[0]).toMatchObject({ lastActivity: "2026-08-09T00:00:00.000Z", useCount: 2, viewCount: 3 });
+    await server.close();
   });
 });
 
