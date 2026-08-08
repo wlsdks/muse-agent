@@ -294,6 +294,10 @@ function safeGeneratedAt(value: string): string {
 
 async function resolveGatewayRouteStatus(gate: AutomationRoutesGate): Promise<GatewayRouteStatus> {
   return resolveProactiveMessagingRoute(gate.env, {
+    // API compatibility for the legacy situational-briefing pair: canonical
+    // MUSE_PROACTIVE_* wins; MUSE_BRIEFING_* is used only when neither
+    // canonical key is present. The briefing tick uses the same option.
+    allowBriefingFallback: true,
     ...(gate.channelOwnersFile ? { ownersFile: gate.channelOwnersFile } : {}),
     ...(gate.localOnly !== undefined ? { localOnly: gate.localOnly } : {}),
     ...(gate.messagingRegistry ? { registry: gate.messagingRegistry } : {})
@@ -302,6 +306,7 @@ async function resolveGatewayRouteStatus(gate: AutomationRoutesGate): Promise<Ga
 
 function unavailableGatewayRouteStatus(gate: AutomationRoutesGate): GatewayRouteStatus {
   return resolveProactiveMessagingRoute(gate.env, {
+    allowBriefingFallback: true,
     ...(gate.localOnly !== undefined ? { localOnly: gate.localOnly } : {})
   });
 }

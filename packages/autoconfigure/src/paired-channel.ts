@@ -80,6 +80,12 @@ export interface ResolveProactiveMessagingRouteOptions {
   readonly registry?: MessagingRouteRegistry;
   readonly ownersFile?: string;
   readonly localOnly?: boolean;
+  /**
+   * API-only compatibility: when neither canonical proactive route key is
+   * present, use the legacy situational-briefing pair as the effective
+   * explicit route. A partial canonical pair still wins and fails closed.
+   */
+  readonly allowBriefingFallback?: boolean;
 }
 
 /**
@@ -95,8 +101,13 @@ export function resolveProactiveMessagingRoute(
   options: ResolveProactiveMessagingRouteOptions = {}
 ): MessagingRouteResolution {
   const localOnly = options.localOnly ?? isLocalOnlyEnabled(env);
-  const providerId = env.MUSE_PROACTIVE_PROVIDER?.trim() || "";
-  const destination = env.MUSE_PROACTIVE_DESTINATION?.trim() || "";
+  const proactiveProvider = env.MUSE_PROACTIVE_PROVIDER?.trim() || "";
+  const proactiveDestination = env.MUSE_PROACTIVE_DESTINATION?.trim() || "";
+  const useBriefingFallback = options.allowBriefingFallback
+    && proactiveProvider.length === 0
+    && proactiveDestination.length === 0;
+  const providerId = (useBriefingFallback ? env.MUSE_BRIEFING_PROVIDER : proactiveProvider)?.trim() || "";
+  const destination = (useBriefingFallback ? env.MUSE_BRIEFING_DESTINATION : proactiveDestination)?.trim() || "";
   const hasExplicitProvider = providerId.length > 0;
   const hasExplicitDestination = destination.length > 0;
 

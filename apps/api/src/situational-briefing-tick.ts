@@ -16,16 +16,24 @@ import { errorMessage } from "@muse/shared";
  */
 
 import { type BriefingImminent } from "@muse/proactivity";
+import type { MessagingRouteResolution } from "@muse/autoconfigure";
 import { runDueSituationalBriefing, type EmailProvider, type WeatherProvider } from "@muse/domain-tools";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
+import {
+  explicitMessagingRouteReceipt,
+  sanitizeMessagingRouteReceipt,
+  unavailableMessagingRouteReceipt
+} from "./messaging-route-receipt.js";
 
 export interface SituationalBriefingTickOptions {
   readonly objectivesFile: string;
   readonly registry: MessagingProviderRegistry;
-  readonly providerId: string;
-  readonly destination: string;
+  readonly providerId?: string;
+  readonly destination?: string;
+  /** Re-resolves the canonical Gateway route immediately before each send. */
+  readonly resolveRoute?: () => MessagingRouteResolution | undefined;
   readonly sidecarFile: string;
   readonly imminent?: readonly BriefingImminent[];
   /**
@@ -89,6 +97,24 @@ export function startSituationalBriefingTick(
     }
     firing = true;
     try {
+      let route: MessagingRouteResolution;
+      try {
+        const resolved = options.resolveRoute
+          ? options.resolveRoute()
+          : options.providerId !== undefined && options.destination !== undefined
+            ? explicitMessagingRouteReceipt(options.providerId, options.destination)
+            : undefined;
+        route = sanitizeMessagingRouteReceipt(resolved ?? unavailableMessagingRouteReceipt());
+      } catch {
+        route = unavailableMessagingRouteReceipt();
+        options.errorLogger?.("situational-briefing-tick: route-unavailable");
+      }
+      if (route.status !== "resolved" || !route.providerId || !route.destination) {
+        if (route.status !== "unconfigured" || route.reason !== "paired-route-inspection-unavailable") {
+          options.errorLogger?.(`situational-briefing-tick: route-unavailable (${route.reason ?? route.status})`);
+        }
+        return;
+      }
       let imminent = options.imminent ?? [];
       if (options.imminentProvider) {
         try {
@@ -98,12 +124,12 @@ export function startSituationalBriefingTick(
         }
       }
       const summary = await runDueSituationalBriefing({
-        destination: options.destination,
+        destination: route.destination,
         imminent,
         messagingRegistry: options.registry,
         now,
         objectivesFile: options.objectivesFile,
-        providerId: options.providerId,
+        providerId: route.providerId,
         sidecarFile: options.sidecarFile,
         ...(options.weatherProvider && options.weatherLocation
           ? { weatherLocation: options.weatherLocation, weatherProvider: options.weatherProvider }
@@ -118,7 +144,7 @@ export function startSituationalBriefingTick(
         ...(options.windowMs !== undefined ? { windowMs: options.windowMs } : {})
       });
       if (summary.delivered > 0) {
-        options.logger?.(`situational-briefing-tick: delivered via ${options.providerId}`);
+        options.logger?.(`situational-briefing-tick: delivered via ${route.providerId}`);
       }
     } catch (cause) {
       const message = errorMessage(cause);
@@ -147,4 +173,3 @@ function clampInterval(raw: number): number {
   }
   return Math.max(MIN_INTERVAL_MS, Math.min(MAX_INTERVAL_MS, Math.trunc(raw)));
 }
-

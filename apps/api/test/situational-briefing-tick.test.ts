@@ -1,8 +1,10 @@
 import { mkdtempSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
+import { MessagingProviderRegistry, TelegramProvider, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
+import { resolveProactiveMessagingRoute } from "@muse/autoconfigure";
 import { addObjective, writeTasks, type StandingObjective } from "@muse/stores";
 import { deriveBriefingImminent, deriveCalendarBriefingImminent } from "@muse/proactivity";
 import { describe, expect, it } from "vitest";
@@ -36,6 +38,20 @@ function objective(overrides: Partial<StandingObjective> = {}): StandingObjectiv
 const NOW = new Date("2026-05-19T12:00:00.000Z");
 
 describe("startSituationalBriefingTick — P9-b2 child: the briefing daemon rider drives runDueSituationalBriefing", () => {
+  function routeProvider(
+    id: "telegram" | "discord",
+    sent: Array<{ readonly destination: string; readonly providerId: string }>
+  ): MessagingProvider {
+    return {
+      describe: () => ({ description: "route-refresh-test", displayName: id, id }),
+      id,
+      async send(message: OutboundMessage): Promise<OutboundReceipt> {
+        sent.push({ destination: message.destination, providerId: id });
+        return { destination: message.destination, messageId: `${id}-message`, providerId: id };
+      }
+    };
+  }
+
   function telegram(posts: { url: string; body: string }[]) {
     return new TelegramProvider({
       baseUrl: "https://tg.test",
@@ -118,6 +134,44 @@ describe("startSituationalBriefingTick — P9-b2 child: the briefing daemon ride
     try {
       await expect(handle.tickOnce()).resolves.toBeUndefined();
       expect(errors.some((e) => e.includes("situational-briefing-tick"))).toBe(true);
+    } finally {
+      handle.stop();
+    }
+  });
+
+  it("resolves the paired Gateway route at each resident tick and delivers through the changed provider", async () => {
+    const { objectivesFile, sidecarFile } = fixtures();
+    const ownersFile = join(mkdtempSync(join(tmpdir(), "muse-brief-route-refresh-")), "channel-owners.json");
+    await addObjective(objectivesFile, objective());
+    await writeFile(ownersFile, JSON.stringify({ owners: { telegram: "owner-a" }, version: 1 }));
+    const sent: Array<{ readonly destination: string; readonly providerId: string }> = [];
+    const registry = new MessagingProviderRegistry([
+      routeProvider("telegram", sent),
+      routeProvider("discord", sent)
+    ]);
+    let resolveCalls = 0;
+    const handle = startSituationalBriefingTick({
+      imminent: [],
+      now: () => NOW,
+      objectivesFile,
+      registry,
+      resolveRoute: () => {
+        resolveCalls += 1;
+        return resolveProactiveMessagingRoute({}, { ownersFile, registry });
+      },
+      sidecarFile,
+      windowMs: 0
+    });
+    try {
+      expect(resolveCalls).toBe(0);
+      await handle.tickOnce();
+      await writeFile(ownersFile, JSON.stringify({ owners: { discord: "owner-b" }, version: 1 }));
+      await handle.tickOnce();
+      expect(resolveCalls).toBe(2);
+      expect(sent).toEqual([
+        { destination: "owner-a", providerId: "telegram" },
+        { destination: "owner-b", providerId: "discord" }
+      ]);
     } finally {
       handle.stop();
     }

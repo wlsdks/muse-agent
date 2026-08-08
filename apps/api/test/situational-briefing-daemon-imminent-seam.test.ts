@@ -12,7 +12,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { startSituationalBriefingDaemonIfConfigured } from "../src/tick-daemons.js";
 import type { ServerOptions } from "../src/server.js";
 
-type TickOptions = { imminentProvider?: (now: Date) => Promise<readonly BriefingImminent[]> };
+type TickOptions = {
+  imminentProvider?: (now: Date) => Promise<readonly BriefingImminent[]>;
+  resolveRoute?: () => { readonly destination: string | null; readonly providerId: string | null; readonly status: string } | undefined;
+};
 
 const hoisted = vi.hoisted(() => ({
   startSituationalBriefingTick: vi.fn((_options: TickOptions) => ({
@@ -118,5 +121,25 @@ describe("P8 audit (b3/b4) — the production briefing daemon builder grounds th
     startSituationalBriefingDaemonIfConfigured(ENV, server, options);
 
     expect(lastTickOptions()?.imminentProvider).toBeUndefined();
+  });
+
+  it("keeps legacy MUSE_BRIEFING_* configuration on the canonical tick-time Gateway resolver", () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-brief-seam-route-"));
+    const options = {
+      briefingSidecarFile: join(dir, "brief-fired.json"),
+      messaging: new MessagingProviderRegistry([
+        new TelegramProvider({ baseUrl: "https://tg.test", fetch: async () => new Response("{}"), token: "T" })
+      ]),
+      objectivesFile: join(dir, "objectives.json")
+    } as unknown as ServerOptions;
+
+    startSituationalBriefingDaemonIfConfigured(ENV, fakeServer().server, options);
+
+    expect(lastTickOptions()?.resolveRoute?.()).toMatchObject({
+      destination: "555",
+      providerId: "telegram",
+      source: "explicit-config",
+      status: "resolved"
+    });
   });
 });

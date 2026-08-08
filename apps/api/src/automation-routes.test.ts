@@ -329,6 +329,42 @@ describe("GET /api/automation/upcoming — pattern runtime projection", () => {
 });
 
 describe("GET /api/automation/upcoming — populated stores", () => {
+  it("projects the legacy briefing pair with the same precedence used by the API briefing tick", async () => {
+    const server = Fastify();
+    registerAutomationRoutes(server, {
+      authService: undefined,
+      env: {
+        MUSE_BRIEFING_DESTINATION: "briefing-555",
+        MUSE_BRIEFING_PROVIDER: "telegram",
+        MUSE_INTERRUPTION_LEDGER_FILE: ledgerFile
+      },
+      messagingRegistry: registryOf({ id: "telegram" })
+    });
+
+    const legacy = JSON.parse((await server.inject({ method: "GET", url: "/api/automation/upcoming" })).body) as AutomationUpcomingResponse;
+    expect(legacy.gateway).toMatchObject({
+      destination: "briefing-555",
+      providerId: "telegram",
+      source: "explicit-config",
+      status: "resolved"
+    });
+
+    const canonicalServer = Fastify();
+    registerAutomationRoutes(canonicalServer, {
+      authService: undefined,
+      env: {
+        MUSE_BRIEFING_DESTINATION: "briefing-555",
+        MUSE_BRIEFING_PROVIDER: "telegram",
+        MUSE_INTERRUPTION_LEDGER_FILE: ledgerFile,
+        MUSE_PROACTIVE_DESTINATION: "proactive-999",
+        MUSE_PROACTIVE_PROVIDER: "telegram"
+      },
+      messagingRegistry: registryOf({ id: "telegram" })
+    });
+    const canonical = JSON.parse((await canonicalServer.inject({ method: "GET", url: "/api/automation/upcoming" })).body) as AutomationUpcomingResponse;
+    expect(canonical.gateway).toMatchObject({ destination: "proactive-999", providerId: "telegram", status: "resolved" });
+  });
+
   it("surfaces the digest config, the counted budget, the soonest pending reminder, and the soonest enabled job", async () => {
     await writeReminders(remindersFile, [FIRED_REMINDER, LATER_PENDING_REMINDER, PENDING_REMINDER]);
     await appendInterruptionDelivery(ledgerFile, { at: new Date(), source: "pattern-firing" });

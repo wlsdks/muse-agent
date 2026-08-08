@@ -47,10 +47,10 @@ describe("startSituationalBriefingDaemonIfConfigured — P9-b2 child 2/2 (briefi
     expect(() => onClose[0]!.fn()).not.toThrow();
   });
 
-  it("absent env ⇒ NOT started (no hook registered)", () => {
+  it("absent env ⇒ starts a dormant resident rider so a later paired route can be adopted", () => {
     const { hooks, server } = fakeServer();
     startSituationalBriefingDaemonIfConfigured({} as NodeJS.ProcessEnv, server, configuredOptions());
-    expect(hooks).toHaveLength(0);
+    expect(hooks.filter((hook) => hook.name === "onClose")).toHaveLength(1);
   });
 
   it("env present but the required options are missing ⇒ NOT started", () => {
@@ -59,12 +59,12 @@ describe("startSituationalBriefingDaemonIfConfigured — P9-b2 child 2/2 (briefi
     expect(hooks).toHaveLength(0);
   });
 
-  it("env present but the named provider is not registered ⇒ NOT started", () => {
+  it("env present but the named provider is not registered ⇒ starts dormant and stays fail-closed at tick time", () => {
     const { hooks, server } = fakeServer();
     const opts = configuredOptions();
     const noProvider = { ...opts, messaging: new MessagingProviderRegistry([]) } as unknown as ServerOptions;
     startSituationalBriefingDaemonIfConfigured(ENV, server, noProvider);
-    expect(hooks).toHaveLength(0);
+    expect(hooks.filter((hook) => hook.name === "onClose")).toHaveLength(1);
   });
 
   it("keeps non-home briefing registration while omitting a remote HA alert before token read under local-only", () => {

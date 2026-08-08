@@ -106,6 +106,33 @@ describe("inspectPairedChannels", () => {
 });
 
 describe("resolveProactiveMessagingRoute", () => {
+  it("can preserve the API's legacy briefing pair without overriding a canonical or partial proactive pair", () => {
+    expect(resolveProactiveMessagingRoute(
+      { MUSE_BRIEFING_DESTINATION: "briefing-555", MUSE_BRIEFING_PROVIDER: "telegram" },
+      { allowBriefingFallback: true, registry: routeRegistryOf({ id: "telegram" }) }
+    )).toMatchObject({
+      destination: "briefing-555",
+      providerId: "telegram",
+      source: "explicit-config",
+      status: "resolved"
+    });
+
+    expect(resolveProactiveMessagingRoute(
+      {
+        MUSE_BRIEFING_DESTINATION: "briefing-555",
+        MUSE_BRIEFING_PROVIDER: "telegram",
+        MUSE_PROACTIVE_DESTINATION: "proactive-999",
+        MUSE_PROACTIVE_PROVIDER: "discord"
+      },
+      { allowBriefingFallback: true, registry: routeRegistryOf({ id: "discord" }, { id: "telegram" }) }
+    )).toMatchObject({ destination: "proactive-999", providerId: "discord", status: "resolved" });
+
+    expect(resolveProactiveMessagingRoute(
+      { MUSE_BRIEFING_DESTINATION: "briefing-555", MUSE_BRIEFING_PROVIDER: "telegram", MUSE_PROACTIVE_PROVIDER: "discord" },
+      { allowBriefingFallback: true, registry: routeRegistryOf({ id: "discord" }, { id: "telegram" }) }
+    )).toMatchObject({ reason: "explicit-route-incomplete", status: "unconfigured" });
+  });
+
   it("resolves a complete explicit route only when its provider is live-registered", () => {
     expect(resolveProactiveMessagingRoute(
       { MUSE_PROACTIVE_DESTINATION: "555", MUSE_PROACTIVE_PROVIDER: "telegram" },

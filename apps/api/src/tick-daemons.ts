@@ -125,13 +125,18 @@ function resolveMessagingTarget(
 
 function resolveProactiveMessagingTarget(
   env: NodeJS.ProcessEnv,
-  options: ServerOptions
+  options: ServerOptions,
+  routeOptions: {
+    readonly allowBriefingFallback?: boolean;
+    readonly localOnly?: boolean;
+  } = {}
 ): MessagingRouteResolution | undefined {
   const registry = options.messaging;
   const ownersFile = options.integrationEnv?.messaging.ownersFile
     ?? resolveIntegrationEnvironment(env).messaging.ownersFile;
-  const localOnly = options.integrationEnv?.localOnly ?? options.localOnly;
+  const localOnly = routeOptions.localOnly ?? options.integrationEnv?.localOnly ?? options.localOnly;
   return resolveProactiveMessagingRoute(env, {
+    ...(routeOptions.allowBriefingFallback ? { allowBriefingFallback: true } : {}),
     ownersFile,
     registry,
     ...(localOnly !== undefined ? { localOnly } : {})
@@ -443,11 +448,14 @@ export function startSituationalBriefingDaemonIfConfigured(
   options: ServerOptions,
   localOnly: boolean = options.integrationEnv?.localOnly ?? options.localOnly ?? isLocalOnlyEnabled(env)
 ): void {
-  const target = resolveMessagingTarget(env.MUSE_BRIEFING_PROVIDER, env.MUSE_BRIEFING_DESTINATION, options);
-  if (!target || !options.objectivesFile || !options.briefingSidecarFile) {
+  if (!options.messaging || !options.objectivesFile || !options.briefingSidecarFile) {
     return;
   }
-  const { providerId: briefingProvider, destination: briefingDestination, registry: briefingRegistry } = target;
+  const resolveRoute = () => resolveProactiveMessagingTarget(env, options, {
+    allowBriefingFallback: true,
+    localOnly
+  });
+  const briefingRegistry = options.messaging;
   const tickMsRaw = optionalNumber(env.MUSE_BRIEFING_TICK_MS);
   const windowMsRaw = optionalNumber(env.MUSE_BRIEFING_WINDOW_MS);
   const briefingQuietHours = liveQuietHours(env, server, env.MUSE_BRIEFING_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
@@ -545,15 +553,14 @@ export function startSituationalBriefingDaemonIfConfigured(
       }
     : {};
   const briefingHandle = startSituationalBriefingTick({
-    destination: briefingDestination,
     errorLogger: (message) => server.log.warn(message),
     ...(imminentProvider ? { imminentProvider } : {}),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     logger: (message) => server.log.info(message),
     objectivesFile: options.objectivesFile,
-    providerId: briefingProvider,
     quietHours: briefingQuietHours,
     registry: briefingRegistry,
+    resolveRoute,
     sidecarFile: options.briefingSidecarFile,
     ...weatherOpt,
     ...emailOpt,
