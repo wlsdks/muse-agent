@@ -7,10 +7,20 @@ source. Every `MUSE_*` or `ATTUNEGRAPH_*` referenced in product source
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **656** variables.
+Total: **666** variables.
 
 | Variable | Read by |
 | --- | --- |
+| `ATTUNEGRAPH_CURRENT_DECISION_ENDPOINT_PREDICATES_FOR_MEASUREMENT` | packages/attunegraph |
+| `ATTUNEGRAPH_CURRENT_DECISION_ENDPOINT_SOURCE_REFS_FOR_MEASUREMENT` | packages/attunegraph |
+| `ATTUNEGRAPH_CURRENT_HEAD_INDEX_REVISION` | packages/attunegraph |
+| `ATTUNEGRAPH_CURRENT_HEAD_INDEX_REVISION_V4` | packages/attunegraph |
+| `ATTUNEGRAPH_INPUT_TYPE_CHILD` | packages/attunegraph |
+| `ATTUNEGRAPH_PHYSICAL_SCHEMA_V1` | packages/attunegraph |
+| `ATTUNEGRAPH_PHYSICAL_SCHEMA_V2` | packages/attunegraph |
+| `ATTUNEGRAPH_PHYSICAL_SCHEMA_V3` | packages/attunegraph |
+| `ATTUNEGRAPH_PHYSICAL_SCHEMA_V4` | packages/attunegraph |
+| `ATTUNEGRAPH_PROJECTION_ENCODING` | packages/attunegraph |
 | `ATTUNEGRAPH_SHADOW_TIMING_PROJECTIONS` | packages/attunement |
 | `ATTUNEGRAPH_SHADOW_TIMING_PROJECTION_VERSION` | packages/attunement |
 | `MUSE_A2A_COUNCIL` | apps/cli, packages/a2a |
