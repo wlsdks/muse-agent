@@ -1,13 +1,15 @@
-import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { writeDayRhythmConfig } from "@muse/autoconfigure";
+import { CalendarProviderRegistry } from "@muse/calendar";
+import * as domainTools from "@muse/domain-tools";
 import { MessagingProviderRegistry, readOutboundEffects } from "@muse/messaging";
 import { readCheckins, writeCheckins } from "@muse/proactivity";
 import { addObjective, readFollowups, setSchedulerPaused, writeFollowups } from "@muse/stores";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { makeBriefingTick, makeCheckinsTick, makeDailyBriefTick, makeFollowupTick, makePatternTick, makeSchedulerTick } from "./daemon-delivery-ticks.js";
 import type { MakeDailyBriefTickDeps } from "./daemon-delivery-ticks.js";
@@ -472,7 +474,7 @@ describe("makeBriefingTick — day-rhythm morning briefing's PUSHED reconfirm qu
       createdAt: "2026-07-01T00:00:00.000Z", id: "obj-1", kind: "until", spec: "watch the deploy", status: "active", userId: "stark"
     });
     const messaging = fakeMessaging();
-    const registry = { list: () => ["telegram"], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
+    const registry = { has: (providerId: string) => providerId === "telegram", list: () => ["telegram"], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
 
     const tick = makeBriefingTick({
       calendarRegistry: new (await import("@muse/calendar")).CalendarProviderRegistry(),
@@ -513,7 +515,7 @@ describe("makeBriefingTick — day-rhythm morning briefing's PUSHED reconfirm qu
       createdAt: "2026-07-01T00:00:00.000Z", id: "obj-1", kind: "until", spec: "watch the deploy", status: "active", userId: "stark"
     });
     const messaging = fakeMessaging();
-    const registry = { list: () => ["telegram"], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
+    const registry = { has: (providerId: string) => providerId === "telegram", list: () => ["telegram"], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
 
     const tick = makeBriefingTick({
       calendarRegistry: new (await import("@muse/calendar")).CalendarProviderRegistry(),
@@ -550,7 +552,7 @@ describe("makeBriefingTick — day-rhythm morning briefing's PUSHED reconfirm qu
     const { markReconfirmCardAnswered } = await import("@muse/stores");
     await markReconfirmCardAnswered(f.answeredFile, NOW);
     const messaging = fakeMessaging();
-    const registry = { list: () => ["telegram"], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
+    const registry = { has: (providerId: string) => providerId === "telegram", list: () => ["telegram"], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
 
     const tick = makeBriefingTick({
       calendarRegistry: new (await import("@muse/calendar")).CalendarProviderRegistry(),
@@ -585,7 +587,7 @@ describe("makeBriefingTick — day-rhythm morning briefing's PUSHED reconfirm qu
       createdAt: "2026-07-01T00:00:00.000Z", id: "obj-1", kind: "until", spec: "watch the deploy", status: "active", userId: "stark"
     });
     const messaging = fakeMessaging();
-    const registry = { list: () => [], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
+    const registry = { has: (providerId: string) => providerId === "log", list: () => ["log"], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
 
     const tick = makeBriefingTick({
       calendarRegistry: new (await import("@muse/calendar")).CalendarProviderRegistry(),
@@ -619,7 +621,7 @@ describe("makeBriefingTick — day-rhythm morning briefing's PUSHED reconfirm qu
       createdAt: "2026-07-01T00:00:00.000Z", id: "obj-1", kind: "until", spec: "watch the deploy", status: "active", userId: "stark"
     });
     const messaging = fakeMessaging();
-    const registry = { list: () => [], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
+    const registry = { has: () => false, list: () => [], send: messaging.send } as unknown as import("@muse/messaging").MessagingProviderRegistry;
     let storeCalled = false;
     const store = fakeUserMemoryStore(reconfirmableSlot());
 
@@ -653,6 +655,167 @@ describe("makeBriefingTick — day-rhythm morning briefing's PUSHED reconfirm qu
 
     expect(messaging.sent).toHaveLength(0);
     expect(storeCalled).toBe(false);
+  });
+});
+
+describe("makeBriefingTick — shared CLI route contract", () => {
+  const NOW = new Date(2026, 6, 16, 9, 0, 0);
+
+  function fixture() {
+    const dir = mkdtempSync(join(tmpdir(), "muse-briefing-route-"));
+    return {
+      answeredFile: join(dir, "reconfirm-answered.json"),
+      channelOwnersFile: join(dir, "channel-owners.json"),
+      configFile: join(dir, "config.json"),
+      deliveryFile: join(dir, "reconfirm-delivery.json"),
+      dir,
+      objectivesFile: join(dir, "objectives.json"),
+      sidecarFile: join(dir, "briefing-fired.json"),
+      stdout: [] as string[]
+    };
+  }
+
+  function routeRegistry(...providerIds: readonly string[]): { readonly registry: MessagingProviderRegistry; readonly sent: Array<{ readonly destination: string; readonly providerId: string; readonly text: string }> } {
+    const sent: Array<{ readonly destination: string; readonly providerId: string; readonly text: string }> = [];
+    const registry = new MessagingProviderRegistry(providerIds.map((providerId) => ({
+      describe: () => ({ description: providerId, displayName: providerId, id: providerId }),
+      id: providerId,
+      send: async (message: { readonly destination: string; readonly text: string }) => {
+        sent.push({ destination: message.destination, providerId, text: message.text });
+        return { destination: message.destination, messageId: `${providerId}-briefing`, providerId };
+      }
+    })));
+    return { registry, sent };
+  }
+
+  function emptyUserMemoryStore(): UserMemoryStore {
+    const memory = {
+      facts: {},
+      preferences: {},
+      recentTopics: [],
+      updatedAt: new Date(),
+      userId: "stark",
+      userModel: { goals: [], preferences: [], schedule: [], vetoes: [] }
+    };
+    return {
+      createFactIfAbsent: async () => ({ created: false, memory }),
+      createPreferenceIfAbsent: async () => ({ created: false, memory }),
+      deleteByUserId: async () => false,
+      findByUserId: async () => memory,
+      upsertFact: async () => memory,
+      upsertPreference: async () => memory
+    };
+  }
+
+  async function seedBriefing(f: ReturnType<typeof fixture>, dayRhythm = false): Promise<void> {
+    if (dayRhythm) await writeDayRhythmConfig(f.configFile, { enabled: true, eveningHour: 18, morningHour: 8 });
+    await addObjective(f.objectivesFile, {
+      createdAt: "2026-07-01T00:00:00.000Z", id: "route-objective", kind: "until", spec: "watch the route", status: "active", userId: "stark"
+    });
+  }
+
+  function tickFor(
+    f: ReturnType<typeof fixture>,
+    options: {
+      readonly claim?: () => boolean;
+      readonly destination: string;
+      readonly env?: NodeJS.ProcessEnv;
+      readonly messagingRegistry: MessagingProviderRegistry;
+      readonly provider: string;
+    }
+  ): ReturnType<typeof makeBriefingTick> {
+    return makeBriefingTick({
+      calendarRegistry: new CalendarProviderRegistry(),
+      briefingCalendarLister: undefined,
+      channelOwnersFile: f.channelOwnersFile,
+      dayRhythmConfigFile: f.configFile,
+      destination: options.destination,
+      env: { MUSE_BRIEFING_SIDECAR_FILE: f.sidecarFile, MUSE_USER_ID: "stark", ...options.env },
+      knowledgeEnrich: undefined,
+      leadMinutes: 60,
+      messagingRegistry: options.messagingRegistry,
+      now: () => NOW,
+      objectivesFile: f.objectivesFile,
+      provider: options.provider,
+      reconfirmCardAnsweredFile: f.answeredFile,
+      reconfirmCardDeliveryFile: f.deliveryFile,
+      stdout: (message) => f.stdout.push(message),
+      tasksFile: join(f.dir, "tasks.json"),
+      userMemoryStore: emptyUserMemoryStore()
+    });
+  }
+
+  it("preserves the legacy explicit provider and destination route", async () => {
+    const f = fixture();
+    await seedBriefing(f, true);
+    writeFileSync(f.channelOwnersFile, JSON.stringify({ owners: { discord: "paired" }, version: 1 }));
+    const { registry, sent } = routeRegistry("telegram", "discord");
+    await tickFor(f, {
+      destination: "explicit",
+      env: { MUSE_BRIEFING_ENABLED: "true" },
+      messagingRegistry: registry,
+      provider: "telegram"
+    })();
+    expect(sent.map((message) => [message.providerId, message.destination])).toEqual([["telegram", "explicit"]]);
+  });
+
+  it("refreshes a day-rhythm paired route from A to B across resident ticks", async () => {
+    const f = fixture();
+    await seedBriefing(f, true);
+    const { registry, sent } = routeRegistry("telegram", "discord", "log");
+    writeFileSync(f.channelOwnersFile, JSON.stringify({ owners: { telegram: "A" }, version: 1 }));
+    const tick = tickFor(f, { destination: "@me", messagingRegistry: registry, provider: "log" });
+    await tick();
+    rmSync(f.sidecarFile);
+    writeFileSync(f.channelOwnersFile, JSON.stringify({ owners: { discord: "B" }, version: 1 }));
+    await tick();
+    expect(sent.map((message) => [message.providerId, message.destination])).toEqual([["telegram", "A"], ["discord", "B"]]);
+  });
+
+  it.each([
+    ["no owner", { owners: {} }, { destination: "@me", provider: "log" }, {}, "day rhythm on but no channel paired", "unconfigured"],
+    ["ambiguous", { owners: { discord: "B", telegram: "A" } }, { destination: "@me", provider: "log" }, {}, "route-ambiguous", "unconfigured"],
+    ["malformed", "not-json", { destination: "@me", provider: "log" }, {}, "route-unconfigured", "unconfigured"],
+    ["unregistered", { owners: {} }, { destination: "555", provider: "telegram" }, { MUSE_BRIEFING_ENABLED: "true" }, "route-unconfigured", "unconfigured"],
+    ["incomplete", { owners: {} }, { destination: "", provider: "telegram" }, { MUSE_BRIEFING_ENABLED: "true" }, "route-unconfigured", "unconfigured"],
+    ["local-only", { owners: {} }, { destination: "555", provider: "telegram" }, { MUSE_BRIEFING_ENABLED: "true", MUSE_LOCAL_ONLY: "true" }, "route-blocked-local-only", "blocked-local-only"],
+  ] as const)("fails closed for %s before claim, core, provider, or effects", async (_label, owners, route, env, output, _routeStatus) => {
+    const f = fixture();
+    const dayRhythm = route.provider === "log";
+    await seedBriefing(f, dayRhythm);
+    writeFileSync(f.channelOwnersFile, typeof owners === "string" ? owners : JSON.stringify({ ...owners, version: 1 }));
+    const { registry, sent } = _label === "unregistered"
+      ? routeRegistry("discord")
+      : routeRegistry("telegram", "discord");
+    const claim = vi.fn(() => true);
+    const core = vi.spyOn(domainTools, "runDueSituationalBriefing");
+    try {
+      const result = await tickFor(f, { claim, destination: route.destination, env, messagingRegistry: registry, provider: route.provider })(claim);
+      expect(result.status).toBe("not-ready");
+      expect(result).toMatchObject({ reason: "unconfigured" });
+      expect(claim).not.toHaveBeenCalled();
+      expect(core).not.toHaveBeenCalled();
+      expect(sent).toHaveLength(0);
+      expect(existsSync(f.sidecarFile)).toBe(false);
+      expect(existsSync(f.deliveryFile)).toBe(false);
+      expect(f.stdout.join(" ")).toContain(output);
+    } finally {
+      core.mockRestore();
+    }
+  });
+
+  it("fails closed and emits no raw resolver error", async () => {
+    const f = fixture();
+    await seedBriefing(f);
+    const sent: Array<unknown> = [];
+    const registry = { has: () => { throw new Error("private route secret"); }, send: async () => { sent.push(true); return {}; } } as unknown as MessagingProviderRegistry;
+    const claim = vi.fn(() => true);
+    const result = await tickFor(f, { destination: "555", env: { MUSE_BRIEFING_ENABLED: "true" }, messagingRegistry: registry, provider: "telegram" })(claim);
+    expect(result).toMatchObject({ reason: "unconfigured", status: "not-ready" });
+    expect(claim).not.toHaveBeenCalled();
+    expect(sent).toHaveLength(0);
+    expect(f.stdout.join(" ")).toContain("briefing: skipped (route-unavailable)");
+    expect(f.stdout.join(" ")).not.toContain("private route secret");
   });
 });
 

@@ -2944,6 +2944,49 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
       expect(briefingSend).toBeDefined();
     });
 
+    it("production briefing factory passes live day-rhythm config and owner routes across resident ticks", async () => {
+      const env = tmpEnv();
+      writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+      writeFileSync(env.MUSE_CHANNEL_OWNERS_FILE!, JSON.stringify({ owners: { telegram: "A" }, version: 1 }), "utf8");
+      await writeDayRhythmConfig(env.MUSE_CLI_CONFIG_FILE!, { enabled: true, eveningHour: 18, morningHour: new Date().getHours() });
+      const telegramSent: OutboundMessage[] = [];
+      const discordSent: OutboundMessage[] = [];
+      const logSent: OutboundMessage[] = [];
+      const registry = new MessagingProviderRegistry([
+        capturingProvider(telegramSent, "telegram"),
+        capturingProvider(discordSent, "discord"),
+        capturingProvider(logSent, "log")
+      ]);
+      const briefingCalendarLister: NonNullable<DaemonHelpers["briefingCalendarLister"]> = async () => [
+        { allDay: false, startsAt: new Date(Date.now() + 5 * 60_000), title: "Live route briefing" }
+      ];
+      let tickError: unknown;
+
+      const res = await runDaemon(["--interval", "5", "--provider", "log"], {
+        briefingCalendarLister,
+        env,
+        registry,
+        runDaemonLoop: async ({ signal, tick }) => {
+          try {
+            await tick();
+            rmSync(env.MUSE_BRIEFING_SIDECAR_FILE!, { force: true });
+            writeFileSync(env.MUSE_CHANNEL_OWNERS_FILE!, JSON.stringify({ owners: { discord: "B" }, version: 1 }), "utf8");
+            await tick();
+            signal.stop();
+          } catch (cause) {
+            tickError = cause;
+          }
+          return 2;
+        }
+      });
+
+      expect(res.exitCode).toBeUndefined();
+      expect(tickError).toBeUndefined();
+      expect(telegramSent.map((message) => message.destination)).toEqual(["A"]);
+      expect(discordSent.map((message) => message.destination)).toEqual(["B"]);
+      expect(logSent).toHaveLength(0);
+    });
+
     it("day rhythm on: no paired channel → an honest skip, never a silent log-sink send", async () => {
       const env = tmpEnv();
       const dueSoon = new Date(Date.now() + 5 * 60_000).toISOString();

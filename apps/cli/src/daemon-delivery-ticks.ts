@@ -30,8 +30,7 @@ import {
   resolveDefaultUserId,
   resolveEpisodesFile,
   resolvePatternsFiredFile,
-  resolveProactiveHistoryFile,
-  resolveSinglePairedChannel
+  resolveProactiveHistoryFile
 } from "@muse/autoconfigure";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { runDueSituationalBriefing } from "@muse/domain-tools";
@@ -681,16 +680,27 @@ export function makeBriefingTick(deps: MakeBriefingTickDeps): GovernedDaemonTick
         return daemonWorkloadNotReady("not-due");
       }
     }
-    let effectiveProvider = provider;
-    let effectiveDestination = destination;
-    if (dayRhythmDriven && provider === "log") {
-      const paired = await resolveSinglePairedChannel(channelOwnersFile, messagingRegistry);
-      if (!paired) {
+    let route;
+    try {
+      route = resolveCliMessagingRoute({
+        channelOwnersFile,
+        dayRhythmEnabled: dayRhythmDriven,
+        destination,
+        env: e,
+        messagingRegistry,
+        provider
+      });
+    } catch {
+      stdout(`[${now.toISOString()}] briefing: skipped (route-unavailable)\n`);
+      return daemonWorkloadNotReady("unconfigured");
+    }
+    if (route.status !== "resolved" || !route.providerId || !route.destination) {
+      if (dayRhythmDriven && provider === "log" && route.reason === "no-single-paired-route") {
         stdout(`[${now.toISOString()}] briefing: day rhythm on but no channel paired\n`);
-        return daemonWorkloadNotReady("unconfigured");
+      } else {
+        stdout(`[${now.toISOString()}] briefing: skipped (route-${routeSkipLabel(route)})\n`);
       }
-      effectiveProvider = paired.providerId;
-      effectiveDestination = paired.destination;
+      return daemonWorkloadNotReady("unconfigured");
     }
     if (!(claim ?? (() => true))()) return daemonWorkloadCancelled();
     let imminent: Awaited<ReturnType<typeof deriveBriefingImminent>> = [];
@@ -714,12 +724,12 @@ export function makeBriefingTick(deps: MakeBriefingTickDeps): GovernedDaemonTick
           return undefined;
         }
       },
-      destination: effectiveDestination,
+      destination: route.destination,
       imminent,
       messagingRegistry,
       now: () => now,
       objectivesFile,
-      providerId: effectiveProvider,
+      providerId: route.providerId,
       sidecarFile: e.MUSE_BRIEFING_SIDECAR_FILE?.trim()?.length
         ? e.MUSE_BRIEFING_SIDECAR_FILE.trim()
         : join(homedir(), ".muse", "briefing-fired.json"),
