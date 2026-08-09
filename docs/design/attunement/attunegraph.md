@@ -273,11 +273,12 @@ snapshot. One receipt must prove exactly one `DELIVERED_FOR`, `GOVERNED_BY`,
 `PRODUCED_OUTCOME`, and `SCOPED_TO` relation with canonical time boundaries. Missing,
 ambiguous, stale, cross-scope, invalid, or over-budget evidence holds the card instead of
 guessing. The authenticated Continuity Review now supplies the first owner-taught product
-surface: the owner selects only summary density and next-step presentation, after which a
-fixed ten-case boundary replay feeds this same compiler service. The preview writes nothing,
-approves nothing, and exposes no action payload. Automatic surfacing, usefulness qualification,
-trusted trial execution, edit/reject persistence, apply, and rollback remain separate roadmap
-work.
+  surface: the owner selects only summary density and next-step presentation, after which a
+  fixed ten-case boundary replay feeds this same compiler service. The preview writes and approves
+  nothing; a separate explicit owner confirmation can submit its exact review binding to apply only
+  that thread-display policy through stale-safe compare-and-swap. Automatic surfacing, usefulness
+  qualification, trusted trial execution, edit/reject persistence, and rollback remain separate
+  roadmap work.
 
 Fresh Shadow timing decisions now retain their exact bounded policy snapshot, and a
 dedicated Graph receipt can bind one such decision only to the original process-local

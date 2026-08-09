@@ -7,6 +7,7 @@ import type {
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
+import { policyCardReviewRegistryFor } from "./policy-card-review-registry.js";
 import type { ServerOptions } from "./server.js";
 
 const OPPORTUNITY_ID = /^learning_opportunity_[a-f0-9]{64}$/u;
@@ -108,10 +109,14 @@ export function registerPolicyCardRoutes(
         });
       }
       try {
-        return await gate.preview.preview({
+        const result = await gate.preview.preview({
           ...parsed,
           opportunityId: request.params.opportunityId
         });
+        if (result.status === "rendered") {
+          policyCardReviewRegistryFor(server).record(result.review);
+        }
+        return result;
       } catch {
         return reply.code(503).send({
           reason: "service-failure",

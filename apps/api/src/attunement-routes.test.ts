@@ -1,3 +1,4 @@
+import { readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +8,7 @@ import {
   computeContinuityEvaluation,
   createExperienceLearningApprovalReceipt,
   createExperienceReplayEvidenceReceipt,
+  fingerprintContinuityPolicy,
   createLocalArtifactValidator,
   createLocalExactArtifactResolver,
   createPersonalThread,
@@ -20,6 +22,12 @@ import {
   type ExperienceLearningReplayBundle,
   type OpenPreparedContinuityPack
 } from "@muse/attunement";
+import { createLocalAttunementSnapshotProvider } from "@muse/attunement/testing";
+import {
+  createContinuityLearningPolicyCardPreviewService,
+  createOwnerTaughtPolicyCardPreviewService,
+  type OwnerTaughtPolicyCardPreviewResult
+} from "@muse/autoconfigure";
 import { CalendarProviderRegistry, encodeCalendarEventReference, type CalendarEvent, type CalendarProvider } from "@muse/calendar";
 import { FileCheckpointStore } from "@muse/runtime-state";
 import { writeBrowsingStore } from "@muse/recall";
@@ -29,6 +37,7 @@ import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { registerAttunementRoutes, type AttunementRoutesGate } from "./attunement-routes.js";
+import { registerPolicyCardRoutes } from "./policy-card-routes.js";
 
 let root: string;
 let attunementFile: string;
@@ -993,6 +1002,339 @@ describe("POST /api/attunement/deliveries/:deliveryId/learning-apply", () => {
     expect(observedHandleIds).toHaveLength(1);
     expect((await readAttunementState(attunementFile)).experienceLearningPolicyAudits)
       .toHaveLength(1);
+    await app.close();
+  });
+});
+
+describe("POST /api/attunement/learning-opportunities/:opportunityId/policy-card-apply", () => {
+  it("applies the exact owner-confirmed Policy Card review and refuses a replay", async () => {
+    let currentNow = Date.parse("2026-07-17T00:00:00.000Z");
+    let driftOnApply = false;
+    let driftedBytes: string | undefined;
+    const app = server({
+      now: () => {
+        if (driftOnApply) {
+          driftOnApply = false;
+          const drifted = JSON.parse(readFileSync(attunementFile, "utf8")) as {
+            nextPolicyVersion: number;
+            resetReceipts: Array<{
+              basePolicyVersion: number;
+              beforePolicy: unknown;
+              id: string;
+              resetPolicyVersion: number;
+              threadId: string;
+            }>;
+            threads: Array<{
+              id: string;
+              policy: {
+                detail: "compact" | "standard";
+                nextStep: "contextual" | "direct" | "hidden";
+                suppression: string;
+                version: number;
+              };
+            }>;
+          };
+          const thread = drifted.threads.find((entry) => entry.id === threadId)!;
+          const beforePolicy = thread.policy;
+          const resetPolicyVersion = drifted.nextPolicyVersion;
+          thread.policy = {
+            ...thread.policy,
+            version: resetPolicyVersion
+          };
+          drifted.resetReceipts.push({
+            basePolicyVersion: beforePolicy.version,
+            beforePolicy,
+            id: "reset_policy_card_cas_race",
+            resetPolicyVersion,
+            threadId
+          });
+          drifted.nextPolicyVersion += 1;
+          driftedBytes = `${JSON.stringify(drifted)}\n`;
+          writeFileSync(attunementFile, driftedBytes, "utf8");
+        }
+        return currentNow;
+      }
+    });
+    const snapshotProvider = createLocalAttunementSnapshotProvider({
+      attunementFile,
+      sourceId: "muse.attunement.local-state.v1"
+    });
+    registerPolicyCardRoutes(app, {
+      authService: undefined,
+      preview: createOwnerTaughtPolicyCardPreviewService({
+        now: () => new Date(currentNow),
+        policyCardPreview: createContinuityLearningPolicyCardPreviewService({
+          captureHeadRevalidation: snapshotProvider.captureHeadRevalidation,
+          readState: () => readAttunementState(attunementFile),
+          sourceId: "muse.attunement.local-state.v1"
+        }),
+        readState: () => readAttunementState(attunementFile)
+      })
+    });
+    const anonymousApp = server({ authService: {} as never });
+    const anonymous = await anonymousApp.inject({
+      method: "POST",
+      payload: {
+        confirm: true,
+        draft: {},
+        evidenceCases: [],
+        previewId: `learning_preview_${"a".repeat(64)}`,
+        replayInputHash: "b".repeat(64)
+      },
+      url: `/api/attunement/learning-opportunities/learning_opportunity_${"a".repeat(64)}/policy-card-apply`
+    });
+    expect(anonymous.statusCode).toBe(401);
+    await anonymousApp.close();
+    const opened = await app.inject({
+      method: "POST",
+      url: `/api/attunement/threads/${threadId}/continue`
+    });
+    const deliveryId = opened.json().delivery.id as string;
+    expect((await app.inject({
+      method: "POST",
+      payload: { outcome: "adjusted" },
+      url: `/api/attunement/deliveries/${deliveryId}/outcome`
+    })).statusCode).toBe(200);
+    const opportunityId = (await app.inject({
+      method: "GET",
+      url: "/api/attunement/learning-opportunities"
+    })).json().items[0].opportunityId as string;
+    const policyCardPreview = await app.inject({
+      method: "POST",
+      payload: { detail: "compact", locale: "en", nextStep: "contextual" },
+      url: `/api/attunement/learning-opportunities/${opportunityId}/policy-card-preview`
+    });
+    expect(policyCardPreview.statusCode).toBe(200);
+    const rendered = policyCardPreview.json() as OwnerTaughtPolicyCardPreviewResult;
+    if (rendered.status !== "rendered") throw new Error("expected rendered Policy Card");
+    const {
+      opportunityId: reviewedOpportunityId,
+      ...review
+    } = rendered.review;
+    expect(reviewedOpportunityId).toBe(opportunityId);
+    const { draft, evidenceCases } = review;
+    currentNow = Date.parse("2026-07-17T00:03:00.000Z");
+    const applyBody = {
+      confirm: true,
+      ...review
+    };
+    const timingDraft = {
+      ...draft,
+      proposedBehavior: "Wait longer before offering this thread.",
+      proposedChange: {
+        adjustment: "increase-cooldown",
+        kind: "thread-timing"
+      },
+      scope: {
+        ...draft.scope,
+        kind: "thread-timing"
+      }
+    };
+    const timingPreview = await app.inject({
+      method: "POST",
+      payload: { draft: timingDraft, evidenceCases },
+      url: `/api/attunement/deliveries/${deliveryId}/learning-replay-preview`
+    });
+    expect(timingPreview.statusCode).toBe(200);
+    const timingReplay = timingPreview.json() as {
+      readonly preview: ExperienceLearningProposalPreview;
+      readonly replayBundle: ExperienceLearningReplayBundle;
+    };
+    const beforeTimingApply = await readFile(attunementFile);
+    const timingApply = await app.inject({
+      method: "POST",
+      payload: {
+        confirm: true,
+        draft: timingDraft,
+        evidenceCases,
+        previewId: timingReplay.preview.previewId,
+        replayInputHash: timingReplay.replayBundle.replay.inputHash
+      },
+      url: `/api/attunement/learning-opportunities/${opportunityId}/policy-card-apply`
+    });
+    expect(timingApply.statusCode).toBe(422);
+    expect(timingApply.json()).toEqual({
+      reason: "policy-card-review-not-issued",
+      status: "held"
+    });
+    expect(await readFile(attunementFile)).toEqual(beforeTimingApply);
+    const beforeUnconfirmedApply = await readFile(attunementFile);
+    const unconfirmed = await app.inject({
+      method: "POST",
+      payload: { ...applyBody, confirm: false },
+      url: `/api/attunement/learning-opportunities/${opportunityId}/policy-card-apply`
+    });
+    expect(unconfirmed.statusCode).toBe(422);
+    expect(unconfirmed.json()).toEqual({
+      reason: "invalid-policy-card-apply",
+      status: "held"
+    });
+    expect(await readFile(attunementFile)).toEqual(beforeUnconfirmedApply);
+    const beforeMismatchedApply = await readFile(attunementFile);
+    const mismatched = await app.inject({
+      method: "POST",
+      payload: {
+        ...applyBody,
+        draft: { ...draft, expectedBenefit: "Tampered after review." }
+      },
+      url: `/api/attunement/learning-opportunities/${opportunityId}/policy-card-apply`
+    });
+    expect(mismatched.statusCode).toBe(422);
+    expect(mismatched.json()).toEqual({
+      reason: "policy-card-review-not-issued",
+      status: "held"
+    });
+    expect(await readFile(attunementFile)).toEqual(beforeMismatchedApply);
+
+    const beforeStaleApply = await readFile(attunementFile, "utf8");
+    driftOnApply = true;
+    const stale = await app.inject({
+      method: "POST",
+      payload: applyBody,
+      url: `/api/attunement/learning-opportunities/${opportunityId}/policy-card-apply`
+    });
+    expect(stale.json()).toEqual({ reason: "stale-active-policy", status: "held" });
+    expect(stale.statusCode).toBe(409);
+    expect(driftedBytes).toBeDefined();
+    expect(await readFile(attunementFile, "utf8")).toBe(driftedBytes);
+    await writeFile(attunementFile, beforeStaleApply, "utf8");
+
+    const applied = await app.inject({
+      method: "POST",
+      payload: applyBody,
+      url: `/api/attunement/learning-opportunities/${opportunityId}/policy-card-apply`
+    });
+
+    expect(applied.statusCode).toBe(200);
+    const receipt = applied.json() as {
+      approval: {
+        authority: string;
+        candidateId: string;
+        previewId: string;
+        replayInputHash: string;
+      };
+      promotion: {
+        activeBehaviorDigestAfter: string;
+        activeBehaviorDigestBefore: string;
+        candidateId: string;
+        policyAfter: {
+          detail: string;
+          nextStep: string;
+          suppression: string;
+          version: number;
+        };
+        promotionApplied: boolean;
+        replayInputHash: string;
+        schemaVersion: number;
+        scope: { kind: string; threadId: string };
+      };
+    };
+    expect(receipt).toMatchObject({
+      approval: {
+        authority: "owner-explicit",
+        candidateId: rendered.card.proposal.candidateId,
+        previewId: review.previewId,
+        replayInputHash: review.replayInputHash
+      },
+      promotion: {
+        activeBehaviorDigestBefore: rendered.card.proposal.activeBehaviorDigestBefore,
+        candidateId: rendered.card.proposal.candidateId,
+        policyAfter: { detail: "compact", nextStep: "contextual" },
+        promotionApplied: true,
+        replayInputHash: review.replayInputHash,
+        schemaVersion: 2,
+        scope: { kind: "thread-display", threadId }
+      }
+    });
+    const persisted = await readAttunementState(attunementFile);
+    const persistedThread = persisted.threads.find((entry) => entry.id === threadId)!;
+    expect(receipt.promotion.policyAfter).toEqual(persistedThread.policy);
+    expect(receipt.promotion.activeBehaviorDigestAfter).toBe(
+      fingerprintContinuityPolicy(persistedThread.policy)
+    );
+    expect(persisted.nextPolicyVersion).toBe(receipt.promotion.policyAfter.version + 1);
+    expect(persisted.experienceLearningPolicyAudits).toHaveLength(1);
+    const afterApplied = await readFile(attunementFile);
+
+    const repeated = await app.inject({
+      method: "POST",
+      payload: applyBody,
+      url: `/api/attunement/learning-opportunities/${opportunityId}/policy-card-apply`
+    });
+    expect(repeated.statusCode).toBe(422);
+    expect(repeated.json()).toEqual({
+      reason: "policy-card-review-not-issued",
+      status: "held"
+    });
+    expect(await readFile(attunementFile)).toEqual(afterApplied);
+    expect((await readAttunementState(attunementFile)).experienceLearningPolicyAudits)
+      .toHaveLength(1);
+    await app.close();
+  });
+
+  it("returns the qualification hold instead of mutating the policy", async () => {
+    let currentNow = Date.parse("2026-07-17T00:00:00.000Z");
+    const app = server({ now: () => currentNow });
+    const snapshotProvider = createLocalAttunementSnapshotProvider({
+      attunementFile,
+      sourceId: "muse.attunement.local-state.v1"
+    });
+    registerPolicyCardRoutes(app, {
+      authService: undefined,
+      preview: createOwnerTaughtPolicyCardPreviewService({
+        now: () => new Date(currentNow),
+        policyCardPreview: createContinuityLearningPolicyCardPreviewService({
+          captureHeadRevalidation: snapshotProvider.captureHeadRevalidation,
+          readState: () => readAttunementState(attunementFile),
+          sourceId: "muse.attunement.local-state.v1"
+        }),
+        readState: () => readAttunementState(attunementFile)
+      })
+    });
+    const opened = await app.inject({
+      method: "POST",
+      url: `/api/attunement/threads/${threadId}/continue`
+    });
+    const deliveryId = opened.json().delivery.id as string;
+    await app.inject({
+      method: "POST",
+      payload: { outcome: "adjusted" },
+      url: `/api/attunement/deliveries/${deliveryId}/outcome`
+    });
+    const opportunityId = (await app.inject({
+      method: "GET",
+      url: "/api/attunement/learning-opportunities"
+    })).json().items[0].opportunityId as string;
+    const policyCardPreview = await app.inject({
+      method: "POST",
+      payload: { detail: "compact", locale: "en", nextStep: "contextual" },
+      url: `/api/attunement/learning-opportunities/${opportunityId}/policy-card-preview`
+    });
+    expect(policyCardPreview.statusCode).toBe(200);
+    const rendered = policyCardPreview.json() as OwnerTaughtPolicyCardPreviewResult;
+    if (rendered.status !== "rendered") throw new Error("expected rendered Policy Card");
+    const { opportunityId: reviewedOpportunityId, ...review } = rendered.review;
+    expect(reviewedOpportunityId).toBe(opportunityId);
+    currentNow = Date.parse("2026-07-17T00:03:00.000Z");
+    const before = await readFile(attunementFile);
+    await activateQualificationLearningHold(join(root, "qualification-learning-hold.json"), {
+      activatedAt: "2026-07-26T06:00:00.000Z",
+      holdId: "personal-agent-v1"
+    });
+    const response = await app.inject({
+      method: "POST",
+      payload: {
+        confirm: true,
+        ...review
+      },
+      url: `/api/attunement/learning-opportunities/${opportunityId}/policy-card-apply`
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      reason: "qualification-hold-active",
+      status: "held"
+    });
+    expect(await readFile(attunementFile)).toEqual(before);
     await app.close();
   });
 });

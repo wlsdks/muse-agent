@@ -3,6 +3,8 @@ import {
   fingerprintContinuityPolicy,
   type AttunementState,
   type ContinuityDetailLevel,
+  type ExperienceLearningProposalDraft,
+  type ExperienceReplayEvidenceCase,
   type NextStepPresentation
 } from "@muse/attunement";
 import type {
@@ -31,11 +33,15 @@ export interface OwnerTaughtPolicyCardPreviewInput {
 
 export type OwnerTaughtPolicyCardPreviewResult =
   | Readonly<{
-      readonly assessedPolicy: Readonly<{
-        readonly detail: ContinuityDetailLevel;
-        readonly nextStep: NextStepPresentation;
-      }>;
+      readonly assessedPolicy: Readonly<AttunementState["threads"][number]["policy"]>;
       readonly card: AttuneGraphPolicyCardV1;
+      readonly review: Readonly<{
+        readonly draft: ExperienceLearningProposalDraft;
+        readonly evidenceCases: readonly ExperienceReplayEvidenceCase[];
+        readonly opportunityId: string;
+        readonly previewId: string;
+        readonly replayInputHash: string;
+      }>;
       readonly schemaVersion: 1;
       readonly status: "rendered";
     }>
@@ -43,6 +49,7 @@ export type OwnerTaughtPolicyCardPreviewResult =
       readonly reason:
         | "no-op"
         | "replay-not-eligible"
+        | "review-binding-mismatch"
         | "state-drift"
         | AttuneGraphPolicyCardHeldReasonV1;
       readonly schemaVersion: 1;
@@ -182,6 +189,38 @@ export function createOwnerTaughtPolicyCardPreviewService(
         opportunityId: input.opportunityId
       });
       if (compiled.status === "held") return held(compiled.reason);
+      if (compiled.card.proposal.activeBehaviorDigestAfter
+          !== prepared.preview.activeBehaviorDigestAfter
+        || compiled.card.proposal.activeBehaviorDigestBefore
+          !== prepared.preview.activeBehaviorDigestBefore
+        || compiled.card.proposal.previewId !== prepared.preview.previewId
+        || compiled.card.proposal.candidateId !== prepared.preview.candidateId
+        || compiled.card.proposal.expectedBenefit !== draft.expectedBenefit
+        || compiled.card.proposal.expiresAt !== draft.expiresAt
+        || compiled.card.proposal.proposedAt !== draft.proposedAt
+        || compiled.card.proposal.proposedBehavior !== draft.proposedBehavior
+        || compiled.card.proposal.proposedChange.kind !== draft.proposedChange.kind
+        || compiled.card.proposal.proposedChange.detail !== draft.proposedChange.detail
+        || compiled.card.proposal.proposedChange.nextStep !== draft.proposedChange.nextStep
+        || compiled.card.scope.threadId !== draft.scope.threadId
+        || compiled.card.evidence.authoritativeExperience.deliveryId
+          !== opportunity.deliveryId
+        || compiled.card.evidence.authoritativeExperience.evidenceClass
+          !== opportunity.sourceRun.evidenceClass
+        || compiled.card.evidence.authoritativeExperience.outcome
+          !== opportunity.outcome.outcome
+        || compiled.card.evidence.authoritativeExperience.outcomeId
+          !== opportunity.outcome.outcomeId
+        || compiled.card.evidence.authoritativeExperience.recordedAt
+          !== opportunity.outcome.recordedAt
+        || compiled.card.evidence.authoritativeExperience.sourceRunId
+          !== opportunity.sourceRun.runId
+        || compiled.card.evidence.callerSuppliedReplayClaims.replayBundleId
+          !== prepared.replayBundle.bundleId
+        || compiled.card.evidence.callerSuppliedReplayClaims.replayInputHash
+          !== prepared.replayBundle.replay.inputHash) {
+        return held("review-binding-mismatch");
+      }
       let assessedState: AttunementState;
       try {
         assessedState = await options.readState();
@@ -202,9 +241,18 @@ export function createOwnerTaughtPolicyCardPreviewService(
       return Object.freeze({
         assessedPolicy: Object.freeze({
           detail: assessedThread.policy.detail,
-          nextStep: assessedThread.policy.nextStep
+          nextStep: assessedThread.policy.nextStep,
+          suppression: assessedThread.policy.suppression,
+          version: assessedThread.policy.version
         }),
         card: compiled.card,
+        review: Object.freeze({
+          draft,
+          evidenceCases: prepared.replayBundle.cases,
+          opportunityId: input.opportunityId,
+          previewId: prepared.preview.previewId,
+          replayInputHash: prepared.replayBundle.replay.inputHash
+        }),
         schemaVersion: 1 as const,
         status: "rendered" as const
       });

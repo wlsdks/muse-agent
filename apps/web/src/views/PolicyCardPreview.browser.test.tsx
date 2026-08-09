@@ -44,14 +44,101 @@ function learningQueue() {
   };
 }
 
-function renderedCard(
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value)
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function policyDigest(policy: Readonly<{
+  readonly detail: "compact" | "standard";
+  readonly nextStep: "contextual" | "direct" | "hidden";
+  readonly suppression: "acknowledge-previous" | "none";
+  readonly version: number;
+}>): Promise<string> {
+  return sha256Hex(JSON.stringify([
+    "muse.continuity-policy.v1",
+    policy.detail,
+    policy.nextStep,
+    policy.suppression,
+    policy.version
+  ]));
+}
+
+async function replayEvidenceCases() {
+  const caseIds = [
+    "desired-detail",
+    "desired-next-step",
+    "no-activation",
+    "preserve-action-scope",
+    "preserve-permission",
+    "preserve-recipient",
+    "preserve-retention",
+    "preserve-source",
+    "preserve-suppression",
+    "thread-only-scope"
+  ] as const;
+  return Promise.all(caseIds.map(async (caseId, index) => {
+    const inputHash = await sha256Hex(JSON.stringify({ caseId }));
+    const receipt = async (
+      variant: "baseline" | "challenger",
+      passed: boolean
+    ) => {
+      const core = {
+        caseId,
+        evaluator: { id: "owner-taught-policy-contract", version: "1" },
+        inputHash,
+        observedAt: "2026-08-01T08:01:00.000Z",
+        passed,
+        schemaVersion: 1 as const,
+        variant
+      };
+      return { ...core, evidenceHash: await sha256Hex(JSON.stringify(core)) };
+    };
+    return {
+      baseline: await receipt("baseline", index !== 0),
+      caseId,
+      challenger: await receipt("challenger", true)
+    };
+  }));
+}
+
+async function renderedCard(
   locale: "en" | "ko",
   assessedPolicy: Readonly<{
     readonly detail: "compact" | "standard";
     readonly nextStep: "contextual" | "direct" | "hidden";
-  }> = { detail: "standard", nextStep: "direct" }
+    readonly suppression: "acknowledge-previous" | "none";
+    readonly version: number;
+  }> = {
+    detail: "standard",
+    nextStep: "direct",
+    suppression: "none",
+    version: 1
+  }
 ) {
   const korean = locale === "ko";
+  const expectedBenefit = korean
+    ? "이 스레드의 표시만 간결하게 합니다."
+    : "Keep only this thread's display compact.";
+  const expiresAt = "2026-08-08T08:01:00.000Z";
+  const proposedAt = "2026-08-01T08:01:00.000Z";
+  const proposedBehavior = korean
+    ? "간결한 맥락과 함께 다음 단계를 표시합니다."
+    : "Show compact context with a contextual next step.";
+  const proposedChange = {
+    detail: "compact" as const,
+    kind: "thread-display" as const,
+    nextStep: "contextual" as const
+  };
+  const [activeBehaviorDigestBefore, evidenceCases]
+    = await Promise.all([
+      policyDigest(assessedPolicy),
+      replayEvidenceCases()
+    ]);
   const controls = [
     ["apply", korean ? "별도 승인 흐름에서 적용" : "Apply in separate approval flow"],
     ["edit", korean ? "수정 사용 불가" : "Edit unavailable"],
@@ -94,7 +181,7 @@ function renderedCard(
             ? "호출자 제공 replay 주장 — 실행 출처는 검증되지 않음"
             : "Caller-supplied replay claims — execution provenance not verified",
           recommendation: "hold",
-          replayBundleId: "bundle_trip",
+          replayBundleId: "f".repeat(64),
           replayInputHash: "c".repeat(64),
           receiptHashes: [],
           validation: "structurally-validated-self-consistent-caller-claims"
@@ -112,19 +199,15 @@ function renderedCard(
         }
       },
       proposal: {
-        activeBehaviorDigestAfter: "d".repeat(64),
-        activeBehaviorDigestBefore: "b".repeat(64),
+        activeBehaviorDigestAfter: activeBehaviorDigestBefore,
+        activeBehaviorDigestBefore,
         candidateId: "candidate_trip",
-        expectedBenefit: korean ? "이 스레드의 표시만 간결하게 합니다." : "Keep only this thread's display compact.",
-        expiresAt: "2026-08-08T08:00:00.000Z",
+        expectedBenefit,
+        expiresAt,
         previewId: `learning_preview_${"e".repeat(64)}`,
-        proposedAt: "2026-08-01T08:01:00.000Z",
-        proposedBehavior: korean ? "간결한 맥락과 함께 다음 단계를 표시합니다." : "Show compact context with a contextual next step.",
-        proposedChange: {
-          detail: "compact" as const,
-          kind: "thread-display" as const,
-          nextStep: "contextual" as const
-        }
+        proposedAt,
+        proposedBehavior,
+        proposedChange
       },
       scope: {
         kind: "thread-only" as const,
@@ -132,6 +215,107 @@ function renderedCard(
         threadId: "thread_trip"
       },
       title: korean ? "Muse가 배운 점 — 검토 미리보기" : "What Muse learned — review preview"
+    },
+    review: {
+      draft: {
+        expectedBenefit,
+        expiresAt,
+        experienceId: `owner-taught:${learningQueue().items[0]!.opportunityId}`,
+        proposedAt,
+        proposedBehavior,
+        proposedChange,
+        scope: { kind: "thread-display" as const, threadId: "thread_trip" }
+      },
+      evidenceCases,
+      opportunityId: learningQueue().items[0]!.opportunityId,
+      previewId: `learning_preview_${"e".repeat(64)}`,
+      replayInputHash: "c".repeat(64)
+    }
+  };
+}
+
+async function appliedReceipt(input: Readonly<{
+  readonly activeBehaviorDigestAfter?: string;
+  readonly policyAfter?: Readonly<{
+    readonly detail: "compact" | "standard";
+    readonly nextStep: "contextual" | "direct" | "hidden";
+    readonly suppression: "acknowledge-previous" | "none";
+    readonly version: number;
+  }>;
+  readonly policyBefore?: Readonly<{
+    readonly detail: "compact" | "standard";
+    readonly nextStep: "contextual" | "direct" | "hidden";
+    readonly suppression: "acknowledge-previous" | "none";
+    readonly version: number;
+  }>;
+}> = {}) {
+  const policyBefore = input.policyBefore ?? {
+    detail: "standard" as const,
+    nextStep: "direct" as const,
+    suppression: "none" as const,
+    version: 1
+  };
+  const policyAfter = input.policyAfter ?? {
+    detail: "compact" as const,
+    nextStep: "contextual" as const,
+    suppression: "none" as const,
+    version: 2
+  };
+  const activeBehaviorDigestBefore = await policyDigest(policyBefore);
+  const activeBehaviorDigestAfter = input.activeBehaviorDigestAfter
+    ?? await policyDigest(policyAfter);
+  const approvalCore = {
+    activeBehaviorDigestBefore,
+    approvedAt: "2026-08-01T08:02:00.000Z",
+    authority: "owner-explicit" as const,
+    candidateId: "candidate_trip",
+    expiresAt: "2026-08-08T08:01:00.000Z",
+    previewId: `learning_preview_${"e".repeat(64)}`,
+    replayBundleId: "f".repeat(64),
+    replayInputHash: "c".repeat(64),
+    schemaVersion: 1 as const
+  };
+  const promotionCore = {
+    activeBehaviorDigestAfter,
+    activeBehaviorDigestBefore,
+    appliedAt: "2026-08-01T08:03:00.000Z",
+    approvedAt: approvalCore.approvedAt,
+    authority: "owner-explicit" as const,
+    candidateId: approvalCore.candidateId,
+    policyAfter,
+    policyBefore,
+    promotionApplied: true,
+    proposedBehavior: "Show compact context with a contextual next step.",
+    proposedChange: {
+      detail: "compact" as const,
+      kind: "thread-display" as const,
+      nextStep: "contextual" as const
+    },
+    replayInputHash: approvalCore.replayInputHash,
+    schemaVersion: 2 as const,
+    scope: { kind: "thread-display" as const, threadId: "thread_trip" }
+  };
+  const promotionIdentity = [
+    promotionCore.candidateId,
+    promotionCore.replayInputHash,
+    promotionCore.activeBehaviorDigestBefore,
+    promotionCore.activeBehaviorDigestAfter,
+    promotionCore.scope.kind,
+    promotionCore.scope.threadId,
+    promotionCore.proposedBehavior,
+    promotionCore.proposedChange,
+    promotionCore.approvedAt,
+    promotionCore.appliedAt
+  ];
+  return {
+    approval: {
+      ...approvalCore,
+      approvalId: `learning_approval_${await sha256Hex(JSON.stringify(approvalCore))}`
+    },
+    promotion: {
+      ...promotionCore,
+      promotionId:
+        `learning_promotion_${await sha256Hex(JSON.stringify(promotionIdentity))}`
     }
   };
 }
@@ -141,7 +325,8 @@ async function renderPolicyCard(input: {
   readonly post?: (path: string, body: unknown) => Promise<unknown>;
 } = {}) {
   const get = vi.fn(input.get ?? (async () => learningQueue()));
-  const post = vi.fn(input.post ?? (async () => renderedCard("en")));
+  const post = vi.fn(input.post ?? (async (path: string) =>
+    path.endsWith("/policy-card-apply") ? appliedReceipt() : renderedCard("en")));
   const client = { baseUrl: "http://policy-card.test", get, post } as unknown as ApiClient;
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const screen = await render(
@@ -151,7 +336,7 @@ async function renderPolicyCard(input: {
       </I18nProvider>
     </QueryClientProvider>
   );
-  return { get, post, screen };
+  return { get, post, queryClient, screen };
 }
 
 async function teachCompactContext(screen: Awaited<ReturnType<typeof renderPolicyCard>>["screen"]) {
@@ -160,7 +345,7 @@ async function teachCompactContext(screen: Awaited<ReturnType<typeof renderPolic
   await screen.getByRole("button", { name: "Preview Policy Card" }).click();
 }
 
-test("an organic opportunity becomes a truthful inert Policy Card only after explicit teaching", async () => {
+test("an organic opportunity becomes a truthful Policy Card only after explicit teaching", async () => {
   window.localStorage.setItem("muse.lang", "en");
   const { post, screen } = await renderPolicyCard();
 
@@ -190,7 +375,201 @@ test("an organic opportunity becomes a truthful inert Policy Card only after exp
   ]) {
     await expect.element(card.getByRole("button", { name: label })).toBeDisabled();
   }
+  await expect.element(card.getByRole("button", { name: "Apply this exact reviewed policy" })).toBeEnabled();
   expect(post).toHaveBeenCalledTimes(1);
+});
+
+test("explicit owner approval applies the exact review binding", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const { post, screen } = await renderPolicyCard();
+
+  await teachCompactContext(screen);
+  await screen.getByRole("button", { name: "Apply this exact reviewed policy" }).click();
+
+  expect(post).toHaveBeenNthCalledWith(
+    2,
+    `/api/attunement/learning-opportunities/${learningQueue().items[0]!.opportunityId}/policy-card-apply`,
+    {
+      confirm: true,
+      draft: {
+        expectedBenefit: "Keep only this thread's display compact.",
+        expiresAt: "2026-08-08T08:01:00.000Z",
+        experienceId: `owner-taught:${learningQueue().items[0]!.opportunityId}`,
+        proposedAt: "2026-08-01T08:01:00.000Z",
+        proposedBehavior: "Show compact context with a contextual next step.",
+        proposedChange: {
+          detail: "compact",
+          kind: "thread-display",
+          nextStep: "contextual"
+        },
+        scope: { kind: "thread-display", threadId: "thread_trip" }
+      },
+      evidenceCases: expect.arrayContaining([
+        expect.objectContaining({
+          baseline: expect.objectContaining({ variant: "baseline" }),
+          caseId: "desired-detail",
+          challenger: expect.objectContaining({ variant: "challenger" })
+        })
+      ]),
+      previewId: `learning_preview_${"e".repeat(64)}`,
+      replayInputHash: "c".repeat(64)
+    }
+  );
+  const applyRequest = post.mock.calls[1]![1] as {
+    readonly evidenceCases: readonly unknown[];
+  };
+  expect(applyRequest.evidenceCases).toHaveLength(10);
+  await expect.element(screen.getByText(
+    "Applied. Muse will use this bounded display policy for this thread.",
+    { exact: true }
+  )).toBeVisible();
+  await expect.element(screen.getByText(
+    "This preview has not approved or applied anything. The button above is the explicit owner confirmation; the other controls remain inactive.",
+    { exact: true }
+  )).not.toBeInTheDocument();
+});
+
+test("a malformed success response never becomes an applied policy", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const incomplete = await appliedReceipt();
+  const { approvalId: _approvalId, ...incompleteApproval } = incomplete.approval;
+  const { screen } = await renderPolicyCard({
+    post: async (path) => path.endsWith("/policy-card-apply")
+      ? { ...incomplete, approval: incompleteApproval }
+      : renderedCard("en")
+  });
+
+  await teachCompactContext(screen);
+  await screen.getByRole("button", { name: "Apply this exact reviewed policy" }).click();
+
+  await expect.element(screen.getByRole("alert")).toHaveTextContent(
+    "Muse could not verify that this reviewed policy was applied. Refresh before trying again."
+  );
+  await expect.element(screen.getByText(
+    "Applied. Muse will use this bounded display policy for this thread.",
+    { exact: true }
+  )).not.toBeInTheDocument();
+  await expect.element(screen.getByRole("button", {
+    name: "Apply this exact reviewed policy"
+  })).toBeEnabled();
+});
+
+test.each([
+  ["an unknown suppression mode", async () => {
+    const receipt = await appliedReceipt();
+    return {
+      ...receipt,
+      promotion: {
+        ...receipt.promotion,
+        policyAfter: {
+          ...receipt.promotion.policyAfter,
+          suppression: "unknown"
+        },
+        policyBefore: {
+          ...receipt.promotion.policyBefore,
+          suppression: "unknown"
+        }
+      }
+    };
+  }],
+  ["an application after approval expiry", async () => {
+    const receipt = await appliedReceipt();
+    return {
+      ...receipt,
+      promotion: {
+        ...receipt.promotion,
+        appliedAt: "2026-08-08T08:02:00.000Z"
+      }
+    };
+  }],
+  ["a forged approval identity", async () => {
+    const receipt = await appliedReceipt();
+    return {
+      ...receipt,
+      approval: {
+        ...receipt.approval,
+        approvalId: `learning_approval_${"0".repeat(64)}`
+      }
+    };
+  }],
+  ["a forged promotion identity", async () => {
+    const receipt = await appliedReceipt();
+    return {
+      ...receipt,
+      promotion: {
+        ...receipt.promotion,
+        promotionId: `learning_promotion_${"0".repeat(64)}`
+      }
+    };
+  }],
+  ["a self-consistent but differently versioned prior policy", async () => {
+    return appliedReceipt({
+      policyAfter: {
+        detail: "compact",
+        nextStep: "contextual",
+        suppression: "none",
+        version: 10
+      },
+      policyBefore: {
+        detail: "standard",
+        nextStep: "direct",
+        suppression: "none",
+        version: 9
+      }
+    });
+  }],
+  ["a forged after-policy digest", async () => {
+    return appliedReceipt({ activeBehaviorDigestAfter: "0".repeat(64) });
+  }]
+] as const)("a complete receipt with %s never becomes an applied policy", async (
+  _description,
+  receipt
+) => {
+  window.localStorage.setItem("muse.lang", "en");
+  const { screen } = await renderPolicyCard({
+    post: async (path) => path.endsWith("/policy-card-apply")
+      ? receipt()
+      : renderedCard("en")
+  });
+
+  await teachCompactContext(screen);
+  await screen.getByRole("button", {
+    name: "Apply this exact reviewed policy"
+  }).click();
+
+  await expect.element(screen.getByRole("alert")).toHaveTextContent(
+    "Muse could not verify that this reviewed policy was applied. Refresh before trying again."
+  );
+  await expect.element(screen.getByText(
+    "Applied. Muse will use this bounded display policy for this thread.",
+    { exact: true }
+  )).not.toBeInTheDocument();
+  await expect.element(screen.getByRole("button", {
+    name: "Apply this exact reviewed policy"
+  })).toBeEnabled();
+});
+
+test("a queue change removes the older review before it can target a new opportunity", async () => {
+  window.localStorage.setItem("muse.lang", "en");
+  const rendered = await renderPolicyCard();
+  await teachCompactContext(rendered.screen);
+
+  const nextQueue = learningQueue();
+  rendered.queryClient.setQueryData(
+    ["attunement-learning-opportunities", "http://policy-card.test"],
+    {
+      ...nextQueue,
+      items: [{
+        ...nextQueue.items[0]!,
+        opportunityId: `learning_opportunity_${"f".repeat(64)}`
+      }]
+    }
+  );
+
+  await expect.element(rendered.screen.getByRole("button", {
+    name: "Apply this exact reviewed policy"
+  })).not.toBeInTheDocument();
+  expect(rendered.post).toHaveBeenCalledTimes(1);
 });
 
 test("the owner-taught request and rendered Policy Card follow the active Korean locale", async () => {
@@ -218,7 +597,9 @@ test("the before value comes from the card assessment, not stale Continuity page
   const { screen } = await renderPolicyCard({
     post: async () => renderedCard("en", {
       detail: "compact",
-      nextStep: "hidden"
+      nextStep: "hidden",
+      suppression: "acknowledge-previous",
+      version: 4
     })
   });
 

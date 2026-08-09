@@ -38,9 +38,10 @@ Muse*. Each entry is one definition plus where it lives. Exact verification evid
   timing/surfacing, semantic entailment, and organic usefulness remain **roadmap**.
 - **Policy Card** — the surface that shows how Muse proposes to change the way it works with this
   person, with evidence and scope. An authenticated owner-taught product UI and the lower-level
-  tool can now render one inert AttuneGraph-backed preview for an exact organic opportunity;
-  automatic surfacing, usefulness qualification, and trusted trial, edit, reject, apply, and
-  rollback controls remain **roadmap**.
+  tool can now render one inert AttuneGraph-backed preview for an exact organic opportunity. A
+  separate explicit owner confirmation can apply only its reviewed thread-display policy;
+  automatic surfacing, usefulness qualification, and trusted trial, edit, reject, and rollback
+  controls remain **roadmap**.
 - **AttuneGraph** — the official name for the standalone open-source agent-native graph product Muse
   consumes and dogfoods. It does not replace existing personal stores; it
   links time, relationships, provenance, change, return and policy, and compiles only the relations

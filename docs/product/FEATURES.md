@@ -571,8 +571,9 @@ thread, not a hidden global preference.
   organic learning opportunity. Muse builds no inferred free-form preference: it runs a fixed
   ten-case contract replay, revalidates one fresh local snapshot, and renders the bilingual
   AttuneGraph card while separating authoritative experience, structurally validated replay
-  claims, graph explanation, scope, and authority limits. The preview is read-only; automatic
-  surfacing, usefulness qualification, and trusted try/edit/reject/apply/undo controls remain
+  claims, graph explanation, scope, and authority limits. The preview is read-only; a separate
+  explicit owner confirmation can apply only the exact reviewed thread-display policy. Automatic
+  surfacing, usefulness qualification, and trusted trial/edit/reject/rollback controls remain
   roadmap.
 - **AttuneGraph** — an agent-native module that links time, relations,
   provenance, and policy on top of existing stores, building only the small Working Graph a turn
@@ -588,7 +589,8 @@ The detailed product contract and module design follow [Attunement](../strategy/
 [AttuneGraph](../design/attunement/attunegraph.md), and the
 [separate execution roadmap](../../internal/goals/attunegraph-roadmap.md). The complete automatic
 three-part experience is not shipped; its current engine, caller-declared and evidence-bound
-Capsule render-data, Shadow receipt, and owner-taught inert Policy Card preview are individually
+Capsule render-data, Shadow receipt, and owner-taught Policy Card review plus bounded
+owner-confirmed thread-display apply are individually
 bounded and documented.
 
 The first flow: **user picks a life thread → context pack prepared → usage recorded → next pack
