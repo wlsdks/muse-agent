@@ -7,12 +7,20 @@ source. Every `MUSE_*` or `ATTUNEGRAPH_*` referenced in product source
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **657** variables.
+Total: **666** variables.
 
 | Variable | Read by |
 | --- | --- |
+| `ATTUNEGRAPH_CURRENT_DECISION_ENDPOINT_PREDICATES_FOR_MEASUREMENT` | packages/attunegraph |
+| `ATTUNEGRAPH_CURRENT_DECISION_ENDPOINT_SOURCE_REFS_FOR_MEASUREMENT` | packages/attunegraph |
+| `ATTUNEGRAPH_CURRENT_HEAD_INDEX_REVISION` | packages/attunegraph |
+| `ATTUNEGRAPH_CURRENT_HEAD_INDEX_REVISION_V4` | packages/attunegraph |
 | `ATTUNEGRAPH_INPUT_TYPE_CHILD` | packages/attunegraph |
 | `ATTUNEGRAPH_PHYSICAL_SCHEMA_V1` | packages/attunegraph |
+| `ATTUNEGRAPH_PHYSICAL_SCHEMA_V2` | packages/attunegraph |
+| `ATTUNEGRAPH_PHYSICAL_SCHEMA_V3` | packages/attunegraph |
+| `ATTUNEGRAPH_PHYSICAL_SCHEMA_V4` | packages/attunegraph |
+| `ATTUNEGRAPH_PROJECTION_ENCODING` | packages/attunegraph |
 | `ATTUNEGRAPH_SHADOW_TIMING_PROJECTIONS` | packages/attunement |
 | `ATTUNEGRAPH_SHADOW_TIMING_PROJECTION_VERSION` | packages/attunement |
 | `MUSE_A2A_COUNCIL` | apps/cli, packages/a2a |
@@ -96,12 +104,13 @@ Total: **657** variables.
 | `MUSE_BOARD_SPILL_DIR` | apps/cli |
 | `MUSE_BOARD_STALE_MS` | apps/cli |
 | `MUSE_BOARD_SYNTHESIS_HEADROOM` | apps/cli |
+| `MUSE_BRIEFING_` | apps/api |
 | `MUSE_BRIEFING_BIRTHDAY_DAYS` | apps/api |
-| `MUSE_BRIEFING_DESTINATION` | apps/api |
+| `MUSE_BRIEFING_DESTINATION` | apps/api, packages/autoconfigure |
 | `MUSE_BRIEFING_ENABLED` | apps/cli, packages/autoconfigure |
 | `MUSE_BRIEFING_HOME_ALERTS` | apps/api, apps/cli |
 | `MUSE_BRIEFING_LEAD_MINUTES` | apps/api |
-| `MUSE_BRIEFING_PROVIDER` | apps/api |
+| `MUSE_BRIEFING_PROVIDER` | apps/api, packages/autoconfigure |
 | `MUSE_BRIEFING_QUIET_HOURS` | apps/api |
 | `MUSE_BRIEFING_RELATED_KNOWLEDGE_ENABLED` | apps/api, apps/cli |
 | `MUSE_BRIEFING_SIDECAR_FILE` | apps/cli, packages/autoconfigure |
@@ -463,7 +472,7 @@ Total: **657** variables.
 | `MUSE_PLAYBOOK_INJECT_TOPK` | packages/agent-core |
 | `MUSE_PREFERENCE_AUTOINFER_ENABLED` | apps/cli |
 | `MUSE_PRIVACY_ROUTING` | apps/cli, packages/policy |
-| `MUSE_PROACTIVE_` | apps/cli |
+| `MUSE_PROACTIVE_` | apps/api, apps/cli |
 | `MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS` | apps/api |
 | `MUSE_PROACTIVE_AGENT_TURN` | apps/api, packages/autoconfigure |
 | `MUSE_PROACTIVE_DAILY_CAP` | apps/api, apps/cli |
