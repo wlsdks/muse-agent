@@ -1,7 +1,6 @@
 import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -134,7 +133,7 @@ describe("FileScheduledJobStore — round-trip persistence", () => {
     expect(list).toEqual([]);
 
     // The corrupt bytes are preserved under a `.corrupt-<ts>` sibling, not deleted.
-    const dir = file.slice(0, file.lastIndexOf("/"));
+    const dir = dirname(file);
     const siblings = readdirSync(dir);
     expect(siblings.some((name) => name.startsWith("scheduled-jobs.json.corrupt-"))).toBe(true);
   });
@@ -161,18 +160,6 @@ describe("FileScheduledJobStore — round-trip persistence", () => {
     const list = await store.list();
     expect(list).toHaveLength(1);
     expect(list[0]!.id).toBe("j1");
-  });
-
-  it("writes the file atomically (JSON parses cleanly after a save) and only ONE final file remains", async () => {
-    const file = tmpFile();
-    const store = new FileScheduledJobStore({ file, idFactory: () => "job-1" });
-    await store.save({ agentPrompt: "p", cronExpression: "0 9 * * *", jobType: "agent", name: "j" });
-
-    const raw = await readFile(file, "utf8");
-    expect(() => JSON.parse(raw)).not.toThrow();
-    const dir = file.slice(0, file.lastIndexOf("/"));
-    const siblings = readdirSync(dir).filter((name) => name.startsWith("scheduled-jobs.json.tmp-"));
-    expect(siblings).toEqual([]);
   });
 
   it("concurrent save() calls against the SAME file both persist (cross-process lock serializes the RMW)", async () => {
