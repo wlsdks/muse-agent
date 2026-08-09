@@ -1,4 +1,5 @@
 import type { AgentRunInput, AgentRunResult, AgentRuntime } from "@muse/agent-core";
+import { resolve } from "node:path";
 import {
   createToolExposureAuthority,
   PERSONAL_WORK_CAPABILITY_PROFILE_ID,
@@ -15,6 +16,10 @@ import {
   OrchestrationCancelledError,
   SupervisorAgent
 } from "../src/index.js";
+
+const WORKSPACE_ROOT = resolve(process.cwd(), "workspace", "muse");
+const WORKSPACE_REPORTS_ROOT = resolve(WORKSPACE_ROOT, "reports");
+const OUTSIDE_WORKSPACE_REPORTS_ROOT = resolve(process.cwd(), "workspace", "reports");
 
 function captureRuntime(confidence: Readonly<Record<string, number>> = {}) {
   const inputs: AgentRunInput[] = [];
@@ -49,7 +54,7 @@ describe("shared runtime delegation workers", () => {
     const parentAuthority = createToolExposureAuthority({
       allowedToolNames: ["file_read", "file_write"],
       localMode: true,
-      writablePaths: ["/workspace/muse/reports"]
+      writablePaths: [WORKSPACE_REPORTS_ROOT]
     });
     const handoff = {
       contextIndependent: true,
@@ -73,7 +78,7 @@ describe("shared runtime delegation workers", () => {
     const lease = createDelegationHandoffLease(
       handoff,
       "s1",
-      "/workspace/muse",
+      WORKSPACE_ROOT,
       "2026-07-29T00:00:00.000Z"
     );
     const worker = createRuntimeAgentWorker({
@@ -97,7 +102,7 @@ describe("shared runtime delegation workers", () => {
     expect(resolveToolExposureAuthority(capture.inputs[0]?.toolExposureAuthority)).toMatchObject({
       allowedToolNames: ["file_write"],
       expiresAt: "2099-07-30T00:00:00.000Z",
-      writablePaths: ["/workspace/muse/reports/s1"]
+      writablePaths: [resolve(WORKSPACE_REPORTS_ROOT, "s1")]
     });
     await expect(new SupervisorAgent({ maxHandoffs: 0, workers: [worker] }).run({
       ...input,
@@ -110,7 +115,7 @@ describe("shared runtime delegation workers", () => {
     const liveLease = createDelegationHandoffLease(
       handoff,
       "s2",
-      "/workspace/muse",
+      WORKSPACE_ROOT,
       "2026-07-29T00:00:00.000Z"
     );
     expect(() => createRuntimeAgentWorker({
@@ -146,7 +151,7 @@ describe("shared runtime delegation workers", () => {
       delegationLease: createDelegationHandoffLease(
         handoff,
         "s1",
-        "/workspace/muse",
+        WORKSPACE_ROOT,
         "2026-07-29T00:00:00.000Z"
       ),
       runtime: capture.runtime,
@@ -175,7 +180,7 @@ describe("shared runtime delegation workers", () => {
       localMode: true
     });
     for (const partial of [
-      { writablePaths: ["/workspace/reports"] },
+      { writablePaths: [OUTSIDE_WORKSPACE_REPORTS_ROOT] },
       { scopeExpiresAt: "2099-07-30T00:00:00.000Z" }
     ]) {
       const capture = captureRuntime();

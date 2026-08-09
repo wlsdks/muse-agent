@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { resolve } from "node:path";
 
 import {
   assessDelegationFanout,
@@ -10,6 +11,8 @@ import {
 } from "../src/delegation-handoff.js";
 
 const NOW = "2026-07-29T00:00:00.000Z";
+const WORKSPACE_ROOT = resolve(process.cwd(), "workspace", "muse");
+const FIRST_REPORT_ROOT = resolve(WORKSPACE_ROOT, "reports", "a");
 
 const handoff = (over: Partial<DelegationHandoff> = {}): DelegationHandoff => ({
   contextIndependent: true,
@@ -143,15 +146,15 @@ describe("delegation handoff fan-out admission", () => {
   });
 
   it("binds one admitted subtask to frozen absolute workspace paths", () => {
-    const scope = bindDelegationSubtaskScope(handoff(), "s1", "/workspace/muse", NOW);
+    const scope = bindDelegationSubtaskScope(handoff(), "s1", WORKSPACE_ROOT, NOW);
     expect(scope).toEqual({
       allowedToolNames: ["file_read"],
       expiresAt: "2026-07-30T00:00:00.000Z",
-      writablePaths: ["/workspace/muse/reports/a"]
+      writablePaths: [FIRST_REPORT_ROOT]
     });
     expect(Object.isFrozen(scope)).toBe(true);
     expect(Object.isFrozen(scope.writablePaths)).toBe(true);
-    expect(() => bindDelegationSubtaskScope(handoff(), "ghost", "/workspace/muse", NOW)).toThrow(/no subtask/u);
+    expect(() => bindDelegationSubtaskScope(handoff(), "ghost", WORKSPACE_ROOT, NOW)).toThrow(/no subtask/u);
     expect(() => bindDelegationSubtaskScope(handoff(), "s1", "relative", NOW)).toThrow(/absolute/u);
   });
 
@@ -162,12 +165,12 @@ describe("delegation handoff fan-out admission", () => {
         expiresAt: "2099-07-30T00:00:00.000Z"
       }))
     });
-    const lease = createDelegationHandoffLease(future, "s1", "/workspace/muse", NOW);
+    const lease = createDelegationHandoffLease(future, "s1", WORKSPACE_ROOT, NOW);
 
     expect(inspectDelegationHandoffLease(lease)).toEqual({
       allowedToolNames: ["file_read"],
       expiresAt: "2099-07-30T00:00:00.000Z",
-      writablePaths: ["/workspace/muse/reports/a"]
+      writablePaths: [FIRST_REPORT_ROOT]
     });
     for (const forged of [{}, { ...lease }, JSON.parse(JSON.stringify(lease)) as unknown]) {
       expect(() => consumeDelegationHandoffLease(forged)).toThrow(/invalid or forged/u);
@@ -176,7 +179,7 @@ describe("delegation handoff fan-out admission", () => {
     expect(consumeDelegationHandoffLease(lease)).toEqual({
       allowedToolNames: ["file_read"],
       expiresAt: "2099-07-30T00:00:00.000Z",
-      writablePaths: ["/workspace/muse/reports/a"]
+      writablePaths: [FIRST_REPORT_ROOT]
     });
     expect(() => consumeDelegationHandoffLease(lease)).toThrow(/already consumed/u);
   });
@@ -188,8 +191,8 @@ describe("delegation handoff fan-out admission", () => {
         expiresAt: "2099-07-30T00:00:00.000Z"
       }))
     });
-    const expired = createDelegationHandoffLease(future, "s1", "/workspace/muse", NOW);
-    const live = createDelegationHandoffLease(future, "s2", "/workspace/muse", NOW);
+    const expired = createDelegationHandoffLease(future, "s1", WORKSPACE_ROOT, NOW);
+    const live = createDelegationHandoffLease(future, "s2", WORKSPACE_ROOT, NOW);
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2099-07-30T00:00:00.000Z"));

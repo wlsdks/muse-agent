@@ -229,11 +229,12 @@ describe("startDigestTick", () => {
 
   it("starts empty and records a fail-closed unavailable-route decision", async () => {
     const runtimeStatus = createDigestRuntimeStatusStore();
+    const observedAt = new Date("2026-05-12T09:00:00.000Z");
     expect(runtimeStatus.get()).toBeNull();
     const handle = startDigestTick({
       digestFile: join(tmpdir(), "muse-digest-route-unavailable.json"),
       localOnly: false,
-      now: () => new Date(2026, 4, 12, 18, 0, 0),
+      now: () => observedAt,
       registry: fakeRegistry([]),
       resolveRoute: () => undefined,
       runtimeStatus,
@@ -246,7 +247,7 @@ describe("startDigestTick", () => {
         lastDecision: "route-unavailable",
         lastErrorCount: 0,
         lastItemCount: 0,
-        lastObservedAtIso: "2026-05-12T09:00:00.000Z",
+        lastObservedAtIso: observedAt.toISOString(),
         phase: "tick"
       });
     } finally {

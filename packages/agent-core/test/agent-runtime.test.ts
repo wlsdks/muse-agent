@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { InMemoryAgentSpecRegistry, RuleBasedAgentSpecResolver } from "@muse/agent-specs";
@@ -51,6 +52,8 @@ import {
   ToolCallDeduplicator,
   validatePlan
 } from "../src/index.js";
+
+const AUTHORITY_WRITABLE_ROOT = resolve(process.cwd(), "workspace", "reports");
 
 function createProvider(
   response: Partial<ModelResponse> = {},
@@ -4194,7 +4197,7 @@ describe("AgentRuntime server-owned tool exposure authority", () => {
     const authority = createToolExposureAuthority({
       allowedToolNames: ["write_tool"],
       localMode: true,
-      writablePaths: ["/workspace/reports"]
+      writablePaths: [AUTHORITY_WRITABLE_ROOT]
     });
     let observed: unknown;
     const contextCaptureTool = {
@@ -4250,7 +4253,7 @@ describe("AgentRuntime server-owned tool exposure authority", () => {
     const authority = createToolExposureAuthority({
       allowedToolNames: ["read_tool", "scoped_write", "unscoped_write", "run_command"],
       localMode: true,
-      writablePaths: ["/workspace/reports"]
+      writablePaths: [AUTHORITY_WRITABLE_ROOT]
     });
     let advertised: readonly string[] = [];
     let advertisedWire: readonly ModelTool[] = [];
