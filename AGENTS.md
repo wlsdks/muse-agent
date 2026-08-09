@@ -151,7 +151,7 @@ pnpm typecheck:fast                    # TypeScript 7 project graph, no test fan
 pnpm test:changed                      # DEFAULT per-edit gate — only tests related to git-changed files
 pnpm --filter @muse/<name> test        # one whole package (only when a change is broad)
 pnpm --filter @muse/web test:browser   # real Chromium; required for React interaction/focus/keyboard
-pnpm check                             # build + test every workspace — pre-commit gate, not per-edit
+pnpm check                             # build + test every workspace — integration/merge gate, once per candidate HEAD
 pnpm smoke:broad                       # broad HTTP smoke, diagnostic provider (no key)
 pnpm smoke:live                        # real LLM round-trip — LOCAL OLLAMA ONLY, gemma4:12b default
 pnpm lint                              # 0 errors / 0 warnings required

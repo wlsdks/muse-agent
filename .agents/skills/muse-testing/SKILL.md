@@ -21,11 +21,13 @@ binary LLM-judge — see [`agent-testing.md`](../../../.claude/rules/verificatio
 
 ## Verification gates (cheapest first)
 
-1. **Single-package narrow check** while developing:
+1. **Focused edit / slice-commit test** — choose the single command that exposes the changed behavior:
    ```bash
-   pnpm --filter @muse/<name> test
+   pnpm test:changed --uncommitted
+   pnpm --filter @muse/<name> test -- <file>
+   pnpm --filter @muse/<name> test -- -t "<name>"
    ```
-2. **Full check** before commit:
+2. **Full workspace integration / merge check** — run once for the exact candidate HEAD, not per edit or every slice commit:
    ```bash
    pnpm check                         # build + test for every workspace
    ```
@@ -113,6 +115,12 @@ still works.
 for a battery that wants to signal a skip through its own exit code. **No battery calls it
 yet** — the aggregates above are where the flag currently bites.
 
+Do not stack every rung "for safety." A slice commit needs the focused/related
+test that proves its failure mode plus affected build/typecheck and changed-file
+lint. `pnpm check` belongs at an integration, phase-exit, or merge gate unless the
+touched contract explicitly requires full-workspace proof. A green full gate is
+HEAD-bound; do not rerun it when the candidate HEAD has not changed.
+
 ## Test placement
 
 - Unit tests for policy, trimming, message pairing, capability logic.
@@ -121,7 +129,8 @@ yet** — the aggregates above are where the flag currently bites.
 - CLI smoke tests for config, auth, local run, remote run.
 - Playwright for UI flows.
 - Testcontainers for PostgreSQL query behavior.
-- Direct unit tests for every export of every helper module — no implicit-only coverage.
+- Direct unit tests for stable exported helpers whose behavior is itself a contract.
+  Do not export implementation details solely to make them unit-testable.
 - Factual agent evidence and user judgments are separate test dimensions. For
   Continuity, prove exact source/event binding and unchanged bytes on rejected
   or replayed interaction receipts; never assert that task completion implies
