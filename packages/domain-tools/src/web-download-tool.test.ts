@@ -12,7 +12,7 @@ import {
   writeFileSync
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 import { validateToolDefinitions } from "@muse/tools";
 import { describe, expect, it, vi } from "vitest";
@@ -77,8 +77,10 @@ describe("web_download tool", () => {
     expect(out.name).toBe("report.pdf");
     expect(existsSync(out.path)).toBe(true);
     expect(readFileSync(out.path)).toEqual(bytes);
-    expect(realpathSync(out.path).startsWith(`${realpathSync(join(d, ".muse-quarantine"))}/`)).toBe(true);
-    expect(statSync(out.path).mode & 0o777).toBe(0o600);
+    expect(realpathSync(out.path).startsWith(`${realpathSync(join(d, ".muse-quarantine"))}${sep}`)).toBe(true);
+    if (process.platform !== "win32") {
+      expect(statSync(out.path).mode & 0o777).toBe(0o600);
+    }
     expect(lstatSync(join(d, ".muse-quarantine")).isSymbolicLink()).toBe(false);
     expect(out.receipt).toEqual({
       autoOpened: false,
@@ -240,7 +242,7 @@ describe("web_download tool", () => {
     const out = await tool.execute({ url: "https://files.test/x", filename: "../../evil.txt" }, ctx) as { saved: boolean; path: string; name: string };
     expect(out.saved).toBe(true);
     expect(out.name).toBe("evil.txt");
-    expect(realpathSync(out.path).startsWith(`${realpathSync(join(d, ".muse-quarantine"))}/`)).toBe(true);
+    expect(realpathSync(out.path).startsWith(`${realpathSync(join(d, ".muse-quarantine"))}${sep}`)).toBe(true);
     expect(existsSync(join(d, "evil.txt"))).toBe(false);
   });
 
@@ -283,7 +285,7 @@ describe("web_download tool", () => {
       quarantineState: "held",
       signature: "elf"
     });
-    expect(realpathSync(out.path).startsWith(`${realpathSync(join(d, ".muse-quarantine"))}/`)).toBe(true);
+    expect(realpathSync(out.path).startsWith(`${realpathSync(join(d, ".muse-quarantine"))}${sep}`)).toBe(true);
   });
 
   it("refuses a pre-existing quarantine symlink so bytes cannot escape Downloads", async () => {

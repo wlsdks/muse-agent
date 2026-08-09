@@ -3,10 +3,10 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
-  realpathSync,
   statSync,
   writeFileSync
 } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -114,7 +114,7 @@ describe("createAllowlistPathValidator — allowlist + symlink-escape guard", ()
         modifiedAtMs: source.mtimeMs,
         sha256: createHash("sha256").update(bytes).digest("hex")
       },
-      resolvedPath: realpathSync(path)
+      resolvedPath: await realpath(path)
     });
     if (result.allowed) {
       try {
