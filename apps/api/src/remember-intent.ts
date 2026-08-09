@@ -31,10 +31,10 @@ const REMEMBER_VERB_KO_RE =
 const REMEMBER_VERB_EN_RE = /\bremind\s+me\b|\breminder\b|\bremember\s+(?:this|that|to)\b|\bdon['’]?t\s+forget\b/iu;
 
 const DATE_SHAPED_KO_RE =
-  /\d{1,2}\s*월\s*\d{1,2}\s*일|내일|모레|글피|다음\s*주|이번\s*주|매일|매주|(?:월|화|수|목|금|토|일)요일|오전\s*\d{1,2}\s*시|오후\s*\d{1,2}\s*시|\d{1,2}\s*시(?:\s*\d{1,2}\s*분)?|\d{1,4}\s*(?:분|시간|일)\s*(?:뒤|후|이내)/u;
+  /\d{1,2}\s*월\s*\d{1,2}\s*일|내일|모레|글피|다음\s*주|이번\s*주|매일|평일|매주|매달|마다|(?:월|화|수|목|금|토|일)요일|오전\s*\d{1,2}\s*시|오후\s*\d{1,2}\s*시|\d{1,2}\s*시(?:\s*\d{1,2}\s*분)?|\d{1,4}\s*(?:분|시간|일)\s*(?:뒤|후|이내)/u;
 
 const DATE_SHAPED_EN_RE =
-  /\btomorrow\b|\bnext\s+week\b|\bnext\s+(?:mon|tues?|wednes|thurs?|fri|satur|sun)day\b|\b(?:mon|tues?|wednes|thurs?|fri|satur|sun)day\b|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}\b|\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b|\bin\s+\d{1,4}\s*(?:minutes?|hours?|days?)\b/iu;
+  /\btomorrow\b|\bnext\s+week\b|\bevery\s+(?:day|weekday|week|month)\b|\bdaily\b|\bweekdays?\b|\bweekly\b|\bmonthly\b|\bnext\s+(?:mon|tues?|wednes|thurs?|fri|satur|sun)day\b|\b(?:mon|tues?|wednes|thurs?|fri|satur|sun)day\b|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}\b|\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b|\bin\s+\d{1,4}\s*(?:minutes?|hours?|days?)\b/iu;
 
 function detectUnscheduledRememberIntentLocal(text: string): boolean {
   if (typeof text !== "string" || text.trim().length === 0) {

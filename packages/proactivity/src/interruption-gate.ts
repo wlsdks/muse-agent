@@ -149,6 +149,8 @@ export interface ApplyInterruptionBudgetOptions {
 
 export interface ApplyInterruptionBudgetResult {
   readonly outcome: "delivered" | "digested" | "skipped";
+  /** True only when the send or digest append was durably accepted. */
+  readonly accepted: boolean;
 }
 
 /**
@@ -163,7 +165,7 @@ export async function applyInterruptionBudget(
   const key = options.sourceKey ?? options.source;
 
   if (isVetoed(options.avoidedSources, key)) {
-    return { outcome: "skipped" };
+    return { accepted: false, outcome: "skipped" };
   }
 
   let withinBudget: boolean;
@@ -183,9 +185,10 @@ export async function applyInterruptionBudget(
       options.errorLogger?.(`interruption-budget: ledger append failed (delivery already sent): ${describe(cause)}`);
     }
     await recordLastDelivery(options, key, "delivered");
-    return { outcome: "delivered" };
+    return { accepted: true, outcome: "delivered" };
   }
 
+  let accepted = false;
   try {
     await appendDigestItem(options.digestFile, {
       at: options.now,
@@ -193,11 +196,12 @@ export async function applyInterruptionBudget(
       text: options.text,
       ...(options.sourceId !== undefined ? { sourceId: options.sourceId } : {})
     });
+    accepted = true;
     await recordLastDelivery(options, key, "digested");
   } catch (cause) {
     options.errorLogger?.(`interruption-budget: digest append failed, notice lost: ${describe(cause)}`);
   }
-  return { outcome: "digested" };
+  return { accepted, outcome: "digested" };
 }
 
 async function recordLastDelivery(

@@ -20,7 +20,15 @@
 import { promises as fs } from "node:fs";
 import { dirname, basename } from "node:path";
 
-import type { JsonObject } from "@muse/shared";
+import {
+  canonicalFollowupRecurrenceJson,
+  followupCommitmentKey,
+  nextFollowupOccurrence,
+  normalizeFollowupCommitmentText,
+  normalizeFollowupRecurrence,
+  type FollowupRecurrence,
+  type JsonObject
+} from "@muse/shared";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 import { withFileLock } from "./encrypted-file.js";
@@ -28,6 +36,19 @@ import { quarantineCorruptStore } from "./store-quarantine.js";
 
 export type FollowupStatus = "scheduled" | "fired" | "cancelled";
 export type FollowupStatusFilter = FollowupStatus | "all";
+export type FollowupUpsertOperation = "created" | "upgraded" | "already-present" | "none";
+
+export interface FollowupUpsertResult {
+  readonly operation: FollowupUpsertOperation;
+  readonly followup?: PersistedFollowup;
+}
+
+export type FollowupAdvanceOperation = "advanced" | "fired" | "preserved" | "not-found";
+
+export interface FollowupAdvanceResult {
+  readonly operation: FollowupAdvanceOperation;
+  readonly followup?: PersistedFollowup;
+}
 
 export interface PersistedFollowup {
   readonly id: string;
@@ -58,10 +79,16 @@ export interface PersistedFollowup {
    * by the firing path.
    */
   readonly kind?: string;
+  /** Canonical rule for a repeating follow-up. */
+  readonly recurrence?: FollowupRecurrence;
+  /** Stable normalized identity used by capture-side deduplication. */
+  readonly commitmentKey?: string;
   /** Lifecycle state. */
   readonly status: FollowupStatus;
   /** ISO timestamp the followup actually fired (set when status flips). */
   readonly firedAt?: string;
+  /** Last successful recurring occurrence; recurring records stay scheduled. */
+  readonly lastFiredAt?: string;
   /** Cancellation reason ("user-cancelled" / "snooze-replaced" / …). */
   readonly cancelReason?: string;
 }
@@ -179,7 +206,10 @@ export function serializeFollowup(followup: PersistedFollowup): JsonObject {
     ...(followup.originRunId ? { originRunId: followup.originRunId } : {}),
     ...(followup.originTurnHash ? { originTurnHash: followup.originTurnHash } : {}),
     ...(followup.kind ? { kind: followup.kind } : {}),
+    ...(followup.recurrence ? { recurrence: { ...followup.recurrence } } : {}),
+    ...(followup.commitmentKey ? { commitmentKey: followup.commitmentKey } : {}),
     ...(followup.firedAt ? { firedAt: followup.firedAt } : {}),
+    ...(followup.lastFiredAt ? { lastFiredAt: followup.lastFiredAt } : {}),
     ...(followup.cancelReason ? { cancelReason: followup.cancelReason } : {})
   };
 }
@@ -224,14 +254,49 @@ export function compareFollowupsByScheduledFor(
  * an entry whose `id` already exists is REPLACED (so a re-detect
  * pass updates `summary` / `scheduledFor` without duplicating).
  */
-export async function upsertFollowup(file: string, followup: PersistedFollowup): Promise<void> {
-  // Serialise the read-modify-write so two concurrent detect/schedule passes
-  // don't each read the same snapshot and clobber one another — a lost followup
-  // is a proactive nudge the user never receives.
-  await withFileLock(file, async () => {
+export async function upsertFollowup(file: string, followup: PersistedFollowup): Promise<FollowupUpsertResult> {
+  const incoming = normalizeFollowupForWrite(followup);
+  return withFileLock(file, async () => {
     const existing = await readFollowups(file);
-    const filtered = existing.filter((entry) => entry.id !== followup.id);
-    await writeFollowups(file, [...filtered, followup]);
+    const sameId = existing.find((entry) => entry.id === incoming.id);
+    if (sameId && sameId.status !== "scheduled") {
+      return { operation: "none" };
+    }
+
+    const sameKey = existing.find((entry) =>
+      entry.status === "scheduled"
+      && effectiveCommitmentKey(entry) === effectiveCommitmentKey(incoming));
+    if (sameKey && sameKey.id !== incoming.id) {
+      return { followup: sameKey, operation: "already-present" };
+    }
+
+    if (incoming.status === "scheduled") {
+      const sameMinuteOneShot = existing.find((entry) =>
+        entry.status === "scheduled"
+        && entry.recurrence === undefined
+        && incoming.recurrence !== undefined
+        && entry.userId === incoming.userId
+        && normalizeFollowupCommitmentText(entry.summary) === normalizeFollowupCommitmentText(incoming.summary)
+        && sameScheduledMinute(entry.scheduledFor, incoming.scheduledFor));
+      if (sameMinuteOneShot) {
+        const upgraded: PersistedFollowup = {
+          ...sameMinuteOneShot,
+          ...incoming,
+          createdAt: sameMinuteOneShot.createdAt,
+          id: sameMinuteOneShot.id
+        };
+        const next = existing.map((entry) => entry.id === sameMinuteOneShot.id ? upgraded : entry);
+        await writeFollowups(file, next);
+        return { followup: upgraded, operation: "upgraded" };
+      }
+    }
+
+    const filtered = existing.filter((entry) => entry.id !== incoming.id);
+    await writeFollowups(file, [...filtered, incoming]);
+    return {
+      followup: incoming,
+      operation: sameId ? "upgraded" : "created"
+    };
   });
 }
 
@@ -246,20 +311,40 @@ export async function markFollowupFired(
   firedAt: string,
   expectedScheduledFor?: string
 ): Promise<PersistedFollowup | undefined> {
+  const result = await advanceFollowupOccurrence(file, id, expectedScheduledFor, firedAt);
+  return result.operation === "fired" || result.operation === "advanced" ? result.followup : undefined;
+}
+
+export async function advanceFollowupOccurrence(
+  file: string,
+  id: string,
+  expectedScheduledFor: string | undefined,
+  firedAt: string
+): Promise<FollowupAdvanceResult> {
+  const normalizedFiredAt = canonicalizeIso(firedAt);
+  if (!normalizedFiredAt) return { operation: "preserved" };
   return withFileLock(file, async () => {
     const existing = await readFollowups(file);
     const target = existing.find((entry) => entry.id === id);
-    if (
-      !target
-      || target.status !== "scheduled"
-      || (expectedScheduledFor !== undefined && target.scheduledFor !== expectedScheduledFor)
-    ) {
-      return undefined;
+    if (!target) return { operation: "not-found" };
+    if (target.status !== "scheduled" || (expectedScheduledFor !== undefined && target.scheduledFor !== expectedScheduledFor)) {
+      return { followup: target, operation: "preserved" };
     }
-    const patched: PersistedFollowup = { ...target, firedAt, status: "fired" };
-    const next = existing.map((entry) => (entry.id === id ? patched : entry));
-    await writeFollowups(file, next);
-    return patched;
+    if (!target.recurrence) {
+      const patched: PersistedFollowup = { ...target, firedAt: normalizedFiredAt, status: "fired" };
+      await writeFollowups(file, existing.map((entry) => entry.id === id ? patched : entry));
+      return { followup: patched, operation: "fired" };
+    }
+    const nextOccurrence = nextFollowupOccurrence(new Date(target.scheduledFor), target.recurrence);
+    if (!nextOccurrence) return { followup: target, operation: "preserved" };
+    const patched: PersistedFollowup = {
+      ...target,
+      lastFiredAt: normalizedFiredAt,
+      scheduledFor: nextOccurrence.toISOString(),
+      status: "scheduled"
+    };
+    await writeFollowups(file, existing.map((entry) => entry.id === id ? patched : entry));
+    return { followup: patched, operation: "advanced" };
   });
 }
 
@@ -298,13 +383,15 @@ export async function snoozeFollowup(
   id: string,
   newScheduledForIso: string
 ): Promise<PersistedFollowup | undefined> {
+  const normalizedScheduledFor = canonicalizeIso(newScheduledForIso);
+  if (!normalizedScheduledFor) return undefined;
   return withFileLock(file, async () => {
     const existing = await readFollowups(file);
     const target = existing.find((entry) => entry.id === id);
     if (!target || target.status !== "scheduled") {
       return undefined;
     }
-    const patched: PersistedFollowup = { ...target, scheduledFor: newScheduledForIso };
+    const patched: PersistedFollowup = { ...target, scheduledFor: normalizedScheduledFor };
     const next = existing.map((entry) => (entry.id === id ? patched : entry));
     await writeFollowups(file, next);
     return patched;
@@ -331,7 +418,18 @@ function isPersistedFollowup(value: unknown): value is PersistedFollowup {
   // timestamp would never fire and sit "scheduled" forever with no
   // error. Drop it at load, the posture isPersistedEvent / CalDAV use.
   if (typeof candidate.scheduledFor !== "string"
-    || !Number.isFinite(Date.parse(candidate.scheduledFor))) {
+    || !Number.isFinite(Date.parse(candidate.scheduledFor))
+    || !Number.isFinite(Date.parse(candidate.createdAt))) {
+    return false;
+  }
+  const recurrence = candidate.recurrence === undefined
+    ? undefined
+    : normalizeFollowupRecurrence(candidate.recurrence);
+  if (candidate.recurrence !== undefined && !recurrence) return false;
+  if (candidate.commitmentKey !== undefined
+    && (typeof candidate.commitmentKey !== "string"
+      || !isCommitmentKey(candidate.commitmentKey)
+      || candidate.commitmentKey !== expectedCommitmentKey(candidate))) {
     return false;
   }
   return (
@@ -339,8 +437,10 @@ function isPersistedFollowup(value: unknown): value is PersistedFollowup {
     (candidate.originRunId === undefined || typeof candidate.originRunId === "string") &&
     (candidate.originTurnHash === undefined || typeof candidate.originTurnHash === "string") &&
     (candidate.kind === undefined || typeof candidate.kind === "string") &&
-    (candidate.firedAt === undefined || typeof candidate.firedAt === "string") &&
-    (candidate.cancelReason === undefined || typeof candidate.cancelReason === "string")
+    (candidate.firedAt === undefined || (typeof candidate.firedAt === "string" && Number.isFinite(Date.parse(candidate.firedAt)))) &&
+    (candidate.lastFiredAt === undefined || (typeof candidate.lastFiredAt === "string" && Number.isFinite(Date.parse(candidate.lastFiredAt)))) &&
+    (candidate.cancelReason === undefined || typeof candidate.cancelReason === "string") &&
+    validFollowupLifecycle(candidate, false)
   );
 }
 
@@ -349,12 +449,15 @@ function isPersistedFollowupStrict(value: unknown): value is PersistedFollowup {
   const candidate = value as PersistedFollowup;
   const allowed = [
     "cancelReason",
+    "commitmentKey",
     "createdAt",
     "firedAt",
     "id",
     "kind",
     "originRunId",
     "originTurnHash",
+    "lastFiredAt",
+    "recurrence",
     "scheduledFor",
     "status",
     "summary",
@@ -363,15 +466,89 @@ function isPersistedFollowupStrict(value: unknown): value is PersistedFollowup {
   if (Object.keys(value).some((key) => !allowed.includes(key))) return false;
   if (!isCanonicalIso(candidate.createdAt) || !isCanonicalIso(candidate.scheduledFor)) return false;
   if (candidate.firedAt !== undefined && !isCanonicalIso(candidate.firedAt)) return false;
-  if (candidate.status === "scheduled" && (candidate.firedAt !== undefined || candidate.cancelReason !== undefined)) return false;
-  if (candidate.status === "fired" && (candidate.firedAt === undefined || candidate.cancelReason !== undefined)) return false;
-  if (candidate.status === "cancelled" && (candidate.cancelReason === undefined || candidate.firedAt !== undefined)) return false;
-  return true;
+  if (candidate.lastFiredAt !== undefined && !isCanonicalIso(candidate.lastFiredAt)) return false;
+  if (candidate.recurrence !== undefined
+    && JSON.stringify(candidate.recurrence) !== canonicalFollowupRecurrenceJson(candidate.recurrence)) return false;
+  if (candidate.commitmentKey !== undefined
+    && (typeof candidate.commitmentKey !== "string" || candidate.commitmentKey !== expectedCommitmentKey(candidate))) return false;
+  return validFollowupLifecycle(candidate, true);
 }
 
 function isCanonicalIso(value: string): boolean {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
+}
+
+function canonicalizeIso(value: string): string | undefined {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined;
+}
+
+function isCommitmentKey(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
+}
+
+function effectiveCommitmentKey(followup: Pick<PersistedFollowup, "commitmentKey" | "recurrence" | "summary" | "userId">): string {
+  return followup.commitmentKey ?? followupCommitmentKey(followup.userId, followup.summary, followup.recurrence);
+}
+
+function expectedCommitmentKey(followup: Pick<PersistedFollowup, "recurrence" | "summary" | "userId">): string {
+  return followupCommitmentKey(followup.userId, followup.summary, followup.recurrence);
+}
+
+function sameScheduledMinute(left: string, right: string): boolean {
+  const leftMs = Date.parse(left);
+  const rightMs = Date.parse(right);
+  return Number.isFinite(leftMs)
+    && Number.isFinite(rightMs)
+    && Math.floor(leftMs / 60_000) === Math.floor(rightMs / 60_000);
+}
+
+function validFollowupLifecycle(candidate: PersistedFollowup, strict: boolean): boolean {
+  if (candidate.status === "scheduled") {
+    if (candidate.firedAt !== undefined || candidate.cancelReason !== undefined) return false;
+    return candidate.recurrence !== undefined || candidate.lastFiredAt === undefined;
+  }
+  if (candidate.status === "fired") {
+    return candidate.recurrence === undefined
+      && candidate.cancelReason === undefined
+      && (!strict || candidate.firedAt !== undefined)
+      && candidate.lastFiredAt === undefined;
+  }
+  return candidate.cancelReason !== undefined
+    && candidate.firedAt === undefined
+    && (candidate.recurrence !== undefined || candidate.lastFiredAt === undefined);
+}
+
+function normalizeFollowupForWrite(followup: PersistedFollowup): PersistedFollowup {
+  const recurrence = followup.recurrence === undefined
+    ? undefined
+    : normalizeFollowupRecurrence(followup.recurrence);
+  if (followup.recurrence !== undefined && !recurrence) {
+    throw new TypeError("invalid follow-up recurrence");
+  }
+  const createdAt = canonicalizeIso(followup.createdAt);
+  const scheduledFor = canonicalizeIso(followup.scheduledFor);
+  if (!createdAt || !scheduledFor) throw new TypeError("invalid follow-up timestamp");
+  const firedAt = followup.firedAt === undefined ? undefined : canonicalizeIso(followup.firedAt);
+  const lastFiredAt = followup.lastFiredAt === undefined ? undefined : canonicalizeIso(followup.lastFiredAt);
+  if ((followup.firedAt !== undefined && !firedAt) || (followup.lastFiredAt !== undefined && !lastFiredAt)) {
+    throw new TypeError("invalid follow-up timestamp");
+  }
+  const normalized: PersistedFollowup = {
+    ...followup,
+    createdAt,
+    scheduledFor,
+    ...(recurrence ? { recurrence } : {}),
+    ...(firedAt ? { firedAt } : {}),
+    ...(lastFiredAt ? { lastFiredAt } : {})
+  };
+  if (!validFollowupLifecycle(normalized, true)) throw new TypeError("invalid follow-up lifecycle");
+  const commitmentKey = followup.commitmentKey ?? followupCommitmentKey(normalized.userId, normalized.summary, recurrence);
+  if (!isCommitmentKey(commitmentKey) || commitmentKey !== followupCommitmentKey(normalized.userId, normalized.summary, recurrence)) {
+    throw new TypeError("invalid follow-up commitment key");
+  }
+  return { ...normalized, commitmentKey };
 }
 
 export type FollowupRefResolution =

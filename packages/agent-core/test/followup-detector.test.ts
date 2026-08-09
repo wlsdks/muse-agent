@@ -443,33 +443,49 @@ describe("extractFollowupPromises — the two audited sim utterances now schedul
   });
 });
 
-describe("extractFollowupPromises — recurrence markers suppress the one-shot capture (FIX N1b)", () => {
-  // Full recurrence support is out of scope — a wrong ONE-SHOT time is worse
-  // than nothing (it fires the reminder at the wrong moment and never
-  // again), so a recurrence marker (매일/매주/매달/…요일마다/마다) governing the
-  // time expression drops the match entirely instead of resolving a bogus
-  // single occurrence.
-  it("수요일마다 6시 — no korean-weekday AND no korean-today-at bogus one-shot", () => {
-    const result = extractFollowupPromises("수요일마다 6시에 회의 있는거 잊지 마", { now });
-    expect(result).toHaveLength(0);
+describe("extractFollowupPromises — deterministic recurrence rules", () => {
+  it("parses the supported English recurrence vocabulary", () => {
+    const cases = [
+      ["I'll remind you every day at 8am.", "daily", { kind: "daily", hour: 8, minute: 0 }],
+      ["I'll remind you every weekday at 8am.", "weekdays", { kind: "weekdays", hour: 8, minute: 0 }],
+      ["I'll remind you every Monday at 8am.", "weekly", { kind: "weekly", weekday: 1, hour: 8, minute: 0 }],
+      ["I'll remind you every month on the 15th at 8am.", "monthly", { kind: "monthly", dayOfMonth: 15, hour: 8, minute: 0 }],
+      ["I'll remind you every 2nd Tuesday at 8am.", "nth-weekday", { kind: "nth-weekday", ordinal: 2, weekday: 2, hour: 8, minute: 0 }]
+    ] as const;
+    for (const [text, kind, recurrence] of cases) {
+      const result = extractFollowupPromises(text, { now, requireCommissive: true });
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ kind: `recurring-${kind}`, recurrence });
+    }
   });
 
-  it("매일 아침 8시 — no korean-today-at bogus one-shot (today 08:00)", () => {
-    const result = extractFollowupPromises("매일 아침 8시 혈압약 먹는거 잊지 마", { now });
-    expect(result).toHaveLength(0);
+  it("parses the supported Korean recurrence vocabulary", () => {
+    const cases = [
+      ["매일 아침 8시에 알려드릴게요.", "daily", { kind: "daily", hour: 8, minute: 0 }],
+      ["평일 오전 8시에 알려드릴게요.", "weekdays", { kind: "weekdays", hour: 8, minute: 0 }],
+      ["매주 월요일 오전 8시에 알려드릴게요.", "weekly", { kind: "weekly", weekday: 1, hour: 8, minute: 0 }],
+      ["매달 15일 오전 8시에 알려드릴게요.", "monthly", { kind: "monthly", dayOfMonth: 15, hour: 8, minute: 0 }],
+      ["매달 둘째 화요일 오전 8시에 알려드릴게요.", "nth-weekday", { kind: "nth-weekday", ordinal: 2, weekday: 2, hour: 8, minute: 0 }]
+    ] as const;
+    for (const [text, kind, recurrence] of cases) {
+      const result = extractFollowupPromises(text, { now, requireCommissive: true });
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ kind: `recurring-${kind}`, recurrence });
+    }
   });
 
-  it("매주 금요일 — no korean-weekday bogus one-shot", () => {
-    const result = extractFollowupPromises("매주 금요일에 청소하는거 잊지 마", { now });
-    expect(result.filter((p) => p.kind === "korean-weekday")).toHaveLength(0);
+  it("requires a clock or named slot and never downgrades unsupported recurrence to one-shot", () => {
+    for (const text of [
+      "I'll remind you every day.",
+      "I'll remind you every other day at 8am.",
+      "매일 알려드릴게요.",
+      "매달 1일에 알려드릴게요."
+    ]) {
+      expect(extractFollowupPromises(text, { now, requireCommissive: true }), text).toEqual([]);
+    }
   });
 
-  it("매달 1일 — no korean-absolute-date bogus one-shot", () => {
-    const result = extractFollowupPromises("매달 1일 월세 내는거 잊지 마", { now });
-    expect(result.filter((p) => p.kind === "korean-absolute-date")).toHaveLength(0);
-  });
-
-  it("control: the SAME time phrase with NO recurrence marker still schedules normally", () => {
+  it("still captures an ordinary non-recurring weekday time", () => {
     const result = extractFollowupPromises("수요일 6시에 회의 있는거 잊지 마", { now });
     expect(result.some((p) => p.kind === "korean-weekday")).toBe(true);
   });

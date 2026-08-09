@@ -27,6 +27,13 @@
 import { createHash } from "node:crypto";
 
 import {
+  followupCommitmentKey,
+  normalizeFollowupRecurrence,
+  type FollowupRecurrence
+} from "@muse/shared";
+
+import {
+  containsFollowupRecurrenceMarker,
   extractFollowupPromises,
   type ExtractFollowupPromisesOptions,
   type FollowupPromise
@@ -48,6 +55,8 @@ export interface CapturedFollowup {
   readonly createdAt: string;
   readonly summary: string;
   readonly status: "scheduled";
+  readonly recurrence?: FollowupRecurrence;
+  readonly commitmentKey?: string;
   readonly originRunId?: string;
   readonly originTurnHash?: string;
   readonly kind?: string;
@@ -159,6 +168,14 @@ export function createFollowupCaptureHook(options: FollowupCaptureHookOptions): 
           llmPromises = [];
         }
       }
+      const recurrenceShaped = containsFollowupRecurrenceMarker(output);
+      llmPromises = llmPromises.flatMap((promise): readonly FollowupPromise[] => {
+        if (promise.recurrence === undefined) {
+          return recurrenceShaped ? [] : [promise];
+        }
+        const recurrence = normalizeFollowupRecurrence(promise.recurrence);
+        return recurrence ? [{ ...promise, recurrence }] : [];
+      });
       // Merge: rule-detector promises FIRST so they win the
       // minute-precision dedupe over the LLM fallback (rules carry
       // "high" confidence; LLM is a soft pin).
@@ -176,7 +193,9 @@ export function createFollowupCaptureHook(options: FollowupCaptureHookOptions): 
         if (seenScheduledFor.has(scheduledFor)) continue;
         seenScheduledFor.add(scheduledFor);
         captured += 1;
+        const summary = sanitizeFollowupSummary(promise.originalText);
         const followup: CapturedFollowup = {
+          commitmentKey: followupCommitmentKey(userId, summary, promise.recurrence),
           createdAt: now().toISOString(),
           id: idFactory(),
           kind: promise.kind,
@@ -184,8 +203,9 @@ export function createFollowupCaptureHook(options: FollowupCaptureHookOptions): 
           originTurnHash: turnHash,
           scheduledFor,
           status: "scheduled",
-          summary: sanitizeFollowupSummary(promise.originalText),
-          userId
+          summary,
+          userId,
+          ...(promise.recurrence ? { recurrence: promise.recurrence } : {})
         };
         try {
           await options.persist(followup);

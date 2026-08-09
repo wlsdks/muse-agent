@@ -25,6 +25,8 @@
  *     - `(next|this)? <weekday> (at H(:MM)? (am|pm)?)?` → the next
  *       occurrence of that weekday (this week if still ahead,
  *       else next week; `next <weekday>` forces next week)
+ *     - `every day|weekday|<weekday>|month on <day>|<ordinal> <weekday>`
+ *       with an explicit clock or named slot → a recurrence rule
  *   Korean:
  *     - `N분 뒤 | N분 후` → now + N minutes
  *     - `N시간 뒤 | N시간 후` → now + N hours
@@ -38,12 +40,16 @@
  *       month; an unqualified past date this month rolls to next
  *       month; an explicit month/day already past this year rolls
  *       to next year)
+ *     - `매일|평일|매주 <요일>|매달 <일>|매달 <순번> <요일>` with an
+ *       explicit clock or named slot → a recurrence rule
  *
  * Out of scope: conditional promises ("if X then I'll do Y"),
- * vague intents ("sometime next week"), multi-clause statements
- * (we treat each clause independently and dedupe by resolved
- * scheduledFor).
+ * vague intents ("sometime next week"), and recurrence phrases without
+ * a clock or named slot. Multi-clause statements are treated independently
+ * and deduped by resolved minute.
  */
+
+import { nextFollowupOccurrence, type FollowupRecurrence } from "@muse/shared";
 
 export interface FollowupPromise {
   /** The substring of the assistant turn that produced this promise. */
@@ -71,7 +77,14 @@ export interface FollowupPromise {
     | "korean-tomorrow-slot"
     | "korean-today-at"
     | "korean-weekday"
-    | "korean-absolute-date";
+    | "korean-absolute-date"
+    | "recurring-daily"
+    | "recurring-weekdays"
+    | "recurring-weekly"
+    | "recurring-monthly"
+    | "recurring-nth-weekday";
+  /** Canonical recurrence rule when the promise is explicitly recurring. */
+  readonly recurrence?: FollowupRecurrence;
 }
 
 export interface ExtractFollowupPromisesOptions {
@@ -140,14 +153,10 @@ export function extractFollowupPromises(
   const seenMinute = new Set<number>();
   const slots = { ...DEFAULT_SLOTS, ...options.slotHours };
   const push = (promise: FollowupPromise, matchIndex: number): void => {
-    // A recurrence marker (매일/매주/매달/…요일마다/마다) governing the time
-    // expression means the model resolved a RECURRING request into a wrong
-    // ONE-SHOT time (e.g. "매일 아침 8시" → today 08:00, once). Full recurrence
-    // support is out of scope; a wrong one-shot is worse than no followup at
-    // all (it fires once at the wrong moment and never again), so the whole
-    // match is dropped — the honest caveat then tells the user recurring
-    // isn't supported yet instead of silently mis-scheduling.
-    if (recurrenceGoverns(text, matchIndex)) return;
+    // An unsupported recurrence-shaped phrase must never fall through to a
+    // one-shot. Supported recurrence promises carry their rule and bypass this
+    // guard; every ordinary time phrase remains subject to the marker guard.
+    if (!promise.recurrence && recurrenceGoverns(text, matchIndex)) return;
     // A refusal right before the time phrase ("I won't remind you in 30 min",
     // "I will NOT check tomorrow") means the assistant DECLINED — it is not a
     // promise to queue. Suppress it; the module's documented bias is toward
@@ -163,7 +172,7 @@ export function extractFollowupPromises(
     // the Korean commitment morphology check (할게/드릴게/하겠습니다 …) instead of the
     // EN one — they are NOT exempted from the gate. Subtractive: only drops spurious.
     if (options.requireCommissive) {
-      const committed = promise.kind.startsWith("korean-")
+      const committed = (promise.kind.startsWith("korean-") || /[가-힣]/u.test(promise.originalText))
         ? hasKoreanCommissiveForce(text, matchIndex)
         : hasCommissiveForce(text, matchIndex);
       if (!committed) return;
@@ -188,6 +197,10 @@ export function extractFollowupPromises(
     seenMinute.add(minuteKey);
     out.push(promise);
   };
+
+  for (const recurring of extractRecurrencePromises(text, options.now, slots)) {
+    push(recurring.promise, recurring.matchIndex);
+  }
 
   for (const match of text.matchAll(/\bin\s+(\d{1,4})\s*(min(?:ute)?s?|hours?|hr|hrs|days?)\b/giu)) {
     const value = Number.parseInt(match[1] ?? "", 10);
@@ -371,11 +384,290 @@ function negatedBefore(text: string, index: number): boolean {
 // generic "…마다" suffix (covers "N요일마다", "매년마다", etc). English recurring
 // phrasing ("every day") is out of scope here (no observed audit finding for
 // it); this stays Korean-only rather than guessing an EN equivalent.
-const RECURRENCE_MARKER_RE = /매일|매주|매달|마다/u;
+const RECURRENCE_MARKER_RE = /\bevery\b|\bdaily\b|\bweekdays?\b|\bweekly\b|\bmonthly\b|매일|평일|매주|매달|마다/u;
+
+export function containsFollowupRecurrenceMarker(text: string): boolean {
+  return RECURRENCE_MARKER_RE.test(text);
+}
 
 /** Does a recurrence marker (매일/매주/매달/…마다) govern the sentence containing the time phrase at `index`? */
 function recurrenceGoverns(text: string, index: number): boolean {
   return RECURRENCE_MARKER_RE.test(sentenceWindow(text, index));
+}
+
+interface RecurrencePromiseMatch {
+  readonly matchIndex: number;
+  readonly promise: FollowupPromise;
+}
+
+interface ParsedRecurrenceClock {
+  readonly confidence: "high" | "low";
+  readonly hour: number;
+  readonly minute: number;
+  readonly source: string;
+}
+
+function extractRecurrencePromises(
+  text: string,
+  now: Date,
+  slots: Record<"morning" | "afternoon" | "evening" | "night", number>
+): readonly RecurrencePromiseMatch[] {
+  const out: RecurrencePromiseMatch[] = [];
+  const add = (
+    match: RegExpMatchArray,
+    recurrence: FollowupRecurrence,
+    kind: FollowupPromise["kind"],
+    remainderStart: number,
+    clock: ParsedRecurrenceClock
+  ): void => {
+    const scheduledFor = nextFollowupOccurrence(now, recurrence);
+    if (!scheduledFor) return;
+    const source = `${match[0] ?? ""}${text.slice(remainderStart, remainderStart + clock.source.length)}`.trim();
+    out.push({
+      matchIndex: match.index ?? 0,
+      promise: {
+        confidence: clock.confidence,
+        kind,
+        originalText: source,
+        recurrence,
+        scheduledFor
+      }
+    });
+  };
+
+  for (const match of text.matchAll(/\b(every\s+(?:day|weekday)|daily|weekdays?)\b/giu)) {
+    const clock = recurrenceClockAfter(text, match.index ?? 0, match[0]?.length ?? 0, slots);
+    if (!clock) continue;
+    const weekdays = (match[1] ?? "").toLowerCase().includes("weekday");
+    add(
+      match,
+      { hour: clock.hour, kind: weekdays ? "weekdays" : "daily", minute: clock.minute },
+      weekdays ? "recurring-weekdays" : "recurring-daily",
+      (match.index ?? 0) + (match[0]?.length ?? 0),
+      clock
+    );
+  }
+
+  for (const match of text.matchAll(/\bevery\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/giu)) {
+    const weekday = EN_WEEKDAY_INDEX[(match[1] ?? "").toLowerCase()];
+    if (weekday === undefined) continue;
+    const clock = recurrenceClockAfter(text, match.index ?? 0, match[0]?.length ?? 0, slots);
+    if (!clock) continue;
+    add(
+      match,
+      { hour: clock.hour, kind: "weekly", minute: clock.minute, weekday },
+      "recurring-weekly",
+      (match.index ?? 0) + (match[0]?.length ?? 0),
+      clock
+    );
+  }
+
+  for (const match of text.matchAll(/\bevery\s+month\s+on\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\b/giu)) {
+    const dayOfMonth = Number.parseInt(match[1] ?? "", 10);
+    if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) continue;
+    const clock = recurrenceClockAfter(text, match.index ?? 0, match[0]?.length ?? 0, slots);
+    if (!clock) continue;
+    add(
+      match,
+      { dayOfMonth, hour: clock.hour, kind: "monthly", minute: clock.minute },
+      "recurring-monthly",
+      (match.index ?? 0) + (match[0]?.length ?? 0),
+      clock
+    );
+  }
+
+  for (const match of text.matchAll(/\bevery\s+(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/giu)) {
+    const ordinal = englishOrdinal(match[1]);
+    const weekday = EN_WEEKDAY_INDEX[(match[2] ?? "").toLowerCase()];
+    if (ordinal === undefined || weekday === undefined) continue;
+    const clock = recurrenceClockAfter(text, match.index ?? 0, match[0]?.length ?? 0, slots);
+    if (!clock) continue;
+    add(
+      match,
+      { hour: clock.hour, kind: "nth-weekday", minute: clock.minute, ordinal, weekday },
+      "recurring-nth-weekday",
+      (match.index ?? 0) + (match[0]?.length ?? 0),
+      clock
+    );
+  }
+
+  for (const match of text.matchAll(/(?:매일|평일)/gu)) {
+    const clock = recurrenceClockAfter(text, match.index ?? 0, match[0]?.length ?? 0, slots);
+    if (!clock) continue;
+    const weekdays = match[0] === "평일";
+    add(
+      match,
+      { hour: clock.hour, kind: weekdays ? "weekdays" : "daily", minute: clock.minute },
+      weekdays ? "recurring-weekdays" : "recurring-daily",
+      (match.index ?? 0) + (match[0]?.length ?? 0),
+      clock
+    );
+  }
+
+  for (const match of text.matchAll(/(?:매주\s*)?(월|화|수|목|금|토|일)요일마다|매주\s*(월|화|수|목|금|토|일)(?:요일)?/gu)) {
+    const weekday = KOREAN_WEEKDAY_INDEX[match[1] ?? match[2] ?? ""];
+    if (weekday === undefined) continue;
+    const clock = recurrenceClockAfter(text, match.index ?? 0, match[0]?.length ?? 0, slots);
+    if (!clock) continue;
+    add(
+      match,
+      { hour: clock.hour, kind: "weekly", minute: clock.minute, weekday },
+      "recurring-weekly",
+      (match.index ?? 0) + (match[0]?.length ?? 0),
+      clock
+    );
+  }
+
+  for (const match of text.matchAll(/매달\s*(\d{1,2})일/gu)) {
+    const dayOfMonth = Number.parseInt(match[1] ?? "", 10);
+    if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) continue;
+    const clock = recurrenceClockAfter(text, match.index ?? 0, match[0]?.length ?? 0, slots);
+    if (!clock) continue;
+    add(
+      match,
+      { dayOfMonth, hour: clock.hour, kind: "monthly", minute: clock.minute },
+      "recurring-monthly",
+      (match.index ?? 0) + (match[0]?.length ?? 0),
+      clock
+    );
+  }
+
+  for (const match of text.matchAll(/매달\s*(첫째|첫\s*번째|둘째|둘\s*번째|셋째|셋\s*번째|넷째|넷\s*번째|다섯째|다섯\s*번째|[1-5]번째)\s*(월|화|수|목|금|토|일)요일?/gu)) {
+    const ordinal = koreanOrdinal(match[1]);
+    const weekday = KOREAN_WEEKDAY_INDEX[match[2] ?? ""];
+    if (ordinal === undefined || weekday === undefined) continue;
+    const clock = recurrenceClockAfter(text, match.index ?? 0, match[0]?.length ?? 0, slots);
+    if (!clock) continue;
+    add(
+      match,
+      { hour: clock.hour, kind: "nth-weekday", minute: clock.minute, ordinal, weekday },
+      "recurring-nth-weekday",
+      (match.index ?? 0) + (match[0]?.length ?? 0),
+      clock
+    );
+  }
+
+  return out;
+}
+
+function recurrenceClockAfter(
+  text: string,
+  matchIndex: number,
+  matchLength: number,
+  slots: Record<"morning" | "afternoon" | "evening" | "night", number>
+): ParsedRecurrenceClock | undefined {
+  const suffixStart = matchIndex + matchLength;
+  const suffix = text.slice(suffixStart, sentenceEnd(text, suffixStart));
+  const candidates: Array<{
+    readonly explicit: boolean;
+    readonly index: number;
+    readonly end: number;
+    readonly confidence: "high" | "low";
+    readonly hour: number;
+    readonly minute: number;
+  }> = [];
+  const named = /(?:\b(morning|afternoon|evening|night)\b|아침|오전|점심|오후|저녁|밤)/iu.exec(suffix);
+  if (named) {
+    const token = named[0]?.toLowerCase() ?? "";
+    const slot = englishSlot(token) ?? koreanSlot(token);
+    if (slot) {
+      candidates.push({
+        confidence: "low",
+        end: named.index + named[0].length,
+        explicit: false,
+        hour: slots[slot],
+        index: named.index,
+        minute: 0
+      });
+    }
+  }
+  const englishClock = /\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?/iu.exec(suffix);
+  if (englishClock) {
+    const hourRaw = Number.parseInt(englishClock[1] ?? "", 10);
+    const minute = Number.parseInt(englishClock[2] ?? "0", 10);
+    const meridiem = (englishClock[3] ?? "").toLowerCase().replace(/\./gu, "");
+    const hour = applyMeridiem(hourRaw, meridiem);
+    if (hour !== undefined && minute >= 0 && minute <= 59) {
+      candidates.push({
+        confidence: meridiem ? "high" : "low",
+        end: englishClock.index + englishClock[0].length,
+        explicit: true,
+        hour,
+        index: englishClock.index,
+        minute
+      });
+    }
+  }
+  const koreanClock = /(?:(오전|오후)\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?/u.exec(suffix);
+  if (koreanClock) {
+    const hourRaw = Number.parseInt(koreanClock[2] ?? "", 10);
+    const minute = Number.parseInt(koreanClock[3] ?? "0", 10);
+    const meridiem = koreanClock[1] === "오전" ? "am" : koreanClock[1] === "오후" ? "pm" : "";
+    const hour = applyMeridiem(hourRaw, meridiem);
+    if (hour !== undefined && minute >= 0 && minute <= 59) {
+      candidates.push({
+        confidence: "high",
+        end: koreanClock.index + koreanClock[0].length,
+        explicit: true,
+        hour,
+        index: koreanClock.index,
+        minute
+      });
+    }
+  }
+  if (candidates.length === 0) return undefined;
+  const selected = candidates.find((candidate) => candidate.explicit) ?? candidates[0]!;
+  return {
+    confidence: selected.confidence,
+    hour: selected.hour,
+    minute: selected.minute,
+    source: suffix.slice(0, selected.end)
+  };
+}
+
+function sentenceEnd(text: string, index: number): number {
+  for (let cursor = index; cursor < text.length; cursor += 1) {
+    const ch = text[cursor];
+    if (ch === "." || ch === "!" || ch === "?" || ch === "\n") return cursor;
+  }
+  return text.length;
+}
+
+function englishSlot(value: string): "morning" | "afternoon" | "evening" | "night" | undefined {
+  if (value === "morning") return "morning";
+  if (value === "afternoon") return "afternoon";
+  if (value === "evening") return "evening";
+  if (value === "night") return "night";
+  return undefined;
+}
+
+function koreanSlot(value: string): "morning" | "afternoon" | "evening" | "night" | undefined {
+  if (value === "아침" || value === "오전") return "morning";
+  if (value === "점심" || value === "오후") return "afternoon";
+  if (value === "저녁") return "evening";
+  if (value === "밤") return "night";
+  return undefined;
+}
+
+function englishOrdinal(value: string | undefined): number | undefined {
+  switch ((value ?? "").toLowerCase()) {
+    case "first": case "1st": return 1;
+    case "second": case "2nd": return 2;
+    case "third": case "3rd": return 3;
+    case "fourth": case "4th": return 4;
+    case "fifth": case "5th": return 5;
+    default: return undefined;
+  }
+}
+
+function koreanOrdinal(value: string | undefined): number | undefined {
+  const compact = (value ?? "").replace(/\s+/gu, "");
+  if (compact === "첫째" || compact === "첫번째" || compact === "1번째") return 1;
+  if (compact === "둘째" || compact === "둘번째" || compact === "2번째") return 2;
+  if (compact === "셋째" || compact === "셋번째" || compact === "3번째") return 3;
+  if (compact === "넷째" || compact === "넷번째" || compact === "4번째") return 4;
+  if (compact === "다섯째" || compact === "다섯번째" || compact === "5번째") return 5;
+  return undefined;
 }
 
 // First-person commissive markers (the assistant committing to a future act).

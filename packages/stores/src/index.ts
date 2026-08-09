@@ -158,8 +158,8 @@ export { authorizeFollowupTriage, confirmFollowupTriage, FollowupTriageAuthoriza
 export type { AuthorizeFollowupTriageOptions, ConfirmFollowupTriageOptions, FollowupTriageAuthorization, FollowupTriageLedger, FollowupTriageLedgerEvent, FollowupTriageOutcome, FollowupTriagePreparedEvent, FollowupTriagePreviewedEvent, FollowupTriageResult, FollowupTriageTerminalEvent } from "./personal-followup-triage-authorization-store.js";
 export { buildFollowupTriageDigest, previewFollowupTriage } from "./personal-followup-triage-preview.js";
 export type { FollowupTriageAction, FollowupTriagePreview, FollowupTriagePreviewChange, PreviewFollowupTriageOptions } from "./personal-followup-triage-preview.js";
-export { cancelFollowup, cleanupFollowupTempFiles, compareFollowupsByScheduledFor, FollowupStoreUnavailableError, markFollowupFired, parseFollowupsStrict, readFollowups, readFollowupsStrict, readFollowupStatusFilter, resolveFollowupRef, serializeFollowup, snoozeFollowup, upsertFollowup, writeFollowups } from "./personal-followups-store.js";
-export type { FollowupStatusFilter, PersistedFollowup } from "./personal-followups-store.js";
+export { advanceFollowupOccurrence, cancelFollowup, cleanupFollowupTempFiles, compareFollowupsByScheduledFor, FollowupStoreUnavailableError, markFollowupFired, parseFollowupsStrict, readFollowups, readFollowupsStrict, readFollowupStatusFilter, resolveFollowupRef, serializeFollowup, snoozeFollowup, upsertFollowup, writeFollowups } from "./personal-followups-store.js";
+export type { FollowupAdvanceOperation, FollowupAdvanceResult, FollowupStatusFilter, FollowupUpsertOperation, FollowupUpsertResult, PersistedFollowup } from "./personal-followups-store.js";
 export {
   addObjective,
   patchActiveObjectiveOccurrence,
