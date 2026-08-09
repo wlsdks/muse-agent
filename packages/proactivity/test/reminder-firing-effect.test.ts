@@ -9,6 +9,7 @@ import {
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import {
@@ -39,7 +40,7 @@ import {
 const DUE_AT = "2026-07-26T23:00:00.000Z";
 const NOW = "2026-07-27T00:00:00.000Z";
 const execFileAsync = promisify(execFile);
-const childFixture = new URL("./fixtures/reminder-firing-effect-child.ts", import.meta.url);
+const childFixture = fileURLToPath(new URL("./fixtures/reminder-firing-effect-child.ts", import.meta.url));
 
 function paths() {
   const dir = mkdtempSync(join(tmpdir(), "muse-reminder-effect-"));
@@ -621,13 +622,13 @@ describe("runDueReminders durable occurrence effect", () => {
       execFileAsync(process.execPath, [
         "--import",
         "tsx",
-        childFixture.pathname,
+        childFixture,
         JSON.stringify(input)
       ]),
       execFileAsync(process.execPath, [
         "--import",
         "tsx",
-        childFixture.pathname,
+        childFixture,
         JSON.stringify(input)
       ])
     ]);

@@ -1054,7 +1054,8 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
   it("production factory passes the live env and explicit route to proactive delivery", async () => {
     const env = tmpEnv();
     env.MUSE_DIGEST_ENABLED = "false";
-    await writeDayRhythmConfig(env.MUSE_CLI_CONFIG_FILE!, { enabled: true, eveningHour: 18, morningHour: 8 });
+    const heldMorningHour = (new Date().getHours() + 6) % 24;
+    await writeDayRhythmConfig(env.MUSE_CLI_CONFIG_FILE!, { enabled: true, eveningHour: 18, morningHour: heldMorningHour });
     writeFileSync(env.MUSE_CHANNEL_OWNERS_FILE!, JSON.stringify({ owners: { discord: "B" }, version: 1 }), "utf8");
     writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
       tasks: [{ id: "route-a", title: "Route A", status: "open", dueAt: new Date(Date.now() + 5 * 60_000).toISOString(), createdAt: "2026-01-01T00:00:00Z" }]
@@ -1076,7 +1077,8 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
   it("production factory passes the live day-rhythm config to proactive delivery", async () => {
     const env = tmpEnv();
     env.MUSE_DIGEST_ENABLED = "false";
-    await writeDayRhythmConfig(env.MUSE_CLI_CONFIG_FILE!, { enabled: true, eveningHour: 18, morningHour: 8 });
+    const heldMorningHour = (new Date().getHours() + 6) % 24;
+    await writeDayRhythmConfig(env.MUSE_CLI_CONFIG_FILE!, { enabled: true, eveningHour: 18, morningHour: heldMorningHour });
     writeFileSync(env.MUSE_CHANNEL_OWNERS_FILE!, JSON.stringify({ owners: { telegram: "A" }, version: 1 }), "utf8");
     writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
       tasks: [{ id: "paired-route-a", title: "Paired route A", status: "open", dueAt: new Date(Date.now() + 5 * 60_000).toISOString(), createdAt: "2026-01-01T00:00:00Z" }]

@@ -9,6 +9,7 @@ import {
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import {
@@ -40,7 +41,7 @@ const SCHEDULED_FOR = "2026-07-26T23:00:00.000Z";
 const NOW = "2026-07-27T00:00:00.000Z";
 const SYNTHESIZED = "Did the deployment finish?";
 const execFileAsync = promisify(execFile);
-const childFixture = new URL("./fixtures/followup-firing-effect-child.ts", import.meta.url);
+const childFixture = fileURLToPath(new URL("./fixtures/followup-firing-effect-child.ts", import.meta.url));
 
 function paths() {
   const dir = mkdtempSync(join(tmpdir(), "muse-followup-effect-"));
@@ -341,8 +342,8 @@ describe("runDueFollowups durable occurrence effect", () => {
       nowIso: NOW
     };
     await Promise.all([
-      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)]),
-      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)])
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture, JSON.stringify(input)]),
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture, JSON.stringify(input)])
     ]);
     const calls = existsSync(callsFile)
       ? readFileSync(callsFile, "utf8").trim().split("\n").filter(Boolean)

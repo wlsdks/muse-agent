@@ -9,6 +9,7 @@ import {
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import {
@@ -39,7 +40,7 @@ import {
 
 const NOW = new Date("2026-07-01T10:05:00.000Z");
 const execFileAsync = promisify(execFile);
-const childFixture = new URL("./fixtures/background-exit-notice-effect-child.ts", import.meta.url);
+const childFixture = fileURLToPath(new URL("./fixtures/background-exit-notice-effect-child.ts", import.meta.url));
 
 function paths() {
   const dir = mkdtempSync(join(tmpdir(), "muse-background-exit-effect-"));
@@ -366,8 +367,8 @@ describe("background-exit durable messaging effect", () => {
       storeFile: p.storeFile
     };
     await Promise.all([
-      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)]),
-      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)])
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture, JSON.stringify(input)]),
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture, JSON.stringify(input)])
     ]);
     const calls = existsSync(p.callsFile)
       ? readFileSync(p.callsFile, "utf8").trim().split("\n").filter(Boolean)
