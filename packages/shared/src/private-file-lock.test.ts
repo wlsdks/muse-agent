@@ -161,8 +161,7 @@ describe("withPrivateFileLock", () => {
         && (args[1] & constants.O_CREAT) === 0;
       if (!replaced && opensExistingLock) {
         replaced = true;
-        if (process.platform === "win32") await rename(lockFile, originalPath);
-        else await unlink(lockFile);
+        await rename(lockFile, originalPath);
         await writeFile(lockFile, "replacement-owner", { mode: 0o600 });
         await chmod(lockFile, 0o600);
       }
