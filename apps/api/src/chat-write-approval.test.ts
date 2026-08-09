@@ -180,6 +180,20 @@ describe("executeChatApproval confirm-execute", () => {
     expect(await listPendingApprovals(pendingFile)).toHaveLength(0);
   });
 
+  it("does not widen fresh task approval classification while adding followup normalization", async () => {
+    await recordPendingApproval(pendingFile, pendingEntry({ id: "fresh-task-shape", tool: "muse.tasks.add" }));
+    const { tool, calls } = recordingTool("muse.tasks.add", { task: { id: "task-1" } });
+
+    const out = await executeChatApproval({
+      id: "fresh-task-shape",
+      pendingFile,
+      resolveTool: () => tool
+    });
+
+    expect(out.body).toMatchObject({ ran: false, state: "unknown", tool: "muse.tasks.add" });
+    expect(calls).toEqual([{ title: "Buy milk" }]);
+  });
+
   it("executes a route-bound third-party send and rejects a legacy unbound copy with zero effects", async () => {
     const expiresAt = new Date(Date.now() + 60_000).toISOString();
     const arguments_ = { summary: "Book", url: "https://example.com/book" };
