@@ -39,7 +39,7 @@ async function writeEncryptedManifestBackup(
 }
 
 describe("one-file encrypted backup", () => {
-  it("creates, verifies, and restores exact bytes owner-only without changing the source", async () => {
+  it("creates, verifies, and restores exact bytes without changing the source or exposing plaintext", async () => {
     const root = await fixture();
     const sourceFile = join(root, "source.bin");
     const backupFile = join(root, "backup.muse-backup");
@@ -68,9 +68,9 @@ describe("one-file encrypted backup", () => {
     if (process.platform !== "win32") {
       expect((await stat(backupFile)).mode & 0o777).toBe(0o600);
       expect((await stat(join(targetDirectory, "state", "source.bin"))).mode & 0o777).toBe(0o600);
+      expect((await stat(sourceFile)).mode & 0o777).toBe(0o640);
     }
     expect(await readFile(sourceFile)).toEqual(sourceBytes);
-    expect((await stat(sourceFile)).mode & 0o777).toBe(0o640);
     expect(await readFile(backupFile, "utf8")).not.toContain(sourceBytes.toString("base64"));
   });
 

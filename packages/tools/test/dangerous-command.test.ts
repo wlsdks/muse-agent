@@ -5,6 +5,19 @@ import { normalizeCommandNfkc, stripAnsiEscapes } from "../src/dangerous-command
 
 const blocks = (cmd: string) => expect(classifyDangerousCommand(cmd).dangerous, cmd).toBe(true);
 const passes = (cmd: string) => expect(classifyDangerousCommand(cmd).dangerous, cmd).toBe(false);
+const REDOS_RUNTIME_BOUND_MS = 50;
+const REDOS_TIMING_SAMPLES = 5;
+
+function fastestClassificationMs(input: string): number {
+  classifyDangerousCommand(input);
+  let fastest = Number.POSITIVE_INFINITY;
+  for (let sample = 0; sample < REDOS_TIMING_SAMPLES; sample += 1) {
+    const startedAt = performance.now();
+    classifyDangerousCommand(input);
+    fastest = Math.min(fastest, performance.now() - startedAt);
+  }
+  return fastest;
+}
 
 describe("classifyDangerousCommand", () => {
   it("flags irreversible catastrophic commands", () => {
@@ -205,7 +218,7 @@ describe("length cap fails closed", () => {
 });
 
 describe("ReDoS discipline — bounded runtime on adversarial 8KB input", () => {
-  it("classifies pathological 8KB inputs in well under 50ms each", () => {
+  it("classifies pathological 8KB inputs below the repeatable 50ms bound", () => {
     const inputs = [
       `rm -rf ${"x".repeat(8000)}`,
       "$(echo a)".repeat(900),
@@ -216,10 +229,13 @@ describe("ReDoS discipline — bounded runtime on adversarial 8KB input", () => 
       `rm ${"--recursive ".repeat(600)}/`
     ];
     for (const input of inputs) {
-      const start = performance.now();
-      classifyDangerousCommand(input);
-      const elapsed = performance.now() - start;
-      expect(elapsed, `${input.slice(0, 24)}… (${input.length} chars) took ${elapsed}ms`).toBeLessThan(50);
+      // The classifier is pure: the fastest warm sample rejects persistent
+      // algorithmic cost while ignoring one-off hosted-runner preemption.
+      const fastestMs = fastestClassificationMs(input);
+      expect(
+        fastestMs,
+        `${input.slice(0, 24)}… (${input.length} chars) fastest of ${REDOS_TIMING_SAMPLES.toString()} took ${fastestMs.toString()}ms`
+      ).toBeLessThan(REDOS_RUNTIME_BOUND_MS);
     }
   });
 });

@@ -96,9 +96,9 @@ describe("skill usage sidecar", () => {
         beforeWrite: () => new Promise((resolve) => setTimeout(resolve, 100))
       });
     `, "utf8");
-    const tsx = resolve(dirname(fileURLToPath(import.meta.url)), "../../../node_modules/.bin/tsx");
+    const tsxCli = fileURLToPath(import.meta.resolve("tsx/cli"));
     const run = (at: string): Promise<void> => new Promise((resolveRun, reject) => {
-      const child = spawn(tsx, [childScript, file, at], { stderr: "pipe", stdio: ["ignore", "pipe", "pipe"] });
+      const child = spawn(process.execPath, [tsxCli, childScript, file, at], { stderr: "pipe", stdio: ["ignore", "pipe", "pipe"] });
       let stderr = "";
       child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
       child.on("error", reject);
