@@ -74,7 +74,7 @@ describe("Personal Continuity store", () => {
 
     expect(life.kind).toBe("life");
     expect(work.kind).toBe("work");
-    expect((statSync(file).mode & 0o777)).toBe(0o600);
+    if (process.platform !== "win32") expect((statSync(file).mode & 0o777)).toBe(0o600);
     expect((await readAttunementState(file)).threads.map((thread) => thread.kind)).toEqual(["life", "work"]);
   });
 

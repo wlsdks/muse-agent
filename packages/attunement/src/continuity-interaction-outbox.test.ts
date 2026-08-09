@@ -107,7 +107,7 @@ describe("Continuity interaction outbox", () => {
       completedAt: "2026-07-18T02:00:00.000Z",
       taskId: "task_owner_only"
     });
-    expect((await stat(outboxFile)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(outboxFile)).mode & 0o777).toBe(0o600);
 
     const corruptBytes = "{\"schemaVersion\":999,\"entries\":[]}\n";
     await writeFile(outboxFile, corruptBytes);

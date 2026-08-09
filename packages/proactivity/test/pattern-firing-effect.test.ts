@@ -9,6 +9,7 @@ import {
 import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import {
@@ -41,7 +42,7 @@ import {
 
 const NOW = new Date(2026, 4, 12, 21, 30, 0);
 const execFileAsync = promisify(execFile);
-const childFixture = new URL("./fixtures/pattern-firing-effect-child.ts", import.meta.url);
+const childFixture = fileURLToPath(new URL("./fixtures/pattern-firing-effect-child.ts", import.meta.url));
 
 function paths() {
   const dir = mkdtempSync(join(tmpdir(), "muse-pattern-effect-"));
@@ -373,19 +374,19 @@ describe("pattern natural-slot durable effects", () => {
       patternsFiredFile: p.patternsFiredFile
     };
     const burst = await Promise.all([
-      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)]),
-      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)])
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture, JSON.stringify(input)]),
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture, JSON.stringify(input)])
     ]);
     const restart = await execFileAsync(
       process.execPath,
-      ["--import", "tsx", childFixture.pathname, JSON.stringify(input)]
+      ["--import", "tsx", childFixture, JSON.stringify(input)]
     );
     const backwardClock = await execFileAsync(
       process.execPath,
       [
         "--import",
         "tsx",
-        childFixture.pathname,
+        childFixture,
         JSON.stringify({
           ...input,
           nowIso: new Date(NOW.getTime() - 60_000).toISOString()

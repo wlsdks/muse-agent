@@ -1,5 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
@@ -82,7 +82,7 @@ describe("@muse/attunement public authority surface", () => {
   it("allowlists the explicit host seam to production composition roots", async () => {
     const files = await sourceFiles(root);
     const imports = (await Promise.all(files.map(async (file) => hostImportPattern.test(await readFile(file, "utf8"))
-      ? relative(root, file)
+      ? relative(root, file).split(sep).join("/")
       : undefined))).filter((file): file is string => file !== undefined).sort();
     expect(imports).toEqual(allowedHostImports);
   });

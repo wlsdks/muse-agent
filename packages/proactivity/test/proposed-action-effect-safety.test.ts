@@ -9,6 +9,7 @@ import {
 import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import {
@@ -31,7 +32,7 @@ import { confirmProposedAction } from "../src/proposed-action-confirm.js";
 const NOW = new Date("2026-07-26T12:00:00.000Z");
 const now = (): Date => new Date(NOW);
 const execFileAsync = promisify(execFile);
-const childFixture = new URL("./fixtures/proposed-action-confirm-child.ts", import.meta.url);
+const childFixture = fileURLToPath(new URL("./fixtures/proposed-action-confirm-child.ts", import.meta.url));
 const draft = {
   destination: "sam@example.test",
   now,
@@ -364,7 +365,7 @@ describe("proposed action durable outbound effect", () => {
   });
 
   it("admits at most one provider call across processes and deduplicates accepted repair audit", async () => {
-    const fixturePath = childFixture.pathname;
+    const fixturePath = childFixture;
     const race = paths();
     const proposal = await proposeMessageAction(race.file, draft);
     const callsFile = join(race.dir, "provider-calls.txt");

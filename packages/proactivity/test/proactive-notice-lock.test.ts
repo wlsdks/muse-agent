@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { CalendarProviderRegistry, type CalendarProvider } from "@muse/calendar";
@@ -41,7 +42,7 @@ let sidecarFile: string;
 const lockPath = (): string => `${sidecarFile}.firing.lock`;
 const NOW = new Date("2026-05-18T09:00:00.000Z");
 const execFileAsync = promisify(execFile);
-const childFixture = new URL("./fixtures/proactive-notice-lock-child.ts", import.meta.url);
+const childFixture = fileURLToPath(new URL("./fixtures/proactive-notice-lock-child.ts", import.meta.url));
 
 function countingCalendar(onRead: () => void): CalendarProviderRegistry {
   const provider: CalendarProvider = {
@@ -330,8 +331,8 @@ describe("runDueProactiveNotices — cross-process firing lock (two daemons, sam
       tasksFile
     };
     const outputs = await Promise.all([
-      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)]),
-      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)])
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture, JSON.stringify(input)]),
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture, JSON.stringify(input)])
     ]);
     const calls = existsSync(callsFile)
       ? readFileSync(callsFile, "utf8").trim().split("\n").filter(Boolean)
@@ -364,8 +365,8 @@ describe("runDueProactiveNotices — cross-process firing lock (two daemons, sam
       sidecarFile: calendarSidecar
     };
     const outputs = await Promise.all([
-      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)]),
-      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)])
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture, JSON.stringify(input)]),
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture, JSON.stringify(input)])
     ]);
     const calls = existsSync(callsFile)
       ? readFileSync(callsFile, "utf8").trim().split("\n").filter(Boolean)
@@ -406,8 +407,8 @@ describe("runDueProactiveNotices — cross-process firing lock (two daemons, sam
       terminal: true
     };
     const outputs = await Promise.all([
-      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)]),
-      execFileAsync(process.execPath, ["--import", "tsx", childFixture.pathname, JSON.stringify(input)])
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture, JSON.stringify(input)]),
+      execFileAsync(process.execPath, ["--import", "tsx", childFixture, JSON.stringify(input)])
     ]);
     const calls = existsSync(callsFile)
       ? readFileSync(callsFile, "utf8").trim().split("\n").filter(Boolean)
