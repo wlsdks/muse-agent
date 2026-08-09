@@ -8,28 +8,15 @@
 //
 // Known failures are declared rather than skipped. A battery in BASELINE is reported and does not
 // fail the gate; a battery NOT in it that fails does; and a baseline entry that starts passing
-// fails too, so the list cannot quietly become a graveyard.
+// fails too, so the list cannot quietly become a graveyard. The current baseline is intentionally
+// empty: resolved batteries are ratcheted below and may not be silently exempted again.
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
 const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
 const BATTERY_TIMEOUT_MS = 120_000;
 
-/**
- * Failing on the day this runner landed, with the reason. Each is one divergence: the battery
- * recomputes a canonical content id independently and disagrees with the module it checks, so
- * one of the two canonicalisations moved after `8f75070f9` and the other did not. Which side is
- * correct is an AttuneGraph decision about a persisted format — guessing a digest would defeat
- * the pin — so they are declared here and recorded in the backlog for that package's owner.
- */
-export const BASELINE = new Map([
-  ["packages/muse-attunegraph/scripts/verify-fair-frontier-bundle-order.mjs",
-    "2026-07-31: independent request-digest disagrees with fair-frontier-bundle-order.ts"],
-  ["packages/muse-attunegraph/scripts/verify-fair-witness-frontier-settlement.mjs",
-    "2026-07-31: independent receipt-digest disagrees with fair-witness-frontier-settlement.ts"],
-  ["packages/muse-attunegraph/scripts/verify-thread-rooted-witness-documents.mjs",
-    "2026-07-31: independent receipt-digest disagrees with thread-rooted-witness-documents.ts"],
-]);
+export const BASELINE = new Map();
 
 export const INDEPENDENT_PACKAGE_PREFIXES = Object.freeze([
   "packages/attunegraph/",
@@ -81,12 +68,23 @@ function run(command, args) {
   }
 }
 
+export function firstFailedWorkspace(workspaces, build) {
+  for (const workspace of workspaces) {
+    if (!build(workspace)) return workspace;
+  }
+  return undefined;
+}
+
 const invokedDirectly = process.argv[1] && import.meta.url.endsWith(path.basename(process.argv[1]));
 if (invokedDirectly) {
   const batteries = discoverBatteries();
-  for (const workspace of owningWorkspaces(batteries)) {
-    // The batteries import built output; an unbuilt workspace would read as a wall of failures.
-    run("pnpm", ["--filter", `./${workspace}`, "build"]);
+  const failedWorkspace = firstFailedWorkspace(
+    owningWorkspaces(batteries),
+    (workspace) => run("pnpm", ["--filter", `./${workspace}`, "build"]),
+  );
+  if (failedWorkspace) {
+    process.stderr.write(`\n✗ ${failedWorkspace} failed to build; package batteries were not run.\n`);
+    process.exit(1);
   }
 
   const results = batteries.map((battery) => {

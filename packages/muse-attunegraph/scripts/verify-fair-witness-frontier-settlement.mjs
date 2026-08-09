@@ -200,7 +200,7 @@ assert.equal(
 );
 assert.equal(
   result.frontier.receipt.receiptId,
-  "muse-attunegraph-fair-witness-frontier-receipt:sha256:aac7933d6f517f3a4d1df7f22386c04bfd756348e368c04d8548b86e7776c62b"
+  "muse-attunegraph-fair-witness-frontier-receipt:sha256:34431e06c52532306e9d4debe6d7e53ed6dd8d75e7df6fa3697cd0645b004205"
 );
 assert.equal(result.receipt.frontierReceiptId, result.frontier.receipt.receiptId);
 assert.equal(result.receipt.settlementResultId, result.settlement.resultId);

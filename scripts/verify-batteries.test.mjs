@@ -8,6 +8,7 @@ import {
   INDEPENDENT_PACKAGE_PREFIXES,
   classify,
   discoverBatteries,
+  firstFailedWorkspace,
   owningWorkspaces,
 } from "./verify-batteries.mjs";
 
@@ -125,6 +126,28 @@ test("each baseline entry names a battery that exists, with a dated reason", () 
   }
 });
 
+test("resolved canonical digest batteries cannot return to the baseline", () => {
+  for (const battery of [
+    "packages/muse-attunegraph/scripts/verify-fair-frontier-bundle-order.mjs",
+    "packages/muse-attunegraph/scripts/verify-fair-witness-frontier-settlement.mjs",
+    "packages/muse-attunegraph/scripts/verify-thread-rooted-witness-documents.mjs",
+  ]) {
+    assert.equal(BASELINE.has(battery), false, `${battery} must remain release-blocking`);
+  }
+});
+
+test("ordinary Linux CI runs package batteries after the workspace build", () => {
+  const workflow = readFileSync(join(ROOT, ".github/workflows/ci.yml"), "utf8");
+  const linuxJob = workflow.slice(
+    workflow.indexOf("  check:\n"),
+    workflow.indexOf("  check-windows:\n"),
+  );
+  const build = linuxJob.indexOf("- run: pnpm check");
+  const batteries = linuxJob.indexOf("- run: pnpm verify:packages");
+  assert.ok(build >= 0, "ordinary Linux CI must build the workspace");
+  assert.ok(batteries > build, "package batteries must reuse and follow the workspace build");
+});
+
 test("an unlisted failure is the gate's whole point", () => {
   const { broke, known, passed } = classify(
     [{ battery: "a", ok: false }, { battery: "b", ok: true }],
@@ -160,4 +183,14 @@ test("each owning workspace is built once, not once per battery", () => {
     ]),
     ["packages/x", "packages/y"],
   );
+});
+
+test("a workspace build failure stops before later builds or package batteries", () => {
+  const attempted = [];
+  const failed = firstFailedWorkspace(["packages/a", "packages/b", "packages/c"], (workspace) => {
+    attempted.push(workspace);
+    return workspace !== "packages/b";
+  });
+  assert.equal(failed, "packages/b");
+  assert.deepEqual(attempted, ["packages/a", "packages/b"]);
 });

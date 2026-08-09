@@ -45,6 +45,9 @@ jobs:
       # and Muse's @muse/attunegraph adapter tests exercise the consumer contract.
       # AttuneGraph's internal qualification suites belong to its own repository CI.
       - run: pnpm check
+      # Reuse the workspace build above. Muse-owned deterministic integration
+      # batteries include persisted canonical receipt pins and must block release.
+      - run: pnpm verify:packages
       # Reuse `pnpm check` build artifacts: this command deliberately performs
       # no build and exercises the deterministic agent-eval contracts omitted
       # from the workspace package test scripts.

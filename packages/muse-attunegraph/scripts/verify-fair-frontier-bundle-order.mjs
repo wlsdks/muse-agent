@@ -180,11 +180,11 @@ const actual = orderFairFrontierBundles(fixture(opportunities));
 assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected);
 assert.equal(
   actual.requestId,
-  "muse-attunegraph-fair-frontier-request:sha256:701fc2d7836bf2698807ef2f838339c041effed97fb31db1e0fca870dd7850bb"
+  "muse-attunegraph-fair-frontier-request:sha256:1d026cadba49162f1dcfdf70c731e253d9faa0a8f015f212f3fef8ab41e699a3"
 );
 assert.equal(
   actual.orderId,
-  "muse-attunegraph-fair-frontier-order:sha256:8c0d855acdb6b06d68d5a1ae1a6791a3e62bb30f4562cbd8b48c63d43b034497"
+  "muse-attunegraph-fair-frontier-order:sha256:2d23c999af7d2a79b83f55044bd2ab30898f0457e9e7e57ba3537c356e56142b"
 );
 
 const admissionBody = fixture(opportunities);

@@ -207,7 +207,7 @@ assert.equal(
 );
 assert.equal(
   result.frontier?.receipt.receiptId,
-  "muse-attunegraph-fair-witness-frontier-receipt:sha256:f26c8048d60d70df36c8b82b646d565bb89b4827fc5d9b53ba226a6a495356f3"
+  "muse-attunegraph-fair-witness-frontier-receipt:sha256:e91649edecf57a360d5fb02786db393c5110f3080e61f34c6c68b6bbced5fa8f"
 );
 const change = result.settlement.documents.find((document) =>
   document.kind === "change"
@@ -225,7 +225,7 @@ assert.equal(
 );
 assert.equal(
   result.receipt.receiptId,
-  "muse-attunegraph-thread-rooted-witness-receipt:sha256:15249e146c03b10827b5e7872f8862eb417302226701f78b497b4c0b77734e44"
+  "muse-attunegraph-thread-rooted-witness-receipt:sha256:541e74f0a57bccbc22dca53f9335dc4cbf70ad688a51feabfba570ae0e840785"
 );
 const inventory = getThreadRootedRetainedWitnessInventory(result);
 assert.ok(inventory);
@@ -340,7 +340,16 @@ assert.equal(
 );
 assert.equal(
   abstained.receipt.receiptId,
-  "muse-attunegraph-thread-rooted-witness-receipt:sha256:d74ee1e1cfd225fa1a096d174701924ab5333c64ebc2e8f21cb82694d61ff580"
+  contentId(
+    abstained.receipt,
+    "receiptId",
+    "muse.attunegraph.thread-rooted-witness-receipt.v1",
+    "muse-attunegraph-thread-rooted-witness-receipt:sha256:"
+  )
+);
+assert.equal(
+  abstained.receipt.receiptId,
+  "muse-attunegraph-thread-rooted-witness-receipt:sha256:f8aa68c40962ad53f83f915768f324be65bd3e13b5ba095d9bcbe8211dd723cd"
 );
 
 const packageJson = JSON.parse(await readFile(
