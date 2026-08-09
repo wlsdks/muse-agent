@@ -50,6 +50,8 @@ const THREAD_ID = "thread_shadow_return";
 const DELIVERY_ID = "delivery_shadow_return";
 const DECISION_AT = "2026-07-15T09:00:00.000Z";
 const OPENED_AT = "2026-07-15T10:00:00.000Z";
+const HAS_REVIEWED_LOCAL_PROFILE = process.platform === "darwin"
+  || process.platform === "linux";
 
 async function fixture() {
   const file = join(mkdtempSync(join(tmpdir(), "muse-shadow-return-inspection-")), "timing.json");
@@ -613,7 +615,7 @@ describe("Continuity Shadow-return inspection", () => {
     expect(await physicalState(directory)).toEqual(before);
   });
 
-  it("keeps source bytes and entries unchanged across repeated reads and one per-thread failure", async () => {
+  it.runIf(HAS_REVIEWED_LOCAL_PROFILE)("keeps source bytes and entries unchanged across repeated reads and one per-thread failure", async () => {
     const source = await multiFixture();
     const directory = await realpath(
       await mkdtemp(join(tmpdir(), "muse-shadow-return-readonly-"))
