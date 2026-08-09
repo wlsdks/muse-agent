@@ -6,13 +6,13 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
-  realpathSync,
   statSync,
   symlinkSync,
   writeFileSync
 } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { dirname, join } from "node:path";
 
 import { validateToolDefinitions } from "@muse/tools";
 import { describe, expect, it, vi } from "vitest";
@@ -34,6 +34,10 @@ const publicLookup = async () => [{ address: "93.184.216.34", family: 4 }];
 
 function fakeFetch(body: Buffer, status = 200, headers: Record<string, string> = {}): typeof fetch {
   return (async () => new Response(new Uint8Array(body), { status, headers })) as unknown as typeof fetch;
+}
+
+async function expectQuarantineParent(downloadDir: string, path: string): Promise<void> {
+  expect(dirname(await realpath(path))).toBe(await realpath(join(downloadDir, ".muse-quarantine")));
 }
 
 describe("safeDownloadName — basename only, no traversal", () => {
@@ -77,7 +81,7 @@ describe("web_download tool", () => {
     expect(out.name).toBe("report.pdf");
     expect(existsSync(out.path)).toBe(true);
     expect(readFileSync(out.path)).toEqual(bytes);
-    expect(realpathSync(out.path).startsWith(`${realpathSync(join(d, ".muse-quarantine"))}${sep}`)).toBe(true);
+    await expectQuarantineParent(d, out.path);
     if (process.platform !== "win32") {
       expect(statSync(out.path).mode & 0o777).toBe(0o600);
     }
@@ -242,7 +246,7 @@ describe("web_download tool", () => {
     const out = await tool.execute({ url: "https://files.test/x", filename: "../../evil.txt" }, ctx) as { saved: boolean; path: string; name: string };
     expect(out.saved).toBe(true);
     expect(out.name).toBe("evil.txt");
-    expect(realpathSync(out.path).startsWith(`${realpathSync(join(d, ".muse-quarantine"))}${sep}`)).toBe(true);
+    await expectQuarantineParent(d, out.path);
     expect(existsSync(join(d, "evil.txt"))).toBe(false);
   });
 
@@ -285,7 +289,7 @@ describe("web_download tool", () => {
       quarantineState: "held",
       signature: "elf"
     });
-    expect(realpathSync(out.path).startsWith(`${realpathSync(join(d, ".muse-quarantine"))}${sep}`)).toBe(true);
+    await expectQuarantineParent(d, out.path);
   });
 
   it("refuses a pre-existing quarantine symlink so bytes cannot escape Downloads", async () => {
