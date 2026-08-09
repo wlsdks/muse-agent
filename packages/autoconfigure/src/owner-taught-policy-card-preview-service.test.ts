@@ -1,6 +1,9 @@
 import {
+  buildExperienceLearningProposalPreview,
+  buildExperienceLearningReplayBundle,
   buildExperienceLearningReviewQueue,
   fingerprintContinuityPolicy,
+  proposeExperienceLearningFromDelivery,
   readAttunementState,
   type AttunementState
 } from "@muse/attunement";
@@ -122,7 +125,12 @@ describe("OwnerTaughtPolicyCardPreviewService", () => {
       });
 
       expect(result).toMatchObject({
-        assessedPolicy: { detail: "compact", nextStep: "hidden" },
+        assessedPolicy: {
+          detail: "compact",
+          nextStep: "hidden",
+          suppression: "acknowledge-previous",
+          version: 1
+        },
         card: {
           boundary: { activation: "none", approval: "none", effect: "none" },
           evidence: {
@@ -150,9 +158,71 @@ describe("OwnerTaughtPolicyCardPreviewService", () => {
           scope: { kind: "thread-only", threadId: "thread-owner-1" },
           status: "review-preview"
         },
+        review: {
+          draft: {
+            proposedChange: {
+              detail: "compact",
+              kind: "thread-display",
+              nextStep: "contextual"
+            },
+            scope: { kind: "thread-display", threadId: "thread-owner-1" }
+          },
+          evidenceCases: expect.arrayContaining([
+            expect.objectContaining({ caseId: "desired-detail" }),
+            expect.objectContaining({ caseId: "no-activation" })
+          ]),
+          opportunityId: opportunity.opportunityId,
+          previewId: expect.stringMatching(/^learning_preview_[a-f0-9]{64}$/u),
+          replayInputHash: expect.stringMatching(/^[a-f0-9]{64}$/u)
+        },
         schemaVersion: 1,
         status: "rendered"
       });
+      if (result.status !== "rendered") throw new Error("expected rendered Policy Card");
+      expect(result.review.previewId).toBe(result.card.proposal.previewId);
+      expect(result.review.replayInputHash).toBe(
+        result.card.evidence.callerSuppliedReplayClaims.replayInputHash
+      );
+      expect(result.review.draft.proposedChange).toEqual(
+        result.card.proposal.proposedChange
+      );
+      expect(result.review.opportunityId).toBe(opportunity.opportunityId);
+
+      for (const mismatch of ["preview-id", "proposal-copy"] as const) {
+        const mismatched = await createOwnerTaughtPolicyCardPreviewService({
+          now: () => new Date(NOW),
+          policyCardPreview: {
+            preview: async (input) => {
+              const compiled = await rawPreview.preview(input);
+              return compiled.status === "held"
+                ? compiled
+                : {
+                    ...compiled,
+                    card: {
+                      ...compiled.card,
+                      proposal: {
+                        ...compiled.card.proposal,
+                        ...(mismatch === "preview-id"
+                          ? { previewId: `learning_preview_${"f".repeat(64)}` }
+                          : { expectedBenefit: "Different text than the owner reviewed." })
+                      }
+                    }
+                  };
+            }
+          },
+          readState: () => readAttunementState(file)
+        }).preview({
+          detail: "compact",
+          locale: "en",
+          nextStep: "contextual",
+          opportunityId: opportunity.opportunityId
+        });
+        expect(mismatched).toEqual({
+          reason: "review-binding-mismatch",
+          schemaVersion: 1,
+          status: "held"
+        });
+      }
       expect(await readFile(file, "utf8")).toBe(before);
     } finally {
       await rm(directory, { force: true, recursive: true });
@@ -236,16 +306,55 @@ describe("OwnerTaughtPolicyCardPreviewService", () => {
     const result = await createOwnerTaughtPolicyCardPreviewService({
       now: () => new Date(NOW),
       policyCardPreview: {
-        preview: vi.fn(async () => ({
-          card: {
-            proposal: {
-              activeBehaviorDigestBefore:
-                fingerprintContinuityPolicy(current.threads[0]!.policy)
-            },
-            scope: { threadId: "thread-owner-1" }
-          } as never,
-          status: "rendered" as const
-        }))
+        preview: vi.fn(async (input) => {
+          const proposed = proposeExperienceLearningFromDelivery({
+            activeBehaviorDigest:
+              fingerprintContinuityPolicy(current.threads[0]!.policy),
+            delivery: current.deliveries[0]!,
+            draft: input.draft
+          });
+          if (proposed.status === "held") throw new Error("expected proposal");
+          const preparedPreview = buildExperienceLearningProposalPreview(
+            proposed.candidate
+          )!;
+          const replayBundle = buildExperienceLearningReplayBundle(
+            proposed.candidate,
+            input.evidenceCases
+          )!;
+          return {
+            card: {
+              evidence: {
+                authoritativeExperience: {
+                  deliveryId: opportunity.deliveryId,
+                  evidenceClass: opportunity.sourceRun.evidenceClass,
+                  outcome: opportunity.outcome.outcome,
+                  outcomeId: opportunity.outcome.outcomeId,
+                  recordedAt: opportunity.outcome.recordedAt,
+                  sourceRunId: opportunity.sourceRun.runId
+                },
+                callerSuppliedReplayClaims: {
+                  replayBundleId: replayBundle.bundleId,
+                  replayInputHash: replayBundle.replay.inputHash
+                }
+              },
+              proposal: {
+                activeBehaviorDigestAfter:
+                  preparedPreview.activeBehaviorDigestAfter,
+                activeBehaviorDigestBefore:
+                  preparedPreview.activeBehaviorDigestBefore,
+                candidateId: preparedPreview.candidateId,
+                expectedBenefit: preparedPreview.expectedBenefit,
+                expiresAt: preparedPreview.expiresAt,
+                previewId: preparedPreview.previewId,
+                proposedAt: preparedPreview.proposedAt,
+                proposedBehavior: preparedPreview.proposedBehavior,
+                proposedChange: preparedPreview.proposedChange
+              },
+              scope: { threadId: "thread-owner-1" }
+            } as never,
+            status: "rendered" as const
+          };
+        })
       },
       readState
     }).preview({

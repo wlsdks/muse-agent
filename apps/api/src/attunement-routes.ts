@@ -1,9 +1,9 @@
 import { realpath } from "node:fs/promises";
 
-import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, buildExperienceLearningProposalPreview, buildExperienceLearningReplayBundle, buildExperienceLearningReviewQueue, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, ExperienceLearningPromotionError, fingerprintContinuityPolicy, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TEMPLATE, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, promoteApprovedExperienceLearningContinuityPolicy, proposeExperienceLearningFromDelivery, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, verifyExperienceLearningApprovalReceipt, verifyExperienceLearningPromotionHandleBinding, type ArtifactLinkValidator, type ExactArtifactResolver, type ExperienceLearningPromotionHandle, type ExperienceLearningPromotionReceipt } from "@muse/attunement";
+import { ARTIFACT_ROLES, ARTIFACT_TYPES, AttunementStoreError, buildContinuityInteractionReport, buildExperienceLearningProposalPreview, buildExperienceLearningReplayBundle, buildExperienceLearningReviewQueue, calendarProviderId, computeContinuityEvaluation, ContinuityEvaluationError, createBrowsingVisitArtifactValidator, createBrowsingVisitExactArtifactResolver, createCalendarArtifactValidator, createCalendarExactArtifactResolver, createCheckpointArtifactValidator, createCheckpointExactArtifactResolver, createContactArtifactValidator, createContactExactArtifactResolver, createConversationArtifactValidator, createConversationExactArtifactResolver, createExperienceLearningApprovalReceipt, createLocalArtifactValidator, createLocalContinuityTaskInteractionSourceResolver, createLocalExactArtifactResolver, createPersonalThread, createRunArtifactValidator, createRunExactArtifactResolver, createWorkArtifactValidator, createWorkExactArtifactResolver, deletePersonalThreadContinuitySafe, evaluateTimingSession, ExperienceLearningPromotionError, fingerprintContinuityPolicy, forgetObserveSession, forgetTimingSession, inspectObserveSession, inspectTimingSession, linkArtifact, linkWorkContinuity, OBSERVE_CONSENT_TEMPLATE, OBSERVE_CONSENT_TERMS, OBSERVE_CONSENT_VERSION, observeStatus, ObserveStoreError, OUTCOMES, pauseObserveSession, pauseTimingSession, prepareContinuityReview, promoteApprovedExperienceLearningContinuityPolicy, proposeExperienceLearningFromDelivery, readAttunementState, readPreparedContinuityPack, readTimingState, recordTimingFeedback, recordTimingObservation, resetThreadPolicy, resolveCanonicalObserveStateFile, resumeObserveSessionSafe, resumeTimingSession, startObserveSessionSafe, startTimingSession, THREAD_KINDS, TIMING_APP_CATEGORIES, undoThreadReset, unlinkArtifact, unlinkWorkContinuity, verifyExperienceLearningApprovalReceipt, verifyExperienceLearningPromotionHandleBinding, type ArtifactLinkValidator, type ExactArtifactResolver, type ExperienceLearningPromotionHandle, type ExperienceLearningPromotionReceipt } from "@muse/attunement";
 import { openProductionAuthorizedContinuityPack, recordProductionAuthorizedContinuityOutcome } from "@muse/attunement/host";
 import type { ContinuityOutcome, ExperienceLearningProposalDraft, ObserveConsentGrant, OpenPreparedContinuityPack } from "@muse/attunement";
-import { createQualificationLearningWriteGate, readConfiguredContinuityShadowReturns, type ShadowReturnInspectionReport } from "@muse/autoconfigure";
+import { createQualificationLearningWriteGate, QualificationLearningWriteBlockedError, readConfiguredContinuityShadowReturns, type ShadowReturnInspectionReport } from "@muse/autoconfigure";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { readExactBrowsingVisit } from "@muse/recall";
 import { isCanonicalWorkspaceRealpath } from "@muse/shared";
@@ -11,6 +11,7 @@ import { readExactConversation, readExactWork } from "@muse/stores";
 import type { FastifyInstance, FastifyReply } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
+import { policyCardReviewRegistryFor } from "./policy-card-review-registry.js";
 import type { ServerOptions } from "./server.js";
 
 export interface AttunementRoutesGate {
@@ -687,6 +688,112 @@ export function registerAttunementRoutes(server: FastifyInstance, gate: Attuneme
     }
   });
 
+  server.post<{ Params: { readonly opportunityId: string }; Body: unknown }>("/api/attunement/learning-opportunities/:opportunityId/policy-card-apply", async (request, reply) => {
+    if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
+    if (!isExactPolicyCardApplyBody(request.body)) {
+      return reply.code(422).send({ reason: "invalid-policy-card-apply", status: "held" });
+    }
+    if (!/^learning_opportunity_[a-f0-9]{64}$/u.test(request.params.opportunityId)) {
+      return reply.code(422).send({ reason: "invalid-policy-card-apply", status: "held" });
+    }
+    const issuedReview = {
+      draft: request.body.draft,
+      evidenceCases: request.body.evidenceCases,
+      opportunityId: request.params.opportunityId,
+      previewId: request.body.previewId,
+      replayInputHash: request.body.replayInputHash
+    };
+    const reviewRegistry = policyCardReviewRegistryFor(server);
+    if (!reviewRegistry.matches(issuedReview)) {
+      return reply.code(422).send({ reason: "policy-card-review-not-issued", status: "held" });
+    }
+    const state = await readAttunementState(gate.attunementFile);
+    const opportunity = buildExperienceLearningReviewQueue(state).items.find((entry) =>
+      entry.opportunityId === request.params.opportunityId
+    );
+    if (!opportunity) {
+      return reply.code(404).send({ errorMessage: "continuity learning opportunity not found" });
+    }
+    const delivery = state.deliveries.find((entry) => entry.id === opportunity.deliveryId);
+    const thread = state.threads.find((entry) => entry.id === opportunity.scope.threadId);
+    if (!delivery || !thread) {
+      return reply.code(409).send({ reason: "stale-active-policy", status: "held" });
+    }
+    const proposal = proposeExperienceLearningFromDelivery({
+      activeBehaviorDigest: fingerprintContinuityPolicy(thread.policy),
+      delivery,
+      draft: request.body.draft as ExperienceLearningProposalDraft
+    });
+    if (proposal.status === "held") return reply.code(422).send(proposal);
+    if (proposal.candidate.experienceId !== `owner-taught:${request.params.opportunityId}`
+      || proposal.candidate.scope.kind !== "thread-display"
+      || proposal.candidate.proposedChange.kind !== "thread-display") {
+      return reply.code(422).send({ reason: "policy-card-scope-mismatch", status: "held" });
+    }
+    const preview = buildExperienceLearningProposalPreview(proposal.candidate);
+    const replayBundle = buildExperienceLearningReplayBundle(
+      proposal.candidate,
+      request.body.evidenceCases
+    );
+    if (!preview || !replayBundle
+      || preview.previewId !== request.body.previewId
+      || replayBundle.replay.inputHash !== request.body.replayInputHash) {
+      return reply.code(422).send({ reason: "review-binding-mismatch", status: "held" });
+    }
+    const appliedAt = new Date(gate.now?.() ?? Date.now()).toISOString();
+    const approval = createExperienceLearningApprovalReceipt(
+      preview,
+      replayBundle,
+      appliedAt
+    );
+    if (!approval) {
+      return reply.code(422).send({ reason: "invalid-policy-card-approval", status: "held" });
+    }
+    try {
+      const promotion = await promoteApprovedExperienceLearningContinuityPolicy(
+        gate.attunementFile,
+        {
+          approvalReceipt: approval,
+          appliedAt,
+          candidate: proposal.candidate,
+          currentPolicy: thread.policy,
+          nextPolicyVersion: state.nextPolicyVersion,
+          preview,
+          replayBundle
+        },
+        createQualificationLearningWriteGate(gate.env ?? process.env)
+      );
+      reviewRegistry.consume(issuedReview);
+      try {
+        const observer = gate.experienceLearningPromotionObserver;
+        if (observer) {
+          const stateAfter = await readAttunementState(gate.attunementFile);
+          const handles = (stateAfter.experienceLearningPromotionHandles ?? [])
+            .filter((handle) =>
+              verifyExperienceLearningPromotionHandleBinding(promotion, handle)
+            );
+          if (handles.length === 1) observer(promotion, handles[0]!);
+        }
+      } catch {
+        // Observer lookup and invocation are fail-open after the committed CAS.
+      }
+      return { approval, promotion };
+    } catch (cause) {
+      if (cause instanceof QualificationLearningWriteBlockedError) {
+        return reply.code(409).send({
+          errorMessage: `learning application held: ${cause.reason}`,
+          reason: cause.reason,
+          status: "held"
+        });
+      }
+      if (cause instanceof ExperienceLearningPromotionError) {
+        const status = cause.code === "stale-active-policy" ? 409 : 422;
+        return reply.code(status).send({ reason: cause.code, status: "held" });
+      }
+      throw cause;
+    }
+  });
+
   server.get<{ Params: { readonly runId: string } }>("/api/attunement/runs/:runId", async (request, reply) => {
     if (!requireAuthenticated(request, reply, Boolean(gate.authService))) return reply;
     const delivery = (await readAttunementState(gate.attunementFile)).deliveries
@@ -737,4 +844,49 @@ function isExactLearningApplyBody(
         && descriptor.set === undefined
         && descriptor.enumerable === true;
     });
+}
+
+function isExactPolicyCardApplyBody(
+  value: unknown
+): value is {
+  readonly confirm: true;
+  readonly draft: unknown;
+  readonly evidenceCases: unknown;
+  readonly previewId: string;
+  readonly replayInputHash: string;
+} {
+  if (typeof value !== "object" || value === null || Object.getPrototypeOf(value) !== Object.prototype) {
+    return false;
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const fields = ["confirm", "draft", "evidenceCases", "previewId", "replayInputHash"];
+  const keys = Reflect.ownKeys(descriptors);
+  if (keys.length !== fields.length
+    || keys.some((key) => typeof key !== "string" || !fields.includes(key))
+    || fields.some((field) => {
+      const descriptor = descriptors[field];
+      return descriptor === undefined
+        || !Object.hasOwn(descriptor, "value")
+        || descriptor.get !== undefined
+        || descriptor.set !== undefined
+        || descriptor.enumerable !== true;
+    })) {
+    return false;
+  }
+  const read = (field: string): unknown => {
+    const descriptor = descriptors[field];
+    return descriptor && "value" in descriptor && descriptor.enumerable
+      ? descriptor.value
+      : undefined;
+  };
+  const previewId = read("previewId");
+  const replayInputHash = read("replayInputHash");
+  const evidenceCases = read("evidenceCases");
+  return read("confirm") === true
+    && Array.isArray(evidenceCases)
+    && evidenceCases.length === 10
+    && typeof previewId === "string"
+    && /^learning_preview_[a-f0-9]{64}$/u.test(previewId)
+    && typeof replayInputHash === "string"
+    && /^[a-f0-9]{64}$/u.test(replayInputHash);
 }
