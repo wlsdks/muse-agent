@@ -8,7 +8,8 @@ import {
   containsHangul,
   extractFollowupPromises,
   guardAgainstUnbackedActionClaim,
-  sanitizeFollowupSummary
+  sanitizeFollowupSummary,
+  type FollowupPromise
 } from "@muse/agent-core";
 import {
   parseBoolean,
@@ -19,6 +20,7 @@ import {
   resolvePendingApprovalsFile,
   resolveReconfirmCardAnsweredFile,
   resolveReconfirmCardDeliveryFile,
+  resolveRemindersFile,
   type MuseEnvironment
 } from "@muse/autoconfigure";
 import type { UserMemoryStore } from "@muse/memory";
@@ -33,7 +35,15 @@ import {
 } from "@muse/messaging";
 import { describeCapabilities } from "@muse/prompts";
 import { gateChatAnswerGrounding } from "@muse/recall";
-import { readFollowups, upsertFollowup, type PersistedFollowup } from "@muse/stores";
+import {
+  cancelFollowup,
+  mutateReminders,
+  readFollowups,
+  readReminders,
+  upsertFollowup,
+  type PersistedFollowup,
+  type PersistedReminder
+} from "@muse/stores";
 
 import {
   adoptChannelOwner,
@@ -45,10 +55,7 @@ import {
   verifyPairingCodeAttempt
 } from "./channel-owner-store.js";
 import { createChannelPendingRecorder } from "./channel-pending-recorder.js";
-import {
-  applyAutomationHonesty,
-  detectUnsupportedRecurringAutomationIntent
-} from "./chat-automation-honesty.js";
+import { applyAutomationHonesty } from "./chat-automation-honesty.js";
 import { CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST } from "./chat-write-allowlist.js";
 import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
 import { loadChatPersonaSnapshot } from "./chat-persona-snapshot.js";
@@ -233,20 +240,110 @@ async function countScheduledFollowups(followupsFile: string, userId: string): P
  * user text carries no date the rule detector can resolve.
  */
 interface ScheduleUserSideResult {
-  readonly operation: "already-present" | "created" | "none" | "upgraded";
+  readonly operation: "already-present" | "covered-by-reminder" | "created" | "none" | "upgraded";
   readonly recurring: boolean;
   readonly scheduledFor?: Date;
 }
 
+interface UserSidePromise {
+  readonly promise: FollowupPromise;
+  readonly summary: string;
+}
+
+function extractUserSidePromises(rememberClauses: readonly string[], now: Date): readonly UserSidePromise[] {
+  return rememberClauses.flatMap((clause) => {
+    const promises = extractFollowupPromises(clause, { now, requireCommissive: false });
+    return promises.map((promise) => ({
+      promise,
+      summary: sanitizeFollowupSummary(
+        promises.length === 1 ? clause : `${clause} (${promise.originalText})`
+      )
+    }));
+  });
+}
+
+function reminderRecurrenceCoversPromise(
+  reminder: PersistedReminder,
+  promise: FollowupPromise
+): boolean {
+  if (reminder.recurrence === undefined || promise.recurrence === undefined) {
+    return reminder.recurrence === undefined && promise.recurrence === undefined;
+  }
+  if (promise.recurrence.kind === "daily") return reminder.recurrence === "daily";
+  if (promise.recurrence.kind === "weekly") return reminder.recurrence === "weekly";
+  if (promise.recurrence.kind === "monthly") return reminder.recurrence === "monthly";
+  return false;
+}
+
+const REMINDER_SUBJECT_STOP_WORDS = new Set([
+  "a", "add", "afternoon", "at", "call", "check", "create", "daily", "day", "do", "evening", "every", "forget", "get",
+  "make", "me", "monthly", "morning", "night", "notify", "on", "prepare", "remind", "reminder", "remember", "set", "take",
+  "tell", "the", "to", "tomorrow", "weekly",
+  "내일", "매달", "매일", "매주", "모레", "맞춰줘", "먹기", "먹으라고", "아침", "알려줘", "알림", "오전", "오후", "잊지",
+  "저녁", "준비", "해줘"
+]);
+
+function reminderSubjectTokens(text: string): readonly string[] {
+  return (text.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])
+    .filter((token) =>
+      !REMINDER_SUBJECT_STOP_WORDS.has(token)
+      && !/^\d+(?::\d+)?(?:am|pm|시(?:에)?|분(?:에)?|시간(?:에)?|일(?:에)?|월(?:에)?)$/u.test(token));
+}
+
+function reminderSubjectMatches(reminderText: string, summary: string): boolean {
+  const reminderTokens = reminderSubjectTokens(reminderText);
+  const summaryTokens = new Set(reminderSubjectTokens(summary));
+  return reminderTokens.length > 0 && reminderTokens.every((token) => summaryTokens.has(token));
+}
+
+function reminderCoversPromise(
+  reminder: PersistedReminder,
+  promise: FollowupPromise,
+  summary: string
+): boolean {
+  return reminder.status === "pending"
+    && sameScheduledMinute(new Date(reminder.dueAt), promise.scheduledFor)
+    && reminderRecurrenceCoversPromise(reminder, promise)
+    && reminderSubjectMatches(reminder.text, summary);
+}
+
+interface ReminderCoverageDependencies {
+  readonly cancelCaptured: (id: string) => Promise<PersistedFollowup | undefined>;
+  readonly rollbackReminder: (reminder: PersistedReminder) => Promise<boolean>;
+}
+
+export async function reconcileReminderCoverage(
+  reminder: PersistedReminder,
+  captured: PersistedFollowup | undefined,
+  dependencies: ReminderCoverageDependencies
+): Promise<"covered" | "fallback"> {
+  if (!captured) return "covered";
+  const rollbackOrThrow = async (): Promise<"fallback"> => {
+    const rolledBack = await dependencies.rollbackReminder(reminder);
+    if (!rolledBack) {
+      throw new Error("could not reconcile reminder and captured followup");
+    }
+    return "fallback";
+  };
+  let cancelled: PersistedFollowup | undefined;
+  try {
+    cancelled = await dependencies.cancelCaptured(captured.id);
+  } catch {
+    return rollbackOrThrow();
+  }
+  return cancelled ? "covered" : rollbackOrThrow();
+}
+
 async function scheduleUserSideFollowups(
   followupsFile: string,
+  remindersFile: string,
   userId: string,
   rememberClauses: readonly string[],
   now: Date,
-  runId: string | undefined
+  runId: string | undefined,
+  newReminders: readonly PersistedReminder[]
 ): Promise<ScheduleUserSideResult> {
-  const promises = rememberClauses.flatMap((clause) =>
-    extractFollowupPromises(clause, { now, requireCommissive: false }));
+  const promises = extractUserSidePromises(rememberClauses, now);
   const capturedDuringRun = runId === undefined
     ? []
     : (await readScheduledFollowupsFor(followupsFile, userId))
@@ -261,19 +358,45 @@ async function scheduleUserSideFollowups(
     none: 0,
     "already-present": 1,
     created: 2,
-    upgraded: 3
+    upgraded: 3,
+    "covered-by-reminder": 4
   };
   let operation: ScheduleUserSideResult["operation"] = "none";
   let firstScheduled: Date | undefined;
   let recurring = false;
-  for (const promise of promises) {
+  const matchedReminderIds = new Set<string>();
+  const consumedCapturedIds = new Set<string>();
+  for (const { promise, summary } of promises) {
     const capturedThisTurn = capturedDuringRun.find((followup) =>
-      sameScheduledMinute(new Date(followup.scheduledFor), promise.scheduledFor));
-    if (capturedThisTurn && promise.recurrence === undefined) {
-      firstScheduled ??= new Date(capturedThisTurn.scheduledFor);
-      recurring ||= capturedThisTurn.recurrence !== undefined;
-      if (priority["already-present"] > priority[operation]) operation = "already-present";
-      continue;
+      !consumedCapturedIds.has(followup.id)
+      && sameScheduledMinute(new Date(followup.scheduledFor), promise.scheduledFor));
+    const coveringReminder = newReminders.find((reminder) =>
+      !matchedReminderIds.has(reminder.id) && reminderCoversPromise(reminder, promise, summary));
+    if (coveringReminder) {
+      matchedReminderIds.add(coveringReminder.id);
+      const coverage = await reconcileReminderCoverage(coveringReminder, capturedThisTurn, {
+        cancelCaptured: (id) => cancelFollowup(followupsFile, id, "covered-by-reminder"),
+        rollbackReminder: async (reminder) => {
+          let removed = false;
+          await mutateReminders(remindersFile, (current) => {
+            const target = current.find((candidate) =>
+              candidate.id === reminder.id
+              && candidate.createdAt === reminder.createdAt
+              && candidate.dueAt === reminder.dueAt
+              && candidate.status === "pending");
+            if (!target) return current;
+            removed = true;
+            return current.filter((candidate) => candidate.id !== reminder.id);
+          });
+          return removed;
+        }
+      });
+      if (coverage === "covered") {
+        if (capturedThisTurn) consumedCapturedIds.add(capturedThisTurn.id);
+        recurring ||= coveringReminder.recurrence !== undefined;
+        if (priority["covered-by-reminder"] > priority[operation]) operation = "covered-by-reminder";
+        continue;
+      }
     }
     const followup: PersistedFollowup = {
       createdAt: capturedThisTurn?.createdAt ?? now.toISOString(),
@@ -283,7 +406,7 @@ async function scheduleUserSideFollowups(
       ...(capturedThisTurn?.originTurnHash ? { originTurnHash: capturedThisTurn.originTurnHash } : {}),
       scheduledFor: promise.scheduledFor.toISOString(),
       status: "scheduled",
-      summary: sanitizeFollowupSummary(promise.originalText),
+      summary,
       userId,
       ...(promise.recurrence ? { recurrence: promise.recurrence } : {})
     };
@@ -291,6 +414,7 @@ async function scheduleUserSideFollowups(
     // bad write must not block the rest, or fail the turn.
     const result = await upsertFollowup(followupsFile, followup).catch(() => undefined);
     if (!result || result.operation === "none") continue;
+    if (capturedThisTurn) consumedCapturedIds.add(capturedThisTurn.id);
     if (firstScheduled === undefined) {
       firstScheduled = result.followup ? new Date(result.followup.scheduledFor) : promise.scheduledFor;
     }
@@ -522,13 +646,12 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     // (a normal question, an action request with no date, small talk) never
     // touches the followups file.
     const rememberIntent = detectUnscheduledRememberIntent(latestUserText);
-    const unsupportedAutomation = detectUnsupportedRecurringAutomationIntent(latestUserText);
-    const rememberClauses = rememberIntent
-      ? (unsupportedAutomation ? rememberIntentClauses(latestUserText) : [latestUserText])
-      : [];
+    const rememberClauses = rememberIntent ? rememberIntentClauses(latestUserText) : [];
     const followupsFile = resolveFollowupsFile(env);
+    const remindersFile = resolveRemindersFile(env);
     const turnNow = new Date();
     const scheduledBefore = rememberIntent ? await readScheduledFollowupsFor(followupsFile, runUserId) : [];
+    const remindersBefore = rememberIntent ? await readReminders(remindersFile).catch(() => []) : [];
     const result = await agentRuntime.run({
       messages,
       metadata: { userId: runUserId },
@@ -559,7 +682,7 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
       })
     });
     const rawOutput = result.response?.output ?? "";
-    if (rawOutput.length === 0) {
+    if (rawOutput.length === 0 && !rememberIntent) {
       return rawOutput;
     }
     // Grounding parity with the /chat surface: gate the raw agent output
@@ -589,6 +712,13 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     if (!rememberIntent) {
       return applyAutomationHonesty({ replyText: honest.response.output, userText: latestUserText }).content;
     }
+    const priorReminderIds = new Set(remindersBefore.map((reminder) => reminder.id));
+    const reminderToolUsed = result.toolsUsed?.includes("muse.reminders.add") ?? false;
+    const newReminders = reminderToolUsed
+      ? (await readReminders(remindersFile).catch(() => [])).filter((reminder) =>
+          !priorReminderIds.has(reminder.id)
+          && Date.parse(reminder.createdAt) >= turnNow.getTime())
+      : [];
     // Deterministic user-side scheduling runs BEFORE the caveat
     // check, so the caveat's before/after count naturally sees whatever it
     // scheduled: no separate branch, no double-append. `turnNow` anchors
@@ -596,10 +726,12 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     // instant.
     const scheduledFromUser = await scheduleUserSideFollowups(
       followupsFile,
+      remindersFile,
       runUserId,
       rememberClauses,
       turnNow,
-      result.runId
+      result.runId,
+      newReminders
     );
     const honestOutput = applyAutomationHonesty({
       replyText: honest.response.output,

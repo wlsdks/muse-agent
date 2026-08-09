@@ -97,6 +97,28 @@ function options(
 }
 
 describe("runDueFollowups durable occurrence effect", () => {
+  it("passes the stored reminder subject into the firing fact sheet", async () => {
+    const p = paths();
+    await writeFollowups(p.followupsFile, [followup({ summary: "수요일마다 6시에 회의 있는거 잊지 마" })]);
+    let factSheet = "";
+    const result = await runDueFollowups({
+      ...options(p, registry(async (message) => ({
+        destination: message.destination,
+        messageId: "accepted-subject",
+        providerId: "telegram"
+      })), { synthesis: 0 }),
+      modelProvider: {
+        generate: async (input) => {
+          factSheet = input.messages.find((message) => message.role === "user")?.content ?? "";
+          return { output: "회의 준비할 시간이야." };
+        }
+      }
+    });
+
+    expect(result.delivered).toBe(1);
+    expect(factSheet).toContain("committed summary: 수요일마다 6시에 회의 있는거 잊지 마");
+  });
+
   it("binds one occurrence and marks it from the accepted provider receipt", async () => {
     const p = paths();
     await writeFollowups(p.followupsFile, [followup()]);

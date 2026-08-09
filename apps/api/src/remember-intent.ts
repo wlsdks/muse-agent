@@ -27,7 +27,7 @@ import { detectUnscheduledRememberIntent as detectUnscheduledRememberIntentCore 
  */
 
 const REMEMBER_VERB_KO_RE =
-  /기억해(?:줘|둬|라|줄래|줄\s*수)?|기억하고\s*있어(?:줘)?|잊지\s*(?:말고|마|않게)|까먹지\s*않게|리마인드(?:해줘)?|알림\s*(?:설정해|해)|라고\s*알려(?:줘|주고|주는|달라)/u;
+  /기억해(?:줘|둬|라|줄래|줄\s*수)?|기억하고\s*있어(?:줘)?|잊지\s*(?:말고|마|않게)|까먹지\s*않게|리마인드(?:해줘)?|알림\s*(?:설정해|해|맞춰(?:줘|주세요)?)|라고\s*알려(?:줘|주고|주는|달라)/u;
 const REMEMBER_VERB_EN_RE = /\bremind\s+me\b|\breminder\b|\bremember\s+(?:this|that|to)\b|\bdon['’]?t\s+forget\b/iu;
 
 const DATE_SHAPED_KO_RE =
