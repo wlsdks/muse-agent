@@ -538,11 +538,16 @@ describe("Continuity Capsule preparation service", () => {
     const requests: unknown[] = [];
     let active = 0;
     let peak = 0;
+    let resolveCapacityReached!: () => void;
+    const capacityReached = new Promise<void>((resolve) => {
+      resolveCapacityReached = resolve;
+    });
     const generate = vi.fn((request: unknown) => {
       const callIndex = requests.length;
       requests.push(request);
       active += 1;
       peak = Math.max(peak, active);
+      if (requests.length === 4) resolveCapacityReached();
       if (callIndex < 4) {
         return new Promise<ModelResponse>((resolve) => {
           late.push((response) => {
@@ -584,9 +589,7 @@ describe("Continuity Capsule preparation service", () => {
           : {})
       })
     );
-    for (let turn = 0; turn < 100 && generate.mock.calls.length < 4; turn++) {
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
+    await capacityReached;
     expect(generate).toHaveBeenCalledTimes(4);
     controllers[0]!.abort(new Error("cancel first"));
     controllers[1]!.abort(new Error("cancel second"));
