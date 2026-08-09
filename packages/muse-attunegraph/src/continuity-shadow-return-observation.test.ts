@@ -35,6 +35,8 @@ const DECISION_AT = "2026-07-15T09:00:00.000Z";
 const OPENED_AT = "2026-07-15T10:00:00.000Z";
 const OBSERVED_AT = "2026-07-15T10:01:00.000Z";
 const PROVIDER_SOURCE_ID = "muse.local-attunement";
+const HAS_REVIEWED_LOCAL_PROFILE = process.platform === "darwin"
+  || process.platform === "linux";
 
 function state(openedAt = OPENED_AT) {
   return {
@@ -246,7 +248,7 @@ describe("Continuity Shadow-return observation", () => {
       .not.toBe(withReturn.projection.projectionVersion);
   });
 
-  it("persists a queryable full snapshot and actively removes forgotten relations", async () => {
+  it.runIf(HAS_REVIEWED_LOCAL_PROFILE)("persists a queryable full snapshot and actively removes forgotten relations", async () => {
     const fixture = await timingFixture();
     const databasePath = join(
       realpathSync(mkdtempSync(join(tmpdir(), "muse-shadow-return-durable-"))),

@@ -20,12 +20,18 @@ import {
   captureContinuityObservation,
   type ContinuityObservationReceipt
 } from "./continuity-observation.js";
+import {
+  CONTINUITY_SOURCE_NAMESPACES,
+  deriveContinuityPolicyGraphRef
+} from "./continuity-projection-identity.js";
 import { continuityThreadGraphRef } from "./continuity-projection.js";
 
 const SOURCE_ID = "muse.local-attunement";
 const THREAD_ID = "thread_durable_projection";
 const FIRST_AT = "2026-07-31T01:00:00.000Z";
 const SECOND_AT = "2026-07-31T02:00:00.000Z";
+const HAS_REVIEWED_LOCAL_PROFILE = process.platform === "darwin"
+  || process.platform === "linux";
 const temporaryDirectories: string[] = [];
 
 function state(version = 1): AttunementState {
@@ -153,7 +159,7 @@ afterEach(async () => {
 });
 
 describe("Continuity durable AttuneGraph projection", () => {
-  it("projects, replays, restarts, and advances from the persisted exact head", async () => {
+  it.runIf(HAS_REVIEWED_LOCAL_PROFILE)("projects, replays, restarts, and advances from the persisted exact head", async () => {
     const databasePath = await temporaryDatabase();
     const firstReceipt = observation();
     const firstProjector = createContinuityAttuneGraphProjector({
@@ -224,7 +230,7 @@ describe("Continuity durable AttuneGraph projection", () => {
     await graph.close();
   });
 
-  it("projects historical policy components through the exact declared thread root", async () => {
+  it.runIf(HAS_REVIEWED_LOCAL_PROFILE)("projects historical policy components through the exact declared thread root", async () => {
     const databasePath = await temporaryDatabase();
     const projector = createContinuityAttuneGraphProjector({ databasePath });
 
@@ -237,12 +243,48 @@ describe("Continuity durable AttuneGraph projection", () => {
       databasePath,
       scope: { sourceId: SOURCE_ID, threadId: THREAD_ID }
     });
-    await expect(graph.execute({
+    const result = await graph.execute({
       operator: "working-graph@1",
       seed: continuityThreadGraphRef({ sourceId: SOURCE_ID, threadId: THREAD_ID }),
       now: SECOND_AT,
       maxEstimatedTokens: 12_000
-    })).resolves.toMatchObject({ status: "complete" });
+    });
+    expect(result).toMatchObject({ status: "complete" });
+    const resetAssertions = result.workingGraph.assertions.filter((assertion) =>
+      assertion.sourceRefs.length === 1
+      && assertion.sourceRefs[0]?.namespace
+        === CONTINUITY_SOURCE_NAMESPACES.policyReset
+    );
+    const threadRoot = continuityThreadGraphRef({
+      sourceId: SOURCE_ID,
+      threadId: THREAD_ID
+    });
+    expect(resetAssertions).toHaveLength(4);
+    expect(new Set(resetAssertions.flatMap((assertion) =>
+      assertion.sourceRefs.map((sourceRef) => sourceRef.id)
+    )).size).toBe(2);
+    expect(resetAssertions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        object: deriveContinuityPolicyGraphRef(SOURCE_ID, THREAD_ID, 4),
+        predicate: "SUPERSEDES",
+        subject: deriveContinuityPolicyGraphRef(SOURCE_ID, THREAD_ID, 5)
+      }),
+      expect.objectContaining({
+        object: threadRoot,
+        predicate: "SCOPED_TO",
+        subject: deriveContinuityPolicyGraphRef(SOURCE_ID, THREAD_ID, 5)
+      }),
+      expect.objectContaining({
+        object: deriveContinuityPolicyGraphRef(SOURCE_ID, THREAD_ID, 9),
+        predicate: "SUPERSEDES",
+        subject: deriveContinuityPolicyGraphRef(SOURCE_ID, THREAD_ID, 10)
+      }),
+      expect.objectContaining({
+        object: threadRoot,
+        predicate: "SCOPED_TO",
+        subject: deriveContinuityPolicyGraphRef(SOURCE_ID, THREAD_ID, 10)
+      })
+    ]));
     await graph.close();
   });
 
@@ -273,7 +315,7 @@ describe("Continuity durable AttuneGraph projection", () => {
       })
     };
     const projector = createContinuityAttuneGraphProjectorWithDependencies(
-      { databasePath: "/tmp/serialized-attunegraph.sqlite" },
+      { databasePath: join(tmpdir(), "serialized-attunegraph.sqlite") },
       dependencies
     );
 
@@ -307,13 +349,13 @@ describe("Continuity durable AttuneGraph projection", () => {
     ).toThrow(ContinuityAttuneGraphProjectionError);
     expect(() =>
       createContinuityAttuneGraphProjector(
-        new Proxy({ databasePath: "/tmp/proxy.sqlite" }, {})
+        new Proxy({ databasePath: join(tmpdir(), "proxy.sqlite") }, {})
       )
     ).toThrow(expect.objectContaining({ code: "INVALID_CONFIGURATION" }));
 
     const openLocal = vi.fn();
     const projector = createContinuityAttuneGraphProjectorWithDependencies(
-      { databasePath: "/tmp/invalid-receipt.sqlite" },
+      { databasePath: join(tmpdir(), "invalid-receipt.sqlite") },
       { openLocal }
     );
     const tampered = JSON.parse(
@@ -342,7 +384,7 @@ describe("Continuity durable AttuneGraph projection", () => {
       close
     }));
     const projector = createContinuityAttuneGraphProjectorWithDependencies(
-      { databasePath: "/tmp/stale-head.sqlite" },
+      { databasePath: join(tmpdir(), "stale-head.sqlite") },
       { openLocal }
     );
 
@@ -369,7 +411,7 @@ describe("Continuity durable AttuneGraph projection", () => {
     const primary = new Error("private-primary");
     const cleanup = new Error("private-cleanup");
     const failing = createContinuityAttuneGraphProjectorWithDependencies(
-      { databasePath: "/tmp/primary-wins.sqlite" },
+      { databasePath: join(tmpdir(), "primary-wins.sqlite") },
       {
         openLocal: async () => ({
           head: async () => undefined,
@@ -388,7 +430,7 @@ describe("Continuity durable AttuneGraph projection", () => {
     expect((primaryFailure as Error).cause).toBe(primary);
 
     const closeOnly = createContinuityAttuneGraphProjectorWithDependencies(
-      { databasePath: "/tmp/close-only.sqlite" },
+      { databasePath: join(tmpdir(), "close-only.sqlite") },
       {
         openLocal: async () => ({
           head: async () => undefined,
