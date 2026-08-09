@@ -9,6 +9,11 @@ import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 import { normalizeLocalTaskMutationOutcome } from "@muse/domain-tools";
 
+const FRESH_LOCAL_MUTATION_OUTCOME_TOOLS = new Set([
+  "muse.followup.cancel",
+  "muse.followup.snooze"
+]);
+
 export interface ChatApprovalExecuteResult {
   readonly statusCode: number;
   readonly body: Record<string, unknown>;
@@ -133,6 +138,7 @@ export async function executeChatApproval(opts: {
               ...(opts.signal ? { signal: opts.signal } : {})
             });
             return opts.acquisition === "recover-stale-claim"
+              || FRESH_LOCAL_MUTATION_OUTCOME_TOOLS.has(snapshot.tool)
               ? normalizeLocalTaskMutationOutcome(snapshot.tool, output)
               : output;
           } catch (cause) {

@@ -8,6 +8,10 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+- Let the paired owner list, cancel, or snooze Muse's captured follow-ups from
+  the same chat surface. Cancel and snooze remain fail-closed behind exact
+  approval, and successful local mutations now produce durable success rather
+  than an unknown-effect receipt.
 - Cross-bound the standalone AttuneGraph `decision-query@1` receipt into Muse's
   fresh provider-head Continuity resume path. Muse now projects the verified
   current observation through an ephemeral exact head, runs the fixed-profile
