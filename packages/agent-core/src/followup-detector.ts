@@ -152,6 +152,13 @@ export function extractFollowupPromises(
   const out: FollowupPromise[] = [];
   const seenMinute = new Set<number>();
   const slots = { ...DEFAULT_SLOTS, ...options.slotHours };
+  const compoundTimeSpans: Array<{ readonly end: number; readonly start: number }> = [];
+  const claimCompoundTimeSpan = (match: RegExpMatchArray): void => {
+    const start = match.index ?? 0;
+    compoundTimeSpans.push({ end: start + (match[0]?.length ?? 0), start });
+  };
+  const isInsideCompoundTimeSpan = (index: number): boolean =>
+    compoundTimeSpans.some((span) => index >= span.start && index < span.end);
   const push = (promise: FollowupPromise, matchIndex: number): void => {
     // An unsupported recurrence-shaped phrase must never fall through to a
     // one-shot. Supported recurrence promises carry their rule and bypass this
@@ -249,31 +256,53 @@ export function extractFollowupPromises(
     }, match.index ?? 0);
   }
 
-  for (const match of text.matchAll(/\btomorrow(?:\s+(morning|afternoon|evening|night))?\b/giu)) {
+  for (const match of text.matchAll(
+    /\btomorrow(?:\s+(morning|afternoon|evening|night))?(?:\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?)?(?=\s|[,.!?;:]|$)/giu
+  )) {
     const slot = ((match[1] ?? "morning").toLowerCase()) as keyof typeof slots;
-    const hour = slots[slot] ?? slots.morning;
-    const scheduledFor = nextDayAtHour(options.now, hour);
+    const explicitHour = match[2] ? Number.parseInt(match[2], 10) : undefined;
+    const minute = match[3] ? Number.parseInt(match[3], 10) : 0;
+    const meridiem = (match[4] ?? "").toLowerCase().replace(/\./gu, "");
+    claimCompoundTimeSpan(match);
+    if (explicitHour !== undefined && (!Number.isFinite(minute) || minute < 0 || minute > 59)) continue;
+    const hour = explicitHour === undefined
+      ? slots[slot] ?? slots.morning
+      : meridiem
+        ? applyMeridiem(explicitHour, meridiem)
+        : applyEnglishDayPeriod(explicitHour, match[1]);
+    if (hour === undefined) continue;
+    const scheduledFor = nextDayAtHourMinute(options.now, hour, minute);
     push({
-      confidence: "low",
+      confidence: explicitHour !== undefined && meridiem ? "high" : "low",
       kind: "tomorrow-slot",
       originalText: match[0] ?? "",
       scheduledFor
     }, match.index ?? 0);
   }
-  for (const match of text.matchAll(/내일(?:\s*(아침|오전|점심|오후|저녁|밤))?/gu)) {
+  for (const match of text.matchAll(
+    /내일(?:\s*(아침|오전|점심|오후|저녁|밤))?(?:\s*(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?)?/gu
+  )) {
     const slotKr = match[1] ?? "아침";
     const slot = (KOREAN_SLOTS[slotKr] ?? "morning");
-    const hour = slots[slot] ?? slots.morning;
-    const scheduledFor = nextDayAtHour(options.now, hour);
+    const explicitHour = match[2] ? Number.parseInt(match[2], 10) : undefined;
+    const minute = match[3] ? Number.parseInt(match[3], 10) : 0;
+    claimCompoundTimeSpan(match);
+    if (explicitHour !== undefined && (!Number.isFinite(minute) || minute < 0 || minute > 59)) continue;
+    const hour = explicitHour === undefined
+      ? slots[slot] ?? slots.morning
+      : applyKoreanDayPeriod(explicitHour, match[1]);
+    if (hour === undefined) continue;
+    const scheduledFor = nextDayAtHourMinute(options.now, hour, minute);
     push({
-      confidence: "low",
+      confidence: explicitHour === undefined ? "low" : "high",
       kind: "korean-tomorrow-slot",
       originalText: match[0] ?? "",
       scheduledFor
     }, match.index ?? 0);
   }
 
-  for (const match of text.matchAll(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\b/giu)) {
+  for (const match of text.matchAll(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?(?=\s|[,.!?;:]|$)/giu)) {
+    if (isInsideCompoundTimeSpan(match.index ?? 0)) continue;
     const hourRaw = Number.parseInt(match[1] ?? "", 10);
     const minuteRaw = match[2] ? Number.parseInt(match[2], 10) : 0;
     const meridiem = (match[3] ?? "").toLowerCase().replace(/\./gu, "");
@@ -289,6 +318,7 @@ export function extractFollowupPromises(
     }, match.index ?? 0);
   }
   for (const match of text.matchAll(/(?:오늘\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?(?:에|쯤)?/gu)) {
+    if (isInsideCompoundTimeSpan(match.index ?? 0)) continue;
     // Avoid matching "5 시간" which is "hours" (e.g. "5시간 후").
     const tail = text.slice((match.index ?? 0) + (match[0]?.length ?? 0));
     if (/^\s*간/u.test(tail) || /^\s*(?:뒤|후)/u.test(tail)) continue;
@@ -727,7 +757,7 @@ function unitToMs(unit: string, value: number): number | undefined {
 
 function applyMeridiem(hour: number, meridiem: string): number | undefined {
   if (!meridiem) {
-    return hour;
+    return hour >= 0 && hour <= 23 ? hour : undefined;
   }
   // With am/pm it's a 12-hour-clock value; anything outside 1..12
   // ("at 15pm", "at 0am") is contradictory garbage. Reject it so
@@ -745,10 +775,29 @@ function applyMeridiem(hour: number, meridiem: string): number | undefined {
   return undefined;
 }
 
-function nextDayAtHour(now: Date, hour: number): Date {
+function applyEnglishDayPeriod(hour: number, period: string | undefined): number | undefined {
+  if (!period) return applyMeridiem(hour, "");
+  if (hour < 1 || hour > 23) return undefined;
+  if (hour > 12) return hour;
+  if (period.toLowerCase() === "morning") {
+    return hour === 12 ? 0 : hour;
+  }
+  return hour === 12 ? 12 : hour + 12;
+}
+
+function applyKoreanDayPeriod(hour: number, period: string | undefined): number | undefined {
+  if (!period) return hour >= 0 && hour <= 23 ? hour : undefined;
+  if (hour < 1 || hour > 12) return undefined;
+  if (period === "아침" || period === "오전") {
+    return hour === 12 ? 0 : hour;
+  }
+  return hour === 12 ? 12 : hour + 12;
+}
+
+function nextDayAtHourMinute(now: Date, hour: number, minute: number): Date {
   const next = new Date(now);
   next.setDate(next.getDate() + 1);
-  next.setHours(hour, 0, 0, 0);
+  next.setHours(hour, minute, 0, 0);
   return next;
 }
 

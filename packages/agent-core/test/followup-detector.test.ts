@@ -115,6 +115,61 @@ describe("extractFollowupPromises — English `tomorrow` slot", () => {
     expect(result[0]?.scheduledFor.getHours()).toBe(7);
   });
 
+  it("treats `tomorrow at 9am` as one compound time expression", () => {
+    const localMorning = new Date(2026, 4, 13, 8, 0, 0, 0);
+    const result = extractFollowupPromises("remind me tomorrow at 9am", { now: localMorning });
+    const expected = new Date(localMorning);
+    expected.setDate(expected.getDate() + 1);
+    expected.setHours(9, 0, 0, 0);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      confidence: "high",
+      kind: "tomorrow-slot",
+      originalText: "tomorrow at 9am"
+    });
+    expect(result[0]?.scheduledFor.getTime()).toBe(expected.getTime());
+  });
+
+  it("keeps a dotted meridiem inside the compound tomorrow expression", () => {
+    const localMorning = new Date(2026, 4, 13, 8, 0, 0, 0);
+    const result = extractFollowupPromises("remind me tomorrow at 9 p.m.", { now: localMorning });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      confidence: "high",
+      kind: "tomorrow-slot",
+      originalText: "tomorrow at 9 p.m."
+    });
+    expect(result[0]?.scheduledFor.getHours()).toBe(21);
+  });
+
+  it("uses a named day period for a bare compound hour", () => {
+    const localMorning = new Date(2026, 4, 13, 8, 0, 0, 0);
+    const result = extractFollowupPromises("tomorrow afternoon at 3", { now: localMorning });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.scheduledFor.getHours()).toBe(15);
+  });
+
+  it("rejects compound hours that would roll into an unrequested day", () => {
+    const localMorning = new Date(2026, 4, 13, 8, 0, 0, 0);
+
+    expect(extractFollowupPromises("tomorrow at 24", { now: localMorning })).toHaveLength(0);
+    expect(extractFollowupPromises("tomorrow at 23", { now: localMorning })[0]?.scheduledFor.getHours()).toBe(23);
+  });
+
+  it("keeps an independent same-day time outside the compound tomorrow span", () => {
+    const localMorning = new Date(2026, 4, 13, 8, 0, 0, 0);
+    const result = extractFollowupPromises(
+      "remind me tomorrow at 9am, then check again at 10am today",
+      { now: localMorning }
+    );
+
+    expect(result).toHaveLength(2);
+    expect(result.map((promise) => promise.kind)).toEqual(["tomorrow-slot", "today-at"]);
+  });
+
   it("does NOT emit a promise when slotHours has a non-finite hour (NaN / Infinity from a corrupt env / settings parse) — Invalid Date would crash the followup-capture-hook's `.toISOString()` downstream", () => {
     // setHours(NaN, ...) produces an Invalid Date; `.toISOString()`
     // on that throws RangeError. The detector's contract is "every
@@ -212,6 +267,21 @@ describe("extractFollowupPromises — Korean relative", () => {
     const result = extractFollowupPromises("내일 아침에 다시 봐 드릴게요.", { now });
     expect(result[0]?.kind).toBe("korean-tomorrow-slot");
     expect(result[0]?.scheduledFor.getHours()).toBe(9);
+  });
+
+  it.each([
+    ["내일 오전 9시에 알려줘", 9],
+    ["내일 오후 3시에 알려줘", 15]
+  ])("treats an explicit Korean tomorrow time as one compound expression: %s", (text, hour) => {
+    const localMorning = new Date(2026, 4, 13, 8, 0, 0, 0);
+    const result = extractFollowupPromises(text, { now: localMorning });
+    const expected = new Date(localMorning);
+    expected.setDate(expected.getDate() + 1);
+    expected.setHours(hour, 0, 0, 0);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ confidence: "high", kind: "korean-tomorrow-slot" });
+    expect(result[0]?.scheduledFor.getTime()).toBe(expected.getTime());
   });
 
   it("maps every Korean `내일 <slot>` variant to its slot hour (오전/점심/오후/저녁/밤), not just 아침", () => {
