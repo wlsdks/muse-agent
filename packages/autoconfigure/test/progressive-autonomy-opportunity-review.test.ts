@@ -1,11 +1,12 @@
-import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { promises as fsPromises } from "node:fs";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { createPersonalThread, linkArtifact } from "@muse/attunement";
 import { writeTasks } from "@muse/stores";
 import { FileProgressiveAutonomyOpportunityStore } from "@muse/stores/host-progressive-autonomy-opportunities";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ProgressiveAutonomyOpportunityReviewService } from "../src/index.js";
 
@@ -147,18 +148,23 @@ describe("ProgressiveAutonomyOpportunityReviewService", () => {
     const deniedOpportunityBytes = await readFile(denied.opportunitiesFile, "utf8");
     const deniedAttunementBytes = await readFile(denied.attunementFile, "utf8");
     const deniedNames = await readdir(dirname(denied.tasksFile));
-    await chmod(denied.tasksFile, 0o000);
+    const originalReadFile = fsPromises.readFile;
+    const permissionDenied = Object.assign(new Error("simulated permission denial"), { code: "EACCES" });
+    const readFileSpy = vi.spyOn(fsPromises, "readFile").mockImplementation(async (...args) => {
+      if (args[0] === denied.tasksFile) throw permissionDenied;
+      return originalReadFile(...args);
+    });
     try {
       expect(await denied.service.review()).toMatchObject({ currentSource: { state: "unavailable" } });
       for (const decision of ["would-approve", "would-deny", "needs-adjustment"] as const) {
         await expect(denied.service.decide(deniedOrganic.id, { decision })).rejects.toThrow("current source is unavailable");
       }
-      expect(await readFile(denied.opportunitiesFile, "utf8")).toBe(deniedOpportunityBytes);
-      expect(await readFile(denied.attunementFile, "utf8")).toBe(deniedAttunementBytes);
-      expect(await readdir(dirname(denied.tasksFile))).toEqual(deniedNames);
     } finally {
-      await chmod(denied.tasksFile, 0o600);
+      readFileSpy.mockRestore();
     }
+    expect(await readFile(denied.opportunitiesFile, "utf8")).toBe(deniedOpportunityBytes);
+    expect(await readFile(denied.attunementFile, "utf8")).toBe(deniedAttunementBytes);
+    expect(await readdir(dirname(denied.tasksFile))).toEqual(deniedNames);
     expect(await readFile(denied.tasksFile, "utf8")).toBe(deniedTaskBytes);
   });
 

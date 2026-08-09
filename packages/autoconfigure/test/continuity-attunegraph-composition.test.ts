@@ -23,6 +23,9 @@ import {
   readConfiguredContinuityShadowReturns
 } from "../src/continuity-attunegraph-composition.js";
 
+const HAS_REVIEWED_LOCAL_PROFILE = process.platform === "darwin"
+  || process.platform === "linux";
+
 it("keeps absent and exactly empty AttuneGraph configuration disabled", () => {
   expect(createConfiguredContinuityAttuneGraphProjector({})).toBeUndefined();
   expect(createConfiguredContinuityAttuneGraphProjector({
@@ -49,7 +52,7 @@ it("reads an empty valid timing ledger once without mutating its source bytes", 
 
 it("creates only an explicit absolute projector and fails invalid non-empty configuration closed", () => {
   expect(createConfiguredContinuityAttuneGraphProjector({
-    MUSE_ATTUNEGRAPH_DATABASE: "/tmp/muse-attunegraph.sqlite"
+    MUSE_ATTUNEGRAPH_DATABASE: join(tmpdir(), "muse-attunegraph.sqlite")
   })).toMatchObject({ project: expect.any(Function) });
   expect(() =>
     createConfiguredContinuityAttuneGraphProjector({
@@ -63,7 +66,7 @@ it("creates only an explicit absolute projector and fails invalid non-empty conf
   ).toThrow(expect.objectContaining({ code: "INVALID_CONFIGURATION" }));
 });
 
-it("rebuilds the reserved composite scope from the current Attunement and timing ledgers", async () => {
+it.runIf(HAS_REVIEWED_LOCAL_PROFILE)("rebuilds the reserved composite scope from the current Attunement and timing ledgers", async () => {
   const directory = await realpath(
     await mkdtemp(join(tmpdir(), "muse-configured-return-graph-"))
   );

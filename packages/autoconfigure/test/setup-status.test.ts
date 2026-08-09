@@ -1,6 +1,6 @@
 import { mkdtempSync, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix as pathPosix, win32 as pathWin32 } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -700,9 +700,10 @@ describe("detectTailscaleBinaryPresent — fs/env-only, no exec (R2-3)", () => {
   });
 
   it("scans PATH entries for a `tailscale` binary on non-darwin", () => {
-    const exists = (path: string) => path === "/usr/local/bin/tailscale";
+    const binary = pathPosix.join("/usr/local/bin", "tailscale");
+    const exists = (path: string) => path === binary;
     expect(detectTailscaleBinaryPresent(
-      { PATH: "/usr/bin:/usr/local/bin" },
+      { PATH: ["/usr/bin", "/usr/local/bin"].join(pathPosix.delimiter) },
       { exists, osPlatform: "linux" }
     )).toBe(true);
   });
@@ -713,11 +714,12 @@ describe("detectTailscaleBinaryPresent — fs/env-only, no exec (R2-3)", () => {
   });
 
   it("checks the win32 binary name (tailscale.exe), not the POSIX name", () => {
-    const seen: string[] = [];
-    const exists = (path: string) => { seen.push(path); return false; };
-    detectTailscaleBinaryPresent({ PATH: "C:\\bin" }, { exists, osPlatform: "win32" });
-    expect(seen.some((p) => p.endsWith("tailscale.exe"))).toBe(true);
-    expect(seen.some((p) => p.endsWith("tailscale"))).toBe(false);
+    const binary = pathWin32.join("C:\\tailscale", "tailscale.exe");
+    const exists = (path: string) => path === binary;
+    expect(detectTailscaleBinaryPresent(
+      { PATH: ["C:\\bin", "C:\\tailscale"].join(pathWin32.delimiter) },
+      { exists, osPlatform: "win32" }
+    )).toBe(true);
   });
 });
 

@@ -75,7 +75,7 @@ describe("actuator mode — persistence", () => {
     expect((await readActuatorConfig(file)).mode).toBe("ask");
   });
 
-  it("preserves unrelated config blocks and keeps the file 0600", async () => {
+  it("preserves unrelated config blocks and, on POSIX, keeps the file 0600", async () => {
     const file = await configFile(`${JSON.stringify({ dayRhythm: { enabled: true }, defaultModel: "ollama/gemma4:12b" }, null, 2)}\n`);
     await writeActuatorConfig(file, { mode: "auto" });
 
@@ -84,7 +84,9 @@ describe("actuator mode — persistence", () => {
     expect(parsed.dayRhythm).toEqual({ enabled: true });
     expect(parsed.actuators).toEqual({ mode: "auto" });
 
-    const { mode } = await import("node:fs/promises").then(async (fs) => fs.stat(file));
-    expect(mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      const { mode } = await import("node:fs/promises").then(async (fs) => fs.stat(file));
+      expect(mode & 0o777).toBe(0o600);
+    }
   });
 });

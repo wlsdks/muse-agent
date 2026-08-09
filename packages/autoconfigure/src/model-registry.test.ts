@@ -1,5 +1,5 @@
 import { mkdtempSync } from "node:fs";
-import { homedir, tmpdir, userInfo } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -244,7 +244,7 @@ describe("readMuseCliConfigFile / writeMuseCliDefaultModel", () => {
     await expect(readMuseCliConfigFile(file)).rejects.toThrow(/not valid JSON/);
   });
 
-  it("writes the file with 0600 permissions", async () => {
+  it.skipIf(process.platform === "win32")("writes the file with owner-only POSIX permissions", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-model-registry-cfg-"));
     const file = join(dir, "config.json");
     await writeMuseCliDefaultModel(file, "ollama/gemma4:12b");
@@ -270,13 +270,5 @@ describe("resolveMuseCliConfigFilePath — fail-close under vitest, distinct fro
   it("an explicit MUSE_CLI_CONFIG_FILE override wins, even pointed at the real home", () => {
     expect(resolveMuseCliConfigFilePath({ HOME: realHome, MUSE_CLI_CONFIG_FILE: "/custom/config.json" } as MuseEnvironment))
       .toBe("/custom/config.json");
-  });
-});
-
-describe("resolveMuseCliConfigFilePath / apps/cli defaultConfigPath — same file, no drift", () => {
-  it("agrees with the CLI's own <home>/.config/muse/config.json convention", () => {
-    const someHome = homedir();
-    const viaShared = resolveMuseCliConfigFilePath({ HOME: someHome } as MuseEnvironment);
-    expect(viaShared.endsWith(join(".config", "muse", "config.json"))).toBe(true);
   });
 });

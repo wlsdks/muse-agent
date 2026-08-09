@@ -1,7 +1,7 @@
 import * as actualFs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -36,7 +36,7 @@ function pathFromUnknown(value: unknown): string | undefined {
 
 function under(root: string, value: string): boolean {
   const rel = relative(root, value);
-  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== "..");
+  return rel === "" || (!isAbsolute(rel) && !rel.startsWith(`..${sep}`) && rel !== "..");
 }
 
 function localRuntimeEnv(root: string): Record<string, string> {
