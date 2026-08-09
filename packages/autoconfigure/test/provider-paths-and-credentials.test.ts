@@ -1,3 +1,4 @@
+import { mkdtempSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,13 +13,16 @@ import { readCredentialsSync } from "../src/provider-utils.js";
 // must NOT win — it falls back to the default, so a cleared env var can't point
 // the store at the cwd-relative empty path.
 describe("provider-paths resolvers (resolveDotMusePath)", () => {
+  const isolatedHome = mkdtempSync(join(tmpdir(), "muse-provider-paths-home-"));
+
   it("defaults to ~/.muse/<name> when the env override is unset", () => {
-    expect(resolveRecallHitsFile({})).toBe(join(homedir(), ".muse", "recall-hits.json"));
-    expect(resolveCheckinsFile({})).toBe(join(homedir(), ".muse", "checkins.json"));
+    expect(resolveRecallHitsFile({ HOME: isolatedHome })).toBe(join(isolatedHome, ".muse", "recall-hits.json"));
+    expect(resolveCheckinsFile({ HOME: isolatedHome })).toBe(join(isolatedHome, ".muse", "checkins.json"));
   });
 
   it("honours an absolute env override verbatim", () => {
-    expect(resolveRecallHitsFile({ MUSE_RECALL_HITS_FILE: "/custom/hits.json" })).toBe("/custom/hits.json");
+    const override = join(isolatedHome, "custom", "hits.json");
+    expect(resolveRecallHitsFile({ HOME: isolatedHome, MUSE_RECALL_HITS_FILE: override })).toBe(override);
   });
 
   it("expands a leading ~ in the env override to the home directory", () => {
@@ -26,13 +30,13 @@ describe("provider-paths resolvers (resolveDotMusePath)", () => {
   });
 
   it("treats a blank / whitespace override as unset and falls back to the default", () => {
-    expect(resolveCheckinsFile({ MUSE_CHECKINS_FILE: "   " })).toBe(join(homedir(), ".muse", "checkins.json"));
+    expect(resolveCheckinsFile({ HOME: isolatedHome, MUSE_CHECKINS_FILE: "   " })).toBe(join(isolatedHome, ".muse", "checkins.json"));
   });
 
   it("keeps inbox cursor provider IDs inside the dot-muse path", () => {
-    expect(resolveInboxInjectionCursorFile({ HOME: "/tmp/muse-home" }, "telegram"))
-      .toBe("/tmp/muse-home/.muse/telegram-inbox-injection.json");
-    expect(() => resolveInboxInjectionCursorFile({ HOME: "/tmp/muse-home" }, "../../outside"))
+    expect(resolveInboxInjectionCursorFile({ HOME: isolatedHome }, "telegram"))
+      .toBe(join(isolatedHome, ".muse", "telegram-inbox-injection.json"));
+    expect(() => resolveInboxInjectionCursorFile({ HOME: isolatedHome }, "../../outside"))
       .toThrow("providerId must contain only letters, numbers, underscores, or hyphens");
   });
 });

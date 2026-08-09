@@ -1,6 +1,6 @@
 import { mkdtempSync } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -130,16 +130,18 @@ describe("provider-paths shared resolution (via resolveTasksFile)", () => {
 
 describe("continuity resume baseline path", () => {
   it("accepts only an absolute normalized NUL-free override", () => {
+    const accepted = join(isoHome, "private", "baselines.json");
     expect(
       resolveContinuityResumeBaselinesFile(env({
-        MUSE_CONTINUITY_RESUME_BASELINES_FILE: "  /private/muse/baselines.json  "
+        MUSE_CONTINUITY_RESUME_BASELINES_FILE: `  ${accepted}  `
       }))
-    ).toBe("/private/muse/baselines.json");
+    ).toBe(accepted);
+    const nonNormalized = `${isoHome}${sep}private${sep}..${sep}baselines.json`;
     for (const override of [
       "relative.json",
       "~/baselines.json",
-      "/private/../baselines.json",
-      "/private/baselines.json\0suffix"
+      nonNormalized,
+      `${accepted}\0suffix`
     ]) {
       expect(() =>
         resolveContinuityResumeBaselinesFile(env({
@@ -157,9 +159,9 @@ describe("each resolver maps to its own env key and default name", () => {
     }
   });
 
-  it("reads exactly its own MUSE_* override (no copy-paste drift across the 32 resolvers)", () => {
+  it("reads exactly its own MUSE_* override (no copy-paste drift across all registered resolvers)", () => {
     for (const [resolve, key] of RESOLVERS) {
-      const sentinel = `/sentinel/${key}`;
+      const sentinel = join(isoHome, "sentinel", key);
       expect(resolve(env({ [key]: sentinel }))).toBe(sentinel);
     }
   });

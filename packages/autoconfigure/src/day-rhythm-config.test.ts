@@ -101,7 +101,7 @@ describe("readDayRhythmConfig / writeDayRhythmConfig", () => {
     await expect(readDayRhythmConfig(file)).rejects.toThrow(/not valid JSON/);
   });
 
-  it("writes the file with 0600 permissions", async () => {
+  it.skipIf(process.platform === "win32")("writes the file with owner-only POSIX permissions", async () => {
     const file = tmpConfigFile();
     await writeDayRhythmConfig(file, { enabled: true, eveningHour: 18, morningHour: 8 });
     const mode = (await stat(file)).mode & 0o777;

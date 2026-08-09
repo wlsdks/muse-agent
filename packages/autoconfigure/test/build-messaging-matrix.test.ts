@@ -1,5 +1,4 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -46,10 +45,13 @@ describe("buildMessagingRegistry — matrix", () => {
 
 describe("matrix path resolvers", () => {
   it("default to ~/.muse and honour env overrides", () => {
-    expect(resolveMatrixInboxFile({})).toBe(join(homedir(), ".muse", "matrix-inbox.json"));
-    expect(resolveMatrixSinceFile({})).toBe(join(homedir(), ".muse", "matrix-since.json"));
-    expect(resolveMatrixInboxFile({ MUSE_MATRIX_INBOX_FILE: "/tmp/mx-inbox.json" })).toBe("/tmp/mx-inbox.json");
-    expect(resolveMatrixSinceFile({ MUSE_MATRIX_SINCE_FILE: "/tmp/mx-since.json" })).toBe("/tmp/mx-since.json");
+    const home = mkdtempSync(join(tmpdir(), "muse-matrix-path-home-"));
+    const inboxOverride = join(home, "overrides", "matrix-inbox.json");
+    const sinceOverride = join(home, "overrides", "matrix-since.json");
+    expect(resolveMatrixInboxFile({ HOME: home })).toBe(join(home, ".muse", "matrix-inbox.json"));
+    expect(resolveMatrixSinceFile({ HOME: home })).toBe(join(home, ".muse", "matrix-since.json"));
+    expect(resolveMatrixInboxFile({ HOME: home, MUSE_MATRIX_INBOX_FILE: inboxOverride })).toBe(inboxOverride);
+    expect(resolveMatrixSinceFile({ HOME: home, MUSE_MATRIX_SINCE_FILE: sinceOverride })).toBe(sinceOverride);
   });
 });
 

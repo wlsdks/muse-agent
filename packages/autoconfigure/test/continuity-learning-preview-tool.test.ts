@@ -36,11 +36,75 @@ import {
 } from "../src/continuity-learning-rollback-tool.js";
 import { createMuseRuntimeAssembly } from "../src/index.js";
 
+const projectorHarness = vi.hoisted(() => {
+  let generation = 0;
+  const projections = new Map<string, Readonly<{
+    readonly observationReceiptId: string;
+    readonly schemaVersion: 1;
+    readonly snapshot: Readonly<{
+      readonly commitId: string;
+      readonly generation: number;
+      readonly schemaVersion: 1;
+      readonly scope: Readonly<{ readonly sourceId: string; readonly threadId: string }>;
+    }>;
+    readonly sourceFreshness: Readonly<{
+      readonly observedAt: string;
+      readonly state: "unknown";
+    }>;
+    readonly status: "projected";
+  }>>();
+  const project = vi.fn(async (value: unknown) => {
+    const receipt = value as Readonly<{
+      readonly observedAt: string;
+      readonly projection: Readonly<{
+        readonly scope: Readonly<{ readonly sourceId: string; readonly threadId: string }>;
+      }>;
+      readonly receiptId: string;
+    }>;
+    const existing = projections.get(receipt.receiptId);
+    if (existing) return Object.freeze({ ...existing, status: "replayed" as const });
+    generation += 1;
+    const result = Object.freeze({
+      observationReceiptId: receipt.receiptId,
+      schemaVersion: 1 as const,
+      snapshot: Object.freeze({
+        commitId: `attunegraph-commit:test-${generation.toString()}`,
+        generation,
+        schemaVersion: 1 as const,
+        scope: Object.freeze({ ...receipt.projection.scope })
+      }),
+      sourceFreshness: Object.freeze({
+        observedAt: receipt.observedAt,
+        state: "unknown" as const
+      }),
+      status: "projected" as const
+    });
+    projections.set(receipt.receiptId, result);
+    return result;
+  });
+  const create = vi.fn(() => Object.freeze({ project }));
+  return {
+    create,
+    project,
+    reset() {
+      generation = 0;
+      projections.clear();
+      create.mockClear();
+      project.mockClear();
+    }
+  };
+});
+
+vi.mock("@muse/attunegraph/continuity-durable-projection", () => ({
+  createContinuityAttuneGraphProjector: projectorHarness.create
+}));
+
 let directory: string | undefined;
 
 afterEach(async () => {
   if (directory) await rm(directory, { force: true, recursive: true });
   directory = undefined;
+  projectorHarness.reset();
 });
 
 describe("continuity learning preview tool", () => {
@@ -222,7 +286,8 @@ describe("continuity learning preview tool", () => {
     });
     const graphSeed = await graphProjector.project(graphReceipt);
     const attunementBeforePolicyCard = await readFile(attunementFile);
-    const graphBeforePolicyCard = await readFile(attuneGraphFile);
+    const graphProjectionCallsBeforePolicyCard =
+      projectorHarness.project.mock.calls.length;
     const policyCard = await tool(
       "muse.continuity.learning.policy-card.preview"
     ).execute({
@@ -258,7 +323,9 @@ describe("continuity learning preview tool", () => {
       status: "rendered"
     });
     expect(await readFile(attunementFile)).toEqual(attunementBeforePolicyCard);
-    expect(await readFile(attuneGraphFile)).toEqual(graphBeforePolicyCard);
+    expect(projectorHarness.project).toHaveBeenCalledTimes(
+      graphProjectionCallsBeforePolicyCard
+    );
 
     const heldPolicyCard = await tool(
       "muse.continuity.learning.policy-card.preview"
@@ -273,7 +340,9 @@ describe("continuity learning preview tool", () => {
       status: "held"
     });
     expect(await readFile(attunementFile)).toEqual(attunementBeforePolicyCard);
-    expect(await readFile(attuneGraphFile)).toEqual(graphBeforePolicyCard);
+    expect(projectorHarness.project).toHaveBeenCalledTimes(
+      graphProjectionCallsBeforePolicyCard
+    );
     const graphReplay = await graphProjector.project(graphReceipt);
     expect(graphReplay).toMatchObject({
       snapshot: graphSeed.snapshot,

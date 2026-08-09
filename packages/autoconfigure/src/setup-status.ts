@@ -12,7 +12,7 @@
 
 import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter as pathDelimiter, join as pathJoin } from "node:path";
+import { join as pathJoin, posix as pathPosix, win32 as pathWin32 } from "node:path";
 
 import { errorMessage, isRecord, parseJson } from "@muse/shared";
 import { hasStoredEmailImapCredentialSync, hasStoredGmailCredentialSync } from "@muse/stores";
@@ -585,10 +585,11 @@ export function detectTailscaleBinaryPresent(
   }
   const pathValue = env.PATH?.trim() || process.env.PATH || "";
   const binaryName = osPlatform === "win32" ? "tailscale.exe" : "tailscale";
+  const pathDialect = osPlatform === "win32" ? pathWin32 : pathPosix;
   return pathValue
-    .split(pathDelimiter)
+    .split(pathDialect.delimiter)
     .filter((dir) => dir.length > 0)
-    .some((dir) => exists(pathJoin(dir, binaryName)));
+    .some((dir) => exists(pathDialect.join(dir, binaryName)));
 }
 
 /** Resolve the `remote` row for `muse setup` / `--json` from a fs/env-only tailscale presence check. */
