@@ -45,7 +45,10 @@ import {
   verifyPairingCodeAttempt
 } from "./channel-owner-store.js";
 import { createChannelPendingRecorder } from "./channel-pending-recorder.js";
-import { applyAutomationHonesty } from "./chat-automation-honesty.js";
+import {
+  applyAutomationHonesty,
+  detectUnsupportedRecurringAutomationIntent
+} from "./chat-automation-honesty.js";
 import { CHANNEL_APPROVAL_EXPOSURE_ALLOWLIST } from "./chat-write-allowlist.js";
 import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
 import { loadChatPersonaSnapshot } from "./chat-persona-snapshot.js";
@@ -53,7 +56,7 @@ import { handleInboundApprovalReply } from "./inbound-approval-handler.js";
 import { handleInboundReconfirmReply } from "./inbound-reconfirm-handler.js";
 import { handleInboundSlashCommand, type SlashConversationStore } from "./inbound-slash-commands.js";
 import { handleInboundVetoReply } from "./inbound-veto-handler.js";
-import { detectUnscheduledRememberIntent } from "./remember-intent.js";
+import { detectUnscheduledRememberIntent, rememberIntentClauses } from "./remember-intent.js";
 import { resolveProactiveTrustFile } from "./tick-daemons.js";
 
 /**
@@ -68,6 +71,7 @@ interface InboundAgentRuntime {
     readonly toolApprovalGate: ChannelApprovalGate;
     readonly toolExposureAuthority: ToolExposureAuthority;
   }): Promise<{
+    readonly runId?: string;
     readonly response?: { readonly output?: string };
     readonly groundingSources?: readonly { readonly source: string; readonly text: string }[];
     readonly toolsUsed?: readonly string[];
@@ -179,6 +183,10 @@ function userSideFollowupId(): string {
   return `fu_u_${randomBytes(7).toString("hex")}`;
 }
 
+function sameScheduledMinute(left: Date, right: Date): boolean {
+  return Math.floor(left.getTime() / 60_000) === Math.floor(right.getTime() / 60_000);
+}
+
 /**
  * "Did this turn actually schedule a followup?" — observed the least invasive
  * way reachable from apps/api: the runtime hook that captures a self-followup
@@ -212,14 +220,12 @@ async function countScheduledFollowups(followupsFile: string, userId: string): P
  * hook uses (`upsertFollowup`) — scheduling no longer depends on the model
  * happening to restate the date back.
  *
- * Order/dedup: called AFTER `agentRuntime.run()` (so the runtime's own
- * capture hook — if it also fired off a commissive assistant echo THIS turn
- * — has already persisted its entry). `upsertFollowup` only dedupes by
- * `id` (random per call), and the hook's own within-call dedup never sees
- * across-call state, so scheduling user-side FIRST would NOT have been
- * deduped by the hook — this reads the post-run store and skips creating a
- * duplicate itself whenever an existing scheduled entry already lands on
- * the same resolved minute.
+ * Order/dedup: called AFTER `agentRuntime.run()` so the runtime's own capture
+ * hook has already persisted any commissive assistant echo. Store-level
+ * semantic identity correctly spans turns, but differently worded user and
+ * assistant text can describe the same commitment. The runtime run id narrows
+ * resolved-minute dedupe to entries emitted by this turn's capture hook, so
+ * an unrelated concurrent followup at the same minute is never collapsed.
  *
  * Returns the resolved time of the first user-side promise found (whether
  * freshly persisted here or already covered by the runtime's own capture)
@@ -228,18 +234,28 @@ async function countScheduledFollowups(followupsFile: string, userId: string): P
  */
 interface ScheduleUserSideResult {
   readonly operation: "already-present" | "created" | "none" | "upgraded";
+  readonly recurring: boolean;
   readonly scheduledFor?: Date;
 }
 
 async function scheduleUserSideFollowups(
   followupsFile: string,
   userId: string,
-  latestUserText: string,
-  now: Date
+  rememberClauses: readonly string[],
+  now: Date,
+  runId: string | undefined
 ): Promise<ScheduleUserSideResult> {
-  const promises = extractFollowupPromises(latestUserText, { now, requireCommissive: false });
+  const promises = rememberClauses.flatMap((clause) =>
+    extractFollowupPromises(clause, { now, requireCommissive: false }));
+  const capturedDuringRun = runId === undefined
+    ? []
+    : (await readScheduledFollowupsFor(followupsFile, userId))
+        .filter((followup) => followup.originRunId === runId);
   if (promises.length === 0) {
-    return { operation: "none" };
+    return {
+      operation: "none",
+      recurring: capturedDuringRun.some((followup) => followup.recurrence !== undefined)
+    };
   }
   const priority: Record<ScheduleUserSideResult["operation"], number> = {
     none: 0,
@@ -249,11 +265,22 @@ async function scheduleUserSideFollowups(
   };
   let operation: ScheduleUserSideResult["operation"] = "none";
   let firstScheduled: Date | undefined;
+  let recurring = false;
   for (const promise of promises) {
+    const capturedThisTurn = capturedDuringRun.find((followup) =>
+      sameScheduledMinute(new Date(followup.scheduledFor), promise.scheduledFor));
+    if (capturedThisTurn && promise.recurrence === undefined) {
+      firstScheduled ??= new Date(capturedThisTurn.scheduledFor);
+      recurring ||= capturedThisTurn.recurrence !== undefined;
+      if (priority["already-present"] > priority[operation]) operation = "already-present";
+      continue;
+    }
     const followup: PersistedFollowup = {
-      createdAt: now.toISOString(),
-      id: userSideFollowupId(),
+      createdAt: capturedThisTurn?.createdAt ?? now.toISOString(),
+      id: capturedThisTurn?.id ?? userSideFollowupId(),
       kind: promise.kind,
+      ...(capturedThisTurn?.originRunId ? { originRunId: capturedThisTurn.originRunId } : {}),
+      ...(capturedThisTurn?.originTurnHash ? { originTurnHash: capturedThisTurn.originTurnHash } : {}),
       scheduledFor: promise.scheduledFor.toISOString(),
       status: "scheduled",
       summary: sanitizeFollowupSummary(promise.originalText),
@@ -267,9 +294,10 @@ async function scheduleUserSideFollowups(
     if (firstScheduled === undefined) {
       firstScheduled = result.followup ? new Date(result.followup.scheduledFor) : promise.scheduledFor;
     }
+    recurring ||= result.followup?.recurrence !== undefined || promise.recurrence !== undefined;
     if (priority[result.operation] > priority[operation]) operation = result.operation;
   }
-  return { operation, ...(firstScheduled ? { scheduledFor: firstScheduled } : {}) };
+  return { operation, recurring, ...(firstScheduled ? { scheduledFor: firstScheduled } : {}) };
 }
 
 export function createInboundAgentRun(options: InboundAgentRunOptions): ThreadedAgentRun {
@@ -494,9 +522,13 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     // (a normal question, an action request with no date, small talk) never
     // touches the followups file.
     const rememberIntent = detectUnscheduledRememberIntent(latestUserText);
+    const unsupportedAutomation = detectUnsupportedRecurringAutomationIntent(latestUserText);
+    const rememberClauses = rememberIntent
+      ? (unsupportedAutomation ? rememberIntentClauses(latestUserText) : [latestUserText])
+      : [];
     const followupsFile = resolveFollowupsFile(env);
     const turnNow = new Date();
-    const scheduledBefore = rememberIntent ? await countScheduledFollowups(followupsFile, runUserId) : 0;
+    const scheduledBefore = rememberIntent ? await readScheduledFollowupsFor(followupsFile, runUserId) : [];
     const result = await agentRuntime.run({
       messages,
       metadata: { userId: runUserId },
@@ -554,23 +586,33 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     // automation got registered when the channel has no way to create one.
     // Applied to the FINAL text only, before the remember-intent branches
     // below so every return path downstream sees the corrected content.
-    const honestOutput = applyAutomationHonesty({ replyText: honest.response.output, userText: latestUserText }).content;
     if (!rememberIntent) {
-      return honestOutput;
+      return applyAutomationHonesty({ replyText: honest.response.output, userText: latestUserText }).content;
     }
     // Deterministic user-side scheduling runs BEFORE the caveat
     // check, so the caveat's before/after count naturally sees whatever it
     // scheduled: no separate branch, no double-append. `turnNow` anchors
     // BOTH this extraction and the confirmation echo below to the same
     // instant.
-    const scheduledFromUser = await scheduleUserSideFollowups(followupsFile, runUserId, latestUserText, turnNow);
+    const scheduledFromUser = await scheduleUserSideFollowups(
+      followupsFile,
+      runUserId,
+      rememberClauses,
+      turnNow,
+      result.runId
+    );
+    const honestOutput = applyAutomationHonesty({
+      replyText: honest.response.output,
+      supportedRecurringFollowupScheduled: scheduledFromUser.recurring,
+      userText: latestUserText
+    }).content;
     // The user asked to remember something date-shaped — confirm a followup
     // actually landed THIS turn (the count strictly grew) before trusting
     // the model's own claim; a same-or-lower count means NEITHER the
     // assistant's echo NOR the user-side extraction above scheduled
     // anything, so the reply gets the honest caveat appended by code.
     const scheduledAfter = await countScheduledFollowups(followupsFile, runUserId);
-    if (scheduledFromUser.operation !== "none" || scheduledAfter > scheduledBefore) {
+    if (scheduledFromUser.operation !== "none" || scheduledAfter > scheduledBefore.length) {
       return scheduledFromUser.scheduledFor
         ? appendScheduledConfirmation(honestOutput, scheduledFromUser.scheduledFor, latestUserText)
         : honestOutput;

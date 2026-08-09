@@ -567,15 +567,16 @@ function recurrenceClockAfter(
     readonly minute: number;
   }> = [];
   const named = /(?:\b(morning|afternoon|evening|night)\b|아침|오전|점심|오후|저녁|밤)/iu.exec(suffix);
+  let namedSlot: "morning" | "afternoon" | "evening" | "night" | undefined;
   if (named) {
     const token = named[0]?.toLowerCase() ?? "";
-    const slot = englishSlot(token) ?? koreanSlot(token);
-    if (slot) {
+    namedSlot = englishSlot(token) ?? koreanSlot(token);
+    if (namedSlot) {
       candidates.push({
         confidence: "low",
         end: named.index + named[0].length,
         explicit: false,
-        hour: slots[slot],
+        hour: slots[namedSlot],
         index: named.index,
         minute: 0
       });
@@ -602,7 +603,13 @@ function recurrenceClockAfter(
   if (koreanClock) {
     const hourRaw = Number.parseInt(koreanClock[2] ?? "", 10);
     const minute = Number.parseInt(koreanClock[3] ?? "0", 10);
-    const meridiem = koreanClock[1] === "오전" ? "am" : koreanClock[1] === "오후" ? "pm" : "";
+    const meridiem = koreanClock[1] === "오전"
+      ? "am"
+      : koreanClock[1] === "오후"
+        ? "pm"
+        : hourRaw <= 12 && namedSlot
+          ? namedSlot === "morning" ? "am" : "pm"
+          : "";
     const hour = applyMeridiem(hourRaw, meridiem);
     if (hour !== undefined && minute >= 0 && minute <= 59) {
       candidates.push({

@@ -27,7 +27,7 @@ import { detectUnscheduledRememberIntent as detectUnscheduledRememberIntentCore 
  */
 
 const REMEMBER_VERB_KO_RE =
-  /기억해(?:줘|둬|라|줄래|줄\s*수)?|기억하고\s*있어(?:줘)?|잊지\s*말고|잊지\s*마|리마인드(?:해줘)?|알림\s*(?:설정해|해)/u;
+  /기억해(?:줘|둬|라|줄래|줄\s*수)?|기억하고\s*있어(?:줘)?|잊지\s*(?:말고|마|않게)|까먹지\s*않게|리마인드(?:해줘)?|알림\s*(?:설정해|해)|라고\s*알려(?:줘|주고|주는|달라)/u;
 const REMEMBER_VERB_EN_RE = /\bremind\s+me\b|\breminder\b|\bremember\s+(?:this|that|to)\b|\bdon['’]?t\s+forget\b/iu;
 
 const DATE_SHAPED_KO_RE =
@@ -35,6 +35,36 @@ const DATE_SHAPED_KO_RE =
 
 const DATE_SHAPED_EN_RE =
   /\btomorrow\b|\bnext\s+week\b|\bevery\s+(?:day|weekday|week|month)\b|\bdaily\b|\bweekdays?\b|\bweekly\b|\bmonthly\b|\bnext\s+(?:mon|tues?|wednes|thurs?|fri|satur|sun)day\b|\b(?:mon|tues?|wednes|thurs?|fri|satur|sun)day\b|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}\b|\bat\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b|\bin\s+\d{1,4}\s*(?:minutes?|hours?|days?)\b/iu;
+
+const INTENT_BOUNDARY_RE =
+  /(?:[.!?;\n]+|,\s*(?=(?:(?:그리고|또한?|그\s*다음|이어서)\s+|(?:and|also|then|plus)\b))|\s+(?=(?:(?:그리고|또한?|그\s*다음|이어서)\s+|(?:and|also|then|plus)\b)))/giu;
+const LEADING_CONNECTOR_RE = /^(?:(?:그리고|또한?|그\s*다음|이어서)|(?:and|also|then|plus)\b)\s+/iu;
+const RECURRING_ANCHOR_RE =
+  /매일|평일|주말|매주|매달|매월|매시간|(?:[월화수목금토일]요일|아침|점심|저녁|밤|새벽|\d+\s*(?:분|시간|일))마다|\b(?:daily|weekly|hourly|monthly|weekdays?|every\s+(?:day|weekday|week|month|hour|morning|afternoon|evening|night|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/giu;
+
+function splitOnRecurringAnchors(clause: string): readonly string[] {
+  const anchors = [...clause.matchAll(RECURRING_ANCHOR_RE)];
+  if (anchors.length < 2) {
+    return [clause];
+  }
+  const boundaries = anchors.slice(1).map((anchor) => anchor.index ?? clause.length);
+  const slices: string[] = [];
+  let start = 0;
+  for (const boundary of boundaries) {
+    slices.push(clause.slice(start, boundary));
+    start = boundary;
+  }
+  slices.push(clause.slice(start));
+  return slices;
+}
+
+export function splitUserIntentClauses(text: string): readonly string[] {
+  return text
+    .split(INTENT_BOUNDARY_RE)
+    .flatMap((clause) => splitOnRecurringAnchors(clause))
+    .map((clause) => clause.trim().replace(LEADING_CONNECTOR_RE, "").trim())
+    .filter((clause) => clause.length > 0);
+}
 
 function detectUnscheduledRememberIntentLocal(text: string): boolean {
   if (typeof text !== "string" || text.trim().length === 0) {
@@ -48,4 +78,8 @@ function detectUnscheduledRememberIntentLocal(text: string): boolean {
 
 export function detectUnscheduledRememberIntent(text: string): boolean {
   return detectUnscheduledRememberIntentLocal(text) || detectUnscheduledRememberIntentCore(text);
+}
+
+export function rememberIntentClauses(text: string): readonly string[] {
+  return splitUserIntentClauses(text).filter((clause) => detectUnscheduledRememberIntent(clause));
 }

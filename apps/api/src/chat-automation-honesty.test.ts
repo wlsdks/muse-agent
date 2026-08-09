@@ -5,7 +5,8 @@ import {
   AUTOMATION_CORRECTION_BLOCK_KO,
   AUTOMATION_GUIDANCE_BLOCK_KO,
   detectFalseSchedulingClaim,
-  detectRecurringAutomationIntent
+  detectRecurringAutomationIntent,
+  detectUnsupportedRecurringAutomationIntent
 } from "./chat-automation-honesty.js";
 
 describe("detectRecurringAutomationIntent", () => {
@@ -47,6 +48,31 @@ describe("detectRecurringAutomationIntent", () => {
 
   it("is FALSE for a plain statement about a routine (no request verb)", () => {
     expect(detectRecurringAutomationIntent("나는 매일 아침 커피 마셔")).toBe(false);
+    expect(detectRecurringAutomationIntent("나는 매일 아침 일정을 확인해")).toBe(false);
+    expect(detectRecurringAutomationIntent("매일 아침 9시에 나는 오늘 일정을 확인해")).toBe(false);
+    expect(detectRecurringAutomationIntent("매일 아침 9시에 나는 오늘 일정을 요약해")).toBe(false);
+    expect(detectRecurringAutomationIntent("매일 아침 9시에 나는 가족에게 일정을 보내")).toBe(false);
+    expect(detectRecurringAutomationIntent("I check my calendar daily")).toBe(false);
+    expect(detectRecurringAutomationIntent("Daily at 9am I check my calendar")).toBe(false);
+    expect(detectRecurringAutomationIntent("Daily at 9am I summarize my calendar")).toBe(false);
+    expect(detectRecurringAutomationIntent("Daily at 9am I send my calendar summary")).toBe(false);
+    expect(detectRecurringAutomationIntent("Daily at 9am I always summarize my calendar")).toBe(false);
+    expect(detectRecurringAutomationIntent("Daily at 9am I regularly send my calendar summary")).toBe(false);
+    expect(detectRecurringAutomationIntent("Daily at 9am I typically create a calendar digest")).toBe(false);
+    expect(detectRecurringAutomationIntent("Daily at 9am I automatically schedule my calendar review")).toBe(false);
+    expect(detectRecurringAutomationIntent("매일 아침 9시에 나는 오늘 일정을 요약한다")).toBe(false);
+    expect(detectRecurringAutomationIntent("매일 아침 9시에 나는 일정 요약을 만든다")).toBe(false);
+  });
+
+  it("keeps explicit commands that use the same action verbs", () => {
+    expect(detectRecurringAutomationIntent("매일 아침 9시에 오늘 일정을 요약해줘")).toBe(true);
+    expect(detectRecurringAutomationIntent("매일 아침 9시에 가족에게 일정을 보내줘")).toBe(true);
+    expect(detectRecurringAutomationIntent("Daily at 9am summarize my calendar")).toBe(true);
+    expect(detectRecurringAutomationIntent("Daily at 9am send my calendar summary")).toBe(true);
+    expect(detectRecurringAutomationIntent("Daily at 9am I want you to summarize my calendar")).toBe(true);
+    expect(detectRecurringAutomationIntent("매일 아침 9시에 나는 오늘 일정 요약해줘")).toBe(true);
+    expect(detectRecurringAutomationIntent("제가 놓치니 매일 오전 9시에 일정 요약을 부탁드립니다")).toBe(true);
+    expect(detectRecurringAutomationIntent("나는 바쁘니까 매일 아침 9시에 일정 요약 좀 부탁할게")).toBe(true);
   });
 
   it("is FALSE for an unrelated recurring-time mention with no request verb", () => {
@@ -55,6 +81,48 @@ describe("detectRecurringAutomationIntent", () => {
 
   it("is FALSE for unrelated small talk", () => {
     expect(detectRecurringAutomationIntent("오늘 날씨 어때?")).toBe(false);
+  });
+});
+
+describe("detectUnsupportedRecurringAutomationIntent", () => {
+  it("finds an unsupported automation beside a supported recurring reminder", () => {
+    expect(detectUnsupportedRecurringAutomationIntent(
+      "매일 아침 8시에 혈압약 먹는 거 잊지 마. 그리고 매일 아침 9시에 오늘 일정 요약 자동화도 만들어줘"
+    )).toBe(true);
+  });
+
+  it("separates Korean and English connector-delimited mixed intents without sentence punctuation", () => {
+    expect(detectUnsupportedRecurringAutomationIntent(
+      "매일 아침 8시에 혈압약 먹는 거 잊지 마 그리고 매일 아침 9시에 오늘 일정 요약 자동화도 만들어줘"
+    )).toBe(true);
+    expect(detectUnsupportedRecurringAutomationIntent(
+      "remind me every day at 8am to take meds, and create a daily automation that summarizes my calendar"
+    )).toBe(true);
+    expect(detectUnsupportedRecurringAutomationIntent(
+      "매일 아침 8시에 혈압약 먹는 거 잊지 말고 매일 아침 9시에 오늘 일정 요약 자동화도 만들어줘"
+    )).toBe(true);
+    expect(detectUnsupportedRecurringAutomationIntent(
+      "remind me every day at 8am to take meds then create a daily automation that summarizes my calendar"
+    )).toBe(true);
+  });
+
+  it("does not classify a recurring reminder as an unsupported automation", () => {
+    expect(detectUnsupportedRecurringAutomationIntent("매일 아침 8시에 혈압약 잊지 않게 알려줘")).toBe(false);
+  });
+
+  it("finds ordinary recurring action imperatives beside a supported reminder", () => {
+    expect(detectUnsupportedRecurringAutomationIntent(
+      "매일 아침 8시에 약 먹는 거 잊지 말고 매일 아침 9시에 오늘 일정 확인해"
+    )).toBe(true);
+    expect(detectUnsupportedRecurringAutomationIntent(
+      "remind me every day at 8am to take meds daily at 9am check my calendar"
+    )).toBe(true);
+  });
+
+  it("keeps an earlier purpose-marked notification in a trailing-verb reminder", () => {
+    expect(detectUnsupportedRecurringAutomationIntent(
+      "매일 아침 8시에 약 먹으라고 알려주고 매일 밤 9시에 스트레칭하라고 알려주는 거 잊지 마"
+    )).toBe(false);
   });
 });
 
@@ -126,6 +194,41 @@ describe("applyAutomationHonesty", () => {
     const replyText = "반복 일정 요약은 아직 채팅에서 바로 만들 수는 없어요.";
     const result = applyAutomationHonesty({ replyText, userText });
     expect(result.content).toBe(`${replyText}\n\n${AUTOMATION_GUIDANCE_BLOCK_KO}`);
+    expect(result.builderHint).toBe(userText);
+  });
+
+  it("leaves a supported recurring followup unchanged only with persisted scheduling evidence", () => {
+    const userText = "매일 아침 8시에 혈압약 잊지 않게 알려줘";
+    const replyText = "알았어!";
+    const result = applyAutomationHonesty({
+      replyText,
+      supportedRecurringFollowupScheduled: true,
+      userText
+    });
+    expect(result).toEqual({ builderHint: null, content: replyText });
+  });
+
+  it("retains Builder guidance for an unsupported automation in the same turn as a persisted recurring followup", () => {
+    const userText = "매일 아침 8시에 혈압약 먹는 거 잊지 마. 그리고 매일 아침 9시에 오늘 일정 요약 자동화도 만들어줘";
+    const replyText = "알았어!";
+    const result = applyAutomationHonesty({
+      replyText,
+      supportedRecurringFollowupScheduled: true,
+      userText
+    });
+    expect(result.content).toBe(`${replyText}\n\n${AUTOMATION_GUIDANCE_BLOCK_KO}`);
+    expect(result.builderHint).toBe(userText);
+  });
+
+  it("corrects a false automation claim even when a different recurring followup was persisted", () => {
+    const userText = "매일 아침 8시에 혈압약 먹는 거 잊지 마. 그리고 매일 아침 9시에 오늘 일정 요약 자동화도 만들어줘";
+    const replyText = "일정 요약 자동화 규칙을 등록해뒀어요.";
+    const result = applyAutomationHonesty({
+      replyText,
+      supportedRecurringFollowupScheduled: true,
+      userText
+    });
+    expect(result.content).toBe(`${replyText}\n\n${AUTOMATION_CORRECTION_BLOCK_KO}`);
     expect(result.builderHint).toBe(userText);
   });
 

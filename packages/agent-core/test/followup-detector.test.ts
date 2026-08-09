@@ -462,6 +462,7 @@ describe("extractFollowupPromises — deterministic recurrence rules", () => {
   it("parses the supported Korean recurrence vocabulary", () => {
     const cases = [
       ["매일 아침 8시에 알려드릴게요.", "daily", { kind: "daily", hour: 8, minute: 0 }],
+      ["매일 밤 9시에 알려드릴게요.", "daily", { kind: "daily", hour: 21, minute: 0 }],
       ["평일 오전 8시에 알려드릴게요.", "weekdays", { kind: "weekdays", hour: 8, minute: 0 }],
       ["매주 월요일 오전 8시에 알려드릴게요.", "weekly", { kind: "weekly", weekday: 1, hour: 8, minute: 0 }],
       ["매달 15일 오전 8시에 알려드릴게요.", "monthly", { kind: "monthly", dayOfMonth: 15, hour: 8, minute: 0 }],

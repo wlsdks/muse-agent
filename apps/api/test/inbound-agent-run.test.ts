@@ -1788,13 +1788,14 @@ describe("createInboundAgentRun FIX N1 — deterministic user-side scheduling", 
         const captured: PersistedFollowup = {
           createdAt: now.toISOString(),
           id: "fu_hook_echo",
+          originRunId: "run_hook_echo",
           scheduledFor: scheduledFor.toISOString(),
           status: "scheduled",
           summary: "기말고사 알려드릴게요",
           userId: "log:owner-1"
         };
         await writeFollowups(followupsFile, [captured]);
-        return { response: { output: "네! 다음달 15일에 알려드릴게요!" }, toolsUsed: [] };
+        return { response: { output: "네! 다음달 15일에 알려드릴게요!" }, runId: "run_hook_echo", toolsUsed: [] };
       }
     };
     const ownersFile = join(dir, "channel-owners.json");
@@ -1817,26 +1818,284 @@ describe("createInboundAgentRun FIX N1 — deterministic user-side scheduling", 
     expect(reply).not.toContain("예약이 안 됐어");
   });
 
-  it("interplay — FIX N1b recurrence suppression means a recurring ask still gets the honest caveat, not a wrong one-shot: \"수요일마다 6시\"", async () => {
+  it("does not collapse an older unrelated followup that happens to share the resolved minute", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const { followupsFile, run } = buildN1(dir, "알았어!");
+    const now = new Date();
+    const nextMonthIndex = (now.getMonth() + 1) % 12;
+    const nextMonthYear = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+    const scheduledFor = new Date(nextMonthYear, nextMonthIndex, 15, 9, 0, 0, 0).toISOString();
+    await writeFollowups(followupsFile, [{
+      createdAt: now.toISOString(),
+      id: "fu_older_same_minute",
+      scheduledFor,
+      status: "scheduled",
+      summary: "unrelated older commitment",
+      userId: "log:owner-1"
+    }]);
+
+    const reply = await run({ messages: [{ content: "다음달 15일 기말고사 까먹지 않게 해줘", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+
+    const scheduled = (await readFollowups(followupsFile))
+      .filter((followup) => followup.userId === "log:owner-1" && followup.status === "scheduled");
+    expect(scheduled).toHaveLength(2);
+    expect(scheduled.map((followup) => followup.id)).toContain("fu_older_same_minute");
+    expect(reply.match(/📌/gu)).toHaveLength(1);
+  });
+
+  it("does not collapse an unrelated concurrent followup without matching capture provenance", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const followupsFile = join(dir, "followups.json");
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const agentRuntime = {
+      run: async () => {
+        const now = new Date();
+        const nextMonthIndex = (now.getMonth() + 1) % 12;
+        const nextMonthYear = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+        await writeFollowups(followupsFile, [{
+          createdAt: now.toISOString(),
+          id: "fu_concurrent_same_minute",
+          scheduledFor: new Date(nextMonthYear, nextMonthIndex, 15, 9, 0, 0, 0).toISOString(),
+          status: "scheduled",
+          summary: "unrelated concurrent commitment",
+          userId: "log:owner-1"
+        }]);
+        return { response: { output: "알았어!" }, runId: "run_without_capture_provenance", toolsUsed: [] };
+      }
+    };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
+    const run = createInboundAgentRun({
+      agentRuntime,
+      env: {
+        MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+        MUSE_CHANNEL_OWNERS_FILE: ownersFile,
+        MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+        MUSE_FOLLOWUPS_FILE: followupsFile,
+        MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
+      },
+      model: "default",
+      registry
+    });
+
+    await run({ messages: [{ content: "다음달 15일 기말고사 까먹지 않게 해줘", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+
+    const scheduled = (await readFollowups(followupsFile))
+      .filter((followup) => followup.userId === "log:owner-1" && followup.status === "scheduled");
+    expect(scheduled).toHaveLength(2);
+    expect(scheduled.map((followup) => followup.id)).toContain("fu_concurrent_same_minute");
+  });
+
+  it("upgrades a same-run one-shot assistant echo before claiming recurring followup support", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const followupsFile = join(dir, "followups.json");
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const agentRuntime = {
+      run: async () => {
+        const now = new Date();
+        const scheduledFor = new Date(now);
+        scheduledFor.setHours(8, 0, 0, 0);
+        if (scheduledFor.getTime() <= now.getTime()) scheduledFor.setDate(scheduledFor.getDate() + 1);
+        await writeFollowups(followupsFile, [{
+          createdAt: now.toISOString(),
+          id: "fu_one_shot_echo",
+          originRunId: "run_recurring_upgrade",
+          scheduledFor: scheduledFor.toISOString(),
+          status: "scheduled",
+          summary: "혈압약 알려드릴게요",
+          userId: "log:owner-1"
+        }]);
+        return { response: { output: "매일 아침 8시에 알려드릴게요!" }, runId: "run_recurring_upgrade", toolsUsed: [] };
+      }
+    };
+    const ownersFile = join(dir, "channel-owners.json");
+    seedOwner(ownersFile, "log", "owner-1");
+    const run = createInboundAgentRun({
+      agentRuntime,
+      env: {
+        MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+        MUSE_CHANNEL_OWNERS_FILE: ownersFile,
+        MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+        MUSE_FOLLOWUPS_FILE: followupsFile,
+        MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json")
+      },
+      model: "default",
+      registry
+    });
+
+    const reply = await run({ messages: [{ content: "매일 아침 8시 혈압약 먹는거 잊지 마", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+
+    const scheduled = (await readFollowups(followupsFile))
+      .filter((followup) => followup.userId === "log:owner-1" && followup.status === "scheduled");
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]).toMatchObject({
+      id: "fu_one_shot_echo",
+      originRunId: "run_recurring_upgrade",
+      recurrence: { hour: 8, kind: "daily", minute: 0 }
+    });
+    expect(reply.match(/📌/gu)).toHaveLength(1);
+    expect(reply).not.toContain("반복 자동화는 채팅에서 바로 등록되지 않아요");
+  });
+
+  it("persists a weekly channel followup and confirms it without the obsolete Builder caveat", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
     const { followupsFile, run } = buildN1(dir, "알았어!");
     const reply = await run({ messages: [{ content: "수요일마다 6시에 회의 있는거 잊지 마", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
 
     const followups = await readFollowups(followupsFile);
-    expect(followups.filter((f) => f.userId === "log:owner-1" && f.status === "scheduled")).toHaveLength(0);
-    expect(reply).toContain("예약이 안 됐어");
-    expect(reply).not.toContain("📌");
+    const scheduled = followups.filter((f) => f.userId === "log:owner-1" && f.status === "scheduled");
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]).toMatchObject({ recurrence: { hour: 6, kind: "weekly", minute: 0, weekday: 3 } });
+    expect(reply).toContain("📌");
+    expect(reply).not.toContain("예약이 안 됐어");
+    expect(reply).not.toContain("반복 자동화는 채팅에서 바로 등록되지 않아요");
   });
 
-  it("interplay — \"매일 아침 8시 혈압약\" also collapses to the honest caveat, not a bogus today-08:00 one-shot", async () => {
+  it("persists a daily channel followup as recurrence instead of a bogus one-shot", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
     const { followupsFile, run } = buildN1(dir, "알았어!");
     const reply = await run({ messages: [{ content: "매일 아침 8시 혈압약 먹는거 잊지 마", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
 
     const followups = await readFollowups(followupsFile);
-    expect(followups.filter((f) => f.userId === "log:owner-1" && f.status === "scheduled")).toHaveLength(0);
-    expect(reply).toContain("예약이 안 됐어");
-    expect(reply).not.toContain("📌");
+    const scheduled = followups.filter((f) => f.userId === "log:owner-1" && f.status === "scheduled");
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]).toMatchObject({ recurrence: { hour: 8, kind: "daily", minute: 0 } });
+    expect(reply).toContain("📌");
+    expect(reply).not.toContain("예약이 안 됐어");
+    expect(reply).not.toContain("반복 자동화는 채팅에서 바로 등록되지 않아요");
+  });
+
+  it("persists only the supported reminder and retains Builder guidance for a sibling automation", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const { followupsFile, run } = buildN1(dir, "알았어!");
+    const userText = "매일 아침 8시에 혈압약 먹는 거 잊지 마. 그리고 매일 아침 9시에 오늘 일정 요약 자동화도 만들어줘";
+
+    const reply = await run({
+      messages: [{ content: userText, role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    const scheduled = (await readFollowups(followupsFile))
+      .filter((followup) => followup.userId === "log:owner-1" && followup.status === "scheduled");
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]).toMatchObject({
+      recurrence: { hour: 8, kind: "daily", minute: 0 },
+      summary: "매일 아침 8시"
+    });
+    expect(reply.match(/📌/gu)).toHaveLength(1);
+    expect(reply).toContain("반복 자동화는 채팅에서 바로 등록되지 않아요");
+  });
+
+  it.each([
+    {
+      expectedSummary: "매일 아침 8시",
+      userText: "매일 아침 8시에 혈압약 먹는 거 잊지 말고 매일 아침 9시에 오늘 일정 요약 자동화도 만들어줘"
+    },
+    {
+      expectedSummary: "every day at 8am",
+      userText: "remind me every day at 8am to take meds then create a daily automation that summarizes my calendar"
+    }
+  ])("keeps repeated recurrence anchors intent-scoped: $userText", async ({ expectedSummary, userText }) => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const { followupsFile, run } = buildN1(dir, "Okay");
+
+    const reply = await run({
+      messages: [{ content: userText, role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    const scheduled = (await readFollowups(followupsFile))
+      .filter((followup) => followup.userId === "log:owner-1" && followup.status === "scheduled");
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]?.summary).toBe(expectedSummary);
+    expect(reply.match(/📌/gu)).toHaveLength(1);
+    expect(reply).toContain("반복 자동화는 채팅에서 바로 등록되지 않아요");
+  });
+
+  it.each([
+    {
+      expectedSummary: "매일 아침 8시",
+      output: "매일 아침 9시에 일정을 확인할게요.",
+      userText: "매일 아침 8시에 약 먹는 거 잊지 말고 매일 아침 9시에 오늘 일정 확인해"
+    },
+    {
+      expectedSummary: "every day at 8am",
+      output: "I will check your calendar every day.",
+      userText: "remind me every day at 8am to take meds daily at 9am check my calendar"
+    }
+  ])("does not persist an ordinary recurring action imperative: $userText", async ({ expectedSummary, output, userText }) => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const { followupsFile, run } = buildN1(dir, output);
+
+    const reply = await run({
+      messages: [{ content: userText, role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    const scheduled = (await readFollowups(followupsFile))
+      .filter((followup) => followup.userId === "log:owner-1" && followup.status === "scheduled");
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]?.summary).toBe(expectedSummary);
+    expect(reply.match(/📌/gu)).toHaveLength(1);
+    expect(reply).toContain("반복 자동화는 채팅에서 바로 등록되지 않아요");
+  });
+
+  it("preserves both purpose-marked reminders that share one trailing remember verb", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const { followupsFile, run } = buildN1(dir, "알았어!");
+    const userText = "매일 아침 8시에 약 먹으라고 알려주고 매일 밤 9시에 스트레칭하라고 알려주는 거 잊지 마";
+
+    const reply = await run({
+      messages: [{ content: userText, role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    const scheduled = (await readFollowups(followupsFile))
+      .filter((followup) => followup.userId === "log:owner-1" && followup.status === "scheduled");
+    expect(scheduled).toHaveLength(2);
+    expect(scheduled.map((followup) => followup.recurrence?.hour)).toEqual([8, 21]);
+    expect(reply.match(/📌/gu)).toHaveLength(1);
+    expect(reply).not.toContain("반복 자동화는 채팅에서 바로 등록되지 않아요");
+  });
+
+  it.each([
+    "매일 아침 9시에 나는 오늘 일정을 확인해",
+    "Daily at 9am I check my calendar",
+    "매일 아침 9시에 나는 오늘 일정을 요약해",
+    "Daily at 9am I summarize my calendar",
+    "매일 아침 9시에 나는 가족에게 일정을 보내",
+    "Daily at 9am I send my calendar summary",
+    "Daily at 9am I always summarize my calendar",
+    "Daily at 9am I regularly send my calendar summary",
+    "Daily at 9am I typically create a calendar digest",
+    "Daily at 9am I automatically schedule my calendar review",
+    "매일 아침 9시에 나는 오늘 일정을 요약한다",
+    "매일 아침 9시에 나는 일정 요약을 만든다"
+  ])("leaves a cadence-leading first-person routine unchanged: %s", async (userText) => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-n1-"));
+    const { followupsFile, run } = buildN1(dir, "그렇구나.");
+
+    const reply = await run({
+      messages: [{ content: userText, role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(await readFollowups(followupsFile)).toHaveLength(0);
+    expect(reply).toBe("그렇구나.");
   });
 
   it("the confirmation echo does NOT fire on plain chat (no remember-intent → the scheduling path never runs)", async () => {

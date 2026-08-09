@@ -3932,7 +3932,7 @@ describe("muse daemon — resource admission", () => {
   it("starts no later outer lane when the first admitted lane requests stop", async () => {
     const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_BROWSING_AUTO_SYNC: "true" };
     await writeFollowups(env.MUSE_FOLLOWUPS_FILE!, [
-      { createdAt: "2026-01-01T00:00:00Z", id: "fu-stop-outer", scheduledFor: "2026-01-02T00:00:00Z", status: "scheduled", summary: "stop after this lane", userId: "owner" }
+      { createdAt: "2026-01-01T00:00:00.000Z", id: "fu-stop-outer", scheduledFor: "2026-01-02T00:00:00.000Z", status: "scheduled", summary: "stop after this lane", userId: "owner" }
     ]);
     const browsingSync = vi.fn(async () => ({ synced: 0, total: 0 }));
     const receipts: DaemonResourceReceipt[] = [];

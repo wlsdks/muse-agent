@@ -7,7 +7,9 @@ describe("detectUnscheduledRememberIntent", () => {
     expect(detectUnscheduledRememberIntent("8월 5일 아침에 알려달라고 기억해줘")).toBe(true);
     expect(detectUnscheduledRememberIntent("내일 아침에 기억해줘")).toBe(true);
     expect(detectUnscheduledRememberIntent("30분 뒤에 잊지 말고 알려줘")).toBe(true);
+    expect(detectUnscheduledRememberIntent("매일 아침 8시에 혈압약 잊지 않게 알려줘")).toBe(true);
     expect(detectUnscheduledRememberIntent("다음 주 월요일에 기억해줘")).toBe(true);
+    expect(detectUnscheduledRememberIntent("매일 아침 8시에 약 먹으라고 알려주고")).toBe(true);
   });
 
   it("true: an English remember-verb + a date-shaped phrase", () => {

@@ -8011,10 +8011,10 @@ describe("snoozeFollowup", () => {
     }), "utf8");
 
     const patched = await snoozeFollowup(file, "fu_target", "2026-05-12T15:00:00Z");
-    expect(patched).toMatchObject({ id: "fu_target", scheduledFor: "2026-05-12T15:00:00Z", status: "scheduled" });
+    expect(patched).toMatchObject({ id: "fu_target", scheduledFor: "2026-05-12T15:00:00.000Z", status: "scheduled" });
 
     const after = await readFollowups(file);
-    expect(after.find((f) => f.id === "fu_target")?.scheduledFor).toBe("2026-05-12T15:00:00Z");
+    expect(after.find((f) => f.id === "fu_target")?.scheduledFor).toBe("2026-05-12T15:00:00.000Z");
     expect(after.find((f) => f.id === "fu_neighbour")?.scheduledFor).toBe("2026-05-11T10:00:00Z");
   });
 

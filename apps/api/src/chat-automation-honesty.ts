@@ -1,9 +1,10 @@
 /**
  * Chat-automation honesty post-pass — closes the false-done gap where the
- * chat surface (no scheduling capability of its own) tells the user it
- * registered a RECURRING automation ("규칙을 등록해둘게") when the Builder
- * (Flows view, `flow-draft-composer.tsx`) is the only place a recurring
- * automation is actually created. Deterministic (no model call): detect the
+ * chat surface tells the user it registered a generic RECURRING automation
+ * ("규칙을 등록해둘게") when the Builder (Flows view,
+ * `flow-draft-composer.tsx`) is the creation path. Supported personal
+ * followups are the narrow exception, and callers must provide persisted
+ * capability evidence before bypassing this guard. Deterministic (no model call): detect the
  * user's recurring-automation ask, detect a false registration claim in the
  * model's reply, and either correct the reply or steer the user to the
  * Builder — never silently pass a false "done" through.
@@ -13,6 +14,8 @@
  * positive would incorrectly flag/correct an unrelated reply, which is the
  * worse failure mode for a user-facing honesty notice.
  */
+
+import { detectUnscheduledRememberIntent, splitUserIntentClauses } from "./remember-intent.js";
 
 // A recurring-cadence signal: 매일/매주/매달/매시간, 평일/주말, "<time-of-day>마다",
 // "N분마다"/"N시간마다", or the English every-X / daily/weekly/hourly/monthly forms.
@@ -24,6 +27,15 @@ const RECURRING_SIGNAL_EN =
 // A request verb — the ask must be imperative-ish, not a passing statement.
 const REQUEST_VERB_KO = /(만들|등록|설정|자동화|해줘|줘|알려|보내|요약)/u;
 const REQUEST_VERB_EN = /\b(?:set\s*up|create|schedule|remind|send|summarize|make)\b/iu;
+const RECURRING_ACTION_IMPERATIVE_KO =
+  /^(?:매일|매주|매달|매월|매시간|평일|주말|(?:아침|저녁|밤|점심|새벽|\d+\s*(?:분|시간))마다)[^.!?\n]{0,64}(?:확인해|조회해|점검해|실행해)/u;
+const RECURRING_ACTION_IMPERATIVE_EN =
+  /^(?:daily|weekly|hourly|monthly|weekdays?|every\s+(?:day|week|month|hour|morning|evening|night|weekday|weekend))\b[^.!?\n]{0,64}\b(?:check|monitor|poll|scan|review|run)\b/iu;
+const FIRST_PERSON_SUBJECT_KO = /(?:^|\s)(?:나는|난|내가|저는|전|제가)(?:\s|$)/u;
+const FIRST_PERSON_SUBJECT_EN = /\b(?:I|we)\b/iu;
+const DIRECTED_REQUEST_KO = /(?:해\s*줘|해\s*주세요|해주세요|줘|주세요|부탁(?:해|드|할))/u;
+const DIRECTED_REQUEST_EN =
+  /\b(?:(?:I|we)\s+(?:want|need|would\s+like|ask)\s+(?:you|Muse)\s+to|(?:can|could|would|will)\s+you|please)\b/iu;
 
 /**
  * True when the user asks to set up a RECURRING automation — a recurring-
@@ -37,7 +49,25 @@ export function detectRecurringAutomationIntent(userText: string): boolean {
   if (!hasRecurringSignal) {
     return false;
   }
-  return REQUEST_VERB_KO.test(userText) || REQUEST_VERB_EN.test(userText);
+  const trimmed = userText.trim();
+  const directedRequest = DIRECTED_REQUEST_KO.test(trimmed) || DIRECTED_REQUEST_EN.test(trimmed);
+  const firstPersonRoutine = !directedRequest && (
+    FIRST_PERSON_SUBJECT_KO.test(trimmed) || FIRST_PERSON_SUBJECT_EN.test(trimmed)
+  );
+  if (firstPersonRoutine) {
+    return false;
+  }
+  if (REQUEST_VERB_KO.test(userText) || REQUEST_VERB_EN.test(userText)) {
+    return true;
+  }
+  const ambiguousAction = RECURRING_ACTION_IMPERATIVE_KO.test(trimmed) ||
+    RECURRING_ACTION_IMPERATIVE_EN.test(trimmed);
+  return ambiguousAction;
+}
+
+export function detectUnsupportedRecurringAutomationIntent(userText: string): boolean {
+  return splitUserIntentClauses(userText).some((clause) =>
+    detectRecurringAutomationIntent(clause) && !detectUnscheduledRememberIntent(clause));
 }
 
 // A bare completion verb ("등록했", "만들어뒀", …) also confirms an ordinary
@@ -89,6 +119,8 @@ export const AUTOMATION_GUIDANCE_BLOCK_KO =
 export interface ApplyAutomationHonestyInput {
   readonly userText: string;
   readonly replyText: string;
+  /** True only after this turn deterministically persisted a supported recurring followup. */
+  readonly supportedRecurringFollowupScheduled?: boolean;
 }
 
 export interface ApplyAutomationHonestyResult {
@@ -106,10 +138,16 @@ export interface ApplyAutomationHonestyResult {
  */
 export function applyAutomationHonesty(input: ApplyAutomationHonestyInput): ApplyAutomationHonestyResult {
   const { userText, replyText } = input;
+  const unsupportedAutomation = detectUnsupportedRecurringAutomationIntent(userText);
   if (detectFalseSchedulingClaim(replyText)) {
+    if (input.supportedRecurringFollowupScheduled === true && !unsupportedAutomation) {
+      return { builderHint: null, content: replyText };
+    }
     return { builderHint: userText, content: `${replyText}\n\n${AUTOMATION_CORRECTION_BLOCK_KO}` };
   }
-  if (detectRecurringAutomationIntent(userText)) {
+  if (unsupportedAutomation || (
+    input.supportedRecurringFollowupScheduled !== true && detectRecurringAutomationIntent(userText)
+  )) {
     return { builderHint: userText, content: `${replyText}\n\n${AUTOMATION_GUIDANCE_BLOCK_KO}` };
   }
   return { builderHint: null, content: replyText };

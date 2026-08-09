@@ -112,7 +112,7 @@ describe("markFollowupFired", () => {
 
   it("returns undefined when the followup is already fired", async () => {
     const file = tmpFile();
-    await upsertFollowup(file, fixture({ id: "fu_done", firedAt: "x", status: "fired" }));
+    await upsertFollowup(file, fixture({ id: "fu_done", firedAt: "2026-05-13T10:30:00.000Z", status: "fired" }));
     expect(await markFollowupFired(file, "fu_done", "2026-05-13T10:30:01.000Z")).toBeUndefined();
   });
 });
@@ -128,7 +128,7 @@ describe("cancelFollowup", () => {
 
   it("returns undefined when the followup is already fired", async () => {
     const file = tmpFile();
-    await upsertFollowup(file, fixture({ id: "fu_old", firedAt: "x", status: "fired" }));
+    await upsertFollowup(file, fixture({ id: "fu_old", firedAt: "2026-05-13T10:30:00.000Z", status: "fired" }));
     expect(await cancelFollowup(file, "fu_old", "snooze-replaced")).toBeUndefined();
   });
 });
@@ -176,7 +176,10 @@ describe("readFollowupStatusFilter", () => {
 describe("concurrent followup mutation", () => {
   it("preserves EVERY distinct followup upserted concurrently (no last-writer-wins loss)", async () => {
     const file = tmpFile();
-    await Promise.all(Array.from({ length: 20 }, (_unused, i) => upsertFollowup(file, fixture({ id: `fu${i.toString()}` }))));
+    await Promise.all(Array.from(
+      { length: 20 },
+      (_unused, i) => upsertFollowup(file, fixture({ id: `fu${i.toString()}`, summary: `followup ${i.toString()}` }))
+    ));
     const all = await readFollowups(file);
     expect(all).toHaveLength(20);
     expect(new Set(all.map((f) => f.id)).size).toBe(20);
@@ -184,7 +187,10 @@ describe("concurrent followup mutation", () => {
 
   it("applies every concurrent markFired on distinct scheduled followups (no crash, none dropped)", async () => {
     const file = tmpFile();
-    await Promise.all(Array.from({ length: 20 }, (_unused, i) => upsertFollowup(file, fixture({ id: `fu${i.toString()}` }))));
+    await Promise.all(Array.from(
+      { length: 20 },
+      (_unused, i) => upsertFollowup(file, fixture({ id: `fu${i.toString()}`, summary: `followup ${i.toString()}` }))
+    ));
     const fired = await Promise.all((await readFollowups(file)).map((f) => markFollowupFired(file, f.id, "2026-05-13T11:00:00.000Z")));
     expect(fired.filter(Boolean)).toHaveLength(20);
     expect((await readFollowups(file)).every((f) => f.status === "fired")).toBe(true);

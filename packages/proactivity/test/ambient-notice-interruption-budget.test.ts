@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { appendInterruptionDelivery, readDigestQueue, readInterruptionLedger, readLastProactiveDeliveries, recordOutcome } from "@muse/stores";
+import { appendInterruptionDelivery, drainDigestQueue, readDigestQueue, readInterruptionLedger, readLastProactiveDeliveries, recordOutcome } from "@muse/stores";
 
 import { createAmbientNoticeRunner, type AmbientNoticeRule, type AmbientSignal, type ProactiveNoticeSink } from "../src/ambient-notice-loop.js";
 
@@ -51,13 +51,35 @@ describe("createAmbientNoticeRunner — interruption budget (opt-in)", () => {
     expect(second.delivered).toBe(0);
     expect((await readDigestQueue(digestFile))).toHaveLength(1); // not re-queued
 
-    // Clear then re-match → re-arms and fires (still gated) again.
+    // Clear then re-match → re-arms, but the pending digest item retains
+    // source-identity dedupe until it is drained.
     signal = undefined;
     await runner.tick();
     signal = { window: "Team Standup — 14:00" };
     const third = await runner.tick();
     expect(third.delivered).toBe(0);
-    expect((await readDigestQueue(digestFile))).toHaveLength(2);
+    expect((await readDigestQueue(digestFile))).toHaveLength(1);
+
+    // Once the pending item leaves the queue, the still-matching rule remains
+    // edge-consumed and cannot refill it on the next tick.
+    await drainDigestQueue(digestFile);
+    expect(await readDigestQueue(digestFile)).toHaveLength(0);
+    const fourth = await runner.tick();
+    expect(fourth.delivered).toBe(0);
+    expect(delivered).toHaveLength(0);
+    expect(await readDigestQueue(digestFile)).toHaveLength(0);
+
+    // A later clear/re-match can enqueue the rule again. Dedupe therefore does
+    // not disable re-arming after the prior pending item has been drained.
+    signal = undefined;
+    await runner.tick();
+    signal = { window: "Team Standup — 14:00" };
+    const fifth = await runner.tick();
+    expect(fifth.delivered).toBe(0);
+    expect(delivered).toHaveLength(0);
+    expect(await readDigestQueue(digestFile)).toEqual([
+      expect.objectContaining({ source: "ambient-notice", sourceId: "standup" })
+    ]);
   });
 
   it("cap reached: keeps attacker-influenced ambient prose raw in the digest queue", async () => {
