@@ -55,6 +55,16 @@ export {
 
 export { sleep } from "./sleep.js";
 export {
+  canonicalFollowupRecurrenceJson,
+  followupCommitmentKey,
+  FOLLOWUP_COMMITMENT_TEXT_MAX_CHARS,
+  isFollowupRecurrence,
+  nextFollowupOccurrence,
+  normalizeFollowupCommitmentText,
+  normalizeFollowupRecurrence,
+  type FollowupRecurrence
+} from "./followup-recurrence.js";
+export {
   TRIGGER_ENVELOPE_SCHEMA_VERSION,
   createTriggerEnvelope,
   isTriggerEnvelope,

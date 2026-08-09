@@ -64,6 +64,7 @@ export {
 export { contentTokens, contentTokenSet } from "./provenance-tokens.js";
 export {
   detectUnscheduledRememberIntent,
+  containsFollowupRecurrenceMarker,
   extractFollowupPromises,
   hasCommissiveForce,
   hasKoreanCommissiveForce,

@@ -313,9 +313,12 @@ function formatFollowupDetail(record: PersistedFollowup): string {
     `summary:       ${record.summary}`
   ];
   if (record.kind) lines.push(`kind:          ${record.kind}`);
+  if (record.recurrence) lines.push(`recurrence:    ${JSON.stringify(record.recurrence)}`);
+  if (record.commitmentKey) lines.push(`commitmentKey: ${record.commitmentKey}`);
   if (record.originRunId) lines.push(`originRunId:   ${record.originRunId}`);
   if (record.originTurnHash) lines.push(`originTurnHash:${record.originTurnHash}`);
   if (record.firedAt) lines.push(`firedAt:       ${shortDateTime(record.firedAt)} (${record.firedAt})`);
+  if (record.lastFiredAt) lines.push(`lastFiredAt:   ${shortDateTime(record.lastFiredAt)} (${record.lastFiredAt})`);
   if (record.cancelReason) lines.push(`cancelReason:  ${record.cancelReason}`);
   return `${lines.join("\n")}\n`;
 }

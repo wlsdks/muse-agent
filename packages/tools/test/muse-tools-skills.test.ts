@@ -69,6 +69,20 @@ describe("muse.skills.read", () => {
     expect(out.body).toContain("# Codex");
   });
 
+  it("runs read telemetry once after a successful read and swallows telemetry failures", async () => {
+    const viewed: string[] = [];
+    const registry: SkillRegistryView = {
+      ...makeRegistry([{ ...codex, source: "authored" }]),
+      onRead: async (skill) => {
+        viewed.push(skill.name);
+        throw new Error("sidecar unavailable");
+      }
+    };
+    const out = (await createSkillReadTool(registry).execute({ name: "codex" }, { runId: "r-1" })) as { readonly body: string };
+    expect(out.body).toContain("# Codex");
+    expect(viewed).toEqual(["codex"]);
+  });
+
   it("returns an error for unknown skills", async () => {
     const tool = createSkillReadTool(makeRegistry([codex]));
     const out = (await tool.execute({ name: "missing" }, { runId: "r-1" })) as { readonly error?: string };

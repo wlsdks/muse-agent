@@ -52,6 +52,7 @@ export {
   resolveAttunementFile,
   resolveAuthoredSkillsDir,
   resolveSkillRewardsFile,
+  resolveSkillUsageFile,
   resolvePendingApprovalsFile,
   resolveBriefingSidecarFile,
   resolveContactsFile,

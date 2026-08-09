@@ -1,12 +1,12 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, readOutboundEffects, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { appendInterruptionDelivery, readDigestQueue, readFollowups, readInterruptionLedger, readLastProactiveDeliveries, recordOutcome, upsertFollowup } from "@muse/stores";
+import { appendInterruptionDelivery, cancelFollowup, readDigestQueue, readFollowups, readInterruptionLedger, readLastProactiveDeliveries, recordOutcome, upsertFollowup } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { runDueFollowups } from "../src/followup-firing-loop.js";
+import { followupOccurrenceEffectId, runDueFollowups } from "../src/followup-firing-loop.js";
 import type { ProactiveModelProviderLike } from "../src/proactive-notice-loop.js";
 
 function capturingProvider(sent: OutboundMessage[]): MessagingProvider {
@@ -68,7 +68,10 @@ describe("runDueFollowups — interruption budget (opt-in)", () => {
     expect((await readFollowups(followupsFile))[0]!.status).toBe("fired");
     const queued = await readDigestQueue(digestFile);
     expect(queued).toHaveLength(1);
-    expect(queued[0]).toMatchObject({ source: "followup", sourceId: "f1" });
+    expect(queued[0]).toMatchObject({
+      source: "followup",
+      sourceId: followupOccurrenceEffectId("f1", new Date(NOW.getTime() - 60_000).toISOString())
+    });
     expect(await readOutboundEffects(join(dir, "outbound-effects.json"))).toEqual([]);
   });
 
@@ -123,7 +126,7 @@ describe("runDueFollowups — interruption budget (opt-in)", () => {
     expect(sent).toHaveLength(1);
   });
 
-  it("a channel-vetoed followup (trust ledger) is fully silent: no send, no digest, still marked fired", async () => {
+  it("a channel-vetoed followup (trust ledger) is fully silent and preserves the scheduled occurrence", async () => {
     const trustLedgerFile = join(dir, "trust.json");
     await recordOutcome(trustLedgerFile, "followup:f1", "vetoed", NOW.getTime());
 
@@ -141,7 +144,7 @@ describe("runDueFollowups — interruption budget (opt-in)", () => {
     });
     expect(sent).toEqual([]);
     expect(summary.delivered).toBe(0);
-    expect((await readFollowups(followupsFile))[0]!.status).toBe("fired");
+    expect((await readFollowups(followupsFile))[0]!.status).toBe("scheduled");
     expect(await readDigestQueue(digestFile)).toHaveLength(0);
     expect(await readInterruptionLedger(ledgerFile)).toHaveLength(0);
     expect(await readLastProactiveDeliveries(lastDeliveryFile)).toHaveLength(0);
@@ -169,5 +172,106 @@ describe("runDueFollowups — interruption budget (opt-in)", () => {
       sourceKey: "followup:f1",
       title: "check whether you sent the email"
     });
+  });
+
+  it("confirmed digest placement advances a recurring occurrence and a duplicate tick has no effect", async () => {
+    await cancelFollowup(followupsFile, "f1", "test-isolation");
+    const scheduledFor = new Date(2026, 6, 11, 8).toISOString();
+    const nextScheduledFor = new Date(2026, 6, 12, 8).toISOString();
+    await upsertFollowup(followupsFile, {
+      createdAt: new Date(NOW.getTime() - 3_600_000).toISOString(),
+      id: "recurring",
+      recurrence: { kind: "daily", hour: 8, minute: 0 },
+      scheduledFor,
+      status: "scheduled",
+      summary: "review the recurring report",
+      userId: "stark"
+    });
+    await appendInterruptionDelivery(ledgerFile, { at: NOW, source: "followup" });
+
+    const first = await runDueFollowups({
+      destination: "555",
+      file: followupsFile,
+      interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 1, ledgerFile },
+      model: "test-model",
+      modelProvider: fakeModel,
+      now: () => NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider([])])
+    });
+    expect(first.delivered).toBe(0);
+    expect(await readDigestQueue(digestFile)).toHaveLength(1);
+    expect((await readFollowups(followupsFile)).find((entry) => entry.id === "recurring")).toMatchObject({
+      lastFiredAt: NOW.toISOString(),
+      scheduledFor: nextScheduledFor,
+      status: "scheduled"
+    });
+
+    const second = await runDueFollowups({
+      destination: "555",
+      file: followupsFile,
+      interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 1, ledgerFile },
+      model: "test-model",
+      modelProvider: fakeModel,
+      now: () => NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider([])])
+    });
+    expect(second.due).toBe(0);
+    expect(await readDigestQueue(digestFile)).toHaveLength(1);
+  });
+
+  it("preserves the recurring occurrence when digest append fails", async () => {
+    await cancelFollowup(followupsFile, "f1", "test-isolation");
+    const scheduledFor = new Date(2026, 6, 11, 8).toISOString();
+    await upsertFollowup(followupsFile, {
+      createdAt: new Date(NOW.getTime() - 3_600_000).toISOString(),
+      id: "recurring",
+      recurrence: { kind: "daily", hour: 8, minute: 0 },
+      scheduledFor,
+      status: "scheduled",
+      summary: "review the recurring report",
+      userId: "stark"
+    });
+    await mkdir(digestFile);
+    await appendInterruptionDelivery(ledgerFile, { at: NOW, source: "followup" });
+
+    const summary = await runDueFollowups({
+      destination: "555",
+      file: followupsFile,
+      interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 1, ledgerFile },
+      model: "test-model",
+      modelProvider: fakeModel,
+      now: () => NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider([])])
+    });
+    expect(summary.delivered).toBe(0);
+    expect((await readFollowups(followupsFile)).find((entry) => entry.id === "recurring")).toMatchObject({ scheduledFor, status: "scheduled" });
+  });
+
+  it("preserves the recurring occurrence when synthesis fails", async () => {
+    await cancelFollowup(followupsFile, "f1", "test-isolation");
+    const scheduledFor = new Date(2026, 6, 11, 8).toISOString();
+    await upsertFollowup(followupsFile, {
+      createdAt: new Date(NOW.getTime() - 3_600_000).toISOString(),
+      id: "recurring",
+      recurrence: { kind: "daily", hour: 8, minute: 0 },
+      scheduledFor,
+      status: "scheduled",
+      summary: "review the recurring report",
+      userId: "stark"
+    });
+    const summary = await runDueFollowups({
+      destination: "555",
+      file: followupsFile,
+      model: "test-model",
+      modelProvider: { generate: async () => { throw new Error("model unavailable"); } },
+      now: () => NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider([])])
+    });
+    expect(summary.delivered).toBe(0);
+    expect((await readFollowups(followupsFile)).find((entry) => entry.id === "recurring")).toMatchObject({ scheduledFor, status: "scheduled" });
   });
 });

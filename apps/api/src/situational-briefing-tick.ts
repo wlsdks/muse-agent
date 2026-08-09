@@ -20,12 +20,8 @@ import type { MessagingRouteResolution } from "@muse/autoconfigure";
 import { runDueSituationalBriefing, type EmailProvider, type WeatherProvider } from "@muse/domain-tools";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
+import { admitAutomationRoute } from "./automation-route-admission.js";
 import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
-import {
-  explicitMessagingRouteReceipt,
-  sanitizeMessagingRouteReceipt,
-  unavailableMessagingRouteReceipt
-} from "./messaging-route-receipt.js";
 import type {
   BriefingRuntimeDecision,
   BriefingRuntimeStatusStore
@@ -34,10 +30,10 @@ import type {
 export interface SituationalBriefingTickOptions {
   readonly objectivesFile: string;
   readonly registry: MessagingProviderRegistry;
-  readonly providerId?: string;
-  readonly destination?: string;
-  /** Re-resolves the canonical Gateway route immediately before each send. */
-  readonly resolveRoute?: () => MessagingRouteResolution | undefined;
+  /** Canonical route resolver, invoked once immediately before delivery. */
+  readonly resolveRoute: () => unknown;
+  /** Captured effective local-only posture for bounded fallback receipts. */
+  readonly localOnly: boolean;
   readonly sidecarFile: string;
   readonly imminent?: readonly BriefingImminent[];
   /**
@@ -102,12 +98,14 @@ export function startSituationalBriefingTick(
   ): void => {
     try {
       options.runtimeStatus?.record({
+        availability: "observed",
         decision,
         deliveredCount,
         errorCount,
         imminentCount,
         lastRoute,
-        observedAtIso: at.toISOString()
+        observedAtIso: at.toISOString(),
+        phase: "tick"
       });
     } catch {
     }
@@ -125,27 +123,32 @@ export function startSituationalBriefingTick(
       return;
     }
     firing = true;
-    let route = unavailableMessagingRouteReceipt();
+    let attemptedRoute: MessagingRouteResolution | undefined;
     let imminentCount = 0;
     try {
-      try {
-        const resolved = options.resolveRoute
-          ? options.resolveRoute()
-          : options.providerId !== undefined && options.destination !== undefined
-            ? explicitMessagingRouteReceipt(options.providerId, options.destination)
-            : undefined;
-        route = sanitizeMessagingRouteReceipt(resolved ?? unavailableMessagingRouteReceipt());
-      } catch {
-        route = unavailableMessagingRouteReceipt();
-        options.errorLogger?.("situational-briefing-tick: route-unavailable");
-      }
-      if (route.status !== "resolved" || !route.providerId || !route.destination) {
-        observe("route-unavailable", at, 0, 0, 0, route);
-        if (route.status !== "unconfigured" || route.reason !== "paired-route-inspection-unavailable") {
-          options.errorLogger?.(`situational-briefing-tick: route-unavailable (${route.reason ?? route.status})`);
+      let resolverThrew = false;
+      const admission = admitAutomationRoute({
+        localOnly: options.localOnly,
+        resolveRoute: () => {
+          try {
+            return options.resolveRoute();
+          } catch (cause) {
+            resolverThrew = true;
+            throw cause;
+          }
+        }
+      });
+      attemptedRoute = admission.route;
+      if (!admission.admitted) {
+        observe("route-unavailable", at, 0, 0, 0, admission.route);
+        if (resolverThrew) {
+          options.errorLogger?.("situational-briefing-tick: route-unavailable");
+        } else if (admission.route.status !== "unconfigured" || admission.route.reason !== "paired-route-inspection-unavailable") {
+          options.errorLogger?.(`situational-briefing-tick: route-unavailable (${admission.route.reason ?? admission.route.status})`);
         }
         return;
       }
+      const route = admission.route;
       let imminent = options.imminent ?? [];
       if (options.imminentProvider) {
         try {
@@ -183,7 +186,7 @@ export function startSituationalBriefingTick(
         options.logger?.(`situational-briefing-tick: delivered via ${route.providerId}`);
       }
     } catch (cause) {
-      observe("error", at, imminentCount, 0, 1, route);
+      observe("error", at, imminentCount, 0, 1, attemptedRoute);
       const message = errorMessage(cause);
       options.errorLogger?.(`situational-briefing-tick: ${message}`);
     } finally {

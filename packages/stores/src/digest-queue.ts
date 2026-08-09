@@ -84,6 +84,9 @@ export async function appendDigestItem(
 ): Promise<void> {
   await withFileMutationQueue(file, async () => {
     const existing = await readDigestQueue(file);
+    if (item.sourceId !== undefined && existing.some((queued) => queued.sourceId === item.sourceId)) {
+      return;
+    }
     const next: DigestQueueItem = {
       at: item.at.toISOString(),
       source: item.source,

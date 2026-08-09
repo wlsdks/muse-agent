@@ -148,6 +148,7 @@ export {
   resolveAuthoredSkillsDir,
   resolveReflectionsFile,
   resolveSkillRewardsFile,
+  resolveSkillUsageFile,
   resolveWorksFile
 } from "./personal-providers.js";
 

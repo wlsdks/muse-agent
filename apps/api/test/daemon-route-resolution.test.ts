@@ -70,17 +70,17 @@ describe("proactive and digest daemon starters", () => {
     startProactiveDaemonIfConfigured({}, proactiveServer.server as never, options, phaseD);
     expect(captured.proactive).toHaveLength(1);
     expect(captured.proactive[0]).toMatchObject({
-      destination: "paired-555",
+      localOnly: false,
       messagingRegistry: registry,
-      providerId: "telegram"
+      resolveRoute: expect.any(Function)
     });
 
     const digestServer = fakeServer();
     startDigestDaemonIfConfigured({}, digestServer.server as never, options);
     expect(captured.digest).toHaveLength(1);
     expect(captured.digest[0]).toMatchObject({
-      destination: "paired-555",
-      providerId: "telegram",
+      localOnly: false,
+      resolveRoute: expect.any(Function),
       registry
     });
 
@@ -132,6 +132,56 @@ describe("proactive and digest daemon starters", () => {
     await writeFile(ownersFile, JSON.stringify({ owners: { telegram: "adopted-owner" }, version: 1 }));
     expect(resolveProactive()).toEqual(expect.objectContaining({ destination: "adopted-owner", providerId: "telegram", status: "resolved" }));
     expect(resolveDigest()).toEqual(expect.objectContaining({ destination: "adopted-owner", providerId: "telegram", status: "resolved" }));
+  });
+
+  it("uses the complete legacy briefing pair for both proactive and digest routes", () => {
+    const registry = new MessagingProviderRegistry([provider()]);
+    const options = {
+      integrationEnv: { localOnly: false, messaging: { ownersFile: join(tmpdir(), "missing-owners.json") } },
+      messaging: registry,
+      tasksFile: join(tmpdir(), "tasks.json")
+    } as unknown as Parameters<typeof startProactiveDaemonIfConfigured>[2];
+
+    startProactiveDaemonIfConfigured({
+      MUSE_BRIEFING_DESTINATION: "legacy-owner",
+      MUSE_BRIEFING_PROVIDER: "telegram"
+    }, fakeServer().server as never, options, { phaseDProactiveOn: false, phaseDReminderOn: false });
+    startDigestDaemonIfConfigured({
+      MUSE_BRIEFING_DESTINATION: "legacy-owner",
+      MUSE_BRIEFING_PROVIDER: "telegram"
+    }, fakeServer().server as never, options);
+
+    expect((captured.proactive[0]!.resolveRoute as () => unknown)()).toMatchObject({
+      destination: "legacy-owner",
+      providerId: "telegram",
+      status: "resolved"
+    });
+    expect((captured.digest[0]!.resolveRoute as () => unknown)()).toMatchObject({
+      destination: "legacy-owner",
+      providerId: "telegram",
+      status: "resolved"
+    });
+  });
+
+  it("lets the canonical proactive pair win over the legacy briefing fallback", () => {
+    const registry = new MessagingProviderRegistry([provider()]);
+    const options = {
+      integrationEnv: { localOnly: false, messaging: { ownersFile: join(tmpdir(), "missing-owners.json") } },
+      messaging: registry,
+      tasksFile: join(tmpdir(), "tasks.json")
+    } as unknown as Parameters<typeof startProactiveDaemonIfConfigured>[2];
+    const env = {
+      MUSE_BRIEFING_DESTINATION: "legacy-owner",
+      MUSE_BRIEFING_PROVIDER: "telegram",
+      MUSE_PROACTIVE_DESTINATION: "canonical-owner",
+      MUSE_PROACTIVE_PROVIDER: "telegram"
+    };
+
+    startProactiveDaemonIfConfigured(env, fakeServer().server as never, options, { phaseDProactiveOn: false, phaseDReminderOn: false });
+    startDigestDaemonIfConfigured(env, fakeServer().server as never, options);
+
+    expect((captured.proactive[0]!.resolveRoute as () => unknown)()).toMatchObject({ destination: "canonical-owner", status: "resolved" });
+    expect((captured.digest[0]!.resolveRoute as () => unknown)()).toMatchObject({ destination: "canonical-owner", status: "resolved" });
   });
 
   it("does not let a partial explicit route fall through to the paired owner", async () => {

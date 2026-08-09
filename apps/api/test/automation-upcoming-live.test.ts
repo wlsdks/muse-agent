@@ -133,7 +133,11 @@ describe("assembled GET /api/automation/upcoming", () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toMatchObject({
         digest: { enabled: true, hour: 9 },
-        digestRuntime: null,
+        digestRuntime: {
+          availability: "dormant",
+          lastDecision: "startup",
+          phase: "startup"
+        },
         gateway: {
           destination: "desktop",
           localOnly: true,
@@ -284,7 +288,14 @@ describe("assembled GET /api/automation/upcoming", () => {
         method: "GET",
         url: "/api/automation/upcoming"
       });
-      expect(before.json()).toMatchObject({ digest: { hour: 9 }, digestRuntime: null });
+      expect(before.json()).toMatchObject({
+        digest: { hour: 9 },
+        digestRuntime: {
+          availability: "dormant",
+          lastDecision: "startup",
+          phase: "startup"
+        }
+      });
 
       await tickHandle!.tickOnce();
       expect(send).toHaveBeenCalledTimes(1);
@@ -297,10 +308,12 @@ describe("assembled GET /api/automation/upcoming", () => {
       expect(after.json()).toMatchObject({
         digest: { hour: 9, nextAtIso: expect.any(String) },
         digestRuntime: {
+          availability: "observed",
           lastDecision: "sent",
           lastErrorCount: 0,
           lastItemCount: 1,
-          lastObservedAtIso: tickNow.toISOString()
+          lastObservedAtIso: tickNow.toISOString(),
+          phase: "tick"
         }
       });
       expect(send).toHaveBeenCalledTimes(1);

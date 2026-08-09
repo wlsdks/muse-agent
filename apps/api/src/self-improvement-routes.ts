@@ -1,6 +1,7 @@
-import { isLearningPaused, readPendingLearnEvents, readPlaybook, readWeaknesses, readSkillRewards, adjustSkillReward, isSkillAvoided, readReflections, listReflections, type PlaybookEntry, type WeaknessEntry, type StoredReflection } from "@muse/stores";
+import { isLearningPaused, readPendingLearnEvents, readPlaybook, readSkillUsage, readWeaknesses, readSkillRewards, adjustSkillReward, isSkillAvoided, readReflections, listReflections, type PlaybookEntry, type SkillUsageMap, type WeaknessEntry, type StoredReflection } from "@muse/stores";
 import { loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import type { FastifyInstance } from "fastify";
+import { dirname, join } from "node:path";
 
 import { CONSOLIDATE_IDLE_FLAG, resolveConsolidateIdleEnabled } from "./consolidate-idle-flag.js";
 import type { ConsolidateTickDecision, ConsolidateTickStatus } from "./consolidate-tick.js";
@@ -97,6 +98,9 @@ interface SkillView {
   readonly source: string;
   readonly reward: number;
   readonly avoided: boolean;
+  readonly useCount: number;
+  readonly viewCount: number;
+  readonly lastActivity: string | null;
 }
 
 export interface SkillsResponse {
@@ -104,13 +108,16 @@ export interface SkillsResponse {
   readonly entries: readonly SkillView[];
 }
 
-export function shapeSkills(skills: readonly Skill[], rewards: Record<string, number>): SkillsResponse {
+export function shapeSkills(skills: readonly Skill[], rewards: Record<string, number>, usage: SkillUsageMap = {}): SkillsResponse {
   const mapped: SkillView[] = skills.map((s) => ({
+    lastActivity: usage[s.name]?.lastActivity ?? null,
     name: s.name,
     description: s.description,
     source: s.sourceInfo.source,
     reward: rewards[s.name] ?? 0,
-    avoided: isSkillAvoided(rewards[s.name])
+    avoided: isSkillAvoided(rewards[s.name]),
+    useCount: usage[s.name]?.useCount ?? 0,
+    viewCount: usage[s.name]?.viewCount ?? 0
   }));
   const sorted = [...mapped].sort((a, b) => b.reward - a.reward || a.name.localeCompare(b.name));
   return { total: skills.length, entries: sorted };
@@ -204,6 +211,7 @@ export interface SelfImprovementRoutesGate {
   readonly playbookFile: string;
   readonly authoredSkillsDir: string;
   readonly skillRewardsFile: string;
+  readonly skillUsageFile?: string;
   readonly reflectionsFile: string;
 }
 
@@ -236,11 +244,12 @@ export function registerSelfImprovementRoutes(server: FastifyInstance, gate: Sel
     if (!authed(request, reply)) {
       return reply;
     }
-    const [skills, rewards] = await Promise.all([
+    const [skills, rewards, usage] = await Promise.all([
       loadSkillsFromDirectory(gate.authoredSkillsDir, "authored"),
-      readSkillRewards(gate.skillRewardsFile)
+      readSkillRewards(gate.skillRewardsFile),
+      readSkillUsage(gate.skillUsageFile ?? join(dirname(gate.skillRewardsFile), "skill-usage.json"))
     ]);
-    return shapeSkills(skills, rewards);
+    return shapeSkills(skills, rewards, usage);
   });
 
   server.get("/api/self-improvement/reflections", async (request, reply) => {

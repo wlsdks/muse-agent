@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { createSkillRuntime } from "../src/skills-runtime.js";
 import type { MuseEnvironment } from "../src/index.js";
+import { readSkillUsage } from "@muse/stores";
 
 // Coverage for createSkillRuntime — wires the muse.skills.* tools to an ASYNC
 // disk scan. The view used to read a `skillRegistryCache` variable that a
@@ -17,18 +18,19 @@ import type { MuseEnvironment } from "../src/index.js";
 // real scan result — there is no more "before the scan resolves" window to
 // test.
 
-const skillsRootWith = (skill?: { name: string; description: string }): { env: MuseEnvironment; userDir: string } => {
+const skillsRootWith = (skill?: { name: string; description: string; source?: "authored" | "user" }): { base: string; env: MuseEnvironment; userDir: string } => {
   const base = mkdtempSync(join(tmpdir(), "muse-skills-rt-"));
   const userDir = join(base, "skills");
   const authoredDir = join(base, "authored");
   mkdirSync(authoredDir, { recursive: true });
   mkdirSync(userDir, { recursive: true });
   if (skill) {
-    mkdirSync(join(userDir, skill.name), { recursive: true });
-    writeFileSync(join(userDir, skill.name, "SKILL.md"), `---\nname: ${skill.name}\ndescription: ${skill.description}\n---\nBody.`);
+    const root = skill.source === "authored" ? authoredDir : userDir;
+    mkdirSync(join(root, skill.name), { recursive: true });
+    writeFileSync(join(root, skill.name, "SKILL.md"), `---\nname: ${skill.name}\ndescription: ${skill.description}\n---\nBody.`);
   }
   // Pin BOTH skills dirs to tmp so the real ~/.muse/skills is never scanned.
-  return { env: { MUSE_AUTHORED_SKILLS_DIR: authoredDir, MUSE_SKILLS_DIR: userDir } as unknown as MuseEnvironment, userDir };
+  return { base, env: { MUSE_AUTHORED_SKILLS_DIR: authoredDir, MUSE_SKILLS_DIR: userDir } as unknown as MuseEnvironment, userDir };
 };
 
 describe("createSkillRuntime", () => {
@@ -59,6 +61,22 @@ describe("createSkillRuntime", () => {
     const out = await readTool?.execute({ name: "greet" }, { runId: "r-1" }) as { error?: string; body?: string };
     expect(out.error).toBeUndefined();
     expect(out.body).toBe("Body.");
+  });
+
+  it("records an authored read but not a user-skill read", async () => {
+    const authored = skillsRootWith({ description: "Greet the user warmly", name: "authored-greet", source: "authored" });
+    const authoredEnv = { ...authored.env, MUSE_SKILL_REWARDS_FILE: join(authored.base, "skill-rewards.json") } as MuseEnvironment;
+    const authoredRuntime = createSkillRuntime(authoredEnv);
+    const authoredRead = authoredRuntime.skillTools.find((t) => t.definition.name === "muse.skills.read");
+    await authoredRead?.execute({ name: "authored-greet" }, { runId: "r-1" });
+    expect((await readSkillUsage(join(authored.base, "skill-usage.json")))["authored-greet"]?.viewCount).toBe(1);
+
+    const user = skillsRootWith({ description: "Greet the user warmly", name: "user-greet", source: "user" });
+    const userEnv = { ...user.env, MUSE_SKILL_REWARDS_FILE: join(user.base, "skill-rewards.json") } as MuseEnvironment;
+    const userRuntime = createSkillRuntime(userEnv);
+    const userRead = userRuntime.skillTools.find((t) => t.definition.name === "muse.skills.read");
+    await userRead?.execute({ name: "user-greet" }, { runId: "r-1" });
+    expect(await readSkillUsage(join(user.base, "skill-usage.json"))).toEqual({});
   });
 
   it("returns no tools and an undefined registry when MUSE_SKILLS_ENABLED=false", async () => {

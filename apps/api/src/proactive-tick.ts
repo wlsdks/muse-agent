@@ -33,17 +33,13 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { MessagingRouteResolution } from "@muse/autoconfigure";
 import { atomicWriteFile, withFileLock, withFileMutationQueue } from "@muse/stores";
 
+import { admitAutomationRoute } from "./automation-route-admission.js";
 import { isQuietHour, resolveQuietHoursOption, type QuietHoursOption } from "./reminder-tick.js";
 import type {
   ProactiveRuntimeDecision,
   ProactiveRuntimeStatusStore,
   ProactiveRuntimeStatusUpdate
 } from "./proactive-runtime-status.js";
-import {
-  explicitMessagingRouteReceipt,
-  sanitizeMessagingRouteReceipt,
-  unavailableMessagingRouteReceipt
-} from "./messaging-route-receipt.js";
 
 export interface ProactiveTickOptions {
   readonly calendarRegistry?: CalendarProviderRegistry;
@@ -66,10 +62,10 @@ export interface ProactiveTickOptions {
     readonly factSheet: string;
   }) => Promise<string | undefined>;
   readonly messagingRegistry: MessagingProviderRegistry;
-  readonly providerId?: string;
-  readonly destination?: string;
-  /** Re-resolves the canonical route immediately before delivery. */
-  readonly resolveRoute?: () => MessagingRouteResolution | undefined;
+  /** Canonical route resolver, invoked once immediately before delivery. */
+  readonly resolveRoute: () => unknown;
+  /** Captured effective local-only posture for bounded fallback receipts. */
+  readonly localOnly: boolean;
   readonly effectFile?: string;
   readonly sidecarFile: string;
   readonly leadMinutes?: number;
@@ -156,26 +152,22 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
       return;
     }
     firing = true;
+    let attemptedRoute: MessagingRouteResolution | undefined;
     try {
-      let route: MessagingRouteResolution;
-      try {
-        const resolved = options.resolveRoute
-          ? options.resolveRoute()
-          : options.providerId !== undefined && options.destination !== undefined
-            ? explicitMessagingRouteReceipt(options.providerId, options.destination)
-            : undefined;
-        route = sanitizeMessagingRouteReceipt(resolved ?? unavailableMessagingRouteReceipt());
-      } catch {
-        route = unavailableMessagingRouteReceipt();
-      }
-      recordRuntimeStatus(options, {
-        decision: "route-unavailable",
-        lastRoute: route,
-        observedAtIso: observedAt.toISOString()
+      const admission = admitAutomationRoute({
+        localOnly: options.localOnly,
+        resolveRoute: options.resolveRoute
       });
-      if (route.status !== "resolved" || !route.providerId || !route.destination) {
+      attemptedRoute = admission.route;
+      if (!admission.admitted) {
+        recordRuntimeStatus(options, {
+          decision: "route-unavailable",
+          lastRoute: admission.route,
+          observedAtIso: observedAt.toISOString()
+        });
         return;
       }
+      const route = admission.route;
       const summary = await runDueProactiveNotices({
         ...(options.activeSessionWindowMs !== undefined ? { activeSessionWindowMs: options.activeSessionWindowMs } : {}),
         ...(options.activitySource ? { activitySource: options.activitySource } : {}),
@@ -232,7 +224,8 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
       recordRuntimeStatus(options, {
         decision: "error",
         observedAtIso: observedAt.toISOString(),
-        errorCount: 1
+        errorCount: 1,
+        ...(attemptedRoute ? { lastRoute: attemptedRoute } : {})
       });
       const message = errorMessage(cause);
       options.errorLogger?.(`proactive-tick: ${message}`);
@@ -254,9 +247,12 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
   };
 }
 
-function recordRuntimeStatus(options: ProactiveTickOptions, update: ProactiveRuntimeStatusUpdate): void {
+function recordRuntimeStatus(
+  options: ProactiveTickOptions,
+  update: Omit<ProactiveRuntimeStatusUpdate, "availability" | "phase">
+): void {
   try {
-    options.runtimeStatus?.record(update);
+    options.runtimeStatus?.record({ availability: "observed", phase: "tick", ...update });
   } catch {
   }
 }

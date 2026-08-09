@@ -48,16 +48,17 @@ import { createNotesInvestigator, extractEmailAddress, GmailEmailProvider, Local
 import { startAmbientTick } from "./ambient-tick.js";
 import { startWebWatchTick } from "./web-watch-tick.js";
 import { startDigestTick } from "./digest-tick.js";
+import { admitAutomationRoute } from "./automation-route-admission.js";
 import { startFollowupTick } from "./followup-tick.js";
 import { recordFollowupRuntimeNotConfigured } from "./followup-runtime-status.js";
 import { startObjectivesTick } from "./objectives-tick.js";
 import { startPatternTick } from "./pattern-tick.js";
 import { recordPatternRuntimeNotConfigured, type PatternRuntimeStatusStore } from "./pattern-runtime-status.js";
 import { startSituationalBriefingTick } from "./situational-briefing-tick.js";
-import type { BriefingRuntimeStatusStore } from "./briefing-runtime-status.js";
-import type { DigestRuntimeStatusStore } from "./digest-runtime-status.js";
+import { recordBriefingRuntimeStartup, type BriefingRuntimeStatusStore } from "./briefing-runtime-status.js";
+import { recordDigestRuntimeStartup, type DigestRuntimeStatusStore } from "./digest-runtime-status.js";
 import type { FollowupRuntimeStatusStore } from "./followup-runtime-status.js";
-import type { ProactiveRuntimeStatusStore } from "./proactive-runtime-status.js";
+import { recordProactiveRuntimeStartup, type ProactiveRuntimeStatusStore } from "./proactive-runtime-status.js";
 import type { ReminderRuntimeStatusStore } from "./reminder-runtime-status.js";
 
 function stopOnClose(server: FastifyInstance, handle: { stop(): void }): void {
@@ -131,13 +132,13 @@ function resolveProactiveMessagingTarget(
     readonly allowBriefingFallback?: boolean;
     readonly localOnly?: boolean;
   } = {}
-): MessagingRouteResolution | undefined {
+): MessagingRouteResolution {
   const registry = options.messaging;
   const ownersFile = options.integrationEnv?.messaging.ownersFile
     ?? resolveIntegrationEnvironment(env).messaging.ownersFile;
   const localOnly = routeOptions.localOnly ?? options.integrationEnv?.localOnly ?? options.localOnly;
   return resolveProactiveMessagingRoute(env, {
-    ...(routeOptions.allowBriefingFallback ? { allowBriefingFallback: true } : {}),
+    allowBriefingFallback: routeOptions.allowBriefingFallback ?? true,
     ownersFile,
     registry,
     ...(localOnly !== undefined ? { localOnly } : {})
@@ -258,17 +259,28 @@ export function startProactiveDaemonIfConfigured(
   server: FastifyInstance,
   options: ServerOptions,
   phaseD: PhaseDActivityWiring,
-  runtimeStatus?: ProactiveRuntimeStatusStore
+  runtimeStatus?: ProactiveRuntimeStatusStore,
+  deliveryBrakeEngaged = false
 ): void {
+  if (deliveryBrakeEngaged) {
+    recordProactiveRuntimeStartup(runtimeStatus, "blocked");
+    return;
+  }
   const proactiveCalendar = options.calendar && options.calendar.list().length > 0
     ? options.calendar
     : undefined;
   const proactiveHasSignal = Boolean(proactiveCalendar) || Boolean(options.tasksFile);
-  const resolveRoute = () => resolveProactiveMessagingTarget(env, options);
-  const target = resolveRoute();
   if (!options.messaging || !proactiveHasSignal) {
+    recordProactiveRuntimeStartup(runtimeStatus, "not-configured");
     return;
   }
+  const localOnly = options.integrationEnv?.localOnly ?? options.localOnly ?? isLocalOnlyEnabled(env);
+  const resolveRoute = () => resolveProactiveMessagingTarget(env, options, {
+    allowBriefingFallback: true,
+    localOnly
+  });
+  const startupAdmission = admitAutomationRoute({ localOnly, resolveRoute });
+  recordProactiveRuntimeStartup(runtimeStatus, "dormant", new Date().toISOString(), startupAdmission.route);
   const proactiveRegistry = options.messaging;
   const proactiveTickMsRaw = optionalNumber(env.MUSE_PROACTIVE_TICK_MS);
   const proactiveLeadRaw = optionalNumber(env.MUSE_PROACTIVE_LEAD_MINUTES);
@@ -311,9 +323,6 @@ export function startProactiveDaemonIfConfigured(
     ...(options.proactiveHistoryFile ? { historyFile: options.proactiveHistoryFile } : {}),
     ...(proactiveCalendar ? { calendarRegistry: proactiveCalendar } : {}),
     ...(options.tasksFile ? { tasksFile: options.tasksFile } : {}),
-    ...(target?.status === "resolved" && target.providerId && target.destination
-      ? { destination: target.destination, providerId: target.providerId }
-      : {}),
     effectFile: join(
       dirname(options.actionLogFile ?? resolveActionLogFile(env)),
       "outbound-effects.json"
@@ -322,6 +331,7 @@ export function startProactiveDaemonIfConfigured(
     ...(proactiveTickMsRaw !== undefined ? { intervalMs: proactiveTickMsRaw } : {}),
     ...(proactiveLeadRaw !== undefined ? { leadMinutes: proactiveLeadRaw } : {}),
     logger: (message) => server.log.info(message),
+    localOnly,
     messagingRegistry: proactiveRegistry,
     ...(runtimeStatus ? { runtimeStatus } : {}),
     resolveRoute,
@@ -347,29 +357,39 @@ export function startDigestDaemonIfConfigured(
   env: NodeJS.ProcessEnv,
   server: FastifyInstance,
   options: ServerOptions,
-  runtimeStatus?: DigestRuntimeStatusStore
+  runtimeStatus?: DigestRuntimeStatusStore,
+  deliveryBrakeEngaged = false
 ): void {
+  if (deliveryBrakeEngaged) {
+    recordDigestRuntimeStartup(runtimeStatus, "blocked");
+    return;
+  }
   if (!parseBoolean(env.MUSE_DIGEST_ENABLED, true)) {
+    recordDigestRuntimeStartup(runtimeStatus, "disabled");
     return;
   }
-  const resolveRoute = () => resolveProactiveMessagingTarget(env, options);
-  const target = resolveRoute();
   if (!options.messaging) {
+    recordDigestRuntimeStartup(runtimeStatus, "not-configured");
     return;
   }
+  const localOnly = options.integrationEnv?.localOnly ?? options.localOnly ?? isLocalOnlyEnabled(env);
+  const resolveRoute = () => resolveProactiveMessagingTarget(env, options, {
+    allowBriefingFallback: true,
+    localOnly
+  });
+  const startupAdmission = admitAutomationRoute({ localOnly, resolveRoute });
+  recordDigestRuntimeStartup(runtimeStatus, "dormant", new Date().toISOString(), startupAdmission.route);
   const digestRegistry = options.messaging;
   const tickMsRaw = env.MUSE_DIGEST_TICK_MS ? Number(env.MUSE_DIGEST_TICK_MS) : undefined;
   const digestHourRaw = env.MUSE_DIGEST_HOUR ? Number(env.MUSE_DIGEST_HOUR) : undefined;
   const digestQuietHours = liveQuietHours(env, server, env.MUSE_PROACTIVE_QUIET_HOURS, env.MUSE_REMINDER_QUIET_HOURS);
   const digestHandle = startDigestTick({
-    ...(target?.status === "resolved" && target.providerId && target.destination
-      ? { destination: target.destination, providerId: target.providerId }
-      : {}),
     digestFile: resolveDigestQueueFile(env),
     ...(digestHourRaw !== undefined ? { digestHour: digestHourRaw } : {}),
     errorLogger: (message) => server.log.warn(message),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     logger: (message) => server.log.info(message),
+    localOnly,
     ...(options.digestTick?.now ? { now: options.digestTick.now } : {}),
     resolveRoute,
     ...(runtimeStatus ? { runtimeStatus } : {}),
@@ -448,15 +468,24 @@ export function startSituationalBriefingDaemonIfConfigured(
   server: FastifyInstance,
   options: ServerOptions,
   localOnly: boolean = options.integrationEnv?.localOnly ?? options.localOnly ?? isLocalOnlyEnabled(env),
-  runtimeStatus?: BriefingRuntimeStatusStore
+  runtimeStatus?: BriefingRuntimeStatusStore,
+  deliveryBrakeEngaged = false
 ): void {
-  if (!options.messaging || !options.objectivesFile || !options.briefingSidecarFile) {
+  if (deliveryBrakeEngaged) {
+    recordBriefingRuntimeStartup(runtimeStatus, "blocked");
     return;
   }
+  if (!options.messaging || !options.objectivesFile || !options.briefingSidecarFile) {
+    recordBriefingRuntimeStartup(runtimeStatus, "not-configured");
+    return;
+  }
+  const capturedLocalOnly = localOnly;
   const resolveRoute = () => resolveProactiveMessagingTarget(env, options, {
     allowBriefingFallback: true,
-    localOnly
+    localOnly: capturedLocalOnly
   });
+  const startupAdmission = admitAutomationRoute({ localOnly: capturedLocalOnly, resolveRoute });
+  recordBriefingRuntimeStartup(runtimeStatus, "dormant", new Date().toISOString(), startupAdmission.route);
   const briefingRegistry = options.messaging;
   const tickMsRaw = optionalNumber(env.MUSE_BRIEFING_TICK_MS);
   const windowMsRaw = optionalNumber(env.MUSE_BRIEFING_WINDOW_MS);
@@ -559,6 +588,7 @@ export function startSituationalBriefingDaemonIfConfigured(
     ...(imminentProvider ? { imminentProvider } : {}),
     ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
     logger: (message) => server.log.info(message),
+    localOnly: capturedLocalOnly,
     objectivesFile: options.objectivesFile,
     quietHours: briefingQuietHours,
     registry: briefingRegistry,

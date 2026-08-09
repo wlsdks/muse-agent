@@ -21,6 +21,7 @@ import {
   type DeliveryQueueSnapshot,
   type MessagingRouteResolution
 } from "@muse/autoconfigure";
+import { isLocalOnlyEnabled } from "@muse/model";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { DEFAULT_DIGEST_HOUR, readInterruptionBudgetStatus, type InterruptionBudgetStatus } from "@muse/proactivity";
 import { compareRemindersByDueAt, readInterruptionLedger, readReminders } from "@muse/stores";
@@ -37,6 +38,7 @@ import type { FollowupRuntimeStatus } from "./followup-runtime-status.js";
 import type { ProactiveRuntimeStatus } from "./proactive-runtime-status.js";
 import type { ReminderRuntimeStatus } from "./reminder-runtime-status.js";
 import type { PatternRuntimeStatus } from "./pattern-runtime-status.js";
+import { admitAutomationRoute, type AutomationRouteAdmission } from "./automation-route-admission.js";
 import { sanitizeMessagingRouteReceipt } from "./messaging-route-receipt.js";
 
 const MAX_UPCOMING_JOBS = 5;
@@ -54,6 +56,8 @@ const CHANNEL_DAEMON_KINDS = [
 
 type ChannelDaemonKind = (typeof CHANNEL_DAEMON_KINDS)[number];
 type ChannelRuntimeStatus = "observed" | "degraded" | "unconfigured";
+type RuntimePhase = "startup" | "tick";
+type RuntimeAvailability = "dormant" | "observed" | "not-configured" | "disabled" | "blocked";
 
 interface ChannelRuntimeDaemon {
   readonly kind: ChannelDaemonKind;
@@ -157,9 +161,9 @@ export function registerAutomationRoutes(server: FastifyInstance, gate: Automati
     }
 
     const now = new Date();
-    const gateway = await resolveGatewayRouteStatus(gate).catch(() => unavailableGatewayRouteStatus(gate));
+    const gatewayAdmission = resolveGatewayRouteAdmission(gate);
     const [digest, budget, scheduledJobs, nextReminder, deliveryQueueSnapshot] = await Promise.all([
-      resolveDigestStatus(gate.env, now, gateway),
+      resolveDigestStatus(gate.env, now, gatewayAdmission),
       resolveBudgetStatus(gate.env, now).catch(() => null),
       resolveScheduledJobs(gate.scheduler, now).catch(() => []),
       resolveNextReminder(gate.remindersFile).catch(() => null),
@@ -180,7 +184,7 @@ export function registerAutomationRoutes(server: FastifyInstance, gate: Automati
       briefingRuntime,
       digestRuntime,
       followupRuntime,
-      gateway,
+      gateway: gatewayAdmission.route,
       nextReminder,
       patternRuntime,
       proactiveRuntime,
@@ -213,29 +217,34 @@ function resolveChannelRuntime(gate: AutomationRoutesGate): ChannelRuntime {
 function projectDigestRuntimeStatus(status: DigestRuntimeStatus | null): DigestRuntimeStatus | null {
   if (!status) return null;
   return {
+    availability: projectRuntimeAvailability(status.availability),
     lastDecision: status.lastDecision,
     lastErrorCount: status.lastErrorCount,
     lastItemCount: status.lastItemCount,
     lastObservedAtIso: status.lastObservedAtIso,
-    lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute)
+    lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute),
+    phase: projectRuntimePhase(status.phase)
   };
 }
 
 function projectBriefingRuntimeStatus(status: BriefingRuntimeStatus | null): BriefingRuntimeStatus | null {
   if (!status) return null;
   return {
+    availability: projectRuntimeAvailability(status.availability),
     lastDecision: status.lastDecision,
     lastDeliveredCount: status.lastDeliveredCount,
     lastErrorCount: status.lastErrorCount,
     lastImminentCount: status.lastImminentCount,
     lastObservedAtIso: status.lastObservedAtIso,
-    lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute)
+    lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute),
+    phase: projectRuntimePhase(status.phase)
   };
 }
 
 function projectProactiveRuntimeStatus(status: ProactiveRuntimeStatus | null): ProactiveRuntimeStatus | null {
   if (!status) return null;
   return {
+    availability: projectRuntimeAvailability(status.availability),
     lastDecision: status.lastDecision,
     lastErrorCount: status.lastErrorCount,
     lastFiredCount: status.lastFiredCount,
@@ -243,8 +252,26 @@ function projectProactiveRuntimeStatus(status: ProactiveRuntimeStatus | null): P
     lastObservedAtIso: status.lastObservedAtIso,
     lastRoute: sanitizeMessagingRouteReceipt(status.lastRoute),
     lastSuppressedCount: status.lastSuppressedCount,
+    phase: projectRuntimePhase(status.phase),
     ...(status.sessionLockedUntilIso ? { sessionLockedUntilIso: status.sessionLockedUntilIso } : {})
   };
+}
+
+function projectRuntimePhase(value: unknown): RuntimePhase {
+  return value === "tick" ? "tick" : "startup";
+}
+
+function projectRuntimeAvailability(value: unknown): RuntimeAvailability {
+  switch (value) {
+    case "blocked":
+    case "disabled":
+    case "dormant":
+    case "not-configured":
+    case "observed":
+      return value;
+    default:
+      return "dormant";
+  }
 }
 
 function projectChannelRuntimeDaemon(kind: ChannelDaemonKind, status: ChannelDaemonStatus): ChannelRuntimeDaemon {
@@ -310,23 +337,15 @@ function safeGeneratedAt(value: string): string {
   return Number.isFinite(Date.parse(value)) ? value : "unavailable";
 }
 
-async function resolveGatewayRouteStatus(gate: AutomationRoutesGate): Promise<GatewayRouteStatus> {
-  return resolveProactiveMessagingRoute(gate.env, {
-    // API compatibility for the legacy situational-briefing pair: canonical
-    // MUSE_PROACTIVE_* wins; MUSE_BRIEFING_* is used only when neither
-    // canonical key is present. The briefing tick uses the same option.
+function resolveGatewayRouteAdmission(gate: AutomationRoutesGate): AutomationRouteAdmission {
+  const localOnly = gate.localOnly ?? isLocalOnlyEnabled(gate.env);
+  const resolveRoute = (): unknown => resolveProactiveMessagingRoute(gate.env, {
     allowBriefingFallback: true,
     ...(gate.channelOwnersFile ? { ownersFile: gate.channelOwnersFile } : {}),
-    ...(gate.localOnly !== undefined ? { localOnly: gate.localOnly } : {}),
+    localOnly,
     ...(gate.messagingRegistry ? { registry: gate.messagingRegistry } : {})
   });
-}
-
-function unavailableGatewayRouteStatus(gate: AutomationRoutesGate): GatewayRouteStatus {
-  return resolveProactiveMessagingRoute(gate.env, {
-    allowBriefingFallback: true,
-    ...(gate.localOnly !== undefined ? { localOnly: gate.localOnly } : {})
-  });
+  return admitAutomationRoute({ localOnly, resolveRoute });
 }
 
 /**
@@ -349,10 +368,10 @@ function unavailableGatewayRouteStatus(gate: AutomationRoutesGate): GatewayRoute
 function resolveDigestStatus(
   env: NodeJS.ProcessEnv,
   now: Date,
-  route: MessagingRouteResolution
+  admission: AutomationRouteAdmission
 ): UpcomingDigest | null {
   try {
-    if (route.status !== "resolved") {
+    if (!admission.admitted) {
       return null;
     }
     const enabled = parseBoolean(env.MUSE_DIGEST_ENABLED, true);

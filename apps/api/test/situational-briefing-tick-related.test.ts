@@ -26,12 +26,19 @@ describe("startSituationalBriefingTick — forwards relatedKnowledge to the brie
   it("a non-empty brief gains the related-note line from the enricher", async () => {
     const sent: OutboundMessage[] = [];
     const handle = startSituationalBriefingTick({
-      destination: "555",
       imminent: [{ kind: "event", startsAt: new Date(Date.now() + 30 * 60_000), title: "Acme strategy meeting" }],
+      localOnly: false,
       objectivesFile: join(dir, "obj.json"),
-      providerId: "telegram",
       registry: new MessagingProviderRegistry([capturing(sent)]),
       relatedKnowledge: (query) => (query.includes("Acme") ? "[notes/acme.md] prep: bring the Q3 deck" : undefined),
+      resolveRoute: () => ({
+        destination: "555",
+        localOnly: false,
+        providerId: "telegram",
+        reason: null,
+        source: "explicit-config" as const,
+        status: "resolved" as const
+      }),
       sidecarFile: join(dir, "sidecar.json")
     });
     try {

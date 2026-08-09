@@ -1,5 +1,6 @@
 import { homedir, userInfo } from "node:os";
 import {
+  dirname as pathDirname,
   isAbsolute,
   join as pathJoin,
   normalize as normalizePath
@@ -399,6 +400,10 @@ export function resolveAuthoredSkillsDir(env: MuseEnvironment): string {
 
 export function resolveSkillRewardsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_SKILL_REWARDS_FILE", "skill-rewards.json");
+}
+
+export function resolveSkillUsageFile(env: MuseEnvironment): string {
+  return pathJoin(pathDirname(resolveSkillRewardsFile(env)), "skill-usage.json");
 }
 
 export function resolveReflectionsFile(env: MuseEnvironment): string {

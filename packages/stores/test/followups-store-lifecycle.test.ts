@@ -33,7 +33,7 @@ describe("personal-followups-store lifecycle (markFired / cancel / upsert)", () 
   it("markFollowupFired flips a scheduled entry to fired with the firedAt stamp", async () => {
     await writeFollowups(file, [base("a")]);
     const patched = await markFollowupFired(file, "a", "2026-06-10T09:00:01Z");
-    expect(patched).toMatchObject({ firedAt: "2026-06-10T09:00:01Z", id: "a", status: "fired" });
+    expect(patched).toMatchObject({ firedAt: "2026-06-10T09:00:01.000Z", id: "a", status: "fired" });
     expect((await readFollowups(file))[0]?.status).toBe("fired"); // persisted
   });
 

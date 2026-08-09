@@ -60,6 +60,38 @@ describe("createFollowupCaptureHook", () => {
     expect(captured[0]?.kind).toBe("korean-relative-minutes");
   });
 
+  it("captures recurrence and a stable commitment key", async () => {
+    const captured: CapturedFollowup[] = [];
+    const hook = createFollowupCaptureHook({
+      now: () => fixedNow,
+      persist: (followup) => { captured.push(followup); }
+    });
+    await hook.afterComplete?.(context(), response("매일 아침 8시에 알려드릴게요."));
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toMatchObject({
+      recurrence: { kind: "daily", hour: 8, minute: 0 },
+      kind: "recurring-daily",
+      status: "scheduled"
+    });
+    expect(captured[0]?.commitmentKey).toMatch(/^[0-9a-f]{64}$/u);
+  });
+
+  it("drops an LLM one-shot fallback when the assistant text is recurrence-shaped", async () => {
+    const captured: CapturedFollowup[] = [];
+    const hook = createFollowupCaptureHook({
+      additionalDetector: async () => [{
+        confidence: "low",
+        kind: "today-at",
+        originalText: "every other day (fallback)",
+        scheduledFor: new Date("2026-05-13T11:00:00.000Z")
+      }],
+      now: () => fixedNow,
+      persist: (followup) => { captured.push(followup); }
+    });
+    await hook.afterComplete?.(context(), response("I'll handle this every other day."));
+    expect(captured).toEqual([]);
+  });
+
   it("falls back to defaultUserId when metadata.userId is missing", async () => {
     const captured: CapturedFollowup[] = [];
     const hook = createFollowupCaptureHook({

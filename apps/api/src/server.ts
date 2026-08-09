@@ -113,10 +113,10 @@ import { registerProgressiveAutonomyRoutes } from "./progressive-autonomy-routes
 import { registerUserModelReconfirmRoutes } from "./user-model-reconfirm-routes.js";
 import { registerPersonalStatusRoutes, resolveProposedActionsStatusFile } from "./personal-status-routes.js";
 import type { ConsolidateTickHandle } from "./consolidate-tick.js";
-import { createBriefingRuntimeStatusStore } from "./briefing-runtime-status.js";
-import { createDigestRuntimeStatusStore } from "./digest-runtime-status.js";
+import { createBriefingRuntimeStatusStore, recordBriefingRuntimeStartup } from "./briefing-runtime-status.js";
+import { createDigestRuntimeStatusStore, recordDigestRuntimeStartup } from "./digest-runtime-status.js";
 import { createFollowupRuntimeStatusStore, recordFollowupRuntimeNotConfigured } from "./followup-runtime-status.js";
-import { createProactiveRuntimeStatusStore } from "./proactive-runtime-status.js";
+import { createProactiveRuntimeStatusStore, recordProactiveRuntimeStartup } from "./proactive-runtime-status.js";
 import { createReminderRuntimeStatusStore } from "./reminder-runtime-status.js";
 import { createPatternRuntimeStatusStore, recordPatternRuntimeNotConfigured } from "./pattern-runtime-status.js";
 import { registerAgentNoticesRoutes } from "./agent-notices-routes.js";
@@ -820,6 +820,9 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     startHomeWatchDaemonIfConfigured(env, server, options, integrationEnv.localOnly);
     startDigestDaemonIfConfigured(env, server, options, digestRuntimeStatus);
   } else {
+    recordBriefingRuntimeStartup(briefingRuntimeStatus, "blocked");
+    recordDigestRuntimeStartup(digestRuntimeStatus, "blocked");
+    recordProactiveRuntimeStartup(proactiveRuntimeStatus, "blocked");
     recordFollowupRuntimeNotConfigured(followupRuntimeStatus);
     recordPatternRuntimeNotConfigured(patternRuntimeStatus);
   }

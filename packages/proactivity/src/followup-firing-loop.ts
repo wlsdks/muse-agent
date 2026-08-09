@@ -39,7 +39,7 @@ import { errorMessage, redactSecretsInText, sha256Hex } from "@muse/shared";
 import {
   avoidedSourceKeys,
   compareFollowupsByScheduledFor,
-  markFollowupFired,
+  advanceFollowupOccurrence,
   readFollowupsStrict,
   readTrustLedger,
   withRequiredProcessLock,
@@ -245,12 +245,18 @@ async function runDueFollowupsUnderLock(options: RunDueFollowupsOptions): Promis
             ledgerFile: budget.ledgerFile,
             now: now(),
             source: "followup",
-            sourceId: followup.id,
+            sourceId: effectId,
             sourceKey: `followup:${followup.id}`,
             text,
             title: followup.summary
           });
-          digested = result.outcome !== "delivered";
+          if (!result.accepted) {
+            if (result.outcome === "digested") {
+              errors.push(`${followup.id}: digest append was not accepted; occurrence was preserved`);
+            }
+            continue;
+          }
+          digested = result.outcome === "digested";
         } else {
           await deliver();
         }
@@ -280,14 +286,14 @@ async function runDueFollowupsUnderLock(options: RunDueFollowupsOptions): Promis
       // Digest/veto paths deliberately create no effect; accepted sends and
       // restart repair use the provider receipt timestamp.
       const firedAtIso = receipt?.receivedAt ?? now().toISOString();
-      const patched = await markFollowupFired(
+      const advanced = await advanceFollowupOccurrence(
         options.file,
         followup.id,
-        firedAtIso,
-        followup.scheduledFor
+        followup.scheduledFor,
+        firedAtIso
       );
-      if (patched) {
-        fired.push(patched);
+      if (advanced.operation === "fired" || advanced.operation === "advanced") {
+        if (advanced.followup) fired.push(advanced.followup);
       } else {
         errors.push(`${followup.id}: occurrence changed before final mark; current followup was preserved`);
         continue;

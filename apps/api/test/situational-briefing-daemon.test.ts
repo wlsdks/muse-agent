@@ -8,6 +8,7 @@ import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { startSituationalBriefingDaemonIfConfigured } from "../src/tick-daemons.js";
+import { createBriefingRuntimeStatusStore } from "../src/briefing-runtime-status.js";
 import type { ServerOptions } from "../src/server.js";
 
 function fakeServer() {
@@ -40,11 +41,42 @@ const ENV = {
 describe("startSituationalBriefingDaemonIfConfigured — P9-b2 child 2/2 (briefing env-gated registration)", () => {
   it("with env + options + a registered provider: registers an onClose stop hook (started + stoppable)", () => {
     const { hooks, server } = fakeServer();
-    startSituationalBriefingDaemonIfConfigured(ENV, server, configuredOptions());
+    const runtimeStatus = createBriefingRuntimeStatusStore();
+    startSituationalBriefingDaemonIfConfigured(ENV, server, configuredOptions(), false, runtimeStatus);
     const onClose = hooks.filter((h) => h.name === "onClose");
     expect(onClose).toHaveLength(1);
+    expect(runtimeStatus.get()).toMatchObject({
+      availability: "dormant",
+      lastDecision: "startup",
+      lastRoute: {
+        destination: "555",
+        localOnly: false,
+        providerId: "telegram",
+        reason: null,
+        source: "explicit-config",
+        status: "resolved"
+      },
+      phase: "startup"
+    });
     // The registered stop hook runs cleanly (the daemon is real + stoppable).
     expect(() => onClose[0]!.fn()).not.toThrow();
+  });
+
+  it("uses the canonical proactive pair before the legacy briefing fallback", () => {
+    const { server } = fakeServer();
+    const runtimeStatus = createBriefingRuntimeStatusStore();
+    startSituationalBriefingDaemonIfConfigured({
+      ...ENV,
+      MUSE_PROACTIVE_DESTINATION: "canonical-owner",
+      MUSE_PROACTIVE_PROVIDER: "telegram"
+    }, server, configuredOptions(), false, runtimeStatus);
+
+    expect(runtimeStatus.get()?.lastRoute).toMatchObject({
+      destination: "canonical-owner",
+      providerId: "telegram",
+      source: "explicit-config",
+      status: "resolved"
+    });
   });
 
   it("absent env ⇒ starts a dormant resident rider so a later paired route can be adopted", () => {
@@ -55,8 +87,18 @@ describe("startSituationalBriefingDaemonIfConfigured — P9-b2 child 2/2 (briefi
 
   it("env present but the required options are missing ⇒ NOT started", () => {
     const { hooks, server } = fakeServer();
-    startSituationalBriefingDaemonIfConfigured(ENV, server, { messaging: undefined } as unknown as ServerOptions);
+    const runtimeStatus = createBriefingRuntimeStatusStore();
+    startSituationalBriefingDaemonIfConfigured(ENV, server, { messaging: undefined } as unknown as ServerOptions, false, runtimeStatus);
     expect(hooks).toHaveLength(0);
+    expect(runtimeStatus.get()).toMatchObject({ availability: "not-configured", lastDecision: "startup", phase: "startup" });
+  });
+
+  it("delivery brake records blocked startup without creating a timer or close hook", () => {
+    const { hooks, server } = fakeServer();
+    const runtimeStatus = createBriefingRuntimeStatusStore();
+    startSituationalBriefingDaemonIfConfigured(ENV, server, configuredOptions(), false, runtimeStatus, true);
+    expect(hooks).toHaveLength(0);
+    expect(runtimeStatus.get()).toMatchObject({ availability: "blocked", lastDecision: "startup", phase: "startup" });
   });
 
   it("env present but the named provider is not registered ⇒ starts dormant and stays fail-closed at tick time", () => {

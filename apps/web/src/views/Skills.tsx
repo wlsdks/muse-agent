@@ -79,6 +79,13 @@ export function SkillsView({ client }: { client: ApiClient }) {
                     </Button>
                   </div>
                 </div>
+                <p className="subtle mono" style={{ margin: "8px 0 0", fontSize: 12 }}>
+                  {t("skills.usage", {
+                    date: entry.lastActivity ? entry.lastActivity.slice(0, 10) : t("skills.noActivity"),
+                    uses: entry.useCount,
+                    views: entry.viewCount
+                  })}
+                </p>
               </Card>
             </div>
           ))}

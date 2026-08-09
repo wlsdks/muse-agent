@@ -14,6 +14,17 @@ import { startDigestDaemonIfConfigured } from "../src/tick-daemons.js";
 
 interface MessageSent { readonly providerId: string; readonly destination: string; readonly text: string }
 
+function resolvedRoute(providerId: string, destination: string) {
+  return {
+    destination,
+    localOnly: false,
+    providerId,
+    reason: null,
+    source: "explicit-config" as const,
+    status: "resolved" as const
+  };
+}
+
 function fakeRegistry(sent: MessageSent[]): MessagingProviderRegistry {
   return {
     send: async (providerId: string, message: { destination: string; text: string }) => {
@@ -29,18 +40,29 @@ describe("startDigestTick", () => {
     const digestFile = join(root, "digest-queue.json");
     await appendDigestItem(digestFile, { at: new Date(2026, 4, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
     const sent: MessageSent[] = [];
+    const decisions: string[] = [];
+    let resolveCalls = 0;
     const handle = startDigestTick({
-      destination: "@me",
       digestFile,
+      localOnly: false,
       now: () => new Date(2026, 4, 12, 18, 0, 0),
-      providerId: "telegram",
+      resolveRoute: () => {
+        resolveCalls += 1;
+        return resolvedRoute("telegram", "@me");
+      },
       registry: fakeRegistry(sent),
+      runtimeStatus: {
+        get: () => null,
+        record: (update) => decisions.push(update.decision)
+      },
       sentFile: join(root, "digest-sent.json")
     });
     try {
       await handle.tickOnce();
+      expect(resolveCalls).toBe(1);
       expect(sent).toHaveLength(1);
       expect(sent[0]!.text).toContain("notice one");
+      expect(decisions).not.toContain("route-unavailable");
       expect(await readDigestQueue(digestFile)).toHaveLength(0);
     } finally {
       handle.stop();
@@ -53,25 +75,32 @@ describe("startDigestTick", () => {
     await appendDigestItem(digestFile, { at: new Date(2026, 4, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
     const sent: MessageSent[] = [];
     const runtimeStatus = createDigestRuntimeStatusStore();
+    let resolveCalls = 0;
     const handle = startDigestTick({
-      destination: "@me",
       digestFile,
+      localOnly: false,
       // 18:00 is the digest hour but also inside a 17-23 quiet window here.
       now: () => new Date(2026, 4, 12, 18, 0, 0),
-      providerId: "telegram",
       quietHours: { endHour: 23, startHour: 17 },
+      resolveRoute: () => {
+        resolveCalls += 1;
+        return resolvedRoute("telegram", "@me");
+      },
       runtimeStatus,
       registry: fakeRegistry(sent),
       sentFile: join(root, "digest-sent.json")
     });
     try {
       await handle.tickOnce();
+      expect(resolveCalls).toBe(0);
       expect(sent).toEqual([]);
       expect(await readDigestQueue(digestFile)).toHaveLength(1);
       expect(runtimeStatus.get()).toMatchObject({
+        availability: "observed",
         lastDecision: "quiet-hours",
         lastErrorCount: 0,
-        lastItemCount: 0
+        lastItemCount: 0,
+        phase: "tick"
       });
     } finally {
       handle.stop();
@@ -84,11 +113,11 @@ describe("startDigestTick", () => {
     await appendDigestItem(digestFile, { at: new Date(2026, 4, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
     const lines: string[] = [];
     const handle = startDigestTick({
-      destination: "@me",
       digestFile,
       logger: (m) => lines.push(m),
+      localOnly: false,
       now: () => new Date(2026, 4, 12, 18, 0, 0),
-      providerId: "telegram",
+      resolveRoute: () => resolvedRoute("telegram", "@me"),
       registry: fakeRegistry([]),
       sentFile: join(root, "digest-sent.json")
     });
@@ -106,10 +135,10 @@ describe("startDigestTick", () => {
     await appendDigestItem(digestFile, { at: new Date(2026, 4, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
     const sent: MessageSent[] = [];
     const handle = startDigestTick({
-      destination: "@me",
       digestFile,
+      localOnly: false,
       now: () => new Date(2026, 4, 12, 18, 0, 0),
-      providerId: "telegram",
+      resolveRoute: () => resolvedRoute("telegram", "@me"),
       registry: fakeRegistry(sent),
       sentFile: join(root, "digest-sent.json")
     });
@@ -144,6 +173,7 @@ describe("startDigestTick", () => {
     };
     const handle = startDigestTick({
       digestFile,
+      localOnly: false,
       now: () => now,
       registry,
       runtimeStatus,
@@ -202,18 +232,22 @@ describe("startDigestTick", () => {
     expect(runtimeStatus.get()).toBeNull();
     const handle = startDigestTick({
       digestFile: join(tmpdir(), "muse-digest-route-unavailable.json"),
+      localOnly: false,
       now: () => new Date(2026, 4, 12, 18, 0, 0),
       registry: fakeRegistry([]),
+      resolveRoute: () => undefined,
       runtimeStatus,
       sentFile: join(tmpdir(), "muse-digest-route-unavailable-sent.json")
     });
     try {
       await handle.tickOnce();
       expect(runtimeStatus.get()).toMatchObject({
+        availability: "observed",
         lastDecision: "route-unavailable",
         lastErrorCount: 0,
         lastItemCount: 0,
-        lastObservedAtIso: "2026-05-12T09:00:00.000Z"
+        lastObservedAtIso: "2026-05-12T09:00:00.000Z",
+        phase: "tick"
       });
     } finally {
       handle.stop();
@@ -227,6 +261,7 @@ describe("startDigestTick", () => {
     const handle = startDigestTick({
       digestFile: join(tmpdir(), "muse-digest-route-throw.json"),
       errorLogger: (message) => errors.push(message),
+      localOnly: false,
       now: () => new Date(2026, 4, 12, 18, 0, 0),
       registry: fakeRegistry(sent),
       resolveRoute: () => { throw new Error("secret route detail"); },
@@ -257,6 +292,7 @@ describe("startDigestTick", () => {
     const runtimeStatus = createDigestRuntimeStatusStore();
     const handle = startDigestTick({
       digestFile: join(tmpdir(), "muse-digest-route-local-only.json"),
+      localOnly: true,
       now: () => new Date(2026, 4, 12, 18, 0, 0),
       registry: fakeRegistry(sent),
       resolveRoute: () => ({
@@ -293,10 +329,10 @@ describe("startDigestTick", () => {
     const sent: MessageSent[] = [];
     const handle = startDigestTick({
       digestFile,
+      localOnly: false,
       now: () => new Date(2026, 4, 12, 18, 0, 0),
       registry: fakeRegistry(sent),
-      providerId: "telegram",
-      destination: "owner",
+      resolveRoute: () => resolvedRoute("telegram", "owner"),
       runtimeStatus: { get: () => null, record: () => { throw new Error("status store failure"); } },
       sentFile: join(root, "digest-sent.json")
     });
@@ -337,14 +373,38 @@ describe("startDigestDaemonIfConfigured — env-gated registration", () => {
 
   it("registers an onClose stop hook when MUSE_DIGEST_ENABLED defaults to true and the proactive channel is configured", () => {
     const { hooks, server } = fakeServer();
-    startDigestDaemonIfConfigured(env, server as never, options);
+    const runtimeStatus = createDigestRuntimeStatusStore();
+    startDigestDaemonIfConfigured(env, server as never, options, runtimeStatus);
     expect(hooks.filter((h) => h.name === "onClose")).toHaveLength(1);
+    expect(runtimeStatus.get()).toMatchObject({
+      availability: "dormant",
+      lastDecision: "startup",
+      lastRoute: {
+        destination: "555",
+        localOnly: false,
+        providerId: "telegram",
+        reason: null,
+        source: "explicit-config",
+        status: "resolved"
+      },
+      phase: "startup"
+    });
   });
 
   it("MUSE_DIGEST_ENABLED=false ⇒ NOT started", () => {
     const { hooks, server } = fakeServer();
-    startDigestDaemonIfConfigured({ ...env, MUSE_DIGEST_ENABLED: "false" } as NodeJS.ProcessEnv, server as never, options);
+    const runtimeStatus = createDigestRuntimeStatusStore();
+    startDigestDaemonIfConfigured({ ...env, MUSE_DIGEST_ENABLED: "false" } as NodeJS.ProcessEnv, server as never, options, runtimeStatus);
     expect(hooks).toHaveLength(0);
+    expect(runtimeStatus.get()).toMatchObject({ availability: "disabled", lastDecision: "startup", phase: "startup" });
+  });
+
+  it("delivery brake records blocked startup without creating a timer or close hook", () => {
+    const { hooks, server } = fakeServer();
+    const runtimeStatus = createDigestRuntimeStatusStore();
+    startDigestDaemonIfConfigured(env, server as never, options, runtimeStatus, true);
+    expect(hooks).toHaveLength(0);
+    expect(runtimeStatus.get()).toMatchObject({ availability: "blocked", lastDecision: "startup", phase: "startup" });
   });
 
   it("no explicit route starts a paired daemon dormant until an owner exists", async () => {

@@ -37,6 +37,17 @@ function objective(overrides: Partial<StandingObjective> = {}): StandingObjectiv
 
 const NOW = new Date("2026-05-19T12:00:00.000Z");
 
+function resolvedRoute(providerId = "telegram", destination = "555") {
+  return {
+    destination,
+    localOnly: false,
+    providerId,
+    reason: null,
+    source: "explicit-config" as const,
+    status: "resolved" as const
+  };
+}
+
 describe("startSituationalBriefingTick — P9-b2 child: the briefing daemon rider drives runDueSituationalBriefing", () => {
   function routeProvider(
     id: "telegram" | "discord",
@@ -68,11 +79,11 @@ describe("startSituationalBriefingTick — P9-b2 child: the briefing daemon ride
     await addObjective(objectivesFile, objective());
     const posts: { url: string; body: string }[] = [];
     const handle = startSituationalBriefingTick({
-      destination: "555",
+      localOnly: false,
       now: () => NOW,
       objectivesFile,
-      providerId: "telegram",
       registry: new MessagingProviderRegistry([telegram(posts)]),
+      resolveRoute: () => resolvedRoute(),
       sidecarFile,
       windowMs: 4 * 60 * 60_000
     });
@@ -95,12 +106,12 @@ describe("startSituationalBriefingTick — P9-b2 child: the briefing daemon ride
     await addObjective(objectivesFile, objective({ status: "done" }));
     const posts: { url: string; body: string }[] = [];
     const handle = startSituationalBriefingTick({
-      destination: "555",
       intervalMs: Number.POSITIVE_INFINITY,
+      localOnly: false,
       now: () => NOW,
       objectivesFile,
-      providerId: "telegram",
       registry: new MessagingProviderRegistry([telegram(posts)]),
+      resolveRoute: () => resolvedRoute(),
       sidecarFile
     });
     try {
@@ -123,12 +134,12 @@ describe("startSituationalBriefingTick — P9-b2 child: the briefing daemon ride
       token: "BOT-TOK"
     });
     const handle = startSituationalBriefingTick({
-      destination: "555",
       errorLogger: (m) => errors.push(m),
+      localOnly: false,
       now: () => NOW,
       objectivesFile,
-      providerId: "telegram",
       registry: new MessagingProviderRegistry([exploding]),
+      resolveRoute: () => resolvedRoute(),
       sidecarFile
     });
     try {
@@ -152,6 +163,7 @@ describe("startSituationalBriefingTick — P9-b2 child: the briefing daemon ride
     let resolveCalls = 0;
     const handle = startSituationalBriefingTick({
       imminent: [],
+      localOnly: false,
       now: () => NOW,
       objectivesFile,
       registry,
@@ -192,12 +204,12 @@ describe("startSituationalBriefingTick — P9-b2 child: the briefing daemon ride
     ]);
     const posts: { url: string; body: string }[] = [];
     const handle = startSituationalBriefingTick({
-      destination: "555",
       imminentProvider: (now) => deriveBriefingImminent(tasksFile, { now }),
+      localOnly: false,
       now: () => NOW,
       objectivesFile,
-      providerId: "telegram",
       registry: new MessagingProviderRegistry([telegram(posts)]),
+      resolveRoute: () => resolvedRoute(),
       sidecarFile,
       windowMs: 4 * 60 * 60_000
     });
@@ -232,15 +244,15 @@ describe("startSituationalBriefingTick — P9-b2 child: the briefing daemon ride
     ];
     const posts: { url: string; body: string }[] = [];
     const handle = startSituationalBriefingTick({
-      destination: "555",
       imminentProvider: async (now) => [
         ...(await deriveBriefingImminent(tasksFile, { now })),
         ...(await deriveCalendarBriefingImminent(calLister, { now }))
       ],
+      localOnly: false,
       now: () => NOW,
       objectivesFile,
-      providerId: "telegram",
       registry: new MessagingProviderRegistry([telegram(posts)]),
+      resolveRoute: () => resolvedRoute(),
       sidecarFile,
       windowMs: 4 * 60 * 60_000
     });

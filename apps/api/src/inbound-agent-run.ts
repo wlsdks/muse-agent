@@ -179,15 +179,6 @@ function userSideFollowupId(): string {
   return `fu_u_${randomBytes(7).toString("hex")}`;
 }
 
-// A minute-granularity match: the rule detector resolves to whole-minute
-// precision (setHours(h, m, 0, 0)) and both the user-side extraction below
-// and the runtime's own followup-capture-hook (scanning the ASSISTANT's
-// echo) resolve the SAME calendar expression to the same instant, so an
-// exact-minute match is proof they're the same commitment, not a coincidence.
-function sameScheduledMinute(a: Date, b: Date): boolean {
-  return Math.abs(a.getTime() - b.getTime()) < 60_000;
-}
-
 /**
  * "Did this turn actually schedule a followup?" — observed the least invasive
  * way reachable from apps/api: the runtime hook that captures a self-followup
@@ -235,27 +226,30 @@ async function countScheduledFollowups(followupsFile: string, userId: string): P
  * so the caller can build a confirmation echo — `undefined` when the raw
  * user text carries no date the rule detector can resolve.
  */
+interface ScheduleUserSideResult {
+  readonly operation: "already-present" | "created" | "none" | "upgraded";
+  readonly scheduledFor?: Date;
+}
+
 async function scheduleUserSideFollowups(
   followupsFile: string,
   userId: string,
   latestUserText: string,
   now: Date
-): Promise<Date | undefined> {
+): Promise<ScheduleUserSideResult> {
   const promises = extractFollowupPromises(latestUserText, { now, requireCommissive: false });
   if (promises.length === 0) {
-    return undefined;
+    return { operation: "none" };
   }
-  const alreadyScheduled = await readScheduledFollowupsFor(followupsFile, userId);
+  const priority: Record<ScheduleUserSideResult["operation"], number> = {
+    none: 0,
+    "already-present": 1,
+    created: 2,
+    upgraded: 3
+  };
+  let operation: ScheduleUserSideResult["operation"] = "none";
   let firstScheduled: Date | undefined;
   for (const promise of promises) {
-    if (firstScheduled === undefined) {
-      firstScheduled = promise.scheduledFor;
-    }
-    const duplicate = alreadyScheduled.some((existing) =>
-      sameScheduledMinute(new Date(existing.scheduledFor), promise.scheduledFor));
-    if (duplicate) {
-      continue;
-    }
     const followup: PersistedFollowup = {
       createdAt: now.toISOString(),
       id: userSideFollowupId(),
@@ -263,13 +257,19 @@ async function scheduleUserSideFollowups(
       scheduledFor: promise.scheduledFor.toISOString(),
       status: "scheduled",
       summary: sanitizeFollowupSummary(promise.originalText),
-      userId
+      userId,
+      ...(promise.recurrence ? { recurrence: promise.recurrence } : {})
     };
     // Fail-open per promise (parity with the runtime capture hook) — one
     // bad write must not block the rest, or fail the turn.
-    await upsertFollowup(followupsFile, followup).catch(() => undefined);
+    const result = await upsertFollowup(followupsFile, followup).catch(() => undefined);
+    if (!result || result.operation === "none") continue;
+    if (firstScheduled === undefined) {
+      firstScheduled = result.followup ? new Date(result.followup.scheduledFor) : promise.scheduledFor;
+    }
+    if (priority[result.operation] > priority[operation]) operation = result.operation;
   }
-  return firstScheduled;
+  return { operation, ...(firstScheduled ? { scheduledFor: firstScheduled } : {}) };
 }
 
 export function createInboundAgentRun(options: InboundAgentRunOptions): ThreadedAgentRun {
@@ -570,9 +570,9 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
     // assistant's echo NOR the user-side extraction above scheduled
     // anything, so the reply gets the honest caveat appended by code.
     const scheduledAfter = await countScheduledFollowups(followupsFile, runUserId);
-    if (scheduledAfter > scheduledBefore) {
-      return scheduledFromUser
-        ? appendScheduledConfirmation(honestOutput, scheduledFromUser, latestUserText)
+    if (scheduledFromUser.operation !== "none" || scheduledAfter > scheduledBefore) {
+      return scheduledFromUser.scheduledFor
+        ? appendScheduledConfirmation(honestOutput, scheduledFromUser.scheduledFor, latestUserText)
         : honestOutput;
     }
     return appendUnscheduledRememberCaveat(honestOutput, latestUserText);

@@ -8,9 +8,9 @@
 
 import { buildChatActuatorWiring } from "./chat-actuator-wiring.js";
 import type { ProgramIO } from "./program.js";
-import { buildContextWindowOptions, createMuseRuntimeAssembly, createProgressiveAutonomyRuntimeDecisionRecorder, createQualificationLearningActiveSkillWriteGate, evaluateLocalOnlyPosture, parseBoolean, resolveAttunementFile, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveProgressiveAutonomyOpportunitiesFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { buildContextWindowOptions, createMuseRuntimeAssembly, createProgressiveAutonomyRuntimeDecisionRecorder, createQualificationLearningActiveSkillWriteGate, evaluateLocalOnlyPosture, parseBoolean, resolveAttunementFile, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveProgressiveAutonomyOpportunitiesFile, resolveRemindersFile, resolveSkillUsageFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
-import { isSkillAvoided, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks, readTasksStrict, type ConversationSummary } from "@muse/stores";
+import { isSkillAvoided, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks, readTasksStrict, recordSkillUse, type ConversationSummary } from "@muse/stores";
 import { readCheckins } from "@muse/proactivity";
 import { aggregateActivitySignals, contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, selectFireablePatterns } from "@muse/memory";
 import { AuthoredSkillStore, loadSkillsFromDirectory, type Skill } from "@muse/skills";
@@ -597,12 +597,16 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const skillRewards = await readSkillRewards(resolveSkillRewardsFile(process.env)).catch(
     () => ({}) as Record<string, number>
   );
+  const skillUsageFile = resolveSkillUsageFile(process.env);
   const skillsPromptFor = (prompt: string): string =>
     buildSkillsPrompt(
       skills,
       prompt,
       (skill) => {
-        if (skill.sourceInfo.source === "authored") void authoredStore.recordUsage(skill.name);
+        if (skill.sourceInfo.source === "authored") {
+          void authoredStore.recordUsage(skill.name);
+          void recordSkillUse(skillUsageFile, skill.name);
+        }
       },
       (name) => isSkillAvoided(skillRewards[name]),
       (name) => skillRewards[name] ?? 0
