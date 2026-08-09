@@ -89,8 +89,9 @@ user-facing capability. One bounded slice end-to-end; do not invent work merely 
 - Outbound to a third party (send, submit, book, post) is fail-close and draft-first per
   [`.claude/rules/safety/outbound-safety.md`](.claude/rules/safety/outbound-safety.md) — never an autonomous send. Banking /
   brokerage access and money movement are permanently out of scope.
-- No force-push, `--no-verify`, tags/releases, remote-ref deletion, or alternate remote/refspec
-  without explicit approval; verified normal pushes follow the standing authorization in
+- No general force/lease, `--no-verify`, tags/releases, ad hoc remote deletion, or alternate
+  remote/refspec. Only verified normal pushes and the cleanup helper's exact deletion leases have
+  standing authorization in
   [`.claude/rules/engineering/commits.md`](.claude/rules/engineering/commits.md). Never commit live workspace credentials.
 - All documentation is English — every `.md`, new ones included (quoted UI strings excepted).
 - **Docs are written for agents, not for a human reader.** One owner per fact; point at the gate

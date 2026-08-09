@@ -23,9 +23,24 @@ Don't mix unrelated work into one commit.
   the current Muse task branch (or verified local `main`) to its configured
   `origin` upstream without asking again. A verified slice is not complete
   while this allowlisted push remains pending.
-- The standing authorization does **not** include alternate remotes or arbitrary
-  refspecs, remote deletion, tags/releases, force/force-with-lease,
-  `--no-verify`, skipped hooks, credentials, or branch-protection changes. On
+- **Standing completed-branch cleanup authorization (Jinan, 2026-08-09):** after
+  a task branch is merged to fresh `origin/main`, remove its worktree and local
+  branch, then run `node scripts/cleanup-merged-remote-branches.mjs --delete
+  <exact-branch>`. That command is the only authorized remote-deletion path: it
+  fixes the remote to `origin` and fails closed unless every named task ref is
+  fully contained in `origin/main`, inactive in registered worktrees, has no
+  open pull request, and retains the exact verified remote tip through an atomic
+  compare-and-delete. The helper also requires GitHub protection on `main` to
+  block force pushes and branch deletion with admin enforcement, so containment
+  remains monotonic while candidate refs are compared server-side. The helper's per-ref
+  `--force-with-lease=refs/heads/<branch>:<verified-sha>` is the sole
+  force-with-lease exception; it is a server-side expected-tip guard, not
+  authority to update or overwrite a branch.
+- The standing authorizations do **not** include alternate remotes or arbitrary
+  refspecs, ad hoc remote deletion, tags/releases, general force/force-with-lease,
+  `--no-verify`, skipped hooks, credentials, or branch-protection changes. The
+  owner-approved initial protection setup is not standing authority to change it
+  later. On
   hook, authentication, protection, or unresolved divergence failure, make at
   most one safe fetch/rebase retry, then stop and report; never escalate to a
   destructive bypass.
@@ -56,12 +71,18 @@ Don't mix unrelated work into one commit.
   <path>` and `git branch -d <branch>`. A finished worktree left behind is
   rot — it goes stale, a cleanup pass can GC it mid-use by someone else, and
   it confuses future merged-state audits.
+- After the worktree and local branch are gone, delete the completed remote task
+  branch through `cleanup-merged-remote-branches.mjs`. Never call `git push
+  --delete` directly or construct a lease by hand. If containment, open-PR,
+  worktree, tip, `gh`, atomic-push support, or remote
+  state cannot be verified, leave the remote branch intact and report why.
 - **Abandoned or blocked work is never silently left in a dangling
   worktree.** Either commit a WIP to its branch with a defer note explaining
   why, or remove the worktree/branch outright.
 - **Sweep check after each batch of slices**: `git branch --merged
-  origin/main` should list no leftover slice branches — any that show up
-  are cleanup debt, not history.
+  origin/main` should list no leftover local slice branches. Enumerate `git
+  branch -r --merged origin/main`, then pass each exact remote task name to the
+  cleanup command's dry-run; any eligible leftovers are cleanup debt, not history.
 
 ## `review-tier:` is required, and checked
 

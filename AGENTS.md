@@ -56,8 +56,9 @@ followed:
   gate is fail-closed — a denied or undeliverable confirmation means the action does not happen.
   There is no autonomous send. → [`outbound-safety`](.claude/rules/safety/outbound-safety.md).
 - **Banking, brokerage, payments and money movement are permanently out of scope.** Not deferred.
-- **Never force-push, `--no-verify`, delete a remote ref, cut a tag or release, or push to an
-  alternate remote.** A verified normal push to `origin` is pre-authorized; nothing else is.
+- **Never use general force/lease, `--no-verify`, tags/releases, alternate remotes, or ad hoc remote
+  deletion.** Only verified normal pushes and the cleanup helper's exact expected-tip leases are
+  pre-authorized by [the commits policy](.claude/rules/engineering/commits.md).
 - **Never skip the versioned hooks.** `MUSE_SKIP_PREPUSH_ALL=1` disables even the compile gate;
   it is for a genuine emergency the owner asked for, never for getting a push through.
 - **A scheduled or autonomous loop keeps its declared Tier.** If its Tier forbids pushing, that
@@ -204,8 +205,9 @@ user-facing capability. One bounded slice end-to-end; do not invent work merely 
 - Outbound to a third party (send, submit, book, post) is fail-close and draft-first per
   [`.claude/rules/safety/outbound-safety.md`](.claude/rules/safety/outbound-safety.md) — never an autonomous send. Banking /
   brokerage access and money movement are permanently out of scope.
-- No force-push, `--no-verify`, tags/releases, remote-ref deletion, or alternate remote/refspec
-  without explicit approval; verified normal pushes follow the standing authorization in
+- No general force/lease, `--no-verify`, tags/releases, ad hoc remote deletion, or alternate
+  remote/refspec. Only verified normal pushes and the cleanup helper's exact deletion leases have
+  standing authorization in
   [`.claude/rules/engineering/commits.md`](.claude/rules/engineering/commits.md). Never commit live workspace credentials.
 - All documentation is English — every `.md`, new ones included (quoted UI strings excepted).
 - **Docs are written for agents, not for a human reader.** One owner per fact; point at the gate
@@ -412,12 +414,11 @@ adversarial and fault tests, and local trace review. See
 
 ## Repository publication
 
-The owner grants **standing authorization for a verified normal Git push** from the current Muse
-task branch (or verified local `main`) to its configured `origin` upstream, after the applicable
-risk-tier completion gate and required checks pass. The full contract — what is *not* authorized
-(alternate remotes/refspecs, remote deletion, tags/releases, force-push, `--no-verify`, credentials,
-branch-protection), the retry-once-then-stop rule on failure, and the loop tiers — lives in
-[`.claude/rules/engineering/commits.md`](.claude/rules/engineering/commits.md) and is not restated here.
+The owner grants **standing authorization** for a gated, verified normal push from the current Muse
+task branch (or verified local `main`) to configured `origin`, plus fail-closed cleanup of completed
+task branches through the versioned helper's expected-tip leases. All exclusions, the
+retry-once-then-stop rule, and loop tiers live in
+[`.claude/rules/engineering/commits.md`](.claude/rules/engineering/commits.md) and are not restated here.
 
 **Commit boundary = product-behavior change**, not every roadmap checkbox. A completed slice that
 changes runtime/source code, tests, executable scripts, build/package configuration,
