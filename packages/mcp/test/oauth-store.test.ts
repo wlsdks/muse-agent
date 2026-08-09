@@ -78,7 +78,7 @@ describe("oauth-store round-trips", () => {
     expect(await loadState(dir, SERVER)).toBe("local-state");
   });
 
-  it("writes the record file with 0600 permissions", async () => {
+  it.skipIf(process.platform === "win32")("writes the record file with owner-only POSIX permissions", async () => {
     await saveTokens(dir, SERVER, TOKENS);
     const mode = statSync(oauthRecordPath(dir, SERVER)).mode & 0o777;
     expect(mode).toBe(0o600);

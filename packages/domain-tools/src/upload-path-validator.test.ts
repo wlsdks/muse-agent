@@ -102,23 +102,32 @@ describe("createAllowlistPathValidator — allowlist + symlink-escape guard", ()
     const path = join(root, "resume.pdf");
     const bytes = Buffer.from("exact-upload-bytes");
     writeFileSync(path, bytes);
+    const source = statSync(path);
     const result = await createAllowlistPathValidator({ roots: [root] })(path);
     expect(result).toMatchObject({
       allowed: true,
       identity: {
         bytes: bytes.byteLength,
+        changedAtMs: source.ctimeMs,
+        device: source.dev,
+        inode: source.ino,
+        modifiedAtMs: source.mtimeMs,
         sha256: createHash("sha256").update(bytes).digest("hex")
       },
       resolvedPath: realpathSync(path)
     });
     if (result.allowed) {
-      expect(result.identity.device).toBeGreaterThan(0);
-      expect(result.identity.inode).toBeGreaterThan(0);
-      expect(result.identity.modifiedAtMs).toBeGreaterThan(0);
-      expect(result.uploadPath).not.toBe(result.resolvedPath);
-      expect(readFileSync(result.uploadPath)).toEqual(bytes);
-      expect(statSync(result.uploadPath).mode & 0o777).toBe(0o400);
-      await result.cleanup();
+      try {
+        expect(result.uploadPath).not.toBe(result.resolvedPath);
+        expect(readFileSync(result.uploadPath)).toEqual(bytes);
+        const stagedMode = statSync(result.uploadPath).mode & 0o777;
+        expect(stagedMode & 0o222).toBe(0);
+        if (process.platform !== "win32") {
+          expect(stagedMode).toBe(0o400);
+        }
+      } finally {
+        await result.cleanup();
+      }
       expect(existsSync(result.uploadPath)).toBe(false);
     }
   });
