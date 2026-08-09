@@ -189,17 +189,34 @@ async function reclaimDeadProcessLock(
   let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
   try {
     await assertParentIdentity(parent, "PRIVATE_FILE_LOCK_UNSAFE");
-    handle = await fs.open(
-      file,
-      constants.O_RDONLY | constants.O_NONBLOCK | noFollowFlag()
-    );
-    const [pathStat, opened] = await Promise.all([fs.lstat(file), handle.stat()]);
+    try {
+      handle = await fs.open(
+        file,
+        constants.O_RDONLY | constants.O_NONBLOCK | noFollowFlag()
+      );
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return true;
+      throw cause;
+    }
+    const opened = await handle.stat();
     if (
-      !isPrivateRegularFile(pathStat)
-      || !isPrivateRegularFile(opened)
-      || !sameIdentity(identity, pathStat)
+      !isPrivateRegularFile(opened)
       || !sameIdentity(identity, opened)
       || Number(opened.size) > 128
+    ) {
+      throw new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
+    }
+    let pathStat: LockStat;
+    try {
+      pathStat = await fs.lstat(file);
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return true;
+      throw cause;
+    }
+    if (
+      !isPrivateRegularFile(pathStat)
+      || !sameIdentity(identity, pathStat)
+      || !sameIdentity(pathStat, opened)
     ) {
       throw new PrivateFileLockError("PRIVATE_FILE_LOCK_UNSAFE");
     }

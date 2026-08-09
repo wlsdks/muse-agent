@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { constants, promises as fs } from "node:fs";
 import { chmod, link, lstat, mkdir, mkdtemp, readFile, rename, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -91,6 +91,114 @@ describe("withPrivateFileLock", () => {
       { giveUpMs: 1, reclaimDeadProcess: true, retryDelayMs: () => 0 }
     )).rejects.toMatchObject({ code: "PRIVATE_FILE_LOCK_CONTENDED" });
     expect(await readFile(lockFile, "utf8")).toBe(contents);
+  });
+
+  it.each(["before-reclaim-open", "before-path-validation"] as const)(
+    "retries when a live lock vanishes during normal turnover: %s",
+    async (releasePhase) => {
+      const directory = await mkdtemp(join(tmpdir(), "muse-private-lock-released-"));
+      const lockFile = join(directory, "state.lock");
+      const releasedPath = `${lockFile}.released`;
+      const contents = `v1:${process.pid.toString()}:00000000-0000-4000-8000-000000000000`;
+      await writeFile(lockFile, contents, { mode: 0o600 });
+      const originalOpen = fs.open.bind(fs);
+      const originalLstat = fs.lstat.bind(fs);
+      let reclaimOpened = false;
+      let released = false;
+      const openSpy = vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+        const opensExistingLock = args[0] === lockFile
+          && typeof args[1] === "number"
+          && (args[1] & constants.O_CREAT) === 0;
+        if (!released && releasePhase === "before-reclaim-open" && opensExistingLock) {
+          released = true;
+          await unlink(lockFile);
+        }
+        const opened = await originalOpen(...args);
+        if (opensExistingLock) reclaimOpened = true;
+        return opened;
+      });
+      const lstatSpy = vi.spyOn(fs, "lstat").mockImplementation(async (...args) => {
+        if (!released && releasePhase === "before-path-validation" && reclaimOpened && args[0] === lockFile) {
+          released = true;
+          if (process.platform === "win32") await rename(lockFile, releasedPath);
+          else await unlink(lockFile);
+        }
+        return originalLstat(...args);
+      });
+
+      try {
+        await expect(withPrivateFileLock(
+          lockFile,
+          async () => "complete",
+          { reclaimDeadProcess: true, retryDelayMs: () => 0 }
+        )).resolves.toBe("complete");
+        expect(released).toBe(true);
+        await expect(lstat(lockFile)).rejects.toMatchObject({ code: "ENOENT" });
+      } finally {
+        lstatSpy.mockRestore();
+        openSpy.mockRestore();
+        await unlink(releasedPath).catch(() => undefined);
+      }
+    }
+  );
+
+  it("rejects a replacement opened after the probe even if its path then vanishes", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "muse-private-lock-replacement-turnover-"));
+    const lockFile = join(directory, "state.lock");
+    const originalPath = `${lockFile}.original`;
+    const releasedPath = `${lockFile}.released`;
+    const contents = `v1:${process.pid.toString()}:00000000-0000-4000-8000-000000000000`;
+    await writeFile(lockFile, contents, { mode: 0o600 });
+    const originalOpen = fs.open.bind(fs);
+    const originalLstat = fs.lstat.bind(fs);
+    let reclaimOpened = false;
+    let replacementMoved = false;
+    let replaced = false;
+    let ran = false;
+    const openSpy = vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+      const opensExistingLock = args[0] === lockFile
+        && typeof args[1] === "number"
+        && (args[1] & constants.O_CREAT) === 0;
+      if (!replaced && opensExistingLock) {
+        replaced = true;
+        if (process.platform === "win32") await rename(lockFile, originalPath);
+        else await unlink(lockFile);
+        await writeFile(lockFile, "replacement-owner", { mode: 0o600 });
+        await chmod(lockFile, 0o600);
+      }
+      const opened = await originalOpen(...args);
+      if (opensExistingLock) reclaimOpened = true;
+      return opened;
+    });
+    const lstatSpy = vi.spyOn(fs, "lstat").mockImplementation(async (...args) => {
+      if (!replacementMoved && reclaimOpened && args[0] === lockFile) {
+        replacementMoved = true;
+        if (process.platform === "win32") await rename(lockFile, releasedPath);
+        else await unlink(lockFile);
+      }
+      return originalLstat(...args);
+    });
+
+    try {
+      await expect(withPrivateFileLock(
+        lockFile,
+        async () => {
+          ran = true;
+        },
+        { reclaimDeadProcess: true, retryDelayMs: () => 0 }
+      )).rejects.toMatchObject({ code: "PRIVATE_FILE_LOCK_UNSAFE" });
+      expect(ran).toBe(false);
+      expect(replacementMoved).toBe(false);
+      expect(await readFile(lockFile, "utf8")).toBe("replacement-owner");
+    } finally {
+      lstatSpy.mockRestore();
+      openSpy.mockRestore();
+      await Promise.all([
+        unlink(lockFile).catch(() => undefined),
+        unlink(originalPath).catch(() => undefined),
+        unlink(releasedPath).catch(() => undefined)
+      ]);
+    }
   });
 
   it("does not reclaim a malformed dead-owner nonce that only has UUID length", async () => {
