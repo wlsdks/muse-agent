@@ -7,7 +7,7 @@ source. Every `MUSE_*` or `ATTUNEGRAPH_*` referenced in product source
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **666** variables.
+Total: **665** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -104,7 +104,6 @@ Total: **666** variables.
 | `MUSE_BOARD_SPILL_DIR` | apps/cli |
 | `MUSE_BOARD_STALE_MS` | apps/cli |
 | `MUSE_BOARD_SYNTHESIS_HEADROOM` | apps/cli |
-| `MUSE_BRIEFING_` | apps/api |
 | `MUSE_BRIEFING_BIRTHDAY_DAYS` | apps/api |
 | `MUSE_BRIEFING_DESTINATION` | apps/api, packages/autoconfigure |
 | `MUSE_BRIEFING_ENABLED` | apps/cli, packages/autoconfigure |
@@ -472,7 +471,7 @@ Total: **666** variables.
 | `MUSE_PLAYBOOK_INJECT_TOPK` | packages/agent-core |
 | `MUSE_PREFERENCE_AUTOINFER_ENABLED` | apps/cli |
 | `MUSE_PRIVACY_ROUTING` | apps/cli, packages/policy |
-| `MUSE_PROACTIVE_` | apps/api, apps/cli |
+| `MUSE_PROACTIVE_` | apps/cli |
 | `MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS` | apps/api |
 | `MUSE_PROACTIVE_AGENT_TURN` | apps/api, packages/autoconfigure |
 | `MUSE_PROACTIVE_DAILY_CAP` | apps/api, apps/cli |
